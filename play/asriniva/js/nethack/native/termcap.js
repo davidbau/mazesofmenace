@@ -572,7 +572,10 @@ function nocmov(x,y)
 function cmov(x,y)
 {
     x=C.int(x);y=C.int(y);
-    xputs(C.tgoto(C.nh_CM, x, y));
+    if (C.emitCursorPosition)
+        C.emitCursorPosition(C.nh_CM, x, y);
+    else
+        xputs(C.tgoto(C.nh_CM, x, y));
     C.ttyDisplay.cury = C.short(y);
     C.ttyDisplay.curx = C.short(x);
 }
@@ -1010,8 +1013,12 @@ function home()
     
     if (C.HO)
         xputs(C.HO);
-    else if (C.nh_CM)
-        xputs(C.tgoto(C.nh_CM, 0, 0));
+    else if (C.nh_CM) {
+        if (C.emitCursorPosition)
+            C.emitCursorPosition(C.nh_CM, 0, 0);
+        else
+            xputs(C.tgoto(C.nh_CM, 0, 0));
+    }
     else
         C.tty_curs(C.BASE_WINDOW, 1, 0); /* using UP ... */
     C.ttyDisplay.curx = C.short(C.ttyDisplay.cury = C.short(0));

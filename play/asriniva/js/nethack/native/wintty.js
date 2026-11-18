@@ -1819,7 +1819,7 @@ function tty_curs(window, x, y) /* coordinates (and curx-x) must be signed */
         }
     }
     while (0);
-    if (Number(!!(Number(window == (C.int((-1)))) || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) C.panic(C.winpanicstr, window, C.literal("tty_curs"), "ip");
+    if (window === -1 || !(cw = C.windowAt(window))) C.panic(C.winpanicstr, window, C.literal("tty_curs"), "ip");
     ((C.ttyDisplay).lastwin = window);
     ;
     if (Number(!!(Number(!!(Number(!!(Number(x < 1) || Number(y < 0))) || Number(C.long(y) >= (cw).rows))) || Number(C.long(x) > (cw).cols)))) {
@@ -2730,10 +2730,11 @@ function g_putch(in_ch) {
         }
     }
     while (0);
-    if ((Number(C.uint((C.deref(C.ptrAdd((C.gs).symset, (C.gc).currentgraphics, "struct symsetentry"), "struct symsetentry")).handling) == C.uint((C.H_UTF8))))) {
+    const handling = C.currentGraphicsHandling();
+    if (handling === C.H_UTF8) {
         C.putchar(ch);
     }
-    else if (Number(!!((Number(C.uint((C.deref(C.ptrAdd((C.gs).symset, (C.gc).currentgraphics, "struct symsetentry"), "struct symsetentry")).handling) == C.uint((C.H_IBM)))) || (Number(!!((C.iflags).eight_bit_tty && (Number(!!(Number(!((Number(C.uint((C.deref(C.ptrAdd((C.gs).symset, (C.gc).currentgraphics, "struct symsetentry"), "struct symsetentry")).handling) == C.uint((C.H_DEC)))))) || Number((C.int((in_ch & 127))) < 96)))))))))) /* for DECgraphics, lower-case letters with high bit set mean
+    else if (handling === C.H_IBM || (C.iflags.eight_bit_tty && (handling !== C.H_DEC || (in_ch & 127) < 96))) /* for DECgraphics, lower-case letters with high bit set mean
            switch character set and render with high bit clear;
            user might want 8-bits for other characters */
 {
@@ -2838,12 +2839,12 @@ function tty_cliparound(x, y) {
  *  Since this is only called from show_glyph(), it is assumed that the
  *  position and glyph are always correct (checked there)!
  */
-function tty_print_glyph(window, x, y, glyphinfo, bkglyphinfo) {
+function tty_print_glyph(window, x, y, glyphinfo, bkglyphinfo, frameColor = undefined) {
     window = C.argument(window, "winid");
     x = C.argument(x, "coordxy");
     y = C.argument(y, "coordxy");
-    glyphinfo = C.argument(glyphinfo, "const glyph_info *");
-    bkglyphinfo = C.argument(bkglyphinfo, "const glyph_info *");
+    glyphinfo = C.glyphInput(glyphinfo);
+    bkglyphinfo = C.glyphInput(bkglyphinfo);
     let inverse_on = C.FALSE;
     let colordone = C.FALSE;
     let glyphdone = C.FALSE;
@@ -2862,9 +2863,9 @@ function tty_print_glyph(window, x, y, glyphinfo, bkglyphinfo) {
         if (Number(!!(Number(!!(Number(!!(Number(x <= C.clipx) || Number(y < C.clipy))) || Number(x >= C.clipxmax))) || Number(y >= C.clipymax)))) return;
     }
 /* get glyph ttychar, color, and special flags */
-    (ch = (glyphinfo).ttychar);
-    (color = C.uint((((glyphinfo).gm).sym).color));
-    (special = ((glyphinfo).gm).glyphflags);
+    ch = C.glyphChar(glyphinfo);
+    color = C.uint(C.glyphColor(glyphinfo));
+    special = C.glyphFlags(glyphinfo);
     ;
 /* Move the cursor. */
     tty_curs(window, x, y);
@@ -2880,14 +2881,16 @@ function tty_print_glyph(window, x, y, glyphinfo, bkglyphinfo) {
             if (Number((C.ttyDisplay).color != C.NO_COLOR)) C.term_end_color();
         }
 /* we don't link with termcap.o if NO_TERMS is defined */
-        if (Number(!!(Number(!!(Number(!!((C.ulong(((C.tty_procs).wincap2 & C.WC2_EXTRACOLORS))) && Number(((glyphinfo).gm).customcolor != C.uint(0)))) && Number((C.iflags).colorcount >= C.uint(256)))) && Number(!(C.calling_from_update_inventory))))) {
-            if (Number((C.uint((((glyphinfo).gm).customcolor & C.NH_BASIC_COLOR))) == C.uint(0))) {
-                C.term_start_extracolor(((glyphinfo).gm).customcolor, ((glyphinfo).gm).color256idx);
+        let customColor;
+        if ((C.tty_procs.wincap2 & C.WC2_EXTRACOLORS) && (customColor = C.glyphCustomColor(glyphinfo))
+            && C.iflags.colorcount >= 256 && !C.calling_from_update_inventory) {
+            if (!(customColor & C.NH_BASIC_COLOR)) {
+                C.term_start_extracolor(customColor, C.glyphColorIndex(glyphinfo));
                 ((C.ttyDisplay).colorflags = C.uint(0));
                 (colordone = C.TRUE);
             }
             else {
-                (color = (C.uint(((((glyphinfo).gm).customcolor) & C.uint(16777215)))));
+                color = customColor & 0xffffff;
             }
         }
         if (Number(!(colordone))) {
@@ -2900,9 +2903,11 @@ function tty_print_glyph(window, x, y, glyphinfo, bkglyphinfo) {
        BW_LAVA, BW_ICE, BW_SINK, BW_ENGR won't ever be set when color is on;
        (tried bold for ice but it didn't look very good; inverse is easier
        to see although the Valkyrie quest ends up being hard on the eyes) */
-    if (Number(!!(Number(!!((C.iflags).use_color && bkglyphinfo)) && Number((bkglyphinfo).framecolor != C.NO_COLOR)))) {
-        ((C.ttyDisplay).framecolor = (bkglyphinfo).framecolor);
-        C.term_start_bgcolor(C.int((bkglyphinfo).framecolor));
+    let backgroundColor;
+    if (C.iflags.use_color && (frameColor !== undefined || bkglyphinfo)
+        && (backgroundColor = frameColor ?? C.glyphFrameColor(bkglyphinfo)) !== C.NO_COLOR) {
+        C.ttyDisplay.framecolor = backgroundColor;
+        C.term_start_bgcolor(C.int(backgroundColor));
     }
     else if (Number(!!(Number((C.uint((special & C.MG_PET))) != C.uint(0)) && (C.iflags).hilite_pet))) {
         C.term_start_attr((C.iflags).wc2_petattr);
@@ -2912,9 +2917,11 @@ function tty_print_glyph(window, x, y, glyphinfo, bkglyphinfo) {
         C.term_start_attr(C.ATR_INVERSE);
         (inverse_on = C.TRUE);
     }
-    if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!(glyphdone)) && (C.ulong(((C.tty_procs).wincap2 & C.WC2_U_UTF8STR))))) && (Number(C.uint((C.deref(C.ptrAdd((C.gs).symset, (C.gc).currentgraphics, "struct symsetentry"), "struct symsetentry")).handling) == C.uint((C.H_UTF8)))))) && ((glyphinfo).gm).u)) && (((glyphinfo).gm).u).utf8str))) {
+    let utf8;
+    if (!glyphdone && (C.tty_procs.wincap2 & C.WC2_U_UTF8STR)
+        && C.currentGraphicsHandling() === C.H_UTF8 && (utf8 = C.glyphUtf8(glyphinfo))) {
 /* we have a sequence to do */
-        g_pututf8((((glyphinfo).gm).u).utf8str);
+        g_pututf8(utf8);
         (glyphdone = C.TRUE);
     }
     if (Number(!(glyphdone))) g_putch(ch);
@@ -2932,9 +2939,10 @@ function tty_print_glyph(window, x, y, glyphinfo, bkglyphinfo) {
         if (Number((C.ttyDisplay).colorflags != C.NH_BASIC_COLOR)) C.term_end_extracolor();
     }
     ;
-    C.bump(C.fieldRef(C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"), "curx"), 1, true, "long");
+    const current = C.windowAt(window);
+    current.curx += 1n;
 /* one character over */
-    C.bump(C.fieldRef(C.ttyDisplay, "curx"), 1, true, "short");
+    C.ttyDisplay.curx += 1;
 /* the real cursor moved too */
 }
 

@@ -84,6 +84,7 @@ export function createNativeMonState(services,layout,state={itermonarr:0,itermon
  env.shtypes=table(global(33),"shclass",services.nativeLayouts.shknam.shopCount);
  env.c_obj_colors=array(global(34),"ptr:raw",[Number(services.nativeLayouts.decl.size_c_obj_colors)/layout.pointerSize]);
  const {u,gy,gu,gm,svm,svl,svd,gv,svc,flags,genders,mons,objects,obj_descr}=env;
+ env.levelGrid=nativeState.spatial.grid;
  env.levl=nativeState.spatial.cells;
  for(const[name,get,set]of [["fmon",()=>svl.level.monlist,v=>{svl.level.monlist=v;}],["fobj",()=>svl.level.objlist,v=>{svl.level.objlist=v;}],["itermonarr",()=>state.itermonarr,v=>{if(v!==0&&!snapshots.has(v))throw Error("Foreign MON snapshot");state.itermonarr=v;}],["itermonsiz",()=>state.itermonsiz,v=>{state.itermonsiz=uint(v);}],["fmonAddress",()=>svl.level.address+layout.dlevel_monlist]])Object.defineProperty(env,name,{get,set});
  // W_NONDIGGABLE is an int wall flag, distinct from long equipment masks.

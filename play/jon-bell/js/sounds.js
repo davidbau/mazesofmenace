@@ -1,5 +1,5 @@
 import { game } from './gstate.js';
-import { canspotmon, map_invisible, GLYPHCLS_MON } from './display.js';
+import { canspotmon, map_invisible, glyph_at as displayed_glyph_at, glyph_to_mon } from './display.js';
 import { pline } from './pline.js';
 import { helpless } from './mhitm.js';
 import { Monnam } from './mcastu.js';
@@ -156,9 +156,7 @@ export function mon_is_gecko(mon) {
         return true;
     if (mon.data.pmidx === PM_LONG_WORM)
         return false;
-    const loc = game.level.at(mon.mx, mon.my);
-    return !!(loc && loc.disp_cls === GLYPHCLS_MON && !loc.disp_is_warning
-              && loc.disp_mon_pm === PM_GECKO);
+    return glyph_to_mon(displayed_glyph_at(mon.mx, mon.my)) === PM_GECKO;
 }
 
 /* C sounds.c:19-26 mon_in_room(mon, rmtyp) —

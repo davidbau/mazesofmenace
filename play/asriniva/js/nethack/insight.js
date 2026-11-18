@@ -2,6 +2,7 @@
 import abi from './insight-abi.json' with {type:'json'};
 import * as source from '../ported/insight.js';
 import {initializeInsight,callInsight} from './bindings/insight.js';
+import {nativeStateFor} from './native/state-bridge.js';
 const owners=new WeakMap();
 export function enableInsight(environment,layouts){
  if(owners.has(environment))return owners.get(environment);
@@ -27,6 +28,8 @@ export function enableInsight(environment,layouts){
  const callbacks={create_nhwindow:'win_create_nhwindow',destroy_nhwindow:'win_destroy_nhwindow',display_nhwindow:'win_display_nhwindow',start_menu:'win_start_menu',end_menu:'win_end_menu',putstr:'win_putstr',putmixed:'win_putmixed',raw_print:'win_raw_print'};
  for(const[name,target]of Object.entries(callbacks))local[name]=(...args)=>windowCall(target,...args);
  for(const name of ['pline','pline_The','You','Your','You_feel','You_hear','You_see','urgent_pline','verbalize','impossible','panic','livelog_printf'])local[name]=(...args)=>resolve(name)(...boundary(args));
+ const chronicle=nativeStateFor(environment).chronicle;
+ if(chronicle)Object.defineProperty(local,'chronicle',{value:chronicle});
  initializeInsight(local,L);
  // Original exported table aliases the initialized native backing; no second copy.
  environment.linkGlobal('vanqorders',storage[abi.publicStorage.vanqorders]);

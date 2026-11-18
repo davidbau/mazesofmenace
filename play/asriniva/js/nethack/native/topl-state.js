@@ -14,11 +14,22 @@ export function createNativeToplState(environment,layouts,services,owner){
  }
  const wins=Array(ctypes.size(abi.globals.wins)/L.pointerSize);for(let i=0;i<wins.length;i++)Object.defineProperty(wins,i,{enumerable:true,get:()=>window(arena.pointer(addresses.wins+i*8))});
  const gt=views.record('struct instance_globals_t',addresses.gt),toplines=addresses.gt+ctypes.record('struct instance_globals_t').fields.toplines.offset;
+ const {memory}=environment;
+ const capacity=L.BUFSZ+8,maxRows=layouts.wintty.MAX_MSG_HISTORY;
+ const base=memory.malloc(capacity*maxRows);
+ if(!base)throw new RangeError('TTY message history allocation failed');
+ const owns=value=>Number.isSafeInteger(value)&&value>=base&&value<base+capacity*maxRows&&(value-base)%capacity===0;
+ const historyStorage={
+  slot(index,length){return index>=0&&index<maxRows&&length<=capacity?base+index*capacity:services.alloc(length);},
+  detach(value){if(!owns(value))return value;const length=memory.strlen(value)+1,at=services.alloc(length);return memory.memcpy(at,value,length);},
+  owns,
+ };
+ owner.toplHistory=historyStorage;
  const snapshots=new WeakSet(),env=Object.assign({},L,roots,{wins,gt:{toplines,tc_gbl_data:gt.tc_gbl_data},snapshot_mesgs:0,nxtidx:0,initd:0,
   text:value=>typeof value==='string'?services.literal(value):environment.address(value),
   int:t.int,uint:t.uint,char:t.char,short:t.short,boolean:t.char,long:t.long,uchar:t.uchar,
   nativeMessageSnapshot(count){if(!Number.isSafeInteger(count)||count<1)throw RangeError('TOPL snapshot extent');const value=Array(count).fill(0);snapshots.add(value);return value;},
-  free:value=>{if(!value||snapshots.has(value))return;return services.free(value);},
+  historyStorage,free:value=>{if(!value||snapshots.has(value)||owns(value))return;return services.free(value);},
   byte(value){const at=typeof value==='string'?services.literal(value):environment.address(value);return {get value(){return arena.Int8[at];},set value(v){arena.Int8[at]=t.char(v);}};},
   C:c=>0x1f&c,SIZE:a=>a.length,min:(a,b)=>a<b?a:b,max:(a,b)=>a>b?a:b,abs:Math.abs,
   callLocal:(fn,...args)=>fn(...args),toplAssert:(expression,line,ok)=>{if(!ok)services.nhassert_failed(expression,'../win/tty/topl.c',line);},

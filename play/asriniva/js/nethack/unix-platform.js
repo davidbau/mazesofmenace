@@ -11,9 +11,11 @@ import {createCTypes} from './c-types.js';
 import {connectUnixPlatformSyscalls} from './unix-platform-syscalls.js';
 import * as earlyarg from '../ported/earlyarg.js';
 import {callEarlyarg} from './bindings/earlyarg.js';
-import {getmailstatus,free_maildata,ckmailstatus} from '../ported/mail.js';
+import {getmailstatus,free_maildata} from '../ported/mail.js';
+import {createNativeMail} from './native/mail.js';
 import {createMailEnvironment} from './bindings/mail.js';
 import {extendMail} from './mail.js';
+import {nativeStateFor} from './native/state-bridge.js';
 export function enableUnixPlatform(environment,layouts){
  const ctypes=createCTypes(environment.memory,{...records,aliases:{...records.aliases,...abi.aliases},records:{...records.records,...abi.records}},environment.bitfields);
  const syscalls=connectUnixPlatformSyscalls(environment,ctypes),groups={};
@@ -47,14 +49,24 @@ export function enableUnixPlatform(environment,layouts){
  const names=Object.keys(earlyarg).filter(name=>typeof earlyarg[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
  environment.register('unix-platform-earlyarg',Object.fromEntries(names.map(name=>[name,(...args)=>callEarlyarg(early,layouts.earlyarg,name,...args)])));
  const mailGlobals=['u','gs','gv','svl','svm','svp','flags','iflags','mons'],mailStorage=[0,1].map(i=>environment.allocateGlobal('unix-platform.mail-stat'+i,layouts.mail.statSize));
+ const hero=environment.requireGlobal('u');
+ const swallowed=ctypes.record('struct you').fields.uswallow;
+ if(swallowed.bits!==1||swallowed.shift>7)throw new Error('Review MAIL swallowed flag');
+ const deaf=ctypes.fieldAddress('struct u_roleplay',ctypes.fieldAddress('struct you',hero,'uroleplay'),'deaf');
  const mailServices=new Proxy(Object.create(services),{get:(o,k,r)=>{if(Object.hasOwn(o,k))return Reflect.get(o,k,r);const v=Reflect.get(o,k,r);if(v!==undefined&&typeof v!=='function')return v;return typeof k==='string'?(...args)=>resolve(k)(...args.map(v=>typeof v==='string'?text(v):v?.address??v)):undefined;}});
  for(const name of mailGlobals)Object.defineProperty(mailServices,name,{value:undefined,writable:true,configurable:true});
  Object.assign(mailServices,{moduleKey:environment,literal:services.literal,heap:()=>memory.HEAPU8,storage:i=>mailStorage[i],global:i=>environment.requireGlobal(mailGlobals[i]),alloc:n=>environment.alloc('alloc',n),dupstr:p=>environment.alloc('dupstr',text(p)),free:p=>services.free(ptr(p)),
-  heroBit:index=>index===0?ctypes.getField('struct you',environment.requireGlobal('u'),'uswallow','unsigned int'):ctypes.getField('struct u_roleplay',ctypes.locate('struct you',environment.requireGlobal('u'),'uroleplay').at,'deaf','boolean'),
+  heroBit:index=>index===0?(memory.HEAPU8[hero+swallowed.offset]>>>swallowed.shift)&1:memory.view.getInt8(deaf),
   winMessage:()=>ctypes.load('int',environment.requireGlobal('WIN_MESSAGE')),
   neverMind:()=>ctypes.getField('struct c_common_strings',environment.requireGlobal('c_common_strings'),'c_Never_mind','char *'),
  });
  const mailContext=createMailEnvironment(mailServices,layouts.mail);
+ const mailPolicy=createNativeMail(mailContext);
+ const ckmailstatus=()=>environment.transport.scoped(mailPolicy.ckmailstatus);
+ ckmailstatus.nativeDirect=true;
+ ckmailstatus.nativePrepared=true;
+ ckmailstatus.nativeState=nativeStateFor(environment);
+ ckmailstatus.nativeState.functions.set('ckmailstatus',ckmailstatus);
  environment.register('unix-platform-mail',{getmailstatus,free_maildata,ckmailstatus},mailContext);
  const mail=extendMail(environment,layouts,{context:mailContext,services:mailServices});
  return {...groups,ctypes,syscalls,limitation:'Original platform owners linked; main executes real dependencies and fails explicitly where the startup closure is incomplete.'};

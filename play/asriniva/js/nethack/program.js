@@ -1,5 +1,6 @@
 // Standalone program assembly. Source main owns initialization and gameplay.
 import {createStandaloneEnvironment} from './environment.js';
+import {connectTurnPolicies} from './turn-loop.js';
 export function createStandaloneProgram({layouts,runtime={},stdio:stdioOptions={},assets={},filesystemSnapshot,directories=[],readKey}={}){
  if(!layouts)throw new TypeError('Standalone program requires the configured layout profile');
  if(typeof readKey!=='function')throw new TypeError('Standalone program requires a synchronous keyboard boundary');
@@ -11,11 +12,11 @@ export function createStandaloneProgram({layouts,runtime={},stdio:stdioOptions={
  env.enableSdkBoundary();
  env.enableDecl(layouts.decl);env.enableDrawing(layouts.drawing);env.enableObjects(layouts.objects);env.enableMonst(layouts.monst);
  env.enableSerialization(layouts);env.enableRnd(layouts.rnd,{initialize:false,seed:BigInt(runtime.environment?.NETHACK_SEED??1)});
- env.enableAddressPort('dungeon',{only:['ledger_no','maxledgerno']});env.enableObjectState(layouts);env.enableObjectRecords(layouts);env.enableItemInventory(layouts);env.enableTimers(layouts);env.enableItemNaming(layouts);env.enableMonsterSelection(layouts);env.enableMonsterCreation(layouts);
+ env.enableAddressPort('dungeon',{only:['ledger_no','maxledgerno']});env.enableObjectState(layouts);env.enableObjectRecords(layouts);env.enableItemInventory(layouts);const timers=env.enableTimers(layouts);env.enableItemNaming(layouts);env.enableMonsterSelection(layouts);env.enableMonsterCreation(layouts);
  env.enableGameStartup(layouts);env.enableHeroStartup(layouts);env.enableWorldPosition(layouts);env.enableLuaSandbox(layouts);env.enableDisplayStartup(layouts);
- env.enableLevelStartup(layouts);env.enableLevelContents(layouts);const window=env.enableWindowSystem(layouts);
- env.enableVersionInfo(layouts);env.enableOptions(layouts);env.enableSymbols(layouts);env.enableGlyphs(layouts);env.enableCommands(layouts);env.enableConfiguration(layouts);env.enableFiles(layouts);env.enableStatus(layouts);env.enableGameWindows(layouts);env.enableColorAttributes(layouts);env.enableMovement(layouts);env.enablePets(layouts);env.enableMonsterMovement(layouts);env.enableMonsterLifecycle(layouts);env.enableShknam(layouts);env.enableHeroEquipment(layouts);
- env.enableQuestPager(layouts);env.enableTerminalInput(layouts,{readKey});env.enableTerminalMessages(layouts);env.enableMessages(layouts);env.enableDoLifecycle(layouts);env.enableSaveLifecycle(layouts);env.enableLevelPersistence(layouts);env.enableWorms(layouts);env.enableRuntimeInfo(layouts);env.enableReport(layouts);env.enableTurnLoop(layouts);env.enableKillerState(layouts);env.enableEndLifecycle(layouts);env.enableInsight(layouts);env.enableTopten(layouts);env.enableRestoreLifecycle(layouts);env.enablePotion(layouts);env.enableZap(layouts,{only:['get_obj_location','get_mon_location','obj_resists','wish_history_flush','exclam','dozap','buzz','flash_str','weffects','zap_over_floor','destroy_items','bhit','hit','miss','fracture_rock','makewish','learnwand']});env.enableWere(layouts);env.enableDogmove(layouts);env.enableMhitu(layouts);env.enableMhitm(layouts);env.enableUhitm(layouts);env.enableMthrowu(layouts);env.enableMcastu(layouts);env.enableRead(layouts);env.enableRip(layouts);env.enableExplode(layouts);env.enableWizard(layouts);env.enableMplayer(layouts);env.enableMinion(layouts);env.enableVault(layouts);env.enablePriest(layouts);env.enableQuest(layouts);env.enableLock(layouts);env.enableApply(layouts);env.enableAddressPort('detect',{only:['dosearch0']});env.enableUnixPlatform(layouts);
+ env.enableLevelStartup(layouts);const level=env.enableLevelContents(layouts);const window=env.enableWindowSystem(layouts);
+ env.enableVersionInfo(layouts);env.enableOptions(layouts);env.enableSymbols(layouts);env.enableGlyphs(layouts);const commands=env.enableCommands(layouts);env.enableConfiguration(layouts);env.enableFiles(layouts);env.enableStatus(layouts);env.enableGameWindows(layouts);env.enableColorAttributes(layouts);const heroMovement=env.enableMovement(layouts);env.enablePets(layouts);const monsterMovement=env.enableMonsterMovement(layouts);const monsters=env.enableMonsterLifecycle(layouts);env.enableShknam(layouts);env.enableHeroEquipment(layouts);
+ env.enableQuestPager(layouts);env.enableTerminalInput(layouts,{readKey});env.enableTerminalMessages(layouts);env.enableMessages(layouts);env.enableDoLifecycle(layouts);env.enableSaveLifecycle(layouts);env.enableLevelPersistence(layouts);env.enableWorms(layouts);env.enableRuntimeInfo(layouts);env.enableReport(layouts);const turn=env.enableTurnLoop(layouts);env.enableKillerState(layouts);env.enableEndLifecycle(layouts);env.enableInsight(layouts);env.enableTopten(layouts);env.enableRestoreLifecycle(layouts);env.enablePotion(layouts);env.enableZap(layouts,{only:['get_obj_location','get_mon_location','obj_resists','wish_history_flush','exclam','dozap','buzz','flash_str','weffects','zap_over_floor','destroy_items','bhit','hit','miss','fracture_rock','makewish','learnwand']});env.enableWere(layouts);env.enableDogmove(layouts);const monsterAttack=env.enableMhitu(layouts);const monsterCombat=env.enableMhitm(layouts);const heroCombat=env.enableUhitm(layouts);env.enableMthrowu(layouts);env.enableMcastu(layouts);env.enableRead(layouts);env.enableRip(layouts);env.enableExplode(layouts);env.enableWizard(layouts);env.enableMplayer(layouts);env.enableMinion(layouts);env.enableVault(layouts);env.enablePriest(layouts);env.enableQuest(layouts);env.enableLock(layouts);env.enableApply(layouts);env.enableAddressPort('detect',{only:['dosearch0']});env.enableUnixPlatform(layouts);
  env.enableSteal(layouts);
  env.enableMondata(layouts);
  env.enableSpecialInteractions(layouts);
@@ -29,6 +30,8 @@ export function createStandaloneProgram({layouts,runtime={},stdio:stdioOptions={
  env.enableDoName(layouts);
  env.enableEngrave(layouts);
  env.enableDiscoveries(layouts);
+ connectTurnPolicies({turn,monsters,monsterMovement,vision:level.vision,
+  heroMovement,commands,heroCombat,monsterAttack,monsterCombat,timers,environment});
  let started=false;
  return{environment,stdio,terminal:window.terminal,
   run(argv=[],{programName='./this.program'}={}){

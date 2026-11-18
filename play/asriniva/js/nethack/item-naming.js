@@ -40,6 +40,12 @@ export function enableItemNaming(environment,layouts,{legacy,views}) {
     const forwards=new Map(),naming=new Proxy(Object.create(services),{get:(o,k,r)=>{const value=Reflect.get(o,k,r);if(Object.hasOwn(o,k)||typeof k!=='string'||(Reflect.has(o,k)&&typeof value!=='function'))return value;if(!forwards.has(k))forwards.set(k,(...args)=>(typeof services[k]==='function'?services[k]:environment.resolve(k))(...args.map(v=>v?.address??v)));return forwards.get(k);}}),buffers=environment.allocateGlobal('objnam.obufs',layouts.objnam.NUMOBUF*layouts.objnam.BUFSZ);
     // Native OBJNAM imports raw strlen as memory64 size_t, not checked Strlen_.
     naming.strlen=value=>BigInt(services.strlen(typeof value==='string'?services.literal(value):environment.address(value)));
+    naming.verbText=value=>typeof value==='string'?value.split('\0',1)[0]:memory.readString(environment.address(value));
+    naming.writeVerb=(out,value)=>memory.writeString(environment.address(out),value);
+    naming.startsWithArticle=input=>{
+        const at=environment.address(input),bytes=memory.HEAPU8;
+        return (bytes[at]|32)===116&&(bytes[at+1]|32)===104&&(bytes[at+2]|32)===101&&bytes[at+3]===32;
+    };
     const statics=Object.fromEntries(Object.entries(languageAbi.staticBuffers).map(([key,n])=>[key,environment.allocateGlobal('objnam.'+key,n)]));
     Object.assign(naming,{nativeOwner,nativeObjnamTypes:ctypes,stackAlloc:transport.stackAlloc,stackSave:transport.stackSave,stackRestore:transport.stackRestore,Strlen_:(...args)=>environment.strutil('Strlen_',...args),staticStorage:name=>{if(!Object.hasOwn(statics,name))throw new Error('Unknown OBJNAM static '+name);return statics[name];},moduleKey:environment,global:i=>environment.requireGlobal(languageAbi.globals[i]),getBit:(p,i)=>{const[t,k]=languageAbi.bits[i];return ctypes.getField(t,environment.address(p),k,'unsigned int');},setBit:(p,i,v)=>{const[t,k]=languageAbi.bits[i];return ctypes.setField(t,environment.address(p),k,'unsigned int',v);},alloc:n=>environment.alloc('alloc',n),dupstr:p=>environment.alloc('dupstr',typeof p==='string'?services.literal(p):environment.address(p)),heap:()=>memory.HEAPU8,storage:i=>{if(i!==0)throw new Error('Unknown OBJNAM storage '+i);return buffers;}});
     // Original OBJNAM formatter callbacks use the same canonical function tokens

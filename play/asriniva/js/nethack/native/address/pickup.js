@@ -158,6 +158,10 @@ const R214=NF.readers[214],W214=NF.writers[214],A214=NF.addresses[214];
 const R215=NF.readers[215],W215=NF.writers[215],A215=NF.addresses[215];
 const R216=NF.readers[216],W216=NF.writers[216],A216=NF.addresses[216];
 const R217=NF.readers[217],W217=NF.writers[217],A217=NF.addresses[217];
+const RC0=C.readInt8At,WC0=C.writeInt8At;
+const RC1=C.readInt8At,WC1=C.writeInt8At;
+const RC5=C.readInt32At,WC5=C.writeInt32At;
+const RC8=C.readBigInt64At,WC8=C.writeBigInt64At;
 
 /* NetHack 5.0	pickup.c	$NHDT-Date: 1773373633 2026/03/12 19:47:13 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.386 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
@@ -208,13 +212,13 @@ function collect_obj_classes(ilets,otmp,here,filter,itemcount)
     itemcount=C.ptr(itemcount);
     let iletct=0;
     let c;
-    (C.cell(itemcount,"int").value=0);
-    (C.cell((ilets+Number(iletct)*1),"char").value=C.i8(0));
+    (WC5(itemcount,0));
+    (WC0(ilets+Number(iletct)*1,C.i8(0)));
     /* terminate ilets so that strchr() will work */
     while(otmp) {
         (c=R33(C.def_oc_syms+Number(C.i32(R134(otmp)))*C.sizes["struct class_sym"]));
-        if(Number(!!(Number(!(C.strchr(ilets,C.i32(c))))&&(Number(!!(Number(!(filter))||C.i32(C.indirect(5,(filter),otmp)))))))) ((C.cell((ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1),"char").value=c),(C.cell((ilets+Number(iletct)*1),"char").value=C.i8(0)));
-        (C.cell(itemcount,"int").value=C.i32(C.cell(itemcount,"int").value+1));
+        if(Number(!!(Number(!(C.strchr(ilets,C.i32(c))))&&(Number(!!(Number(!(filter))||C.i32(C.indirect(5,(filter),otmp)))))))) ((WC0(ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1,c)),(WC0(ilets+Number(iletct)*1,C.i8(0))));
+        (WC5(itemcount,C.i32(RC5(itemcount)+1)));
         (otmp=(C.i32(here)?R198(A125(otmp)):R124(otmp)));
     }
     return iletct;
@@ -265,46 +269,46 @@ function query_classes(oclasses,one_at_a_time,everything,action,objs,here,menu_o
     let qbuf=C.stackAlloc((1*128));
     let m_seen;
     let itemcount=C.local("int",0); let bcnt=C.local("int",0); let ucnt=C.local("int",0); let ccnt=C.local("int",0); let xcnt=C.local("int",0); let ocnt=C.local("int",0); let jcnt=C.local("int",0);
-    (C.cell((oclasses+Number((oclassct=0))*1),"char").value=C.i8(0));
-    (C.cell(one_at_a_time,"signed char").value=(C.cell(everything,"signed char").value=(m_seen=(C.i8(0)))));
-    if(menu_on_demand) (C.cell(menu_on_demand,"int").value=0);
+    (WC0(oclasses+Number((oclassct=0))*1,C.i8(0)));
+    (WC1(one_at_a_time,WC1(everything,m_seen=(C.i8(0)))));
+    if(menu_on_demand) (WC5(menu_on_demand,0));
     (iletct=collect_obj_classes(ilets,objs,here,0,itemcount.address));
     if(Number(iletct==0)) return (C.i8(0));
     if(Number(iletct==1)) {
-        (C.cell((oclasses+Number(0)*1),"char").value=C.i8(C.def_char_to_objclass(C.cell((ilets+Number(0)*1),"char").value)));
-        (C.cell((oclasses+Number(1)*1),"char").value=C.i8(0));
+        (WC0(oclasses+Number(0)*1,C.i8(C.def_char_to_objclass(RC0(ilets+Number(0)*1)))));
+        (WC0(oclasses+Number(1)*1,C.i8(0)));
     } else {
         /* more than one choice available */
         /* additional choices */
-        (C.cell((ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1),"char").value=C.i8(32));
-        (C.cell((ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1),"char").value=C.i8(97));
-        (C.cell((ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1),"char").value=C.i8(65));
-        (C.cell((ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1),"char").value=C.i8(((Number(objs==R91(C.gi))?105:58))));
+        (WC0(ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1,C.i8(32)));
+        (WC0(ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1,C.i8(97)));
+        (WC0(ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1,C.i8(65)));
+        (WC0(ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1,C.i8(((Number(objs==R91(C.gi))?105:58)))));
     }
-    if(Number(!!(itemcount.value&&menu_on_demand))) (C.cell((ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1),"char").value=C.i8(109));
-    if(C.count_unpaid(objs)) (C.cell((ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1),"char").value=C.i8(117));
+    if(Number(!!(itemcount.value&&menu_on_demand))) (WC0(ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1,C.i8(109)));
+    if(C.count_unpaid(objs)) (WC0(ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1,C.i8(117)));
     C.tally_BUCX(objs,here,bcnt.address,ucnt.address,ccnt.address,xcnt.address,ocnt.address,jcnt.address);
-    if(bcnt.value) (C.cell((ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1),"char").value=C.i8(66));
-    if(ucnt.value) (C.cell((ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1),"char").value=C.i8(85));
-    if(ccnt.value) (C.cell((ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1),"char").value=C.i8(67));
-    if(xcnt.value) (C.cell((ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1),"char").value=C.i8(88));
-    if(jcnt.value) (C.cell((ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1),"char").value=C.i8(80));
-    (C.cell((ilets+Number(iletct)*1),"char").value=C.i8(0));
+    if(bcnt.value) (WC0(ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1,C.i8(66)));
+    if(ucnt.value) (WC0(ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1,C.i8(85)));
+    if(ccnt.value) (WC0(ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1,C.i8(67)));
+    if(xcnt.value) (WC0(ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1,C.i8(88)));
+    if(jcnt.value) (WC0(ilets+Number((()=>{const __old=iletct;iletct=C.i32((__old+1));return __old;})())*1,C.i8(80)));
+    (WC0(ilets+Number(iletct)*1,C.i8(0)));
     if(Number(iletct>1)) {
         let where=0;
         let sym; let oc_of_sym; let p;
         ask_again: for(;;){
             /* original label ask_again */
-            (C.cell((oclasses+Number((oclassct=0))*1),"char").value=C.i8(0));
-            (C.cell(one_at_a_time,"signed char").value=(C.cell(everything,"signed char").value=(C.i8(0))));
+            (WC0(oclasses+Number((oclassct=0))*1,C.i8(0)));
+            (WC1(one_at_a_time,WC1(everything,C.i8(0))));
             (not_everything=(filtered=(C.i8(0))));
             C.variadic(2,qbuf,C.literal("What kinds of thing do you want to %s? [%s]"),action,ilets);
             C.getlin(qbuf,inbuf);
-            if(Number(C.i32(C.cell(inbuf,"char").value)==27)) return (C.i8(0));
-            for((p=inbuf);Number(C.i32(((sym=C.cell((()=>{const __old=p;p=C.ptr((__old+Number(1)));return __old;})(),"char").value)))!=0);) {
+            if(Number(C.i32(RC0(inbuf))==27)) return (C.i8(0));
+            for((p=inbuf);Number(C.i32(((sym=RC0((()=>{const __old=p;p=C.ptr((__old+Number(1)));return __old;})()))))!=0);) {
                 if(Number(C.i32(sym)==32)) continue;
- else if(Number(C.i32(sym)==65)) (C.cell(one_at_a_time,"signed char").value=(C.i8(1)));
- else if(Number(C.i32(sym)==97)) (C.cell(everything,"signed char").value=(C.i8(1)));
+ else if(Number(C.i32(sym)==65)) (WC1(one_at_a_time,C.i8(1)));
+ else if(Number(C.i32(sym)==97)) (WC1(everything,C.i8(1)));
  else if(Number(C.i32(sym)==58)) {
                     simple_look(objs,here);
                     /* dumb if objs==invent */
@@ -325,11 +329,11 @@ function query_classes(oclasses,one_at_a_time,everything,action,objs,here,menu_o
                     (oc_of_sym=C.i8(C.def_char_to_objclass(sym)));
                     if(C.strchr(ilets,C.i32(sym))) {
                         add_valid_menu_class(C.i32(oc_of_sym));
-                        (C.cell((oclasses+Number((()=>{const __old=oclassct;oclassct=C.i32((__old+1));return __old;})())*1),"char").value=oc_of_sym);
-                        (C.cell((oclasses+Number(oclassct)*1),"char").value=C.i8(0));
+                        (WC0(oclasses+Number((()=>{const __old=oclassct;oclassct=C.i32((__old+1));return __old;})())*1,oc_of_sym));
+                        (WC0(oclasses+Number(oclassct)*1,C.i8(0)));
                     } else {
                         if(Number(!(where))) (where=(Number(!(C.strcmp(action,C.literal("pick up"))))?C.literal("here"):(Number(!(C.strcmp(action,C.literal("take out"))))?C.literal("inside"):C.literal(""))));
-                        if(C.cell(where,"char").value) C.variadic(3,C.literal("are no %c's %s."),C.i32(sym),where);
+                        if(RC0(where)) C.variadic(3,C.literal("are no %c's %s."),C.i32(sym),where);
  else C.variadic(4,C.literal("have no %c's."),C.i32(sym));
                         (not_everything=(C.i8(1)));
                     }
@@ -337,15 +341,15 @@ function query_classes(oclasses,one_at_a_time,everything,action,objs,here,menu_o
             }
             /* for p:sym in inbuf */
             if(Number(!!(C.i32(m_seen)&&menu_on_demand))) {
-                (C.cell(menu_on_demand,"int").value=(((Number(!!((Number(!!(C.i32(C.cell(everything,"signed char").value)||Number(!(oclassct)))))&&Number(!(filtered)))))?C.i32((-2)):C.i32((-3)))));
+                (WC5(menu_on_demand,(Number(!!((Number(!!(C.i32(RC1(everything))||Number(!(oclassct)))))&&Number(!(filtered)))))?C.i32((-2)):C.i32((-3))));
                 return (C.i8(0));
             }
-            if(Number(!!(Number(!(oclassct))&&(Number(!!(Number(!(C.cell(everything,"signed char").value))||C.i32(not_everything))))))) {
+            if(Number(!!(Number(!(oclassct))&&(Number(!!(Number(!(RC1(everything)))||C.i32(not_everything))))))) {
                 /* didn't pick anything,
                or tried to pick something that's not present */
-                (C.cell(one_at_a_time,"signed char").value=(C.i8(1)));
+                (WC1(one_at_a_time,C.i8(1)));
                 /* force 'A' */
-                (C.cell(everything,"signed char").value=(C.i8(0)));
+                (WC1(everything,C.i8(0)));
                 /* inhibit 'a' */
             }
             break ask_again;
@@ -417,7 +421,7 @@ function force_decor(via_probing)
     (W80(C.iflags,C.i8(C.STONE)));
     describe_decor();
     (W89(C.gd,W90(C.gd,C.i8(0))));
-    (C.cell(((A105(C.svl)+Number(R208(C.u))*(1*21))+Number(R209(C.u))*1),"signed char").value=R187((A42(A106(C.svl))+Number(R208(C.u))*(C.sizes["struct rm"]*21))+Number(R209(C.u))*C.sizes["struct rm"]));
+    (WC1((A105(C.svl)+Number(R208(C.u))*(1*21))+Number(R209(C.u))*1,R187((A42(A106(C.svl))+Number(R208(C.u))*(C.sizes["struct rm"]*21))+Number(R209(C.u))*C.sizes["struct rm"])));
 }
 
 function deferred_decor(setup)
@@ -545,11 +549,11 @@ function add_valid_menu_class(c)
     
     if(Number(c==0)) {
         /* reset */
-        (C.cell(C.staticAddress("add_valid_menu_class.vmc_count"),"int").value=0);
+        (WC5(C.staticAddress("add_valid_menu_class.vmc_count"),0));
         (W88(C.gc,W86(C.gb,W103(C.gs,C.i8(0)))));
         (W100(C.gp,C.i8(0)));
     } else if(Number(!(menu_class_present(c)))) {
-        (C.cell((A111(C.gv)+Number((()=>{const __cell=C.cell(C.staticAddress("add_valid_menu_class.vmc_count"),"int");const __old=__cell.value;__cell.value=C.i32((__old+1));return __old;})())*1),"char").value=C.i8(c));
+        (WC0(A111(C.gv)+Number((()=>{const __cell=C.cell(C.staticAddress("add_valid_menu_class.vmc_count"),"int");const __old=__cell.value;__cell.value=C.i32((__old+1));return __old;})())*1,C.i8(c)));
         /* categorize the new class */
         switch(c) {
             case (66):
@@ -570,7 +574,7 @@ function add_valid_menu_class(c)
             break;
         }
     }
-    (C.cell((A111(C.gv)+Number(C.cell(C.staticAddress("add_valid_menu_class.vmc_count"),"int").value)*1),"char").value=C.i8(0));
+    (WC0(A111(C.gv)+Number(RC5(C.staticAddress("add_valid_menu_class.vmc_count")))*1,C.i8(0)));
 }
 
 /* query_objlist callback: return TRUE if not uchain */
@@ -803,7 +807,7 @@ function pickup(what)
                 let oclasses=C.stackAlloc((1*28));
                 /* +10: room for B,U,C,X plus slop */
                 let obj; let obj2;
-                (C.cell((oclasses+Number(0)*1),"char").value=C.i8(0));
+                (WC0(oclasses+Number(0)*1,C.i8(0)));
                 /* types to consider (empty for all) */
                 (all_of_a_type.value=(C.i8(1)));
                 /* take all of considered types */
@@ -835,7 +839,7 @@ function pickup(what)
                     (bycat=C.i8((Number(!!(Number(!!(Number(!!(C.i32(menu_class_present(66))||C.i32(menu_class_present(85))))||C.i32(menu_class_present(67))))||C.i32(menu_class_present(88)))))));
                     for((obj=C.cell(objchain_p,"struct obj *").value);obj;(obj=obj2)) {
                         (obj2=(((C.i32(((traverse_how)&1)))?R198(A125(obj)):R124(obj))));
-                        if((C.i32(bycat)?Number(!(allow_category(obj))):(Number(!!(Number(!!(Number(!(selective.value))&&C.i32(C.cell((oclasses+Number(0)*1),"char").value)))&&Number(!(C.strchr(oclasses,C.i32(R134(obj)))))))))) continue;
+                        if((C.i32(bycat)?Number(!(allow_category(obj))):(Number(!!(Number(!!(Number(!(selective.value))&&C.i32(RC0(oclasses+Number(0)*1))))&&Number(!(C.strchr(oclasses,C.i32(R134(obj)))))))))) continue;
                         (lcount=C.i64((-1n)));
                         if(Number(!(all_of_a_type.value))) {
                             let qbuf=C.stackAlloc((1*256));
@@ -850,8 +854,8 @@ function pickup(what)
                                     (all_of_a_type.value=(C.i8(1)));
                                 if(selective.value) {
                                     (selective.value=(C.i8(0)));
-                                    (C.cell((oclasses+Number(0)*1),"char").value=R134(obj));
-                                    (C.cell((oclasses+Number(1)*1),"char").value=C.i8(0));
+                                    (WC0(oclasses+Number(0)*1,R134(obj)));
+                                    (WC0(oclasses+Number(1)*1,C.i8(0)));
                                 }
                                 break;
                                 case (35):
@@ -932,16 +936,16 @@ function autopick_testobj(otmp,calc_costly)
     let otypes=A62(C.flags);
     let pickit;
     /* calculate 'costly' just once for a given autopickup operation */
-    if(calc_costly) (C.cell(C.staticAddress("autopick_testobj.costly"),"signed char").value=C.i8((Number(!!(Number(C.i32(R137(otmp))==1)&&C.i32(C.costly_spot(R128(otmp),R129(otmp))))))));
+    if(calc_costly) (WC1(C.staticAddress("autopick_testobj.costly"),C.i8((Number(!!(Number(C.i32(R137(otmp))==1)&&C.i32(C.costly_spot(R128(otmp),R129(otmp)))))))));
     /* first check: reject if an unpaid item in a shop */
-    if(Number(!!(C.i32(C.cell(C.staticAddress("autopick_testobj.costly"),"signed char").value)&&Number(!(R142(otmp)))))) return (C.i8(0));
+    if(Number(!!(C.i32(RC1(C.staticAddress("autopick_testobj.costly")))&&Number(!(R142(otmp)))))) return (C.i8(0));
     /* pickup_thrown/pickup_stolen/nopick_dropped override pickup_types and
        exceptions */
     if(Number(!!((Number(!!(C.i32(R54(C.flags))&&Number(C.i32(R165(otmp))==1))))||(Number(!!(C.i32(R53(C.flags))&&Number(C.i32(R165(otmp))==3))))))) return (C.i8(1));
     if(Number(!!(C.i32(R51(C.flags))&&Number(C.i32(R165(otmp))==2)))) return (C.i8(0));
     if(Number(C.i32(R165(otmp))==4)) return (C.i8(0));
     /* check for pickup_types */
-    (pickit=C.i8((Number(!!(Number(!(C.cell(otypes,"char").value))||C.strchr(otypes,C.i32(R134(otmp))))))));
+    (pickit=C.i8((Number(!!(Number(!(RC0(otypes)))||C.strchr(otypes,C.i32(R134(otmp))))))));
     /* check for autopickup exceptions */
     (ape=check_autopickup_exceptions(otmp));
     if(ape) (pickit=R28(ape));
@@ -1082,7 +1086,7 @@ function query_objlist(qstr,olist_p,qflags,pick_list,how,allow)
     do {
         (printed_type_name=(C.i8(0)));
         for((srtoli=sortedolist.value);(Number(((curr=R190(srtoli)))!=0));(()=>{const __old=srtoli;srtoli=C.ptr((__old+Number(C.sizes["struct sortloot_item"])));return srtoli;})()) {
-            if(Number(!!(C.i32(sorted)&&Number(C.i32(R134(curr))!=C.i32(C.cell(pack,"char").value))))) continue;
+            if(Number(!!(C.i32(sorted)&&Number(C.i32(R134(curr))!=C.i32(RC0(pack)))))) continue;
             if(Number(!!(Number(!!((C.i32((qflags&128)))&&Number(C.i32(R130(curr))==C.CORPSE)))&&C.i32(C.will_feel_cockatrice(curr,(C.i8(0))))))) {
                 C.indirect(10,(R204(C.windowprocs)),win);
                 /* stop the menu and revert */
@@ -1095,7 +1099,7 @@ function query_objlist(qstr,olist_p,qflags,pick_list,how,allow)
                 if(Number(!!(C.i32(sorted)&&Number(!(printed_type_name))))) {
                     let with_oc_sym=C.i8((Number(!!(Number(how!=0)&&C.i32(R78(C.iflags))))));
                     C.copy(any,A37(C.cg),C.sizes["union any"]);
-                    C.add_menu_heading(win,C.let_to_name(C.cell(pack,"char").value,(C.i8(0)),with_oc_sym));
+                    C.add_menu_heading(win,C.let_to_name(RC0(pack),(C.i8(0)),with_oc_sym));
                     (printed_type_name=(C.i8(1)));
                 }
                 (W3(any,curr));
@@ -1106,7 +1110,7 @@ function query_objlist(qstr,olist_p,qflags,pick_list,how,allow)
             }
         }
         (()=>{const __old=pack;pack=C.ptr((__old+Number(1)));return __old;})();
-    } while(Number(!!(C.i32(sorted)&&C.i32(C.cell(pack,"char").value))));
+    } while(Number(!!(C.i32(sorted)&&C.i32(RC0(pack)))));
     C.unsortloot(sortedolist.address);
     if(engulfer) {
         let buf=C.stackAlloc((1*256));
@@ -1293,13 +1297,13 @@ function query_category(qstr,olist,qflags,pick_list,how)
         do {
             (collected_type_name=(C.i8(0)));
             for((curr=olist);curr;(curr=(((C.i32(((qflags)&1)))?R198(A125(curr)):R124(curr))))) {
-                if(Number(C.i32(R134(curr))==C.i32(C.cell(pack,"char").value))) {
+                if(Number(C.i32(R134(curr))==C.i32(RC0(pack)))) {
                     if(Number(!!(ofilter&&Number(!(C.indirect(17,(ofilter),curr)))))) continue;
                     if(Number(!(collected_type_name))) {
                         let oclass=C.i32(R134(curr));
                         C.copy(any,A37(C.cg),C.sizes["union any"]);
                         (W5(any,oclass));
-                        C.add_menu(win,C.nul_glyphinfo,any,(()=>{const __old=invlet;invlet=C.i8((__old+1));return __old;})(),C.i8(C.i32(R33(C.def_oc_syms+Number(oclass)*C.sizes["struct class_sym"]))),0,clr,C.let_to_name(C.cell(pack,"char").value,(C.i8(0)),C.i8((Number(!!(Number(how!=0)&&C.i32(R78(C.iflags))))))),0);
+                        C.add_menu(win,C.nul_glyphinfo,any,(()=>{const __old=invlet;invlet=C.i8((__old+1));return __old;})(),C.i8(C.i32(R33(C.def_oc_syms+Number(oclass)*C.sizes["struct class_sym"]))),0,clr,C.let_to_name(RC0(pack),(C.i8(0)),C.i8((Number(!!(Number(how!=0)&&C.i32(R78(C.iflags))))))),0);
                         (collected_type_name=(C.i8(1)));
                     }
                 }
@@ -1310,7 +1314,7 @@ function query_category(qstr,olist,qflags,pick_list,how)
                 (n=0);
                 break query_done; /* original goto query_done */
             }
-        } while(C.cell(pack,"char").value);
+        } while(RC0(pack));
         if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(do_unpaid)||C.i32(do_usedup)))||C.i32(do_blessed)))||C.i32(do_cursed)))||C.i32(do_uncursed)))||C.i32(do_buc_unknown)))||num_justpicked))) {
             C.add_menu_str(win,C.literal(""));
         }
@@ -1442,7 +1446,7 @@ function count_categories(olist,qflags)
     do {
         (counted_category=(C.i8(0)));
         for((curr=olist);curr;(curr=(((C.i32(((qflags)&1)))?R198(A125(curr)):R124(curr))))) {
-            if(Number(C.i32(R134(curr))==C.i32(C.cell(pack,"char").value))) {
+            if(Number(C.i32(R134(curr))==C.i32(RC0(pack)))) {
                 if(Number(!!(C.i32(do_worn)&&Number(!((C.i64((R171(curr)&(C.i64((C.i64(((C.i64((C.i64((C.i64((C.i64((C.i64((C.i64((1n|2n))|4n))|8n))|16n))|32n))|64n)))|(C.i64((C.i64(((C.i64((131072n|262144n)))|65536n))|524288n)))))|(C.i64((C.i64((256n|1024n))|512n)))))))))))))) continue;
                 if(Number(!(counted_category))) {
                     (()=>{const __old=ccount;ccount=C.i32((__old+1));return __old;})();
@@ -1451,7 +1455,7 @@ function count_categories(olist,qflags)
             }
         }
         (()=>{const __old=pack;pack=C.ptr((__old+Number(1)));return __old;})();
-    } while(C.cell(pack,"char").value);
+    } while(RC0(pack));
     return ccount;
 }
 
@@ -1519,8 +1523,8 @@ function carry_count(obj,container,count,telekinesis,wt_before,wt_after)
         (W132(obj,savequan));
         (W131(obj,saveowt));
     }
-    (C.cell(wt_before,"int").value=iw);
-    (C.cell(wt_after,"int").value=wt);
+    (WC5(wt_before,iw));
+    (WC5(wt_after,wt));
     if(Number(wt<0)) return count;
     /* see how many we can lift */
     if(is_gold) {
@@ -1579,13 +1583,13 @@ function carry_count(obj,container,count,telekinesis,wt_before,wt_after)
         }
     } else {
         /* lint suppression */
-        (C.cell(obj_nambuf,"char").value=(C.cell(where,"char").value=C.i8(0)));
+        (WC0(obj_nambuf,WC0(where,C.i8(0))));
         (verb=C.literal(""));
     }
     /* we can carry qq of them */
     if(Number(qq>C.i64(0))) {
         if(Number(qq<count)) C.variadic(23,C.literal("can only %s %s of the %s %s."),verb,((Number(qq==1n))?C.literal("one"):C.literal("some")),obj_nambuf,where);
-        (C.cell(wt_after,"int").value=wt);
+        (WC5(wt_after,wt));
         return qq;
     }
     if(Number(!(container))) C.strcpy(where,C.literal("here"));
@@ -1635,8 +1639,8 @@ function lift_object(obj,container,cnt_p,telekinesis)
         C.variadic(26,C.literal("are carrying too much stuff to pick up %s %s."),((Number(R132(obj)==1n))?C.literal("another"):C.literal("more")),C.xname(obj));
         return C.i32((-1));
     }
-    (C.cell(cnt_p,"long").value=carry_count(obj,container,C.cell(cnt_p,"long").value,telekinesis,old_wt.address,new_wt.address));
-    if(Number(C.cell(cnt_p,"long").value<1n)) {
+    (WC8(cnt_p,carry_count(obj,container,RC8(cnt_p),telekinesis,old_wt.address,new_wt.address)));
+    if(Number(RC8(cnt_p)<1n)) {
         (result=C.i32((-1)));
         /* nothing lifted */
     } else if(Number(!!(Number(!!(Number(C.i32(R134(obj))!=C.COIN_CLASS)&&Number(C.inv_cnt((C.i8(0)))>=C.invlet_basic)))&&Number(!(C.merge_choice(R91(C.gi),obj)))))) {
@@ -1662,7 +1666,7 @@ function lift_object(obj,container,cnt_p,telekinesis)
             } else {
                 let qbuf=C.stackAlloc((1*256));
                 let savequan=R132(obj);
-                (W132(obj,C.cell(cnt_p,"long").value));
+                (W132(obj,RC8(cnt_p)));
                 C.variadic(28,qbuf,C.literal("%s %s "),((Number(next_encumbr>=C.EXT_ENCUMBER))?C.staticAddress("overloadpfx"):((Number(next_encumbr>=C.HVY_ENCUMBER))?C.staticAddress("nearloadpfx"):((Number(next_encumbr>=C.MOD_ENCUMBER))?C.staticAddress("moderateloadpfx"):C.staticAddress("slightloadpfx")))),(Number(!(container))?C.literal("lifting"):C.literal("removing")));
                 C.safe_qbuf(qbuf,qbuf,C.literal(".  Continue?"),obj,C.nativeFunctionPointer("doname"),C.nativeFunctionPointer("ansimpleoname"),R32(C.c_common_strings));
                 (W132(obj,savequan));
@@ -1797,13 +1801,13 @@ function pick_obj(otmp)
            usually they'll be the same, but not when using telekinesis
            (if ever implemented) or a grappling hook */
         C.strcpy(saveushops,A211(C.u));
-        (C.cell((fakeshop+Number(0)*1),"char").value=C.cell(C.in_rooms(ox.value,oy.value,C.SHOPBASE),"char").value);
-        (C.cell((fakeshop+Number(1)*1),"char").value=C.i8(0));
+        (WC0(fakeshop+Number(0)*1,RC0(C.in_rooms(ox.value,oy.value,C.SHOPBASE))));
+        (WC0(fakeshop+Number(1)*1,C.i8(0)));
         C.strcpy(A211(C.u),fakeshop);
         /* sets obj->unpaid if necessary */
         C.addtobill(otmp,(C.i8(1)),(C.i8(0)),(C.i8(0)));
         C.strcpy(A211(C.u),saveushops);
-        (robshop=C.i8(Number(!!(C.i32(R141(otmp))&&Number(!(C.strchr(A211(C.u),C.i32(C.cell(fakeshop,"char").value))))))));
+        (robshop=C.i8(Number(!!(C.i32(R141(otmp))&&Number(!(C.strchr(A211(C.u),C.i32(RC0(fakeshop)))))))));
     }
     (result=C.addinv(otmp));
     /* if you're taking a shop item from outside the shop, make shk notice */
@@ -1825,7 +1829,7 @@ function pickup_prinv(obj,count,verb)
     let pbuf=C.stackAlloc((1*128));
     let prefix;
     let nearload=C.near_capacity();
-    (C.cell((pbuf+Number(0)*1),"char").value=C.i8(0));
+    (WC0(pbuf+Number(0)*1,C.i8(0)));
     if(Number(nearload==R101(C.gp))) {
         (prefix=0);
     } else {
@@ -2245,7 +2249,7 @@ function loot_mon(mtmp,passed_info,prev_loot)
      *  *prev_loot is set to TRUE if something was actually acquired in here.
      */
     if(Number(!!(Number(!!(mtmp&&Number(mtmp!=R216(C.u))))&&((otmp=C.which_armor(mtmp,1048576n)))))) {
-        if(passed_info) (C.cell(passed_info,"int").value=1);
+        if(passed_info) (WC5(passed_info,1));
         C.variadic(60,qbuf,C.literal("Do you want to remove the saddle from %s?"),C.x_monnam(mtmp,1,0,8,(C.i8(0))));
         if(Number(((c=C.i32(C.yn_function(qbuf,C.ynqchars,C.i8(110),(C.i8(1))))))==121)) {
             if((Number((C.u64((R182(R117(A112(C.gy)))&C.u64(24576n))))==C.u64(24576n)))) {
@@ -2263,14 +2267,14 @@ function loot_mon(mtmp,passed_info,prev_loot)
             (otmp=C.hold_another_object(otmp,C.literal("You drop %s!"),C.doname(otmp),0));
             ((otmp));
             (timepassed=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pickup.c",2467,"loot_mon"),C.rnd(3))):C.rnd(3))));
-            if(prev_loot) (C.cell(prev_loot,"signed char").value=(C.i8(1)));
+            if(prev_loot) (WC1(prev_loot,C.i8(1)));
         } else if(Number(c==113)) {
             return 0;
         }
     }
     /* 3.4.0 introduced ability to pick things up from swallower's stomach */
     if(R213(C.u)) {
-        let count=(passed_info?C.cell(passed_info,"int").value:0);
+        let count=(passed_info?RC5(passed_info):0);
         (timepassed=pickup(count));
     }
     return timepassed;
@@ -2566,7 +2570,7 @@ function mbag_item_gone(held,item,silent)
         if(R146(item)) C.variadic(77,C.literal("%s %s vanished!"),C.Doname2(item),C.otense(item,C.literal("have")));
  else C.variadic(78,C.literal("%s %s disappear!"),((Number(!!((Number(!!(R186(A212(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R184(A212(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R185(A212(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))?C.literal("notice"):C.literal("see")),C.doname(item));
     }
-    if(Number(!!(C.i32(C.cell(A211(C.u),"char").value)&&Number(((shkp=C.shop_keeper(C.cell(A211(C.u),"char").value)))!=0)))) {
+    if(Number(!!(C.i32(RC0(A211(C.u)))&&Number(((shkp=C.shop_keeper(RC0(A211(C.u)))))!=0)))) {
         if((C.i32(held)?C.i32(C.i8(R141(item))):C.i32(C.costly_spot(R208(C.u),R209(C.u))))) (loss=C.stolen_value(item,R208(C.u),R209(C.u),C.i8(R120(shkp)),(C.i8(1))));
     }
     C.obfree(item,0);
@@ -2709,7 +2713,7 @@ function use_container(objp,held,more_containers)
     (W85(C.ga,C.i8(0)));
     (W102(C.gs,C.i8(1)));
     /* in_container() should call sellobj_state() */
-    (C.cell((emptymsg+Number(0)*1),"char").value=C.i8(0));
+    (WC0(emptymsg+Number(0)*1,C.i8(0)));
     if(Number(!(u_handsy()))) return 0;
     if(Number(!(R150(obj)))) {
         /* do this in advance */
@@ -2800,7 +2804,7 @@ function use_container(objp,held,more_containers)
             }
         } else {
             /* TRADITIONAL or COMBINATION */
-            (C.cell((xbuf+Number(0)*1),"char").value=C.i8(0));
+            (WC0(xbuf+Number(0)*1,C.i8(0)));
             /* list of extra acceptable responses */
             C.strcpy(pbuf,C.literal(":"));
             /* look inside */
@@ -2823,7 +2827,7 @@ function use_container(objp,held,more_containers)
             /* this unintentionally allows user to answer with 'o' or
                    'r'; fortunately, those are already valid choices here */
             /* help */
-            if(C.cell(xbuf,"char").value) C.strcat(C.strcat(pbuf,C.literal("\u001b")),xbuf);
+            if(RC0(xbuf)) C.strcat(C.strcat(pbuf,C.literal("\u001b")),xbuf);
             (c=C.yn_function(qbuf,pbuf,C.i8((C.i32(more_containers)?110:113)),(C.i8(1))));
         }
         /* PARTIAL|FULL vs other modes */
@@ -3115,45 +3119,45 @@ function in_or_out_menu(prompt,obj,outokay,inokay,alreadyused,more_containers)
     (W5(any,1));
     /* ':' */
     C.variadic(94,buf,C.literal("Look inside %s"),C.thesimpleoname(obj));
-    C.add_menu(win,C.nul_glyphinfo,any,C.cell((menuselector+Number(R5(any))*1),"char").value,C.i8(0),0,clr,buf,0);
+    C.add_menu(win,C.nul_glyphinfo,any,RC0(menuselector+Number(R5(any))*1),C.i8(0),0,clr,buf,0);
     if(outokay) {
         (W5(any,2));
         /* 'o' */
         C.variadic(95,buf,C.literal("take %s out"),R32(C.c_common_strings));
-        C.add_menu(win,C.nul_glyphinfo,any,C.cell((menuselector+Number(R5(any))*1),"char").value,C.i8(0),0,clr,buf,0);
+        C.add_menu(win,C.nul_glyphinfo,any,RC0(menuselector+Number(R5(any))*1),C.i8(0),0,clr,buf,0);
     }
     if(inokay) {
         (W5(any,3));
         /* 'i' */
         C.variadic(96,buf,C.literal("put %s in"),R32(C.c_common_strings));
-        C.add_menu(win,C.nul_glyphinfo,any,C.cell((menuselector+Number(R5(any))*1),"char").value,C.i8(0),0,clr,buf,0);
+        C.add_menu(win,C.nul_glyphinfo,any,RC0(menuselector+Number(R5(any))*1),C.i8(0),0,clr,buf,0);
     }
     if(outokay) {
         (W5(any,4));
         /* 'b' */
         C.variadic(97,buf,C.literal("%stake out, then put in"),(C.i32(inokay)?C.literal("both; "):C.literal("")));
-        C.add_menu(win,C.nul_glyphinfo,any,C.cell((menuselector+Number(R5(any))*1),"char").value,C.i8(0),0,clr,buf,0);
+        C.add_menu(win,C.nul_glyphinfo,any,RC0(menuselector+Number(R5(any))*1),C.i8(0),0,clr,buf,0);
     }
     if(inokay) {
         (W5(any,5));
         /* 'r' */
         C.variadic(98,buf,C.literal("%sput in, then take out"),(C.i32(outokay)?C.literal("both reversed; "):C.literal("")));
-        C.add_menu(win,C.nul_glyphinfo,any,C.cell((menuselector+Number(R5(any))*1),"char").value,C.i8(0),0,clr,buf,0);
+        C.add_menu(win,C.nul_glyphinfo,any,RC0(menuselector+Number(R5(any))*1),C.i8(0),0,clr,buf,0);
         (W5(any,6));
         /* 's' */
         C.variadic(99,buf,C.literal("stash one item into %s"),C.thesimpleoname(obj));
-        C.add_menu(win,C.nul_glyphinfo,any,C.cell((menuselector+Number(R5(any))*1),"char").value,C.i8(0),0,clr,buf,0);
+        C.add_menu(win,C.nul_glyphinfo,any,RC0(menuselector+Number(R5(any))*1),C.i8(0),0,clr,buf,0);
     }
     C.add_menu_str(win,C.literal(""));
     if(more_containers) {
         (W5(any,7));
         /* 'n' */
-        C.add_menu(win,C.nul_glyphinfo,any,C.cell((menuselector+Number(R5(any))*1),"char").value,C.i8(0),0,clr,C.literal("loot next container"),1);
+        C.add_menu(win,C.nul_glyphinfo,any,RC0(menuselector+Number(R5(any))*1),C.i8(0),0,clr,C.literal("loot next container"),1);
     }
     (W5(any,8));
     /* 'q' */
     C.strcpy(buf,(C.i32(alreadyused)?C.literal("done"):C.literal("do nothing")));
-    C.add_menu(win,C.nul_glyphinfo,any,C.cell((menuselector+Number(R5(any))*1),"char").value,C.i8(0),0,clr,buf,(C.i32(more_containers)?0:1));
+    C.add_menu(win,C.nul_glyphinfo,any,RC0(menuselector+Number(R5(any))*1),C.i8(0),0,clr,buf,(C.i32(more_containers)?0:1));
     C.indirect(32,(R207(C.windowprocs)),win,prompt);
     (n=C.select_menu(win,1,pick_list.address));
     C.indirect(33,(R204(C.windowprocs)),win);
@@ -3161,7 +3165,7 @@ function in_or_out_menu(prompt,obj,outokay,inokay,alreadyused,more_containers)
         let k=R5(A114(pick_list.value+Number(0)*C.sizes["struct mi"]));
         if(Number(!!(Number(n>1)&&Number(k==((C.i32(more_containers)?7:8)))))) (k=R5(A114(pick_list.value+Number(1)*C.sizes["struct mi"])));
         C.free(pick_list.value);
-        return C.cell((C.staticAddress("in_or_out_menu.lootchars")+Number(k)*1),"char").value;
+        return RC0(C.staticAddress("in_or_out_menu.lootchars")+Number(k)*1);
         /* :,o,i,b,r,s,n,q */
     }
     return C.i8(((Number(!!(Number(n==0)&&C.i32(more_containers))))?110:113));
@@ -3311,7 +3315,7 @@ function dotip()
         (spillage=C.literal("venom"));
     }
     if(spillage) {
-        (C.cell((buf+Number(0)*1),"char").value=C.i8(0));
+        (WC0(buf+Number(0)*1,C.i8(0)));
         if(C.is_pool(R208(C.u),R209(C.u))) C.variadic(101,buf,C.literal(" and gradually %s"),C.vtense(spillage,C.literal("dissipate")));
  else if(C.is_lava(R208(C.u),R209(C.u))) C.variadic(102,buf,C.literal(" and immediately %s away"),C.vtense(spillage,C.literal("burn")));
         C.variadic(103,C.literal("Some %s %s onto the %s%s."),spillage,C.vtense(spillage,C.literal("spill")),C.surface(R208(C.u),R209(C.u)),buf);
@@ -3524,7 +3528,7 @@ function tipcontainer_gettarget(box,cancelled)
         if(Number(otmp==dummyobj)) (otmp=0);
         C.free(pick_list.value);
     }
-    (C.cell(cancelled,"signed char").value=C.i8((Number(n==C.i32((-1))))));
+    (WC1(cancelled,C.i8((Number(n==C.i32((-1)))))));
     return otmp;
     } finally {C.stackRestore(stackFrame); }
 }
@@ -3597,7 +3601,7 @@ function tipcontainer_checks(box,targetbox,allowempty)
             /* empty */
             (W149(box,C.u32(1)));
         }
-        if(Number(!!(C.i32(maybeshopgoods)&&Number(!(R142(box)))))) C.subfrombill(box,C.shop_keeper(C.cell(C.in_rooms(ox.value,oy.value,C.SHOPBASE),"char").value));
+        if(Number(!!(C.i32(maybeshopgoods)&&Number(!(R142(box)))))) C.subfrombill(box,C.shop_keeper(RC0(C.in_rooms(ox.value,oy.value,C.SHOPBASE))));
         return TIPCHECK_CANNOT;
         /* actually means 'already done' */
     } else if((Number(!!(Number(C.i32(R130(box))==C.LARGE_BOX)&&Number(C.i32(R133(box))==1))))) {

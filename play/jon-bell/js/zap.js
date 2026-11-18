@@ -7273,7 +7273,7 @@ export async function mon_spell_hits_spot(_mtmp, adtyp, _x, _y) {
         return;
     }
     /* C zap.c:5530 — impossible("Unsupported damage type (%d) ...") */
-    impossible_mcastu('Unsupported damage type (%d) for mon_spell_hits_spot.', adtyp);
+    await impossible_mcastu('Unsupported damage type (%d) for mon_spell_hits_spot.', adtyp);
 }
 
 /* C objclass.h COIN_CLASS = 12 (js/objnam.js:81 says the same). */
@@ -7616,6 +7616,7 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
                 g._resultMessage = _c2last ? _c2last + '  ' + prinvLine
                     : g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
                 _wish_prinv_owns_stop(prinvLine);
+                await _wish_prinv_msgtype_stop(prinvLine);
                 _c2last = undefined;
             }
             if (_c2last) await force_more(_c2last);
@@ -7727,11 +7728,24 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
                 g._resultMessage = _c2last ? _c2last + '  ' + prinvLine
                     : g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
             _wish_prinv_owns_stop(prinvLine);
+            await _wish_prinv_msgtype_stop(prinvLine);
             _c2last = undefined;
         }
     }
     if (_c2last) await force_more(_c2last);
     await _wish_encumber_msg(_oldcap, prinvLine);
+}
+
+/* C invent.c:2887 prinv() uses pline(), whose MSGTYP_STOP tail
+ * (pline.c:283-284) acknowledges the inventory line immediately.  Wishes
+ * defer that line through _resultMessage, so drain it at the same point. */
+async function _wish_prinv_msgtype_stop(prinvLine) {
+    const g = game;
+    if (msgtype_type(prinvLine) !== 'stop' || !g._resultMessage)
+        return;
+    const message = g._resultMessage;
+    g._resultMessage = '';
+    await force_more(message);
 }
 
 /* C topl.c:232-234 + :257: an ESC at the decipher page force_more()d just

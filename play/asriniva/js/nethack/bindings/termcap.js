@@ -151,11 +151,53 @@ applyPrototypeAliases(name,prototype,'termcap');return prototype;});
         env.tputs=(text,lines,callback)=>scope.services===primary
             && services.nativeTputs===nativeTputs && services.tputs===providerTputs && callback===namespace.xputc
             ? nativeTputs(text,lines,callback) : compatTputs(text,lines,callback);
+        if (scope.fixed) {
+            const nativeTgoto=primary.nativeTgoto,providerTgoto=primary.tgoto;
+            if (typeof nativeTgoto==='function') {
+                env.emitCursorPosition=(format,column,row)=>{
+                    if (services.nativeTgoto===nativeTgoto && services.tgoto===providerTgoto
+                        && services.nativeTputs===nativeTputs && services.tputs===providerTputs)
+                        return nativeTputs(nativeTgoto(format,column,row),1,namespace.xputc);
+                    return namespace.xputs(env.tgoto(format,column,row));
+                };
+            }
+        }
         // xputc has already applied the source integer conversion. Resolve the
         // active provider on every byte, including synchronous callback reentry.
         env.putchar=byte=>{const putchar=services.putchar;return putchar(byte);};
     }
     return env;
+}
+export function bindNativeTermcap(services,layout) {
+    let environment,native;
+    const {stackSave,stackRestore}=services;
+    function initialize() {
+        const namespace={...core};
+        const env=createTermcapEnvironment(services,layout,namespace,{services,fixed:true});
+        installNativeIntegerCasts(env);
+        const source=createNativeTermcap(env);
+        Object.assign(namespace,source);
+        source.initializeTermcapData(env);
+        environment=env;
+        native=source;
+    }
+    return name=>{
+        const takesIntPointers=name==='term_startup'||name==='nomux_get_cursor';
+        let entry;
+        return (...args)=>{
+            const saved=stackSave();
+            try {
+                if (!native) initialize();
+                entry??=native[name];
+                const result=takesIntPointers
+                    ? entry(environment.scalarPointer('int',args[0]),environment.scalarPointer('int',args[1]))
+                    : entry(...args);
+                return typeof result==='string'?services.literal(result):result?.address??result;
+            } finally {
+                stackRestore(saved);
+            }
+        };
+    };
 }
 export function callTermcap(services,layout,name,...args){
     if(typeof core[name]!=='function')throw Error('Unknown TERMCAP source entry '+name);

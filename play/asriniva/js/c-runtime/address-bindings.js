@@ -19,6 +19,8 @@ export function createAddressBindings({environment,name,schema,layout,namespace,
         return declaration;
     }
     const globals=schema.globals.map(g=>g.name);
+    const addresses=nativeOwner&&environment.bindGlobal?globals.map(environment.bindGlobal):null;
+    if(addresses)local.bindGlobal=index=>addresses[index]??(()=>local.global(index));
     Object.assign(local,{
         layout:i=>{if(layout[i]===undefined)throw new Error('Unknown '+name+' layout index '+i);return BigInt(layout[i]);},
         global:i=>{if(i>=globals.length){const p=backings[i-globals.length];if(!p)throw new Error('Unknown '+name+' backing index '+i);return p;}const key=globals[i];if(!key)throw new Error('Unknown '+name+' global index '+i);return environment.requireGlobal(key);},

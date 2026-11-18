@@ -1176,11 +1176,11 @@ export function glyph2symidx(glyph)
     return glyphinfo.gm.sym.symidx;
 }
 
-export function encglyph(glyph)
+export function encglyph(glyph, context = C)
 {
-    const encbuf = C.encbuf; /* 10+1 would suffice */
+    const encbuf = context.encbuf; /* 10+1 would suffice */
 
-    C.Sprintf(encbuf, "\\G%04X%04X", C.svc.context.rndencode, glyph);
+    context.Sprintf(encbuf, "\\G%04X%04X", context.glyphNonce ?? context.svc.context.rndencode, glyph);
     return encbuf;
 }
 

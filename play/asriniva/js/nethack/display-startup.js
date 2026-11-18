@@ -4,6 +4,20 @@ import {createSignals} from './signals.js';
 export function enableDisplayStartup(environment,layouts,creation){
  const startup=environment.state('game-startup-context');if(!startup)throw new Error('Enable game startup before display startup');
  const {services,ctypes,functions}=environment,{context,views}=creation,env=context(layouts.windows);
+ const {memory}=environment,window=environment.requireGlobal('windowprocs');
+ const caps=ctypes.record('struct window_procs').fields;
+ const wantsColor=ctypes.fieldAddress('struct instance_flags',environment.requireGlobal('iflags'),'wc_color');
+ const wcColor=BigInt(layouts.windows.WC_COLOR);
+ environment.displayColorMask=()=>{
+  const view=memory.view;
+  if(!memory.HEAP8[wantsColor]||!view.getBigUint64(window+caps.name.offset,true)
+    ||!(view.getBigUint64(window+caps.wincap.offset,true)&wcColor))return 0;
+  const colors=window+caps.has_color.offset;
+  let available=0;
+  for(let i=0;i<16;i++)if(memory.HEAP8[colors+i])available|=1<<i;
+  return available;
+ };
+ environment.displayColorMask.nativeAddress=true;
  Object.defineProperty(env,'iflags',{value:{get use_color(){return ctypes.getField('struct instance_flags',environment.requireGlobal('iflags'),'wc_color','signed char');}}});
  Object.defineProperty(env,'windowprocs',{value:views.record('struct window_procs',environment.requireGlobal('windowprocs'))});env.WC_COLOR=BigInt(layouts.windows.WC_COLOR);
  environment.register('window-color',{has_color},env);

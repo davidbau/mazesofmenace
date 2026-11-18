@@ -49,7 +49,7 @@ export function enableMessages(environment,layouts){
   msgtype_type:(line,noRepeat)=>{const fn=resolve('msgtype_type');return fn.nativeValuesEntry?fn.nativeValuesEntry(line,transport.char(noRepeat)):fn(text(line),transport.char(noRepeat));},
   vision_recalc:mode=>resolve('vision_recalc')(transport.int(mode)),flush_screen:cursor=>resolve('flush_screen')(transport.int(cursor)),
   strNsubst:(out,from,to,count)=>resolve('strNsubst')(address(out),text(from),text(to),transport.int(count)),
-  livelog_add:(flags,line)=>resolve('livelog_add')(transport.long(flags),text(line)),paniclog:(reason,line)=>resolve('paniclog')(text(reason),text(line)),
+  livelog_add:(flags,line)=>{const fn=resolve('livelog_add');return fn(transport.long(flags),fn.nativeState===owner?line:text(line));},paniclog:(reason,line)=>resolve('paniclog')(text(reason),text(line)),
   yn_function:(prompt,options,def,history)=>resolve('yn_function')(text(prompt),text(options),chr(def),transport.char(history)),
   submit_web_report:(kind,subject,reason)=>resolve('submit_web_report')(transport.int(kind),text(subject),text(reason)),
   nh_terminate:status=>resolve('nh_terminate')(transport.int(status)),
@@ -71,6 +71,16 @@ export function enableMessages(environment,layouts){
   display_nhwindow:(win,block)=>window('win_display_nhwindow','vii',transport.int(win),transport.char(block)),
  });
  const state={...abi.initialState},context=createPlineEnvironment(local,L,state);
+ context.chronicle=owner.chronicle=[];
+ context.messageText=value=>typeof value==='string'?value.split('\0',1)[0]:memory.readString(address(value));
+ context.formatChronicle=(format,args)=>environment.libc.format(format,...args);
+ context.formatMessage=(format,args)=>{
+  format=context.messageText(format);
+  if(!format.includes('%'))return format;
+  if(format==='%s')return context.messageText(args[0]);
+  return environment.libc.format(format,...args);
+ };
+ context.messageBytes=line=>memory.writeString(transport.stackAlloc(line.length+1),line);
  // Standalone public calls carry source JS argument arrays, unlike the native
  // bridge's opaque SDK va_list. Keep policies intact and adapt formatting here.
  context.vsnprintf=(out,size,format,args)=>{
@@ -78,7 +88,8 @@ export function enableMessages(environment,layouts){
   return services.snprintf(address(out),Number(size),text(format),...args.map(value=>typeof value==='string'?text(value):value?.address??value));
  };
  const names=Object.keys(pline).filter(name=>typeof pline[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
- const prepareArgs=(name,args)=>{args=args.map(value=>typeof value==='string'?text(value):value?.address??value);if(name==='pline_mon')args[0]=context.monster(args[0]);if(name==='gamelog_add'){args[0]=transport.long(args[0]);args[1]=transport.long(args[1]);}else if(name==='livelog_printf')args[0]=transport.long(args[0]);else if(name==='set_msg_xy'||name==='pline_xy'){args[0]=transport.short(args[0]);args[1]=transport.short(args[1]);}return args;};
+ const messagePolicies=new Set(['pline','pline_dir','pline_xy','pline_mon','custompline','urgent_pline','Norep','You','Your','You_cant','pline_The','There','gamelog_add','livelog_printf']);
+ const prepareArgs=(name,args)=>{const values=messagePolicies.has(name);args=args.map(value=>typeof value==='string'&&!values?text(value):value?.address??value);if(name==='pline_mon')args[0]=context.monster(args[0]);if(name==='gamelog_add'){args[0]=transport.long(args[0]);args[1]=transport.long(args[1]);}else if(name==='livelog_printf')args[0]=transport.long(args[0]);else if(name==='set_msg_xy'||name==='pline_xy'){args[0]=transport.short(args[0]);args[1]=transport.short(args[1]);}return args;};
  const call=(name,...args)=>{const saved=transport.stackSave();owner.enter();try{return context.nativeNamespace[name](...prepareArgs(name,args));}finally{try{owner.leave();}finally{transport.stackRestore(saved);}}};
  const entries=Object.fromEntries(names.map(name=>{const fn=(...args)=>call(name,...args);fn.nativeState=owner;fn.nativeDirect=true;fn.nativePrepared=true;owner.functions.set(name,fn);return[name,fn];}));
  environment.register('messages',entries,context);

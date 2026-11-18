@@ -33,13 +33,13 @@ export function createPickupEnvironment(services){
  return env;
 }
 export function callPickup(services,name,...args){
- let state=states.get(services.moduleKey);
+ let state=states.get(services.nativeFixedProvider ? services : services.moduleKey);
  if(!state){
   state={services};
   // Keep the prototype stable while native callbacks supply per-call services.
-  const forwarding=createServiceForwarder(state);
+  const forwarding=services.nativeFixedProvider ? services : createServiceForwarder(state);
   state.env=createPickupEnvironment(forwarding);
-  states.set(services.moduleKey,state);
+  states.set(services.nativeFixedProvider ? services : services.moduleKey,state);
  }
  const fn=state.env.nativeNamespace[name];if(typeof fn!=='function')throw Error('Unknown original PICKUP function '+name);
  const previous=state.services;

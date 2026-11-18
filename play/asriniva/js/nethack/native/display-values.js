@@ -9,6 +9,16 @@ export function installNativeDisplayValues(env,services,schema,decode){
  env.ptr=value=>isNativeValueReference(value)?value:rawPtr(value);
  env.copy=(to,from,size)=>isNativeValueReference(to)||isNativeValueReference(from)?values.copy(to,from,size):rawCopy(to,from,size);
  env.cell=(at,type)=>isNativeValueReference(at)?at:rawCell(at,type);
+ for(const name of Object.keys(env)){
+  if(!/^(read|write)\w+At$/.test(name))continue;
+  const scalar=env[name];
+  const fixed=name.startsWith('read')
+    ? at=>isNativeValueReference(at)?at.value:scalar(at)
+    : (at,value)=>{if(isNativeValueReference(at))at.value=value;else scalar(at,value);return value;};
+  fixed.nativeStateIndependent=true;
+  env[name]=fixed;
+ }
+
  env.nativeLocalRecord=type=>values.local(type);
  for(const name of ['ptr','copy','cell','nativeLocalRecord'])env[name].nativeStateIndependent=true;
  let id=0;

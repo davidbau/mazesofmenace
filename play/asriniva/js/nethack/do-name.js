@@ -25,7 +25,8 @@ export function enableDoName(environment,layouts){
  for(const[n,p]of Object.entries(abi.dependencies)){const row=prototype(p);local[n]=(...args)=>{const native=nativeOwner.functions.get(n);if(native?.nativeState===nativeOwner&&native.nativeDirect)return native(...args);return scalar(row.ret,resolve(n)(...args.map((v,i)=>scalar(row.args[i],v))));};}
  const window=(field,sig,...args)=>environment.nativeWindowCallbacks?environment.nativeWindowCallbacks.invoke(field,sig,...args):environment.functions.indirect(ctypes.getField('struct window_procs',environment.requireGlobal('windowprocs'),field,'void *'),sig,...args);
  Object.assign(local,{create_nhwindow:t=>window('win_create_nhwindow','ii',transport.int(t)),start_menu:(w,f)=>window('win_start_menu','vij',transport.int(w),transport.ulong(f)),end_menu:(w,p)=>window('win_end_menu','vip',transport.int(w),text(p)),display_nhwindow:(w,b)=>window('win_display_nhwindow','vii',transport.int(w),transport.char(b)),destroy_nhwindow:w=>window('win_destroy_nhwindow','vi',transport.int(w)),getlin:(p,out)=>window('win_getlin','vpp',text(p),text(out)),free:p=>resolve('free')(address(p))});
- local.Strcpy=local.strcpy;local.Strcat=local.strcat;
+ local.Strcpy=(out,value)=>environment.libc.Strcpy(address(out),typeof value==='string'?value:address(value));
+ local.Strcat=(out,value)=>environment.libc.Strcat(address(out),typeof value==='string'?value:address(value));
  for(const n of ['pline','You','There','verbalize','impossible'])local[n]=(fmt,...a)=>resolve(n)(text(fmt),...a.map(v=>typeof v==='string'?text(v):v?.address??v));
  local.Sprintf=(out,fmt,...a)=>S.sprintf(text(out),text(fmt),...a.map(v=>typeof v==='string'?text(v):v?.address??v));
  local.livelog_printf=(mask,fmt,...a)=>resolve('livelog_printf')(transport.long(mask),text(fmt),...a.map(text));

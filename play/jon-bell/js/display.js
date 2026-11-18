@@ -1,4 +1,5 @@
 import { hcolor } from './do_name.js';
+import { PLINE_NOREPEAT } from './const.js';
 // @ts-nocheck
 // display.js — Map rendering and terminal output.
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
@@ -199,7 +200,7 @@ import { impossible as rumor_impossible } from './pline.js';
 import { paniclog, livelog_add } from './files.js';
 import { BUFSZ, ECMD_OK } from './const.js';
 import { D_TRAPPED } from './const.js';
-import { pline, pline_xy, urgent_pline } from './pline.js'; // relocate-fns
+import { pline, pline_xy, urgent_pline, raw_printf, dumplogmsg } from './pline.js'; // relocate-fns
 import { armor_status, bot, timebot, weapon_status, status_time_only_row } from './botl.js'; // relocate-fns
 import { IS_STWALL, WM_W_BOTTOM, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP } from './const.js'; // relocate-fns
 import { update_lastseentyp } from './dungeon.js'; // relocate-fns
@@ -6535,6 +6536,46 @@ function _status_hp_crit_rule_active(cur, max) {
         return false;
     });
 }
+/* Locate BL_WEAPON / BL_ARMOR / BL_TERRAIN / BL_VERS on a rendered status row
+ * (row 3 in 3-line layout, row 2 in 2-line layout).  Walks backward from the
+ * end of the row so a condition word like "Stone" never shadows terrain "Stone". */
+function _locate_extra_tfields(row) {
+    const plain = String(row).replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(+n)).replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+    const p3 = _statusLine2Parts();
+    const desc = p3 ? String(p3.desc || '').trimEnd() : '';
+    const dlm = new RegExp(`^(\\S.*?)(?= +${gold_status_char().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:)`).exec(plain);
+    let from = -1;
+    if (dlm && !_threeStatusLines()) {
+        const xpAt = plain.indexOf(' Xp:', dlm[1].length);
+        const hdAt = plain.indexOf(' HD:', dlm[1].length);
+        from = Math.max(dlm[1].length, xpAt >= 0 ? xpAt : hdAt);
+    } else if (!dlm && _threeStatusLines() && desc && plain.startsWith(desc)) {
+        from = desc.length;
+    }
+    if (from < 0) return { dlm, desc, plain, extras: [] };
+    const found = [];
+    let limit = plain.length;
+    if (game.flags?.showvers) {
+        const vt = status_version_text();
+        const i = plain.lastIndexOf(' ' + vt, limit);
+        if (i >= from) {
+            found.push({ field: 'version', key: 'version text', text: vt, start: i + 1, len: vt.length, txtstr: vt });
+            limit = i;
+        }
+    }
+    const extras = _statusExtras(true);
+    for (let k = extras.length - 1; k >= 0; k--) {
+        const [id, text] = extras[k];
+        const t = text.trim();
+        if (!t) continue;
+        const i = plain.lastIndexOf(' ' + t, limit);
+        if (i < from) continue;
+        found.push({ field: id, key: id + ' text', text: t, start: i + 1, len: t.length, txtstr: t });
+        limit = i;
+    }
+    found.reverse();
+    return { dlm, desc, plain, extras: found };
+}
 function _status_field_hilites(row) {
     const heldUhs = game._statusHiliteHeld ? game._statusHeldUhs : undefined;
     const cells = _status_hunger_hilites(row, heldUhs);
@@ -6698,40 +6739,20 @@ function _status_field_hilites(row) {
         tfields.push({ field: 'title', text, start: 0, len: Math.max(30, text.length),
             txtstr: text.slice(String(game.plname || '').length + 5) });
     }
-    /* C botl.c:2534-2546 get_hilite() BL_TH_TEXTMATCH also covers BL_LEVELDESC
-     * (ANY_STR): blstats val is describe_level(buf, 1) ("Dlvl:3 "), compared
-     * with fuzzymatch() ignoring blanks, and wintty.c paints the field's text. */
-    const dlm = new RegExp(`^(\\S.*?)(?= +${gold_status_char().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:)`).exec(row);
-    if (dlm) tfields.push({ field: 'dungeon-level', key: 'dungeon-level text', text: dlm[1], start: 0,
-        len: dlm[1].length, txtstr: dlm[1] });
-    /* C botl.c:1251-1274,2534-2546: BL_WEAPON / BL_ARMOR / BL_TERRAIN / BL_VERS are ANY_STR
-     * fields with their own thresholds chains.  In the 3-line layout they sit on the third
-     * physical row after LEVELDESC TIME CONDITION; wintty.c:5213-5234 paints a field's text
-     * after its leading blank.  Locate each field's text in the row itself. */
-    if (_threeStatusLines()) {
-        const p3 = _statusLine2Parts();
-        const desc = p3 ? String(p3.desc || '').trimEnd() : '';
-        const plain = String(row).replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(+n)).replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
-        if (desc && plain.startsWith(desc) && !dlm) {
+    /* C botl.c:2534-2546 get_hilite() BL_TH_TEXTMATCH also covers BL_LEVELDESC,
+     * BL_WEAPON, BL_ARMOR, BL_TERRAIN, BL_VERS (ANY_STR) in both 2-line and
+     * 3-line layouts; wintty.c:5213-5234 paints each field's text after its
+     * leading blank. */
+    const { dlm, desc, extras } = _locate_extra_tfields(row);
+    if (dlm) {
+        tfields.push({ field: 'dungeon-level', key: 'dungeon-level text', text: dlm[1], start: 0,
+            len: dlm[1].length, txtstr: dlm[1] });
+    } else if (_threeStatusLines() && desc && extras !== undefined) {
+        if (String(row).startsWith(desc))
             tfields.push({ field: 'dungeon-level', key: 'dungeon-level text', text: desc, start: 0,
                 len: desc.length, txtstr: desc });
-            let from = desc.length;
-            for (const [id, text] of _statusExtras(true)) {
-                const t = text.trim();
-                if (!t) continue;
-                const i = plain.indexOf(' ' + t, from);
-                if (i < 0) continue;
-                tfields.push({ field: id, key: id + ' text', text: t, start: i + 1, len: t.length, txtstr: t });
-                from = i + 1 + t.length;
-            }
-            if (game.flags?.showvers) {
-                const vt = status_version_text();
-                const i = plain.lastIndexOf(' ' + vt);
-                if (i >= from) tfields.push({ field: 'version', key: 'version text', text: vt, start: i + 1,
-                    len: vt.length, txtstr: vt });
-            }
-        }
     }
+    tfields.push(...extras);
     if (am) tfields.push({ field: 'alignment', text: am[1],
         start: alignStart + am.index + am[0].length - am[1].length,
         len: am[1].length, txtstr: am[1] });
@@ -6848,7 +6869,8 @@ function _status_updown_rule(fname, chg) {
             const { color, attr } = how;
             /* botl.c:2890-2899: up/down on an ANY_STR field parse as plain
              * 'changed' (EQ_VALUE); the last such rule wins (botl.c:2452). */
-            const strFld = fname === 'dungeon-level' || fname === 'title' || fname === 'alignment';
+            const strFld = fname === 'dungeon-level' || fname === 'title' || fname === 'alignment'
+                || fname === 'weapon' || fname === 'armor' || fname === 'terrain' || fname === 'version';
             if (!strFld && ((chg < 0 && thr === 'down') || (chg > 0 && thr === 'up'))) rule = { color, attr };
             else if (thr === 'changed' || (strFld && (thr === 'up' || thr === 'down'))) changed = { color, attr };
         }
@@ -6981,6 +7003,7 @@ const _STATUS_BOT_FIELDS = [
      * '[' keeps hitpointbar rows (wintty.c:4533-4543, status_hpbar_attr_eval)
      * out of this path. */
     ['title', /^(?!\[)([^\x1b]+?)(?=(?:\x1b\[\d+C| )+St:)/, (m) => [0, m[1].length], (m) => m[1]],
+    ['alignment', /(?:Ch:\d+ |^)(Lawful|Neutral|Chaotic)(?= |$)/, (m) => [m.index + m[0].length - m[1].length, m[1].length], (m) => m[1]],
     ...['St', 'Dx', 'Co', 'In', 'Wi', 'Ch'].map((a, i) => [
         ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'][i],
         new RegExp(`(?:\\b|(?<=\\x1b\\[[\\d;]*[mC]))${a}:(\\d+)(?:/(\\d+|\\*\\*))?`), (m) => [m.index, m[0].length],
@@ -7028,6 +7051,51 @@ function _status_has_rules(fname) {
     return (game.status_field_hilites || []).some((spec) =>
         status_fieldname(spec.split('/')[0].trim()) === fname);
 }
+function _eval_temp_bot_field(hist, fname, val, pc, encReset) {
+    let hpChgNow = false;
+    const h = hist[fname];
+    /* a hitpointbar-owned title slot (status_hpbar_attr_eval) tracks the
+     * HP bar text, not the title; re-baseline it here, just as C's
+     * update_all at the options change re-sent the field with chg 0 */
+    if (!h || h.barSlot || (encReset && !_STATUS_FIELDS_BEFORE_GOLD.has(fname))) {
+        if (h) h.barSlot = false;
+        /* update_all: curr->percent_value is still computed (botl.c:1525) */
+        if ((fname === 'power' || fname === 'hitpoints')
+            && (_status_has_rules(fname) || (fname === 'hitpoints' && game.iflags?.wc2_hitpointbar)))
+            _status_pc_slots_chg(fname, pc, null);
+        hist[fname] = { ...(h || {}), val, percent: pc, rule: null, time: 0, expired: null,
+            chg: false };
+        return false;
+    }
+    /* botl.c:1873-1874 ANY_STR: sgn(strcmp(prev->val, curr->val)) -- the
+     * opposite sense of the numeric arms, so a lexically later string
+     * (Dlvl:1 -> Dlvl:46) reports chg -1, 'down'. */
+    let chg = typeof val === 'string' ? (h.val < val ? -1 : h.val > val ? 1 : 0)
+        : val < h.val ? -1 : val > h.val ? 1 : 0;
+    if (chg || (fname === 'hitpoints' && game.iflags?.wc2_hitpointbar)) {
+        if ((fname === 'power' || fname === 'hitpoints')
+            && (_status_has_rules(fname) || (fname === 'hitpoints' && game.iflags?.wc2_hitpointbar))) {
+            chg = _status_pc_slots_chg(fname, pc, chg);
+            h.percent = pc;
+        }
+    }
+    /* botl.c:1577-1582: only an unchanged field can expire, and the
+     * reset is delivered at bot(), before its physical paint is saved. */
+    if (!chg) {
+        if (h.rule && h.time && !game.multi && h.time < (game.bl_hilite_moves | 0)) {
+            h.expired = { rule: h.rule, time: h.time };
+            h.rule = null; h.time = 0; h.chg = true;
+            if (fname === 'hitpoints') hpChgNow = true; // BL_HP is re-sent on reset too
+        }
+        return hpChgNow;
+    }
+    h.rule = _status_updown_rule(fname, chg);
+    h.expired = null;
+    h.chg = true;
+    h.val = val;
+    if (fname === 'hitpoints') hpChgNow = true;
+    return hpChgNow;
+}
 function _status_temp_bot_eval() {
     const hist = (game._blTemp ||= {});
     const rows = [_statusLine1Raw(), _statusLine2Raw()];
@@ -7050,47 +7118,17 @@ function _status_temp_bot_eval() {
         if (!m) continue;
         const val = valOf ? valOf(m) : _status_raw_value(fname, m[1]);
         const pc = _status_bot_percent(fname, m);
-        const h = hist[fname];
-        /* a hitpointbar-owned title slot (status_hpbar_attr_eval) tracks the
-         * HP bar text, not the title; re-baseline it here, just as C's
-         * update_all at the options change re-sent the field with chg 0 */
-        if (!h || h.barSlot || (encReset && !_STATUS_FIELDS_BEFORE_GOLD.has(fname))) {
-            if (h) h.barSlot = false;
-            /* update_all: curr->percent_value is still computed (botl.c:1525) */
-            if ((fname === 'power' || fname === 'hitpoints')
-                && (_status_has_rules(fname) || (fname === 'hitpoints' && game.iflags?.wc2_hitpointbar)))
-                _status_pc_slots_chg(fname, pc, null);
-            hist[fname] = { ...(h || {}), val, percent: pc, rule: null, time: 0, expired: null,
-                chg: false };
-            continue;
-        }
-        /* botl.c:1873-1874 ANY_STR: sgn(strcmp(prev->val, curr->val)) -- the
-         * opposite sense of the numeric arms, so a lexically later string
-         * (Dlvl:1 -> Dlvl:46) reports chg -1, 'down'. */
-        let chg = typeof val === 'string' ? (h.val < val ? -1 : h.val > val ? 1 : 0)
-            : val < h.val ? -1 : val > h.val ? 1 : 0;
-        if (chg || (fname === 'hitpoints' && game.iflags?.wc2_hitpointbar)) {
-            if ((fname === 'power' || fname === 'hitpoints')
-                && (_status_has_rules(fname) || (fname === 'hitpoints' && game.iflags?.wc2_hitpointbar))) {
-                chg = _status_pc_slots_chg(fname, pc, chg);
-                h.percent = pc;
-            }
-        }
-        /* botl.c:1577-1582: only an unchanged field can expire, and the
-         * reset is delivered at bot(), before its physical paint is saved. */
-        if (!chg) {
-            if (h.rule && h.time && !game.multi && h.time < (game.bl_hilite_moves | 0)) {
-                h.expired = { rule: h.rule, time: h.time };
-                h.rule = null; h.time = 0; h.chg = true;
-                if (fname === 'hitpoints') hpChgNow = true; // BL_HP is re-sent on reset too
-            }
-            continue;
-        }
-        h.rule = _status_updown_rule(fname, chg);
-        h.expired = null;
-        h.chg = true;
-        h.val = val;
-        if (fname === 'hitpoints') hpChgNow = true;
+        if (_eval_temp_bot_field(hist, fname, val, pc, encReset)) hpChgNow = true;
+    }
+    const extraVals = [
+        ['weapon', game.flags?.weaponstatus ? weapon_status() : ''],
+        ['armor', game.flags?.armorstatus ? armor_status() : ''],
+        ['terrain', game.flags?.terrainstatus ? _terrain_status_text(false, true) : ''],
+        ['version', game.flags?.showvers ? status_version_text() : ''],
+    ];
+    for (const [fname, val] of extraVals) {
+        if (!val) continue;
+        _eval_temp_bot_field(hist, fname, val, 0, encReset);
     }
     game._hpbarEval = { hpChgNow, encReset };
 }
@@ -7163,6 +7201,8 @@ export function status_hpbar_attr_eval() {
  * The first sighting of a value is the baseline (update_all => chg 0). */
 function _status_temp_hilites(row, cells) {
     const hist = (game._blTemp ||= {});
+    const { extras } = _locate_extra_tfields(row);
+    const extraEntries = extras.map((tf) => [tf.field, null, () => [tf.start, tf.len], () => tf.text, tf]);
     const fields = [
         /* botl.c:131,1051: the gold field is labelled with the live gold symbol
          * (blank under symset:Blank); tty skips the leading blanks of a field
@@ -7173,9 +7213,10 @@ function _status_temp_hilites(row, cells) {
         /* BL_XP (experience-level): plain value direction (botl.c:1592-1595) */
         ['experience-level', /Xp:(\d+)/, (m) => [m.index, m[0].length]],
         ..._STATUS_BOT_FIELDS,
+        ...extraEntries,
     ];
-    for (const [fname, re, span, valOf] of fields) {
-        const m = re.exec(row);
+    for (const [fname, re, span, valOf, preMatched] of fields) {
+        const m = preMatched ?? re.exec(row);
         if (!m) continue;
         /* wintty.c:4513-4543: HP text and the bar retain the same delivered
          * colour on a held page, even if a later bot() expires its rule. */
@@ -7226,7 +7267,7 @@ function _status_temp_hilites(row, cells) {
             hist[fname] = { val, percent: pc, rule: null, time: 0 };
         const h = hist[fname] ||= { val, percent: pc, rule: null, time: 0 };
         // BL_EXP was evaluated at bot(); rendering a held row is not a paint.
-        const botField = _STATUS_BOT_FIELD_NAMES.has(fname);
+        const botField = _STATUS_BOT_FIELD_NAMES.has(fname) || !!preMatched;
         /* A frozen row (a --More-- frame holding the pline-time paint, its T:
          * behind svm.moves) predates the bot() eval that already saw the newer
          * value; repainting it is not a change. */
@@ -10140,11 +10181,13 @@ function _capture_botl(paint = false) {
          * clears temporary rules (botl.c:1564-1577). */
         /* wintty.c:5248: Dlvl/AC temp rules ride the page too (status_reassess / rndencode drop them before dismissal) */
         attrHilites: Object.fromEntries(['strength', 'dexterity', 'constitution', 'dungeon-level', 'armor-class',
-            'intelligence', 'wisdom', 'charisma', 'power', 'time', 'title']
-            /* title: a page painted after set_uasmon's update_all (polyself.c:123)
+            'intelligence', 'wisdom', 'charisma', 'power', 'time', 'title',
+            'weapon', 'armor', 'terrain', 'version', 'alignment']
+            /* string fields: a page painted after set_uasmon's update_all (polyself.c:123)
              * delivered NO rule; the slot is gone from _blTemp then, so record
-             * the absence or the page's old text re-reads as a title change. */
-            .filter(f => game._blTemp?.[f] || f === 'title')
+             * the absence or the page's old text re-reads as a field change. */
+            .filter(f => game._blTemp?.[f] || f === 'title' || f === 'weapon' || f === 'armor'
+                || f === 'terrain' || f === 'version' || f === 'alignment')
             .map(f => [f, game._blTemp?.[f] ? { ...game._blTemp[f] } : { rule: null }])),
         multiHilites: game.multi ? Object.fromEntries(Object.entries(game._blTemp || {})
             .map(([field, h]) => [field, h.rule])) : null,
@@ -12140,7 +12183,7 @@ export async function await_topl_more_dismiss(rerender) {
 // C pline.c:549 raw_printf + wintty.c:3624 tty_wait_synch's rawprint arm.
 // accepts the same keys as await_more_dismiss, without stopping WIN_MESSAGE.
 export async function raw_print_wait(text) {
-    raw_print(text);
+    raw_printf('%s', text);
     await await_more_dismiss();
 }
 
@@ -12153,7 +12196,7 @@ export async function raw_print_wait(text) {
 // overwrite it with the bare message.
 export async function raw_print_wait_one(text) {
     const g = game;
-    raw_print(text);
+    raw_printf('%s', text);
     g._rawCursorFrozen = [0, g._rawterm ? g._rawterm.row : 1, 1];
     for (;;) {
         const c = await nhgetch();
@@ -13493,37 +13536,54 @@ async function _pline_body(msg, alreadyFlushed, putmesg = null, ...args) {
 
 async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
     const rngAtEntry = (getRngLog() || []).length; /* C's more() blocks inside this call */
+    // pline.c:244-255: no-repeat is a property of this vpline invocation,
+    // tested against the finished (location-prefixed and truncated) message.
+    const noRepeat = !!(msg?._plineFlags & PLINE_NOREPEAT);
     /* you_buf_message(): the static-buffer alias of an unformatted You()-family line. */
     let youBufAlias = null;
     if (msg instanceof String) {
         youBufAlias = msg._youBuf || null;
         msg = String(msg);
     }
-    if (args.length > 0)
-        msg = nh_sprintf(msg, args);
+    // pline.c:162-172: consume the origin even on an early-returning call.
+    const mxy = game.a11y?.msg_loc;
+    if (mxy) game.a11y.msg_loc = { x: 0, y: 0 };
+    if (msg == null || String(msg) === '' || game.program_state?.done_hup
+        || game.program_state?.wizkit_wishing)
+        return;
     // The food-result adapter handles ordinary messages; exceptional messages
-    if (game.a11y?.msg_loc?.x || game.a11y?.msg_loc?.y
+    if (mxy?.x || mxy?.y
         || (typeof msg === 'string' && msg.length > BUFSZ - 1))
         putmesg = null;
     /* C pline.c:162-190 vpline(): save a11y.msg_loc and always reset it; with
      * accessiblemsg and a valid location, prefix the message with
      * coord_desc(GPCOORDS_COMFULL) + ": ". */
-    if (game.a11y?.msg_loc) {
-        const mxy = game.a11y.msg_loc;
-        game.a11y.msg_loc = { x: 0, y: 0 };
-        if (msg && game.a11y.accessiblemsg && isok(mxy.x, mxy.y)) {
+    if (mxy) {
+        if (game.a11y.accessiblemsg && isok(mxy.x, mxy.y)) {
             /* pline.c:177-189: the prefixed copy is a fresh alloc()'d line. */
             youBufAlias = null;
             const gp = game.iflags?.getpos_coords;
             msg = _rt_coord_desc(mxy.x, mxy.y, (!gp || gp === 'n') ? 'f' : gp) + ': ' + msg;
         }
     }
-    if (msg === '') return; /* pline.c:166 !line || !*line */
+    if (args.length > 0)
+        msg = nh_sprintf(msg, args);
+    msg = String(msg).split('\0', 1)[0];
+    if (msg.length > 5 * BUFSZ - 1)
+        throw new Error(`panic: pline attempting to print ${msg.length} characters!`);
     // C pline.c:212-225 vpline(): keep the final three characters on overflow.
     if (typeof msg === 'string' && msg.length > BUFSZ - 1)
         msg = msg.slice(0, BUFSZ - 7) + '...' + msg.slice(-3);
+    dumplogmsg(msg);
+    // pline.c:239-242: a pre-window pline writes raw output, without changing
+    // prevmsg. Config-error reporting has its own raw-output adapter.
+    if (game.iflags?.window_inited === false) {
+        raw_print(msg);
+        game.iflags.last_msg = 0;
+        return;
+    }
     // C pline.c:247-264: urgent messages bypass hide and no-repeat suppression.
-    const msgtyp = msgtype_type(msg);
+    const msgtyp = msgtype_type(msg, noRepeat);
     if (!game._topl_urgent_next && (msgtyp === 'hide'
         || (msgtyp === 'norep' && game._prevmsg === String(msg))))
         return;
@@ -15043,7 +15103,28 @@ export function show_glyph(x, y, glyph) {
 
 export function glyph_at(x, y) {
     const gbuf = game.gg?.gbuf || game?.["gg.gbuf"];
-    return gbuf?.[y]?.[x]?.glyphinfo?.glyph ?? GLYPH_UNEXPLORED_OFF;
+    const glyph = gbuf?.[y]?.[x]?.glyphinfo?.glyph;
+    if (glyph != null)
+        return glyph;
+    /* C display.h:22 reads the displayed glyph, including its monster
+     * species, gender and normal/pet/detected/ridden range.  The resolved
+     * monster painter keeps that identity in disp_* without creating a
+     * numeric gbuf entry.  Recover the same glyph without another draw.
+     * In particular, hallucinated species must not read as unexplored. */
+    const loc = game.level?.at(x, y);
+    if (loc?.disp_cls === GLYPHCLS_MON && !loc.disp_is_warning
+        && Number.isInteger(loc.disp_mon_pm)) {
+        const female = !!loc.disp_mon_female;
+        const offset = loc.disp_mon_kind === 'pet'
+            ? (female ? GLYPH_PET_FEM_OFF : GLYPH_PET_MALE_OFF)
+            : loc.disp_mon_kind === 'detected'
+                ? (female ? GLYPH_DETECT_FEM_OFF : GLYPH_DETECT_MALE_OFF)
+                : loc.disp_mon_kind === 'ridden'
+                    ? (female ? GLYPH_RIDDEN_FEM_OFF : GLYPH_RIDDEN_MALE_OFF)
+                    : (female ? GLYPH_MON_FEM_OFF : GLYPH_MON_MALE_OFF);
+        return offset + loc.disp_mon_pm;
+    }
+    return GLYPH_UNEXPLORED_OFF;
 }
 export { glyph_to_cmap };
 export const NUM_OBJECTS = MKOBJ_OC_CLASS.length;

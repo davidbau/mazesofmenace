@@ -13,6 +13,7 @@ import {enableDokick} from './dokick.js';
 import {hliquid,hliquids} from '../ported/do_name.js';
 import {makemon_rnd_goodpos,m_initgrp} from '../ported/makemon.js';
 import {debugcore,nh_basename,fqname} from '../ported/files.js';
+import {nativeStateFor} from './native/state-bridge.js';
 export function enableWorldPosition(environment,layouts,creation){
  const {services,ctypes,memory,transport,functions}=environment,{views,context,environment:world}=creation;
  const record=(t,p)=>views.record(t,p),L={...layouts.makemon,...layouts.teleport};
@@ -51,7 +52,19 @@ export function enableWorldPosition(environment,layouts,creation){
   });},
   staticAddress:key=>{if(key!=='nh_basename.basebuf')throw new Error('Unresolved FILES static '+key);return basebuf;},
  });
- environment.register('source-debug-guard',{debugcore,nh_basename,fqname},debug,{prepareArgs:(_fn,a)=>{if(typeof a[0]==='string')a[0]=services.literal(a[0]);return a;}});
+ const flags=record('struct flag',environment.requireGlobal('flags'));
+ Object.assign(debug,{
+  debugEnabled:()=>flags.debug,
+  debugFiles:()=>environment.address(debug.sysopt.debugfiles),
+  debugByte:at=>memory.view.getInt8(at),
+ });
+ const nativeState=nativeStateFor(environment);
+ const debugGuard=(filename,wildcards)=>debugcore(filename,wildcards,debug);
+ debugGuard.nativeState=nativeState;
+ debugGuard.nativeDirect=true;
+ debugGuard.nativePrepared=true;
+ nativeState.functions.set('debugcore',debugGuard);
+ environment.register('source-debug-guard',{debugcore:debugGuard,nh_basename,fqname},debug,{prepareArgs:(_fn,a)=>{if(typeof a[0]==='string')a[0]=services.literal(a[0]);return a;}});
  const debugMessage=values=>{if(services.debugcore('teleport.c',1)){const saved=world.iflags.last_msg;try{const[fmt,...args]=values();environment.resolve('pline')(fmt,...args);}finally{world.iflags.last_msg=saved;}}};
  env.debugpline0=s=>debugMessage(()=>[s]);env.debugpline4=debugMessage;
  const coord=p=>record('coord',p),monster=p=>record('struct monst',p),pm=p=>record('struct permonst',p);
@@ -81,7 +94,7 @@ export function enableWorldPosition(environment,layouts,creation){
  Object.defineProperty(liquid,'Hallucination',{get:()=>{const p=world.u.uprops[layouts.do_name.HALLUC],r=world.u.uprops[layouts.do_name.HALLUC_RES];return Number(Boolean(p.intrinsic&&!r.intrinsic&&!r.extrinsic));}});
  if(!environment.hasFunction('hliquid'))environment.register('surface-liquid-naming',{hliquid},liquid);
  environment.exposeAddressPort('invent',['sobj_at']);
- environment.enableAddressPort('mkmaze',{only:['is_exclusion_zone']});
+ environment.enableAddressPort('mkmaze',{only:['is_exclusion_zone','maybe_adjust_hero_bubble']});
  environment.exposeAddressPort('dungeon',['has_ceiling','surface'].filter(name=>!environment.hasFunction(name)));
  environment.extend('monster-creation',{makemon_rnd_goodpos,m_initgrp});
  connectNativeMakemon(environment,'monster-creation',['makemon_rnd_goodpos','m_initgrp']);

@@ -37,13 +37,20 @@ export function enableWindowSystem(environment,layouts){
   const own=abi.callbacks[module][name],row=own??prototype(publicFunctions.functions[name]??'');
   let invoke;
   if(own){invoke=(...args)=>normalize(row.result,module==='wintty'?callWintty(t,L,name,...args):callWindows(w,layouts.windows,name,...args));
-   if(module==='wintty'){invoke.nativeState=owner;invoke.nativeDirect=true;}}
+   if(module==='wintty'){
+    invoke.nativeState=owner;invoke.nativeDirect=true;
+    if(name==='tty_print_glyph')invoke.nativeGlyphFrame=(win,x,y,foreground,frame)=>
+     callWintty(t,L,name,win,x,y,foreground,0,frame);
+   }}
   return environment.functionPointer(own&&!Object.hasOwn(publicFunctions.functions,name)?module+'::'+name:name,signature(row),invoke);
  }
- const statics=new Map();Object.assign(t,{nativeOwner:owner,moduleKey:environment,global:i=>{const name=Object.keys(schema.globals)[i];if(!name)throw new Error('Unknown WINTTY global '+i);return environment.requireGlobal(name);},
+ const statics=new Map(),ttyGlobals=Object.keys(schema.globals),ttyAddresses=ttyGlobals.map(environment.bindGlobal);
+ Object.assign(t,{nativeOwner:owner,moduleKey:environment,nativeFixedProvider:true,
+  global:i=>{const name=ttyGlobals[i];if(!name)throw new Error('Unknown WINTTY global '+i);return environment.requireGlobal(name);},
+  bindGlobal:i=>ttyAddresses[i],
   staticStorage:name=>{const count={'tty_askname.who_are_you':14,'compress_str.cbuf':L.BUFSZ}[name];if(!count)throw new Error('Unknown WINTTY static '+name);if(!statics.has(name))statics.set(name,environment.allocateGlobal('wintty.'+name,count));return statics.get(name);},
   callbackPointer:name=>callback('wintty',name),teleport_native_signal:(sig,fn)=>platform.signal(sig,fn),callIndirect:(fn,type,...args)=>functions.indirect(fn,signature(prototype(type)),...args),
-  alloc:n=>environment.alloc('alloc',n),free:p=>services.free(address(p)),memset:(p,v,n)=>services.memset(address(p),v,n),memcpy:(a,b,n)=>services.memcpy(address(a),address(b),n),
+  alloc:n=>environment.alloc('alloc',n),free:p=>{const at=address(p);if(!owner.toplHistory?.owns(at))services.free(at);},memset:(p,v,n)=>services.memset(address(p),v,n),memcpy:(a,b,n)=>services.memcpy(address(a),address(b),n),
  });
  for(const name of ['strlen','strcpy','strcat','strcmp','strncmp','strncpy','strchr','strrchr','strstr','puts','fputs'])if(typeof services[name]==='function')t[name]=(...args)=>{const count=['strncmp','strncpy','strcpy','strcat','strcmp','strstr'].includes(name)?2:1;return services[name](...args.map((v,i)=>i<count?text(v):v));};
  t.strlen=p=>BigInt(services.strlen(text(p)));
@@ -71,9 +78,13 @@ export function enableWindowSystem(environment,layouts){
  for(const name of ['fprintfChar','fprintfString'])w[name]=(fp,format,...args)=>services.fprintf(address(fp),text(format),...args.map(v=>v?.address??v));
  w.map_glyphinfo=(x,y,glyph,flags,out)=>environment.resolve('map_glyphinfo')(x,y,glyph,flags,address(out));
  for(const [name,type]of Object.entries(W.callbacks)){const row=prototype(type);w['call_'+name]=(...args)=>{if(environment.nativeWindowCallbacks)return environment.nativeWindowCallbacks.invoke(name,signature(row),...args.map((v,i)=>normalize(row.parameters[i],v)));const field=ctypes.record('struct window_procs').fields[name],fn=ctypes.load(field.ctype.replace(new RegExp('\\s+'+name+'$'),''),environment.requireGlobal('windowprocs')+field.offset);return functions.indirect(fn,signature(row),...args.map((v,i)=>normalize(row.parameters[i],v)));};}
- initializeWindows(w,layouts.windows);
+ const windowsContext=initializeWindows(w,layouts.windows);
+ const glyphNonce=ctypes.fieldAddress('struct context_info',ctypes.fieldAddress('struct instance_globals_saved_c',environment.requireGlobal('svc'),'context'),'rndencode');
+ Object.defineProperty(windowsContext,'glyphNonce',{get:()=>memory.view.getInt32(glyphNonce,true)});
  const names=W.names.filter(name=>Object.hasOwn(publicFunctions.functions,name)&&typeof windows[name]==='function'&&!environment.hasFunction(name));
- environment.register('windows',Object.fromEntries(names.map(name=>[name,(...args)=>callWindows(w,layouts.windows,name,...args)])));
+ const encodeGlyph=glyph=>windows.encglyph(glyph,windowsContext);
+ encodeGlyph.nativeDirect=true;
+ environment.register('windows',Object.fromEntries(names.map(name=>[name,name==='encglyph'?encodeGlyph:(...args)=>callWindows(w,layouts.windows,name,...args)])));
  // Shared windows.h macros dispatch through the existing active window owner.
  const headerWindows=Object.fromEntries(['create_nhwindow','destroy_nhwindow','curs','display_nhwindow','putstr','putmixed','start_menu','end_menu','raw_print'].map(name=>{const field='win_'+name;if(!Object.hasOwn(W.callbacks,field)||environment.hasFunction(name))throw Error('Review shared window macro '+name);const fn=(...args)=>w['call_'+field](...args);fn.nativeState=owner;fn.nativeDirect=true;fn.nativePrepared=true;owner.functions.set(name,fn);return[name,fn];}));
  const delay=()=>windowCallbacks.invoke('win_delay_output','v');delay.nativeState=owner;delay.nativeDirect=true;delay.nativePrepared=true;owner.functions.set('nh_delay_output',delay);

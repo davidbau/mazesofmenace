@@ -639,6 +639,13 @@ export function historical_sfi_rm(nhfp, d_rm, myname)
         nhfp.eof = 1;
 }
 
+export function historical_map_locations(nhfp, base, count, reading)
+{
+    const transfer = reading ? historical_sfi_rm : historical_sfo_rm;
+    for (let i = 0; i < count; i++)
+        transfer(nhfp, base + i * C.type_rm_size, "location-rm");
+}
+
 export function historical_sfo_spell(nhfp, d_spell, myname)
 {
     C.norm_ptrs_spell(d_spell);

@@ -35,12 +35,13 @@ export function enableHeroEquipment(environment,layouts,hero){
   });
  }
  const nativeOwner=nativeStateFor(environment);createNativeRecordViews(environment);
+ const weaponCells=['uleft','uright','uwep','uswapwep'].map(environment.requireGlobal);
  const W=layouts.weapon,ws=locals.weapon,arw=environment.allocateGlobal('weapon.arwep',W.arwSize*weapon.arwep.length),kebab=environment.allocateGlobal('weapon.kebabable',weapon.kebabable.length);
  ws.nativeOwner=nativeOwner;ws.nativeWeaponTypes=ctypes;
  Object.defineProperty(ws,'nativeContext',{get:()=>callWeapon(ws,W,'environment')});
  ws.y_n=prompt=>transport.char(environment.resolve('yn_function')(typeof prompt==='string'?services.literal(prompt):address(prompt),environment.requireGlobal('ynchars'),110,1));
  Object.assign(ws,{storage:i=>[arw,kebab][i],storageCount:i=>[weapon.arwep.length,weapon.kebabable.length][i],
-  equipment:i=>address(ctypes.load('struct obj *',environment.requireGlobal(['uleft','uright','uwep','uswapwep'][i]))),
+  equipment:i=>nativeOwner.nativeArena.pointer(weaponCells[i]),
   hands:()=>environment.requireGlobal('hands_obj'),nulGlyphInfo:()=>environment.requireGlobal('nul_glyphinfo'),
   objectBit:(p,i)=>bit('struct obj',p,['globby','blessed','lamplit','dknown','cursed','bknown','oeroded','oeroded2'][i]),
   setObjectBit:(p,i,v)=>setBit('struct obj',p,['globby','blessed','lamplit','dknown','cursed','bknown','oeroded','oeroded2'][i],v),

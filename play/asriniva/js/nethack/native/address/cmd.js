@@ -216,6 +216,13 @@ const NWC14=C.nativeWindowCall("win_exit_nhwindows","void (const char *)");
 const NWC15=C.nativeWindowCall("win_nh_poskey","int (coordxy *, coordxy *, int *)");
 const NWC16=C.nativeWindowCall("win_yn_function","char (const char *, const char *, char)");
 const NWC17=C.nativeWindowCall("win_can_suspend","boolean (void)");
+const RC0=C.readInt8At,WC0=C.writeInt8At;
+const RC1=C.readInt8At,WC1=C.writeInt8At;
+const RC2=C.readUint8At,WC2=C.writeUint8At;
+const RC3=C.readInt16At,WC3=C.writeInt16At;
+const RC5=C.readInt32At,WC5=C.writeInt32At;
+const RC6=C.readUint32At,WC6=C.writeUint32At;
+const RC8=C.readBigInt64At,WC8=C.writeBigInt64At;
 
 /* NetHack 5.0	cmd.c	$NHDT-Date: 1762680996 2025/11/09 01:36:36 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.755 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
@@ -397,6 +404,11 @@ cmdq_print(int q)
 function cmdq_add_ec(q,fn)
 {
     q=C.i32(q);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        repeat.push({ typ: C.CMDQ_EXTCMD, ec_entry: ext_func_tab_from_func(fn) });
+        return;
+    }
     let tmp=C.alloc(C.u32(BigInt(C.sizes["struct _cmd_queue"])));
     let cq=C.cell((A90(C.gc)+Number(q)*8),"struct _cmd_queue *").value;
     (W6(tmp,C.CMDQ_EXTCMD));
@@ -413,6 +425,11 @@ function cmdq_add_key(q,key)
 {
     q=C.i32(q);
     key=C.i8(key);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        repeat.push({ typ: C.CMDQ_KEY, key });
+        return;
+    }
     let tmp=C.alloc(C.u32(BigInt(C.sizes["struct _cmd_queue"])));
     let cq=C.cell((A90(C.gc)+Number(q)*8),"struct _cmd_queue *").value;
     (W6(tmp,C.CMDQ_KEY));
@@ -431,6 +448,11 @@ function cmdq_add_dir(q,dx,dy,dz)
     dx=C.i8(dx);
     dy=C.i8(dy);
     dz=C.i8(dz);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        repeat.push({ typ: C.CMDQ_DIR, dirx: dx, diry: dy, dirz: dz });
+        return;
+    }
     let tmp=C.alloc(C.u32(BigInt(C.sizes["struct _cmd_queue"])));
     let cq=C.cell((A90(C.gc)+Number(q)*8),"struct _cmd_queue *").value;
     (W6(tmp,C.CMDQ_DIR));
@@ -448,6 +470,11 @@ function cmdq_add_dir(q,dx,dy,dz)
 function cmdq_add_userinput(q)
 {
     q=C.i32(q);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        repeat.push({ typ: C.CMDQ_USER_INPUT });
+        return;
+    }
     let tmp=C.alloc(C.u32(BigInt(C.sizes["struct _cmd_queue"])));
     let cq=C.cell((A90(C.gc)+Number(q)*8),"struct _cmd_queue *").value;
     (W6(tmp,C.CMDQ_USER_INPUT));
@@ -463,6 +490,11 @@ function cmdq_add_int(q,val)
 {
     q=C.i32(q);
     val=C.i32(val);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        repeat.push({ typ: C.CMDQ_INT, intval: val });
+        return;
+    }
     let tmp=C.alloc(C.u32(BigInt(C.sizes["struct _cmd_queue"])));
     let cq=C.cell((A90(C.gc)+Number(q)*8),"struct _cmd_queue *").value;
     (W6(tmp,C.CMDQ_INT));
@@ -478,6 +510,12 @@ function cmdq_add_int(q,val)
 function cmdq_shift(q)
 {
     q=C.i32(q);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        if (repeat.length > 1)
+            repeat.unshift(repeat.pop());
+        return;
+    }
     let tmp=0;
     let cq=C.cell((A90(C.gc)+Number(q)*8),"struct _cmd_queue *").value;
     while(Number(!!(Number(!!(cq&&R13(cq)))&&R13(R13(cq))))) (cq=R13(cq));
@@ -505,6 +543,9 @@ function cmdq_reverse(head)
 function cmdq_copy(q)
 {
     q=C.i32(q);
+    const repeat = repeatEntries(q);
+    if (repeat)
+        return commandListBytes(repeat);
     let tmp=0;
     let cq=C.cell((A90(C.gc)+Number(q)*8),"struct _cmd_queue *").value;
     while(cq) {
@@ -524,6 +565,9 @@ function cmdq_copy(q)
 function cmdq_pop()
 {
     let q=((R98(C.gi))?C.CQ_REPEAT:C.CQ_CANNED);
+    const repeat = repeatEntries(q);
+    if (repeat)
+        return repeat.length ? commandBytes(repeat.shift(), 0) : 0;
     let tmp=C.cell((A90(C.gc)+Number(q)*8),"struct _cmd_queue *").value;
     if(tmp) {
         (C.cell((A90(C.gc)+Number(q)*8),"struct _cmd_queue *").value=R13(tmp));
@@ -536,6 +580,17 @@ function cmdq_pop()
 function cmdq_peek(q)
 {
     q=C.i32(q);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        if (!repeat.length)
+            return 0;
+        // An address returned by peek can be retained and mutated. Once
+        // exposed, the linked nodes own the queue until it is cleared.
+        const head = commandListBytes(repeat);
+        C.repeatCommands.entries = null;
+        C.cell(A90(C.gc) + q * 8, "struct _cmd_queue *").value = head;
+        return head;
+    }
     return C.cell((A90(C.gc)+Number(q)*8),"struct _cmd_queue *").value;
 }
 
@@ -543,6 +598,11 @@ function cmdq_peek(q)
 function cmdq_clear(q)
 {
     q=C.i32(q);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        repeat.length = 0;
+        return;
+    }
     let tmp=C.cell((A90(C.gc)+Number(q)*8),"struct _cmd_queue *").value;
     let tmp2;
     while(tmp) {
@@ -551,6 +611,59 @@ function cmdq_clear(q)
         (tmp=tmp2);
     }
     (C.cell((A90(C.gc)+Number(q)*8),"struct _cmd_queue *").value=0);
+    if (q === C.CQ_REPEAT && C.repeatCommands)
+        C.repeatCommands.entries = [];
+}
+
+function repeatEntries(q)
+{
+    return q === C.CQ_REPEAT ? C.repeatCommands?.entries : undefined;
+}
+
+function commandBytes(entry, next)
+{
+    const at = C.alloc(C.sizes["struct _cmd_queue"]);
+    for (const key of Object.keys(entry))
+        C.field(at, "_cmd_queue", key).value = entry[key];
+    W13(at,next);
+    return at;
+}
+
+function commandListBytes(entries)
+{
+    let head = 0;
+    for (let i = entries.length - 1; i >= 0; --i)
+        head = commandBytes(entries[i], head);
+    return head;
+}
+
+function takeCommand()
+{
+    const repeat = repeatEntries(C.CQ_REPEAT);
+    if (repeat && R98(C.gi))
+        return repeat.shift() ?? 0;
+    return cmdq_pop();
+}
+
+function commandField(entry, key)
+{
+    if (typeof entry === "object")
+        return entry[key];
+    switch (key) {
+    case "typ": return R6(entry);
+    case "key": return R7(entry);
+    case "ec_entry": return R12(entry);
+    case "dirx": return R8(entry);
+    case "diry": return R9(entry);
+    case "dirz": return R10(entry);
+    default: throw new Error('Unexpected command queue field ' + key);
+    }
+}
+
+function releaseCommand(entry)
+{
+    if (typeof entry !== "object")
+        C.free(entry);
 }
 
 function pgetchar()
@@ -571,7 +684,7 @@ function extcmd_initiator()
 function can_do_extcmd(extcmd)
 {
     let ecflags=C.i32(R63(extcmd));
-    if(Number(!!(R102(C.gl)&&C.cell((C.nhcb_counts+Number(C.NHCB_CMD_BEFORE)*4),"int").value))) {
+    if(Number(!!(R102(C.gl)&&RC5(C.nhcb_counts+Number(C.NHCB_CMD_BEFORE)*4)))) {
         C.lua_getglobal(R102(C.gl),C.literal("nh_callback_run"));
         C.lua_pushstring(R102(C.gl),C.cell((C.nhcb_name+Number(C.NHCB_CMD_BEFORE)*8),"char *").value);
         C.lua_pushstring(R102(C.gl),R60(extcmd));
@@ -639,12 +752,12 @@ function doc_extcmd_flagstr(menuwin,efp)
         let p=Abuf;
         /* "" or "[m]" or "[A]" or "[mA]" */
         if(Number(!!(C.i32(mprefix)||C.i32(autocomplete)))) {
-            (C.cell(((p=C.ptr((p+Number(1))))-Number(1)),"char").value=C.i8(91));
-            if(mprefix) (C.cell(((p=C.ptr((p+Number(1))))-Number(1)),"char").value=C.i8(109));
-            if(autocomplete) (C.cell(((p=C.ptr((p+Number(1))))-Number(1)),"char").value=C.i8(65));
-            (C.cell(((p=C.ptr((p+Number(1))))-Number(1)),"char").value=C.i8(93));
+            (WC0((p=C.ptr((p+Number(1))))-Number(1),C.i8(91)));
+            if(mprefix) (WC0((p=C.ptr((p+Number(1))))-Number(1),C.i8(109)));
+            if(autocomplete) (WC0((p=C.ptr((p+Number(1))))-Number(1),C.i8(65)));
+            (WC0((p=C.ptr((p+Number(1))))-Number(1),C.i8(93)));
         }
-        (C.cell(p,"char").value=C.i8(0));
+        (WC0(p,C.i8(0)));
         return Abuf;
     }
     } finally {C.stackRestore(stackFrame); }
@@ -667,7 +780,7 @@ function doextlist()
     let redisplay=(C.i8(1)); let search=(C.i8(0));
     const headings=C.staticData("doextlist","headings",()=>[C.literal("Extended commands"),C.literal("Debugging Extended Commands")]);
     let clr=8;
-    (C.cell((searchbuf+Number(0)*1),"char").value=C.i8(0));
+    (WC0(searchbuf+Number(0)*1,C.i8(0)));
     (menuwin=NWC3(R160(C.windowprocs),4));
     while(redisplay) {
         (redisplay=(C.i8(0)));
@@ -678,7 +791,7 @@ function doextlist()
         C.variadic(4,buf,C.literal("Switch to %s commands that don't autocomplete"),(menumode?C.literal("including"):C.literal("excluding")));
         (W17(any,1));
         C.add_menu(menuwin,C.nul_glyphinfo,any,C.i8(97),C.i8(0),0,clr,buf,0);
-        if(Number(!(C.cell(searchbuf,"char").value))) {
+        if(Number(!(RC0(searchbuf)))) {
             (W17(any,2));
             /* was 's', but then using ':' handling within the interface
                would only examine the two or three meta entries, not the
@@ -702,7 +815,7 @@ function doextlist()
             C.add_menu(menuwin,C.nul_glyphinfo,any,C.i8(122),C.i8(0),0,clr,(onelist?C.literal("Switch to showing debugging commands in separate section"):C.literal("Switch to showing all alphabetically, including debugging commands")),0);
         }
         C.add_menu_str(menuwin,C.literal(""));
-        (C.cell((menushown+Number(0)*4),"int").value=(C.cell((menushown+Number(1)*4),"int").value=0));
+        (WC5(menushown+Number(0)*4,WC5(menushown+Number(1)*4,0)));
         (n=0);
         for((pass=0);Number(pass<=1);(pass=C.i32((pass+1)))) {
             /* skip second pass if not in wizard mode or wizard mode
@@ -726,7 +839,7 @@ function doextlist()
                 if(Number(!!(Number(!!(Number(!!(Number(!(R65(C.flags)))&&Number(!(R66(C.flags)))))&&Number((C.u32((R63(efp)&C.u32(8))))!=C.u32(0))))&&C.strstri(cmd_desc,C.literal("extinct"))))) (cmd_desc=C.strsubst(C.strcpy(descbuf,cmd_desc),C.literal(" been genocided or become extinct"),C.literal(" been genocided")));
                 /* minor optimization */
                 /* if searching, skip this command if it doesn't match */
-                if(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(C.cell(searchbuf,"char").value)&&Number(!(C.strstri(R60(efp),searchbuf)))))&&Number(!(C.strstri(cmd_desc,searchbuf)))))&&Number(!(C.pmatchi(searchbuf,R60(efp))))))&&Number(!(C.pmatchi(searchbuf,cmd_desc)))))) continue;
+                if(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(RC0(searchbuf))&&Number(!(C.strstri(R60(efp),searchbuf)))))&&Number(!(C.strstri(cmd_desc,searchbuf)))))&&Number(!(C.pmatchi(searchbuf,R60(efp))))))&&Number(!(C.pmatchi(searchbuf,cmd_desc)))))) continue;
                 /* first try case-insensitive substring match */
                 /* wildcard support; most interfaces use case-insensitive
                        pmatch rather than regexp for menu searching */
@@ -734,10 +847,10 @@ function doextlist()
                    Doing menu in inner loop like this on demand avoids a
                    heading with no subordinate entries on the search
                    results menu. */
-                if(Number(!(C.cell((menushown+Number(pass)*4),"int").value))) {
+                if(Number(!(RC5(menushown+Number(pass)*4)))) {
                     C.strcpy(buf,C.cell((headings+Number(pass)*8),"char *").value);
                     C.add_menu_heading(menuwin,buf);
-                    (C.cell((menushown+Number(pass)*4),"int").value=1);
+                    (WC5(menushown+Number(pass)*4,1));
                 }
                 /* longest ef_txt at present is "wizrumorcheck" (13 chars);
                    2nd field will be "    " or " [A]" or " [m]" or "[mA]" */
@@ -747,7 +860,7 @@ function doextlist()
             }
             if(n) C.add_menu_str(menuwin,C.literal(""));
         }
-        if(Number(!!(C.i32(C.cell(searchbuf,"char").value)&&Number(!(n))))) C.add_menu_str(menuwin,C.literal("no matches"));
+        if(Number(!!(C.i32(RC0(searchbuf))&&Number(!(n))))) C.add_menu_str(menuwin,C.literal("no matches"));
  else doc_extcmd_flagstr(menuwin,0);
         NWC5(R166(C.windowprocs),menuwin,0);
         (n=C.select_menu(menuwin,1,selectedAddress));
@@ -766,13 +879,13 @@ function doextlist()
                 case (3):
                     /* 's' when already searching: disable search */
                     (search=(C.i8(0)));
-                (C.cell((searchbuf+Number(0)*1),"char").value=C.i8(0));
+                (WC0(searchbuf+Number(0)*1,C.i8(0)));
                 (redisplay=(C.i8(1)));
                 break;
                 case (4):
                     /* 'z': toggle showing wizard mode commands separately */
                     (search=(C.i8(0)));
-                (C.cell((searchbuf+Number(0)*1),"char").value=C.i8(0));
+                (WC0(searchbuf+Number(0)*1,C.i8(0)));
                 (onelist=C.i32((1-onelist)));
                 /* toggle 0 -> 1, 1 -> 0 */
                 (redisplay=(C.i8(1)));
@@ -781,15 +894,15 @@ function doextlist()
             C.free(C.cell(selectedAddress,"struct mi *").value);
         } else {
             (search=(C.i8(0)));
-            (C.cell((searchbuf+Number(0)*1),"char").value=C.i8(0));
+            (WC0(searchbuf+Number(0)*1,C.i8(0)));
         }
         if(search) {
             C.strcpy(promptbuf,C.literal("Extended command list search phrase"));
             C.strcat(promptbuf,C.literal("?"));
             C.getlin(promptbuf,searchbuf);
             C.mungspaces(searchbuf);
-            if(Number(C.i32(C.cell((searchbuf+Number(0)*1),"char").value)==27)) (C.cell((searchbuf+Number(0)*1),"char").value=C.i8(0));
-            if(C.cell(searchbuf,"char").value) (redisplay=(C.i8(1)));
+            if(Number(C.i32(RC0(searchbuf+Number(0)*1))==27)) (WC0(searchbuf+Number(0)*1,C.i8(0)));
+            if(RC0(searchbuf)) (redisplay=(C.i8(1)));
             (search=(C.i8(0)));
         }
     }
@@ -827,7 +940,7 @@ function extcmd_via_menu()
     let wastoolong; let one_per_line;
     let clr=8;
     (ret=0);
-    (C.cell((cbuf+Number(0)*1),"char").value=C.i8(0));
+    (WC0(cbuf+Number(0)*1,C.i8(0)));
     (biggest=0);
     while(Number(!(ret))) {
         (i=(n=0));
@@ -856,7 +969,7 @@ function extcmd_via_menu()
         (win=NWC3(R160(C.windowprocs),4));
         NWC4(R165(C.windowprocs),win,C.u64(0));
         C.variadic(7,fmtstr,C.literal("%%-%ds"),C.i32((biggest+15)));
-        (C.cell((prompt+Number(0)*1),"char").value=C.i8(0));
+        (WC0(prompt+Number(0)*1,C.i8(0)));
         (wastoolong=(C.i8(0)));
         /* True => had to wrap due to line width
                              * ('w' in wizard mode) */
@@ -865,7 +978,7 @@ function extcmd_via_menu()
         (prevaccelerator=0);
         (acount=0);
         for((i=0);C.cell((choices+Number(i)*8),"struct ext_func_tab *").value;(i=C.i32((i+1)))) {
-            (accelerator=C.i32(C.cell((R60(C.cell((choices+Number(i)*8),"struct ext_func_tab *").value)+Number(matchlevel)*1),"char").value));
+            (accelerator=C.i32(RC0(R60(C.cell((choices+Number(i)*8),"struct ext_func_tab *").value)+Number(matchlevel)*1)));
             if(Number(!!(Number(accelerator!=prevaccelerator)||C.i32(one_per_line)))) (wastoolong=(C.i8(0)));
             if(Number(!!(Number(!!(Number(accelerator!=prevaccelerator)||C.i32(one_per_line)))||(Number(!!(Number(acount>=2)&&(Number(C.u64((C.u64((C.strlen(prompt)+C.u64(4)))+C.strlen(R60(C.cell((choices+Number(i)*8),"struct ext_func_tab *").value))))>=((Number((BigInt((1*128)))<C.u64((C.i32((80-6)))))?(BigInt((1*128))):C.u64((C.i32((80-6)))))))))))))) {
                 /* +4: + sizeof " or " - sizeof "" */
@@ -906,8 +1019,8 @@ function extcmd_via_menu()
                 C.free(C.cell(pick_listAddress,"struct mi *").value);
                 (ret=C.i32((-1)));
             } else {
-                (C.cell((cbuf+Number(((matchlevel=C.i32((matchlevel+1)))-1))*1),"char").value=R18(A120(C.cell(pick_listAddress,"struct mi *").value+Number(0)*C.sizes["struct mi"])));
-                (C.cell((cbuf+Number(matchlevel)*1),"char").value=C.i8(0));
+                (WC0(cbuf+Number(((matchlevel=C.i32((matchlevel+1)))-1))*1,R18(A120(C.cell(pick_listAddress,"struct mi *").value+Number(0)*C.sizes["struct mi"]))));
+                (WC0(cbuf+Number(matchlevel)*1,C.i8(0)));
                 C.free(C.cell(pick_listAddress,"struct mi *").value);
             }
         } else {
@@ -1231,7 +1344,7 @@ function u_can_see_whole_selection(sel)
     let x; let y;
     let rect=C.stackAlloc(C.sizes["struct nhrect"]); C.copyRecord(rect,A38(C.cg),C.sizes["struct nhrect"]);
     C.selection_getbounds(sel,rect);
-    for((x=R128(rect));Number(C.i32(x)<=C.i32(R130(rect)));((x=C.i16((x+1)))-1)) for((y=R129(rect));Number(C.i32(y)<=C.i32(R131(rect)));((y=C.i16((y+1)))-1)) if(Number(!!(Number(!!(isok(x,y)&&C.i32(C.selection_getpoint(x,y,sel))))&&Number(!((Number((C.i32((C.i32(C.cell((C.cell((R115(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))))))) return (C.i8(0));
+    for((x=R128(rect));Number(C.i32(x)<=C.i32(R130(rect)));((x=C.i16((x+1)))-1)) for((y=R129(rect));Number(C.i32(y)<=C.i32(R131(rect)));((y=C.i16((y+1)))-1)) if(Number(!!(Number(!!(isok(x,y)&&C.i32(C.selection_getpoint(x,y,sel))))&&Number(!((Number((C.i32((C.i32(RC2(C.cell((R115(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1))&2)))!=0))))))) return (C.i8(0));
 
 
     return (C.i8(1));
@@ -1256,7 +1369,7 @@ function lookaround_known_room(x,y)
     const stackFrame=C.stackSave();
     try {
     let sel=C.selection_new();
-    let rmno=C.i32((C.i32(C.cell((A186(C.u)+Number(0)*1),"char").value)-3));
+    let rmno=C.i32((C.i32(RC0(A186(C.u)+Number(0)*1))-3));
     let qbuf=C.stackAlloc((1*128));
     C.set_selection_floodfillchk(C.functionPointer("dolookaround_floodfill_findroom"));
     C.selection_floodfill(sel,x,y,(C.i8(1)));
@@ -1292,8 +1405,8 @@ function dolookaround()
         /* In a doorway, describe the rooms next to you */
         let i;
         for((i=C.DIR_W);Number(i<(C.i32((C.N_DIRS_Z-2))));(i=C.i32(i+2))) {
-            (x=C.i16(C.i32((C.i32(R177(C.u))+C.i32(C.cell((C.xdir+Number(i)*1),"signed char").value)))));
-            (y=C.i16(C.i32((C.i32(R178(C.u))+C.i32(C.cell((C.ydir+Number(i)*1),"signed char").value)))));
+            (x=C.i16(C.i32((C.i32(R177(C.u))+C.i32(RC1(C.xdir+Number(i)*1))))));
+            (y=C.i16(C.i32((C.i32(R178(C.u))+C.i32(RC1(C.ydir+Number(i)*1))))));
             if(Number(!!(isok(x,y)&&(Number(C.i32((R142((A55(A111(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))>=C.ROOM))))) lookaround_known_room(x,y);
         }
         (corr_next2u=(C.i8(1)));
@@ -1341,9 +1454,9 @@ function set_move_cmd(dir,run)
 {
     dir=C.i32(dir);
     run=C.i32(run);
-    (W181(C.u,C.i32(C.cell((C.zdir+Number(dir)*1),"signed char").value)));
-    (W179(C.u,C.i32(C.cell((C.xdir+Number(dir)*1),"signed char").value)));
-    (W180(C.u,C.i32(C.cell((C.ydir+Number(dir)*1),"signed char").value)));
+    (W181(C.u,C.i32(RC1(C.zdir+Number(dir)*1))));
+    (W179(C.u,C.i32(RC1(C.xdir+Number(dir)*1))));
+    (W180(C.u,C.i32(RC1(C.ydir+Number(dir)*1))));
     /* #reqmenu -prefix disables autopickup during movement */
     if(R84(C.iflags)) (W43(A108(C.svc),C.i8(1)));
     (W40(A108(C.svc),W41(A108(C.svc),C.i8(0))));
@@ -1560,17 +1673,24 @@ function do_repeat()
     let res=0;
     if(Number(!(R98(C.gi)))) {
         let repeat_copy;
-        if(Number(!(cmdq_peek(C.CQ_REPEAT)))) {
+        const repeat = repeatEntries(C.CQ_REPEAT);
+        if (!(repeat ? repeat.length : cmdq_peek(C.CQ_REPEAT))) {
             C.variadic(35,C.literal("There is no command available to repeat."));
             return 4;
         }
-        (repeat_copy=cmdq_copy(C.CQ_REPEAT));
+        repeat_copy = repeat ? repeat.slice() : cmdq_copy(C.CQ_REPEAT);
         (W98(C.gi,C.i32((C.i8(1)))));
         rhack(0);
         /* read and execute command */
         (W98(C.gi,C.i32((C.i8(0)))));
         cmdq_clear(C.CQ_REPEAT);
-        (C.cell((A90(C.gc)+Number(C.CQ_REPEAT)*8),"struct _cmd_queue *").value=repeat_copy);
+        if (repeat) {
+            C.repeatCommands.entries = repeat_copy;
+        } else {
+            if (C.repeatCommands)
+                C.repeatCommands.entries = null;
+            C.cell(A90(C.gc) + C.CQ_REPEAT * 8, "struct _cmd_queue *").value = repeat_copy;
+        }
         (W84(C.iflags,C.i8(0)));
         if(R44(A108(C.svc))) (res=1);
     }
@@ -1624,7 +1744,7 @@ const extcmdlist_length=C=>C.i32((C.i32((C.u64((BigInt((C.sizes["struct ext_func
 function extcmds_getentry(i)
 {
     i=C.i32(i);
-    if(Number(!!(Number(i<0)||Number(i>C.cell(C.extcmdlist_length,"int").value)))) return 0;
+    if(Number(!!(Number(i<0)||Number(i>RC5(C.extcmdlist_length))))) return 0;
     return (C.extcmdlist+Number(i)*C.sizes["struct ext_func_tab"]);
 }
 
@@ -1724,14 +1844,14 @@ function count_bind_keys()
     C.memset(keys,0,C.u64((BigInt(1)*C.u64(256))));
     /* commands bound to different key */
     while(bind) {
-        (C.cell((keys+Number(R0(bind))*1),"unsigned char").value=C.u8(1));
+        (WC2(keys+Number(R0(bind))*1,C.u8(1)));
         if(Number(!!(Number(!!(C.i32(R1(bind))&&R3(bind)))&&Number(C.i32(R59(R3(bind)))!=C.i32(R0(bind)))))) {
             ((nbinds=C.i32((nbinds+1)))-1);
         }
         (bind=R4(bind));
     }
     /* commands which should be bound to a key, but aren't */
-    for((i=0);Number(i<C.cell(C.extcmdlist_length,"int").value);((i=C.i32((i+1)))-1)) if(Number(!!(C.i32(R59(C.extcmdlist+Number(i)*C.sizes["struct ext_func_tab"]))&&Number(!(C.cell((keys+Number(R59(C.extcmdlist+Number(i)*C.sizes["struct ext_func_tab"]))*1),"unsigned char").value))))) ((nbinds=C.i32((nbinds+1)))-1);
+    for((i=0);Number(i<RC5(C.extcmdlist_length));((i=C.i32((i+1)))-1)) if(Number(!!(C.i32(R59(C.extcmdlist+Number(i)*C.sizes["struct ext_func_tab"]))&&Number(!(RC2(keys+Number(R59(C.extcmdlist+Number(i)*C.sizes["struct ext_func_tab"]))*1)))))) ((nbinds=C.i32((nbinds+1)))-1);
 
     return nbinds;
     } finally {C.stackRestore(stackFrame); }
@@ -1752,7 +1872,7 @@ function get_changed_key_binds(sbuf)
     if(Number(!(sbuf))) (win=NWC3(R160(C.windowprocs),5));
     /* commands bound to different key */
     while(bind) {
-        (C.cell((keys+Number(R0(bind))*1),"unsigned char").value=C.u8(1));
+        (WC2(keys+Number(R0(bind))*1,C.u8(1)));
         if(Number(!!(Number(!!(C.i32(R1(bind))&&R3(bind)))&&Number(C.i32(R59(R3(bind)))!=C.i32(R0(bind)))))) {
             if(Number((C.u32((R63(R3(bind))&C.u32(16384))))!=C.u32(0))) C.variadic(36,buf,C.literal("BIND=%s:%s(%s)%s"),key2txt(R0(bind),buf2),R60(R3(bind)),R2(bind),(sbuf?C.literal("\n"):C.literal("")));
  else C.variadic(37,buf,C.literal("BIND=%s:%s%s"),key2txt(R0(bind),buf2),R60(R3(bind)),(sbuf?C.literal("\n"):C.literal("")));
@@ -1762,9 +1882,9 @@ function get_changed_key_binds(sbuf)
         (bind=R4(bind));
     }
     /* commands which should be bound to a key, but aren't */
-    for((i=0);Number(i<C.cell(C.extcmdlist_length,"int").value);((i=C.i32((i+1)))-1)) {
+    for((i=0);Number(i<RC5(C.extcmdlist_length));((i=C.i32((i+1)))-1)) {
         let ec=(C.extcmdlist+Number(i)*C.sizes["struct ext_func_tab"]);
-        if(Number(!!(C.i32(R59(ec))&&Number(!(C.cell((keys+Number(R59(ec))*1),"unsigned char").value))))) {
+        if(Number(!!(C.i32(R59(ec))&&Number(!(RC2(keys+Number(R59(ec))*1)))))) {
             C.variadic(38,buf,C.literal("BIND=%s:nothing%s"),key2txt(R59(ec),buf2),(sbuf?C.literal("\n"):C.literal("")));
             if(sbuf) C.strbuf_append(sbuf,buf);
  else NWC8(R164(C.windowprocs),win,0,buf);
@@ -1813,7 +1933,7 @@ function handler_rebind_keys_add(keyfirst)
     (W17(any,C.i32((-1))));
     C.add_menu(win,C.nul_glyphinfo,any,C.i8(0),C.i8(0),0,clr,C.literal("nothing: unbind the key"),0);
     C.add_menu_str(win,C.literal(""));
-    for((i=0);Number(i<C.cell(C.extcmdlist_length,"int").value);((i=C.i32((i+1)))-1)) {
+    for((i=0);Number(i<RC5(C.extcmdlist_length));((i=C.i32((i+1)))-1)) {
         (ec=(C.extcmdlist+Number(i)*C.sizes["struct ext_func_tab"]));
         if(Number((C.u32((R63(ec)&C.u32((C.i32((C.i32((1024|64))|16)))))))!=C.u32(0))) continue;
         (W17(any,C.i32((i+1))));
@@ -1840,12 +1960,12 @@ function handler_rebind_keys_add(keyfirst)
                 if(Number((C.u32((R63(ec)&C.u32(16384))))!=C.u32(0))) {
                     let parambuf=C.stackAlloc((1*256));
                     let querybuf=C.stackAlloc((1*256));
-                    (C.cell((parambuf+Number(0)*1),"char").value=C.i8(0));
+                    (WC0(parambuf+Number(0)*1,C.i8(0)));
                     C.variadic(45,querybuf,C.literal("Command %s requires a parameter:"),R60(ec));
                     C.getlin(querybuf,parambuf);
                     C.mungspaces(parambuf);
                     C.variadic(46,(C.literal("handler_rebind_keys_add")),2376,cmdstr,C.u64(C.i32((256-1))),C.literal("%s(%s)"),R60(ec),parambuf);
-                    (C.cell((cmdstr+Number(C.i32((256-1)))*1),"char").value=C.i8(0));
+                    (WC0(cmdstr+Number(C.i32((256-1)))*1,C.i8(0)));
                 } else {
                     C.strcat(cmdstr,R60(ec));
                 }
@@ -1923,7 +2043,7 @@ function handler_change_autocompletions()
     (win=NWC3(R160(C.windowprocs),4));
     NWC4(R165(C.windowprocs),win,C.u64(0));
     C.copyRecord(any,A37(C.cg),C.sizes["union any"]);
-    for((i=0);Number(i<C.cell(C.extcmdlist_length,"int").value);((i=C.i32((i+1)))-1)) {
+    for((i=0);Number(i<RC5(C.extcmdlist_length));((i=C.i32((i+1)))-1)) {
         (ec=(C.extcmdlist+Number(i)*C.sizes["struct ext_func_tab"]));
         if(Number((C.u32((R63(ec)&C.u32((C.i32((64|16)))))))!=C.u32(0))) continue;
         if(Number(C.strlen(R60(ec))<C.u64(2))) continue;
@@ -1935,7 +2055,7 @@ function handler_change_autocompletions()
     (n=C.select_menu(win,2,picksAddress));
     if(Number(n>=0)) {
         let j;
-        for((i=0);Number(i<C.cell(C.extcmdlist_length,"int").value);((i=C.i32((i+1)))-1)) {
+        for((i=0);Number(i<RC5(C.extcmdlist_length));((i=C.i32((i+1)))-1)) {
             let setit=(C.i8(0));
             (ec=(C.extcmdlist+Number(i)*C.sizes["struct ext_func_tab"]));
             if(Number((C.u32((R63(ec)&C.u32((C.i32((64|16)))))))!=C.u32(0))) continue;
@@ -1978,14 +2098,14 @@ function extcmds_match(findstr,ecmflags,matchlist)
         if(Number(!!(Number(!(ignoreac))&&Number(!((C.u32((R63(C.extcmdlist+Number(i)*C.sizes["struct ext_func_tab"])&C.u32(2))))))))) continue;
         if(Number(!!(C.i32(no1charcmd)&&(Number(C.strlen(R60(C.extcmdlist+Number(i)*C.sizes["struct ext_func_tab"]))==C.u64(1)))))) continue;
         if(Number(!(findstr))) {
-            (C.cell((retmatchlist+Number(((mi=C.i32((mi+1)))-1))*4),"int").value=i);
+            (WC5(retmatchlist+Number(((mi=C.i32((mi+1)))-1))*4,i));
         } else if(exactmatch) {
             if(Number(!(C.strncmpi((findstr),(R60(C.extcmdlist+Number(i)*C.sizes["struct ext_func_tab"])),C.i32((-1)))))) {
-                (C.cell((retmatchlist+Number(((mi=C.i32((mi+1)))-1))*4),"int").value=i);
+                (WC5(retmatchlist+Number(((mi=C.i32((mi+1)))-1))*4,i));
             }
         } else {
             if(Number(!(C.strncmpi(findstr,R60(C.extcmdlist+Number(i)*C.sizes["struct ext_func_tab"]),fslen)))) {
-                (C.cell((retmatchlist+Number(((mi=C.i32((mi+1)))-1))*4),"int").value=i);
+                (WC5(retmatchlist+Number(((mi=C.i32((mi+1)))-1))*4,i));
             }
         }
     }
@@ -2004,23 +2124,23 @@ function key2extcmddesc(key)
     /* need to check for movement commands before checking the extended
        commands table because it contains entries for number_pad commands
        that match !number_pad movement (like 'j' for "jump") */
-    (C.cell((key2cmdbuf+Number(0)*1),"char").value=C.i8(0));
+    (WC0(key2cmdbuf+Number(0)*1,C.i8(0)));
     if(movecmd(C.i8((k=C.i32(key))),C.MV_WALK)) C.strcpy(key2cmdbuf,C.literal("move"));
  else if(movecmd(C.i8((k=C.i32(key))),C.MV_RUSH)) C.strcpy(key2cmdbuf,C.literal("rush"));
  else if(movecmd(C.i8((k=C.i32(key))),C.MV_RUN)) C.strcpy(key2cmdbuf,C.literal("run"));
     /* "move or attack"? */
     if(Number(!!(C.i32(C.digit(C.i8(key)))||(Number(!!(C.i32(R21(A91(C.gc)))&&C.i32(C.digit(C.i8((C.i32((127&C.i32((key)))))))))))))) {
-        (C.cell((key2cmdbuf+Number(0)*1),"char").value=C.i8(0));
+        (WC0(key2cmdbuf+Number(0)*1,C.i8(0)));
         if(Number(!(R21(A91(C.gc))))) C.strcpy(key2cmdbuf,C.literal("start of, or continuation of, a count"));
  else if(Number(!!(Number(C.i32(key)==53)||Number(C.i32(key)==C.i32(M_5))))) C.variadic(53,key2cmdbuf,C.literal("%s prefix"),((C.i32((Number(!(Number(!(R22(A91(C.gc))))))^(Number(C.i32(key)==C.i32(M_5))))))?C.literal("run"):C.literal("rush")));
  else if(Number(!!(Number(C.i32(key)==48)||(Number(!!(C.i32(R22(A91(C.gc)))&&Number(C.i32(key)==C.i32(M_0)))))))) C.strcpy(key2cmdbuf,C.literal("synonym for 'i'"));
-        if(C.cell(key2cmdbuf,"char").value) return key2cmdbuf;
+        if(RC0(key2cmdbuf)) return key2cmdbuf;
     }
     /* check prefixes before regular commands; includes ^A pseudo-command */
     for((i=0);R32(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]);(i=C.i32((i+1)))) {
         if(Number(!!(C.i32(R33(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]))&&Number(!(R85(C.iflags)))))) continue;
         (j=R31(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]));
-        if(Number(C.i32(key)==C.i32(C.u8(C.cell((A29(A91(C.gc))+Number(j)*1),"char").value)))) return R32(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]);
+        if(Number(C.i32(key)==C.i32(C.u8(RC0(A29(A91(C.gc))+Number(j)*1))))) return R32(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]);
     }
     /* finally, check whether 'key' is a command */
     if(Number(!!(Number(!!(Number(((cmdbind=cmdbind_get(key)))!=0)&&R3(cmdbind)))&&Number(((txt=R60(R3(cmdbind))))!=0)))) {
@@ -2080,8 +2200,8 @@ function bind_key(key,command,user)
     C.strncpy(buf,command,C.u64(len));
     /* does buf have a parameter in parenthesis? */
     if(Number(!!(Number(!!(Number(((p=C.strchr(buf,40)))!=0)&&Number(((lastp=C.strrchr(buf,41)))!=0)))&&(Number(lastp>p))))) {
-        (C.cell(p,"char").value=C.i8(0));
-        (C.cell(lastp,"char").value=C.i8(0));
+        (WC0(p,C.i8(0)));
+        (WC0(lastp,C.i8(0)));
         /* p points to the parameter */
         ((p=C.ptr((p+Number(1))))-Number(1));
     }
@@ -2100,7 +2220,7 @@ function bind_key(key,command,user)
                 } else {
                     (W2(bind,C.alloc(C.u32(maxlen))));
                     C.strncpy(R2(bind),p,C.u64(maxlen));
-                    (C.cell((R2(bind)+Number(C.i32((maxlen-1)))*1),"char").value=C.i8(0));
+                    (WC0(R2(bind)+Number(C.i32((maxlen-1)))*1,C.i8(0)));
                 }
             }
         } else if(Number(!!(p&&Number(C.strlen(p)>C.u64(0))))) C.variadic(58,C.literal("'%s' does not take a parameter"),buf);
@@ -2159,7 +2279,7 @@ function keylist_func_has_key(extcmd,skip_keys_used)
     let i;
     let bind;
     for((i=0);Number(i<256);(i=C.i32((i+1)))) {
-        if(C.cell((skip_keys_used+Number(i)*1),"signed char").value) continue;
+        if(RC1(skip_keys_used+Number(i)*1)) continue;
         if(Number(!!((Number(((bind=cmdbind_get(C.u8(i))))!=0))&&(Number(R3(bind)==extcmd))))) return (C.i8(1));
     }
     return (C.i8(0));
@@ -2183,8 +2303,8 @@ function keylist_putcmds(datawin,docount,incl_flags,excl_flags,keys_used)
     let bind;
     for((i=0);Number(i<256);((i=C.i32((i+1)))-1)) {
         let key=C.u8(i);
-        (C.cell((keys_already_used+Number(i)*1),"signed char").value=C.cell((keys_used+Number(i)*1),"signed char").value);
-        if(C.cell((keys_used+Number(i)*1),"signed char").value) continue;
+        (WC1(keys_already_used+Number(i)*1,RC1(keys_used+Number(i)*1)));
+        if(RC1(keys_used+Number(i)*1)) continue;
         if(Number(!!(Number(C.i32(key)==32)&&Number(!(R68(C.flags)))))) continue;
         (bind=cmdbind_get(key));
         if(Number(!!(bind&&Number(R3(bind)!=0)))) {
@@ -2196,7 +2316,7 @@ function keylist_putcmds(datawin,docount,incl_flags,excl_flags,keys_used)
             if(Number((C.u32((R63(R3(bind))&C.u32(16384))))!=C.u32(0))) C.variadic(59,buf,C.literal("%-7s %-13s %s \"%s\""),key2txt(key,buf2),R60(R3(bind)),R61(R3(bind)),R2(bind));
  else C.variadic(60,buf,C.literal("%-7s %-13s %s"),key2txt(key,buf2),R60(R3(bind)),R61(R3(bind)));
             NWC8(R164(C.windowprocs),datawin,0,buf);
-            (C.cell((keys_used+Number(i)*1),"signed char").value=(C.i8(1)));
+            (WC1(keys_used+Number(i)*1,C.i8(1)));
         }
     }
     /* also list commands that lack key assignments; most are wizard mode */
@@ -2238,17 +2358,17 @@ function dokeylist()
        when enabled, treat it like a movement command since assigning
        other commands to this keystroke would be unwise... */
     (key=C.u8((C.i32((31&(99))))));
-    (C.cell((keys_used+Number(key)*1),"signed char").value=(C.i8(1)));
+    (WC1(keys_used+Number(key)*1,C.i8(1)));
     /* movement keys have been flagged in keys_used[]; clone them */
     C.memcpy(mov_seen,keys_used,BigInt((1*256)));
     (spkey_gap=(C.i8(0)));
     for((i=0);R32(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]);(i=C.i32((i+1)))) {
         if(Number(!!(C.i32(R33(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]))&&Number(!(R85(C.iflags)))))) continue;
         (j=R31(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]));
-        (key=C.u8(C.cell((A29(A91(C.gc))+Number(j)*1),"char").value));
-        if(Number(!!(Number(!!(C.i32(key)&&Number(!(C.cell((mov_seen+Number(key)*1),"signed char").value))))&&Number(!(C.cell((pfx_seen+Number(key)*4),"int").value))))) {
-            (C.cell((keys_used+Number(key)*1),"signed char").value=(C.i8(1)));
-            (C.cell((pfx_seen+Number(key)*4),"int").value=j);
+        (key=C.u8(RC0(A29(A91(C.gc))+Number(j)*1)));
+        if(Number(!!(Number(!!(C.i32(key)&&Number(!(RC1(mov_seen+Number(key)*1)))))&&Number(!(RC5(pfx_seen+Number(key)*4)))))) {
+            (WC1(keys_used+Number(key)*1,C.i8(1)));
+            (WC5(pfx_seen+Number(key)*4,j));
         } else (spkey_gap=(C.i8(1)));
     }
     (datawin=NWC3(R160(C.windowprocs),5));
@@ -2288,8 +2408,8 @@ function dokeylist()
     for((i=0);R32(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]);(i=C.i32((i+1)))) {
         if(Number(!!(C.i32(R33(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]))&&Number(!(R85(C.iflags)))))) continue;
         (j=R31(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]));
-        (key=C.u8(C.cell((A29(A91(C.gc))+Number(j)*1),"char").value));
-        if(Number(!!(Number(!!(C.i32(key)&&Number(!(C.cell((mov_seen+Number(key)*1),"signed char").value))))&&(Number(C.cell((pfx_seen+Number(key)*4),"int").value==j))))) {
+        (key=C.u8(RC0(A29(A91(C.gc))+Number(j)*1)));
+        if(Number(!!(Number(!!(C.i32(key)&&Number(!(RC1(mov_seen+Number(key)*1)))))&&(Number(RC5(pfx_seen+Number(key)*4)==j))))) {
             C.variadic(66,buf,C.literal("%-7s %s"),key2txt(key,buf2),R32(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]));
             NWC8(R164(C.windowprocs),datawin,0,buf);
         }
@@ -2306,8 +2426,8 @@ function dokeylist()
         for((i=0);R32(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]);(i=C.i32((i+1)))) {
             if(Number(!!(C.i32(R33(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]))&&Number(!(R85(C.iflags)))))) continue;
             (j=R31(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]));
-            (key=C.u8(C.cell((A29(A91(C.gc))+Number(j)*1),"char").value));
-            if(Number(!!(Number(!(key))||(Number(C.cell((pfx_seen+Number(key)*4),"int").value!=j))))) {
+            (key=C.u8(RC0(A29(A91(C.gc))+Number(j)*1)));
+            if(Number(!!(Number(!(key))||(Number(RC5(pfx_seen+Number(key)*4)!=j))))) {
                 C.variadic(68,buf2,C.literal("[%s]"),spkey_name(j));
                 /* lines up with the other unassigned commands which use
                    "#%-20s ", but not with the other special keys */
@@ -2392,7 +2512,7 @@ function cmd_from_ecname(ecname)
         return cmdnamebuf;
     }
 
-    (C.cell((cmdnamebuf+Number(0)*1),"char").value=C.i8(0));
+    (WC0(cmdnamebuf+Number(0)*1,C.i8(0)));
     return cmdnamebuf;
 }
 
@@ -2425,7 +2545,7 @@ function cmdname_from_func(fn,outbuf,fullname)
     if(Number(!(res))) {
         /* make sure output buffer doesn't contain junk or stale data;
            return Null below */
-        (C.cell((outbuf+Number(0)*1),"char").value=C.i8(0));
+        (WC0(outbuf+Number(0)*1,C.i8(0)));
     } else if(fullname) {
         /* easy; the entire command name */
         (res=C.strcpy(outbuf,res));
@@ -2467,7 +2587,7 @@ function bind_specialkey(key,command)
     let i;
     for((i=0);Number(i<C.i32((C.u64((BigInt((C.sizes["cmd_spkey_bind"]*29))/BigInt(C.sizes["cmd_spkey_bind"]))))));((i=C.i32((i+1)))-1)) {
         if(Number(!!(Number(!(R36(C.spkeys_binds+Number(i)*C.sizes["cmd_spkey_bind"])))||C.strcmp(command,R36(C.spkeys_binds+Number(i)*C.sizes["cmd_spkey_bind"]))))) continue;
-        (C.cell((A29(A91(C.gc))+Number(R34(C.spkeys_binds+Number(i)*C.sizes["cmd_spkey_bind"]))*1),"char").value=C.i8(key));
+        (WC0(A29(A91(C.gc))+Number(R34(C.spkeys_binds+Number(i)*C.sizes["cmd_spkey_bind"]))*1,C.i8(key)));
         return (C.i8(1));
     }
     return (C.i8(0));
@@ -2513,14 +2633,14 @@ function parseautocomplete(autocomplete,condition)
     let autoc;
     /* break off first autocomplete from the rest; parse the rest */
     if(Number(!!(Number(((autoc=C.strchr(autocomplete,44)))!=0)||Number(((autoc=C.strchr(autocomplete,58)))!=0)))) {
-        (C.cell(((autoc=C.ptr((autoc+Number(1))))-Number(1)),"char").value=C.i8(0));
+        (WC0((autoc=C.ptr((autoc+Number(1))))-Number(1),C.i8(0)));
         parseautocomplete(autoc,condition);
     }
     /* strip leading and trailing white space */
     (autocomplete=C.trimspaces(autocomplete));
-    if(Number(!(C.cell(autocomplete,"char").value))) return;
+    if(Number(!(RC0(autocomplete)))) return;
     /* take off negation */
-    if(Number(C.i32(C.cell(autocomplete,"char").value)==33)) {
+    if(Number(C.i32(RC0(autocomplete))==33)) {
         /* unlike most options, a leading "no" might actually be a part of
          * the extended command.  Thus you have to use ! */
         ((autocomplete=C.ptr((autocomplete+Number(1))))-Number(1));
@@ -2602,14 +2722,14 @@ function reset_commands(initial)
         (updated=1);
         (W21(A91(C.gc),C.i8(0)));
         (W22(A91(C.gc),W23(A91(C.gc),W24(A91(C.gc),C.i8(0)))));
-        for((i=0);Number(i<C.i32((C.u64((BigInt((C.sizes["cmd_spkey_bind"]*29))/BigInt(C.sizes["cmd_spkey_bind"]))))));((i=C.i32((i+1)))-1)) (C.cell((A29(A91(C.gc))+Number(R34(C.spkeys_binds+Number(i)*C.sizes["cmd_spkey_bind"]))*1),"char").value=C.i8(R35(C.spkeys_binds+Number(i)*C.sizes["cmd_spkey_bind"])));
+        for((i=0);Number(i<C.i32((C.u64((BigInt((C.sizes["cmd_spkey_bind"]*29))/BigInt(C.sizes["cmd_spkey_bind"]))))));((i=C.i32((i+1)))-1)) (WC0(A29(A91(C.gc))+Number(R34(C.spkeys_binds+Number(i)*C.sizes["cmd_spkey_bind"]))*1,C.i8(R35(C.spkeys_binds+Number(i)*C.sizes["cmd_spkey_bind"]))));
 
         commands_init();
     } else {
-        if(C.cell(backed_dir_cmd,"signed char").value) {
+        if(RC1(backed_dir_cmd)) {
             for((dir=0);Number(dir<(C.i32((C.N_DIRS_Z-2))));((dir=C.i32((dir+1)))-1)) {
                 for((mode=0);Number(mode<C.N_MOVEMODES);((mode=C.i32((mode+1)))-1)) {
-                    cmdbind_add(C.cell(((back_dir_key+Number(dir)*(1*3))+Number(mode)*1),"unsigned char").value,C.cell(((back_dir_cmd+Number(dir)*(8*3))+Number(mode)*8),"struct ext_func_tab *").value,(C.i8(0)));
+                    cmdbind_add(RC2((back_dir_key+Number(dir)*(1*3))+Number(mode)*1),C.cell(((back_dir_cmd+Number(dir)*(8*3))+Number(mode)*8),"struct ext_func_tab *").value,(C.i8(0)));
                 }
             }
         }
@@ -2629,7 +2749,7 @@ function reset_commands(initial)
                Cmd.swap_yz has been toggled;
                perform the swap (or reverse previous one) */
             for((i=0);Number(i<C.i32((C.u64((BigInt((4*6))/BigInt(4))))));((i=C.i32((i+1)))-1)) {
-                (c=C.i32((C.cell((ylist+Number(i)*4),"int").value&255)));
+                (c=C.i32((RC5(ylist+Number(i)*4)&255)));
                 cmdbind_swapkeys(C.u8(c),C.u8(C.i32((c+1))));
             }
         }
@@ -2668,7 +2788,7 @@ function reset_commands(initial)
     /* back up the commands & keys overwritten by new movement keys */
     for((dir=0);Number(dir<(C.i32((C.N_DIRS_Z-2))));((dir=C.i32((dir+1)))-1)) {
         for((mode=C.MV_WALK);Number(mode<C.N_MOVEMODES);((mode=C.i32((mode+1)))-1)) {
-            let di=C.u8(C.cell((R25(A91(C.gc))+Number(dir)*1),"char").value);
+            let di=C.u8(RC0(R25(A91(C.gc))+Number(dir)*1));
             let bind;
             if(Number(!(R21(A91(C.gc))))) {
                 if(Number(mode==C.MV_RUN)) (di=C.u8(C.highc(C.i8(di))));
@@ -2677,22 +2797,22 @@ function reset_commands(initial)
                 if(Number(mode==C.MV_RUN)) (di=C.u8((C.i32((C.i32((di))-128)))));
  else if(Number(mode==C.MV_RUSH)) (di=C.u8((C.i32((C.i32((di))-128)))));
             }
-            (C.cell(((back_dir_key+Number(dir)*(1*3))+Number(mode)*1),"unsigned char").value=di);
+            (WC2((back_dir_key+Number(dir)*(1*3))+Number(mode)*1,di));
             if(Number(((bind=cmdbind_get(di)))!=0)) (C.cell(((back_dir_cmd+Number(dir)*(8*3))+Number(mode)*8),"struct ext_func_tab *").value=R3(bind));
  else (C.cell(((back_dir_cmd+Number(dir)*(8*3))+Number(mode)*8),"struct ext_func_tab *").value=0);
             cmdbind_remove(di);
         }
     }
-    (C.cell(backed_dir_cmd,"signed char").value=(C.i8(1)));
+    (WC1(backed_dir_cmd,C.i8(1)));
     /* bind the new keys to movement commands */
     for((i=0);Number(i<(C.i32((C.N_DIRS_Z-2))));((i=C.i32((i+1)))-1)) {
-        bind_key_fn(C.u8(C.cell((R25(A91(C.gc))+Number(i)*1),"char").value),C.cell(((C.move_funcs+Number(i)*(8*3))+Number(C.MV_WALK)*8),"int (*)(void)").value);
+        bind_key_fn(C.u8(RC0(R25(A91(C.gc))+Number(i)*1)),C.cell(((C.move_funcs+Number(i)*(8*3))+Number(C.MV_WALK)*8),"int (*)(void)").value);
         if(Number(!(R21(A91(C.gc))))) {
-            bind_key_fn(C.u8(C.highc(C.cell((R25(A91(C.gc))+Number(i)*1),"char").value)),C.cell(((C.move_funcs+Number(i)*(8*3))+Number(C.MV_RUN)*8),"int (*)(void)").value);
-            bind_key_fn(C.u8((C.i32((31&C.i32((C.cell((R25(A91(C.gc))+Number(i)*1),"char").value)))))),C.cell(((C.move_funcs+Number(i)*(8*3))+Number(C.MV_RUSH)*8),"int (*)(void)").value);
+            bind_key_fn(C.u8(C.highc(RC0(R25(A91(C.gc))+Number(i)*1))),C.cell(((C.move_funcs+Number(i)*(8*3))+Number(C.MV_RUN)*8),"int (*)(void)").value);
+            bind_key_fn(C.u8((C.i32((31&C.i32((RC0(R25(A91(C.gc))+Number(i)*1))))))),C.cell(((C.move_funcs+Number(i)*(8*3))+Number(C.MV_RUSH)*8),"int (*)(void)").value);
         } else {
             /* M(number) works when altmeta is on */
-            bind_key_fn(C.u8((C.i32((C.i32((C.cell((R25(A91(C.gc))+Number(i)*1),"char").value))-128)))),C.cell(((C.move_funcs+Number(i)*(8*3))+Number(C.MV_RUN)*8),"int (*)(void)").value);
+            bind_key_fn(C.u8((C.i32((C.i32((RC0(R25(A91(C.gc))+Number(i)*1)))-128)))),C.cell(((C.move_funcs+Number(i)*(8*3))+Number(C.MV_RUN)*8),"int (*)(void)").value);
             /* can't bind highc() or C() of digits. just use the 5 prefix. */
         }
     }
@@ -2737,7 +2857,7 @@ function randomkey()
     const last_c=C.staticData("randomkey","last_c",()=>C.i8(0));
     let c;
     /* give ^A and ^P a high probability of being repeated */
-    if(Number(!!(Number(!!((Number(!!(Number(C.i32(C.cell(last_c,"char").value)==(C.i32((31&(97)))))||Number(C.i32(C.cell(last_c,"char").value)==(C.i32((31&(112))))))))&&Number(R148(C.program_state)==C.commandInp)))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3525,"randomkey"),C.rn2(5))):C.rn2(5)))))) return C.cell(last_c,"char").value;
+    if(Number(!!(Number(!!((Number(!!(Number(C.i32(RC0(last_c))==(C.i32((31&(97)))))||Number(C.i32(RC0(last_c))==(C.i32((31&(112))))))))&&Number(R148(C.program_state)==C.commandInp)))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3525,"randomkey"),C.rn2(5))):C.rn2(5)))))) return RC0(last_c);
     switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3528,"randomkey"),C.rn2(16))):C.rn2(16)))) {
         default:
             (c=C.i8(27));
@@ -2761,7 +2881,7 @@ function randomkey()
             (c=C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3548,"randomkey"),C.rn2(C.i32((C.i32((90-65))+1))))):C.rn2(C.i32((C.i32((90-65))+1)))))+(65))))));
         break;
         case (8):
-            (c=C.i8(R59(C.extcmdlist+Number(C.u32((((C.cell(i,"unsigned int").value=C.u32((C.cell(i,"unsigned int").value+1)))-1)%C.u32(C.i32((C.u64((BigInt((C.sizes["struct ext_func_tab"]*171))/BigInt(C.sizes["struct ext_func_tab"])))))))))*C.sizes["struct ext_func_tab"])));
+            (c=C.i8(R59(C.extcmdlist+Number(C.u32((((WC6(i,C.u32((RC6(i)+1))))-1)%C.u32(C.i32((C.u64((BigInt((C.sizes["struct ext_func_tab"]*171))/BigInt(C.sizes["struct ext_func_tab"])))))))))*C.sizes["struct ext_func_tab"])));
         break;
         case (9):
             (c=C.i8(35));
@@ -2782,7 +2902,7 @@ function randomkey()
             (c=C.i8(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3571,"randomkey"),C.rnd((C.i32(R89(C.iflags))?255:127)))):C.rnd((C.i32(R89(C.iflags))?255:127))))));
         break;
     }
-    if(Number(R148(C.program_state)==C.commandInp)) (C.cell(last_c,"char").value=c);
+    if(Number(R148(C.program_state)==C.commandInp)) (WC0(last_c,c));
     return c;
 }
 
@@ -2798,14 +2918,14 @@ function random_response(buf,sz)
             (count=0);
             break;
         }
-        if(Number(count<C.i32((sz-1)))) (C.cell((buf+Number(((count=C.i32((count+1)))-1))*1),"char").value=c);
+        if(Number(count<C.i32((sz-1)))) (WC0(buf+Number(((count=C.i32((count+1)))-1))*1,c));
     }
-    (C.cell((buf+Number(count)*1),"char").value=C.i8(0));
+    (WC0(buf+Number(count)*1,C.i8(0)));
 }
 
 function rnd_extcmd_idx()
 {
-    return C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3603,"rnd_extcmd_idx"),C.rn2(C.i32((C.cell(C.extcmdlist_length,"int").value+1))))):C.rn2(C.i32((C.cell(C.extcmdlist_length,"int").value+1)))))-1));
+    return C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3603,"rnd_extcmd_idx"),C.rn2(C.i32((RC5(C.extcmdlist_length)+1))))):C.rn2(C.i32((RC5(C.extcmdlist_length)+1)))))-1));
 }
 
 function reset_cmd_vars(reset_cmdq)
@@ -2834,7 +2954,7 @@ function rhack(key)
     const stackFrame=C.stackSave();
     try {
     let bad_command; let firsttime=C.i8((Number(key==0)));
-    let cq=C.stackAlloc(C.sizes["struct _cmd_queue"]); let cmdq=0;
+    let cmdq;
     let cmdq_ec=0; let prefix_seen=0;
     let was_m_prefix=(C.i8(0));
     let func=C.functionPointer("dummyfunction");
@@ -2844,23 +2964,26 @@ function rhack(key)
         let cmdqJoin=false;
         do_cmdq_extcmd: {
             if(R144(C.program_state)) end_of_input();
-            if(Number(((cmdq=cmdq_pop()))!=0)) {
+            if ((cmdq = takeCommand())) {
                 /* doing queued commands */
-                C.copyRecord(cq,cmdq,C.sizes["struct _cmd_queue"]);
-                C.free(cmdq);
-                if(Number(!!(Number(R6(cq)==C.CMDQ_EXTCMD)&&Number(((cmdq_ec=R12(cq)))!=0)))) { cmdqJoin=true; break do_cmdq_extcmd; }
+                const type = commandField(cmdq, "typ");
+                const queuedKey = type === C.CMDQ_KEY ? commandField(cmdq, "key") : 0;
+                if (type === C.CMDQ_EXTCMD)
+                    cmdq_ec = commandField(cmdq, "ec_entry");
+                releaseCommand(cmdq);
+                if (type === C.CMDQ_EXTCMD && cmdq_ec) { cmdqJoin=true; break do_cmdq_extcmd; }
                 /* already handled a queued command (goto do_cmdq_extcmd);
            if something other than a key is queued, we'll drop down
            to the !*cmd handling which clears out the command-queue */
-                (key=((Number(R6(cq)==C.CMDQ_KEY))?C.i32(R7(cq)):0));
+                key = C.i32(queuedKey);
             } else if(firsttime) {
                 (key=parse());
                 /* parse() pushed a cmd but didn't return any key */
                 if(Number(!!(Number(!(key))&&cmdq_peek(C.CQ_CANNED)))) continue got_prefix_input;
             }
             /* if there's no command, there's nothing to do except reset */
-            if(Number(!!(Number(!!(Number(!(key))||Number(key==C.i32(C.i8(255)))))||Number(key==C.i32(C.cell((A29(A91(C.gc))+Number(C.NHKF_ESC)*1),"char").value))))) {
-                if(Number(key==C.i32(C.cell((A29(A91(C.gc))+Number(C.NHKF_ESC)*1),"char").value))) (W81(C.iflags,R80(C.iflags)));
+            if(Number(!!(Number(!!(Number(!(key))||Number(key==C.i32(C.i8(255)))))||Number(key==C.i32(RC0(A29(A91(C.gc))+Number(C.NHKF_ESC)*1)))))) {
+                if(Number(key==C.i32(RC0(A29(A91(C.gc))+Number(C.NHKF_ESC)*1)))) (W81(C.iflags,R80(C.iflags)));
  else NWC11(R171(C.windowprocs));
                 /* don't perform next sanity check if player typed ESC for
                the current command, similar to handling for CMD_INSANE
@@ -3018,7 +3141,7 @@ function xytodir(x,y)
     x=C.i32(x);
     y=C.i32(y);
     let dd;
-    for((dd=0);Number(dd<(C.i32((C.N_DIRS_Z-2))));((dd=C.i32((dd+1)))-1)) if(Number(!!(Number(x==C.i32(C.cell((C.xdir+Number(dd)*1),"signed char").value))&&Number(y==C.i32(C.cell((C.ydir+Number(dd)*1),"signed char").value))))) return dd;
+    for((dd=0);Number(dd<(C.i32((C.N_DIRS_Z-2))));((dd=C.i32((dd+1)))-1)) if(Number(!!(Number(x==C.i32(RC1(C.xdir+Number(dd)*1)))&&Number(y==C.i32(RC1(C.ydir+Number(dd)*1)))))) return dd;
 
     return C.DIR_ERR;
 }
@@ -3028,8 +3151,8 @@ function dirtocoord(cc,dd)
 {
     dd=C.i32(dd);
     if(Number(!!(Number(dd>C.DIR_ERR)&&Number(dd<C.N_DIRS_Z)))) {
-        (W126(cc,C.i16(C.cell((C.xdir+Number(dd)*1),"signed char").value)));
-        (W127(cc,C.i16(C.cell((C.ydir+Number(dd)*1),"signed char").value)));
+        (W126(cc,C.i16(RC1(C.xdir+Number(dd)*1))));
+        (W127(cc,C.i16(RC1(C.ydir+Number(dd)*1))));
     }
 }
 
@@ -3051,9 +3174,9 @@ function movecmd(sym,mode)
         }
     }
     if(Number(d!=C.DIR_ERR)) {
-        (W179(C.u,C.i32(C.cell((C.xdir+Number(d)*1),"signed char").value)));
-        (W180(C.u,C.i32(C.cell((C.ydir+Number(d)*1),"signed char").value)));
-        (W181(C.u,C.i32(C.cell((C.zdir+Number(d)*1),"signed char").value)));
+        (W179(C.u,C.i32(RC1(C.xdir+Number(d)*1))));
+        (W180(C.u,C.i32(RC1(C.ydir+Number(d)*1))));
+        (W181(C.u,C.i32(RC1(C.zdir+Number(d)*1))));
         return Number(!(R181(C.u)));
     }
     (W181(C.u,0));
@@ -3115,34 +3238,34 @@ function getdir(s)
     try {
     let dirsym;
     let is_mov;
-    let cmdq=cmdq_pop();
+    let cmdq=takeCommand();
     let queuedDirJoin=false;
     got_dirsym: {
         if(cmdq) {
-            if(Number(R6(cmdq)==C.CMDQ_DIR)) {
-                if(Number(!(R10(cmdq)))) {
-                    (dirsym=C.cell((R25(A91(C.gc))+Number(xytodir(C.i32(R8(cmdq)),C.i32(R9(cmdq))))*1),"char").value);
+            if(Number(commandField(cmdq, "typ")==C.CMDQ_DIR)) {
+                if(Number(!(commandField(cmdq, "dirz")))) {
+                    (dirsym=RC0(R25(A91(C.gc))+Number(xytodir(C.i32(commandField(cmdq, "dirx")),C.i32(commandField(cmdq, "diry"))))*1));
                 } else {
-                    (dirsym=C.cell((R25(A91(C.gc))+Number(((Number(C.i32(R10(cmdq))>0))?C.DIR_DOWN:C.DIR_UP))*1),"char").value);
+                    (dirsym=RC0(R25(A91(C.gc))+Number(((Number(C.i32(commandField(cmdq, "dirz"))>0))?C.DIR_DOWN:C.DIR_UP))*1));
                 }
-            } else if(Number(R6(cmdq)==C.CMDQ_KEY)) {
-                (dirsym=R7(cmdq));
+            } else if(Number(commandField(cmdq, "typ")==C.CMDQ_KEY)) {
+                (dirsym=commandField(cmdq, "key"));
             } else {
                 cmdq_clear(C.CQ_CANNED);
                 (dirsym=C.i8(0));
                 C.variadic(85,C.literal("getdir: command queue had no dir?"));
             }
-            C.free(cmdq);
+            releaseCommand(cmdq);
             { queuedDirJoin=true; break got_dirsym; }
         }
     }
     retry: for(;;) {
         if(!queuedDirJoin) {
             (W148(C.program_state,C.getdirInp));
-            if(Number(!!(R98(C.gi)||C.i32(C.cell(C.cell(C.readchar_queue,"char *").value,"char").value)))) {
+            if(Number(!!(R98(C.gi)||C.i32(RC0(C.cell(C.readchar_queue,"char *").value))))) {
                 (dirsym=readchar());
             } else {
-                (dirsym=yn_function(((Number(!!(s&&Number(C.i32(C.cell(s,"char").value)!=94))))?s:C.literal("In what direction?")),0,C.i8(0),(C.i8(0))));
+                (dirsym=yn_function(((Number(!!(s&&Number(C.i32(RC0(s))!=94))))?s:C.literal("In what direction?")),0,C.i8(0),(C.i8(0))));
                 /* for the fuzzer, usually force the result to be a valid direction,
            but sometimes let it exercise the invalid direction code; we
            don't try to enforce no-diagonal for hero in grid bug form since
@@ -3151,13 +3274,13 @@ function getdir(s)
                 if(Number(!!(C.i32(R73(C.iflags))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3996,"getdir"),C.rn2(20))):C.rn2(20)))))) {
                     switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3997,"getdir"),C.rn2(20))):C.rn2(20)))) {
                         case (0):
-                            (dirsym=C.cell((A29(A91(C.gc))+Number((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3999,"getdir"),C.rn2(2))):C.rn2(2)))?C.NHKF_GETDIR_SELF:C.NHKF_ESC))*1),"char").value);
+                            (dirsym=RC0(A29(A91(C.gc))+Number((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3999,"getdir"),C.rn2(2))):C.rn2(2)))?C.NHKF_GETDIR_SELF:C.NHKF_ESC))*1));
                         break;
                         case (1):
-                            (dirsym=C.cell((R25(A91(C.gc))+Number((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",4002,"getdir"),C.rn2(2))):C.rn2(2)))?C.DIR_DOWN:C.DIR_UP))*1),"char").value);
+                            (dirsym=RC0(R25(A91(C.gc))+Number((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",4002,"getdir"),C.rn2(2))):C.rn2(2)))?C.DIR_DOWN:C.DIR_UP))*1));
                         break;
                         default:
-                            (dirsym=C.cell((R25(A91(C.gc))+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",4005,"getdir"),C.rn2((C.i32((C.N_DIRS_Z-2)))))):C.rn2((C.i32((C.N_DIRS_Z-2)))))))*1),"char").value);
+                            (dirsym=RC0(R25(A91(C.gc))+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",4005,"getdir"),C.rn2((C.i32((C.N_DIRS_Z-2)))))):C.rn2((C.i32((C.N_DIRS_Z-2)))))))*1));
                         break;
                     }
                 }
@@ -3173,9 +3296,9 @@ function getdir(s)
             if(Number(!(R98(C.gi)))) cmdq_add_key(C.CQ_REPEAT,dirsym);
         }
         queuedDirJoin=false;
-        if(Number(!!(Number(C.i32(dirsym)==C.i32(C.cell((A29(A91(C.gc))+Number(C.NHKF_GETDIR_SELF)*1),"char").value))||Number(C.i32(dirsym)==C.i32(C.cell((A29(A91(C.gc))+Number(C.NHKF_GETDIR_SELF2)*1),"char").value))))) {
+        if(Number(!!(Number(C.i32(dirsym)==C.i32(RC0(A29(A91(C.gc))+Number(C.NHKF_GETDIR_SELF)*1)))||Number(C.i32(dirsym)==C.i32(RC0(A29(A91(C.gc))+Number(C.NHKF_GETDIR_SELF2)*1)))))) {
             (W179(C.u,W180(C.u,W181(C.u,0))));
-        } else if(Number(C.i32(dirsym)==C.i32(C.cell((A29(A91(C.gc))+Number(C.NHKF_GETDIR_MOUSE)*1),"char").value))) {
+        } else if(Number(C.i32(dirsym)==C.i32(RC0(A29(A91(C.gc))+Number(C.NHKF_GETDIR_MOUSE)*1)))) {
             let qbuf=C.stackAlloc((1*128));
             let cc=C.stackAlloc(C.sizes["struct nhcoord"]);
             let pos; let mod;
@@ -3197,7 +3320,7 @@ function getdir(s)
          * locations relative to each other so ruin the memory aid of
          * "," being left of ".".)
          */
-            C.variadic(86,qbuf,C.literal("desired location, then type '%s' for left click, '%s' for right"),C.visctrl(C.cell((A29(A91(C.gc))+Number(C.NHKF_GETPOS_PICK_Q)*1),"char").value),C.visctrl(C.cell((A29(A91(C.gc))+Number(C.NHKF_GETPOS_PICK)*1),"char").value));
+            C.variadic(86,qbuf,C.literal("desired location, then type '%s' for left click, '%s' for right"),C.visctrl(RC0(A29(A91(C.gc))+Number(C.NHKF_GETPOS_PICK_Q)*1)),C.visctrl(RC0(A29(A91(C.gc))+Number(C.NHKF_GETPOS_PICK)*1)));
             /* visctrl() cycles through several static buffers for its
                    return value so using two in the same expression is ok */
             /* ',' */
@@ -3251,9 +3374,9 @@ function getdir(s)
         } else if(Number(!!(Number(!(((is_mov=movecmd(dirsym,C.MV_ANY)))))&&Number(!(R181(C.u)))))) {
             let did_help=(C.i8(0)); let help_requested;
             if(Number(!(C.strchr(C.quitchars,C.i32(dirsym))))) {
-                (help_requested=C.i8((Number(C.i32(dirsym)==C.i32(C.cell((A29(A91(C.gc))+Number(C.NHKF_GETDIR_HELP)*1),"char").value)))));
+                (help_requested=C.i8((Number(C.i32(dirsym)==C.i32(RC0(A29(A91(C.gc))+Number(C.NHKF_GETDIR_HELP)*1))))));
                 if(Number(!!(C.i32(help_requested)||C.i32(R88(C.iflags))))) {
-                    (did_help=help_dir(C.i8(((Number(!!(s&&Number(C.i32(C.cell(s,"char").value)==94))))?C.i32(dirsym):0)),C.u8(C.cell((A29(A91(C.gc))+Number(C.NHKF_ESC)*1),"char").value),(C.i32(help_requested)?0:C.literal("Invalid direction key!"))));
+                    (did_help=help_dir(C.i8(((Number(!!(s&&Number(C.i32(RC0(s))==94))))?C.i32(dirsym):0)),C.u8(RC0(A29(A91(C.gc))+Number(C.NHKF_ESC)*1)),(C.i32(help_requested)?0:C.literal("Invalid direction key!"))));
                     if(help_requested) continue retry;
                 }
                 if(Number(!(did_help))) C.variadic(88,C.literal("What a strange direction!"));
@@ -3323,7 +3446,7 @@ function help_dir(sym,spkey,msg)
     /*, viawindow */
     /* NHKF_ESC indicates that player asked for help at getdir prompt */
     /* viawindow = (spkey == gc.Cmd.spkeys[NHKF_ESC] || iflags.cmdassist); */
-    (prefixhandling=C.i8((Number(C.i32(spkey)!=C.i32(C.cell((A29(A91(C.gc))+Number(C.NHKF_ESC)*1),"char").value)))));
+    (prefixhandling=C.i8((Number(C.i32(spkey)!=C.i32(RC0(A29(A91(C.gc))+Number(C.NHKF_ESC)*1))))));
     /*
      * Handling for prefix keys that don't want special directions.
      * Delivered via pline if 'cmdassist' is off, or instead of the
@@ -3332,7 +3455,7 @@ function help_dir(sym,spkey,msg)
     (dothat=C.literal("do that"));
     /* how = " at"; */
     /* for "<action> at yourself"; not used for up/down */
-    (C.cell((buf+Number(0)*1),"char").value=C.i8(0));
+    (WC0(buf+Number(0)*1,C.i8(0)));
     /* Since prefix keys got 'promoted' to commands, feedback for
          * invalid prefix is done in rhack() these days.
          */
@@ -3347,7 +3470,7 @@ function help_dir(sym,spkey,msg)
     ((prefixhandling));
     (win=NWC3(R160(C.windowprocs),5));
     if(Number(!(win))) return (C.i8(0));
-    if(C.cell(buf,"char").value) {
+    if(RC0(buf)) {
         /* show bad-prefix message instead of general invalid-direction one */
         NWC8(R164(C.windowprocs),win,0,buf);
         NWC8(R164(C.windowprocs),win,0,C.literal(""));
@@ -3387,7 +3510,7 @@ function help_dir(sym,spkey,msg)
         NWC8(R164(C.windowprocs),win,0,C.literal("          >  down"));
         if(Number(!(prefixhandling))) {
             let selfi=(C.i32(R21(A91(C.gc)))?C.NHKF_GETDIR_SELF2:C.NHKF_GETDIR_SELF);
-            C.variadic(100,buf,C.literal("       %4s  direct at yourself"),C.visctrl(C.cell((A29(A91(C.gc))+Number(selfi)*1),"char").value));
+            C.variadic(100,buf,C.literal("       %4s  direct at yourself"),C.visctrl(RC0(A29(A91(C.gc))+Number(selfi)*1)));
             NWC8(R164(C.windowprocs),win,0,buf);
         }
     }
@@ -3407,9 +3530,9 @@ function confdir(force_impairment)
 {
     force_impairment=C.i8(force_impairment);
     if(Number(!!(C.i32(force_impairment)||C.i32(C.u_maybe_impaired())))) {
-        let kmax=((Number((R188(C.u))==C.PM_GRID_BUG))?(C.i32(Math.trunc(((C.i32((C.N_DIRS_Z-2)))/2)))):(C.i32((C.N_DIRS_Z-2)))); let k=C.i32(C.cell((C.dirs_ord+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",4304,"confdir"),C.rn2(kmax))):C.rn2(kmax))))*1),"signed char").value);
-        (W179(C.u,C.i32(C.cell((C.xdir+Number(k)*1),"signed char").value)));
-        (W180(C.u,C.i32(C.cell((C.ydir+Number(k)*1),"signed char").value)));
+        let kmax=((Number((R188(C.u))==C.PM_GRID_BUG))?(C.i32(Math.trunc(((C.i32((C.N_DIRS_Z-2)))/2)))):(C.i32((C.N_DIRS_Z-2)))); let k=C.i32(RC1(C.dirs_ord+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",4304,"confdir"),C.rn2(kmax))):C.rn2(kmax))))*1));
+        (W179(C.u,C.i32(RC1(C.xdir+Number(k)*1))));
+        (W180(C.u,C.i32(RC1(C.ydir+Number(k)*1))));
     }
     return;
 }
@@ -3614,7 +3737,7 @@ function there_cmd_menu_next2u(win,x,y,mod,act)
         C.variadic(116,buf,C.literal("Attack %s"),(mtmp?C.mon_nam(mtmp):C.literal("unseen creature")));
         (mcmd_addmenu(win,C.MCMD_ATTACK_NEXT2U,buf),(K=C.i32((K+1))));
         /* attacking overrides any other automatic action */
-        (C.cell(act,"int").value=C.MCMD_ATTACK_NEXT2U);
+        (WC5(act,C.MCMD_ATTACK_NEXT2U));
     } else {
         /* "Move %s", direction - handled below */
     }
@@ -3857,7 +3980,7 @@ function there_cmd_menu(x,y,mod)
     let picksAddress=C.stackAlloc(8); C.cell(picksAddress,"struct mi *").value=0;
     /*int dx = sgn(x - u.ux), dy = sgn(y - u.uy);*/
     let dx=C.i16(C.i32((C.i32(x)-C.i32(R177(C.u))))); let dy=C.i16(C.i32((C.i32(y)-C.i32(R178(C.u)))));
-    let actAddress=C.stackAlloc(4); C.cell(actAddress,"int").value=C.MCMD_NOTHING;
+    let actAddress=C.stackAlloc(4); WC5(actAddress,C.MCMD_NOTHING);
     (win=NWC3(R160(C.windowprocs),4));
     NWC4(R165(C.windowprocs),win,C.u64(0));
     if((Number(!!(Number(C.i32((x))==C.i32(R177(C.u)))&&Number(C.i32((y))==C.i32(R178(C.u))))))) (K=C.i32(K+there_cmd_menu_self(win,x,y,actAddress)));
@@ -3876,9 +3999,9 @@ function there_cmd_menu(x,y,mod)
         }
         (npick=0);
         (ch=C.i8(0));
-    } else if(Number(!!(Number(!!(Number(K==1)&&Number(C.cell(actAddress,"int").value!=C.MCMD_NOTHING)))&&Number(C.cell(actAddress,"int").value!=C.MCMD_TRAVEL)))) {
+    } else if(Number(!!(Number(!!(Number(K==1)&&Number(RC5(actAddress)!=C.MCMD_NOTHING)))&&Number(RC5(actAddress)!=C.MCMD_TRAVEL)))) {
         NWC6(R163(C.windowprocs),win);
-        act_on_act(C.cell(actAddress,"int").value,dx,dy);
+        act_on_act(RC5(actAddress),dx,dy);
         return C.i8(0);
     } else {
         NWC5(R166(C.windowprocs),win,C.literal("What do you want to do?"));
@@ -3887,9 +4010,9 @@ function there_cmd_menu(x,y,mod)
     }
     NWC6(R163(C.windowprocs),win);
     if(Number(npick>0)) {
-        (C.cell(actAddress,"int").value=R17(A120(C.cell(picksAddress,"struct mi *").value)));
+        (WC5(actAddress,R17(A120(C.cell(picksAddress,"struct mi *").value))));
         C.free(C.cell(picksAddress,"struct mi *").value);
-        act_on_act(C.cell(actAddress,"int").value,dx,dy);
+        act_on_act(RC5(actAddress),dx,dy);
         return C.i8(0);
     }
     return ch;
@@ -4014,7 +4137,7 @@ function get_count(allowchars,inkey,maxcount,count,gc_flags)
     /* normally "Count: 12" isn't echoed until the second digit */
     /* this should be done in port code so that we have erase_char
        and kill_char available; we can at least fake erase_char */
-    (C.cell(count,"long").value=C.i64(0));
+    (WC8(count,C.i64(0)));
     for(;;) {
         if(inkey) {
             (key=C.i32(inkey));
@@ -4038,11 +4161,11 @@ function get_count(allowchars,inkey,maxcount,count,gc_flags)
             (showzero=(C.i8(0)));
             (cnt=C.i64((cnt/10n)));
             (backspaced=(C.i8(1)));
-        } else if(Number(key==C.i32(C.cell((A29(A91(C.gc))+Number(C.NHKF_ESC)*1),"char").value))) {
+        } else if(Number(key==C.i32(RC0(A29(A91(C.gc))+Number(C.NHKF_ESC)*1)))) {
             break;
         } else if(Number(!!(Number(!(allowchars))||C.strchr(allowchars,key)))) {
-            (C.cell(count,"long").value=cnt);
-            if(Number(C.cell(count,"long").value!=cnt)) C.variadic(117,C.literal("get_count: cmdcount_nht"));
+            (WC8(count,cnt));
+            if(Number(RC8(count)!=cnt)) C.variadic(117,C.literal("get_count: cmdcount_nht"));
             break;
         }
         if(Number(!!(Number(!!(Number(cnt>C.i64(9))||C.i32(backspaced)))||C.i32(echoalways)))) {
@@ -4057,8 +4180,8 @@ function get_count(allowchars,inkey,maxcount,count,gc_flags)
             NWC12(R167(C.windowprocs));
         }
     }
-    if(Number(!!(C.i32(historicmsg)||(Number(!!(C.i32(conditionalmsg)&&Number(C.cell(count,"long").value!=first))))))) {
-        C.variadic(121,qbuf,C.literal("Count: %ld "),C.cell(count,"long").value);
+    if(Number(!!(C.i32(historicmsg)||(Number(!!(C.i32(conditionalmsg)&&Number(RC8(count)!=first))))))) {
+        C.variadic(121,qbuf,C.literal("Count: %ld "),RC8(count));
         key2txt(C.u8(key),C.eos(qbuf));
         NWC13(R175(C.windowprocs),qbuf,C.i8(0));
     }
@@ -4082,7 +4205,7 @@ function parse()
     /* affects readchar() behavior for ESC iff 'altmeta' option is On;
        is always reset to otherInp by readchar() */
     (W148(C.program_state,C.commandInp));
-    if(Number(!!(Number(!(R21(A91(C.gc))))||Number(((foo=C.i32(readchar())))==C.i32(C.cell((A29(A91(C.gc))+Number(C.NHKF_COUNT)*1),"char").value))))) {
+    if(Number(!!(Number(!(R21(A91(C.gc))))||Number(((foo=C.i32(readchar())))==C.i32(RC0(A29(A91(C.gc))+Number(C.NHKF_COUNT)*1)))))) {
         /* if 'num_pad' is On then readchar() has just reset input_state;
            set it back to commandInp, so that get_count() supports 'altmeta';
            otherwise "n<count>ESC<character>" becomes "n<count>ESC" (with
@@ -4092,7 +4215,7 @@ function parse()
         (foo=C.i32(get_count(0,C.i8(0),C.i64(32767),A95(C.gc),C.u32(0))));
     }
     (W101(C.gl,R95(C.gc)));
-    if(Number(foo==C.i32(C.cell((A29(A91(C.gc))+Number(C.NHKF_ESC)*1),"char").value))) {
+    if(Number(foo==C.i32(RC0(A29(A91(C.gc))+Number(C.NHKF_ESC)*1)))) {
         /* esc cancels count (TH) */
         NWC7(R161(C.windowprocs),C.global("WIN_MESSAGE").value);
         (W95(C.gc,C.i64(0)));
@@ -4164,7 +4287,7 @@ function readchar_core(x,y,mod)
             (sym=C.i32(randomkey()));
             break readchar_done;
         }
-        if(C.cell(C.cell(C.readchar_queue,"char *").value,"char").value) (sym=C.i32(C.cell(((C.cell(C.readchar_queue,"char *").value=C.ptr((C.cell(C.readchar_queue,"char *").value+Number(1))))-Number(1)),"char").value));
+        if(RC0(C.cell(C.readchar_queue,"char *").value)) (sym=C.i32(RC0((C.cell(C.readchar_queue,"char *").value=C.ptr((C.cell(C.readchar_queue,"char *").value+Number(1))))-Number(1))));
  else if(R98(C.gi)) (sym=C.i32(pgetchar()));
  else (sym=NWC15(R170(C.windowprocs),x,y,mod));
         if(Number(sym==(C.i32((-1))))) {
@@ -4190,7 +4313,7 @@ function readchar_core(x,y,mod)
            only when we're called by parse() [possibly via get_count()]
            or getpos() [to support Alt+digit] or getdir() [for arrow keys
            under curses] */
-            (sym=(C.i32(C.cell(C.cell(C.readchar_queue,"char *").value,"char").value)?C.i32(C.cell(((C.cell(C.readchar_queue,"char *").value=C.ptr((C.cell(C.readchar_queue,"char *").value+Number(1))))-Number(1)),"char").value):C.i32(pgetchar())));
+            (sym=(C.i32(RC0(C.cell(C.readchar_queue,"char *").value))?C.i32(RC0((C.cell(C.readchar_queue,"char *").value=C.ptr((C.cell(C.readchar_queue,"char *").value+Number(1))))-Number(1))):C.i32(pgetchar())));
             if(Number(!!(Number(sym==(C.i32((-1))))||Number(sym==0)))) (sym=27);
  else if(Number(sym!=27)) (sym=C.i32(sym|128));
             /* force 8th bit on */
@@ -4198,7 +4321,7 @@ function readchar_core(x,y,mod)
         } else if(Number(sym==0)) {
             /* click event */
             (W126(A92(C.gc),W127(A92(C.gc),C.i16(C.i32((-1))))));
-            click_to_cmd(C.cell(x,"short").value,C.cell(y,"short").value,C.cell(mod,"int").value);
+            click_to_cmd(RC3(x),RC3(y),RC5(mod));
         }
     }
     (W148(C.program_state,C.otherInp));
@@ -4213,8 +4336,8 @@ function readchar()
     const stackFrame=C.stackSave();
     try {
     let ch;
-    let xAddress=C.stackAlloc(2); C.cell(xAddress,"short").value=R177(C.u); let yAddress=C.stackAlloc(2); C.cell(yAddress,"short").value=R178(C.u);
-    let modAddress=C.stackAlloc(4); C.cell(modAddress,"int").value=0;
+    let xAddress=C.stackAlloc(2); WC3(xAddress,R177(C.u)); let yAddress=C.stackAlloc(2); WC3(yAddress,R178(C.u));
+    let modAddress=C.stackAlloc(4); WC5(modAddress,0);
     (ch=readchar_core(xAddress,yAddress,modAddress));
     return ch;
     } finally {C.stackRestore(stackFrame); }
@@ -4362,14 +4485,14 @@ function yn_function_menu(query,resp,def,res)
         (n=C.select_menu(win,1,selAddress));
         NWC6(R163(C.windowprocs),win);
         if(Number(n>0)) {
-            (C.cell(res,"char").value=R18(A120(C.cell(selAddress,"struct mi *").value+Number(0)*C.sizes["struct mi"])));
+            (WC0(res,R18(A120(C.cell(selAddress,"struct mi *").value+Number(0)*C.sizes["struct mi"]))));
             /* two were selected? use the one that wasn't the default */
-            if(Number(!!(Number(n>1)&&Number(C.i32(C.cell(res,"char").value)==C.i32(def))))) (C.cell(res,"char").value=R18(A120(C.cell(selAddress,"struct mi *").value+Number(1)*C.sizes["struct mi"])));
+            if(Number(!!(Number(n>1)&&Number(C.i32(RC0(res))==C.i32(def))))) (WC0(res,R18(A120(C.cell(selAddress,"struct mi *").value+Number(1)*C.sizes["struct mi"]))));
             C.free(C.cell(selAddress,"struct mi *").value);
         } else {
-            (C.cell(res,"char").value=def);
+            (WC0(res,def));
         }
-        C.variadic(125,C.literal("%s %s"),query,key2txt(C.u8(C.cell(res,"char").value),keybuf));
+        C.variadic(125,C.literal("%s %s"),query,key2txt(C.u8(RC0(res)),keybuf));
         NWC7(R161(C.windowprocs),C.global("WIN_MESSAGE").value);
         return (C.i8(1));
     }
@@ -4388,8 +4511,8 @@ function yn_function(query,resp,def,addcmdq)
     addcmdq=C.i8(addcmdq);
     const stackFrame=C.stackSave();
     try {
-    let resAddress=C.stackAlloc(1); C.cell(resAddress,"char").value=C.i8(27); let qbuf=C.stackAlloc((1*128));
-    let cq=C.stackAlloc(C.sizes["struct _cmd_queue"]); let cmdq;
+    let resAddress=C.stackAlloc(1); WC0(resAddress,C.i8(27)); let qbuf=C.stackAlloc((1*128));
+    let cmdq, queuedType = C.CMDQ_USER_INPUT, queuedKey = 0;
     let idx=R107(C.gs);
     /* buffer to hold query+space+formatted_single_char_response */
     let dumplog_buf=C.stackAlloc((1*144));
@@ -4404,57 +4527,57 @@ function yn_function(query,resp,def,addcmdq)
         C.strcpy((qbuf+Number(C.i32((C.i32((128-1))-3)))*1),C.literal("..."));
         (query=qbuf);
     }
-    if(Number(!!(C.i32(addcmdq)&&Number(((cmdq=cmdq_pop()))!=0)))) {
-        C.copyRecord(cq,cmdq,C.sizes["struct _cmd_queue"]);
-        C.free(cmdq);
-    } else {
-        (W6(cq,C.CMDQ_USER_INPUT));
-        (W7(cq,C.i8(0)));
-        /* lint suppression */
+    if (addcmdq && (cmdq = takeCommand())) {
+        queuedType = commandField(cmdq, "typ");
+        if (queuedType === C.CMDQ_KEY)
+            queuedKey = commandField(cmdq, "key");
+        releaseCommand(cmdq);
     }
-    if(Number(R6(cq)!=C.CMDQ_USER_INPUT)) {
-        if(Number(R6(cq)==C.CMDQ_KEY)) (C.cell(resAddress,"char").value=R7(cq));
+    /* lint suppression */
+    if (queuedType !== C.CMDQ_USER_INPUT) {
+        if (queuedType === C.CMDQ_KEY)
+            WC0(resAddress,queuedKey);
  else cmdq_clear(C.CQ_CANNED);
         /* 'res' is ESC */
         (addcmdq=(C.i8(0)));
         /* for the fuzzer, usually force a valid response, but sometimes let
        it exercise windowport yn_function and invalid response handling */
-    } else if(Number(!!(Number(!!(Number(!!(C.i32(R73(C.iflags))&&resp))&&C.i32(C.cell(resp,"char").value)))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",5513,"yn_function"),C.rn2(20))):C.rn2(20)))))) {
+    } else if(Number(!!(Number(!!(Number(!!(C.i32(R73(C.iflags))&&resp))&&C.i32(RC0(resp))))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",5513,"yn_function"),C.rn2(20))):C.rn2(20)))))) {
         let ln=C.i32(C.strlen(resp)); let ridx=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",5514,"yn_function"),C.rn2(ln))):C.rn2(ln)));
-        (C.cell(resAddress,"char").value=C.cell((resp+Number(ridx)*1),"char").value);
+        (WC0(resAddress,RC0(resp+Number(ridx)*1)));
         /* if valid-responses includes ESC followed by unshown candidates
            and we randomly picked the ESC, try again with only whatever is
            before it; be careful to avoid rn2(0) */
-        if(Number(C.i32(C.cell(resAddress,"char").value)==27)) {
+        if(Number(C.i32(RC0(resAddress))==27)) {
             if(Number(ln>1)) {
                 /* if ESC is at start (ridx==0), pick something after it */
                 (ridx=((Number(ridx==0))?(C.i32((1+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",5523,"yn_function"),C.rn2(C.i32((ln-1))))):C.rn2(C.i32((ln-1)))))))):((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",5523,"yn_function"),C.rn2(ridx))):C.rn2(ridx)))));
-                (C.cell(resAddress,"char").value=C.cell((resp+Number(ridx)*1),"char").value);
+                (WC0(resAddress,RC0(resp+Number(ridx)*1)));
             } else {
                 /* ESC is the only thing (ln==1); something is strange... */
-                (C.cell(resAddress,"char").value=def);
+                (WC0(resAddress,def));
                 /* might be '\0' */
             }
         }
     } else {
         if(Number(!(yn_function_menu(query,resp,def,resAddress)))) {
-            (C.cell(resAddress,"char").value=NWC16(R173(C.windowprocs),query,resp,def));
+            (WC0(resAddress,NWC16(R173(C.windowprocs),query,resp,def)));
         }
     }
-    if(addcmdq) cmdq_add_key(C.CQ_REPEAT,C.cell(resAddress,"char").value);
+    if(addcmdq) cmdq_add_key(C.CQ_REPEAT,RC0(resAddress));
     if(Number(idx==R107(C.gs))) {
         /* when idx is still the same as gs.saved_pline_index, the interface
            didn't put the prompt into gs.saved_plines[]; we put a simplified
            version in there now (without response choices or default) */
         C.variadic(126,dumplog_buf,C.literal("%s "),query);
-        key2txt(C.u8(C.cell(resAddress,"char").value),C.eos(dumplog_buf));
+        key2txt(C.u8(RC0(resAddress)),C.eos(dumplog_buf));
         C.dumplogmsg(dumplog_buf);
     }
     /* should not happen but cq.key has been observed to not obey 'resp';
        it is most likely caused by saving a keystroke that was just used
        to answer a context-sensitive prompt, then using the do-again
        command with context that has changed */
-    if(Number(!!(Number(!!(Number(!!(resp&&C.i32(C.cell(resp,"char").value)))&&C.i32(C.cell(resAddress,"char").value)))&&Number(!(C.strchr(resp,C.i32(C.cell(resAddress,"char").value))))))) {
+    if(Number(!!(Number(!!(Number(!!(resp&&C.i32(RC0(resp))))&&C.i32(RC0(resAddress))))&&Number(!(C.strchr(resp,C.i32(RC0(resAddress)))))))) {
         /* this probably needs refinement since caller is expecting something
            within 'resp' and ESC won't be (it could be present, but as a flag
            for unshown possibilities rather than as acceptable input) */
@@ -4469,15 +4592,15 @@ function yn_function(query,resp,def,addcmdq)
             /* don't let this known problem kill the fuzzer */
             /*TEMP*/
             (W73(C.iflags,C.i8(C.fuzzer_impossible_continue)));
-            C.variadic(128,C.literal("yn_function() returned '%s'; using '%s' instead"),C.visctrl(C.cell(resAddress,"char").value),C.visctrl(C.i8(altres)));
+            C.variadic(128,C.literal("yn_function() returned '%s'; using '%s' instead"),C.visctrl(RC0(resAddress)),C.visctrl(C.i8(altres)));
             /*TEMP*/
             (W73(C.iflags,fuzzing));
         }
-        (C.cell(resAddress,"char").value=C.i8(altres));
+        (WC0(resAddress,C.i8(altres)));
     }
     /* in case we're called via getdir() which sets input_state */
     (W148(C.program_state,C.otherInp));
-    return C.cell(resAddress,"char").value;
+    return RC0(resAddress);
     } finally {C.stackRestore(stackFrame); }
 }
 
@@ -4517,14 +4640,14 @@ function paranoid_ynq(be_paranoid,prompt,accept_q)
                 /* -4: "...?" */
             }
             C.variadic(129,(C.literal("paranoid_ynq")),5624,qbuf,BigInt((1*128)),C.literal("%s%s %s"),promptprefix,pbuf,responsetype);
-            (C.cell(ans,"char").value=C.i8(0));
+            (WC0(ans,C.i8(0)));
             C.getlin(qbuf,ans);
             C.mungspaces(ans);
             if(Number(!(C.strncmpi((ans),(C.literal("yes")),C.i32((-1)))))) {
                 (c=C.i8(121));
                 break;
             }
-            if(Number(!!(Number(!(C.strncmpi((ans),(C.literal("quit")),C.i32((-1)))))||Number(C.i32(C.cell(ans,"char").value)==27)))) {
+            if(Number(!!(Number(!(C.strncmpi((ans),(C.literal("quit")),C.i32((-1)))))||Number(C.i32(RC0(ans))==27)))) {
                 (c=C.i8(113));
                 break;
             }

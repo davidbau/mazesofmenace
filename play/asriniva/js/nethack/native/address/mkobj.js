@@ -168,6 +168,11 @@ const R163=NF.readers[163],W163=NF.writers[163],A163=NF.addresses[163];
 const R164=NF.readers[164],W164=NF.writers[164],A164=NF.addresses[164];
 const R165=NF.readers[165],W165=NF.writers[165],A165=NF.addresses[165];
 const R166=NF.readers[166],W166=NF.writers[166],A166=NF.addresses[166];
+const RC0=C.readInt8At,WC0=C.writeInt8At;
+const RC2=C.readUint8At,WC2=C.writeUint8At;
+const RC3=C.readInt16At,WC3=C.writeInt16At;
+const RC5=C.readInt32At,WC5=C.writeInt32At;
+const RC9=C.readBigUint64At,WC9=C.writeBigUint64At;
 
 /* NetHack 5.0	mkobj.c	$NHDT-Date: 1764044196 2025/11/24 20:16:36 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.326 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
@@ -352,18 +357,18 @@ function mkobj(oclass,artif)
         (oclass=C.i32(R27(iprobs)));
     }
     if(Number(oclass==(C.i32((0-C.SPBOOK_CLASS))))) {
-        (i=C.rnd_class(C.cell((A45(C.svb)+Number(C.SPBOOK_CLASS)*4),"int").value,C.SPE_BLANK_PAPER));
+        (i=C.rnd_class(RC5(A45(C.svb)+Number(C.SPBOOK_CLASS)*4),C.SPE_BLANK_PAPER));
         (oclass=C.SPBOOK_CLASS);
         /* for sanity check below */
     } else {
-        (prob=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",289,"mkobj"),C.rnd(C.i32(C.cell((A43(C.go)+Number(oclass)*2),"short").value)))):C.rnd(C.i32(C.cell((A43(C.go)+Number(oclass)*2),"short").value)))));
-        (i=C.cell((A45(C.svb)+Number(oclass)*4),"int").value);
+        (prob=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",289,"mkobj"),C.rnd(C.i32(RC3(A43(C.go)+Number(oclass)*2))))):C.rnd(C.i32(RC3(A43(C.go)+Number(oclass)*2))))));
+        (i=RC5(A45(C.svb)+Number(oclass)*4));
         while(Number(((prob=C.i32(prob-C.i32(R134(C.objects+Number(i)*C.sizes["struct objclass"])))))>0)) (i=C.i32((i+1)));
 
     }
     if(Number(!!(Number(C.i32(R133(C.objects+Number(i)*C.sizes["struct objclass"]))!=oclass)||Number(!((R137(C.obj_descr+Number(R122(C.objects+Number(i)*C.sizes["struct objclass"]))*C.sizes["struct objdescr"]))))))) {
         C.variadic(0,C.literal("probtype error, oclass=%d i=%d"),oclass,i);
-        (i=C.cell((A45(C.svb)+Number(oclass)*4),"int").value);
+        (i=RC5(A45(C.svb)+Number(oclass)*4));
     }
     return mksobj(i,(C.i8(1)),artif);
 }
@@ -745,7 +750,7 @@ function bill_dummy_object(otmp)
     let cost=0n;
     if(R88(otmp)) {
         (cost=C.unpaid_cost(otmp,C.u8(C.COST_SINGLEOBJ)));
-        C.subfrombill(otmp,C.shop_keeper(C.cell(A163(C.u),"char").value));
+        C.subfrombill(otmp,C.shop_keeper(RC0(A163(C.u))));
     }
     (dummy=C.alloc(C.u32(BigInt(C.sizes["struct obj"]))));
     C.copyRecord(dummy,otmp,C.sizes["struct obj"]);
@@ -784,7 +789,7 @@ function costly_alteration(obj,alter_type)
         C.variadic(3,C.literal("invalid alteration type (%d)"),alter_type);
         (alter_type=0);
     }
-    (C.cell(oxAddress,"short").value=(C.cell(oyAddress,"short").value=C.i16(0)));
+    (WC3(oxAddress,WC3(oyAddress,C.i16(0))));
     /* lint suppression */
     (objroom=C.i8(0));
     /* ditto */
@@ -798,9 +803,9 @@ function costly_alteration(obj,alter_type)
     } else {
         /* this get_obj_location shouldn't fail, but if it does,
            use hero's location */
-        if(Number(!(C.get_obj_location(obj,oxAddress,oyAddress,1)))) ((C.cell(oxAddress,"short").value=R160(C.u)),(C.cell(oyAddress,"short").value=R161(C.u)));
-        if(Number(!(C.costly_spot(C.cell(oxAddress,"short").value,C.cell(oyAddress,"short").value)))) return;
-        (objroom=C.cell(C.in_rooms(C.cell(oxAddress,"short").value,C.cell(oyAddress,"short").value,C.SHOPBASE),"char").value);
+        if(Number(!(C.get_obj_location(obj,oxAddress,oyAddress,1)))) ((WC3(oxAddress,R160(C.u))),(WC3(oyAddress,R161(C.u))));
+        if(Number(!(C.costly_spot(RC3(oxAddress),RC3(oyAddress))))) return;
+        (objroom=RC0(C.in_rooms(RC3(oxAddress),RC3(oyAddress),C.SHOPBASE)));
         /* if no shop cares about it, we're done */
         if(Number(!(C.billable(shkpAddress,obj,objroom,(C.i8(0)))))) return;
     }
@@ -824,14 +829,14 @@ function costly_alteration(obj,alter_type)
         case (1):
             if(learn_bknown) (W94(obj,C.u32(1)));
         /* ok to bypass set_bknown() here */
-        if(Number(!!(C.i32(C.costly_spot(R160(C.u),R161(C.u)))&&Number(C.i32(objroom)==C.i32(C.cell(A163(C.u),"char").value))))) {
+        if(Number(!!(C.i32(C.costly_spot(R160(C.u),R161(C.u)))&&Number(C.i32(objroom)==C.i32(RC0(A163(C.u))))))) {
             if(C.cell(shkpAddress,"struct monst *").value) {
                 ;
             }
             C.variadic(5,C.literal("You %s %s, you pay for %s!"),C.cell((C.alteration_verbs+Number(alter_type)*8),"char *").value,those,them);
             bill_dummy_object(obj);
         } else {
-            C.stolen_value(obj,C.cell(oxAddress,"short").value,C.cell(oyAddress,"short").value,(C.i8(0)),(C.i8(0)));
+            C.stolen_value(obj,RC3(oxAddress),RC3(oyAddress),(C.i8(0)),(C.i8(0)));
         }
         break;
     }
@@ -1396,10 +1401,10 @@ function item_on_ice(item)
     if(C.get_obj_location(otmp,oxAddress,oyAddress,2)) {
         switch(C.i32(R84(otmp))) {
             case (1):
-                if(C.is_ice(C.cell(oxAddress,"short").value,C.cell(oyAddress,"short").value)) return C.SET_ON_ICE;
+                if(C.is_ice(RC3(oxAddress),RC3(oyAddress))) return C.SET_ON_ICE;
             break;
             case (6):
-                if(C.is_ice(C.cell(oxAddress,"short").value,C.cell(oyAddress,"short").value)) return C.BURIED_UNDER_ICE;
+                if(C.is_ice(RC3(oxAddress),RC3(oyAddress))) return C.BURIED_UNDER_ICE;
             break;
             default:
                 break;
@@ -1561,14 +1566,14 @@ function shrink_glob(arg,expire_time)
         }
     }
     if(gone) {
-        let oxAddress=C.stackAlloc(2); C.cell(oxAddress,"short").value=C.i16(0); let oyAddress=C.stackAlloc(2); C.cell(oyAddress,"short").value=C.i16(0);
+        let oxAddress=C.stackAlloc(2); WC3(oxAddress,C.i16(0)); let oyAddress=C.stackAlloc(2); WC3(oyAddress,C.i16(0));
         /* check location for visibility before destroying obj */
-        let seeit=C.i8((Number(!!(Number(!!(Number(C.i32(R84(obj))==1)&&C.i32(C.get_obj_location(obj,oxAddress,oyAddress,0))))&&(Number((C.i32((C.i32(C.cell((C.cell((R53(C.gv)+Number(C.cell(oyAddress,"short").value)*8),"unsigned char *").value+Number(C.cell(oxAddress,"short").value)*1),"unsigned char").value)&2)))!=0))))));
+        let seeit=C.i8((Number(!!(Number(!!(Number(C.i32(R84(obj))==1)&&C.i32(C.get_obj_location(obj,oxAddress,oyAddress,0))))&&(Number((C.i32((C.i32(RC2(C.cell((R53(C.gv)+Number(RC3(oyAddress))*8),"unsigned char *").value+Number(RC3(oxAddress))*1))&2)))!=0))))));
         /* weight has been reduced to 0 so destroy the glob */
         shrinking_glob_gone(obj);
         if(seeit) {
-            C.newsym(C.cell(oxAddress,"short").value,C.cell(oyAddress,"short").value);
-            if(Number(!!((Number(!!(Number(C.i32(C.cell(oxAddress,"short").value)!=C.i32(R160(C.u)))||Number(C.i32(C.cell(oyAddress,"short").value)!=C.i32(R161(C.u))))))&&Number(!(C.strncmp(globnambuf,C.literal("The "),C.u64(4))))))) C.strsubst(globnambuf,C.literal("The "),C.literal("A "));
+            C.newsym(RC3(oxAddress),RC3(oyAddress));
+            if(Number(!!((Number(!!(Number(C.i32(RC3(oxAddress))!=C.i32(R160(C.u)))||Number(C.i32(RC3(oyAddress))!=C.i32(R161(C.u))))))&&Number(!(C.strncmp(globnambuf,C.literal("The "),C.u64(4))))))) C.strsubst(globnambuf,C.literal("The "),C.literal("A "));
             /* fortunately none of the glob adjectives warrant "An " */
             /* again, quantity is always 1 so no need for otense()/vtense() */
             C.variadic(11,C.literal("%s fades away."),globnambuf);
@@ -1630,11 +1635,11 @@ function maybe_adjust_light(obj,old_range)
            artifacts have to be in use to emit light and monsters' gear won't
            change bless or curse state */
         if(Number(!!(Number(!((Number(!!((Number(!!(R152(A164(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R150(A164(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R151(A164(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&C.i32(C.get_obj_location(obj,oxAddress,oyAddress,0))))) {
-            (C.cell(buf,"char").value=C.i8(0));
+            (WC0(buf,C.i8(0)));
             if(Number(R29(C.iflags)==C.PLNMSG_OBJ_GLOWS)) C.strcpy(buf,((Number(R80(obj)==1n))?C.literal("It"):C.literal("They")));
- else if(Number(!!((Number(C.i32(R84(obj))==3))||(Number((C.i32((C.i32(C.cell((C.cell((R53(C.gv)+Number(C.cell(oyAddress,"short").value)*8),"unsigned char *").value+Number(C.cell(oxAddress,"short").value)*1),"unsigned char").value)&2)))!=0))))) C.strcpy(buf,C.Yname2(obj));
+ else if(Number(!!((Number(C.i32(R84(obj))==3))||(Number((C.i32((C.i32(RC2(C.cell((R53(C.gv)+Number(RC3(oyAddress))*8),"unsigned char *").value+Number(RC3(oxAddress))*1))&2)))!=0))))) C.strcpy(buf,C.Yname2(obj));
             /* we just saw "The <obj> glows <color>." from dipping */
-            if(C.cell(buf,"char").value) {
+            if(RC0(buf)) {
                 /* initial activation says "dimly" if cursed,
                    "brightly" if uncursed, and "brilliantly" if blessed;
                    when changing intensity, using "less brightly" is
@@ -1847,14 +1852,14 @@ function rnd_treefruit_at(x,y)
 {
     x=C.i16(x);
     y=C.i16(y);
-    return mksobj_at(C.cell((C.treefruits+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1986,"rnd_treefruit_at"),C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))))*4),"int").value,x,y,(C.i8(1)),(C.i8(0)));
+    return mksobj_at(RC5(C.treefruits+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1986,"rnd_treefruit_at"),C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))))*4),x,y,(C.i8(1)),(C.i8(0)));
 }
 
 /* for describing objects embedded in trees */
 function is_treefruit(otmp)
 {
     let fruitidx;
-    for((fruitidx=0);Number(fruitidx<C.i32((C.u64((BigInt((4*5))/BigInt(4))))));(fruitidx=C.i32((fruitidx+1)))) if(Number(C.cell((C.treefruits+Number(fruitidx)*4),"int").value==C.i32(R78(otmp)))) return (C.i8(1));
+    for((fruitidx=0);Number(fruitidx<C.i32((C.u64((BigInt((4*5))/BigInt(4))))));(fruitidx=C.i32((fruitidx+1)))) if(Number(RC5(C.treefruits+Number(fruitidx)*4)==C.i32(R78(otmp)))) return (C.i8(1));
 
     return (C.i8(0));
 }
@@ -2852,7 +2857,7 @@ function shop_obj_sanity(obj,mesg)
     let shkp;
     let why;
     let costly; let costlytoo;
-    let xAddress=C.stackAlloc(2); C.cell(xAddress,"short").value=C.i16(0); let yAddress=C.stackAlloc(2); C.cell(yAddress,"short").value=C.i16(0);
+    let xAddress=C.stackAlloc(2); WC3(xAddress,C.i16(0)); let yAddress=C.stackAlloc(2); WC3(yAddress,C.i16(0));
     /* if contained, get top-most container; we needs its location */
     (otop=obj);
     while(Number(C.i32(R84(otop))==2)) (otop=R158(A73(otop)));
@@ -2864,10 +2869,10 @@ function shop_obj_sanity(obj,mesg)
     C.get_obj_location(otop,xAddress,yAddress,2);
     /* these will always be needed for the normal case, so don't bother
        waiting until we find an insanity to fetch them */
-    (shkp=C.find_objowner(obj,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value));
-    if(Number(!!(shkp&&Number(C.i32(R84(obj))==7)))) ((C.cell(xAddress,"short").value=R59(shkp)),(C.cell(yAddress,"short").value=R60(shkp)));
-    (costly=C.costly_spot(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value));
-    (costlytoo=C.costly_adjacent(shkp,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value));
+    (shkp=C.find_objowner(obj,RC3(xAddress),RC3(yAddress)));
+    if(Number(!!(shkp&&Number(C.i32(R84(obj))==7)))) ((WC3(xAddress,R59(shkp))),(WC3(yAddress,R60(shkp))));
+    (costly=C.costly_spot(RC3(xAddress),RC3(yAddress)));
+    (costlytoo=C.costly_adjacent(shkp,RC3(xAddress),RC3(yAddress)));
     (why=0);
     if(Number(!!(C.i32(R89(obj))&&C.i32(R88(obj))))) {
         (why=C.literal("%s obj both unpaid and no_charge! %s %s: %s"));
@@ -3096,9 +3101,9 @@ function sanity_check_worn(obj)
        obj->owornmask for printing */
     (owornmask=C.u64(R115(obj)));
     /* figure out how many bits are set, and also which are viable */
-    for((i=0);C.cell((wearbits+Number(i)*8),"unsigned long").value;(i=C.i32((i+1)))) {
-        if(Number((C.u64((owornmask&C.cell((wearbits+Number(i)*8),"unsigned long").value)))!=C.u64(0n))) (n=C.i32((n+1)));
-        (allmask=C.u64(allmask|C.cell((wearbits+Number(i)*8),"unsigned long").value));
+    for((i=0);RC9(wearbits+Number(i)*8);(i=C.i32((i+1)))) {
+        if(Number((C.u64((owornmask&RC9(wearbits+Number(i)*8))))!=C.u64(0n))) (n=C.i32((n+1)));
+        (allmask=C.u64(allmask|RC9(wearbits+Number(i)*8)));
     }
     if(Number(obj==C.global("uskin").value)) {
         /* embedded dragon scales have an extra bit set;
@@ -3371,7 +3376,7 @@ function obj_meld(obj1,obj2)
             /* callers really ought to take care of this; glob melding is
                a bookkeeping issue rather than a display one */
             if(ox) {
-                if((Number((C.i32((C.i32(C.cell((C.cell((R53(C.gv)+Number(oy)*8),"unsigned char *").value+Number(ox)*1),"unsigned char").value)&2)))!=0))) C.newsym(C.i16(ox),C.i16(oy));
+                if((Number((C.i32((C.i32(RC2(C.cell((R53(C.gv)+Number(oy)*8),"unsigned char *").value+Number(ox)*1))&2)))!=0))) C.newsym(C.i16(ox),C.i16(oy));
                 /* and this; a hides-under monster might be hiding under
                    the glob that went away; if there's nothing else there
                    to hide under, force it out of hiding */
@@ -3387,7 +3392,7 @@ function obj_meld(obj1,obj2)
 /* give a message if hero notices two globs merging [used to be in pline.c] */
 function pudding_merge_message(otmp,otmp2)
 {
-    let visible=C.i8((Number(!!((Number((C.i32((C.i32(C.cell((C.cell((R53(C.gv)+Number(R77(otmp))*8),"unsigned char *").value+Number(R76(otmp))*1),"unsigned char").value)&2)))!=0))||(Number((C.i32((C.i32(C.cell((C.cell((R53(C.gv)+Number(R77(otmp2))*8),"unsigned char *").value+Number(R76(otmp2))*1),"unsigned char").value)&2)))!=0)))))); let onfloor=C.i8((Number(!!(Number(C.i32(R84(otmp))==1)||Number(C.i32(R84(otmp2))==1))))); let inpack=C.i8((Number(!!((Number(C.i32(R84(otmp))==3))||(Number(C.i32(R84(otmp2))==3))))));
+    let visible=C.i8((Number(!!((Number((C.i32((C.i32(RC2(C.cell((R53(C.gv)+Number(R77(otmp))*8),"unsigned char *").value+Number(R76(otmp))*1))&2)))!=0))||(Number((C.i32((C.i32(RC2(C.cell((R53(C.gv)+Number(R77(otmp2))*8),"unsigned char *").value+Number(R76(otmp2))*1))&2)))!=0)))))); let onfloor=C.i8((Number(!!(Number(C.i32(R84(otmp))==1)||Number(C.i32(R84(otmp2))==1))))); let inpack=C.i8((Number(!!((Number(C.i32(R84(otmp))==3))||(Number(C.i32(R84(otmp2))==3))))));
     /* the player will know something happened inside his own inventory */
     if(Number(!!((Number(!!(Number(!((Number(!!((Number(!!(R152(A164(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R150(A164(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R151(A164(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&C.i32(visible))))||C.i32(inpack)))) {
         if((Number(!!(R152(A164(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R152(A164(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R150(A164(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))) {

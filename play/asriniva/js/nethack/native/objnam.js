@@ -881,7 +881,8 @@ function xname_flags(obj, cxn_flags) /* bitmask of CXN_xxx values */
         if (Number(!!((obj).oartifact && Number(!(C.strncmp(obufp, C.literal("The "), C.ulong(4))))))) C.store(obufp, "char", C.lowc(C.deref(obufp, "char")));
 /* change 'T' in "The " to 't' */
     }
-    if (Number(!(C.strncmpi(buf, C.literal("the "), 4)))) (buf = C.ptrAdd(buf, 4, "char"));
+    if (Object.hasOwn(C, "startsWithArticle") ? C.startsWithArticle(buf)
+        : !C.strncmpi(buf, C.literal("the "), 4)) (buf = C.ptrAdd(buf, 4, "char"));
     (buf_eos = C.eos(buf));
 /* pointer to '\0' terminator somewhere in obuf[] */
     if (C.ptrCompare(buf_eos, buf_end, ">=")) {
@@ -2330,6 +2331,13 @@ const special_subjs = [
 
 /* return form of the verb (input plural) for present tense 3rd person subj */
 function vtense(subj, verb) {
+    if (Object.hasOwn(C, "verbText")) {
+        const word = C.verbText(verb);
+        if (word) {
+            const subject = subj ? C.verbText(subj) : "";
+            return C.writeVerb(nextobuf(), verbForSubject(subject, word));
+        }
+    }
     subj = C.argument(subj, "const char *");
     verb = C.argument(verb, "const char *");
     let buf = nextobuf();
@@ -2405,6 +2413,49 @@ function vtense(subj, verb) {
         C.strcasecpy(C.ptrAdd(bspot, 1, "char"), C.literal("s"));
     }
     return buf;
+}
+
+function verbForSubject(subject, verb) {
+    const lower = subject.toLowerCase();
+    if (subject && !lower.startsWith("a ") && !lower.startsWith("an ")) {
+        const qualifier = lower.search(/ (?:of|from|called|named|labeled) /);
+        const noun = qualifier > 0 ? lower.slice(0, qualifier) : lower;
+        const plural = (noun.length > 1 && noun.endsWith("s") && !/[us]s$/.test(noun))
+            || /(?:eeth|feet|ia|ae)$/.test(noun);
+        if (plural) {
+            const singularException = special_subjs.some(word => {
+                if (!word)
+                    return false;
+                word = word.toLowerCase();
+                return noun === word || noun.endsWith(" " + word);
+            });
+            if (!singularException)
+                return verb;
+        } else if (lower === "they" || lower === "you") {
+            return verb;
+        }
+    }
+
+    const word = verb.toLowerCase();
+    let start = verb.length;
+    let ending = "s";
+    if (word === "are") {
+        start = 0;
+        ending = "is";
+    } else if (word === "have") {
+        start -= 2;
+    } else if (/(?:[zxs]|ch|sh)$/.test(word) || (word.length === 2 && word.endsWith("o"))) {
+        ending = "es";
+    } else if (word.endsWith("y") && !/[aeiou]y$/.test(word)) {
+        start--;
+        ending = "ies";
+    }
+    let result = verb.slice(0, start);
+    for (let i = 0; i < ending.length; i++) {
+        const prior = verb[Math.min(start + i, verb.length - 1)];
+        result += prior >= "A" && prior <= "Z" ? ending[i].toUpperCase() : ending[i];
+    }
+    return result;
 }
 
 /* word pairs that don't fit into formula-based transformations;

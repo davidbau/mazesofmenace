@@ -185,6 +185,23 @@ export function dosave0()
 
 export function save_gamelog(nhfp)
 {
+    if (Object.hasOwn(C, "chronicle")) {
+        if (nhfp.mode & (C.COUNTING | C.WRITING)) {
+            const buffer = C.chronicleBuffer();
+            for (const event of C.chronicle) {
+                const row = buffer.store(event);
+                let length = event.text.length;
+                C.Sfo_int(nhfp, C.reference("int", () => length, value => length = value), "gamelog-length");
+                C.Sfo_char(nhfp, row.text, "gamelog-gamelog_text", length);
+                C.Sfo_gamelog_line(nhfp, row, "gamelog-gamelog_line");
+            }
+            let sentinel = -1;
+            C.Sfo_int(nhfp, C.reference("int", () => sentinel, value => sentinel = value), "gamelog-length");
+        }
+        if (nhfp.mode & C.FREEING)
+            C.chronicle.length = 0;
+        return;
+    }
     let tmp = C.gg.gamelog, tmp2;
     let slen;
 
@@ -524,6 +541,8 @@ export function save_adjust_levelflags()
 
 export function savelevl(nhfp)
 {
+    if (Object.hasOwn(C, "saveMapLocations") && C.saveMapLocations(nhfp))
+        return;
     let x, y;
 
     for (x = 0; x < C.COLNO; x++) {

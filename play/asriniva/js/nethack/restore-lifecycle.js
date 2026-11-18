@@ -6,6 +6,7 @@ import publicFunctions from './public-functions.json' with {type:'json'};
 import * as source from '../ported/restore.js';
 import {callRestore} from './bindings/restore.js';
 import {createCTypes} from './c-types.js';
+import {nativeStateFor} from './native/state-bridge.js';
 
 export function enableRestoreLifecycle(environment,layouts){
  const {memory,services,transport,functions}=environment,address=environment.address,L=layouts.restore;
@@ -43,6 +44,8 @@ export function enableRestoreLifecycle(environment,layouts){
   rnd:(n,line)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'restore.c',transport.int(line),'getlev');return services.rnd(transport.int(n));},
  });
  for(const[name,target]of Object.entries(abi.serializers))local[name]=(...args)=>resolve(target)(...boundary(args));
+ const owner=nativeStateFor(environment);
+ if(owner.restoreMapLocations)local.restoreMapLocations=owner.restoreMapLocations;
  const callbacks={cliparound:'win_cliparound',clear_nhwindow:'win_clear_nhwindow',display_nhwindow:'win_display_nhwindow',wait_synch:'win_wait_synch',create_nhwindow:'win_create_nhwindow',start_menu:'win_start_menu',end_menu:'win_end_menu',select_menu:'win_select_menu',destroy_nhwindow:'win_destroy_nhwindow',add_menu:'win_add_menu',putstr:'win_putstr',putmsghistory:'win_putmsghistory'};
  for(const[name,target]of Object.entries(callbacks))local[name]=(...args)=>windowCall(target,...args);
  const exports=Object.keys(source).filter(name=>typeof source[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));

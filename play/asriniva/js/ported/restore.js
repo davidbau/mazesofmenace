@@ -916,6 +916,8 @@ export function restcemetery(nhfp, cemeteryaddr)
 
 export function rest_levl(nhfp)
 {
+    if (Object.hasOwn(C, "restoreMapLocations") && C.restoreMapLocations(nhfp))
+        return;
     let c, r;
 
     for (c = 0; c < C.COLNO; ++c) {

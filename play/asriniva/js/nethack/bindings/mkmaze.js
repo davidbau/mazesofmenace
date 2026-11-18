@@ -33,13 +33,13 @@ export function createMkmazeEnvironment(services){
  return env;
 }
 export function callMkmaze(services,name,...args){
- let state=states.get(services.moduleKey);
+ let state=states.get(services.nativeFixedProvider ? services : services.moduleKey);
  if(!state){
-  state={services};const forwarding=createServiceForwarder(state);
+  state={services};const forwarding=services.nativeFixedProvider ? services : createServiceForwarder(state);
   state.env=createMkmazeEnvironment(forwarding);
   // Preserve the original direct service prototype once; provider identity is
   // thereafter scoped without mutating the environment shape on every call.
-  Object.setPrototypeOf(state.env,forwarding);states.set(services.moduleKey,state);
+  Object.setPrototypeOf(state.env,forwarding);states.set(services.nativeFixedProvider ? services : services.moduleKey,state);
  }
  const previous=state.services;state.services=services;
  try{

@@ -128,10 +128,28 @@ export function createScalarAdapter(services,layout,schema,ptr,options){
   return Crt.narrowInteger(signed,bits,v);
  };
  let dataView;
- const memory='dataView' in services?()=>services.dataView():cached?()=>{const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;}:()=>new DataView(services.heap().buffer);
+ const memory='dataView' in services?()=>services.dataView():()=>{const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;};
  const type=t=>t.includes('*')?'p':t.startsWith('enum ')?(declaredEnum?(layout['enumSigned:'+t.slice(5)]?'i32':'u32'):'i32'):types[t];
  const decode=(t,v)=>{const d=type(t);if(d==='p')return ptr(v);if(!d)throw Error(errors[0]+t);return env[d](v);};
  const cellAddress=addressCells?address:ptr;
+ // Literal scalar cells in the source pass their fixed width directly.
+ // Address-taken and dynamically typed cells keep the reference interface.
+ const installCellOperation=(name,read,write)=>{
+  read.nativeStateIndependent=true;write.nativeStateIndependent=true;
+  env['read'+name+'At']=read;env['write'+name+'At']=write;
+ };
+ {
+  for(const name of ['Int8','Uint8','Int16','Uint16','Int32','Uint32','BigInt64','BigUint64']){
+   const get='get'+name,set='set'+name,wide=name.startsWith('Big');
+   installCellOperation(name,
+    at=>memory()[get](cellAddress(at),true),
+    (at,value)=>{memory()[set](cellAddress(at),wide?BigInt(value):Number(value),true);return value;});
+  }
+  installCellOperation('Pointer',
+   at=>ptr(memory().getBigUint64(cellAddress(at),true)),
+   (at,value)=>{memory().setBigUint64(cellAddress(at),BigInt(value),true);return value;});
+ }
+
  env.cell=(at,t)=>{at=cellAddress(at);const d=type(t);if(!d)throw Error(errors[1]+t);const bits=d==='p'?64:+d.slice(1);return {address:at,get value(){if(cached){const dv=memory();return bits===64?decode(t,dv.getBigUint64(at,true)):dv[(d[0]==='i'?'getInt':'getUint')+bits](at,true);}return Crt.readIntegerCell(memory,decode,t,bits,at);},set value(v){return Crt.writeIntegerCell(memory,at,bits,v);}};};
  let kinds;
  if(cached){
@@ -178,6 +196,10 @@ export function createScalarAdapter(services,layout,schema,ptr,options){
    const {kind,index,f}=metadata,accessor={get address(){return convert(services[addressName](kind,at,index));},get value(){return decode(f.canonical,services[readName](kind,at,index));},set value(v){services[writeName](kind,at,index,BigInt.asUintN(64,BigInt(v)));}},entry={at,accessor};bucket.entries.set(at,entry);bucket.last=entry;if(bucket.entries.size>128)bucket.entries.delete(bucket.entries.keys().next().value);return accessor;
   };
  }
- const globalAddress=addressCells?address:ptr,globalName=abi?'abiGlobal':'global';schema.globals.forEach((g,i)=>Object.defineProperty(env,g.name,{get:()=>globalAddress(services[globalName](i))}));
+ const globalAddress=addressCells?address:ptr,globalName=abi?'abiGlobal':'global';
+ schema.globals.forEach((g,i)=>{
+  const bound=globalName==='global'&&services.nativeFixedProvider===true&&Object.hasOwn(services,'bindGlobal')?services.bindGlobal(i):undefined;
+  Object.defineProperty(env,g.name,{get:bound??(()=>globalAddress(services[globalName](i)))});
+ });
  return {env,types,memory,type,decode,kinds};
 }

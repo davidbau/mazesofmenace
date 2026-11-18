@@ -4,16 +4,31 @@
 import { game } from './gstate.js';
 export { deepest_lev_reached, depth } from './dungeon.js'; // relocate-fns
 export { isok } from './const.js';
+
+// A JS string can also carry a C buffer's bytes after its first terminator.
+// Utility string arguments observe only the prefix that C can read.
+function c_string(s) {
+    const end = s.indexOf('\0');
+    return end < 0 ? s : s.slice(0, end);
+}
+
 export function distmin(x1, y1, x2, y2) {
-    return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
+    // The deltas, including negation of -32768, are assigned to coordxy.
+    let dx = ((x1 - x2) << 16) >> 16;
+    let dy = ((y1 - y2) << 16) >> 16;
+    if (dx < 0) dx = (-dx << 16) >> 16;
+    if (dy < 0) dy = (-dy << 16) >> 16;
+    return dx < dy ? dy : dx;
 }
 export function dist2(x1, y1, x2, y2) {
-    return (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
+    const dx = ((x1 - x2) << 16) >> 16;
+    const dy = ((y1 - y2) << 16) >> 16;
+    return (Math.imul(dx, dx) + Math.imul(dy, dy)) | 0;
 }
 // C ref: rn2(x) already in rng.js — re-export not needed
 
 export function s_suffix(s) {
-    const buf = String(s ?? '');
+    const buf = c_string(String(s ?? ''));
     if (buf.toLowerCase() === 'it')
         return buf + 's';
     if (buf.toLowerCase() === 'you')
@@ -25,6 +40,7 @@ export function s_suffix(s) {
 
 /** C stripdigits(hacklib.c) */
 export function stripdigits(s) {
+    s = c_string(s);
     let out = '';
     for (let i = 0; i < s.length; i++) {
         const c = s[i];
@@ -36,6 +52,9 @@ export function stripdigits(s) {
 
 /** C str_lines_maxlen(hacklib.c) */
 export function str_lines_maxlen(str) {
+    // C's while (s1 && *s1) also accepts an initial NULL buffer.
+    if (str == null) return 0;
+    str = c_string(str);
     let maxLen = 0;
     let s1 = 0;
     while (s1 < str.length) {
@@ -62,6 +81,7 @@ export function lowc(c) {
 
 /* C ref: hacklib.c:125 — digit: test if char is a digit */
 export function digit(c) {
+    if (typeof c === 'string') c = c.charCodeAt(0);
     return '0'.charCodeAt(0) <= c && c <= '9'.charCodeAt(0);
 }
 
@@ -92,17 +112,19 @@ export function letter(c) {
  * `buf += ...`, so eos is never used for appending here. */
 export function eos(s) {
     if (s === undefined || s === null) return s;
-    return String(s.length);
+    return c_string(s).length;
 }
 
 /* version of eos() which takes a const* arg and returns that result */
 export function c_eos(s) {
     if (s === undefined || s === null) return s;
-    return String(s.length);
+    return c_string(s).length;
 }
 
 /* C ref: hacklib.c — str_end_is: check if str ends with chkstr */
 export function str_end_is(str, chkstr) {
+    str = c_string(str);
+    chkstr = c_string(chkstr);
     let clen = chkstr.length;
     if (str.length >= clen)
         return !strncmp(str.slice(Number(eos(str)) - clen), chkstr, clen);
@@ -151,6 +173,7 @@ export function mungspaces(bp) {
 
 /* C ref: hacklib.c:227 — trimspaces: skip leading whitespace; remove trailing whitespace, in place */
 export function trimspaces(txt) {
+    txt = c_string(txt);
     /* leading whitespace will remain in the buffer */
     while (txt.length > 0 && (txt[0] === ' ' || txt[0] === '\t'))
         txt = txt.substring(1);
@@ -166,6 +189,7 @@ export function trimspaces(txt) {
  * Writes into buf (which callers obtain via nextobuf()); returns buf.
  * In JS we build the result string directly and ignore buf. */
 export function xcrypt(str, buf) {
+    str = c_string(str);
     let result = "";
     let bitmask = 1;
     for (let i = 0; i < str.length; i++) {
@@ -181,6 +205,9 @@ export function xcrypt(str, buf) {
 
 /* C ref: hacklib.c:599-615 — strsubst: substitute first occurrence of orig in bp */
 export function strsubst(bp, orig, replacement) {
+    bp = c_string(bp);
+    orig = c_string(orig);
+    replacement = c_string(replacement);
     let idx = bp.indexOf(orig);
     if (idx >= 0) {
         let tail = bp.substring(idx + orig.length);
@@ -196,6 +223,9 @@ export function strNsubst(inoutbuf, orig, replacement, n) {
     // A { value } buffer carries C's in-place result as well as the count.
     const buffer = typeof inoutbuf === 'object' ? inoutbuf : null;
     if (buffer) inoutbuf = buffer.value;
+    inoutbuf = c_string(inoutbuf);
+    orig = c_string(orig);
+    replacement = c_string(replacement);
     const BUFSZ = 256;
     let len = orig.length;
     let ocount = 0;
@@ -218,9 +248,9 @@ export function strNsubst(inoutbuf, orig, replacement, n) {
             }
         }
         /* no match (or len==0) so retain current character */
-        if (result.length < maxout) {
-            result += inoutbuf[i];
-        }
+        // C copies this byte even when an empty-pattern replacement has
+        // just filled workbuf.  Its resulting extra byte is intentional here.
+        result += inoutbuf[i];
         i++;
     }
     if (len === 0 && n === ocount + 1) {
@@ -239,13 +269,19 @@ export function strNsubst(inoutbuf, orig, replacement, n) {
  * terminator. c==0 means C writes NUL then NUL: the string is unchanged.
  * c<0 stores one signed byte (e.g. -74 -> 0xB6), read back as Latin-1. */
 export function strkitten(s, c) {
-    return s + (c ? String.fromCharCode(c & 0xFF) : '');
+    s = c_string(s);
+    c &= 0xFF; // C char parameter is narrowed before testing/writing it.
+    return s + (c ? String.fromCharCode(c) : '');
 }
 
 /* C ref: hacklib.c:387-406 — strcasecpy: overwrite string, preserving old chars' case;
    for case-insensitive editions of makeplural() and makesingular();
    src might be shorter, same length, or longer than dst */
-export function strcasecpy(dst, src) {
+export function strcasecpy(dst, src, preceding = 0) {
+    dst = c_string(dst);
+    // An empty C destination points at a tail; dst[-1] supplies its case.
+    // The value-string adapter carries that preceding byte explicitly.
+    const previous = typeof preceding === 'string' ? preceding.charCodeAt(0) : preceding;
     let result = dst;
     let dst_exhausted = 0;
     let di = 0;
@@ -258,7 +294,7 @@ export function strcasecpy(dst, src) {
         }
         let oc;
         if (dst_exhausted) {
-            oc = di > 0 ? out.charCodeAt(di - 1) : 0;
+            oc = di > 0 ? out.charCodeAt(di - 1) : previous;
         } else {
             oc = dst.charCodeAt(di);
         }
@@ -292,6 +328,7 @@ export function ordin(n) {
 
 /* C ref: hacklib.c:243 — strip_newline: remove \n from end of line; remove \r too if one is there */
 export function strip_newline(str) {
+    str = c_string(str);
     const p = str.lastIndexOf('\n');
     if (p >= 0) {
         if (p > 0 && str[p - 1] === '\r') {
@@ -299,7 +336,6 @@ export function strip_newline(str) {
         }
         return str.substring(0, p);
     }
-    if (str === '') return ' ';
     return str;
 }
 
@@ -327,6 +363,7 @@ export function visctrl(c) {
 
 /* C ref: hacklib.c:482-490 — onlyspace: is a string entirely whitespace? */
 export function onlyspace(s) {
+    s = c_string(s);
     for (let i = 0; i < s.length; i++)
         if (s[i] !== ' ' && s[i] !== '\t')
             return false;
@@ -335,6 +372,7 @@ export function onlyspace(s) {
 
 /* C ref: hacklib.c:153-162 — lcase: convert a string into all lowercase */
 export function lcase(s) {
+    s = c_string(s);
     const arr = s.split('');
     for (let i = 0; i < arr.length; i++) {
         const c = arr[i].charCodeAt(0);
@@ -346,6 +384,7 @@ export function lcase(s) {
 
 /* C ref: hacklib.c:177-183 — upstart: convert first character of a string to uppercase */
 export function upstart(s) {
+    if (s != null) s = c_string(s);
     if (s) {
         const arr = s.split('');
         arr[0] = String.fromCharCode(highc(arr[0].charCodeAt(0)));
@@ -356,6 +395,7 @@ export function upstart(s) {
 
 /* C ref: hacklib.c:186-202 — upwords: capitalize first letter of every word in a string (in place) */
 export function upwords(s) {
+    s = c_string(s);
     let space = true;
     const arr = s.split('');
     for (let i = 0; i < arr.length; i++) {
@@ -443,8 +483,10 @@ export function case_insensitive_comp(s1, s2) {
 /* C ref: hacklib.c:276-302 — str_start_is: determine whether 'str' starts with 'chkstr',
  * possibly ignoring case; panics on huge strings */
 export function str_start_is(str, chkstr, caseblind) {
+    str = c_string(str);
+    chkstr = c_string(chkstr);
     let t1, t2;
-    let n = 2147483647; /* LARGEST_INT */
+    let n = 32767; /* global.h:135 LARGEST_INT (not INT_MAX) */
     let si = 0;
 
     while (--n) {
@@ -474,6 +516,7 @@ export function online2(x0, y0, x1, y1) {
 /* C ref: hacklib.c:426 — ing_suffix: construct a gerund (a verb formed by
  * appending "ing" to a noun). */
 export function ing_suffix(s) {
+    s = c_string(s);
     const vowel = "aeiouwy";
     let buf = s;
     let onoff = "";
@@ -510,6 +553,9 @@ export function ing_suffix(s) {
 /* C hacklib.c:849 fuzzymatch — compare two strings for equality, ignoring the
  * presence of the specified characters (here " -") and case. */
 export function fuzzymatch(s1, s2, ignore_chars, caseblind) {
+    s1 = c_string(s1);
+    s2 = c_string(s2);
+    ignore_chars = c_string(ignore_chars);
     let i = 0, j = 0;
     let c1, c2;
     do {
@@ -520,8 +566,8 @@ export function fuzzymatch(s1, s2, ignore_chars, caseblind) {
         if (!c1 || !c2)
             break; /* end of either string reached */
         if (caseblind) {
-            c1 = c1.toLowerCase();
-            c2 = c2.toLowerCase();
+            c1 = lowc(c1);
+            c2 = lowc(c2);
         }
     } while (c1 === c2);
     /* match occurs only when the end of both strings has been reached */
@@ -530,11 +576,16 @@ export function fuzzymatch(s1, s2, ignore_chars, caseblind) {
 
 // ── Helper: case-insensitive n-char comparison (C strncmpi) ──────────────────
 export function strncmpi(s1, s2, n) {
-    for (let i = 0; i < n; i++) {
+    s1 = c_string(s1);
+    s2 = c_string(s2);
+    n |= 0;
+    // C's strcmpi macro uses n == -1 for an unbounded comparison.
+    for (let i = 0; n--; i++) {
         if (!s2[i]) return (s1[i] !== undefined) ? 1 : 0;
         if (!s1[i]) return -1;
-        const c1 = lowc(s1[i]);
-        const c2 = lowc(s2[i]);
+        // C compares signed char temporaries after ASCII-only folding.
+        const c1 = lowc((s1.charCodeAt(i) << 24) >> 24);
+        const c2 = lowc((s2.charCodeAt(i) << 24) >> 24);
         if (c1 !== c2) return (c1 > c2) ? 1 : -1;
     }
     return 0;
@@ -543,10 +594,12 @@ export function strncmpi(s1, s2, n) {
 // ── Helper: chrcasecpy / strcasecpy (C hacklib.c) ────────────────────────────
 // chrcasecpy: return src char with the case of dst char (when both alphabetic).
 export function chrcasecpy(oc, ic) {
-    // C hacklib.c:300-317 uses ASCII case ranges.  letter() also accepts
-    if (oc >= 'a' && oc <= 'z') return lowc(ic);
-    if (oc >= 'A' && oc <= 'Z') return highc(ic);
-    return ic;
+    // C hacklib.c:301-322 compares int arguments, then returns a signed char.
+    const code = typeof oc === 'string' ? oc.charCodeAt(0) : oc;
+    let nc = ic;
+    if (code >= 0x61 && code <= 0x7a) nc = lowc(ic);
+    else if (code >= 0x41 && code <= 0x5a) nc = highc(ic);
+    return typeof nc === 'number' ? (nc << 24) >> 24 : nc;
 }
 
 /* C hacklib.c:714 — sgn(n): -1, 0, or 1 */
@@ -558,6 +611,7 @@ export function sgn(n) {
 // stop, in place.  The attributions at the end of data.base quotes are indented
 // with a second tab, which is what makes this reachable from checkfile.
 export function tabexpand(sbuf) {
+    sbuf = c_string(sbuf);
     if (!sbuf) return sbuf;
     let out = '', idx = 0;
     for (const ch of sbuf) {
@@ -569,6 +623,11 @@ export function tabexpand(sbuf) {
             out += ch;
             ++idx;
         }
+        // C hacklib.c:460-463 truncates as soon as the expanded index hits BUFSZ.
+        if (idx >= 256) {
+            out = out.slice(0, 255);
+            break;
+        }
     }
     return out;
 }
@@ -579,16 +638,42 @@ export function isqrt(val) {
     return Math.trunc(Math.sqrt(val));
 }
 
-export function strstri(s1, s2) {
-    return String(s1 ?? '').toLowerCase().includes(String(s2 ?? '').toLowerCase());
+export function strstri(str, sub) {
+    str = c_string(str);
+    sub = c_string(sub);
+    // Callers use the C pointer only as a found/not-found predicate.
+    if (!sub.length) return true;
+    // C's char frequency tables wrap as signed bytes.  In particular, 128
+    // identical chars can make the prefilter reject an otherwise valid match.
+    const tstr = new Int8Array(32), tsub = new Int8Array(32);
+    for (let i = 0; i < str.length; ++i) ++tstr[str.charCodeAt(i) & 31];
+    for (let i = 0; i < sub.length; ++i) ++tsub[sub.charCodeAt(i) & 31];
+    const k = str.length - sub.length;
+    if (k < 0) return false;
+    for (let i = 0; i < 32; ++i)
+        if (tsub[i] > tstr[i]) return false;
+    for (let i = 0; i <= k; ++i) {
+        let j = 0;
+        while (j < sub.length && lowc(str[i + j]) === lowc(sub[j])) ++j;
+        if (j === sub.length) return true;
+    }
+    return false;
 }
 
 // C hacklib.c:601 findword(): word of wordlen chars in a space-separated list.
 export function findword(list, word, wordlen, ignorecase) {
-    const w = word.slice(0, wordlen);
-    for (const p of list.split(' ')) {
-        if (!p) continue;
-        if (ignorecase ? p.toLowerCase() === w.toLowerCase() : p === w) return p;
+    list = c_string(list);
+    word = c_string(word);
+    let p = 0;
+    while (p >= 0) {
+        while (list[p] === ' ') ++p;
+        if (p === list.length) break;
+        const tail = list.slice(p);
+        const cmp = ignorecase ? strncmpi(tail, word, wordlen)
+                               : strncmp(tail, word, wordlen);
+        if (!cmp && (p + wordlen === list.length || list[p + wordlen] === ' '))
+            return tail;
+        p = list.indexOf(' ', p + 1);
     }
     return null;
 }
@@ -610,4 +695,73 @@ export function copynchars(dst, src, n) {
         --n;
     }
     return out;
+}
+
+/* C hacklib.c:102-113 — uppercase ASCII in place (returned as a JS value). */
+export function ucase(s) {
+    s = c_string(s);
+    let out = '';
+    for (let i = 0; i < s.length; ++i) out += highc(s[i]);
+    return out;
+}
+
+/* C hacklib.c:499-520 — strip selected bytes, retaining at most BUFSZ-1. */
+export function stripchars(bp, stuff_to_strip, orig) {
+    stuff_to_strip = c_string(stuff_to_strip);
+    orig = c_string(orig);
+    let out = '';
+    for (let i = 0; i < orig.length && out.length < 255; ++i)
+        if (!stuff_to_strip.includes(orig[i])) out += orig[i];
+    return out;
+}
+
+/* C hacklib.c:638-649 — signed decimal int, including a leading plus for 0. */
+export function sitoa(n) {
+    n |= 0;
+    return n < 0 ? String(n) : '+' + n;
+}
+
+/* C hacklib.c:882-921 — encode one code point into the caller's byte buffer. */
+export function unicodeval_to_utf8str(uval, buffer, bufsz) {
+    uval |= 0;
+    if (bufsz < 5) return 0;
+    let i = 0;
+    buffer[0] = 0;
+    if (uval < 0x80) {
+        buffer[i++] = uval & 255;
+    } else if (uval < 0x800) {
+        buffer[i++] = 192 + Math.trunc(uval / 64);
+        buffer[i++] = 128 + uval % 64;
+    } else if (((uval - 0xd800) >>> 0) < 0x800) {
+        return 0;
+    } else if (uval < 0x10000) {
+        buffer[i++] = 224 + Math.trunc(uval / 4096);
+        buffer[i++] = 128 + Math.trunc(uval / 64) % 64;
+        buffer[i++] = 128 + uval % 64;
+    } else if (uval < 0x110000) {
+        buffer[i++] = 240 + Math.trunc(uval / 262144);
+        buffer[i++] = 128 + Math.trunc(uval / 4096) % 64;
+        buffer[i++] = 128 + Math.trunc(uval / 64) % 64;
+        buffer[i++] = 128 + uval % 64;
+    } else {
+        return 0;
+    }
+    buffer[i] = 0;
+    return 1;
+}
+
+/* C hacklib.c:1000-1016 — identify a supplied C data model. */
+export function what_datamodel_is_this(retidx, szshort, szint, szlong, szll, szptr) {
+    const dm = [
+        [2, 4, 4, 8, 4, 'ILP32LL64', 'x86 32-bit'],
+        [2, 4, 4, 8, 8, 'IL32LLP64', 'Windows x64 64-bit'],
+        [2, 4, 8, 8, 8, 'I32LP64', 'Unix 64-bit'],
+        [2, 8, 8, 8, 8, 'ILP64', 'Unix ILP64'],
+    ];
+    for (const model of dm) {
+        if (szshort === model[0] && szint === model[1]
+            && szlong === model[2] && szll === model[3] && szptr === model[4])
+            return model[retidx === 0 ? 5 : 6];
+    }
+    return 'Unknown';
 }

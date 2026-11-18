@@ -445,58 +445,11 @@ function _ammo_and_launcher_hmon(a, l) {
 
 
 
-/* uhitm.c:1437 hmon_hitmon_dmg_recalc — strength + skill bonuses (no RNG) */
-async function _hmon_hitmon_dmg_recalc(hmd, obj, u, uwep) {
-    let dmgbonus = 0;
-    if (hmd.get_dmg_bonus) {
-        dmgbonus = (u.udaminc | 0);
-        if (hmd.thrown !== HMON_THROWN
-            || !obj || !uwep || !_ammo_and_launcher_hmon(obj, uwep)) {
-            let strbonus = dbon();
-            const absbonus = Math.abs(strbonus);
-            const sgn = (strbonus > 0) ? 1 : (strbonus < 0) ? -1 : 0;
-            if (hmd.twohits)
-                strbonus = (((3 * absbonus + 2) / 4) | 0) * sgn;
-            else if (hmd.thrown === HMON_MELEE && uwep && bimanual_mm(uwep))
-                strbonus = (((3 * absbonus + 1) / 2) | 0) * sgn;
-            dmgbonus += strbonus;
-        }
-    }
-    if (hmd.use_weapon_skill) {
-        let skillwep = obj;
-        if ((_is_ammo_hmon(obj) || _is_missile_hmon(obj)) && _ammo_and_launcher_hmon(obj, uwep))
-            skillwep = uwep;
-        dmgbonus += await weapon_dam_bonus(skillwep);
-        if (hmd.train_weapon_skill) {
-            const wtype = hmd.thrown ? weapon_type(skillwep) : weapon_type(uwep);
-            await use_skill(wtype, 1);
-        }
-    }
-    hmd.dmg += dmgbonus;
-    if (hmd.dmg < 1)
-        hmd.dmg = 1;
-}
-
-
 /* C dog.c:1371 abuse_dog — defined in js/dog.js, which imports yelp/growl from
  * here; the cycle is runtime-only and both sides are hoisted declarations, the
  * same shape as this file's existing mklev.js / uhitm.js edges. */
 /* uhitm.c:1589 hmon_hitmon_pet — the real body is js/uhitm.js's (it also
  * keeps a zero-HP pet visible to abuse_dog's newsym); imported above. */
-
-/* uhitm.c:1638 hmon_hitmon_msg_hit — message only, no RNG / no state-diff */
-function _hmon_hitmon_msg_hit(hmd, mon, obj) {
-    /* C uhitm.c:1640-1642: the killing missile of a multishot volley still
-     * gets its 'The 1st <missile> hits <mon>.' line. */
-    const _ms = game.gm?.m_shot || {};
-    if (!hmd.hittxt && (!hmd.destroyed
-            || (hmd.thrown && (_ms.n | 0) > 1 && obj && (_ms.o | 0) === (obj.otyp | 0)))) {
-        if (hmd.thrown)
-            hit(mshot_xname(obj), mon, exclam(hmd.dmg));
-    }
-}
-
-
 
 /* cxname(obj) — C ref: nethack-c/src/objnam.c:1920-1927.  Was a private
  * best-effort copy here (it returned the object's shuffled appearance
@@ -691,7 +644,7 @@ import { grow_up, nonliving } from './makemon.js'; // relocate-fns
 import { perceives as perceives_dm } from './mcastu.js'; // relocate-fns
 import { could_seduce, getmattk, mon_mattk_raw, mswings_verb, mtrapped_in_pit } from './mhitu.js'; // relocate-fns
 import { clone_mon_ml as clone_mon, slimeproof, split_mon_ml } from './mklev.js'; // relocate-fns
-import { healmon as healmon_dg, minliquid as minliquid_real, mon_givit as mon_givit_dg, mon_to_stone, mondead, monstone, set_ustuck, zombie_form, zombie_maker } from './mon.js'; // relocate-fns
+import { healmon as healmon_dg, minliquid as minliquid_real, mon_givit as mon_givit_dg, mon_to_stone, mondead, monkilled, monstone, set_ustuck, zombie_form, zombie_maker } from './mon.js'; // relocate-fns
 import { dmgtype, resist_conflict, resists_blnd as resists_blnd_gz, stagger as stagger_dm } from './mondata.js'; // relocate-fns
 import { closed_door, itsstuck } from './monmove.js'; // relocate-fns
 import { breamm as breamm_mu, spitmm, thrwmm } from './mthrowu.js'; // relocate-fns
@@ -1069,7 +1022,7 @@ export async function fightm(mtmp) {
                 if (!(u && u.uswallow) && u && mtmp === u.ustuck) {
                     if (!rn2(4)) {
                         set_ustuck(null);
-                        void pline(`${Monnam_dm(mtmp)} releases you!`);
+                        await pline(`${Monnam_dm(mtmp)} releases you!`);
                     } else {
                         break;
                     }
@@ -1144,17 +1097,17 @@ export async function mattackm(magr, mdef) {
                 const justone = ((pd && (pd.geno & 0x1000)) ? 1 : 0);
                 let montype = noname_monnam(mdef, justone ? ARTICLE_THE_DM : ARTICLE_NONE);
                 if (!justone) montype = makeplural_dm(montype);
-                pline('You dream of ' + montype + '.');
+                await pline('You dream of ' + montype + '.');
             } else {
                 const last_msg = game.iflags?.last_msg | 0;
                 const last_hider = game.l?.last_hider | 0;
                 const PLNMSG_HIDE_UNDER = PLNMSG_HIDE_UNDER_C;
                 if (last_msg === PLNMSG_HIDE_UNDER && mdef.m_id === last_hider)
-                    pline_mon(mdef, '%s emerges from hiding.', Monnam_dm(mdef));
+                    await pline_mon(mdef, '%s emerges from hiding.', Monnam_dm(mdef));
                 else if (mdef.m_id === last_hider)
-                    pline('You notice ' + mon_nam_dm(mdef) + '.');
+                    await pline('You notice ' + mon_nam_dm(mdef) + '.');
                 else
-                    pline('Suddenly, you notice ' + a_monnam(mdef) + '.');
+                    await pline('Suddenly, you notice ' + a_monnam(mdef) + '.');
             }
         }
     }
@@ -1230,7 +1183,7 @@ export async function mattackm(magr, mdef) {
             mwep = MON_WEP_dm(magr);
             if (mwep) {
                 if (game.v?.vis)
-                    mswingsm(magr, mdef, mwep);
+                    await mswingsm(magr, mdef, mwep);
                 tmp += hitval_dm(mwep, mdef);
             }
             /* FALLTHROUGH */
@@ -1274,7 +1227,7 @@ export async function mattackm(magr, mdef) {
                              * Monnam(mdef), mon_nam(magr)) — spelled with this
                              * file's local namers; the module-level Monnam/
                              * mon_nam are not bound here and would throw. */
-                            pline(Monnam_dm(mdef) + ' divides as ' + mon_nam_dm(magr) + ' hits it!');
+                            await pline(Monnam_dm(mdef) + ' divides as ' + mon_nam_dm(magr) + ' hits it!');
                         await mintrap_dm(mclone, NO_TRAP_FLAGS$);
                         if (DEADMONSTER_dm(magr))
                             res[i] |= M_ATTK_AGR_DIED;
@@ -1317,7 +1270,7 @@ export async function mattackm(magr, mdef) {
             if (mdef.data && mdef.mnum === PM_SHADE) {
                 if (game.v?.vis)
                     /* C mhitm.c:513-514 — s_suffix handles "It" and names ending in s. */
-                    pline(s_suffix(Monnam_dm(magr)) + ' attempt to engulf ' + mon_nam_dm(mdef) + ' is futile.');
+                    await pline(s_suffix(Monnam_dm(magr)) + ' attempt to engulf ' + mon_nam_dm(mdef) + ' is futile.');
                 strike = 0;
                 break;
             }
@@ -1424,29 +1377,10 @@ function engulfing_u_dm(magr) {
 
 async function mintrap_dm(mclone, flags) { return await mintrap_real(mclone, flags); }
 
-/* C mon.c:3364 monkilled(mdef, "", how) → mondied(mdef) → mondead(mdef)
- * (life-saving, vampshifter-revert, vault-guard-corridor, bones-file paths
- * are not modeled — unreachable for an ordinary mon-vs-mon melee kill) →
- * m_detach → mondied's corpse_chance + make_corpse (default/common case
- * only; the gas-spore/lich/Vlad/golem/mplayer/rider/shopkeeper special cases
- * in corpse_chance and make_corpse are not modeled here). */
+/* C mhitm.c:1088,1447: use the complete mon.c:3377 monkilled path,
+ * including worm-tail visibility, life saving, and corpse suppression. */
 async function monkilled_dm(mdef, mattk) {
-    const how = mattk?.adtyp ?? 0, pd = mdef.data;
-    if (cansee(mdef.mx | 0, mdef.my | 0)) {
-        const verb = nonliving(mdef.data) ? 'destroyed' : 'killed';
-        pline_mon(mdef, `${Monnam_dm(mdef)} is ${verb}!`);
-        if (_topline_more_pending())
-            await flush_pending_messages();
-    } else {
-        /* C mon.c:3390-3391 — the sad feeling is deferred until mondead()
-         * has ruled out life-saving. */
-        (game.iflags ||= {}).sad_feeling = !!mdef.mtame;
-    }
-    /* C mon.c:3398-3403: how == AD_DGST => mondead(), never a corpse. */
-    const disintegested = how === AD_DGST || how === -242 /* -AD_RBRE */ || (how === _AD_FIRE && [PM_PAPER_GOLEM, PM_STRAW_GOLEM].includes(pd.pmidx));
-    (game.gd ||= {}).disintegested = disintegested;
-    await mondied_dm(mdef, disintegested);
-    if (DEADMONSTER_dm(mdef) && mdef.mtame && disintegested && how === _AD_FIRE) await pline('May %s roast in peace.', noit_mon_nam(mdef));
+    await monkilled(mdef, "", mattk?.adtyp ?? 0);
 }
 
 const PM_WRAITH_DG = MONS_NAMES.indexOf('wraith'), PM_NURSE_DG = MONS_NAMES.indexOf('nurse');
@@ -1564,7 +1498,7 @@ async function explmm(magr, mdef, mattk) {
     if (magr.mcan)
         return M_ATTK_MISS;
     if (cansee(magr.mx | 0, magr.my | 0))
-        pline_mon(magr, '%s explodes!', Monnam_dm(magr));
+        await pline_mon(magr, '%s explodes!', Monnam_dm(magr));
     else
         await noises_dm(magr, mattk);
     /* monster explosion types which actually create an explosion */
@@ -1585,7 +1519,7 @@ async function explmm(magr, mdef, mattk) {
         result |= M_ATTK_AGR_DIED;
         /* mondead() -> m_detach() -> m_unleash() always suppresses the slack message */
         if (was_leashed)
-            pline('Your leash falls slack.');
+            await pline('Your leash falls slack.');
     }
     if (magr.mtame) /* give this one even if it was visible */
         await You('have a melancholy feeling for a moment, then it passes.');
@@ -1609,7 +1543,8 @@ export function failed_grab(magr, mdef, mattk) {
             : (mdef === game.youmonst ? 'you' : mon_nam_dm(mdef));
         const verb = (mattk?.adtyp | 0) === AD_DGST ? 'gulp'
             : (mattk?.adtyp | 0) === AD_STCK ? 'adhere' : 'grab';
-        pline(`${magrnam} ${verb} attempt ${notonhead ? 'fails to hold' : 'passes right through'} ${target}!`);
+        /* C mhitm.c:634 limits each formatted monster name to 99 bytes. */
+        pline(`${magrnam.slice(0, 99)} ${verb} attempt ${notonhead ? 'fails to hold' : 'passes right through'} ${target.slice(0, 99)}!`);
     }
     return true;
 }
@@ -1628,14 +1563,14 @@ async function gazemm(magr, mdef, mattk) {
     if (game.v?.vis) {
         const buf = (altmesg ? Adjmonnam_gz(magr, 'blinded') : Monnam_dm(magr))
                     + ' gazes ' + (altmesg ? 'toward' : 'at');
-        pline(buf + ' ' + (canspotmon(mdef) ? mon_nam_dm(mdef) : 'something') + '...');
+        await pline(buf + ' ' + (canspotmon(mdef) ? mon_nam_dm(mdef) : 'something') + '...');
     }
 
     if (magr.mcan || !mdef.mcansee
         || (archon ? resists_blnd_gz(mdef) : !magr.mcansee)
         || (magr.minvis && !perceives_dm(mdef.data)) || mdef.msleeping) {
         if (game.v?.vis && canspotmon(mdef))
-            pline('but nothing happens.');
+            await pline('but nothing happens.');
         return M_ATTK_MISS;
     }
     if (magr.mnum === PM_MEDUSA && await mon_reflects_dm(mdef, null)) {
@@ -1649,13 +1584,13 @@ async function gazemm(magr, mdef, mattk) {
             }
             if (mdef.minvis && !perceives_dm(magr.data)) {
                 if (canseemon(magr))
-                    pline(Monnam_dm(magr) + " doesn't seem to notice that "
+                    await pline(Monnam_dm(magr) + " doesn't seem to notice that "
                           + mhis_dm(magr)
                           + ' gaze was reflected.');
                 return M_ATTK_MISS;
             }
             if (canseemon(magr))
-                pline(Monnam_dm(magr) + ' is turned to stone!');
+                await pline_mon(magr, '%s is turned to stone!', Monnam_dm(magr));
             await monstone(magr);
             if (!DEADMONSTER_dm(magr))
                 return M_ATTK_MISS;
@@ -1843,10 +1778,9 @@ async function missmm(magr, mdef, mattk) {
  * its sibling select_rwep/select_hwep rather than copied here; mattackm's
  * AT_WEAP arm (mhitm.c:408-412) needs its return value, because a monster that
  * spends its move wielding does not attack. */
-/* C mhitm.c:1283-1300 mswingsm().  This is deliberately kept synchronous:
- * mswings_verb owns the C-compatible thrust roll and pline is non-blocking in
- * the terminal adapter, so the attacker's RNG/message order is preserved. */
-function mswingsm(magr, mdef, mwep) {
+/* C mhitm.c:1283-1300: finish any swing-message --More-- before rolling
+ * the attack in mattackm().  MSGTYPE=stop can block even a short line. */
+async function mswingsm(magr, mdef, mwep) {
     const u = game.u || {};
     const blinded = !!u.uprops?.[BLINDED_DM]
         && !!((u.uprops[BLINDED_DM].intrinsic | 0)
@@ -1856,7 +1790,7 @@ function mswingsm(magr, mdef, mwep) {
         return;
     const bash = is_pole_dm(mwep) && (mwep?.oartifact | 0) !== ART_SNICKERSNEE_DM
         && dist2(magr.mx | 0, magr.my | 0, mdef.mx | 0, mdef.my | 0) <= 2;
-    pline(`${Monnam(magr)} ${mswings_verb(mwep, bash)} ${mwep.quan > 1 ? 'one of ' : ''}${mhis_dm(magr)} ${xname(mwep)} at ${mon_nam(mdef)}.`);
+    await pline(`${Monnam(magr)} ${mswings_verb(mwep, bash)} ${mwep.quan > 1 ? 'one of ' : ''}${mhis_dm(magr)} ${xname(mwep)} at ${mon_nam(mdef)}.`);
 }
 
 /* C ref: nethack-c/include/mondata.h:57-58

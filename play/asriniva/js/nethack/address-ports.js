@@ -62,7 +62,7 @@ export function enableAddressPort(environment,name,{only,definition:providedDefi
     if(nativeMode&&name==='dungeon')connectNativeDungeonWindows(environment,local,schema);
     local.nativeFieldPlans=compileNativeFieldPlans(environment,schema,ctypes);
     if(nativeMode)local.nativeAddressRngCaller=(provider,file,line,caller)=>recordNativeRngCaller(provider===local?services:provider,file,line,caller);
-    if(nativeMode){local.nativeOwner=nativeState;local.nativeModuleName=name;local.stackSave=()=>nativeState.depth?undefined:transport.stackSave();local.stackRestore=saved=>{if(saved!==undefined)transport.stackRestore(saved);};}
+    if(nativeMode){local.nativeFixedProvider=true;local.nativeOwner=nativeState;local.nativeModuleName=name;local.stackSave=()=>nativeState.depth?undefined:transport.stackSave();local.stackRestore=saved=>{if(saved!==undefined)transport.stackRestore(saved);};}
     const execution={ready:false,namespace:null,context:null,scope:null};
     if(nativeMode)local.nativeAddressNamespaceReady=(namespace,context,scope)=>{execution.namespace=namespace;execution.context=context;execution.scope=scope;};
     const pointerArguments=new Map();
@@ -83,7 +83,46 @@ export function enableAddressPort(environment,name,{only,definition:providedDefi
         if(pair[2]==='layout')return bridge(local,layout,key,...args);
         if(pair[2]==='factory'){factoryEnvironment??=bridge(local,layout,namespace);return factoryEnvironment.nativeNamespace?factoryEnvironment.nativeNamespace[key](...args):withCEnvironment(factoryEnvironment,namespace[key],...args);}
         return bridge(local,key,...args);
-    };let started=false;const pointerResult=(name==='cmd'||name==='sp_lev')&&schema.sourceReturns[key]?.includes('*');const call=(...args)=>{if(call.nativeValuesEntry&&execution.ready&&nativeState.depth>0&&(!execution.scope||execution.scope.services===local)&&args.length===call.nativeValuesEntry.length){const value=call.nativeValuesEntry(...args);return pointerResult?BigInt(value??0):value;}if(!started){environment.startModule(name);started=true;}if(!nativeMode){const saved=transport.stackSave();try{return nativeState.boundary(rawCall,...args);}finally{transport.stackRestore(saved);}}const saved=nativeState.depth?undefined:transport.stackSave();nativeState.enter();try{if(!nativeInitialized){const value=nativeState.boundary(rawCall,...args);nativeInitialized=true;execution.ready=Boolean(execution.namespace);return value;}return rawCall(...args);}finally{try{nativeState.leave();}finally{if(saved!==undefined)transport.stackRestore(saved);}}};call.nativeState=nativeState;call.nativeDirect=true;
+    };
+    let started=false;
+    const pointerResult=(name==='cmd'||name==='sp_lev')&&schema.sourceReturns[key]?.includes('*');
+    function canRunNative(arity){
+        return call.nativeValuesEntry&&execution.ready&&nativeState.depth>0
+            &&(!execution.scope||execution.scope.services===local)&&arity===call.nativeValuesEntry.length;
+    }
+    function runNative(args){
+        const value=call.nativeValuesEntry(...args);
+        return pointerResult?BigInt(value??0):value;
+    }
+    const call=(...args)=>{
+        if(canRunNative(args.length))return runNative(args);
+        if(!started){environment.startModule(name);started=true;}
+        if(!nativeMode){
+            const saved=transport.stackSave();
+            try{return nativeState.boundary(rawCall,...args);}finally{transport.stackRestore(saved);}
+        }
+        const saved=nativeState.depth?undefined:transport.stackSave();
+        nativeState.enter();
+        try{
+            if(!nativeInitialized&&pair[2]==='factory'){
+                factoryEnvironment??=bridge(local,layout,namespace);
+                execution.ready=Boolean(execution.namespace);
+                nativeInitialized=execution.ready;
+            }
+            if(canRunNative(args.length))return runNative(args);
+            if(!nativeInitialized){
+                const value=nativeState.boundary(rawCall,...args);
+                nativeInitialized=true;
+                execution.ready=Boolean(execution.namespace);
+                return value;
+            }
+            return rawCall(...args);
+        }finally{
+            try{nativeState.leave();}finally{if(saved!==undefined)transport.stackRestore(saved);}
+        }
+    };
+    call.nativeState=nativeState;
+    call.nativeDirect=true;
     if(nativeMode){const entry=bindNativeAddressEntry(name,key,execution,nativeState,local,call,nativeArgument);if(entry){Object.assign(entry,{nativeState,nativeDirect:true,nativePrepared:true,nativeAddressExecution:true,nativeExecutionState:execution});call.nativeValuesEntry=entry;}}
     calls.set(key,call);return call;};
     const wrappers=Object.fromEntries(Object.entries(namespace).filter(([key,fn])=>typeof fn==='function'&&(!only||only.includes(key))&&!/StaticInitializers$/.test(key)&&(!schema.functionTypes||Object.hasOwn(schema.functionTypes,key))).map(([key])=>[key,bind(key)]));

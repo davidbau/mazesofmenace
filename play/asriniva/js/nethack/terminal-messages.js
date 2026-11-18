@@ -18,12 +18,23 @@ export function enableTerminalMessages(environment,layouts){
  Object.assign(local,{
   moduleKey:environment,heap:()=>memory.HEAPU8,literal:services.literal,
   alloc:size=>environment.alloc('alloc',transport.uint(size)),free:p=>services.free(address(p)),
-  Strcpy:(destination,source)=>address(services.strcpy(text(destination),text(source))),
-  Strcat:(destination,source)=>address(services.strcat(text(destination),text(source))),
+  Strcpy:(destination,source)=>environment.libc.Strcpy(address(destination),typeof source==='string'?source:address(source)),
+  Strcat:(destination,source)=>environment.libc.Strcat(address(destination),typeof source==='string'?source:address(source)),
   strlen:value=>transport.ulong(services.strlen(text(value))),
   strchr:(value,character)=>address(services.strchr(text(value),transport.int(character))),
   strcmp:(a,b)=>services.strcmp(text(a),text(b)),
-  strncmp:(a,b,count)=>services.strncmp(text(a),text(b),transport.ulong(count)),
+  strncmp:(a,b,count)=>{
+   if(typeof a!=='string'&&typeof b==='string'){
+    const n=transport.ulong(count),at=address(a);
+    for(let i=0;i<n;i++){
+     memory.bounds(at+i);
+     const left=memory.HEAPU8[at+i],right=b.charCodeAt(i)||0;
+     if(left!==right||!left)return left-right;
+    }
+    return 0;
+   }
+   return services.strncmp(text(a),text(b),transport.ulong(count));
+  },
   strncpy:(a,b,count)=>address(services.strncpy(text(a),text(b),transport.ulong(count))),
   eos:value=>address(resolve('eos')(text(value))),
   digit:value=>resolve('digit')(transport.char(value)),lowc:value=>resolve('lowc')(transport.char(value)),

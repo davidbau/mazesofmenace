@@ -4,22 +4,13 @@ import {recordNativeRngCaller} from './native/rng-output.js';
 import * as timeout from '../ported/timeout.js';
 import {createNativeRecordViews} from './native/record-views.js';
 import {nativeStateFor} from './native/state-bridge.js';
-import {createNativeTimeout} from './native/timeout.js';
+import {createNativeTimeout,timeoutMembers} from './native/timeout.js';
 import {extendTimeoutTransport} from './timeout-transport.js';
 export function enableTimers(environment,layouts) {
     const {services,transport,ctypes,memory,functions}=environment,views=createNativeRecordViews(environment),L=layouts.timeout;
     const native=nativeStateFor(environment);
     if(ctypes.size('struct fe')!==L.timerSize)throw new Error('Timer record profile mismatch');
-    const forwards=new Map(),boundary=args=>args.map(v=>typeof v==='string'?services.literal(v):v?.address??v);
-    const env=new Proxy(Object.create(services),{get(target,key,receiver){
-        if(Object.hasOwn(target,key))return Reflect.get(target,key,receiver);
-        const value=Reflect.has(target,key)?Reflect.get(target,key,receiver):undefined;
-        if(value!==undefined&&typeof value!=='function')return value;
-        if(typeof key!=='string')return value;
-        const direct=native.functions.get(key);if(direct?.nativeState===native)return direct;
-        if(!forwards.has(key))forwards.set(key,(...args)=>native.boundary(environment.hasFunction(key)?environment.resolve(key):typeof services[key]==='function'?services[key]:environment.resolve(key),...boundary(args)));
-        return forwards.get(key);
-    }});
+    const env=Object.create(services);
     Object.defineProperties(env,Object.getOwnPropertyDescriptors(transport));
     const record=(type,p)=>views.record(type,p);
     const bits=v=>BigInt.asUintN(64,BigInt(v?.address??v??0));
@@ -72,6 +63,47 @@ export function enableTimers(environment,layouts) {
         if(['spot_stop_timers','spot_time_expires','spot_time_left'].includes(name))args=args.map(transport.short);
         return args;
     };
+    const arena=native.nativeArena;
+    const properties=ctypes.fieldAddress('struct you',environment.requireGlobal('u'),'uprops');
+    const propertyStride=ctypes.size('struct prop')/8;
+    const intrinsic=(properties+ctypes.record('struct prop').fields.intrinsic.offset)/8;
+    const timeoutMask=BigInt(L.TIMEOUT);
+    env.tickProperty=index=>{
+        const slot=intrinsic+index*propertyStride;
+        const value=arena.BigInt64[slot];
+        if(!(value&timeoutMask))return false;
+        const next=value-1n;
+        arena.BigInt64[slot]=next;
+        return !(next&timeoutMask);
+    };
+    // Resolve the declared game dependencies individually. Header values and
+    // genuine foreign calls retain their existing providers.
+    const dependencies=[];
+    function bindDependencies(){
+        for(const name of dependencies){
+            const entry=native.functions.get(name);
+            if(entry?.nativeState===native&&entry.nativeDirect)env[name]=entry;
+        }
+    }
+    for(const name of timeoutMembers){
+        if(Object.hasOwn(env,name))continue;
+        dependencies.push(name);
+        let fallback;
+        Object.defineProperty(env,name,{
+            configurable:true,
+            get(){
+                const value=services[name];
+                if(value!==undefined&&typeof value!=='function')return value;
+                const direct=native.functions.get(name);
+                if(direct?.nativeState===native)return direct;
+                return fallback??=(...args)=>native.boundary(
+                    environment.hasFunction(name)?environment.resolve(name):
+                        typeof services[name]==='function'?services[name]:environment.resolve(name),
+                    ...args.map(v=>typeof v==='string'?services.literal(v):v?.address??v));
+            },
+            set(value){Object.defineProperty(this,name,{value,writable:true,configurable:true});},
+        });
+    }
     const policies=createNativeTimeout(env);
     const bind=name=>{
         const invoke=(...args)=>{const saved=native.depth?undefined:transport.stackSave();native.enter();try{const value=policies[name](...prepare(name,args));return typeof value==='string'?services.literal(value):value?.address??value;}finally{native.leave();if(saved!==undefined)transport.stackRestore(saved);}};
@@ -92,5 +124,5 @@ export function enableTimers(environment,layouts) {
     const anything=obj=>{const out=env.gt.tmp_anything;env.copyRecord(out,env.cg.zeroany,ctypes.size('union any'));out.a_obj=record('struct obj',obj);return out;};
     anything.nativeState=native;anything.nativeDirect=true;native.functions.set('obj_to_any',anything);
     environment.register('object-anything',{obj_to_any:anything},env);
-    return {views,environment:env,events:timeout.timeout_funcs.map(({f,cleanup})=>({event:f,cleanup})),exports:names,limitation:'Complete native TIMEOUT policies and shared state; byte-level locals/serialization and remaining foreign owners retain explicit boundaries. Requires full original-C event/world and recording acceptance.'};
+    return {views,environment:env,policies,bindDependencies,events:timeout.timeout_funcs.map(({f,cleanup})=>({event:f,cleanup})),exports:names,limitation:'Complete native TIMEOUT policies and shared state; byte-level locals/serialization and remaining foreign owners retain explicit boundaries. Requires full original-C event/world and recording acceptance.'};
 }

@@ -386,31 +386,31 @@ function loot_classify(sort_item,obj)
        and the non-armor ones we use are fairly arbitrary */
     switch(oclass) {
         case (C.ARMOR_CLASS):
-            if(Number(!(C.cell((C.staticAddress("loot_classify.armcat")+Number(7)*1),"char").value))) {
+            if(Number(!(C.readInt8At((C.staticAddress("loot_classify.armcat")+Number(7)*1))))) {
                 /* one-time init; we use a different order than the subclass
                values defined by objclass.h */
-                (C.cell((C.staticAddress("loot_classify.armcat")+Number(C.ARM_HELM)*1),"char").value=C.i8(1));
+                (C.writeInt8At((C.staticAddress("loot_classify.armcat")+Number(C.ARM_HELM)*1), C.i8(1)));
                 /* [2] */
-                (C.cell((C.staticAddress("loot_classify.armcat")+Number(C.ARM_GLOVES)*1),"char").value=C.i8(2));
+                (C.writeInt8At((C.staticAddress("loot_classify.armcat")+Number(C.ARM_GLOVES)*1), C.i8(2)));
                 /* [3] */
-                (C.cell((C.staticAddress("loot_classify.armcat")+Number(C.ARM_BOOTS)*1),"char").value=C.i8(3));
+                (C.writeInt8At((C.staticAddress("loot_classify.armcat")+Number(C.ARM_BOOTS)*1), C.i8(3)));
                 /* [4] */
-                (C.cell((C.staticAddress("loot_classify.armcat")+Number(C.ARM_SHIELD)*1),"char").value=C.i8(4));
+                (C.writeInt8At((C.staticAddress("loot_classify.armcat")+Number(C.ARM_SHIELD)*1), C.i8(4)));
                 /* [1] */
-                (C.cell((C.staticAddress("loot_classify.armcat")+Number(C.ARM_CLOAK)*1),"char").value=C.i8(5));
+                (C.writeInt8At((C.staticAddress("loot_classify.armcat")+Number(C.ARM_CLOAK)*1), C.i8(5)));
                 /* [5] */
-                (C.cell((C.staticAddress("loot_classify.armcat")+Number(C.ARM_SHIRT)*1),"char").value=C.i8(6));
+                (C.writeInt8At((C.staticAddress("loot_classify.armcat")+Number(C.ARM_SHIRT)*1), C.i8(6)));
                 /* [6] */
-                (C.cell((C.staticAddress("loot_classify.armcat")+Number(C.ARM_SUIT)*1),"char").value=C.i8(7));
+                (C.writeInt8At((C.staticAddress("loot_classify.armcat")+Number(C.ARM_SUIT)*1), C.i8(7)));
                 /* [0] */
-                (C.cell((C.staticAddress("loot_classify.armcat")+Number(7)*1),"char").value=C.i8(8));
+                (C.writeInt8At((C.staticAddress("loot_classify.armcat")+Number(7)*1), C.i8(8)));
                 /* sanity protection */
             }
         (k=C.i32(R133(C.objects+Number(otyp)*C.sizes["struct objclass"])));
         /* oc_armcat overloads oc_subtyp which is an 'schar' so guard
            against somebody assigning something unexpected to it */
         if(Number(!!(Number(k<0)||Number(k>=7)))) (k=7);
-        (k=C.i32(C.cell((C.staticAddress("loot_classify.armcat")+Number(k)*1),"char").value));
+        (k=C.i32(C.readInt8At((C.staticAddress("loot_classify.armcat")+Number(k)*1))));
         break;
         case (C.WEAPON_CLASS):
             /* for weapons, group by ammo (arrows, bolts), launcher (bows),
@@ -778,7 +778,7 @@ function sortloot(olist,mode,by_nexthere,filterfunc)
     let o;
     let n; let i;
     let augment_filter;
-    for(((n=C.u32(0)),(o=C.cell(olist,"struct obj *").value));o;(o=(C.i32(by_nexthere)?R174(A84(o)):R83(o)))) (()=>{const old=n;n=C.u32((old+1));return n;})();
+    for(((n=C.u32(0)),(o=C.readPointerAt(olist)));o;(o=(C.i32(by_nexthere)?R174(A84(o)):R83(o)))) (()=>{const old=n;n=C.u32((old+1));return n;})();
 
     /* note: if there is a filter function, this might overallocate */
     (sliarray=C.alloc(C.u32(C.u64((C.u64((C.u32((n+C.u32(1)))))*BigInt(C.sizes["struct sortloot_item"]))))));
@@ -787,7 +787,7 @@ function sortloot(olist,mode,by_nexthere,filterfunc)
     (mode=C.u32(mode&C.u32(C.i32((~32)))));
     /* remove flag, leaving mode */
     /* populate aliarray[0..n-1] */
-    for(((i=C.u32(0)),(o=C.cell(olist,"struct obj *").value));o;(o=(C.i32(by_nexthere)?R174(A84(o)):R83(o)))) {
+    for(((i=C.u32(0)),(o=C.readPointerAt(olist)));o;(o=(C.i32(by_nexthere)?R174(A84(o)):R83(o)))) {
         if(Number(!!(Number(!!(filterfunc&&Number(!(C.callback(0,(filterfunc),o)))))&&(Number(!!(Number(!!(Number(!(augment_filter))||Number(C.i32(R89(o))!=C.CORPSE)))||Number(!((Number(!!(Number(((C.mons+Number(R121(o))*C.sizes["struct permonst"]))==(C.mons+Number(C.PM_COCKATRICE)*C.sizes["struct permonst"]))||Number(((C.mons+Number(R121(o))*C.sizes["struct permonst"]))==(C.mons+Number(C.PM_CHICKATRICE)*C.sizes["struct permonst"]))))))))))))) continue;
         /* caller may be asking us to override filterfunc (in order
                to do a cockatrice corpse touch check during pickup even
@@ -819,7 +819,7 @@ function sortloot(olist,mode,by_nexthere,filterfunc)
 function unsortloot(loot_array_p)
 {
     loot_array_p=C.ptr(loot_array_p);
-    if(C.cell(loot_array_p,"struct sortloot_item *").value) (C.free(C.cell(loot_array_p,"struct sortloot_item *").value),(C.cell(loot_array_p,"struct sortloot_item *").value=0));
+    if(C.readPointerAt(loot_array_p)) (C.free(C.readPointerAt(loot_array_p)),(C.writePointerAt(loot_array_p, 0)));
 }
 
 /* 3.6.0 'revamp' -- simpler than current, but ultimately too simple */
@@ -841,12 +841,12 @@ function assigninvlet(otmp)
         (W94(otmp,C.i8(C.GOLD_SYM)));
         return;
     }
-    for((i=0);Number(i<C.invlet_basic);(()=>{const old=i;i=C.i32((old+1));return old;})()) (C.cell((inuse+Number(i)*1),"signed char").value=(C.i8(0)));
+    for((i=0);Number(i<C.invlet_basic);(()=>{const old=i;i=C.i32((old+1));return old;})()) (C.writeInt8At((inuse+Number(i)*1), (C.i8(0))));
 
     for((obj=R57(C.gi));obj;(obj=R83(obj))) if(Number(obj!=otmp)) {
         (i=C.i32(R94(obj)));
-        if(Number(!!(Number(97<=i)&&Number(i<=122)))) (C.cell((inuse+Number(C.i32((i-97)))*1),"signed char").value=(C.i8(1)));
- else if(Number(!!(Number(65<=i)&&Number(i<=90)))) (C.cell((inuse+Number(C.i32((C.i32((i-65))+26)))*1),"signed char").value=(C.i8(1)));
+        if(Number(!!(Number(97<=i)&&Number(i<=122)))) (C.writeInt8At((inuse+Number(C.i32((i-97)))*1), (C.i8(1))));
+ else if(Number(!!(Number(65<=i)&&Number(i<=90)))) (C.writeInt8At((inuse+Number(C.i32((C.i32((i-65))+26)))*1), (C.i8(1))));
         if(Number(i==C.i32(R94(otmp)))) (W94(otmp,C.i8(0)));
     }
 
@@ -856,9 +856,9 @@ function assigninvlet(otmp)
             (i=C.i32((-1)));
             continue;
         }
-        if(Number(!(C.cell((inuse+Number(i)*1),"signed char").value))) break;
+        if(Number(!(C.readInt8At((inuse+Number(i)*1))))) break;
     }
-    (W94(otmp,C.i8(((C.i32(C.cell((inuse+Number(i)*1),"signed char").value)?35:((Number(i<26))?(C.i32((97+i))):(C.i32((C.i32((65+i))-26)))))))));
+    (W94(otmp,C.i8(((C.i32(C.readInt8At((inuse+Number(i)*1)))?35:((Number(i<26))?(C.i32((97+i))):(C.i32((C.i32((65+i))-26)))))))));
     (W61(C.gl,i));
     } finally {C.leaveAutomatic(automaticFrame);C.stackRestore(stackFrame); }
 }
@@ -934,7 +934,7 @@ function merged(potmp,pobj)
 {
     potmp=C.ptr(potmp);
     pobj=C.ptr(pobj);
-    let otmp=C.cell(potmp,"struct obj *").value; let obj=C.cell(pobj,"struct obj *").value;
+    let otmp=C.readPointerAt(potmp); let obj=C.readPointerAt(pobj);
     let discovered=(C.i8(0));
     if(mergable(otmp,obj)) {
         /* Approximate age: we do it this way because if we were to
@@ -954,7 +954,7 @@ function merged(potmp,pobj)
         if(Number(C.i32(R93(otmp))==C.COIN_CLASS)) ((W90(otmp,C.u32(C.weight(otmp)))),(W105(otmp,C.u32(0))));
  else if(Number(!((Number(!!(Number(!!(Number(!!(Number(C.i32(R89(otmp))==C.GLOB_OF_GRAY_OOZE)||Number(C.i32(R89(otmp))==C.GLOB_OF_BROWN_PUDDING)))||Number(C.i32(R89(otmp))==C.GLOB_OF_GREEN_SLIME)))||Number(C.i32(R89(otmp))==C.GLOB_OF_BLACK_PUDDING))))))) (W90(otmp,C.u32(C.weight(otmp))));
         /* and puddings!!!1!!one! */
-        if(Number(!!(Number(!((Number(!!(R126(otmp)&&(R135(R126(otmp))))))))&&(Number(!!(R126(obj)&&(R135(R126(obj))))))))) (otmp=(C.cell(potmp,"struct obj *").value=C.oname(otmp,(R135(R126(obj))),512)));
+        if(Number(!!(Number(!((Number(!!(R126(otmp)&&(R135(R126(otmp))))))))&&(Number(!!(R126(obj)&&(R135(R126(obj))))))))) (otmp=(C.writePointerAt(potmp, C.oname(otmp,(R135(R126(obj))),512))));
         C.obj_extract_self(obj);
         if(Number(!!(C.i32(R119(obj))&&Number(C.i32(R96(otmp))==3)))) (W119(otmp,C.u32(1)));
         /* really should merge the timeouts */
@@ -1474,7 +1474,7 @@ function delallobj(x,y)
     x=C.i16(x);
     y=C.i16(y);
     let otmp; let otmp2;
-    for((otmp=C.cell(((A24(A70(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value);otmp;(otmp=otmp2)) {
+    for((otmp=C.readPointerAt(((A24(A70(C.svl))+Number(x)*(8*21))+Number(y)*8)));otmp;(otmp=otmp2)) {
         if(Number(otmp==C.global("uball").value)) C.unpunish();
         /* after unpunish(), or might get deallocated chain */
         (otmp2=R174(A84(otmp)));
@@ -1527,8 +1527,10 @@ function sobj_at(otyp,x,y)
     otyp=C.i32(otyp);
     x=C.i16(x);
     y=C.i16(y);
+    if (Object.hasOwn(C, 'itemLists'))
+        return C.itemLists.floor(otyp, x, y);
     let otmp;
-    for((otmp=C.cell(((A24(A70(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value);otmp;(otmp=R174(A84(otmp)))) if(Number(C.i32(R89(otmp))==otyp)) break;
+    for((otmp=C.readPointerAt(((A24(A70(C.svl))+Number(x)*(8*21))+Number(y)*8)));otmp;(otmp=R174(A84(otmp)))) if(Number(C.i32(R89(otmp))==otyp)) break;
 
     return otmp;
 }
@@ -1555,6 +1557,8 @@ function carrying(type)
     type=C.i32(type);
     let otmp;
     /* this could be replaced by 'return m_carrying(&gy.youmonst, type);' */
+    if (Object.hasOwn(C, 'itemLists'))
+        return C.itemLists.hero(type);
     for((otmp=R57(C.gi));otmp;(otmp=R83(otmp))) if(Number(C.i32(R89(otmp))==type)) break;
 
     return otmp;
@@ -1597,7 +1601,7 @@ function currency(amount)
 {
     amount=C.i64(amount);
     let res;
-    (res=((Number(!!(R143(A200(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R143(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))?C.cell((C.staticAddress("currencies")+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("invent.c",1550,"currency"),C.rn2(C.i32((C.u64((BigInt((8*21))/BigInt(8)))))))):C.rn2(C.i32((C.u64((BigInt((8*21))/BigInt(8)))))))))*8),"char *").value:C.literal("zorkmid")));
+    (res=((Number(!!(R143(A200(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R143(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))?C.readPointerAt((C.staticAddress("currencies")+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("invent.c",1550,"currency"),C.rn2(C.i32((C.u64((BigInt((8*21))/BigInt(8)))))))):C.rn2(C.i32((C.u64((BigInt((8*21))/BigInt(8)))))))))*8)):C.literal("zorkmid")));
     if(Number(amount!=1n)) (res=C.makeplural(res));
     return res;
 }
@@ -1645,7 +1649,7 @@ function obj_here(obj,x,y)
     x=C.i16(x);
     y=C.i16(y);
     let otmp;
-    for((otmp=C.cell(((A24(A70(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value);otmp;(otmp=R174(A84(otmp)))) if(Number(obj==otmp)) return (C.i8(1));
+    for((otmp=C.readPointerAt(((A24(A70(C.svl))+Number(x)*(8*21))+Number(y)*8)));otmp;(otmp=R174(A84(otmp)))) if(Number(obj==otmp)) return (C.i8(1));
 
     return (C.i8(0));
 }
@@ -1654,7 +1658,7 @@ function g_at(x,y)
 {
     x=C.i16(x);
     y=C.i16(y);
-    let obj=C.cell(((A24(A70(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value;
+    let obj=C.readPointerAt(((A24(A70(C.svl))+Number(x)*(8*21))+Number(y)*8));
     while(obj) {
         if(Number(C.i32(R93(obj))==C.COIN_CLASS)) return obj;
         (obj=R174(A84(obj)));
@@ -1668,29 +1672,29 @@ function compactify(buf)
     buf=C.ptr(buf);
     let i1=1; let i2=1;
     let ilet; let ilet1; let ilet2;
-    (ilet2=C.cell((buf+Number(0)*1),"char").value);
-    (ilet1=C.cell((buf+Number(1)*1),"char").value);
-    (C.cell((buf+Number((()=>{const old=i2;i2=C.i32((old+1));return i2;})())*1),"char").value=C.cell((buf+Number((()=>{const old=i1;i1=C.i32((old+1));return i1;})())*1),"char").value);
-    (ilet=C.cell((buf+Number(i1)*1),"char").value);
+    (ilet2=C.readInt8At((buf+Number(0)*1)));
+    (ilet1=C.readInt8At((buf+Number(1)*1)));
+    (C.writeInt8At((buf+Number((()=>{const old=i2;i2=C.i32((old+1));return i2;})())*1), C.readInt8At((buf+Number((()=>{const old=i1;i1=C.i32((old+1));return i1;})())*1))));
+    (ilet=C.readInt8At((buf+Number(i1)*1)));
     while(ilet) {
         if(Number(C.i32(ilet)==C.i32((C.i32(ilet1)+1)))) {
-            if(Number(C.i32(ilet1)==C.i32((C.i32(ilet2)+1)))) (C.cell((buf+Number(C.i32((i2-1)))*1),"char").value=(ilet1=C.i8(45)));
+            if(Number(C.i32(ilet1)==C.i32((C.i32(ilet2)+1)))) (C.writeInt8At((buf+Number(C.i32((i2-1)))*1), (ilet1=C.i8(45))));
  else if(Number(C.i32(ilet2)==45)) {
-                (C.cell((buf+Number(C.i32((i2-1)))*1),"char").value=(()=>{const old=ilet1;ilet1=C.i8((old+1));return ilet1;})());
-                (C.cell((buf+Number(i2)*1),"char").value=C.cell((buf+Number((()=>{const old=i1;i1=C.i32((old+1));return i1;})())*1),"char").value);
-                (ilet=C.cell((buf+Number(i1)*1),"char").value);
+                (C.writeInt8At((buf+Number(C.i32((i2-1)))*1), (()=>{const old=ilet1;ilet1=C.i8((old+1));return ilet1;})()));
+                (C.writeInt8At((buf+Number(i2)*1), C.readInt8At((buf+Number((()=>{const old=i1;i1=C.i32((old+1));return i1;})())*1))));
+                (ilet=C.readInt8At((buf+Number(i1)*1)));
                 continue;
             }
         } else if(Number(C.i32(ilet)==35)) {
             /* compact three or more consecutive '#'
                characters into "#-#" */
-            if(Number(!!(Number(!!(Number(i2>=2)&&Number(C.i32(C.cell((buf+Number(C.i32((i2-2)))*1),"char").value)==35)))&&Number(C.i32(C.cell((buf+Number(C.i32((i2-1)))*1),"char").value)==35)))) (C.cell((buf+Number(C.i32((i2-1)))*1),"char").value=C.i8(45));
- else if(Number(!!(Number(!!(Number(!!(Number(i2>=3)&&Number(C.i32(C.cell((buf+Number(C.i32((i2-3)))*1),"char").value)==35)))&&Number(C.i32(C.cell((buf+Number(C.i32((i2-2)))*1),"char").value)==45)))&&Number(C.i32(C.cell((buf+Number(C.i32((i2-1)))*1),"char").value)==35)))) (()=>{const old=i2;i2=C.i32((old-1));return i2;})();
+            if(Number(!!(Number(!!(Number(i2>=2)&&Number(C.i32(C.readInt8At((buf+Number(C.i32((i2-2)))*1)))==35)))&&Number(C.i32(C.readInt8At((buf+Number(C.i32((i2-1)))*1)))==35)))) (C.writeInt8At((buf+Number(C.i32((i2-1)))*1), C.i8(45)));
+ else if(Number(!!(Number(!!(Number(!!(Number(i2>=3)&&Number(C.i32(C.readInt8At((buf+Number(C.i32((i2-3)))*1)))==35)))&&Number(C.i32(C.readInt8At((buf+Number(C.i32((i2-2)))*1)))==45)))&&Number(C.i32(C.readInt8At((buf+Number(C.i32((i2-1)))*1)))==35)))) (()=>{const old=i2;i2=C.i32((old-1));return i2;})();
         }
         (ilet2=ilet1);
         (ilet1=ilet);
-        (C.cell((buf+Number((()=>{const old=i2;i2=C.i32((old+1));return i2;})())*1),"char").value=C.cell((buf+Number((()=>{const old=i1;i1=C.i32((old+1));return i1;})())*1),"char").value);
-        (ilet=C.cell((buf+Number(i1)*1),"char").value);
+        (C.writeInt8At((buf+Number((()=>{const old=i2;i2=C.i32((old+1));return i2;})())*1), C.readInt8At((buf+Number((()=>{const old=i1;i1=C.i32((old+1));return i1;})())*1))));
+        (ilet=C.readInt8At((buf+Number(i1)*1)));
     }
 }
 
@@ -1720,19 +1724,19 @@ function mime_action(word)
     (bp=(pfx=(sfx=0)));
     if(Number(((bp=C.strstr(buf,C.literal(" on the "))))!=0)) {
         /* rub on the stone[s] */
-        (C.cell(bp,"char").value=C.i8(0));
+        (C.writeInt8At(bp, C.i8(0)));
         (sfx=((bp+Number(1)*1)));
         /* "something <sfx>" */
     }
     if(Number(!!((Number(!!(Number(!(C.strncmp(buf,C.literal("rub the "),C.u64(8))))&&C.strstr((buf+Number(8)*1),C.literal(" on")))))||(Number(!!(Number(!(C.strncmp(buf,C.literal("dip "),C.u64(4))))&&C.strstr((buf+Number(4)*1),C.literal(" into")))))))) {
         /* "rub the royal jelly on" -> "rubbing the royal jelly on", or
            "dip <foo> into" => "dipping <foo> into" */
-        (C.cell((buf+Number(3)*1),"char").value=C.i8(0));
+        (C.writeInt8At((buf+Number(3)*1), C.i8(0)));
         (pfx=(buf+Number(C.i32((3+1)))*1));
         /* "<pfx> something" */
     }
     if(Number(((bp=C.strstr(buf,C.literal(" or "))))!=0)) {
-        (C.cell(bp,"char").value=C.i8(0));
+        (C.writeInt8At(bp, C.i8(0)));
         (bp=((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("invent.c",1700,"mime_action"),C.rn2(2))):C.rn2(2)))?buf:((bp+Number(4)*1)))));
     } else (bp=buf);
     C.variadic(19,C.literal("mime %s%s%s something%s%s."),C.ing_suffix(bp),(pfx?C.literal(" "):C.literal("")),(pfx?pfx:C.literal("")),(sfx?C.literal(" "):C.literal("")),(sfx?sfx:C.literal("")));
@@ -1870,8 +1874,8 @@ function getobj(word,obj_ok,ctrlflags)
         case (C.GETOBJ_SUGGEST):
             /* treat as likely candidate */
             (allownone=(C.i8(1)));
-        (C.cell((()=>{const old=bp;bp=C.ptr((old+Number(1)));return old;})(),"char").value=C.i8(45));
-        (C.cell((()=>{const old=bp;bp=C.ptr((old+Number(1)));return old;})(),"char").value=C.i8(32));
+        (C.writeInt8At((()=>{const old=bp;bp=C.ptr((old+Number(1)));return old;})(), C.i8(45)));
+        (C.writeInt8At((()=>{const old=bp;bp=C.ptr((old+Number(1)));return old;})(), C.i8(32)));
         /* put a space after the '-' in the prompt */
         break;
         case (C.GETOBJ_DOWNPLAY):
@@ -1883,7 +1887,7 @@ function getobj(word,obj_ok,ctrlflags)
                 case (C.GETOBJ_EXCLUDE_SELECTABLE):
                     /* ditto, I think... */
                     (allownone=(C.i8(1)));
-        (C.cell((()=>{const old=ap;ap=C.ptr((old+Number(1)));return old;})(),"char").value=C.i8(45));
+        (C.writeInt8At((()=>{const old=ap;ap=C.ptr((old+Number(1)));return old;})(), C.i8(45)));
         break;
         case (C.GETOBJ_EXCLUDE_NONINVENT):
             /* player skipped some alternative that's
@@ -1905,7 +1909,7 @@ function getobj(word,obj_ok,ctrlflags)
             C.variadic(25,C.literal("getobj: inventory overflow"));
             break;
         }
-        (C.cell((bp+Number((()=>{const old=suggested;suggested=C.i32((old+1));return old;})())*1),"char").value=R94(otmp));
+        (C.writeInt8At((bp+Number((()=>{const old=suggested;suggested=C.i32((old+1));return old;})())*1), R94(otmp)));
         switch(C.callback(4,(obj_ok),otmp)) {
             case (C.GETOBJ_EXCLUDE_INACCESS):
                 /* remove inaccessible things */
@@ -1924,7 +1928,7 @@ function getobj(word,obj_ok,ctrlflags)
                don't add it to lets with bp, but add it to altlets with ap */
                 (()=>{const old=suggested;suggested=C.i32((old-1));return old;})();
             (forceprompt=(C.i8(1)));
-            (C.cell((()=>{const old=ap;ap=C.ptr((old+Number(1)));return old;})(),"char").value=R94(otmp));
+            (C.writeInt8At((()=>{const old=ap;ap=C.ptr((old+Number(1)));return old;})(), R94(otmp)));
             break;
             case (C.GETOBJ_SUGGEST):
                 break;
@@ -1936,15 +1940,15 @@ function getobj(word,obj_ok,ctrlflags)
         }
     }
     unsortloot(sortedinvent.address);
-    (C.cell((bp+Number(suggested)*1),"char").value=C.i8(0));
+    (C.writeInt8At((bp+Number(suggested)*1), C.i8(0)));
     /* If no objects were suggested but we added '- ' at the beginning for
      * hands, destroy the trailing space */
-    if(Number(!!(Number(!!(Number(suggested==0)&&Number(bp>buf)))&&Number(C.i32(C.cell((bp+Number(C.i32((-1)))*1),"char").value)==32)))) (C.cell((()=>{const old=bp;bp=C.ptr((old-Number(1)));return bp;})(),"char").value=C.i8(0));
+    if(Number(!!(Number(!!(Number(suggested==0)&&Number(bp>buf)))&&Number(C.i32(C.readInt8At((bp+Number(C.i32((-1)))*1)))==32)))) (C.writeInt8At((()=>{const old=bp;bp=C.ptr((old-Number(1)));return bp;})(), C.i8(0)));
     C.strcpy(lets,bp);
     /* necessary since we destroy buf */
     if(Number(suggested>5)) compactify(bp);
     /* compactify string */
-    (C.cell(ap,"char").value=C.i8(0));
+    (C.writeInt8At(ap, C.i8(0)));
     if(Number(!!(Number(!!(Number(suggested==0)&&Number(!(forceprompt))))&&Number(!(allownone))))) {
         C.variadic(27,C.literal("don't have anything %sto %s."),(inaccess?C.literal("else "):C.literal("")),word);
         return 0;
@@ -1957,12 +1961,12 @@ function getobj(word,obj_ok,ctrlflags)
             (ilet=C.readchar());
         } else if(R45(C.iflags)) {
             /* don't overwrite a possible quitchars */
-            if(Number(!(oneloop))) (ilet=C.i8(((Number(!!(C.i32(C.cell(lets,"char").value)||C.i32(C.cell(altlets,"char").value))))?63:42)));
+            if(Number(!(oneloop))) (ilet=C.i8(((Number(!!(C.i32(C.readInt8At(lets))||C.i32(C.readInt8At(altlets)))))?63:42)));
             if(Number(!(msggiven))) C.callback(5,(R190(C.windowprocs)),qbuf,(C.i8(0)));
             (msggiven=(C.i8(1)));
             (oneloop=(C.i8(1)));
         } else {
-            if(Number(!(C.cell((buf+Number(0)*1),"char").value))) C.strcat(qbuf,C.literal(" [*]"));
+            if(Number(!(C.readInt8At((buf+Number(0)*1))))) C.strcat(qbuf,C.literal(" [*]"));
  else C.variadic(29,C.eos(qbuf),C.literal(" [%s or ?*]"),buf);
             (ilet=C.yn_function(qbuf,0,C.i8(0),(C.i8(0))));
         }
@@ -1995,10 +1999,10 @@ function getobj(word,obj_ok,ctrlflags)
                 let ctmp=C.local("getobj.ctmp","long",0n);
                 let menuquery=C.automatic("getobj.menuquery",(1*128));
                 let handsbuf=0;
-                if(Number(!!(Number(!!(Number(C.i32(ilet)==63)&&Number(!(C.cell(lets,"char").value))))&&C.i32(C.cell(altlets,"char").value)))) (allowed_choices=altlets);
-                (C.cell((menuquery+Number(0)*1),"char").value=(C.cell((qbuf+Number(0)*1),"char").value=C.i8(0)));
+                if(Number(!!(Number(!!(Number(C.i32(ilet)==63)&&Number(!(C.readInt8At(lets)))))&&C.i32(C.readInt8At(altlets))))) (allowed_choices=altlets);
+                (C.writeInt8At((menuquery+Number(0)*1), (C.writeInt8At((qbuf+Number(0)*1), C.i8(0)))));
                 if(R45(C.iflags)) C.variadic(32,(C.literal("getobj")),1975,menuquery,BigInt((1*128)),C.literal("What do you want to %s?"),word);
-                if(Number(!!(Number(!!(Number(!(allowed_choices))||Number(C.i32(C.cell(allowed_choices,"char").value)==45)))||Number(C.i32(C.cell(buf,"char").value)==45)))) (handsbuf=getobj_hands_txt(word,qbuf));
+                if(Number(!!(Number(!!(Number(!(allowed_choices))||Number(C.i32(C.readInt8At(allowed_choices))==45)))||Number(C.i32(C.readInt8At(buf))==45)))) (handsbuf=getobj_hands_txt(word,qbuf));
                 (ilet=display_pickinv(allowed_choices,handsbuf,menuquery,allownone,(C.i8(1)),(C.i32(allowcnt)?ctmp.address:0)));
                 if(Number(!(ilet))) {
                     if(oneloop) return 0;
@@ -2179,10 +2183,10 @@ function ggetobj(word,fn,mx,combo,resultflags)
     let buf=C.automatic("ggetobj.buf",(1*256)); C.zero(buf,(1*256)); C.initialize(buf,"char[256]",[C.i8(0)]); let qbuf=C.automatic("ggetobj.qbuf",(1*128));
     if(Number(!(R57(C.gi)))) {
         C.variadic(42,C.literal("have nothing to %s."),word);
-        if(resultflags) (C.cell(resultflags,"unsigned int").value=C.u32(1));
+        if(resultflags) (C.writeUint32At(resultflags, C.u32(1)));
         return 0;
     }
-    if(resultflags) (C.cell(resultflags,"unsigned int").value=C.u32(0));
+    if(resultflags) (C.writeUint32At(resultflags, C.u32(0)));
     (takeoff=(ident=(allflag=(m_seen=(C.i8(0))))));
     C.add_valid_menu_class(0);
     /* reset */
@@ -2199,29 +2203,29 @@ function ggetobj(word,fn,mx,combo,resultflags)
         return C.i32((-1));
         /* no further identifications */
     } else if(R57(C.gi)) {
-        (C.cell((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1),"char").value=C.i8(32));
-        if(unpaid) (C.cell((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1),"char").value=C.i8(117));
-        if(count_buc(R57(C.gi),256,ofilter)) (C.cell((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1),"char").value=C.i8(66));
-        if(count_buc(R57(C.gi),1024,ofilter)) (C.cell((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1),"char").value=C.i8(85));
-        if(count_buc(R57(C.gi),512,ofilter)) (C.cell((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1),"char").value=C.i8(67));
-        if(count_buc(R57(C.gi),2048,ofilter)) (C.cell((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1),"char").value=C.i8(88));
-        if(C.count_justpicked(R57(C.gi))) (C.cell((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1),"char").value=C.i8(80));
-        (C.cell((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1),"char").value=C.i8(97));
+        (C.writeInt8At((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1), C.i8(32)));
+        if(unpaid) (C.writeInt8At((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1), C.i8(117)));
+        if(count_buc(R57(C.gi),256,ofilter)) (C.writeInt8At((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1), C.i8(66)));
+        if(count_buc(R57(C.gi),1024,ofilter)) (C.writeInt8At((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1), C.i8(85)));
+        if(count_buc(R57(C.gi),512,ofilter)) (C.writeInt8At((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1), C.i8(67)));
+        if(count_buc(R57(C.gi),2048,ofilter)) (C.writeInt8At((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1), C.i8(88)));
+        if(C.count_justpicked(R57(C.gi))) (C.writeInt8At((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1), C.i8(80)));
+        (C.writeInt8At((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1), C.i8(97)));
     }
-    (C.cell((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1),"char").value=C.i8(105));
-    if(Number(!(combo))) (C.cell((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1),"char").value=C.i8(109));
+    (C.writeInt8At((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1), C.i8(105)));
+    if(Number(!(combo))) (C.writeInt8At((ilets+Number((()=>{const old=iletct;iletct=C.i32((old+1));return old;})())*1), C.i8(109)));
     /* allow menu presentation on request */
-    (C.cell((ilets+Number(iletct)*1),"char").value=C.i8(0));
+    (C.writeInt8At((ilets+Number(iletct)*1), C.i8(0)));
     for(;;) {
         C.variadic(43,qbuf,C.literal("What kinds of thing do you want to %s? [%s]"),word,ilets);
         C.getlin(qbuf,buf);
-        if(Number(C.i32(C.cell((buf+Number(0)*1),"char").value)==27)) return 0;
+        if(Number(C.i32(C.readInt8At((buf+Number(0)*1)))==27)) return 0;
         if(C.strchr(buf,105)) {
             let ailets=C.automatic("ggetobj.ailets",(1*60));
             /* $ + a-z + A-Z + # + slop + \0 */
             let otmp; let nextobj;
             /* applicable inventory letters; if empty, show entire invent */
-            (C.cell((ailets+Number(0)*1),"char").value=C.i8(0));
+            (C.writeInt8At((ailets+Number(0)*1), C.i8(0)));
             if(ofilter) for((otmp=R57(C.gi));otmp;(otmp=nextobj)) {
                 (nextobj=R83(otmp));
                 /* strchr() check: limit overflow items to one '#' */
@@ -2230,7 +2234,7 @@ function ggetobj(word,fn,mx,combo,resultflags)
             if(Number(C.i32(display_inventory(ailets,(C.i8(1))))==27)) return 0;
         } else break;
     }
-    (C.cell((extra_removeables+Number(0)*1),"char").value=C.i8(0));
+    (C.writeInt8At((extra_removeables+Number(0)*1), C.i8(0)));
     if(takeoff) {
         /* arbitrary types of items can be placed in the weapon slots
            [any duplicate entries in extra_removeables[] won't matter] */
@@ -2239,8 +2243,8 @@ function ggetobj(word,fn,mx,combo,resultflags)
         if(C.global("uquiver").value) C.strkitten(extra_removeables,R93(C.global("uquiver").value));
     }
     (ip=buf);
-    (C.cell((olets+Number((oletct=0))*1),"char").value=C.i8(0));
-    while(Number(C.i32(((sym=C.cell((()=>{const old=ip;ip=C.ptr((old+Number(1)));return old;})(),"char").value)))!=0)) {
+    (C.writeInt8At((olets+Number((oletct=0))*1), C.i8(0)));
+    while(Number(C.i32(((sym=C.readInt8At((()=>{const old=ip;ip=C.ptr((old+Number(1)));return old;})()))))!=0)) {
         if(Number(C.i32(sym)==32)) continue;
         (oc_of_sym=C.def_char_to_objclass(sym));
         if(Number(!!(C.i32(takeoff)&&Number(oc_of_sym!=C.MAXOCLASSES)))) {
@@ -2286,8 +2290,8 @@ function ggetobj(word,fn,mx,combo,resultflags)
         } else {
             if(Number(!(C.strchr(olets,oc_of_sym)))) {
                 C.add_valid_menu_class(oc_of_sym);
-                (C.cell((olets+Number((()=>{const old=oletct;oletct=C.i32((old+1));return old;})())*1),"char").value=C.i8(oc_of_sym));
-                (C.cell((olets+Number(oletct)*1),"char").value=C.i8(0));
+                (C.writeInt8At((olets+Number((()=>{const old=oletct;oletct=C.i32((old+1));return old;})())*1), C.i8(oc_of_sym)));
+                (C.writeInt8At((olets+Number(oletct)*1), C.i8(0)));
             }
         }
     }
@@ -2303,7 +2307,7 @@ function ggetobj(word,fn,mx,combo,resultflags)
          * so that it won't continue processing.
          * Fix for bug C331-1 reported by Irina Rempt-Drijfhout.
          */
-        if(Number(!!(Number(!!(C.i32(combo)&&C.i32(allflag)))&&resultflags))) (C.cell(resultflags,"unsigned int").value=C.u32(C.cell(resultflags,"unsigned int").value|C.u32(1)));
+        if(Number(!!(Number(!!(C.i32(combo)&&C.i32(allflag)))&&resultflags))) (C.writeUint32At(resultflags, C.u32(C.readUint32At(resultflags)|C.u32(1))));
         return cnt;
     }
     } finally {C.leaveAutomatic(automaticFrame);C.stackRestore(stackFrame); }
@@ -2345,7 +2349,7 @@ function askchain(objchn,olets,allflag,fn,ckfn,mx,word)
     (take_out=C.i8(Number(!(C.strcmp(word,C.literal("take out"))))));
     (put_in=C.i8(Number(!(C.strcmp(word,C.literal("put in"))))));
     (nodot=C.i8((Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!(C.strcmp(word,C.literal("nodot"))))||Number(!(C.strcmp(word,C.literal("drop"))))))||C.i32(ident)))||C.i32(takeoff)))||C.i32(take_out)))||C.i32(put_in))))));
-    (ininv=C.i8((Number(C.cell(objchn,"struct obj *").value==R57(C.gi)))));
+    (ininv=C.i8((Number(C.readPointerAt(objchn)==R57(C.gi)))));
     (bycat=C.i8((Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(C.menu_class_present(117))||C.i32(C.menu_class_present(66))))||C.i32(C.menu_class_present(85))))||C.i32(C.menu_class_present(67))))||C.i32(C.menu_class_present(88))))||C.i32(C.menu_class_present(80)))))));
     /* someday maybe we'll sort by 'olets' too (temporarily replace
        flags.packorder and pass SORTLOOT_PACK), but not yet... */
@@ -2358,7 +2362,7 @@ function askchain(objchn,olets,allflag,fn,ckfn,mx,word)
      */
     nextclass: for(;;) {
     (ilet=C.i8(C.i32((97-1))));
-    if(Number(!!(C.cell(objchn,"struct obj *").value&&Number(C.i32(R93(C.cell(objchn,"struct obj *").value))==C.COIN_CLASS)))) (()=>{const old=ilet;ilet=C.i8((old-1));return old;})();
+    if(Number(!!(C.readPointerAt(objchn)&&Number(C.i32(R93(C.readPointerAt(objchn)))==C.COIN_CLASS)))) (()=>{const old=ilet;ilet=C.i8((old-1));return old;})();
     /* extra iteration */
     /*
      * Multiple Drop can change the gi.invent chain while it operates
@@ -2372,14 +2376,14 @@ function askchain(objchn,olets,allflag,fn,ckfn,mx,word)
      * is inadequate here.  Use each object's bypass bit to keep
      * track of which list elements have already been processed.
      */
-    C.bypass_objlist(C.cell(objchn,"struct obj *").value,(C.i8(0)));
+    C.bypass_objlist(C.readPointerAt(objchn),(C.i8(0)));
     /* clear chain's bypass bits */
-    while(Number(((otmp=C.nxt_unbypassed_loot(sortedchn.value,C.cell(objchn,"struct obj *").value)))!=0)) {
+    while(Number(((otmp=C.nxt_unbypassed_loot(sortedchn.value,C.readPointerAt(objchn))))!=0)) {
         if(Number(C.i32(ilet)==122)) (ilet=C.i8(65));
  else if(Number(C.i32(ilet)==90)) (ilet=C.i8(35));
  else (()=>{const old=ilet;ilet=C.i8((old+1));return old;})();
         /* '#' */
-        if(Number(!!(Number(!!(olets&&C.i32(C.cell(olets,"char").value)))&&Number(C.i32(R93(otmp))!=C.i32(C.cell(olets,"char").value))))) continue;
+        if(Number(!!(Number(!!(olets&&C.i32(C.readInt8At(olets))))&&Number(C.i32(R93(otmp))!=C.i32(C.readInt8At(olets)))))) continue;
         if(Number(!!(C.i32(takeoff)&&Number(!(is_worn(otmp)))))) continue;
         if(Number(!!(C.i32(ident)&&Number(!(C.not_fully_identified(otmp)))))) continue;
         if(Number(!!(ckfn&&Number(!(C.callback(9,(ckfn),otmp)))))) continue;
@@ -2387,12 +2391,12 @@ function askchain(objchn,olets,allflag,fn,ckfn,mx,word)
         if(Number(!(allflag))) {
             (W193(C.staticAddress("safeq_xprn_ctx"),ilet));
             (W194(C.staticAddress("safeq_xprn_ctx"),C.i8(Number(!(nodot)))));
-            (C.cell(qpfx,"char").value=C.i8(0));
+            (C.writeInt8At(qpfx, C.i8(0)));
             if(first) {
                 /* traditional_loot() skips prompting when only one
                    class of objects is involved, so prefix the first
                    object being queried here with an explanation why */
-                if(Number(!!(C.i32(take_out)||C.i32(put_in)))) (C.variadic(50,qpfx,C.literal("%s: "),word),(C.cell(qpfx,"char").value=C.highc(C.cell(qpfx,"char").value)));
+                if(Number(!!(C.i32(take_out)||C.i32(put_in)))) (C.variadic(50,qpfx,C.literal("%s: "),word),(C.writeInt8At(qpfx, C.highc(C.readInt8At(qpfx)))));
                 (first=(C.i8(0)));
             }
             C.safe_qbuf(qbuf,qpfx,C.literal("?"),otmp,(C.i32(ininv)?C.functionAddress("safeq_xprname"):C.functionAddress("doname")),(C.i32(ininv)?C.functionAddress("safeq_shortxprname"):C.functionAddress("ansimpleoname")),C.literal("item"));
@@ -2448,7 +2452,7 @@ function askchain(objchn,olets,allflag,fn,ckfn,mx,word)
             break ret; /* source goto ret */
         }
     }
-    if(Number(!!(Number(!!(olets&&C.i32(C.cell(olets,"char").value)))&&C.i32(C.cell((()=>{const old=olets;olets=C.ptr((old+Number(1)));return olets;})(),"char").value)))) continue nextclass; /* source goto nextclass */
+    if(Number(!!(Number(!!(olets&&C.i32(C.readInt8At(olets))))&&C.i32(C.readInt8At((()=>{const old=olets;olets=C.ptr((old+Number(1)));return olets;})()))))) continue nextclass; /* source goto nextclass */
     break;
     } /* source nextclass loop */
     if(Number(!!(Number(!(takeoff))&&(Number(!!(dud||cnt)))))) C.variadic(51,C.literal("That was all."));
@@ -2497,7 +2501,7 @@ function reroll_menu()
     (()=>{const ref=C.field(C.iflags,"instance_flags","override_ID");const old=ref.value;ref.value=C.i32((old+1));return ref.value;})();
     /* identify them */
     for((otmp=R57(C.gi));otmp;(otmp=R83(otmp))) {
-        (tmpglyph=(((Number(C.i32(R89(otmp))==C.STATUE))?((((Number(!!(R143(A200(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R143(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(C.i32((((C.callback(13,(C.functionAddress("rn2_on_display_rng")),C.NUMMONS)))+(((Number(!(C.rn2_on_display_rng(2))))?C.GLYPH_MON_MALE_OFF:C.GLYPH_MON_FEM_OFF))))):(C.i32((R121(otmp)+(((Number((C.i32((C.i32(R92(otmp))&3)))==1))?(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_FEM_PILETOP_OFF:C.GLYPH_STATUE_FEM_OFF)):(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_MALE_PILETOP_OFF:C.GLYPH_STATUE_MALE_OFF))))))))):(((Number(!!(R143(A200(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R143(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(((Number(((W63(C.go,C.i32((C.callback(14,(C.functionAddress("rn2_on_display_rng")),C.i32((C.NUM_OBJECTS-C.FIRST_OBJECT)))+C.FIRST_OBJECT)))))==C.CORPSE))?(C.i32(((C.callback(15,(C.functionAddress("rn2_on_display_rng")),C.NUMMONS))+C.GLYPH_BODY_OFF))):(C.i32((R63(C.go)+C.GLYPH_OBJ_OFF))))):((Number(C.i32(R89(otmp))==C.CORPSE))?((C.i32((R121(otmp)+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_BODY_PILETOP_OFF:C.GLYPH_BODY_OFF)))))):((Number(!!(Number(!(R104(otmp)))&&(Number(!!(Number(!!(Number(C.i32(R93(otmp))==C.POTION_CLASS)||(Number(!!(Number(C.i32(R89(otmp))>=C.FIRST_REAL_GEM)&&(Number(C.i32(R89(otmp))<=C.LAST_GLASS_GEM)))))))||(Number(!!(Number(C.i32(R89(otmp))>=C.FIRST_SPELL)&&(Number(C.i32(R89(otmp))<=C.LAST_SPELL)))))))))))?((C.i32((C.i32(R93(otmp))+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF)))))):((C.i32((C.i32(R89(otmp))+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF))))))))))));
+        (tmpglyph=(((Number(C.i32(R89(otmp))==C.STATUE))?((((Number(!!(R143(A200(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R143(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(C.i32((((C.callback(13,(C.functionAddress("rn2_on_display_rng")),C.NUMMONS)))+(((Number(!(C.rn2_on_display_rng(2))))?C.GLYPH_MON_MALE_OFF:C.GLYPH_MON_FEM_OFF))))):(C.i32((R121(otmp)+(((Number((C.i32((C.i32(R92(otmp))&3)))==1))?(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_FEM_PILETOP_OFF:C.GLYPH_STATUE_FEM_OFF)):(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_MALE_PILETOP_OFF:C.GLYPH_STATUE_MALE_OFF))))))))):(((Number(!!(R143(A200(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R143(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(((Number(((W63(C.go,C.i32((C.callback(14,(C.functionAddress("rn2_on_display_rng")),C.i32((C.NUM_OBJECTS-C.FIRST_OBJECT)))+C.FIRST_OBJECT)))))==C.CORPSE))?(C.i32(((C.callback(15,(C.functionAddress("rn2_on_display_rng")),C.NUMMONS))+C.GLYPH_BODY_OFF))):(C.i32((R63(C.go)+C.GLYPH_OBJ_OFF))))):((Number(C.i32(R89(otmp))==C.CORPSE))?((C.i32((R121(otmp)+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_BODY_PILETOP_OFF:C.GLYPH_BODY_OFF)))))):((Number(!!(Number(!(R104(otmp)))&&(Number(!!(Number(!!(Number(C.i32(R93(otmp))==C.POTION_CLASS)||(Number(!!(Number(C.i32(R89(otmp))>=C.FIRST_REAL_GEM)&&(Number(C.i32(R89(otmp))<=C.LAST_GLASS_GEM)))))))||(Number(!!(Number(C.i32(R89(otmp))>=C.FIRST_SPELL)&&(Number(C.i32(R89(otmp))<=C.LAST_SPELL)))))))))))?((C.i32((C.i32(R93(otmp))+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF)))))):((C.i32((C.i32(R89(otmp))+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF))))))))))));
         C.map_glyphinfo(C.i16(0),C.i16(0),tmpglyph,0,tmpglyphinfo);
         C.add_menu(win,tmpglyphinfo,any,C.i8(0),C.i8(0),0,8,C.doname(otmp),0);
     }
@@ -2764,9 +2768,9 @@ function prinv(prefix,obj,quan)
     let total_of=C.i8((Number(!!(quan&&(Number(quan<R91(obj)))))));
     let totalbuf=C.automatic("prinv.totalbuf",(1*128));
     if(Number(!(prefix))) (prefix=C.literal(""));
-    (C.cell((totalbuf+Number(0)*1),"char").value=C.i8(0));
+    (C.writeInt8At((totalbuf+Number(0)*1), C.i8(0)));
     if(total_of) C.variadic(62,(C.literal("prinv")),2886,totalbuf,BigInt((1*128)),C.literal(" (%ld in total)."),R91(obj));
-    C.variadic(63,C.literal("%s%s%s%s"),prefix,(C.i32(C.cell(prefix,"char").value)?C.literal(" "):C.literal("")),xprname(obj,0,obj_to_let(obj),C.i8(Number(!(total_of))),0n,quan),(C.i32(R34(C.flags))?totalbuf:C.literal("")));
+    C.variadic(63,C.literal("%s%s%s%s"),prefix,(C.i32(C.readInt8At(prefix))?C.literal(" "):C.literal("")),xprname(obj,0,obj_to_let(obj),C.i8(Number(!(total_of))),0n,quan),(C.i32(R34(C.flags))?totalbuf:C.literal("")));
     } finally {C.leaveAutomatic(automaticFrame);C.stackRestore(stackFrame); }
 }
 
@@ -2850,17 +2854,17 @@ function dispinv_with_action(lets,use_inuse_ordering,alt_label)
     let len=(lets?C.u32(C.strlen(lets)):0);
     let menumode=C.i8(((Number(!!(Number(len!=C.u32(1))||C.i32(R47(C.iflags)))))?C.i32((C.i8(1))):C.i32((C.i8(0))))); let save_force_invmenu=R45(C.iflags);
     if(use_inuse_ordering) {
-        (save_accessories=C.cell((C.staticAddress("inuse_headers")+Number(4)*8),"char *").value);
+        (save_accessories=C.readPointerAt((C.staticAddress("inuse_headers")+Number(4)*8)));
         (save_sortloot=R37(C.flags));
         (W37(C.flags,C.i8(105)));
         /* checked by display_pickinv() */
-        if(alt_label) (C.cell((C.staticAddress("inuse_headers")+Number(4)*8),"char *").value=alt_label);
+        if(alt_label) (C.writePointerAt((C.staticAddress("inuse_headers")+Number(4)*8), alt_label));
     }
     (W45(C.iflags,C.i8(0)));
     (c=display_inventory(lets,menumode));
     if(use_inuse_ordering) {
         (W37(C.flags,save_sortloot));
-        (C.cell((C.staticAddress("inuse_headers")+Number(4)*8),"char *").value=save_accessories);
+        (C.writePointerAt((C.staticAddress("inuse_headers")+Number(4)*8), save_accessories));
     }
     (W45(C.iflags,save_force_invmenu));
     if(Number(!!(C.i32(c)&&Number(C.i32(c)!=27)))) {
@@ -2894,10 +2898,10 @@ function find_unpaid(list,last_found)
     let obj;
     while(list) {
         if(R100(list)) {
-            if(C.cell(last_found,"struct obj *").value) {
+            if(C.readPointerAt(last_found)) {
                 /* still looking for previous unpaid object */
-                if(Number(list==C.cell(last_found,"struct obj *").value)) (C.cell(last_found,"struct obj *").value=0);
-            } else return (((C.cell(last_found,"struct obj *").value=list)));
+                if(Number(list==C.readPointerAt(last_found))) (C.writePointerAt(last_found, 0));
+            } else return (((C.writePointerAt(last_found, list))));
         }
         if((Number(R85(list)!=0))) {
             if(Number(((obj=find_unpaid(R85(list),last_found)))!=0)) return obj;
@@ -2953,7 +2957,7 @@ function display_pickinv(lets,xtra_choice,query,allowxtra,want_reply,out_cnt)
     let wizid=C.i8((Number(!!(C.i32(R28(C.flags))&&R43(C.iflags))))); let gotsomething=(C.i8(0));
     let clr=8; let menu_behavior=C.i32(0);
     let show_gold=(C.i8(1)); let inuse_only=(C.i8(0)); let skipped_gold=(C.i8(0)); let doing_perm_invent=(C.i8(0)); let save_flags_sortpack; let usextra=C.i8((Number(!!(xtra_choice&&C.i32(allowxtra)))));
-    if(Number(!!(lets&&Number(!(C.cell(lets,"char").value))))) (lets=0);
+    if(Number(!!(lets&&Number(!(C.readInt8At(lets)))))) (lets=0);
     /* simplify tests: (lets) instead of (lets && *lets) */
     /* passed to dump_putstr() which ignores it... */
     if(Number(!!(Number(!!(Number(!!(Number(!!(lets||C.i32(usextra)))||C.i32(wizid)))||C.i32(want_reply)))||Number(C.global("WIN_INVEN").value==(C.i32((-1))))))) {
@@ -3011,11 +3015,11 @@ function display_pickinv(lets,xtra_choice,query,allowxtra,want_reply,out_cnt)
             (ret=C.callback(23,(R188(C.windowprocs)),C.i8(45),1,xprname(0,xtra_choice,C.i8(45),(C.i8(1)),0n,0n)));
             /* '-' */
         } else {
-            for((otmp=R57(C.gi));otmp;(otmp=R83(otmp))) if(Number(!!(Number(!(lets))||Number(C.i32(R94(otmp))==C.i32(C.cell((lets+Number(0)*1),"char").value))))) break;
+            for((otmp=R57(C.gi));otmp;(otmp=R83(otmp))) if(Number(!!(Number(!(lets))||Number(C.i32(R94(otmp))==C.i32(C.readInt8At((lets+Number(0)*1))))))) break;
 
-            if(otmp) (ret=C.callback(24,(R188(C.windowprocs)),R94(otmp),(C.i32(want_reply)?1:0),xprname(otmp,0,C.cell((lets+Number(0)*1),"char").value,(C.i8(1)),0n,0n)));
+            if(otmp) (ret=C.callback(24,(R188(C.windowprocs)),R94(otmp),(C.i32(want_reply)?1:0),xprname(otmp,0,C.readInt8At((lets+Number(0)*1)),(C.i8(1)),0n,0n)));
         }
-        if(out_cnt) (C.cell(out_cnt,"long").value=C.i64((-1n)));
+        if(out_cnt) (C.writeBigInt64At(out_cnt, C.i64((-1n))));
         /* select all */
         return ret;
     }
@@ -3099,7 +3103,7 @@ function display_pickinv(lets,xtra_choice,query,allowxtra,want_reply,out_cnt)
         let tmpglyphinfo=C.automatic("display_pickinv.tmpglyphinfo",C.sizes["struct glyphinfo"]); C.copy(tmpglyphinfo,C.nul_glyphinfo,C.sizes["struct glyphinfo"]);
         /* for showing a set of specific letters, skip ones not in the set */
         if(Number(!!(lets&&Number(!(C.strchr(lets,C.i32(R94(otmp)))))))) continue;
-        if(Number(!!(Number(!(R33(C.flags)))||Number(C.i32(R93(otmp))==C.i32(C.cell(invlet,"char").value))))) {
+        if(Number(!!(Number(!(R33(C.flags)))||Number(C.i32(R93(otmp))==C.i32(C.readInt8At(invlet)))))) {
             if(Number(!!(C.i32(wizid)&&Number(!(C.not_fully_identified(otmp)))))) continue;
             if(inuse_only) {
                 /* for inuse-only, start with an extra header */
@@ -3114,7 +3118,7 @@ function display_pickinv(lets,xtra_choice,query,allowxtra,want_reply,out_cnt)
             /* maybe insert a class header */
             if((C.i32(inuse_only)?(Number(C.i32(R152(srtinv))!=C.i32(prevorderclass))):(Number(!!(C.i32(R33(C.flags))&&Number(!(classcount))))))) {
                 let withsym=C.i8((Number(!!(C.i32(want_reply)&&C.i32(R46(C.iflags))))));
-                let class_header=(C.i32(inuse_only)?C.cell((C.staticAddress("inuse_headers")+Number(C.i32(R152(srtinv)))*8),"char *").value:let_to_name(C.cell(invlet,"char").value,(C.i8(0)),withsym));
+                let class_header=(C.i32(inuse_only)?C.readPointerAt((C.staticAddress("inuse_headers")+Number(C.i32(R152(srtinv)))*8)):let_to_name(C.readInt8At(invlet),(C.i8(0)),withsym));
                 C.add_menu_heading(win,class_header);
                 (()=>{const old=classcount;classcount=C.i32((old+1));return old;})();
                 (prevorderclass=R152(srtinv));
@@ -3133,7 +3137,7 @@ function display_pickinv(lets,xtra_choice,query,allowxtra,want_reply,out_cnt)
                 C.add_menu(win,C.nul_glyphinfo,any,ilet,C.i8(0),0,clr,barehands,0);
             } else {
                 /* normal inventory item */
-                (tmpglyph=(((Number(C.i32(R89(otmp))==C.STATUE))?((((Number(!!(R143(A200(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R143(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(C.i32((((C.callback(26,(C.functionAddress("rn2_on_display_rng")),C.NUMMONS)))+(((Number(!(C.rn2_on_display_rng(2))))?C.GLYPH_MON_MALE_OFF:C.GLYPH_MON_FEM_OFF))))):(C.i32((R121(otmp)+(((Number((C.i32((C.i32(R92(otmp))&3)))==1))?(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_FEM_PILETOP_OFF:C.GLYPH_STATUE_FEM_OFF)):(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_MALE_PILETOP_OFF:C.GLYPH_STATUE_MALE_OFF))))))))):(((Number(!!(R143(A200(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R143(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(((Number(((W63(C.go,C.i32((C.callback(27,(C.functionAddress("rn2_on_display_rng")),C.i32((C.NUM_OBJECTS-C.FIRST_OBJECT)))+C.FIRST_OBJECT)))))==C.CORPSE))?(C.i32(((C.callback(28,(C.functionAddress("rn2_on_display_rng")),C.NUMMONS))+C.GLYPH_BODY_OFF))):(C.i32((R63(C.go)+C.GLYPH_OBJ_OFF))))):((Number(C.i32(R89(otmp))==C.CORPSE))?((C.i32((R121(otmp)+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_BODY_PILETOP_OFF:C.GLYPH_BODY_OFF)))))):((Number(!!(Number(!(R104(otmp)))&&(Number(!!(Number(!!(Number(C.i32(R93(otmp))==C.POTION_CLASS)||(Number(!!(Number(C.i32(R89(otmp))>=C.FIRST_REAL_GEM)&&(Number(C.i32(R89(otmp))<=C.LAST_GLASS_GEM)))))))||(Number(!!(Number(C.i32(R89(otmp))>=C.FIRST_SPELL)&&(Number(C.i32(R89(otmp))<=C.LAST_SPELL)))))))))))?((C.i32((C.i32(R93(otmp))+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF)))))):((C.i32((C.i32(R89(otmp))+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF))))))))))));
+                (tmpglyph=(((Number(C.i32(R89(otmp))==C.STATUE))?((((Number(!!(R143(A200(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R143(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(C.i32((((C.callback(26,(C.functionAddress("rn2_on_display_rng")),C.NUMMONS)))+(((Number(!(C.rn2_on_display_rng(2))))?C.GLYPH_MON_MALE_OFF:C.GLYPH_MON_FEM_OFF))))):(C.i32((R121(otmp)+(((Number((C.i32((C.i32(R92(otmp))&3)))==1))?(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_FEM_PILETOP_OFF:C.GLYPH_STATUE_FEM_OFF)):(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_MALE_PILETOP_OFF:C.GLYPH_STATUE_MALE_OFF))))))))):(((Number(!!(R143(A200(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R143(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(((Number(((W63(C.go,C.i32((C.callback(27,(C.functionAddress("rn2_on_display_rng")),C.i32((C.NUM_OBJECTS-C.FIRST_OBJECT)))+C.FIRST_OBJECT)))))==C.CORPSE))?(C.i32(((C.callback(28,(C.functionAddress("rn2_on_display_rng")),C.NUMMONS))+C.GLYPH_BODY_OFF))):(C.i32((R63(C.go)+C.GLYPH_OBJ_OFF))))):((Number(C.i32(R89(otmp))==C.CORPSE))?((C.i32((R121(otmp)+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_BODY_PILETOP_OFF:C.GLYPH_BODY_OFF)))))):((Number(!!(Number(!(R104(otmp)))&&(Number(!!(Number(!!(Number(C.i32(R93(otmp))==C.POTION_CLASS)||(Number(!!(Number(C.i32(R89(otmp))>=C.FIRST_REAL_GEM)&&(Number(C.i32(R89(otmp))<=C.LAST_GLASS_GEM)))))))||(Number(!!(Number(C.i32(R89(otmp))>=C.FIRST_SPELL)&&(Number(C.i32(R89(otmp))<=C.LAST_SPELL)))))))))))?((C.i32((C.i32(R93(otmp))+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF)))))):((C.i32((C.i32(R89(otmp))+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF))))))))))));
                 C.map_glyphinfo(C.i16(0),C.i16(0),tmpglyph,0,tmpglyphinfo);
                 (formattedobj=C.doname(otmp));
                 C.add_menu(win,tmpglyphinfo,any,ilet,C.i8((C.i32(wizid)?C.i32(R12(C.def_oc_syms+Number(C.i32(R93(otmp)))*C.sizes["struct class_sym"])):0)),0,clr,formattedobj,0);
@@ -3146,7 +3150,7 @@ function display_pickinv(lets,xtra_choice,query,allowxtra,want_reply,out_cnt)
         }
     }
     if(R33(C.flags)) {
-        if(C.cell((()=>{const old=invlet;invlet=C.ptr((old+Number(1)));return invlet;})(),"char").value) continue nextclass; /* source goto nextclass */
+        if(C.readInt8At((()=>{const old=invlet;invlet=C.ptr((old+Number(1)));return invlet;})())) continue nextclass; /* source goto nextclass */
         if(Number((()=>{const old=invlet;invlet=C.ptr((old-Number(1)));return invlet;})()!=C.staticAddress("venom_inv"))) {
             (invlet=C.staticAddress("venom_inv"));
             continue nextclass; /* source goto nextclass */
@@ -3184,7 +3188,7 @@ function display_pickinv(lets,xtra_choice,query,allowxtra,want_reply,out_cnt)
         C.add_menu_str(win,(C.i32(inuse_only)?C.staticAddress("display_pickinv.not_using_anything"):((Number(!!(Number(!(show_gold))&&C.i32(skipped_gold))))?C.staticAddress("display_pickinv.only_carrying_gold"):C.staticAddress("display_pickinv.not_carrying_anything"))));
         (want_reply=(C.i8(0)));
     }
-    C.callback(29,(R187(C.windowprocs)),win,((Number(!!(query&&C.i32(C.cell(query,"char").value))))?query:0));
+    C.callback(29,(R187(C.windowprocs)),win,((Number(!!(query&&C.i32(C.readInt8At(query)))))?query:0));
     (n=C.select_menu(win,(C.i32(wizid)?2:(C.i32(want_reply)?1:0)),selected.address));
     if(Number(n>0)) {
         if(wizid) {
@@ -3210,7 +3214,7 @@ function display_pickinv(lets,xtra_choice,query,allowxtra,want_reply,out_cnt)
             if(Number(!(all_id))) update_inventory();
         } else {
             (ret=R8(A75(selected.value+Number(0)*C.sizes["struct mi"])));
-            if(out_cnt) (C.cell(out_cnt,"long").value=R76(selected.value+Number(0)*C.sizes["struct mi"]));
+            if(out_cnt) (C.writeBigInt64At(out_cnt, R76(selected.value+Number(0)*C.sizes["struct mi"])));
         }
         C.free(selected.value);
     } else (ret=C.i8((Number(!(n))?0:27)));
@@ -3234,7 +3238,7 @@ function display_inventory(lets,want_reply)
     if(cmdq) {
         if(Number(R1(cmdq)==C.CMDQ_KEY)) {
             let otmp;
-            for((otmp=R57(C.gi));otmp;(otmp=R83(otmp))) if(Number(!!(Number(C.i32(R94(otmp))==C.i32(R2(cmdq)))&&(Number(!!(Number(!!(Number(!(lets))||Number(!(C.cell(lets,"char").value))))||C.strchr(lets,C.i32(R12(C.def_oc_syms+Number(C.i32(R93(otmp)))*C.sizes["struct class_sym"]))))))))) {
+            for((otmp=R57(C.gi));otmp;(otmp=R83(otmp))) if(Number(!!(Number(C.i32(R94(otmp))==C.i32(R2(cmdq)))&&(Number(!!(Number(!!(Number(!(lets))||Number(!(C.readInt8At(lets)))))||C.strchr(lets,C.i32(R12(C.def_oc_syms+Number(C.i32(R93(otmp)))*C.sizes["struct class_sym"]))))))))) {
                 C.free(cmdq);
                 return R94(otmp);
             }
@@ -3282,20 +3286,20 @@ function display_used_invlets(avoidlet)
             for((otmp=R57(C.gi));otmp;(otmp=R83(otmp))) {
                 (ilet=R94(otmp));
                 if(Number(C.i32(ilet)==C.i32(avoidlet))) continue;
-                if(Number(!!(Number(!(R33(C.flags)))||Number(C.i32(R93(otmp))==C.i32(C.cell(invlet,"char").value))))) {
+                if(Number(!!(Number(!(R33(C.flags)))||Number(C.i32(R93(otmp))==C.i32(C.readInt8At(invlet)))))) {
                     if(Number(!!(C.i32(R33(C.flags))&&Number(!(classcount))))) {
                         C.copy(any,A14(C.cg),C.sizes["union any"]);
                         /* zero */
-                        C.add_menu_heading(win,let_to_name(C.cell(invlet,"char").value,(C.i8(0)),(C.i8(0))));
+                        C.add_menu_heading(win,let_to_name(C.readInt8At(invlet),(C.i8(0)),(C.i8(0))));
                         (()=>{const old=classcount;classcount=C.i32((old+1));return old;})();
                     }
                     (W8(any,ilet));
-                    (tmpglyph=(((Number(C.i32(R89(otmp))==C.STATUE))?((((Number(!!(R143(A200(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R143(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(C.i32((((C.callback(32,(C.functionAddress("rn2_on_display_rng")),C.NUMMONS)))+(((Number(!(C.rn2_on_display_rng(2))))?C.GLYPH_MON_MALE_OFF:C.GLYPH_MON_FEM_OFF))))):(C.i32((R121(otmp)+(((Number((C.i32((C.i32(R92(otmp))&3)))==1))?(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_FEM_PILETOP_OFF:C.GLYPH_STATUE_FEM_OFF)):(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_MALE_PILETOP_OFF:C.GLYPH_STATUE_MALE_OFF))))))))):(((Number(!!(R143(A200(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R143(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(((Number(((W63(C.go,C.i32((C.callback(33,(C.functionAddress("rn2_on_display_rng")),C.i32((C.NUM_OBJECTS-C.FIRST_OBJECT)))+C.FIRST_OBJECT)))))==C.CORPSE))?(C.i32(((C.callback(34,(C.functionAddress("rn2_on_display_rng")),C.NUMMONS))+C.GLYPH_BODY_OFF))):(C.i32((R63(C.go)+C.GLYPH_OBJ_OFF))))):((Number(C.i32(R89(otmp))==C.CORPSE))?((C.i32((R121(otmp)+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_BODY_PILETOP_OFF:C.GLYPH_BODY_OFF)))))):((Number(!!(Number(!(R104(otmp)))&&(Number(!!(Number(!!(Number(C.i32(R93(otmp))==C.POTION_CLASS)||(Number(!!(Number(C.i32(R89(otmp))>=C.FIRST_REAL_GEM)&&(Number(C.i32(R89(otmp))<=C.LAST_GLASS_GEM)))))))||(Number(!!(Number(C.i32(R89(otmp))>=C.FIRST_SPELL)&&(Number(C.i32(R89(otmp))<=C.LAST_SPELL)))))))))))?((C.i32((C.i32(R93(otmp))+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF)))))):((C.i32((C.i32(R89(otmp))+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.cell(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF))))))))))));
+                    (tmpglyph=(((Number(C.i32(R89(otmp))==C.STATUE))?((((Number(!!(R143(A200(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R143(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(C.i32((((C.callback(32,(C.functionAddress("rn2_on_display_rng")),C.NUMMONS)))+(((Number(!(C.rn2_on_display_rng(2))))?C.GLYPH_MON_MALE_OFF:C.GLYPH_MON_FEM_OFF))))):(C.i32((R121(otmp)+(((Number((C.i32((C.i32(R92(otmp))&3)))==1))?(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_FEM_PILETOP_OFF:C.GLYPH_STATUE_FEM_OFF)):(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_MALE_PILETOP_OFF:C.GLYPH_STATUE_MALE_OFF))))))))):(((Number(!!(R143(A200(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R143(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(((Number(((W63(C.go,C.i32((C.callback(33,(C.functionAddress("rn2_on_display_rng")),C.i32((C.NUM_OBJECTS-C.FIRST_OBJECT)))+C.FIRST_OBJECT)))))==C.CORPSE))?(C.i32(((C.callback(34,(C.functionAddress("rn2_on_display_rng")),C.NUMMONS))+C.GLYPH_BODY_OFF))):(C.i32((R63(C.go)+C.GLYPH_OBJ_OFF))))):((Number(C.i32(R89(otmp))==C.CORPSE))?((C.i32((R121(otmp)+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_BODY_PILETOP_OFF:C.GLYPH_BODY_OFF)))))):((Number(!!(Number(!(R104(otmp)))&&(Number(!!(Number(!!(Number(C.i32(R93(otmp))==C.POTION_CLASS)||(Number(!!(Number(C.i32(R89(otmp))>=C.FIRST_REAL_GEM)&&(Number(C.i32(R89(otmp))<=C.LAST_GLASS_GEM)))))))||(Number(!!(Number(C.i32(R89(otmp))>=C.FIRST_SPELL)&&(Number(C.i32(R89(otmp))<=C.LAST_SPELL)))))))))))?((C.i32((C.i32(R93(otmp))+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF)))))):((C.i32((C.i32(R89(otmp))+(((Number(!!(Number(!!(Number(C.i32(R96(otmp))==1)&&(Number(((W64(C.go,R174(A84(C.readPointerAt(((A24(A70(C.svl))+Number(R87(otmp))*(8*21))+Number(R88(otmp))*8)))))))!=0))))&&(Number(!!(Number(C.i32(R89(otmp))!=C.BOULDER)||Number(C.i32(R89(R64(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF))))))))))));
                     C.map_glyphinfo(C.i16(0),C.i16(0),tmpglyph,0,tmpglyphinfo);
                     C.add_menu(win,tmpglyphinfo,any,ilet,C.i8(0),0,clr,C.doname(otmp),0);
                 }
             }
-            if(Number(!!(C.i32(R33(C.flags))&&C.i32(C.cell((()=>{const old=invlet;invlet=C.ptr((old+Number(1)));return invlet;})(),"char").value)))) continue;
+            if(Number(!!(C.i32(R33(C.flags))&&C.i32(C.readInt8At((()=>{const old=invlet;invlet=C.ptr((old+Number(1)));return invlet;})()))))) continue;
             (invdone=1);
         }
         C.callback(35,(R187(C.windowprocs)),win,C.literal("Inventory letters used:"));
@@ -3374,7 +3378,7 @@ function tally_BUCX(list,by_nexthere,bcp,ucp,ccp,xcp,ocp,jcp)
      *  have a function again (it was a counter for having skipped gold,
      *  but that's not skipped anymore).
      */
-    (C.cell(bcp,"int").value=(C.cell(ucp,"int").value=(C.cell(ccp,"int").value=(C.cell(xcp,"int").value=(C.cell(ocp,"int").value=(C.cell(jcp,"int").value=0))))));
+    (C.writeInt32At(bcp, (C.writeInt32At(ucp, (C.writeInt32At(ccp, (C.writeInt32At(xcp, (C.writeInt32At(ocp, (C.writeInt32At(jcp, 0))))))))))));
     for(;list;(list=((C.i32(by_nexthere)?R174(A84(list)):R83(list))))) {
         /* priests always know bless/curse state */
         if((Number(C.i32(R0(A73(C.gu)))==(C.PM_CLERIC)))) (W105(list,C.u32((Number(C.i32(R93(list))!=C.COIN_CLASS)))));
@@ -3471,9 +3475,9 @@ function dounpaid(count,floorcount,buriedcount)
         for((otmp=R57(C.gi));otmp;(otmp=R83(otmp))) {
             (ilet=R94(otmp));
             if(R100(otmp)) {
-                if(Number(!!(Number(!(R33(C.flags)))||Number(C.i32(R93(otmp))==C.i32(C.cell(invlet,"char").value))))) {
+                if(Number(!!(Number(!(R33(C.flags)))||Number(C.i32(R93(otmp))==C.i32(C.readInt8At(invlet)))))) {
                     if(Number(!!(C.i32(R33(C.flags))&&Number(!(classcount))))) {
-                        C.callback(39,(R185(C.windowprocs)),win,0,let_to_name(C.cell(invlet,"char").value,(C.i8(1)),(C.i8(0))));
+                        C.callback(39,(R185(C.windowprocs)),win,0,let_to_name(C.readInt8At(invlet),(C.i8(1)),(C.i8(0))));
                         (()=>{const old=classcount;classcount=C.i32((old+1));return old;})();
                     }
                     (totcost=C.i64(totcost+(cost=C.unpaid_cost(otmp,C.u8(C.COST_NOCONTENTS)))));
@@ -3485,7 +3489,7 @@ function dounpaid(count,floorcount,buriedcount)
                 }
             }
         }
-    } while(Number(!!(C.i32(R33(C.flags))&&C.i32((C.cell((()=>{const old=invlet;invlet=C.ptr((old+Number(1)));return invlet;})(),"char").value)))));
+    } while(Number(!!(C.i32(R33(C.flags))&&C.i32((C.readInt8At((()=>{const old=invlet;invlet=C.ptr((old+Number(1)));return invlet;})()))))));
     if(Number(count>num_so_far)) {
         /* something unpaid is contained */
         if(R33(C.flags)) C.callback(41,(R185(C.windowprocs)),win,0,let_to_name(C.i8(62),(C.i8(1)),(C.i8(0))));
@@ -3595,7 +3599,7 @@ function dotypeinv()
     let before=C.literal(""); let after=C.literal("");
     let class_count; let oclass; let itemcount=C.local("dotypeinv.itemcount","int"); let any_unpaid; let u_carried; let u_floor; let u_buried;
     let bcnt=C.local("dotypeinv.bcnt","int"); let ccnt=C.local("dotypeinv.ccnt","int"); let ucnt=C.local("dotypeinv.ucnt","int"); let xcnt=C.local("dotypeinv.xcnt","int"); let ocnt=C.local("dotypeinv.ocnt","int"); let jcnt=C.local("dotypeinv.jcnt","int");
-    let billx=C.i8(Number(!!(C.i32(C.cell(A199(C.u),"char").value)&&C.doinvbill(0))));
+    let billx=C.i8(Number(!!(C.i32(C.readInt8At(A199(C.u)))&&C.doinvbill(0))));
     let pick_list=C.local("dotypeinv.pick_list","struct mi *");
     let traditional=(C.i8(1));
     doI_done: {
@@ -3605,7 +3609,7 @@ function dotypeinv()
         C.variadic(76,C.literal("aren't carrying anything."));
         break doI_done; /* source goto doI_done */
     }
-    (C.cell((title+Number(0)*1),"char").value=C.i8(0));
+    (C.writeInt8At((title+Number(0)*1), C.i8(0)));
     (u_carried=count_unpaid(R57(C.gi)));
     (u_floor=count_unpaid(R25(A70(C.svl))));
     (u_buried=count_unpaid(R26(A70(C.svl))));
@@ -3630,32 +3634,32 @@ function dotypeinv()
     }
     if(traditional) {
         /* collect list of classes of objects carried, for use as a prompt */
-        (C.cell((types+Number(0)*1),"char").value=C.i8(0));
+        (C.writeInt8At((types+Number(0)*1), C.i8(0)));
         (class_count=C.collect_obj_classes(types,R57(C.gi),(C.i8(0)),0,itemcount.address));
-        if(Number(!!(Number(!!(Number(!!(any_unpaid||C.i32(billx)))||Number((C.i32((C.i32((C.i32((bcnt.value+ccnt.value))+ucnt.value))+xcnt.value)))!=0)))||jcnt.value))) (C.cell((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1),"char").value=C.i8(32));
-        if(any_unpaid) (C.cell((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1),"char").value=C.i8(117));
-        if(billx) (C.cell((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1),"char").value=C.i8(120));
-        if(bcnt.value) (C.cell((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1),"char").value=C.i8(66));
-        if(ucnt.value) (C.cell((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1),"char").value=C.i8(85));
-        if(ccnt.value) (C.cell((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1),"char").value=C.i8(67));
-        if(xcnt.value) (C.cell((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1),"char").value=C.i8(88));
-        if(jcnt.value) (C.cell((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1),"char").value=C.i8(80));
-        (C.cell((types+Number(class_count)*1),"char").value=C.i8(0));
+        if(Number(!!(Number(!!(Number(!!(any_unpaid||C.i32(billx)))||Number((C.i32((C.i32((C.i32((bcnt.value+ccnt.value))+ucnt.value))+xcnt.value)))!=0)))||jcnt.value))) (C.writeInt8At((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1), C.i8(32)));
+        if(any_unpaid) (C.writeInt8At((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1), C.i8(117)));
+        if(billx) (C.writeInt8At((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1), C.i8(120)));
+        if(bcnt.value) (C.writeInt8At((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1), C.i8(66)));
+        if(ucnt.value) (C.writeInt8At((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1), C.i8(85)));
+        if(ccnt.value) (C.writeInt8At((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1), C.i8(67)));
+        if(xcnt.value) (C.writeInt8At((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1), C.i8(88)));
+        if(jcnt.value) (C.writeInt8At((types+Number((()=>{const old=class_count;class_count=C.i32((old+1));return old;})())*1), C.i8(80)));
+        (C.writeInt8At((types+Number(class_count)*1), C.i8(0)));
         /* add everything not already included; user won't see these */
         (extra_types=C.eos(types));
-        (C.cell((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(),"char").value=C.i8(27));
-        if(Number(!(any_unpaid))) (C.cell((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(),"char").value=C.i8(117));
-        if(Number(!(billx))) (C.cell((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(),"char").value=C.i8(120));
-        if(Number(!(bcnt.value))) (C.cell((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(),"char").value=C.i8(66));
-        if(Number(!(ucnt.value))) (C.cell((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(),"char").value=C.i8(85));
-        if(Number(!(ccnt.value))) (C.cell((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(),"char").value=C.i8(67));
-        if(Number(!(xcnt.value))) (C.cell((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(),"char").value=C.i8(88));
-        if(Number(!(jcnt.value))) (C.cell((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(),"char").value=C.i8(80));
-        (C.cell(extra_types,"char").value=C.i8(0));
+        (C.writeInt8At((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(), C.i8(27)));
+        if(Number(!(any_unpaid))) (C.writeInt8At((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(), C.i8(117)));
+        if(Number(!(billx))) (C.writeInt8At((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(), C.i8(120)));
+        if(Number(!(bcnt.value))) (C.writeInt8At((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(), C.i8(66)));
+        if(Number(!(ucnt.value))) (C.writeInt8At((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(), C.i8(85)));
+        if(Number(!(ccnt.value))) (C.writeInt8At((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(), C.i8(67)));
+        if(Number(!(xcnt.value))) (C.writeInt8At((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(), C.i8(88)));
+        if(Number(!(jcnt.value))) (C.writeInt8At((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(), C.i8(80)));
+        (C.writeInt8At(extra_types, C.i8(0)));
         /* for strchr() */
         for((i=0);Number(i<C.MAXOCLASSES);(()=>{const old=i;i=C.i32((old+1));return old;})()) if(Number(!(C.strchr(types,C.i32(R12(C.def_oc_syms+Number(i)*C.sizes["struct class_sym"])))))) {
-            (C.cell((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(),"char").value=R12(C.def_oc_syms+Number(i)*C.sizes["struct class_sym"]));
-            (C.cell(extra_types,"char").value=C.i8(0));
+            (C.writeInt8At((()=>{const old=extra_types;extra_types=C.ptr((old+Number(1)));return old;})(), R12(C.def_oc_syms+Number(i)*C.sizes["struct class_sym"])));
+            (C.writeInt8At(extra_types, C.i8(0)));
         }
 
         if(Number(class_count>1)) {
@@ -3668,7 +3672,7 @@ function dotypeinv()
             /* only one thing to itemize */
             if(any_unpaid) (c=C.i8(117));
  else if(billx) (c=C.i8(120));
- else (c=C.cell((types+Number(0)*1),"char").value);
+ else (c=C.readInt8At((types+Number(0)*1)));
         }
     }
     if(Number(!!(Number(C.i32(c)==120)||(Number(!!(Number(!!(Number(C.i32(c)==88)&&C.i32(billx)))&&Number(!(xcnt.value)))))))) {
@@ -3728,7 +3732,7 @@ function dotypeinv()
     if(C.strchr(C.literal("BUCXP"),C.i32(c))) {
         /* the before and after phrases for "you have no..." can both be
            treated as mutually-exclusive suffices when creating a title */
-        C.variadic(80,title,C.literal("Items %s"),((Number(!!(before&&C.i32(C.cell(before,"char").value))))?before:after));
+        C.variadic(80,title,C.literal("Items %s"),((Number(!!(before&&C.i32(C.readInt8At(before)))))?before:after));
         /* get rid of trailing space from 'before' and double-space from
            'after's leading space */
         C.mungspaces(title);
@@ -3870,12 +3874,12 @@ function look_here(obj_cnt,lookhere_flags)
     if(Number(!(skip_objects))) {
         let reg;
         let regbuf=C.automatic("look_here.regbuf",(1*128));
-        (C.cell((regbuf+Number(0)*1),"char").value=C.i8(0));
+        (C.writeInt8At((regbuf+Number(0)*1), C.i8(0)));
         if(Number(((reg=C.visible_region_at(R195(C.u),R196(C.u))))!=0)) C.variadic(85,regbuf,C.literal("a %s cloud"),(C.reg_damg(reg)?C.literal("poison gas"):C.literal("vapor")));
         if(Number(!!(Number(((trap=C.t_at(R195(C.u),R196(C.u))))!=0)&&Number(!(R166(trap)))))) (trap=(0));
         if(Number(!!(reg||trap))) C.variadic(86,C.literal("is %s%s%s here."),(reg?regbuf:C.literal("")),((Number(!!(reg&&trap)))?C.literal(" and "):C.literal("")),(trap?C.an(C.trapname(C.i32(R165(trap)),(C.i8(0)))):C.literal("")));
     }
-    (otmp=C.cell(((A24(A70(C.svl))+Number(R195(C.u))*(8*21))+Number(R196(C.u))*8),"struct obj *").value);
+    (otmp=C.readPointerAt(((A24(A70(C.svl))+Number(R195(C.u))*(8*21))+Number(R196(C.u))*8)));
     (dfeature=dfeature_at(R195(C.u),R196(C.u),fbuf2));
     if(Number(!!(Number(!!(dfeature&&Number(!(C.strcmp(dfeature,C.literal("pool of water"))))))&&C.i32((R204(C.u)))))) (dfeature=0);
     if((Number(!!((Number(!!(R143(A200(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R141(A200(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R142(A200(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))) {
@@ -4029,7 +4033,7 @@ function stackobj(obj)
     try {
     obj=C.local("stackobj.obj","struct obj *",obj);
     let otmp=C.local("stackobj.otmp","struct obj *");
-    for((otmp.value=C.cell(((A24(A70(C.svl))+Number(R87(obj.value))*(8*21))+Number(R88(obj.value))*8),"struct obj *").value);otmp.value;(otmp.value=R174(A84(otmp.value)))) if(Number(!!(Number(otmp.value!=obj.value)&&merged(obj.address,otmp.address)))) break;
+    for((otmp.value=C.readPointerAt(((A24(A70(C.svl))+Number(R87(obj.value))*(8*21))+Number(R88(obj.value))*8)));otmp.value;(otmp.value=R174(A84(otmp.value)))) if(Number(!!(Number(otmp.value!=obj.value)&&merged(obj.address,otmp.address)))) break;
 
     return;
     } finally {C.leaveAutomatic(automaticFrame);C.stackRestore(stackFrame); }
@@ -4148,10 +4152,10 @@ function doprwep()
         let ct=0;
         /* obj_to_let() will assign letters to all of invent if necessary
            (for '!fixinv') so doesn't need to be repeated once called here */
-        (C.cell((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1),"char").value=obj_to_let(C.global("uwep").value));
-        if(C.global("uswapwep").value) (C.cell((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1),"char").value=R94(C.global("uswapwep").value));
-        if(C.global("uquiver").value) (C.cell((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1),"char").value=R94(C.global("uquiver").value));
-        (C.cell((lets+Number(ct)*1),"char").value=C.i8(0));
+        (C.writeInt8At((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1), obj_to_let(C.global("uwep").value)));
+        if(C.global("uswapwep").value) (C.writeInt8At((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1), R94(C.global("uswapwep").value)));
+        if(C.global("uquiver").value) (C.writeInt8At((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1), R94(C.global("uquiver").value)));
+        (C.writeInt8At((lets+Number(ct)*1), C.i8(0)));
         dispinv_with_action(lets,(C.i8(1)),0);
     }
     return 0;
@@ -4173,7 +4177,7 @@ function noarmor(report_uskin)
         /* shorten "set of <color> dragon scales" to "<color> scales"
            and "<color> dragon scale mail" to "<color> scale mail" */
         if(Number(!(C.strncmpi(uskinname,C.literal("set of "),7)))) (uskinname=C.ptr(uskinname+Number(7)*1));
-        if(Number(((p=C.strstri(uskinname,C.literal(" dragon "))))!=0)) while(Number(C.i32(((C.cell((p+Number(1)*1),"char").value=C.cell((p+Number(8)*1),"char").value)))!=0)) (()=>{const old=p;p=C.ptr((old+Number(1)));return p;})();
+        if(Number(((p=C.strstri(uskinname,C.literal(" dragon "))))!=0)) while(Number(C.i32(((C.writeInt8At((p+Number(1)*1), C.readInt8At((p+Number(8)*1))))))!=0)) (()=>{const old=p;p=C.ptr((old+Number(1)));return p;})();
 
         C.variadic(112,C.literal("are not wearing armor but have %s embedded in your skin."),uskinname);
     }
@@ -4201,14 +4205,14 @@ function doprarm()
            (for '!fixinv') so doesn't need to be repeated once called, but
            each armor slot doesn't know whether any that precede have made
            that call so just do it for each one; use SORTPACK_INUSE order */
-        if(C.global("uarm").value) (C.cell((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1),"char").value=obj_to_let(C.global("uarm").value));
-        if(C.global("uarmc").value) (C.cell((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1),"char").value=obj_to_let(C.global("uarmc").value));
-        if(C.global("uarms").value) (C.cell((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1),"char").value=obj_to_let(C.global("uarms").value));
-        if(C.global("uarmh").value) (C.cell((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1),"char").value=obj_to_let(C.global("uarmh").value));
-        if(C.global("uarmg").value) (C.cell((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1),"char").value=obj_to_let(C.global("uarmg").value));
-        if(C.global("uarmf").value) (C.cell((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1),"char").value=obj_to_let(C.global("uarmf").value));
-        if(C.global("uarmu").value) (C.cell((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1),"char").value=obj_to_let(C.global("uarmu").value));
-        (C.cell((lets+Number(ct)*1),"char").value=C.i8(0));
+        if(C.global("uarm").value) (C.writeInt8At((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1), obj_to_let(C.global("uarm").value)));
+        if(C.global("uarmc").value) (C.writeInt8At((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1), obj_to_let(C.global("uarmc").value)));
+        if(C.global("uarms").value) (C.writeInt8At((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1), obj_to_let(C.global("uarms").value)));
+        if(C.global("uarmh").value) (C.writeInt8At((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1), obj_to_let(C.global("uarmh").value)));
+        if(C.global("uarmg").value) (C.writeInt8At((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1), obj_to_let(C.global("uarmg").value)));
+        if(C.global("uarmf").value) (C.writeInt8At((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1), obj_to_let(C.global("uarmf").value)));
+        if(C.global("uarmu").value) (C.writeInt8At((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1), obj_to_let(C.global("uarmu").value)));
+        (C.writeInt8At((lets+Number(ct)*1), C.i8(0)));
         dispinv_with_action(lets,(C.i8(1)),0);
     }
     return 0;
@@ -4231,14 +4235,14 @@ function doprring()
         /* if either ring is a meat ring, switch to use_inuse_mode in order
            to label it/them as "Rings" rather than "Comestibles" */
         if(C.global("uright").value) {
-            (C.cell((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1),"char").value=obj_to_let(C.global("uright").value));
+            (C.writeInt8At((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1), obj_to_let(C.global("uright").value)));
             if(Number(C.i32(R93(C.global("uright").value))!=C.RING_CLASS)) (use_inuse_mode=(C.i8(1)));
         }
         if(C.global("uleft").value) {
-            (C.cell((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1),"char").value=obj_to_let(C.global("uleft").value));
+            (C.writeInt8At((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1), obj_to_let(C.global("uleft").value)));
             if(Number(C.i32(R93(C.global("uleft").value))!=C.RING_CLASS)) (use_inuse_mode=(C.i8(1)));
         }
-        (C.cell((lets+Number(ct)*1),"char").value=C.i8(0));
+        (C.writeInt8At((lets+Number(ct)*1), C.i8(0)));
         /* also switch to use_inuse_mode if there are two rings or player
            used the 'm' prefix */
         if(Number(!!(Number(ct>1)||C.i32(R47(C.iflags))))) (use_inuse_mode=(C.i8(1)));
@@ -4263,7 +4267,7 @@ function dopramulet()
         /* using display_inventory() instead of prinv() allows player
            to use 'm "' to force and menu and be able to choose amulet
            in order to perform a context-sensitive item action */
-        ((C.cell((lets+Number(0)*1),"char").value=obj_to_let(C.global("uamul").value)),(C.cell((lets+Number(1)*1),"char").value=C.i8(0)));
+        ((C.writeInt8At((lets+Number(0)*1), obj_to_let(C.global("uamul").value))),(C.writeInt8At((lets+Number(1)*1), C.i8(0))));
         dispinv_with_action(lets,(C.i8(1)),C.literal("Amulet"));
     }
     return 0;
@@ -4297,10 +4301,10 @@ function doprtool()
         /* we could be carrying more than 52 items; theoretically they
                might all be lit candles so avoid potential lets[] overflow */
         if(Number(ct>=C.i32((C.i32(BigInt((1*53)))-1)))) break;
-        (C.cell((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1),"char").value=obj_to_let(otmp));
+        (C.writeInt8At((lets+Number((()=>{const old=ct;ct=C.i32((old+1));return old;})())*1), obj_to_let(otmp)));
     }
 
-    (C.cell((lets+Number(ct)*1),"char").value=C.i8(0));
+    (C.writeInt8At((lets+Number(ct)*1), C.i8(0)));
     if(Number(!(ct))) C.variadic(115,C.literal("are not using any tools."));
  else dispinv_with_action(lets,(C.i8(1)),0);
     return 0;
@@ -4339,7 +4343,7 @@ function useupf(obj,numused)
     if(Number(R91(obj)>numused)) (otmp=C.splitobj(obj,numused));
  else (otmp=obj);
     if(Number(!!(Number(!(R15(A68(C.svc))))&&C.i32(C.costly_spot(R87(otmp),R88(otmp)))))) {
-        if(C.strchr(A198(C.u),C.i32(C.cell(C.in_rooms(R87(otmp),R88(otmp),0),"char").value))) C.addtobill(otmp,(C.i8(0)),(C.i8(0)),(C.i8(0)));
+        if(C.strchr(A198(C.u),C.i32(C.readInt8At(C.in_rooms(R87(otmp),R88(otmp),0))))) C.addtobill(otmp,(C.i8(0)),(C.i8(0)),(C.i8(0)));
  else C.stolen_value(otmp,R87(otmp),R88(otmp),(C.i8(0)),(C.i8(0)));
     }
     delobj(otmp);
@@ -4362,9 +4366,9 @@ function let_to_name(let_,unpaid,showsym)
     let pos;
     let oclass=((Number(!!(Number(C.i32(let_)>=1)&&Number(C.i32(let_)<C.MAXOCLASSES))))?C.i32(let_):0);
     let len;
-    if(oclass) (class_name=C.cell((C.staticAddress("names")+Number(oclass)*8),"char *").value);
- else if(Number(((pos=C.strchr(C.staticAddress("oth_symbols"),C.i32(let_))))!=0)) (class_name=C.cell((C.staticAddress("oth_names")+Number(C.i64(((pos-C.staticAddress("oth_symbols"))/1)))*8),"char *").value);
- else (class_name=C.cell((C.staticAddress("names")+Number(C.ILLOBJ_CLASS)*8),"char *").value);
+    if(oclass) (class_name=C.readPointerAt((C.staticAddress("names")+Number(oclass)*8)));
+ else if(Number(((pos=C.strchr(C.staticAddress("oth_symbols"),C.i32(let_))))!=0)) (class_name=C.readPointerAt((C.staticAddress("oth_names")+Number(C.i64(((pos-C.staticAddress("oth_symbols"))/1)))*8)));
+ else (class_name=C.readPointerAt((C.staticAddress("names")+Number(C.ILLOBJ_CLASS)*8)));
     (len=C.u32(C.u64((C.u64((C.u64(C.Strlen_(class_name,(C.literal("let_to_name")),4816))+((C.i32(unpaid)?BigInt((1*8)):BigInt((1*1))))))+C.u64(((oclass?(C.u32((C.Strlen_(ocsymfmt,(C.literal("let_to_name")),4817)+C.u32(invbuf_sympadding)))):C.u32(0))))))));
     if(Number(len>R59(C.gi))) {
         if(R58(C.gi)) C.free(R58(C.gi));
@@ -4378,10 +4382,10 @@ function let_to_name(let_,unpaid,showsym)
         let bp=C.eos(R58(C.gi));
         let mlen=C.i32(C.u32((C.u32(invbuf_sympadding)-C.Strlen_(class_name,(C.literal("let_to_name")),4830))));
         while(Number((()=>{const old=mlen;mlen=C.i32((old-1));return mlen;})()>0)) {
-            (C.cell(bp,"char").value=C.i8(32));
+            (C.writeInt8At(bp, C.i8(32)));
             (()=>{const old=bp;bp=C.ptr((old+Number(1)));return old;})();
         }
-        (C.cell(bp,"char").value=C.i8(0));
+        (C.writeInt8At(bp, C.i8(0)));
         C.variadic(117,C.eos(R58(C.gi)),ocsymfmt,C.i32(R12(C.def_oc_syms+Number(oclass)*C.sizes["struct class_sym"])));
     }
     return R58(C.gi);
@@ -4612,30 +4616,30 @@ function doorganize_core(obj)
     }
 
     /* initialize the list with all lower and upper case letters */
-    (C.cell((lets+Number(0)*1),"char").value=C.i8(((Number(C.i32(R93(obj.value))==C.COIN_CLASS))?C.GOLD_SYM:32)));
-    for(((ix=1),(let_=C.i8(97)));Number(C.i32(let_)<=122);) (C.cell((lets+Number((()=>{const old=ix;ix=C.i32((old+1));return old;})())*1),"char").value=(()=>{const old=let_;let_=C.i8((old+1));return old;})());
+    (C.writeInt8At((lets+Number(0)*1), C.i8(((Number(C.i32(R93(obj.value))==C.COIN_CLASS))?C.GOLD_SYM:32))));
+    for(((ix=1),(let_=C.i8(97)));Number(C.i32(let_)<=122);) (C.writeInt8At((lets+Number((()=>{const old=ix;ix=C.i32((old+1));return old;})())*1), (()=>{const old=let_;let_=C.i8((old+1));return old;})()));
 
-    for((let_=C.i8(65));Number(C.i32(let_)<=90);) (C.cell((lets+Number((()=>{const old=ix;ix=C.i32((old+1));return old;})())*1),"char").value=(()=>{const old=let_;let_=C.i8((old+1));return old;})());
+    for((let_=C.i8(65));Number(C.i32(let_)<=90);) (C.writeInt8At((lets+Number((()=>{const old=ix;ix=C.i32((old+1));return old;})())*1), (()=>{const old=let_;let_=C.i8((old+1));return old;})()));
 
-    (C.cell((lets+Number((C.i32((1+C.invlet_basic))))*1),"char").value=C.i8(32));
-    (C.cell((lets+Number(C.u64((BigInt((1*55))-C.u64(1))))*1),"char").value=C.i8(0));
+    (C.writeInt8At((lets+Number((C.i32((1+C.invlet_basic))))*1), C.i8(32)));
+    (C.writeInt8At((lets+Number(C.u64((BigInt((1*55))-C.u64(1))))*1), C.i8(0)));
     /* for floating inv letters, truncate list after the first open slot */
-    if(Number(!!(Number(!(R30(C.flags)))&&Number(((ix=C.inv_cnt((C.i8(0)))))<C.invlet_basic)))) (C.cell((lets+Number(C.i32((ix+((splitting.value?1:2)))))*1),"char").value=C.i8(0));
+    if(Number(!!(Number(!(R30(C.flags)))&&Number(((ix=C.inv_cnt((C.i8(0)))))<C.invlet_basic)))) (C.writeInt8At((lets+Number(C.i32((ix+((splitting.value?1:2)))))*1), C.i8(0)));
     /* blank out all the letters currently in use in the inventory
        except those that will be merged with the selected object */
     for((otmp.value=R57(C.gi));otmp.value;(otmp.value=R83(otmp.value))) if(Number(!!(Number(otmp.value!=obj.value)&&Number(!(mergable(otmp.value,obj.value)))))) {
         (let_=R94(otmp.value));
-        if(Number(!!(Number(C.i32(let_)>=97)&&Number(C.i32(let_)<=122)))) (C.cell((lets+Number(C.i32((C.i32((1+C.i32(let_)))-97)))*1),"char").value=C.i8(32));
- else if(Number(!!(Number(C.i32(let_)>=65)&&Number(C.i32(let_)<=90)))) (C.cell((lets+Number(C.i32((C.i32((C.i32((1+C.i32(let_)))-65))+26)))*1),"char").value=C.i8(32));
- else if(Number(C.i32(let_)==35)) (C.cell((lets+Number((C.i32((1+C.invlet_basic))))*1),"char").value=C.i8(35));
+        if(Number(!!(Number(C.i32(let_)>=97)&&Number(C.i32(let_)<=122)))) (C.writeInt8At((lets+Number(C.i32((C.i32((1+C.i32(let_)))-97)))*1), C.i8(32)));
+ else if(Number(!!(Number(C.i32(let_)>=65)&&Number(C.i32(let_)<=90)))) (C.writeInt8At((lets+Number(C.i32((C.i32((C.i32((1+C.i32(let_)))-65))+26)))*1), C.i8(32)));
+ else if(Number(C.i32(let_)==35)) (C.writeInt8At((lets+Number((C.i32((1+C.invlet_basic))))*1), C.i8(35)));
         /* overflow defaults to off, but it we find a stack using that
                slot, switch to on -- the opposite of normal invlet handling */
     }
 
     /* compact the list by removing all the blanks */
-    for((ix=(cur=0));C.cell((lets+Number(ix)*1),"char").value;(()=>{const old=ix;ix=C.i32((old+1));return old;})()) if(Number(!!(Number(C.i32(C.cell((lets+Number(ix)*1),"char").value)!=32)&&Number((()=>{const old=cur;cur=C.i32((old+1));return old;})()<ix)))) (C.cell((lets+Number(C.i32((cur-1)))*1),"char").value=C.cell((lets+Number(ix)*1),"char").value);
+    for((ix=(cur=0));C.readInt8At((lets+Number(ix)*1));(()=>{const old=ix;ix=C.i32((old+1));return old;})()) if(Number(!!(Number(C.i32(C.readInt8At((lets+Number(ix)*1)))!=32)&&Number((()=>{const old=cur;cur=C.i32((old+1));return old;})()<ix)))) (C.writeInt8At((lets+Number(C.i32((cur-1)))*1), C.readInt8At((lets+Number(ix)*1))));
 
-    (C.cell((lets+Number(cur)*1),"char").value=C.i8(0));
+    (C.writeInt8At((lets+Number(cur)*1), C.i8(0)));
     /* and by dashing runs of letters */
     if(Number(cur>5)) compactify(lets);
     /* get 'to' slot to use as destination */
@@ -4968,7 +4972,7 @@ function display_binventory(x,y,as_if_seen)
        below (the map won't be showing them); if hero is underwater, player
        should use the normal look_here command instead of probing (caller
        has already used bhitpile() which will have set dknown on all items) */
-    if(Number(!!(Number(!!(C.i32(C.is_pool_or_lava(x,y))&&Number(!((R204(C.u))))))&&Number(((obj=C.cell(((A24(A70(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value))!=0)))) {
+    if(Number(!!(Number(!!(C.i32(C.is_pool_or_lava(x,y))&&Number(!((R204(C.u))))))&&Number(((obj=C.readPointerAt(((A24(A70(C.svl))+Number(x)*(8*21))+Number(y)*8))))!=0)))) {
         let real_liquid=(C.i32(C.is_pool(x,y))?C.literal("water"):C.literal("lava")); let seen_liquid=C.hliquid(real_liquid);
         if(Number(!(R174(A84(obj))))) {
             let more_than_1=C.i8((Number(!!(Number(R91(obj)!=1n)||(Number(!!(Number(C.i32(R95(obj))==C.ART_EYES_OF_THE_OVERWORLD)&&Number(!(C.undiscovered_artifact(C.i16(C.ART_EYES_OF_THE_OVERWORLD)))))))))));
@@ -5008,12 +5012,12 @@ function prepare_perminvent(window)
     window=C.i32(window);
     let wri;
     let invmode=C.i32(R52(C.iflags));
-    if(Number(C.cell(C.staticAddress("perminv_flags"),"int").value!=invmode)) {
+    if(Number(C.readInt32At(C.staticAddress("perminv_flags"))!=invmode)) {
         C.copy(C.staticAddress("wri_info"),C.zerowri,C.sizes["struct win_request_info_t"]);
         (W41(A177(C.staticAddress("wri_info")),C.i32(invmode)));
         /*  relay the mode settings to the window port */
         (wri=C.callback(64,(R192(C.windowprocs)),window,C.set_mode,C.staticAddress("wri_info")));
-        (C.cell(C.staticAddress("perminv_flags"),"int").value=invmode);
+        (C.writeInt32At(C.staticAddress("perminv_flags"), invmode));
         ((wri));
     }
 }
@@ -5023,7 +5027,7 @@ function sync_perminvent()
     
     let wport_id;
     if(Number(C.global("WIN_INVEN").value==(C.i32((-1))))) {
-        if(Number(!!((Number(!!(R54(C.gc)||(C.i64((R159(A176(C.staticAddress("wri_info")))&C.i64(C.prohibited)))))))&&Number(!((Number(!!(C.i32(C.cell(C.staticAddress("in_perm_invent_toggled"),"signed char").value)&&Number(R66(C.gp)==C.toggling_on))))))))) return;
+        if(Number(!!((Number(!!(R54(C.gc)||(C.i64((R159(A176(C.staticAddress("wri_info")))&C.i64(C.prohibited)))))))&&Number(!((Number(!!(C.i32(C.readInt8At(C.staticAddress("in_perm_invent_toggled")))&&Number(R66(C.gp)==C.toggling_on))))))))) return;
     }
     prepare_perminvent(C.global("WIN_INVEN").value);
     if((Number(!!(Number(!(R49(C.iflags)))&&R54(C.gc))))) {
@@ -5046,20 +5050,20 @@ function sync_perminvent()
      * OR
      * 3. iflags.perminv_mode has been changed via 'm O'.
      */
-    if(Number(!!((Number(!!(C.i32(R49(C.iflags))&&Number(!(R54(C.gc))))))||(Number(!!(Number(!(R49(C.iflags)))&&(Number(!!(C.i32(C.cell(C.staticAddress("in_perm_invent_toggled"),"signed char").value)&&Number(R66(C.gp)==C.toggling_on)))))))))) {
+    if(Number(!!((Number(!!(C.i32(R49(C.iflags))&&Number(!(R54(C.gc))))))||(Number(!!(Number(!(R49(C.iflags)))&&(Number(!!(C.i32(C.readInt8At(C.staticAddress("in_perm_invent_toggled")))&&Number(R66(C.gp)==C.toggling_on)))))))))) {
         /* Send windowport a request to return the related settings to us */
-        if(Number(!!((Number(!!(C.i32(R49(C.iflags))&&Number(!(R54(C.gc))))))||C.i32(C.cell(C.staticAddress("in_perm_invent_toggled"),"signed char").value)))) {
-            (C.cell(C.staticAddress("sync_perminvent.wri"),"struct win_request_info_t *").value=C.callback(65,(R192(C.windowprocs)),C.global("WIN_INVEN").value,C.request_settings,C.staticAddress("wri_info")));
-            if(Number(C.cell(C.staticAddress("sync_perminvent.wri"),"struct win_request_info_t *").value!=0)) {
-                if(Number((C.i64((R159(A176(C.cell(C.staticAddress("sync_perminvent.wri"),"struct win_request_info_t *").value))&C.i64((C.too_early)))))!=C.i64(0))) {
+        if(Number(!!((Number(!!(C.i32(R49(C.iflags))&&Number(!(R54(C.gc))))))||C.i32(C.readInt8At(C.staticAddress("in_perm_invent_toggled")))))) {
+            (C.writePointerAt(C.staticAddress("sync_perminvent.wri"), C.callback(65,(R192(C.windowprocs)),C.global("WIN_INVEN").value,C.request_settings,C.staticAddress("wri_info"))));
+            if(Number(C.readPointerAt(C.staticAddress("sync_perminvent.wri"))!=0)) {
+                if(Number((C.i64((R159(A176(C.readPointerAt(C.staticAddress("sync_perminvent.wri"))))&C.i64((C.too_early)))))!=C.i64(0))) {
                     /* don't be too noisy about this as it's really
                      * a startup timing issue. Just set a marker. */
                     (W50(C.iflags,C.i8(1)));
                     return;
                 }
-                if(Number((C.i64((R159(A176(C.cell(C.staticAddress("sync_perminvent.wri"),"struct win_request_info_t *").value))&C.i64((C.i32((C.too_small|C.prohibited)))))))!=C.i64(0))) {
+                if(Number((C.i64((R159(A176(C.readPointerAt(C.staticAddress("sync_perminvent.wri"))))&C.i64((C.i32((C.too_small|C.prohibited)))))))!=C.i64(0))) {
                     /* sizes aren't good enough */
-                    if(Number((C.i64((R159(A176(C.cell(C.staticAddress("sync_perminvent.wri"),"struct win_request_info_t *").value))&C.i64(C.prohibited))))!=C.i64(0))) {
+                    if(Number((C.i64((R159(A176(C.readPointerAt(C.staticAddress("sync_perminvent.wri"))))&C.i64(C.prohibited))))!=C.i64(0))) {
                         C.set_option_mod_status(C.literal("perm_invent"),C.set_gameview);
                         C.set_option_mod_status(C.literal("perminv_mode"),C.set_gameview);
                     }
@@ -5067,7 +5071,7 @@ function sync_perminvent()
                     if(Number(C.global("WIN_INVEN").value!=(C.i32((-1))))) (C.callback(66,(R184(C.windowprocs)),C.global("WIN_INVEN").value),(C.global("WIN_INVEN").value=(C.i32((-1)))));
                     (wport_id=((Number(C.u32(R179(C.windowprocs))==C.u32(C.wp_tty)))?C.literal("tty perm_invent"):C.literal("perm_invent")));
                     C.variadic(134,C.literal("%s could not be enabled."),wport_id);
-                    C.variadic(135,C.literal("%s needs a terminal that is at least %dx%d, yours is %dx%d."),wport_id,R161(A176(C.cell(C.staticAddress("sync_perminvent.wri"),"struct win_request_info_t *").value)),R162(A176(C.cell(C.staticAddress("sync_perminvent.wri"),"struct win_request_info_t *").value)),R163(A176(C.cell(C.staticAddress("sync_perminvent.wri"),"struct win_request_info_t *").value)),R164(A176(C.cell(C.staticAddress("sync_perminvent.wri"),"struct win_request_info_t *").value)));
+                    C.variadic(135,C.literal("%s needs a terminal that is at least %dx%d, yours is %dx%d."),wport_id,R161(A176(C.readPointerAt(C.staticAddress("sync_perminvent.wri")))),R162(A176(C.readPointerAt(C.staticAddress("sync_perminvent.wri")))),R163(A176(C.readPointerAt(C.staticAddress("sync_perminvent.wri")))),R164(A176(C.readPointerAt(C.staticAddress("sync_perminvent.wri")))));
                     C.callback(67,(R189(C.windowprocs)));
                     return;
                 }
@@ -5075,8 +5079,8 @@ function sync_perminvent()
             (()=>{const ref=C.field(C.gc,"instance_globals_c","core_invent_state");const old=ref.value;ref.value=C.i32((old+1));return old;})();
         }
     }
-    if(Number(!!(Number(!(C.cell(C.staticAddress("sync_perminvent.wri"),"struct win_request_info_t *").value))||Number(R160(A176(C.cell(C.staticAddress("sync_perminvent.wri"),"struct win_request_info_t *").value))==0)))) return;
-    if(Number(!!(C.i32(C.cell(C.staticAddress("in_perm_invent_toggled"),"signed char").value)&&Number(R66(C.gp)==C.toggling_on)))) {
+    if(Number(!!(Number(!(C.readPointerAt(C.staticAddress("sync_perminvent.wri"))))||Number(R160(A176(C.readPointerAt(C.staticAddress("sync_perminvent.wri"))))==0)))) return;
+    if(Number(!!(C.i32(C.readInt8At(C.staticAddress("in_perm_invent_toggled")))&&Number(R66(C.gp)==C.toggling_on)))) {
         (C.global("WIN_INVEN").value=C.callback(68,(R181(C.windowprocs)),4));
     }
     if(Number(!!(Number(C.global("WIN_INVEN").value!=(C.i32((-1))))&&R148(C.program_state)))) {
@@ -5089,7 +5093,7 @@ function sync_perminvent()
 function perm_invent_toggled(negated)
 {
     negated=C.i8(negated);
-    (C.cell(C.staticAddress("in_perm_invent_toggled"),"signed char").value=(C.i8(1)));
+    (C.writeInt8At(C.staticAddress("in_perm_invent_toggled"), (C.i8(1))));
     if(negated) {
         (W66(C.gp,C.toggling_off));
         if(Number(C.global("WIN_INVEN").value!=(C.i32((-1))))) (C.callback(69,(R184(C.windowprocs)),C.global("WIN_INVEN").value),(C.global("WIN_INVEN").value=(C.i32((-1)))));
@@ -5101,7 +5105,7 @@ function perm_invent_toggled(negated)
         sync_perminvent();
     }
     (W66(C.gp,C.toggling_not));
-    (C.cell(C.staticAddress("in_perm_invent_toggled"),"signed char").value=(C.i8(0)));
+    (C.writeInt8At(C.staticAddress("in_perm_invent_toggled"), (C.i8(0))));
 }
 
 /*invent.c*/

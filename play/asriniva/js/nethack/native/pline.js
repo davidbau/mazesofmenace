@@ -122,8 +122,10 @@ function pline_mon(mtmp, line, ...the_args)
 
 function vpline(line, the_args)
 {
-    const pbuf = C.stackAlloc(C.BIGBUFSZ); /* will get chopped down to BUFSZ-1 if longer */
-    line = C.text(line);
+    let pbuf; /* will get chopped down to BUFSZ-1 if longer */
+    const nativeText = typeof line === "string" && C.formatMessage;
+    if (!nativeText)
+        line = C.text(line);
     let ln;
     let msgtyp;
     let no_repeat;
@@ -133,7 +135,7 @@ function vpline(line, the_args)
     /* always reset a11y.msg_loc whether we end up using it or not */
     C.a11y.msg_loc.x = C.a11y.msg_loc.y = 0;
 
-    if (!line || !C.HEAPU8[line])
+    if (!line || (nativeText ? line[0] === "\0" : !C.HEAPU8[line]))
         return;
     if (C.program_state.done_hup)
         return;
@@ -148,6 +150,10 @@ function vpline(line, the_args)
         dirstr = C.coord_desc(a11y_mesgxy.x, a11y_mesgxy.y, dirstrbuf,
                             ((C.iflags.getpos_coords == C.GPCOORDS_NONE)
                              ? C.GPCOORDS_COMFULL : C.iflags.getpos_coords));
+        if (nativeText) {
+            vpline(C.readString(dirstr) + ": " + line, the_args);
+            return;
+        }
         tmp = C.alloc(C.strlen(line) + 3 + C.strlen(dirstr));
         C.Strcpy(tmp, dirstr);
         C.Strcat(tmp, ": ");
@@ -157,6 +163,15 @@ function vpline(line, the_args)
         return;
     }
 
+    if (nativeText) {
+        line = C.formatMessage(line, the_args);
+        if (line.length > C.BIGBUFSZ - 1)
+            C.panic("pline attempting to print %d characters!", line.length);
+        if (line.length > C.BUFSZ - 1)
+            line = line.slice(0, C.BUFSZ - 7) + "..." + line.slice(-3);
+        line = C.messageBytes(line);
+    } else {
+    pbuf = C.stackAlloc(C.BIGBUFSZ);
     if (!C.strchr(line, '%')) {
         /* format does not specify any substitutions; use it as-is */
         ln = C.int(C.strlen(line));
@@ -190,6 +205,7 @@ function vpline(line, the_args)
         C.HEAPU8[pbuf + (C.BUFSZ - 1 - 1)] = C.HEAPU8[line + (ln - 1)];
         C.HEAPU8[pbuf + (C.BUFSZ - 1)] = 0;
         line = pbuf;
+    }
     }
     msgtyp = C.MSGTYP_NORMAL;
 
@@ -301,19 +317,24 @@ function free_youbuf()
 
 /* `prefix' must be a string literal, not a pointer */
 
+function prefixedMessage(prefix, line, args)
+{
+    if (C.formatMessage)
+        vpline(prefix + C.messageText(line), args);
+    else {
+        const out = You_buf(C.int(C.strlen(line) + prefix.length + 1));
+        vpline(C.strcat(C.Strcpy(out, prefix), line), args);
+    }
+}
 
 function You(line, ...the_args)
 {
-    let tmp;
-
-    vpline(C.strcat((C.Strcpy((tmp = You_buf(C.int(C.strlen(line) + 5))), "You "), tmp), line), the_args);
+    prefixedMessage("You ", line, the_args);
 }
 
 function Your(line, ...the_args)
 {
-    let tmp;
-
-    vpline(C.strcat((C.Strcpy((tmp = You_buf(C.int(C.strlen(line) + 6))), "Your "), tmp), line), the_args);
+    prefixedMessage("Your ", line, the_args);
 }
 
 function You_feel(line, ...the_args)
@@ -329,23 +350,17 @@ function You_feel(line, ...the_args)
 
 function You_cant(line, ...the_args)
 {
-    let tmp;
-
-    vpline(C.strcat((C.Strcpy((tmp = You_buf(C.int(C.strlen(line) + 11))), "You can't "), tmp), line), the_args);
+    prefixedMessage("You can't ", line, the_args);
 }
 
 function pline_The(line, ...the_args)
 {
-    let tmp;
-
-    vpline(C.strcat((C.Strcpy((tmp = You_buf(C.int(C.strlen(line) + 5))), "The "), tmp), line), the_args);
+    prefixedMessage("The ", line, the_args);
 }
 
 function There(line, ...the_args)
 {
-    let tmp;
-
-    vpline(C.strcat((C.Strcpy((tmp = You_buf(C.int(C.strlen(line) + 7))), "There "), tmp), line), the_args);
+    prefixedMessage("There ", line, the_args);
 }
 
 function You_hear(line, ...the_args)
@@ -396,6 +411,10 @@ function verbalize(line, ...the_args)
 
 function gamelog_add(glflags, gltime, str)
 {
+    if (Object.hasOwn(C, "chronicle")) {
+        C.chronicle.push({flags: glflags, turn: gltime, text: C.messageText(str)});
+        return;
+    }
     let tmp;
     let lst = C.gg.gamelog;
 
@@ -414,6 +433,15 @@ function gamelog_add(glflags, gltime, str)
 
 function livelog_printf(ll_type, line, ...the_args)
 {
+    if (Object.hasOwn(C, "chronicle")) {
+        const text = C.formatChronicle(line, the_args).slice(0, C.BUFSZ * 2 - 1);
+        gamelog_add(ll_type, C.svm.moves, text);
+        const logMessage = C.messageText(text);
+        const prefix = logMessage.slice(0, C.BUFSZ - 1);
+        // strNsubst copies back only when it finds a tab within the buffer.
+        C.livelog_add(ll_type, prefix.includes("\t") ? prefix.replaceAll("\t", "_") : logMessage);
+        return;
+    }
     const gamelogbuf = C.stackAlloc(C.BUFSZ * 2);
 
     C.vsnprintf(gamelogbuf, (C.BUFSZ * 2), line, the_args);

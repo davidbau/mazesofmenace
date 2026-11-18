@@ -199,20 +199,26 @@ export class LuaAllocationTracker {
   constructor({ allocator, userdata = null, memlimit = 0, collect = null, onAllocated = null } = {}) {
     if (typeof allocator !== 'function') throw new TypeError('Lua allocator required');
     this.allocator = allocator; this.userdata = userdata; this.memlimit = memlimit; this.collect = collect; this.onAllocated = onAllocated;
-    this.blocks = new Map(); this.bytes = 0; this.ready = false; this.collecting = false;
+    this.blocks = new Map(); this.logicalBlocks = new Set(); this.bytes = 0; this.ready = false; this.collecting = false;
   }
   getallocf(output = null) { if (output) output.value = this.userdata; return this.allocator; }
   setallocf(allocator, userdata) { if (typeof allocator !== 'function') throw new TypeError('Lua allocator required'); this.allocator = allocator; this.userdata = userdata; }
-  realloc(ptr, osize, nsize, { safe = true, retry = true } = {}) {
+  realloc(ptr, osize, nsize, { safe = true, retry = true, logical = false } = {}) {
     ptr ??= null;
     for (const size of [osize, nsize]) if (!Number.isSafeInteger(size) || size < 0) throw new RangeError('invalid Lua allocation size');
     const previous = ptr === null ? 0 : this.blocks.get(ptr);
     if (previous === undefined || ptr !== null && previous !== osize) throw new Error('Lua allocator block/size mismatch');
+    const wasLogical = this.logicalBlocks.has(ptr);
     const attempt = () => {
       // NetHack checks current memory, NOT projected memory. Equality and one
       // allocation beyond the limit are intentionally allowed; even shrinking
       // can fail once already above the limit. Freeing never checks the limit.
       if (nsize && this.ready && this.memlimit && this.bytes > this.memlimit) return null;
+      if (logical) {
+        if (!nsize || typeof logical === 'function' && !logical(this.bytes)) return null;
+        return wasLogical ? ptr : {};
+      }
+      if (wasLogical) return nsize ? this.allocator(this.userdata, null, 0, nsize) ?? null : null;
       return this.allocator(this.userdata, ptr, osize, nsize) ?? null;
     };
     let result = attempt();
@@ -223,7 +229,9 @@ export class LuaAllocationTracker {
     if (nsize && result === null) { if (safe) throw new LuaMemoryError(); return null; }
     if (nsize && this.blocks.has(result) && result !== ptr) throw new Error('Lua allocator returned an already live block');
     if (ptr !== null) this.blocks.delete(ptr);
+    if (wasLogical) this.logicalBlocks.delete(ptr);
     if (nsize) this.blocks.set(result, nsize);
+    if (nsize && logical) this.logicalBlocks.add(result);
     this.bytes += nsize - previous;
     this.onAllocated?.(nsize - previous);
     return nsize ? result : null;

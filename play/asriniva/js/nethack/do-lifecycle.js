@@ -54,6 +54,17 @@ export function enableDoLifecycle(environment,layouts){
  for(const name of new Set(abi.variadicSites.map(row=>row.name)))local[name]=(...args)=>{
   const marker=args.pop(),site=abi.variadicSites[marker?.varargSite];
   if(!site||site.name!==name)throw new Error('Missing/mismatched DO variadic ABI site '+name);
+  if(site.actual==='sprintf'){
+   const [out,fmt,...values]=args;
+   return environment.libc.sprintf(address(out),fmt,...values.map((value,i)=>{
+    const type=site.types[i+2];
+    if(!type)throw new Error('Extra DO sprintf argument');
+    if(type.includes('*'))return typeof value==='string'?value:address(value);
+    if(type==='long')return transport.long(value);
+    if(type==='unsigned long')return transport.ulong(value);
+    return transport.int(value);
+   }));
+  }
   const packed=args.map((v,i)=>{const type=site.types[i+site.prefix];if(!type)throw new Error('Extra DO variadic argument '+name);if(type.includes('*'))return /char/.test(type)?text(v):address(v);if(type==='long')return environment.transport.long(v);if(type==='unsigned long')return environment.transport.ulong(v);return environment.transport.int(v);});
   if(site.prefix)packed.unshift(services.literal(site.fn),site.line);
   return resolve(site.actual)(...packed);

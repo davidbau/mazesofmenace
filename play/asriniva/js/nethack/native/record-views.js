@@ -15,7 +15,7 @@ export function createNativeRecordViews(environment){
  if(owners.has(environment))return owners.get(environment);
  const {ctypes,memory}=environment,owner=nativeStateFor(environment),arena=owner.nativeArena;
  if(!arena)throw new Error('Native record views require typed state');
- const records=new Map(),arrays=new Map(),definitions=new Map(),viewDefinitions=new WeakMap(),sharedDescriptors=new Map(),shapes=new Map();
+ const records=new Map(),arrays=new Map(),definitions=new Map(),viewDefinitions=new WeakMap(),sharedDescriptors=new Map(),shapes=new Map(),recordTypes=new Map();
  const address=environment.address;
  const isRecord=type=>ctypes.isRecord(type);
  function definition(type){let row=definitions.get(type);if(!row){row=ctypes.record(type);definitions.set(type,row);}return row;}
@@ -98,21 +98,33 @@ export function createNativeRecordViews(environment){
   const result={fields,aliases};shapes.set(row.type,result);return result;
  }
  function record(type,pointer){
-  const at=address(pointer);if(!at)return 0;
-  const row=definition(type),sharedType=owner.sharedTypes.has('struct '+row.type)?'struct '+row.type:undefined;
-  if(pointer&&typeof pointer==='object'&&viewDefinitions.get(pointer)?.type===row.type&&pointer[storageAddress]===at){if(sharedType)owner.enrich(pointer,sharedType,at);return pointer;}
-  const key=row.type+':'+at;
-  if(records.has(key)){const out=records.get(key);if(sharedType)owner.enrich(out,sharedType,at);return out;}
+  if(!pointer)return 0;
+  let plan=recordTypes.get(type);
+  if(!plan){
+   const row=definition(type),name='struct '+row.type;
+   let byAddress=records.get(row.type);
+   if(!byAddress){byAddress=new Map();records.set(row.type,byAddress);}
+   plan={row,sharedType:owner.sharedTypes.has(name)?name:undefined,byAddress};
+   recordTypes.set(type,plan);
+  }
+  const {row,sharedType,byAddress}=plan;
+  const identity=typeof pointer==='object'&&viewDefinitions.get(pointer)?.type===row.type;
+  const at=typeof pointer==='number'&&Number.isSafeInteger(pointer)&&pointer>0?pointer:address(pointer);
+  if(!at)return 0;
+  if(identity&&pointer[storageAddress]===at){if(sharedType)owner.enrich(pointer,sharedType,at);return pointer;}
+  const old=byAddress.get(at);
+  if(old){if(sharedType)owner.enrich(old,sharedType,at);return old;}
   memory.bounds(at,row.size);
-  const out=(sharedType?owner.records.get(sharedType+':'+at):undefined)??{address:at};records.set(key,out);
+  const out=(sharedType?owner.records.get(sharedType+':'+at):undefined)??{address:at};
+  byAddress.set(at,out);
   if(sharedType)owner.records.set(sharedType+':'+at,out);
   viewDefinitions.set(out,row);
   if(!Object.hasOwn(out,storageAddress))Object.defineProperty(out,storageAddress,{value:at});
   if(!Object.hasOwn(out,projectionCache))Object.defineProperty(out,projectionCache,{value:[]});
   if(!Object.hasOwn(out,Symbol.toPrimitive)&&!Object.hasOwn(out,'valueOf'))Object.defineProperty(out,Symbol.toPrimitive,{value:nativeStorageAddress});
-  const plan=shape(type,row);
-  for(const {name,field,shared,counted}of plan.fields)if(!Object.hasOwn(out,name)){if(shared&&counted)owner.fields++;Object.defineProperty(out,name,shared??descriptor(type,at,name,field));}
-  for(const {alias,name,descriptor}of plan.aliases)if(!Object.hasOwn(out,alias)&&Object.hasOwn(out,name))Object.defineProperty(out,alias,descriptor);
+  const recordShape=shape(type,row);
+  for(const {name,field,shared,counted}of recordShape.fields)if(!Object.hasOwn(out,name)){if(shared&&counted)owner.fields++;Object.defineProperty(out,name,shared??descriptor(type,at,name,field));}
+  for(const {alias,name,descriptor}of recordShape.aliases)if(!Object.hasOwn(out,alias)&&Object.hasOwn(out,name))Object.defineProperty(out,alias,descriptor);
   if(sharedType)owner.enrich(out,sharedType,at);
   return out;
  }

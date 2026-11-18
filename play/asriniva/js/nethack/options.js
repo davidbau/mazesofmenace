@@ -31,6 +31,14 @@ export function enableOptions(environment,layouts){
  for(const row of S.variadics)local['var'+row.site]=(...args)=>(typeof services[row.function]==='function'?services[row.function]:environment.resolve(row.function))(...args);
  for(const row of S.callbacks)local['cb'+row.site]=(fn,...args)=>environment.functions.indirect(fn,[row.ret,...row.types].map(code).join(''),...args);
  const context=callOptions(local,L,'environment');
+ const optionTable=context.staticAddress('allopt'),optionLayout=ctypes.record('struct allopt_t');
+ const optionNameAt=optionTable+optionLayout.fields.name.offset;
+ const optionMinmatchAt=optionTable+optionLayout.fields.minmatch.offset;
+ context.readOptionNames=()=>Array.from({length:L.OPTCOUNT},(_,index)=>{
+  const pointer=memory.view.getBigUint64(optionNameAt+index*optionLayout.size,true);
+  return memory.readString(environment.address(pointer));
+ });
+ context.writeOptionMinmatch=(index,value)=>memory.view.setInt32(optionMinmatchAt+index*optionLayout.size,value,true);
  const names=S.names.filter(name=>!S.private.includes(name)&&typeof options[name]==='function'&&!environment.hasFunction(name));
  const nativeOwner=nativeStateFor(environment),nativeViews=createNativeRecordViews(environment),gp=nativeViews.record('struct instance_globals_p',environment.requireGlobal('gp'));
  const filterContext={ptr:value=>typeof value==='string'?value:context.ptr(value),i8:context.i8,i32:context.i32,messageTypes:()=>gp.plinemsg_types,

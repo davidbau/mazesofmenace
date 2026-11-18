@@ -157,39 +157,45 @@ export function selection_recalc_bounds(sel)
 export function selection_getpoint(x, y, sel)
 {
     x = C.coordxy(x); y = C.coordxy(y);
-    if (!sel || !sel.map)
+    const map = sel && sel.map;
+    if (!map)
         return 0;
-    if (x < 0 || y < 0 || x >= sel.wid || y >= sel.hei)
+    const width = sel.wid;
+    if (x < 0 || y < 0 || x >= width || y >= sel.hei)
         return 0;
 
-    return C.coordxy(C.HEAP8[sel.map + sel.wid * y + x] - 1);
+    return C.coordxy(C.HEAP8[map + width * y + x] - 1);
 }
 
 export function selection_setpoint(x, y, sel, c)
 {
     x = C.coordxy(x); y = C.coordxy(y); c = C.int(c);
-    if (!sel || !sel.map)
+    const map = sel && sel.map;
+    if (!map)
         return;
-    if (x < 0 || y < 0 || x >= sel.wid || y >= sel.hei)
+    const width = sel.wid;
+    if (x < 0 || y < 0 || x >= width || y >= sel.hei)
         return;
 
+    const point = map + width * y + x;
     if (c && !sel.bounds_dirty) {
-        if (sel.bounds.lx > x)
-            sel.bounds.lx = x;
-        if (sel.bounds.ly > y)
-            sel.bounds.ly = y;
-        if (sel.bounds.hx < x)
-            sel.bounds.hx = x;
-        if (sel.bounds.hy < y)
-            sel.bounds.hy = y;
+        const bounds = sel.bounds;
+        if (bounds.lx > x)
+            bounds.lx = x;
+        if (bounds.ly > y)
+            bounds.ly = y;
+        if (bounds.hx < x)
+            bounds.hx = x;
+        if (bounds.hy < y)
+            bounds.hy = y;
 
     /* only set bounds_dirty if changing a point from 1 to 0; if changing
        a point from 0 to 0, nothing has really changed with the bounds */
-    } else if (C.HEAP8[sel.map + sel.wid * y + x] != 0) {
+    } else if (C.HEAP8[point] != 0) {
         sel.bounds_dirty = 1;
     }
 
-    C.HEAPU8[sel.map + sel.wid * y + x] = C.char(c + 1);
+    C.HEAPU8[point] = C.char(c + 1);
 }
 
 export function selection_not(s)

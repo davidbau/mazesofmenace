@@ -1,4 +1,5 @@
 import {C} from '../c-runtime/context.js';
+import { terrainAt, doorMaskAt } from './level-grid.js';
 
 /* NetHack 5.0	mon.c	$NHDT-Date: 1770949988 2026/02/12 18:33:08 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.621 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
@@ -135,7 +136,7 @@ export function sanity_check_single_mon(mtmp,chk_geno,msg)
                        (!C.Is_waterlevel(C.u.uz) ? "out of water" : "on Plane of Water"), msg);
         if (/* normally !accessible would be overridable with passes_walls,
                but not for hiding on the ceiling */
-((C.ceiling_hider(mptr) && ((!C.has_ceiling(C.u.uz) || !((((((((((((C.levl[mx][my].typ == C.POOL) || (C.levl[mx][my].typ == C.MOAT)) ? 1 : 0) || (C.levl[mx][my].typ == C.WATER)) ? 1 : 0) || (C.levl[mx][my].typ == C.LAVAPOOL)) ? 1 : 0) || (C.levl[mx][my].typ == C.LAVAWALL)) ? 1 : 0) || C.accessible(mx, my)) ? 1 : 0))) ? 1 : 0)) ? 1 : 0))
+((C.ceiling_hider(mptr) && ((!C.has_ceiling(C.u.uz) || !((((((((((((terrainAt(C, mx, my) == C.POOL) || (terrainAt(C, mx, my) == C.MOAT)) ? 1 : 0) || (terrainAt(C, mx, my) == C.WATER)) ? 1 : 0) || (terrainAt(C, mx, my) == C.LAVAPOOL)) ? 1 : 0) || (terrainAt(C, mx, my) == C.LAVAWALL)) ? 1 : 0) || C.accessible(mx, my)) ? 1 : 0))) ? 1 : 0)) ? 1 : 0))
             C.impossible("ceiling hider hiding %s (%s)",
                        (!C.has_ceiling(C.u.uz) ? "without ceiling" : "in solid stone"),
                        msg);
@@ -899,7 +900,7 @@ export function minliquid_core(mtmp)
     (inpool = C.char(((C.is_pool(mtmp.mx, mtmp.my) && /* there's no "above the surface" on the plane of water */
 ((!(((C.is_flyer(mtmp.data) || C.is_floater(mtmp.data)) ? 1 : 0)) || C.Is_waterlevel(C.u.uz)) ? 1 : 0)) ? 1 : 0)));
     (inlava = C.char(((C.is_lava(mtmp.mx, mtmp.my) && !(((C.is_flyer(mtmp.data) || C.is_floater(mtmp.data)) ? 1 : 0))) ? 1 : 0)));
-    (infountain = C.char(C.IS_FOUNTAIN(C.levl[mtmp.mx][mtmp.my].typ)));
+    (infountain = C.char(C.IS_FOUNTAIN(terrainAt(C, mtmp.mx, mtmp.my))));
 
     /* Flying and levitation keeps our steed out of the liquid
        (but not water-walking or swimming; note: if hero is in a
@@ -2027,7 +2028,7 @@ export function mfndpos(mon,data,flag)
 
     (x = C.coordxy(mon.mx));
     (y = C.coordxy(mon.my));
-    (nowtyp = C.uchar(C.levl[x][y].typ));
+    (nowtyp = C.uchar(terrainAt(C, x, y)));
 
     C.memset( data, 0, C.mfpSize);
 
@@ -2073,7 +2074,7 @@ export function mfndpos(mon,data,flag)
         for ((ny = C.coordxy(((0 > C.int((y) - (1))) ? 0 : C.int((y) - (1))))); (ny <= maxy); ny++) {
             if ((((nx == x) && (ny == y)) ? 1 : 0))
                 continue;
-            (ntyp = C.uchar(C.levl[nx][ny].typ));
+            (ntyp = C.uchar(terrainAt(C, nx, ny)));
             if (((((C.IS_OBSTRUCTED(ntyp) && !(((C.long((C.long(flag) & C.long(C.ALLOW_WALL))) && C.may_passwall(nx, ny)) ? 1 : 0))) ? 1 : 0) && !((((C.IS_TREE(ntyp) ? treeok : rockok) && C.may_dig(nx, ny)) ? 1 : 0))) ? 1 : 0))
                 continue;
             /* intelligent peacefuls avoid digging shop/temple walls */
@@ -2086,7 +2087,7 @@ export function mfndpos(mon,data,flag)
                 continue;
             if (((((/* an amorphous creature can only move under/through a
                    closed door if it doesn't currently have hero engulfed */
-((C.IS_DOOR(ntyp) && !(((((C.amorphous(mdat) || C.can_fog(mon)) ? 1 : 0) && !C.engulfing_u(mon)) ? 1 : 0))) ? 1 : 0) && (((((C.levl[nx][ny].doormask & C.D_CLOSED) && !(C.long((C.long(flag) & C.long(C.OPENDOOR))))) ? 1 : 0) || (((C.levl[nx][ny].doormask & C.D_LOCKED) && !(C.long((C.long(flag) & C.long(C.UNLOCKDOOR))))) ? 1 : 0)) ? 1 : 0)) ? 1 : 0) && !thrudoor) ? 1 : 0))
+((C.IS_DOOR(ntyp) && !(((((C.amorphous(mdat) || C.can_fog(mon)) ? 1 : 0) && !C.engulfing_u(mon)) ? 1 : 0))) ? 1 : 0) && (((((doorMaskAt(C, nx, ny) & C.D_CLOSED) && !(C.long((C.long(flag) & C.long(C.OPENDOOR))))) ? 1 : 0) || (((doorMaskAt(C, nx, ny) & C.D_LOCKED) && !(C.long((C.long(flag) & C.long(C.UNLOCKDOOR))))) ? 1 : 0)) ? 1 : 0)) ? 1 : 0) && !thrudoor) ? 1 : 0))
                 continue;
             /* avoid poison gas? */
             if (((((((!poisongas_ok && !in_poisongas) ? 1 : 0) && !C.samePtr((gas_reg = C.visible_region_at(nx,ny)), 0)) ? 1 : 0) && (gas_reg.glyph == gas_glyph)) ? 1 : 0))
@@ -2094,7 +2095,7 @@ export function mfndpos(mon,data,flag)
             /* first diagonal checks (tight squeezes handled below) */
             if ((((((nx != x) && (ny != y)) ? 1 : 0) && /* mustn't pass between adjacent long worm segments,
                        but can attack that way */
-((((((((nodiag || ((C.IS_DOOR(nowtyp) && (C.levl[x][y].doormask & ~C.D_BROKEN)) ? 1 : 0)) ? 1 : 0) || ((C.IS_DOOR(ntyp) && (C.levl[nx][ny].doormask & ~C.D_BROKEN)) ? 1 : 0)) ? 1 : 0) || ((((C.IS_DOOR(nowtyp) || C.IS_DOOR(ntyp)) ? 1 : 0) && C.Is_rogue_level(C.u.uz)) ? 1 : 0)) ? 1 : 0) || ((((((((C.m_at(x, ny) && C.m_at(nx, y)) ? 1 : 0) && C.worm_cross(x, y, nx, ny)) ? 1 : 0) && !C.m_at(nx, ny)) ? 1 : 0) && (((nx != C.u.ux) || (ny != C.u.uy)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
+((((((((nodiag || ((C.IS_DOOR(nowtyp) && (doorMaskAt(C, x, y) & ~C.D_BROKEN)) ? 1 : 0)) ? 1 : 0) || ((C.IS_DOOR(ntyp) && (doorMaskAt(C, nx, ny) & ~C.D_BROKEN)) ? 1 : 0)) ? 1 : 0) || ((((C.IS_DOOR(nowtyp) || C.IS_DOOR(ntyp)) ? 1 : 0) && C.Is_rogue_level(C.u.uz)) ? 1 : 0)) ? 1 : 0) || ((((((((C.m_at(x, ny) && C.m_at(nx, y)) ? 1 : 0) && C.worm_cross(x, y, nx, ny)) ? 1 : 0) && !C.m_at(nx, ny)) ? 1 : 0) && (((nx != C.u.ux) || (ny != C.u.uy)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
                 continue;
             if (((((!lavaok || !(C.long((C.long(flag) & C.long(C.ALLOW_WALL))))) ? 1 : 0) && (ntyp == C.LAVAWALL)) ? 1 : 0))
                 continue;
@@ -4428,7 +4429,7 @@ export function restrap(mtmp)
         }
         C.set_mimic_sym(mtmp);
         return C.char(1);
-    } else if ((C.levl[mtmp.mx][mtmp.my].typ == C.ROOM)) {
+    } else if ((terrainAt(C, mtmp.mx, mtmp.my) == C.ROOM)) {
         (mtmp.mundetected = 1);
         return C.char(1);
     }

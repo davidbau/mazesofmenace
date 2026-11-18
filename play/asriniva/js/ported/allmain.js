@@ -9,6 +9,10 @@
 
 
 import { C } from '../c-runtime/context.js';
+import { turnStateFor } from './turn-state.js';
+
+// Legacy subsystem callers supply the active context through their entry point.
+const activeContext = () => C;
 
 /*ARGSUSED*/
 export function early_init(argc, argv)
@@ -25,8 +29,9 @@ export function early_init(argc, argv)
     C.runtime_info_init();
 }
 
-export function moveloop_preamble(resuming)
+export function moveloop_preamble(resuming, C = activeContext())
 {
+    const state = turnStateFor(C);
     /* if a save file created in normal mode is now being restored in
        explore mode, treat it as normal restore followed by 'X' command
        to use up the save file and require confirmation for explore mode */
@@ -59,7 +64,7 @@ export function moveloop_preamble(resuming)
         C.svc.context.seer_turn = BigInt(C.rnd(()=>(30), 79, "moveloop_preamble"));
         /* give hero initial movement points; new game only--for restore,
            pending movement points were included in the save file */
-        C.u.umovement = C.NORMAL_SPEED;
+        state.setMovement(C.NORMAL_SPEED);
         C.initrack();
     }
     C.disp.botlx = C.TRUE; /* for STATUS_HILITES */
@@ -75,7 +80,7 @@ export function moveloop_preamble(resuming)
     }
 
     C.u.uz0.dlevel = C.u.uz.dlevel;
-    C.svc.context.move = 0;
+    state.setTurnTaken(0);
 
     /* finish processing "--debug:fuzzer" from the command line */
     if (C.iflags.fuzzerpending) {
@@ -90,12 +95,13 @@ export function moveloop_preamble(resuming)
         C.update_inventory();
 }
 
-export function u_calc_moveamt(wtcap)
+export function u_calc_moveamt(wtcap, C = activeContext())
 {
+    const state = turnStateFor(C);
     let moveamt = 0;
 
     /* calculate how much time passed. */
-    if (C.u.usteed && C.u.umoved) {
+    if (C.u.usteed && state.moved()) {
         /* your speed doesn't augment steed's speed */
         moveamt = C.mcalcmove(C.u.usteed, C.TRUE);
     } else {
@@ -131,13 +137,13 @@ export function u_calc_moveamt(wtcap)
         break;
     }
 
-    C.u.umovement += moveamt;
-    if (C.u.umovement < 0)
-        C.u.umovement = 0;
+    state.setMovement(state.movement() + moveamt);
+    if (state.movement() < 0)
+        state.setMovement(0);
 }
 
 /* small chance of generating a new random monster */
-export function maybe_generate_rnd_mon()
+export function maybe_generate_rnd_mon(C = activeContext())
 {
     if (!C.rn2(()=>(C.u.uevent.udemigod ? 25
              : (C.depth(C.u.uz) > C.depth(C.stronghold_level)) ? 50
@@ -151,8 +157,9 @@ export function maybe_generate_rnd_mon()
 export const mvl_wtcap = 0;
 export const mvl_change = 0;
 
-export function moveloop_core()
+export function moveloop_core(C = activeContext())
 {
+    const state = turnStateFor(C);
     let monscanmove = C.FALSE;
 
 
@@ -177,26 +184,26 @@ export function moveloop_core()
     if (C.svc.context.resume_wish)
         C.makewish(); /* clears resume_wish */
 
-    if (C.svc.context.move) {
+    if (state.turnTaken()) {
         /* actual time passed */
-        C.u.umovement -= C.NORMAL_SPEED;
+        state.setMovement(state.movement() - C.NORMAL_SPEED);
 
         do { /* hero can't move this turn loop */
             C.encumber_msg();
 
-            C.svc.context.mon_moving = C.TRUE;
+            state.setMonstersMoving(C.TRUE);
             do {
                 monscanmove = C.movemon();
-                if (C.u.umovement >= C.NORMAL_SPEED)
+                if (state.movement() >= C.NORMAL_SPEED)
                     break; /* it's now your turn */
             } while (monscanmove);
-            C.svc.context.mon_moving = C.FALSE;
+            state.setMonstersMoving(C.FALSE);
 
             /* this needs to be after the monster movement loop in
                case monster actions affected burden, e.g. rehumanize */
             C.allmainState.mvl_wtcap = C.near_capacity();
 
-            if (!monscanmove && C.u.umovement < C.NORMAL_SPEED) {
+            if (!monscanmove && state.movement() < C.NORMAL_SPEED) {
                 /* both hero and monsters are out of steam this round */
                 let mtmp;
 
@@ -207,15 +214,19 @@ export function moveloop_core()
                 /* reallocate movement rations to monsters; don't need
                    to skip dead monsters here because they will have
                    been purged at end of their previous round of moving */
-                for (mtmp = C.fmon; mtmp; mtmp = mtmp.nmon)
-                    mtmp.movement += C.mcalcmove(mtmp, C.TRUE);
+                if (Object.hasOwn(C, "monsterTurns") && C.monsterTurns) {
+                    C.monsterTurns.allotMovement(C.mcalcmove, C.TRUE);
+                } else {
+                    for (mtmp = C.fmon; mtmp; mtmp = mtmp.nmon)
+                        mtmp.movement += C.mcalcmove(mtmp, C.TRUE);
+                }
 
                 /* occasionally add another monster; since this takes
                    place after movement has been allotted, the new
                    monster effectively loses its first turn */
-                maybe_generate_rnd_mon();
+                maybe_generate_rnd_mon(C);
 
-                u_calc_moveamt(C.allmainState.mvl_wtcap);
+                u_calc_moveamt(C.allmainState.mvl_wtcap, C);
                 C.settrack();
 
                 C.svm.moves++;
@@ -268,18 +279,18 @@ export function moveloop_core()
                            : (C.u.mh < C.u.mhmax
                               || C.gy.youmonst.data.mlet == C.S_EEL)) {
                     /* maybe heal */
-                    regen_hp(C.allmainState.mvl_wtcap);
+                    regen_hp(C.allmainState.mvl_wtcap, C);
                 }
 
                 /* moving around while encumbered is hard work */
-                if (C.allmainState.mvl_wtcap > C.MOD_ENCUMBER && C.u.umoved) {
+                if (C.allmainState.mvl_wtcap > C.MOD_ENCUMBER && state.moved()) {
                     if (!(C.allmainState.mvl_wtcap < C.EXT_ENCUMBER ? C.svm.moves % 30n
                           : C.svm.moves % 10n)) {
                         C.overexert_hp();
                     }
                 }
 
-                regen_pw(C.allmainState.mvl_wtcap);
+                regen_pw(C.allmainState.mvl_wtcap, C);
 
                 if (!C.u.uinvulnerable) {
                     if (C.Teleportation && !C.rn2(()=>(85), 308, "moveloop_core")) {
@@ -306,7 +317,7 @@ export function moveloop_core()
                         C.allmainState.mvl_change = 2;
                     if (C.allmainState.mvl_change && !C.Unchanging) {
                         if (C.gm.multi >= 0) {
-                            stop_occupation();
+                            stop_occupation(C);
                             if (C.allmainState.mvl_change == 1)
                                 C.polyself(C.POLY_NOFLAGS);
                             else
@@ -359,12 +370,12 @@ export function moveloop_core()
                     if (++C.gm.multi == 0) { /* finished yet? */
                         C.unmul(0);
                         /* if unmul caused a level change, take it now */
-                        if (C.u.utotype)
+                        if (state.levelChange())
                             C.deferred_goto();
                     }
                 }
             }
-        } while (C.u.umovement < C.NORMAL_SPEED); /* hero can't move */
+        } while (state.movement() < C.NORMAL_SPEED); /* hero can't move */
 
         /******************************************/
         /* once-per-hero-took-time things go here */
@@ -401,7 +412,7 @@ export function moveloop_core()
         if (C.u.utrap && C.u.utraptype == C.TT_LAVA)
             C.sink_into_lava();
         /* when/if hero escapes from lava, he can't just stay there */
-        else if (!C.u.umoved)
+        else if (!state.moved())
             C.pooleffects(C.FALSE);
 
         /* vision while buried or underwater is updated here */
@@ -457,7 +468,7 @@ export function moveloop_core()
 
     C.m_everyturn_effect(C.gy.youmonst);
 
-    C.svc.context.move = 1;
+    state.setTurnTaken(1);
 
     if (C.gm.multi >= 0 && C.go.occupation) {
 
@@ -480,21 +491,21 @@ export function moveloop_core()
 
 
             C.monster_nearby()) {
-            stop_occupation();
+            stop_occupation(C);
             C.reset_eat();
         }
         C.runmode_delay_output();
         return;
     }
 
-    C.u.umoved = C.FALSE;
+    state.setMoved(C.FALSE);
 
     if (C.gm.multi > 0) {
         C.lookaround();
         C.runmode_delay_output();
         if (!C.gm.multi) {
             /* lookaround may clear multi */
-            C.svc.context.move = 0;
+            state.setTurnTaken(0);
             return;
         }
         if (C.svc.context.mv) {
@@ -512,7 +523,7 @@ export function moveloop_core()
 
         C.rhack(0);
     }
-    if (C.u.utotype)       /* change dungeon level */
+    if (state.levelChange())       /* change dungeon level */
         C.deferred_goto(); /* after rhack() */
 
     if (C.gv.vision_full_recalc)
@@ -540,7 +551,7 @@ export function moveloop_core()
     }
 }
 
-export function maybe_do_tutorial()
+export function maybe_do_tutorial(C = activeContext())
 {
     let sp = C.find_level("tut-1");
 
@@ -559,19 +570,23 @@ export function maybe_do_tutorial()
     }
 }
 
-export function moveloop(resuming)
+export function moveloop(resuming, C = activeContext())
 {
-    moveloop_preamble(resuming);
+    moveloop_preamble(resuming, C);
 
     if (!resuming)
-        maybe_do_tutorial();
+        maybe_do_tutorial(C);
 
+    const turn = () => moveloop_core(C);
     for (;;) {
-        moveloop_core();
+        if (Object.hasOwn(C, "nativeTurn"))
+            C.nativeTurn(turn);
+        else
+            moveloop_core(C);
     }
 }
 
-export function regen_pw(wtcap)
+export function regen_pw(wtcap, C = activeContext())
 {
     if (C.u.uen < C.u.uenmax
         && ((wtcap < C.MOD_ENCUMBER
@@ -588,17 +603,18 @@ export function regen_pw(wtcap)
             C.u.uen = C.u.uenmax;
         C.disp.botl = C.TRUE;
         if (C.u.uen == C.u.uenmax)
-            interrupt_multi("You feel full of energy.");
+            interrupt_multi("You feel full of energy.", C);
     }
 }
 
 
 /* maybe recover some lost health (or lose some when an eel out of water) */
-export function regen_hp(wtcap)
+export function regen_hp(wtcap, C = activeContext())
 {
+    const state = turnStateFor(C);
     let heal = 0;
     let reached_full = C.FALSE,
-            encumbrance_ok = (wtcap < C.MOD_ENCUMBER || !C.u.umoved);
+            encumbrance_ok = (wtcap < C.MOD_ENCUMBER || !state.moved());
 
     if (C.Upolyd) {
         if (C.u.mh < 1) { /* shouldn't happen... */
@@ -647,11 +663,11 @@ export function regen_hp(wtcap)
     }
 
     if (reached_full)
-        interrupt_multi("You are in full health.");
+        interrupt_multi("You are in full health.", C);
 }
 
 
-export function stop_occupation()
+export function stop_occupation(C = activeContext())
 {
     if (C.go.occupation) {
         if (!C.maybe_finished_meal(C.TRUE))
@@ -939,7 +955,7 @@ export function welcome(new_game) /* false => restoring an old game */
 
 
 
-export function interrupt_multi(msg)
+export function interrupt_multi(msg, C = activeContext())
 {
     if (C.gm.multi > 0 && !C.svc.context.travel && !C.svc.context.run) {
         C.nomul(0);
@@ -949,15 +965,15 @@ export function interrupt_multi(msg)
 }
 
 /* convert from time_t to number of seconds */
-export function timet_to_seconds(ttim)
+export function timet_to_seconds(ttim, C = activeContext())
 {
     /* for Unix-based and Posix-compliant systems, a cast to 'long' would
        suffice but the C Standard doesn't require time_t to be that simple */
-    return timet_delta(ttim, 0n);
+    return timet_delta(ttim, 0n, C);
 }
 
 /* calculate the difference in seconds between two time_t values */
-export function timet_delta(etim, stim) /* end and start times */
+export function timet_delta(etim, stim, C = activeContext()) /* end and start times */
 {
     /* difftime() is a STDC routine which returns the number of seconds
        between two time_t values as a 'double' */

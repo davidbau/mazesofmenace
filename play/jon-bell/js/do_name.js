@@ -569,7 +569,7 @@ async function do_oname(obj) {
     }
     const prefix = `What do you want to name ${flooreffects_is_plural(obj) ? 'these' : 'this'} `;
     const qbuf = await inventory_safe_qbuf('', prefix, '?', obj, xname, _ia_simpleonames, 'item');
-    let buf = await name_from_player(qbuf, obj.oextra?.oname);
+    let buf = await name_from_player(qbuf, safe_oname(obj));
     if (buf == null)
         return;
     if (obj.oartifact | 0) {

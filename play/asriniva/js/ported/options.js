@@ -5326,6 +5326,28 @@ export function bad_negation(optname,with_parameter)
    option. Set a minimum of 3 characters. */
 export function determine_ambiguities()
 {
+    if (Object.hasOwn(C, "readOptionNames")) {
+        const names = C.readOptionNames().map((name, index) => ({
+            name: name.replace(/[A-Z]/g, letter => letter.toLowerCase()),
+            index,
+            needed: 1,
+        }));
+        // A name's longest common prefix occurs with one of its sorted neighbors.
+        names.sort((a, b) => a.name < b.name ? -1 : Number(a.name > b.name));
+        for (let i = 1; i < names.length; i++) {
+            const previous = names[i - 1];
+            const current = names[i];
+            let shared = 0;
+            while (shared < previous.name.length && shared < current.name.length
+                   && previous.name.charCodeAt(shared) === current.name.charCodeAt(shared))
+                shared++;
+            previous.needed = Math.max(previous.needed, shared + 1);
+            current.needed = Math.max(current.needed, shared + 1);
+        }
+        for (const {name, index, needed} of names)
+            C.writeOptionMinmatch(index, needed < 3 ? 3 : Math.min(needed, name.length));
+        return;
+    }
     const stackFrame=C.stackSave();
     const automaticFrame=C.enterAutomatic([["determine_ambiguities.needed",(4*218)]]);
     try {

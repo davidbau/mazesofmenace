@@ -203,10 +203,13 @@ function _m_at_vis(x, y) {
     }
     return null;
 }
-/* C youprop.h See_invisible. */
+/* C youprop.h:152 `#define See_invisible (HSee_invisible || ESee_invisible)`.
+ * Unlike Blind (youprop.h:103) there is NO `&& !B...` clause: the property's
+ * `blocked` field is not consulted (does_block, vision.c:187, reads exactly
+ * this).  The port used to AND in `!blocked`. */
 function _see_invisible() {
     const p = game.u?.uprops?.[SEE_INVIS];
-    return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
+    return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0));
 }
 /* C monst.h:233 is_lightblocker_mappear(mon) —
  *     is_obj_mappear(mon, BOULDER)
@@ -451,7 +454,7 @@ function right_side(row, left, right_mark, limitsIdx) {
             right_edge = lim_max;
         if (!viz_clear[row][left]) {
             if (right_edge > right_mark) {
-                right_edge = (row - game.vis_step >= 0 && row - game.vis_step < ROWNO && viz_clear[row - game.vis_step][right_mark])
+                right_edge = viz_clear[row - game.vis_step][right_mark]
                     ? right_mark + 1 : right_mark;
             }
             mark_visible_range(row, left, right_edge);
@@ -522,7 +525,7 @@ function left_side(row, left_mark, right, limitsIdx) {
             left_edge = lim_min;
         if (!viz_clear[row][right]) {
             if (left_edge < left_mark) {
-                left_edge = (row - game.vis_step >= 0 && row - game.vis_step < ROWNO && viz_clear[row - game.vis_step][left_mark])
+                left_edge = viz_clear[row - game.vis_step][left_mark]
                     ? left_mark - 1 : left_mark;
             }
             mark_visible_range(row, left_edge, right);
@@ -813,8 +816,8 @@ export function vision_recalc(control = 0) {
                         newsym(col, row);
             }
         }
-        /* C vision.c:838 `skip:` tail — "Make sure the hero shows up!" */
-        if ((u.ux | 0) > 0)
+        /* C vision.c:849 `skip:` tail — "Make sure the hero shows up!" */
+        if (!game.program_state?.panicking && (u.ux | 0) > 0)
             newsym(u.ux | 0, u.uy | 0);
         game._viz_rmin = next_rmin;
         game._viz_rmax = next_rmax;
@@ -829,7 +832,7 @@ export function vision_recalc(control = 0) {
         // locations.  TT_PIT = 2 (const.js).  Out-of-sight room squares then fall
         // through to the remembered/dark-room glyph (display.c:243-248), so a dark
         // room that was fully visible before the dig shows only its 3x3 lit core
-        // scope; keep the normal view_from for every non-pit hero.
+        // once the hero is pit-trapped.
         /* C ref: vision.c:589-604 — Underwater (not the Plane of Water): the
          * hero sees only the surrounding locations that are also pool; every
          * other square, lit or not, is neither COULD_SEE nor IN_SIGHT. */
@@ -837,67 +840,100 @@ export function vision_recalc(control = 0) {
         // underwater and pit restrictions in the ordinary-vision branch.
         if (Is_rogue_level(u.uz)) {
             rogue_vision(next, next_rmin, next_rmax);
-        } else if (u.uinwater && !Is_waterlevel(u.uz)) {
-            for (let row = (u.uy | 0) - 1; row <= (u.uy | 0) + 1; row++) {
-                for (let col = Math.max((u.ux | 0) - 1, 1); col <= (u.ux | 0) + 1; col++) {
-                    if (!isok(col, row) || !is_pool(col, row))
-                        continue;
-                    next_rmin[row] = Math.min(next_rmin[row], col);
-                    next_rmax[row] = Math.max(next_rmax[row], col);
-                    next[row][col] = IN_SIGHT | COULD_SEE;
-                }
-            }
-        } else if (u.utrap && (u.utraptype | 0) === 2 /* TT_PIT */) {
-            for (let row = (u.uy | 0) - 1; row <= (u.uy | 0) + 1; row++) {
-                if (row < 0) continue;
-                if (row >= ROWNO) break;
-                next_rmin[row] = Math.max(1, (u.ux | 0) - 1);
-                next_rmax[row] = Math.min(COLNO - 1, (u.ux | 0) + 1);
-                for (let col = next_rmin[row]; col <= next_rmax[row]; col++)
-                    next[row][col] = IN_SIGHT | COULD_SEE;
-            }
         } else {
-            view_from(u.uy, u.ux, next, next_rmin, next_rmax);
-        }
-    }
-    /* C ref: vision.c:628-667 — "Set the IN_SIGHT bit for xray".  xray_range
-     * is -1 when the hero has none (an unset JS field reads as none); the
-     * update loop below does the newsym for squares not previously in sight.
-     * It lives in the final else of C's `uswallow || control == 2` / Blind /
-     * rogue chain, so a refresh (control 2), a swallowed hero, or a rogue level skips it. */
-    if (!see_nothing && !Is_rogue_level(u.uz) && u.xray_range != null && (u.xray_range | 0) >= 0) {
-        const xr = u.xray_range | 0;
-        if (xr) {
-            const ranges = circle_ptr(xr);
-            for (let row = (u.uy | 0) - xr; row <= (u.uy | 0) + xr; row++) {
-                if (row < 0)
-                    continue;
-                if (row >= ROWNO)
-                    break;
-                const dyy = Math.abs((u.uy | 0) - row);
-                const start = Math.max(1, (u.ux | 0) - ranges[dyy]);
-                const stop = Math.min(COLNO - 1, (u.ux | 0) + ranges[dyy]);
-                for (let col = start; col <= stop; col++) {
-                    const old_row_val = next[row][col];
-                    next[row][col] |= IN_SIGHT;
-                    const xl = game.level?.at(col, row);
-                    const oldseenv = xl ? xl.seenv : SVALL;
+            let has_night_vision = 1;
+            if (u.uinwater && !Is_waterlevel(u.uz)) {
+                has_night_vision = 0;
+                for (let row = (u.uy | 0) - 1; row <= (u.uy | 0) + 1; row++) {
+                    for (let col = Math.max((u.ux | 0) - 1, 1); col <= (u.ux | 0) + 1; col++) {
+                        if (!isok(col, row) || !is_pool(col, row))
+                            continue;
+                        next_rmin[row] = Math.min(next_rmin[row], col);
+                        next_rmax[row] = Math.max(next_rmax[row], col);
+                        next[row][col] = IN_SIGHT | COULD_SEE;
+                    }
+                }
+            } else if (u.utrap && (u.utraptype | 0) === 2 /* TT_PIT */) {
+                for (let row = (u.uy | 0) - 1; row <= (u.uy | 0) + 1; row++) {
+                    if (row < 0) continue;
+                    if (row >= ROWNO) break;
+                    next_rmin[row] = Math.max(1, (u.ux | 0) - 1);
+                    next_rmax[row] = Math.min(COLNO - 1, (u.ux | 0) + 1);
+                    for (let col = next_rmin[row]; col <= next_rmax[row]; col++)
+                        next[row][col] = IN_SIGHT | COULD_SEE;
+                }
+            } else {
+                view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+            }
+
+            /* C ref: vision.c:628-668 — "Set the IN_SIGHT bit for xray and night vision."
+             * xray_range is -1 when the hero has none; nv_range defaults to 1. */
+            const xrayRange = u.xray_range == null ? -1 : (u.xray_range | 0);
+            if (xrayRange >= 0) {
+                if (xrayRange) {
+                    const ranges = circle_ptr(xrayRange);
+                    for (let row = (u.uy | 0) - xrayRange; row <= (u.uy | 0) + xrayRange; row++) {
+                        if (row < 0)
+                            continue;
+                        if (row >= ROWNO)
+                            break;
+                        const dyy = Math.abs((u.uy | 0) - row);
+                        const start = Math.max(1, (u.ux | 0) - ranges[dyy]);
+                        const stop = Math.min(COLNO - 1, (u.ux | 0) + ranges[dyy]);
+                        for (let col = start; col <= stop; col++) {
+                            const old_row_val = next[row][col];
+                            next[row][col] |= IN_SIGHT;
+                            const xl = game.level?.at(col, row);
+                            const oldseenv = xl ? xl.seenv : SVALL;
+                            if (xl)
+                                xl.seenv = SVALL; /* see all! */
+                            /* Update if previously not in sight or new angle. */
+                            if (!(old_row_val & IN_SIGHT) || oldseenv !== SVALL)
+                                newsym(col, row);
+                        }
+                        next_rmin[row] = Math.min(start, next_rmin[row]);
+                        next_rmax[row] = Math.max(stop, next_rmax[row]);
+                    }
+                } else {
+                    next[u.uy][u.ux] |= IN_SIGHT;
+                    const xl = game.level?.at(u.ux, u.uy);
                     if (xl)
-                        xl.seenv = SVALL; /* see all! */
-                    /* Update if previously not in sight or new angle. */
-                    if (!(old_row_val & IN_SIGHT) || oldseenv !== SVALL)
-                        newsym(col, row);
+                        xl.seenv = SVALL;
+                    next_rmin[u.uy] = Math.min(u.ux, next_rmin[u.uy]);
+                    next_rmax[u.uy] = Math.max(u.ux, next_rmax[u.uy]);
                 }
-                next_rmin[row] = Math.min(start, next_rmin[row]);
-                next_rmax[row] = Math.max(stop, next_rmax[row]);
             }
-        } else {
-            next[u.uy][u.ux] |= IN_SIGHT;
-            const xl = game.level?.at(u.ux, u.uy);
-            if (xl)
-                xl.seenv = SVALL;
-            next_rmin[u.uy] = Math.min(u.ux, next_rmin[u.uy]);
-            next_rmax[u.uy] = Math.max(u.ux, next_rmax[u.uy]);
+
+            /* C ref: vision.c:670-699 — night vision (respecting u.nv_range and Underwater). */
+            const nvRange = u.nv_range == null ? 1 : (u.nv_range | 0);
+            if (has_night_vision && xrayRange < nvRange) {
+                if (!nvRange) {
+                    next[u.uy][u.ux] |= IN_SIGHT;
+                    const nl = game.level?.at(u.ux, u.uy);
+                    if (nl)
+                        nl.seenv = SVALL;
+                    next_rmin[u.uy] = Math.min(u.ux, next_rmin[u.uy]);
+                    next_rmax[u.uy] = Math.max(u.ux, next_rmax[u.uy]);
+                } else if (nvRange > 0) {
+                    const ranges = circle_ptr(nvRange);
+                    for (let row = (u.uy | 0) - nvRange; row <= (u.uy | 0) + nvRange; row++) {
+                        if (row < 0)
+                            continue;
+                        if (row >= ROWNO)
+                            break;
+                        const dyy = Math.abs((u.uy | 0) - row);
+                        const start = Math.max(1, (u.ux | 0) - ranges[dyy]);
+                        const stop = Math.min(COLNO - 1, (u.ux | 0) + ranges[dyy]);
+                        const next_row = next[row];
+                        for (let col = start; col <= stop; col++) {
+                            if (next_row[col])
+                                next_row[col] |= IN_SIGHT;
+                        }
+                        next_rmin[row] = Math.min(start, next_rmin[row]);
+                        next_rmax[row] = Math.max(stop, next_rmax[row]);
+                    }
+                }
+            }
         }
     }
     /* C ref: vision.c:701-702 — "Set the correct bits for all light sources."
@@ -907,125 +943,81 @@ export function vision_recalc(control = 0) {
      * every square a mobile light source reaches. */
     do_light_sources(next);
 
-    // Compute IN_SIGHT from COULD_SEE + lighting
-    const level = game.level;
-    const ux = u.ux, uy = u.uy;
-    for (let row = 0; row < ROWNO; row++) {
-        const dy = Math.sign(uy - row);
-        for (let col = next_rmin[row]; col <= next_rmax[row]; col++) {
-            if (!(next[row][col] & COULD_SEE))
-                continue;
-            const loc = level?.at(col, row);
-            if (!loc)
-                continue;
-            // Night vision: adjacent cells always IN_SIGHT
-            /* C vision.c:648-669 night-vision loop: start = max(1, u.ux - range),
-             * so column 0 (never isok) is never given IN_SIGHT here. */
-            if (col >= 1 && Math.abs(col - ux) <= 1 && Math.abs(row - uy) <= 1) {
-                next[row][col] |= IN_SIGHT;
-                continue;
-            }
-            // Lit cells.  C ref: vision.c:755-756 — `lev->lit ||
-            // (next_row[col] & TEMP_LIT)`: a square lit by a mobile light
-            // source counts exactly as a permanently lit one.
-            if (loc.lit || (next[row][col] & TEMP_LIT)) {
-                if ((loc.typ === DOOR || loc.typ === SDOOR || IS_WALL(loc.typ))
-                    && !viz_clear[row]?.[col]) {
-                    // Walls/doors: only IN_SIGHT if adjacent cell toward hero is lit
-                    const dx = Math.sign(ux - col);
-                    const flev = level?.at(col + dx, row + dy);
-                    /* C vision.c:771-772 `flev->lit
-                     *     || next_array[row + dy][col + dx] & TEMP_LIT` */
-                    if (flev?.lit || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
-                        next[row][col] |= IN_SIGHT;
-                    }
-                }
-                else {
-                    next[row][col] |= IN_SIGHT;
-                }
-            }
-        }
-    }
-    // Swap viz_array and run newsym updates
+    // Swap viz_array and run C's single main update loop (vision.c:708-841).
     const old_array = game.viz_array;
     game.viz_array = next;
     game.active_buf = game.active_buf === 0 ? 1 : 0;
     const old_rmin = game._viz_rmin;
     const old_rmax = game._viz_rmax;
-    if (old_array && game.level) {
-        for (let row = 0; row < ROWNO; row++) {
-            const old_row = old_array[row];
-            const next_row = next[row];
-            const start = old_rmin
-                ? Math.min(old_rmin[row], next_rmin[row])
-                : next_rmin[row];
-            const stop = old_rmax
-                ? Math.max(old_rmax[row], next_rmax[row])
-                : next_rmax[row];
-            if (start > stop)
+    const level = game.level;
+    const ux = u.ux | 0, uy = u.uy | 0;
+    const markSeenAndNewsym = (loc, col, row, ov, dy) => {
+        const oldseenv = loc.seenv || 0;
+        const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
+        loc.seenv = oldseenv | sv;
+        if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
+            newsym(col, row);
+    };
+    /* C vision.c:545-547 — `if (u.uswallow || control == 2) { ; }` does NOTHING
+     * except leave the new work area zeroed, and then FALLS THROUGH to the main
+     * update loop below.  Only the Blind arm `goto skip`s it.  With every
+     * next_array bit clear, that loop walks the OLD row extents and takes the
+     * `not_in_sight:` arm at every square that WAS in sight, which is how C
+     * repaints a level the hero has just stopped being able to see. */
+    for (let row = 0; row < ROWNO; row++) {
+        const old_row = old_array ? old_array[row] : null;
+        const next_row = next[row];
+        const start = old_rmin
+            ? Math.min(old_rmin[row], next_rmin[row])
+            : next_rmin[row];
+        const stop = old_rmax
+            ? Math.max(old_rmax[row], next_rmax[row])
+            : next_rmax[row];
+        if (start > stop)
+            continue;
+        const dy = Math.sign(uy - row);
+        for (let col = start; col <= stop; col++) {
+            const nv = next_row[col];
+            const ov = old_row ? old_row[col] : 0;
+            const loc = level.at(col, row);
+            if (!loc)
                 continue;
-            const dy = Math.sign(uy - row);
-            for (let col = start; col <= stop; col++) {
-                const nv = next_row[col];
-                const ov = old_row[col];
-                const loc = game.level.at(col, row);
-                if (!loc)
-                    continue;
-                if (nv & IN_SIGHT) {
-                    const oldseenv = loc.seenv || 0;
-                    const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
-                    loc.seenv = (loc.seenv || 0) | sv;
-                    if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv) {
-                        newsym(col, row);
-                    }
-                }
-                else if ((nv & COULD_SEE) && (loc.lit || (nv & TEMP_LIT))) {
-                    if ((IS_WALL(loc.typ) || loc.typ === DOOR || loc.typ === SDOOR)
-                        && !viz_clear[row][col]) {
-                        const dx = Math.sign(ux - col);
-                        const adjLoc = game.level.at(col + dx, row + dy);
-                        if (adjLoc?.lit || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
-                            next_row[col] |= IN_SIGHT;
-                            const oldseenv = loc.seenv || 0;
-                            const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
-                            loc.seenv = (loc.seenv || 0) | sv;
-                            if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
-                                newsym(col, row);
-                        }
-                        else if ((ov & IN_SIGHT)
-                                 || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
-                            /* C vision.c:781-782 `goto not_in_sight` (820-836):
-                             * the adjacent square is dark, so the wall/door is
-                             * not seen; still newsym a spot that was in sight. */
-                            if (col !== 0)
-                                newsym(col, row);
-                        }
-                    }
-                    else {
+            if (nv & IN_SIGHT) {
+                markSeenAndNewsym(loc, col, row, ov, dy);
+            } else if ((nv & COULD_SEE) && (loc.lit || (nv & TEMP_LIT))) {
+                if ((IS_WALL(loc.typ) || loc.typ === DOOR || loc.typ === SDOOR)
+                    && !viz_clear[row][col]) {
+                    const dx = Math.sign(ux - col);
+                    const adjLoc = level.at(col + dx, row + dy);
+                    if (adjLoc?.lit || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
                         next_row[col] |= IN_SIGHT;
-                        const oldseenv = loc.seenv || 0;
-                        const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
-                        loc.seenv = (loc.seenv || 0) | sv;
-                        if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
-                            newsym(col, row);
-                    }
-                }
-                else if ((nv & COULD_SEE) && loc.waslit) {
-                    loc.waslit = 0;
-                    newsym(col, row);
-                }
-                else {
-                    if ((ov & IN_SIGHT)
-                        || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
+                        markSeenAndNewsym(loc, col, row, ov, dy);
+                    } else if ((ov & IN_SIGHT)
+                               || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
+                        /* C vision.c:784 `goto not_in_sight` (820-836):
+                         * the adjacent square is dark, so the wall/door is
+                         * not seen; still newsym a spot that was in sight. */
                         if (col !== 0)
                             newsym(col, row);
                     }
+                } else {
+                    next_row[col] |= IN_SIGHT;
+                    markSeenAndNewsym(loc, col, row, ov, dy);
                 }
+            } else if ((nv & COULD_SEE) && loc.waslit) {
+                loc.waslit = 0;
+                newsym(col, row);
+            } else if ((ov & IN_SIGHT)
+                       || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
+                /* C vision.c:820-836 `not_in_sight:`: guard col !== 0 so <0,y>
+                 * never hits newsym's impossible(). */
+                if (col !== 0)
+                    newsym(col, row);
             }
         }
-        if (ux > 0)
-            newsym(ux, uy);
     }
+    if (!game.program_state?.panicking && ux > 0)
+        newsym(ux, uy);
     game._viz_rmin = next_rmin;
     game._viz_rmax = next_rmax;
     /* C vision.c:856 finishes notice_all_mons before returning.  Keep the
@@ -1279,6 +1271,7 @@ export function vision_init() {
 
     // Start out with cs0 as our current array
     game.viz_array = cs_buf0;
+    game.active_buf = 0;
     game._viz_rmin = cs_rmin0;
     game._viz_rmax = cs_rmax0;
 

@@ -1,5 +1,5 @@
 import { forget_engravings, sanitize_engravings } from './engrave.js';
-import { obj_attach_mid, curse as curse_obj, free_omid } from './mkobj.js';
+import { obj_attach_mid, curse as curse_obj, free_omid, next_ident } from './mkobj.js';
 import { weight } from './weight.js';
 // bones.c — the bones subsystem: savebones() writes the level a hero died on,
 // getbones() reads it back into the NEXT game on the same level.
@@ -38,7 +38,7 @@ import { weight } from './weight.js';
 // across segment changes.
 //
 // @ts-nocheck — js sibling imports.
-import { rn2, rnd } from './rnd.js';
+import { rn2 } from './rnd.js';
 import { game, wizard } from './gstate.js';
 import { paranoid_query } from './cmd.js';
 import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
@@ -665,7 +665,7 @@ async function getbones_load(f) {
         const { propagate } = await import('./makemon.js');
         const idmap = new Map(); /* C restore.c:1314 add_id_mapping */
         for (let m = f.snap.fmon; m; m = m.nmon) {
-            const nid = next_ident_bones();
+            const nid = next_ident();
             idmap.set(m.m_id, nid);
             m.m_id = nid;
             // C restore.c:408-415: mark extinct/genocided bones monsters for purge.
@@ -773,28 +773,12 @@ export async function fix_ghostly_obj(obj) {
     obj.ghostly = 0;
 }
 
-/* C mkobj.c:509 next_ident() — js/mklev.js has the single body but does not
- * export it, and mklev.js already imports this file, so a static import would
- * close the cycle at module-evaluation time.  Same arithmetic, same global. */
-function next_ident_bones() {
-    const g = game;
-    if (g.context == null)
-        g.context = {};
-    if (g.context.ident == null)
-        g.context.ident = 2; /* id 1 is reserved for gy.youmonst */
-    const res = g.context.ident;
-    g.context.ident += rnd(2);
-    if (!g.context.ident)
-        g.context.ident = rnd(2) + 1;
-    return res;
-}
-
 /* C restore.c:238-300 restobjchn()'s ghostly arm, applied to a chain this port
  * swapped in rather than read: one next_ident() per object, container contents
  * included (C recurses into otmp->cobj at :270 AFTER the parent's renumber). */
 function renumber_objchn(ochain, fruits, omoves, idmap, frozen = false) {
     for (let otmp = ochain; otmp; otmp = otmp.nobj) {
-        const nid = next_ident_bones();
+        const nid = next_ident();
         idmap.set(otmp.o_id, nid);
         otmp.o_id = nid;
         if (otmp.otyp === 285 /* SLIME_MOLD; restore.c:260,500 ghostfruit */) {
@@ -981,6 +965,19 @@ export function sanitize_name(namebuf, strip_8th_bit = ((game.windowprocs?.name 
 export function newebones(mtmp) {
     if (!mtmp.mextra)
         mtmp.mextra = newmextra();
-    if (!mtmp.mextra.ebones)
-        mtmp.mextra.ebones = { parentmid: mtmp.m_id };
+    if (!mtmp.mextra.ebones) {
+        // C bones.c:824-827 memset initializes the complete struct (mextra.h:189).
+        mtmp.mextra.ebones = {
+            parentmid: mtmp.m_id, role: 0, race: 0,
+            oldalign: { type: 0, record: 0, abuse: 0 },
+            deathlevel: 0, luck: 0, mnum: 0,
+            female: 0, demigod: 0, crowned: 0,
+        };
+    }
+}
+
+// C bones.c:832-840 (currently has no C callers).
+export function free_ebones(mtmp) {
+    if (mtmp.mextra && mtmp.mextra.ebones)
+        mtmp.mextra.ebones = null;
 }

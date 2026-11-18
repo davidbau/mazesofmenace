@@ -3,7 +3,7 @@ import {nativeStateFor} from './native/state-bridge.js';
 // The source port owns terminal policy; this file supplies memory and transport.
 import metadata from './terminal-metadata.json' with {type:'json'};
 import * as termcap from '../ported/termcap.js';
-import {callTermcap} from './bindings/termcap.js';
+import {bindNativeTermcap} from './bindings/termcap.js';
 import {encodeRecorderScreen} from '../wasm-replay-support.js';
 import {address} from './memory-services.js';
 export function enableTerminal(environment,layout,{onCapture}={}) {
@@ -18,6 +18,10 @@ export function enableTerminal(environment,layout,{onCapture}={}) {
     });
     const buffers=metadata.bufferSizes.map((n,i)=>environment.allocateGlobal('termcap.'+metadata.bufferKeys[i],n));
     const nativeOwner=nativeStateFor(environment),schemas=Object.entries(metadata.schemas),frames=[],callbackIds=new Map(),local=Object.create(services);
+    const appendFrame=(screen,x,y,animation)=>{
+        const frame={screen,cursor:[Number(x),Number(y),1],animation:Boolean(animation)};
+        frames.push(frame);if(onCapture)onCapture(frame);
+    };
     const cptr=v=>typeof v==='string'?services.literal(v):address(v);
     const scalar=d=>d.t?({i8:'signed char',u8:'unsigned char',i16:'short',u16:'unsigned short',i32:'int',u32:'unsigned int',i64:'long',u64:'unsigned long'})[d.t]:d.p!==undefined||d.f?'void *':d.s??'void *';
     function field(kind,p,index) {
@@ -44,10 +48,8 @@ export function enableTerminal(environment,layout,{onCapture}={}) {
         alloc:n=>environment.alloc('alloc',Number(n)),
         dupstr:p=>environment.libc.strdup(cptr(p)),
         nativeMarkerKind:kind=>typeof kind==='string'?kind.split('\0',1)[0]:memory.readString(address(kind)),
-        nativeFrameCapture:(screen,x,y,animation)=>{
-            const frame={screen:encodeRecorderScreen(screen),cursor:[Number(x),Number(y),1],animation:Boolean(animation)};
-            frames.push(frame);if(onCapture)onCapture(frame);
-        },
+        nativeEncodedFrameCapture:appendFrame,
+        nativeFrameCapture:(screen,x,y,animation)=>appendFrame(encodeRecorderScreen(screen),x,y,animation),
         teleport_capture:(screen,x,y,animation)=>local.nativeFrameCapture(memory.readString(cptr(screen)),x,y,animation),
         error_p:(...args)=>environment.resolve('error')(...args),error_pp:(...args)=>environment.resolve('error')(...args),
         fprintf_pppiiiij:(...args)=>services.fprintf(...args),
@@ -65,7 +67,8 @@ export function enableTerminal(environment,layout,{onCapture}={}) {
     local.tgetstr=(name,area)=>services.tgetstr(cptr(name),address(area));
     local.tgoto=(format,col,row)=>services.tgoto(cptr(format),col,row);
     local.tputs=(text,lines,fn)=>services.tputs(cptr(text),lines,fn);
-    const wrappers=Object.fromEntries(metadata.functions.map(name=>{const call=(...args)=>callTermcap(local,layout,name,...args);call.nativeState=nativeOwner;call.nativeDirect=true;nativeOwner.functions.set(name,call);return[name,call];}));
+    const bindTermcap=bindNativeTermcap(local,layout);
+    const wrappers=Object.fromEntries(metadata.functions.map(name=>{const call=bindTermcap(name);call.nativeState=nativeOwner;call.nativeDirect=true;nativeOwner.functions.set(name,call);return[name,call];}));
     environment.register('termcap',wrappers,local);
     return{frames,globals,services:local,global:name=>{const i=metadata.globals.findIndex(g=>g.name===name);if(i<0)throw new Error('Unknown terminal global '+name);return globals[i];}};
 }

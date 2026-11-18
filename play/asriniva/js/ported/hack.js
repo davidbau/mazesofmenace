@@ -5,6 +5,7 @@
 
 // Configured source policy. Typed runtime transport is separate.
 import { C } from '../c-runtime/context.js';
+import { doorMaskAt, seenAt, terrainAt } from './level-grid.js';
 
 const TRAVP_TRAVEL = 0, TRAVP_GUESS = 1, TRAVP_VALID = 2;
 
@@ -120,8 +121,8 @@ export function could_move_onto_boulder(sx,sy)
     /* can if a giant, unless doing so allows hero to pass into a
        diagonal squeeze at the same time */
     if (C.throws_rocks(C.gy.youmonst.data))
-        return C.char((Number(Boolean(!C.u.dx || !C.u.dy || !(Number(Boolean(C.IS_OBSTRUCTED(C.levl[C.u.ux][sy].typ)
-                                    && C.IS_OBSTRUCTED(C.levl[sx][C.u.uy].typ))))))));
+        return C.char((Number(Boolean(!C.u.dx || !C.u.dy || !(Number(Boolean(C.IS_OBSTRUCTED(terrainAt(C, C.u.ux, sy))
+                                    && C.IS_OBSTRUCTED(terrainAt(C, sx, C.u.uy)))))))));
     /* can if tiny (implies carrying very little else couldn't move at all) */
     if (C.verysmall(C.gy.youmonst.data))
         return C.char(C.TRUE);
@@ -393,9 +394,9 @@ export function moverock_core(sx,sy)
             C.pline("You're too small to push that %s.", C.xname(otmp));
             return C.int(C.callLocal(cannot_push,otmp, sx, sy));
         }
-        if (Number(Boolean(C.isok(rx, ry) && !C.IS_OBSTRUCTED(C.levl[rx][ry].typ)
-            && C.levl[rx][ry].typ != C.IRONBARS
-            && (!C.IS_DOOR(C.levl[rx][ry].typ) || !(Number(Boolean(C.u.dx && C.u.dy)))
+        if (Number(Boolean(C.isok(rx, ry) && !C.IS_OBSTRUCTED(terrainAt(C, rx, ry))
+            && terrainAt(C, rx, ry) != C.IRONBARS
+            && (!C.IS_DOOR(terrainAt(C, rx, ry)) || !(Number(Boolean(C.u.dx && C.u.dy)))
                 || C.callLocal(doorless_door,rx, ry)) && !C.sobj_at(C.BOULDER, rx, ry)))) {
             ttmp = C.t_at(rx, ry);
             mtmp = C.m_at(rx, ry);
@@ -876,17 +877,16 @@ export function dosinkfall()
 export function may_dig(x,y)
 {
     x=C.short(x);y=C.short(y);
-    let lev = C.levl[x][y];
-
-    return C.char(C.char( !(Number(Boolean((C.IS_STWALL(lev.typ) || C.IS_TREE(lev.typ))
-                       && (lev.wall_info & C.W_NONDIGGABLE))))));
+    const terrain = terrainAt(C, x, y);
+    return Number(!((C.IS_STWALL(terrain) || C.IS_TREE(terrain))
+                    && (doorMaskAt(C, x, y) & C.W_NONDIGGABLE)));
 }
 
 export function may_passwall(x,y)
 {
     x=C.short(x);y=C.short(y);
-    return C.char(C.char( !(Number(Boolean(C.IS_STWALL(C.levl[x][y].typ)
-                       && (C.levl[x][y].wall_info & C.W_NONPASSWALL))))));
+    return C.char(C.char( !(Number(Boolean(C.IS_STWALL(terrainAt(C, x, y))
+                       && (doorMaskAt(C, x, y) & C.W_NONPASSWALL))))));
 }
 
 /* caller has already decided that it's a tight diagonal; check whether a
@@ -897,7 +897,7 @@ export function bad_rock(mdat,x,y)
 {
     x=C.short(x);y=C.short(y);
     return C.char(C.char( (Number(Boolean((C.Sokoban && C.sobj_at(C.BOULDER, x, y))
-                      || (C.IS_OBSTRUCTED(C.levl[x][y].typ)
+                      || (C.IS_OBSTRUCTED(terrainAt(C, x, y))
                           && (!C.tunnels(mdat) || C.needspick(mdat)
                               || !C.callLocal(may_dig,x, y))
                           && !(Number(Boolean(C.passes_walls(mdat) && C.callLocal(may_passwall,x, y))))))))));
@@ -955,20 +955,18 @@ export function test_move(ux,uy,dx,dy,mode)
     ux=C.short(ux);uy=C.short(uy);dx=C.short(dx);dy=C.short(dy);mode=C.int(mode);
     let x = C.short(ux + dx);
     let y = C.short(uy + dy);
-    let tmpr;
-    let ust;
 
     C.svc.context.door_opened = C.char(C.FALSE);
 
     if (!C.isok(x, y))
         return C.char(C.FALSE);
 
-    tmpr = C.levl[x][y];
+    const terrain = terrainAt(C, x, y);
 
     /*
      *  Check for physical obstacles.  First, the place we are going.
      */
-    if (Number(Boolean(C.IS_OBSTRUCTED(tmpr.typ) || tmpr.typ == C.IRONBARS))) {
+    if (C.IS_OBSTRUCTED(terrain) || terrain === C.IRONBARS) {
         if (Number(Boolean(C.Blind && mode == C.DO_MOVE)))
             C.feel_location(x, y);
         if (Number(Boolean(C.Passes_walls && C.callLocal(may_passwall,x, y)))) {
@@ -981,7 +979,7 @@ export function test_move(ux,uy,dx,dy,mode)
             if (mode == C.DO_MOVE)
                 C.There("is an obstacle there.");
             return C.char(C.FALSE);
-        } else if (tmpr.typ == C.IRONBARS) {
+        } else if (terrainAt(C, x, y) === C.IRONBARS) {
             if (Number(Boolean(mode == C.DO_MOVE
                 && (C.dmgtype(C.gy.youmonst.data, C.AD_RUST)
                     || C.dmgtype(C.gy.youmonst.data, C.AD_CORR)
@@ -1030,7 +1028,7 @@ export function test_move(ux,uy,dx,dy,mode)
             }
             return C.char(C.FALSE);
         }
-    } else if (C.IS_DOOR(tmpr.typ)) {
+    } else if (C.IS_DOOR(terrain)) {
         skip_testdiag: {
         testdiag: {
         if (C.closed_door(x, y)) {
@@ -1150,9 +1148,9 @@ export function test_move(ux,uy,dx,dy,mode)
 
         /* FIXME: should be using lastseentyp[x][y] rather than seen vector
          */
-        if (Number(Boolean((C.levl[x][y].seenv && C.is_pool_or_lava(x, y)) /* known pool/lava */
-            && ((C.IS_WATERWALL(C.levl[x][y].typ) /* never enter wall of liquid */
-                 || C.levl[x][y].typ == C.LAVAWALL)
+        if (Number(Boolean((seenAt(C, x, y) && C.is_pool_or_lava(x, y)) /* known pool/lava */
+            && ((C.IS_WATERWALL(terrainAt(C, x, y)) /* never enter wall of liquid */
+                 || terrainAt(C, x, y) == C.LAVAWALL)
                 /* don't enter pool or lava (must be one of the two to
                    get here) unless flying or levitating or have known
                    water-walking for pool or known lava-walking and
@@ -1166,10 +1164,8 @@ export function test_move(ux,uy,dx,dy,mode)
     if (mode == C.TEST_TRAP)
         return C.char(C.FALSE); /* do not move through traps */
 
-    ust = C.levl[ux][uy];
-
     /* Now see if other things block our way . . */
-    if (Number(Boolean(dx && dy && !C.Passes_walls && C.IS_DOOR(ust.typ)
+    if (Number(Boolean(dx && dy && !C.Passes_walls && C.IS_DOOR(terrainAt(C, ux, uy))
         && (!C.callLocal(doorless_door,ux, uy) || C.block_entry(x, y))))) {
         /* Can't move at a diagonal out of a doorway with door. */
         if (Number(Boolean(mode == C.DO_MOVE && C.flags.mention_walls)))
@@ -1331,8 +1327,7 @@ export function findtravelpath(mode)
                     if (Number(Boolean(!C.isok(nx, ny)
                         || ((mode == TRAVP_GUESS) && !C.couldsee(nx, ny)))))
                         continue;
-                    if (Number(Boolean((!C.Passes_walls && !C.can_ooze(C.gy.youmonst)
-                         && C.closed_door(x, y))
+                    if (Number(Boolean((C.closed_door(x, y) && !C.Passes_walls && !C.can_ooze(C.gy.youmonst))
                         || (C.sobj_at(C.BOULDER, x, y)
                             && !C.callLocal(could_move_onto_boulder,x, y))
                         || C.callLocal(test_move,x, y, nx - x, ny - y, C.TEST_TRAP)))) {
@@ -1352,7 +1347,7 @@ export function findtravelpath(mode)
                         }
                     }
                     if (Number(Boolean(C.callLocal(test_move,x, y, nx - x, ny - y, C.TEST_TRAV)
-                        && (C.levl[nx][ny].seenv
+                        && (seenAt(C, nx, ny)
                             || (!C.Blind && C.couldsee(nx, ny)))))) {
                         if (Number(Boolean(nx == ux && ny == uy))) {
                             if (Number(Boolean(mode == TRAVP_TRAVEL || mode == TRAVP_VALID))) {
@@ -1793,7 +1788,7 @@ export function u_simple_floortyp(x,y)
 
     if (C.is_waterwall(x, y))
         return C.char(C.WATER); /* wall of water, fly/lev does not matter */
-    if (C.levl[x][y].typ == C.LAVAWALL)
+    if (terrainAt(C, x, y) == C.LAVAWALL)
         return C.char(C.LAVAWALL); /* wall of lava, fly/lev does not matter */
     if (!u_in_air) {
         if (C.is_pool(x, y))
@@ -1949,7 +1944,7 @@ export function domove_attackmon_at(mtmp,x,y,displaceu)
 export function domove_fight_ironbars(x,y)
 {
     x=C.short(x);y=C.short(y);
-    if (Number(Boolean(C.svc.context.forcefight && C.levl[x][y].typ == C.IRONBARS && C.uwep))) {
+    if (Number(Boolean(C.svc.context.forcefight && terrainAt(C, x, y) == C.IRONBARS && C.uwep))) {
         let obj = C.uwep;
         let breakflags = C.uint((C.BRK_BY_HERO | C.BRK_FROM_INV | C.BRK_MELEE));
 
@@ -2195,7 +2190,7 @@ export function domove_fight_empty(x,y)
             && !C.svc.context.nopick)))) {
         let boulder = 0;
         let explo = C.char((Number(Boolean(C.Upolyd && C.attacktype(C.gy.youmonst.data, C.AT_EXPL))))); let solid = C.char((Number(Boolean(off_edge || (!C.accessible(x, y)
-                                      || C.IS_FURNITURE(C.levl[x][y].typ))))));
+                                      || C.IS_FURNITURE(terrainAt(C, x, y)))))));
         let buf = C.localArray("char",[256]);
 
         const futile = () => {
@@ -2260,7 +2255,7 @@ export function domove_fight_empty(x,y)
                although the hero can attack an adjacent monster this way,
                assume he can't reach out far enough to distinguish terrain */
             C.Sprintf(buf, "%s",
-                    (Number(Boolean(C.Is_waterlevel(C.u.uz) && C.levl[x][y].typ == C.AIR)))
+                    (Number(Boolean(C.Is_waterlevel(C.u.uz) && terrainAt(C, x, y) == C.AIR)))
                          ? "an air bubble"
                          : "nothing");
         } else if (solid) {
@@ -2269,8 +2264,8 @@ export function domove_fight_empty(x,y)
                5.0: used to say "solid rock" for STONE, but that made it be
                different from unmapped walls outside of rooms (and was wrong
                on arboreal levels) */
-            if (Number(Boolean(C.levl[x][y].seenv || C.IS_STWALL(C.levl[x][y].typ)
-                || C.levl[x][y].typ == C.SDOOR || C.levl[x][y].typ == C.SCORR))) {
+            if (Number(Boolean(C.levl[x][y].seenv || C.IS_STWALL(terrainAt(C, x, y))
+                || terrainAt(C, x, y) == C.SDOOR || terrainAt(C, x, y) == C.SCORR))) {
                 glyph = C.int(C.back_to_glyph(x, y));
                 C.Strcpy(buf, C.the(C.defsyms[C.glyph_to_cmap(glyph)].explanation));
             } else {
@@ -2417,14 +2412,14 @@ export function avoid_moving_on_liquid(x,y,msg)
     let in_air = C.char((Number(Boolean(C.Levitation || C.Flying))));
 
     /* don't stop if you're not on a transition between terrain types... */
-    if (Number(Boolean((C.levl[x][y].typ == C.levl[C.u.ux][C.u.uy].typ
+    if (Number(Boolean((terrainAt(C, x, y) == terrainAt(C, C.u.ux, C.u.uy)
          /* or you are using shift-dir running and the transition isn't
             dangerous... */
          || (C.svc.context.run < 2 && (!C.is_lava(x, y) || in_air))
          || C.svc.context.travel)
         /* and you know you won't fall in */
         && (in_air || C.Known_lwalking || (C.is_pool(x, y) && C.Known_wwalking))
-        && !(Number(Boolean(C.IS_WATERWALL(C.levl[x][y].typ) || C.levl[x][y].typ == C.LAVAWALL)))))) {
+        && !(Number(Boolean(C.IS_WATERWALL(terrainAt(C, x, y)) || terrainAt(C, x, y) == C.LAVAWALL)))))) {
         /* XXX: should send 'is_clinger(gy.youmonst.data)' here once clinging
            polyforms are allowed to move over water */
         return C.char(C.FALSE); /* liquid is safe to traverse */
@@ -3259,7 +3254,7 @@ export function spoteffects(pick)
        damage that triggers rehumanize() which calls spoteffects()...] */
     if (Number(Boolean(C.state.inspoteffects && C.u_at(C.state.spotloc.x, C.state.spotloc.y)
         /* except when reason is transformed terrain (ice -> water) */
-        && C.state.spotterrain == C.levl[C.u.ux][C.u.uy].typ
+        && C.state.spotterrain == terrainAt(C, C.u.ux, C.u.uy)
         /* or transformed trap (land mine -> pit) */
         && (!C.state.spottrap || !trap || trap.ttyp == C.state.spottraptyp))))
         return;
@@ -3270,13 +3265,13 @@ export function spoteffects(pick)
 
     spotdone: {
     ++C.state.inspoteffects;
-    C.state.spotterrain = C.int(C.levl[C.u.ux][C.u.uy].typ);
+    C.state.spotterrain = C.int(terrainAt(C, C.u.ux, C.u.uy));
     C.state.spotloc.x = C.short(C.u.ux), C.state.spotloc.y = C.short(C.u.uy);
 
     /* moving onto different terrain might cause Lev or Fly to toggle;
       level change sets <ux0,uy0> to <ux,uy>, so this spotterrain
       check always fails then, but it also sets iflags.terrain_typ */
-    if (Number(Boolean(C.state.spotterrain != C.levl[C.u.ux0][C.u.uy0].typ
+    if (Number(Boolean(C.state.spotterrain != terrainAt(C, C.u.ux0, C.u.uy0)
         || C.iflags.terrain_typ == C.MAX_TYPE)))
         C.callLocal(switch_terrain,);
 
@@ -3284,7 +3279,7 @@ export function spoteffects(pick)
         break spotdone;
 
     C.callLocal(check_special_room,C.FALSE);
-    if (Number(Boolean(C.IS_SINK(C.levl[C.u.ux][C.u.uy].typ) && C.Levitation)))
+    if (Number(Boolean(C.IS_SINK(terrainAt(C, C.u.ux, C.u.uy)) && C.Levitation)))
         C.callLocal(dosinkfall,);
     if (!C.gi.in_steed_dismounting) { /* if dismounting, check again later */
         let pit;
@@ -3418,7 +3413,7 @@ export function furniture_present(furniture,roomno)
     /* the inside_room() check handles irregularly shaped rooms */
     for (y = C.int(ly); y <= hy; ++y)
         for (x = C.int(lx); x <= hx; ++x)
-            if (Number(Boolean(C.levl[x][y].typ == furniture && C.inside_room(sroom, x, y))))
+            if (Number(Boolean(terrainAt(C, x, y) == furniture && C.inside_room(sroom, x, y))))
                 return C.char(C.TRUE);
     return C.char(C.FALSE);
 }
@@ -3866,7 +3861,7 @@ export function lookaround()
             }
 
             /* stone is never interesting */
-            if (C.levl[x][y].typ == C.STONE)
+            if (terrainAt(C, x, y) == C.STONE)
                 continue;
             /* ignore the square we're moving away from */
             if (Number(Boolean(x == C.u.ux - C.u.dx && y == C.u.uy - C.u.dy)))
@@ -3877,7 +3872,7 @@ export function lookaround()
                                      (Number(Boolean(infront && C.svc.context.run > 1))))) {
                 if (C.svc.context.run == 1)
                     {
-if (C.levl[C.u.ux][C.u.uy].typ != C.ROOM) {
+if (terrainAt(C, C.u.ux, C.u.uy) != C.ROOM) {
                     /* running or traveling */
                     if (Number(Boolean(C.svc.context.run == 1 || C.svc.context.run == 3
                         || C.svc.context.run == 8))) {
@@ -3909,8 +3904,8 @@ if (C.levl[C.u.ux][C.u.uy].typ != C.ROOM) {
             }
 
             /* more uninteresting terrain */
-            if (Number(Boolean(C.IS_OBSTRUCTED(C.levl[x][y].typ) || C.levl[x][y].typ == C.ROOM
-                || C.IS_AIR(C.levl[x][y].typ) || C.levl[x][y].typ == C.ICE))) {
+            if (Number(Boolean(C.IS_OBSTRUCTED(terrainAt(C, x, y)) || terrainAt(C, x, y) == C.ROOM
+                || C.IS_AIR(terrainAt(C, x, y)) || terrainAt(C, x, y) == C.ICE))) {
                 continue;
             } else if (Number(Boolean(C.closed_door(x, y) || (mtmp && C.is_door_mappear(mtmp))))) {
                 /* a closed door? */
@@ -3926,7 +3921,7 @@ if (C.levl[C.u.ux][C.u.uy].typ != C.ROOM) {
                 }
                 /* orthogonal to a closed door, consider it a corridor */
                 {
-if (C.levl[C.u.ux][C.u.uy].typ != C.ROOM) {
+if (terrainAt(C, C.u.ux, C.u.uy) != C.ROOM) {
                     /* running or traveling */
                     if (Number(Boolean(C.svc.context.run == 1 || C.svc.context.run == 3
                         || C.svc.context.run == 8))) {
@@ -3953,10 +3948,10 @@ if (C.levl[C.u.ux][C.u.uy].typ != C.ROOM) {
                 }
                 continue;
 }
-            } else if (C.levl[x][y].typ == C.CORR) {
+            } else if (terrainAt(C, x, y) == C.CORR) {
                 /* corridor */
  bcorr:
-                if (C.levl[C.u.ux][C.u.uy].typ != C.ROOM) {
+                if (terrainAt(C, C.u.ux, C.u.uy) != C.ROOM) {
                     /* running or traveling */
                     if (Number(Boolean(C.svc.context.run == 1 || C.svc.context.run == 3
                         || C.svc.context.run == 8))) {
@@ -3989,7 +3984,7 @@ if (C.levl[C.u.ux][C.u.uy].typ != C.ROOM) {
             } else { /* e.g. objects or trap or stairs */
                 if (C.svc.context.run == 1)
                     {
-if (C.levl[C.u.ux][C.u.uy].typ != C.ROOM) {
+if (terrainAt(C, C.u.ux, C.u.uy) != C.ROOM) {
                     /* running or traveling */
                     if (Number(Boolean(C.svc.context.run == 1 || C.svc.context.run == 3
                         || C.svc.context.run == 8))) {
@@ -4100,7 +4095,7 @@ export function crawl_destination(x,y)
     if (C.Passes_walls)
         return C.char(C.TRUE); /* or a xorn... */
     /* pool could be next to a door, conceivably even inside a shop */
-    if (Number(Boolean(C.IS_DOOR(C.levl[x][y].typ) && (!C.callLocal(doorless_door,x, y) || C.block_door(x, y)))))
+    if (Number(Boolean(C.IS_DOOR(terrainAt(C, x, y)) && (!C.callLocal(doorless_door,x, y) || C.block_door(x, y)))))
         return C.char(C.FALSE);
     /* finally, are we trying to squeeze through a too-narrow gap? */
     return C.char(!(Number(Boolean(C.callLocal(bad_rock,C.gy.youmonst.data, C.u.ux, y)
@@ -4516,7 +4511,7 @@ export function money_cnt(otmp)
 export function spot_checks(x,y,old_typ)
 {
     x=C.short(x);y=C.short(y);old_typ=C.char(old_typ);
-    let new_typ = C.char(C.levl[x][y].typ);
+    let new_typ = C.char(terrainAt(C, x, y));
     let db_ice_now = C.char(C.FALSE);
 
     switch (old_typ) {

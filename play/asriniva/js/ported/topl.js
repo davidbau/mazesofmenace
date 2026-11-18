@@ -177,7 +177,8 @@ export function remember_topl()
         if (cw.data[idx])
             C.free(cw.data[idx]);
         len += (8 - (len & 7)); /* pad up to next multiple of 8 */
-        cw.data[idx] = C.alloc(len);
+        cw.data[idx] = Object.hasOwn(C, "historyStorage")
+            ? C.historyStorage.slot(idx, len) : C.alloc(len);
         cw.datlen[idx] = C.short(len);
     }
     C.Strcpy(cw.data[idx], C.gt.toplines);
@@ -574,6 +575,8 @@ export function msghistory_snapshot(purge)
         C.snapshot_mesgs[i] = 0;
         mesg = cw.data[inidx];
         if (mesg && C.byte(mesg).value) {
+            if (purge && Object.hasOwn(C, "historyStorage"))
+                mesg = C.historyStorage.detach(mesg);
             C.snapshot_mesgs[outidx++] = mesg;
             if (purge) {
                 /* we're taking this pointer away; subsequent history

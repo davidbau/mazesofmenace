@@ -166,6 +166,9 @@ const R161=NF.readers[161],W161=NF.writers[161],A161=NF.addresses[161];
 const R162=NF.readers[162],W162=NF.writers[162],A162=NF.addresses[162];
 const R163=NF.readers[163],W163=NF.writers[163],A163=NF.addresses[163];
 const R164=NF.readers[164],W164=NF.writers[164],A164=NF.addresses[164];
+const RC0=C.readInt8At,WC0=C.writeInt8At;
+const RC2=C.readUint8At,WC2=C.writeUint8At;
+const RC3=C.readInt16At,WC3=C.writeInt16At;
 
 /* NetHack 5.0	muse.c	$NHDT-Date: 1770949988 2026/02/12 18:33:08 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.241 $ */
 /*      Copyright (C) 1990 by Ken Arromdee                         */
@@ -188,7 +191,7 @@ function precheck(mon,obj)
     try {
     let vis;
     if(Number(!(obj))) return 0;
-    (vis=C.i8((Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R49(mon))*8),"unsigned char *").value+Number(R48(mon))*1),"unsigned char").value)&2)))!=0))));
+    (vis=C.i8((Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R49(mon))*8),"unsigned char *").value+Number(R48(mon))*1))&2)))!=0))));
     if(Number(C.i32(R108(obj))==C.POTION_CLASS)) {
         let cc=C.stackAlloc(C.sizes["struct nhcoord"]);
         const empty=C.literal("The potion turns out to be empty.");
@@ -245,7 +248,7 @@ function precheck(mon,obj)
             C.variadic(9,mon,C.literal("%s zaps %s, which suddenly explodes!"),C.Monnam(mon),C.an(C.xname(obj)));
         } else {
             /* same near/far threshold as mzapwand() */
-            let range=((Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R49(mon))*8),"unsigned char *").value+Number(R48(mon))*1),"unsigned char").value)&1)))!=0))?(C.i32((8+1))):(C.i32((8-3))));
+            let range=((Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R49(mon))*8),"unsigned char *").value+Number(R48(mon))*1))&1)))!=0))?(C.i32((8+1))):(C.i32((8-3))));
             /* 9 or 5 */
             ;
             C.variadic(10,C.literal("a zap and an explosion %s."),((Number(C.dist2((R48(mon)),(R49(mon)),R150(C.u),R151(C.u))<=C.i32((range*range))))?C.literal("nearby"):C.literal("in the distance")));
@@ -273,7 +276,7 @@ function mzapwand(mtmp,otmp,self)
         return;
     }
     if(Number(!(C.canseemon(mtmp)))) {
-        let range=((Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1),"unsigned char").value)&1)))!=0))?(C.i32((8+1))):(C.i32((8-3))));
+        let range=((Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1))&1)))!=0))?(C.i32((8+1))):(C.i32((8-3))));
         /* 9 or 5 */
         ;
         C.variadic(12,C.literal("a %s zap."),((Number(C.dist2((R48(mtmp)),(R49(mtmp)),R150(C.u),R151(C.u))<=C.i32((range*range))))?C.literal("nearby"):C.literal("distant")));
@@ -296,7 +299,7 @@ function mplayhorn(mtmp,otmp,self)
     try {
     let objnamp; let objbuf=C.stackAlloc((1*256));
     if(Number(!(C.canseemon(mtmp)))) {
-        let range=((Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1),"unsigned char").value)&1)))!=0))?(C.i32((8+1))):(C.i32((8-3))));
+        let range=((Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1))&1)))!=0))?(C.i32((8+1))):(C.i32((8-3))));
         /* 9 or 5 */
         ;
         C.variadic(15,C.literal("a horn being played %s."),((Number(C.dist2((R48(mtmp)),(R49(mtmp)),R150(C.u),R151(C.u))<=C.i32((range*range))))?C.literal("nearby"):C.literal("in the distance")));
@@ -354,7 +357,7 @@ function mreadmsg(mtmp,otmp)
         let mflags=(C.i32((C.i32((2|8))|((C.i32(recognize)?1:64)))));
         if(C.sensemon(mtmp)) {
             (tpindicator=(C.i8(1)));
-        } else if(Number(!!((Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1),"unsigned char").value)&1)))!=0))&&Number(C.dist2((R48(mtmp)),(R49(mtmp)),R150(C.u),R151(C.u))<=C.i32((10*10)))))) {
+        } else if(Number(!!((Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1))&1)))!=0))&&Number(C.dist2((R48(mtmp)),(R49(mtmp)),R150(C.u),R151(C.u))<=C.i32((10*10)))))) {
             /* monster can't be seen or sensed; hero might be blind or monster
                might be at a spot that isn't in view or might be invisible;
                remember it if the spot is within line of sight and relatively
@@ -605,21 +608,21 @@ function find_defensive(mtmp,tryescape)
         /* Note: trap doors take precedence over teleport traps. */
         let xx; let yy; let i; let locs=C.stackAlloc(((2*10)*2));
         let ignore_boulders=C.i8((Number(!!(Number(!!((Number(C.i32(R129(R45(mtmp)))<1))||(Number((C.u64((R131(R45(mtmp))&C.u64(134217728n))))!=C.u64(0n)))))||(Number((C.u64((R130(R45(mtmp))&C.u64(8n))))!=C.u64(0n))))))); let diag_ok=C.i8(Number(!((Number(C.i32(((R125(R45(mtmp)))))==C.PM_GRID_BUG)))));
-        for((i=C.i16(0));Number(C.i32(i)<10);(i=C.i16((i+1)))) (C.cell(((locs+Number(i)*(2*2))+Number(0)*2),"short").value=(C.cell(((locs+Number(i)*(2*2))+Number(1)*2),"short").value=C.i16(0)));
+        for((i=C.i16(0));Number(C.i32(i)<10);(i=C.i16((i+1)))) (WC3((locs+Number(i)*(2*2))+Number(0)*2,WC3((locs+Number(i)*(2*2))+Number(1)*2,C.i16(0))));
 
         /* 10: 9 spots plus sentinel */
         /* collect viable spots; monster's <mx,my> comes first */
-        ((C.cell(((locs+Number(0)*(2*2))+Number(0)*2),"short").value=x),(C.cell(((locs+Number(0)*(2*2))+Number(1)*2),"short").value=y));
+        ((WC3((locs+Number(0)*(2*2))+Number(0)*2,x)),(WC3((locs+Number(0)*(2*2))+Number(1)*2,y)));
         (i=C.i16(1));
         for((xx=C.i16(C.i32((C.i32(x)-1))));Number(C.i32(xx)<=C.i32((C.i32(x)+1)));((xx=C.i16((xx+1)))-1)) for((yy=C.i16(C.i32((C.i32(y)-1))));Number(C.i32(yy)<=C.i32((C.i32(y)+1)));((yy=C.i16((yy+1)))-1)) if(Number(!!(C.isok(xx,yy)&&(Number(!!(Number(C.i32(xx)!=C.i32(x))||Number(C.i32(yy)!=C.i32(y)))))))) {
-            ((C.cell(((locs+Number(i)*(2*2))+Number(0)*2),"short").value=xx),(C.cell(((locs+Number(i)*(2*2))+Number(1)*2),"short").value=yy));
+            ((WC3((locs+Number(i)*(2*2))+Number(0)*2,xx)),(WC3((locs+Number(i)*(2*2))+Number(1)*2,yy)));
             (i=C.i16((i+1)));
         }
 
 
         /* look for a suitable trap among the viable spots */
         for((i=C.i16(0));Number(C.i32(i)<10);(i=C.i16((i+1)))) {
-            ((xx=C.cell(((locs+Number(i)*(2*2))+Number(0)*2),"short").value),(yy=C.cell(((locs+Number(i)*(2*2))+Number(1)*2),"short").value));
+            ((xx=RC3((locs+Number(i)*(2*2))+Number(0)*2)),(yy=RC3((locs+Number(i)*(2*2))+Number(1)*2)));
             if(Number(!(xx))) break;
             /* we've run out of spots */
             /* skip if it's hero's location
@@ -795,7 +798,7 @@ function use_defensive(mtmp)
     let t;
     let stway;
     if(Number(((i=precheck(mtmp,otmp)))!=0)) return i;
-    (vis=C.i8((Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1),"unsigned char").value)&2)))!=0))));
+    (vis=C.i8((Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1))&2)))!=0))));
     (vismon=C.i8(C.canseemon(mtmp)));
     (oseen=C.i8(Number(!!(otmp&&C.i32(vismon)))));
     /* when using defensive choice to run away, we want monster to avoid
@@ -1480,7 +1483,7 @@ function mbhitm(mtmp,otmp)
         }
         /* need to see the wand being zapped and also the spot where the
            target is hit; don't have to see the target itself though */
-        if(Number(!!(Number(!!(C.i32(learnit)&&C.i32(R42(C.gz))))&&(Number(!!(C.i32(hits_you)||(Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1),"unsigned char").value)&2)))!=0)))))))) C.discover_object((C.WAN_STRIKING),(C.i8(1)),(C.i8(1)),(C.i8(1)));
+        if(Number(!!(Number(!!(C.i32(learnit)&&C.i32(R42(C.gz))))&&(Number(!!(C.i32(hits_you)||(Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1))&2)))!=0)))))))) C.discover_object((C.WAN_STRIKING),(C.i8(1)),(C.i8(1)),(C.i8(1)));
         break;
         case (C.WAN_TELEPORTATION):
             if(hits_you) {
@@ -1488,8 +1491,8 @@ function mbhitm(mtmp,otmp)
                 if(R42(C.gz)) C.discover_object((C.WAN_TELEPORTATION),(C.i8(1)),(C.i8(1)),(C.i8(1)));
             } else {
                 /* for consistency with zap.c, don't identify */
-                if(Number(!!(C.i32(R76(mtmp))&&C.i32(C.cell(C.in_rooms(R48(mtmp),R49(mtmp),C.TEMPLE),"char").value)))) {
-                    if((Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1),"unsigned char").value)&2)))!=0))) C.variadic(69,mtmp,C.literal("%s resists the magic!"),C.Monnam(mtmp));
+                if(Number(!!(C.i32(R76(mtmp))&&C.i32(RC0(C.in_rooms(R48(mtmp),R49(mtmp),C.TEMPLE)))))) {
+                    if((Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1))&2)))!=0))) C.variadic(69,mtmp,C.literal("%s resists the magic!"),C.Monnam(mtmp));
                 } else if(Number(!(C.tele_restrict(mtmp)))) C.rloc(mtmp,C.u32(2));
             }
         break;
@@ -1524,7 +1527,7 @@ function mbhitm(mtmp,otmp)
         default:
             break;
     }
-    if(Number(!!(Number(!!(Number(!!(C.i32(reveal_invis)&&Number(!((Number(R52(mtmp)<1))))))&&(Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R98(A25(C.gb)))*8),"unsigned char *").value+Number(R97(A25(C.gb)))*1),"unsigned char").value)&2)))!=0))))&&Number(!((Number(!!(C.canseemon(mtmp)||C.sensemon(mtmp))))))))) C.map_invisible(R97(A25(C.gb)),R98(A25(C.gb)));
+    if(Number(!!(Number(!!(Number(!!(C.i32(reveal_invis)&&Number(!((Number(R52(mtmp)<1))))))&&(Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R98(A25(C.gb)))*8),"unsigned char *").value+Number(R97(A25(C.gb)))*1))&2)))!=0))))&&Number(!((Number(!!(C.canseemon(mtmp)||C.sensemon(mtmp))))))))) C.map_invisible(R97(A25(C.gb)),R98(A25(C.gb)));
     return 0;
 }
 
@@ -1581,13 +1584,13 @@ function mbhit(mon,range,fhitm,fhito,obj)
             C.callProc((fhitm),"int (struct monst *, struct obj *)",A41(C.gy),obj);
             (range=C.i32(range-3));
         } else if(Number(((mtmp=(C.cell(((A19(A34(C.svl))+Number(R97(A25(C.gb)))*(8*21))+Number(R98(A25(C.gb)))*8),"struct monst *").value)))!=0)) {
-            if(Number(!!((Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R98(A25(C.gb)))*8),"unsigned char *").value+Number(R97(A25(C.gb)))*1),"unsigned char").value)&2)))!=0))&&Number(!((Number(!!(C.canseemon(mtmp)||C.sensemon(mtmp))))))))) C.map_invisible(R97(A25(C.gb)),R98(A25(C.gb)));
+            if(Number(!!((Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R98(A25(C.gb)))*8),"unsigned char *").value+Number(R97(A25(C.gb)))*1))&2)))!=0))&&Number(!((Number(!!(C.canseemon(mtmp)||C.sensemon(mtmp))))))))) C.map_invisible(R97(A25(C.gb)),R98(A25(C.gb)));
             C.callProc((fhitm),"int (struct monst *, struct obj *)",mtmp,obj);
             (range=C.i32(range-3));
         }
         if(fhito_loc(obj,R97(A25(C.gb)),R98(A25(C.gb)),fhito)) ((range=C.i32((range-1)))+1);
         (ltyp=C.u8(R137((A17(A34(C.svl))+Number(R97(A25(C.gb)))*(C.sizes["struct rm"]*21))+Number(R98(A25(C.gb)))*C.sizes["struct rm"])));
-        ((C.cell(dbxAddress,"short").value=x),(C.cell(dbyAddress,"short").value=y));
+        ((WC3(dbxAddress,x)),(WC3(dbyAddress,y)));
         if(Number(!!(Number(!!(Number(otyp==C.WAN_STRIKING)&&Number(C.i32(ltyp)!=C.DRAWBRIDGE_UP)))&&C.i32(C.find_drawbridge(dbxAddress,dbyAddress))))) {
             /* if levl[x][y].typ is DRAWBRIDGE_UP then the zap is passing
                over the moat in front of a closed drawbridge and doesn't
@@ -1595,7 +1598,7 @@ function mbhit(mon,range,fhitm,fhito,obj)
                about to hit the closed portcullis on the next iteration) */
             /* this might kill mon and destroy obj but they'll remain
                accessible; (*fhitm)() and (*fhito)() use obj for zap type */
-            C.destroy_drawbridge(C.cell(dbxAddress,"short").value,C.cell(dbyAddress,"short").value);
+            C.destroy_drawbridge(RC3(dbxAddress),RC3(dbyAddress));
         } else if(Number(!!((Number(C.i32((ltyp))==C.DOOR))||Number(C.i32(ltyp)==C.SDOOR)))) {
             switch(otyp) {
                 /* note: monsters don't use opening or locking magic
@@ -1607,7 +1610,7 @@ function mbhit(mon,range,fhitm,fhito,obj)
                                 if(R42(C.gz)) C.discover_object((otyp),(C.i8(1)),(C.i8(1)),(C.i8(1)));
                                 /* if a shop door gets broken, add it to
                        the shk's fix list (no cost to player) */
-                                if(Number(!!(Number(C.i32(R138((A17(A34(C.svl))+Number(R97(A25(C.gb)))*(C.sizes["struct rm"]*21))+Number(R98(A25(C.gb)))*C.sizes["struct rm"]))==1)&&C.i32(C.cell(C.in_rooms(R97(A25(C.gb)),R98(A25(C.gb)),C.SHOPBASE),"char").value)))) C.add_damage(R97(A25(C.gb)),R98(A25(C.gb)),0n);
+                                if(Number(!!(Number(C.i32(R138((A17(A34(C.svl))+Number(R97(A25(C.gb)))*(C.sizes["struct rm"]*21))+Number(R98(A25(C.gb)))*C.sizes["struct rm"]))==1)&&C.i32(RC0(C.in_rooms(R97(A25(C.gb)),R98(A25(C.gb)),C.SHOPBASE)))))) C.add_damage(R97(A25(C.gb)),R98(A25(C.gb)),0n);
                             }
                 break;
             }
@@ -1704,7 +1707,7 @@ function use_offensive(mtmp)
                 if((Number(!!(C.canseemon(mtmp)||C.sensemon(mtmp))))) {
                     C.variadic(70,C.literal("%s rumbles %s %s!"),C.ceiling(R48(mtmp),R49(mtmp)),(C.i32(R112(otmp))?C.literal("around"):C.literal("above")),C.mon_nam(mtmp));
                     if(oseen) C.discover_object(C.i32((R104(otmp))),(C.i8(1)),(C.i8(1)),(C.i8(1)));
-                } else if((Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1),"unsigned char").value)&2)))!=0))) {
+                } else if((Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1))&2)))!=0))) {
                     C.variadic(71,C.literal("%s rumbles in the middle of nowhere!"),C.ceiling(R48(mtmp),R49(mtmp)));
                     if(R60(mtmp)) C.map_invisible(R48(mtmp),R49(mtmp));
                     if(oseen) C.discover_object(C.i32((R104(otmp))),(C.i8(1)),(C.i8(1)),(C.i8(1)));
@@ -1756,7 +1759,7 @@ function use_offensive(mtmp)
          * sight, a problem not existing with wands because wand rays
          * are not objects.  Also set dknown in mthrowu.c.
          */
-                            if((Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1),"unsigned char").value)&2)))!=0))) {
+                            if((Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1))&2)))!=0))) {
                                 C.observe_object(otmp);
                                 C.variadic(75,mtmp,C.literal("%s hurls %s!"),C.Monnam(mtmp),C.singular(otmp,C.functionPointer("doname")));
                             }
@@ -1973,7 +1976,7 @@ function mloot_container(mon,container,vismon)
     }
     (howfar=C.dist2((R48(mon)),(R49(mon)),R150(C.u),R151(C.u)));
     (nearby=C.i8((Number(howfar<=C.i32((7*7))))));
-    (C.cell((contnr_nam+Number(0)*1),"char").value=(C.cell((mpronounbuf+Number(0)*1),"char").value=C.i8(0)));
+    (WC0(contnr_nam+Number(0)*1,WC0(mpronounbuf+Number(0)*1,C.i8(0))));
     if(vismon) {
         /* do this once so that when hallucinating it won't change
            from one item to the next */
@@ -2000,7 +2003,7 @@ function mloot_container(mon,container,vismon)
         (W116(container,C.u32(0)));
         /* hero no longer knows container's contents
                                 * even if [attempted] removal is observed */
-        if(Number(!(C.cell(contnr_nam,"char").value))) {
+        if(Number(!(RC0(contnr_nam)))) {
             /* xname sets dknown, distant_name might depending on its own
                idea about nearness */
             C.strcpy(contnr_nam,C.an((C.i32(nearby)?C.xname(container):C.distant_name(container,C.functionPointer("xname")))));
@@ -2062,7 +2065,7 @@ function use_misc(mtmp)
     let t;
     let otmp=R91(A30(C.gm));
     if(Number(((i=precheck(mtmp,otmp)))!=0)) return i;
-    (vis=C.i8((Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1),"unsigned char").value)&2)))!=0))));
+    (vis=C.i8((Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R49(mtmp))*8),"unsigned char *").value+Number(R48(mtmp))*1))&2)))!=0))));
     (vismon=C.i8(C.canseemon(mtmp)));
     (oseen=C.i8(Number(!!(otmp&&C.i32(vismon)))));
     switch(R94(A30(C.gm))) {
@@ -2166,7 +2169,7 @@ function use_misc(mtmp)
         return 2;
         case (4):
             (t=C.t_at(R37(C.gt),R38(C.gt)));
-        (vistrapspot=C.i8((Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R143(t))*8),"unsigned char *").value+Number(R142(t))*1),"unsigned char").value)&2)))!=0))));
+        (vistrapspot=C.i8((Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R143(t))*8),"unsigned char *").value+Number(R142(t))*1))&2)))!=0))));
         if(Number(!!(C.i32(vis)||C.i32(vistrapspot)))) C.seetrap(t);
         if(Number(!!(C.i32(vismon)||C.i32(vistrapspot)))) {
             C.variadic(94,mtmp,C.literal("%s deliberately %s onto a %s!"),C.Some_Monnam(mtmp),C.vtense(C.cell((A6(C.c_common_strings)+Number(0)*8),"char *").value,C.locomotion(R45(mtmp),C.literal("jump"))),(C.i32(R145(t))?C.trapname(C.i32(R144(t)),(C.i8(0))):C.literal("hidden trap")));
@@ -2202,7 +2205,7 @@ function use_misc(mtmp)
                 (hand=C.body_part(C.HAND));
                 if((Number(!!((Number(!!(Number(C.i32(R108(obj))==C.WEAPON_CLASS)||Number(C.i32(R108(obj))==C.TOOL_CLASS))))&&C.i32(R121(C.objects+Number(R104(obj))*C.sizes["struct objclass"])))))) (hand=C.makeplural(hand));
                 C.strncpy(hand_buf,hand,C.u64((BigInt((1*256))-C.u64(1))));
-                (C.cell((hand_buf+Number(C.u64((BigInt((1*256))-C.u64(1))))*1),"char").value=C.i8(0));
+                (WC0(hand_buf+Number(C.u64((BigInt((1*256))-C.u64(1))))*1,C.i8(0)));
                 if(vismon) C.variadic(96,mtmp,C.literal("%s flicks a bullwhip towards your %s!"),C.Monnam(mtmp),hand_buf);
                 if(Number(C.i32(R104(obj))==C.HEAVY_IRON_BALL)) {
                     C.variadic(97,C.literal("%s fails to wrap around %s."),The_whip,the_weapon);
@@ -2556,7 +2559,7 @@ function munslime(mon,by_you)
         if(Number(!!(Number(!!((Number(!!(Number(((t=C.t_at(R48(mon),R49(mon))))==0)||Number(C.i32(R144(t))!=C.FIRE_TRAP))))&&C.i32(R127(mptr))))&&Number(!(R72(mon)))))) {
             let xy=C.stackAlloc(((2*2)*8)); let x; let y; let idx; let ridx; let nxy=C.i16(0);
             for((x=C.i16(C.i32((C.i32(R48(mon))-1))));Number(C.i32(x)<=C.i32((C.i32(R48(mon))+1)));(x=C.i16((x+1)))) for((y=C.i16(C.i32((C.i32(R49(mon))-1))));Number(C.i32(y)<=C.i32((C.i32(R49(mon))+1)));(y=C.i16((y+1)))) if(Number(!!(Number(!!(Number(!!(C.isok(x,y)&&C.i32(C.accessible(x,y))))&&Number(!((C.cell(((A19(A34(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct monst *").value)))))&&(Number(!!(Number(C.i32(x)!=C.i32(R150(C.u)))||Number(C.i32(y)!=C.i32(R151(C.u))))))))) {
-                ((C.cell(((xy+Number(0)*(2*8))+Number(nxy)*2),"short").value=x),(C.cell(((xy+Number(1)*(2*8))+Number(nxy)*2),"short").value=y));
+                ((WC3((xy+Number(0)*(2*8))+Number(nxy)*2,x)),(WC3((xy+Number(1)*(2*8))+Number(nxy)*2,y)));
                 (nxy=C.i16((nxy+1)));
             }
 
@@ -2564,14 +2567,14 @@ function munslime(mon,by_you)
             for((idx=C.i16(0));Number(C.i32(idx)<C.i32(nxy));(idx=C.i16((idx+1)))) {
                 (ridx=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",3080,"munslime"),C.rn2(C.i32((C.i32(nxy)-C.i32(idx)))))):C.rn2(C.i32((C.i32(nxy)-C.i32(idx))))))+C.i32((idx)))))));
                 if(Number(C.i32(ridx)!=C.i32(idx))) {
-                    (x=C.cell(((xy+Number(0)*(2*8))+Number(idx)*2),"short").value);
-                    (C.cell(((xy+Number(0)*(2*8))+Number(idx)*2),"short").value=C.cell(((xy+Number(0)*(2*8))+Number(ridx)*2),"short").value);
-                    (C.cell(((xy+Number(0)*(2*8))+Number(ridx)*2),"short").value=x);
-                    (y=C.cell(((xy+Number(1)*(2*8))+Number(idx)*2),"short").value);
-                    (C.cell(((xy+Number(1)*(2*8))+Number(idx)*2),"short").value=C.cell(((xy+Number(1)*(2*8))+Number(ridx)*2),"short").value);
-                    (C.cell(((xy+Number(1)*(2*8))+Number(ridx)*2),"short").value=y);
+                    (x=RC3((xy+Number(0)*(2*8))+Number(idx)*2));
+                    (WC3((xy+Number(0)*(2*8))+Number(idx)*2,RC3((xy+Number(0)*(2*8))+Number(ridx)*2)));
+                    (WC3((xy+Number(0)*(2*8))+Number(ridx)*2,x));
+                    (y=RC3((xy+Number(1)*(2*8))+Number(idx)*2));
+                    (WC3((xy+Number(1)*(2*8))+Number(idx)*2,RC3((xy+Number(1)*(2*8))+Number(ridx)*2)));
+                    (WC3((xy+Number(1)*(2*8))+Number(ridx)*2,y));
                 }
-                if(Number(!!(Number(((t=C.t_at(C.cell(((xy+Number(0)*(2*8))+Number(idx)*2),"short").value,C.cell(((xy+Number(1)*(2*8))+Number(idx)*2),"short").value)))!=0)&&Number(C.i32(R144(t))==C.FIRE_TRAP)))) break;
+                if(Number(!!(Number(((t=C.t_at(RC3((xy+Number(0)*(2*8))+Number(idx)*2),RC3((xy+Number(1)*(2*8))+Number(idx)*2))))!=0)&&Number(C.i32(R144(t))==C.FIRE_TRAP)))) break;
             }
         }
         if(Number(!!(t&&Number(C.i32(R144(t))==C.FIRE_TRAP)))) return muse_unslime(mon,C.hands_obj,t,by_you);
@@ -2618,7 +2621,7 @@ function muse_unslime(mon,obj,trap,by_you)
     } else if(Number(otyp==C.SCR_FIRE)) {
         mreadmsg(mon,obj);
         if(R70(mon)) {
-            if((Number((C.i32((C.i32(C.cell((C.cell((R40(C.gv)+Number(R49(mon))*8),"unsigned char *").value+Number(R48(mon))*1),"unsigned char").value)&2)))!=0))) C.variadic(129,C.literal("Oh, what a pretty fire!"));
+            if((Number((C.i32((C.i32(RC2(C.cell((R40(C.gv)+Number(R49(mon))*8),"unsigned char *").value+Number(R48(mon))*1))&2)))!=0))) C.variadic(129,C.literal("Oh, what a pretty fire!"));
             if(vis) C.trycall(obj);
             C.m_useup(mon,obj);
             /* after trycall() */

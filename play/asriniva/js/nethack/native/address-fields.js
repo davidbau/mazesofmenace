@@ -8,6 +8,9 @@ import {connectNativeAddressState} from './address-state.js';
 export function createNativeAddressFields(env,services,schema,decode,convert=env.ptr) {
  const connected=connectNativeAddressState(env,services),owner=connected?.owner;
  const readers=[],writers=[],addresses=[],nativeScalars=new Set(['char','signed char','unsigned char','short','unsigned short','int','unsigned int','unsigned','long','unsigned long','long long','unsigned long long']);
+ const baseOf=owner?.nativeArena
+  ? value=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0?value:convert(value?.address??value)
+  : value=>convert(value?.address??value);
  Object.values(schema.schema).forEach((row,kind)=>row.fields.forEach((field,index)=>{
   const id=readers.length,plan=services.nativeFieldPlans?.[kind]?.[index];
   const readRaw=plan?plan.read:(at=>services.read(kind,at,index));
@@ -15,8 +18,8 @@ export function createNativeAddressFields(env,services,schema,decode,convert=env
   const addressRaw=plan?plan.address:(at=>services.address(kind,at,index));
   const native=connected?.accessor(row,field),pointer=field.canonical.includes('*');
   const read=plan&&!field.bit&&nativeScalars.has(field.canonical)?readRaw:(at=>decode(field.canonical,readRaw(at)));
-  readers[id]=owner?.nativeArena&&plan?.nativeRead?(nativeScalars.has(field.canonical)&&!field.bit?at=>plan.nativeRead(convert(at?.address??at)):at=>decode(field.canonical,plan.nativeRead(convert(at?.address??at)))):at=>{at=convert(at?.address??at);const record=native?.(at);if(record){const value=record[field.name];return decode(field.canonical,value?.address??value);}if(owner?.depth)owner.flush();return read(at);};
-  writers[id]=owner?.nativeArena&&plan?.nativeWrite?((at,value)=>{at=convert(at?.address??at);plan.nativeWrite(at,value);return value;}):(at,value)=>{
+  readers[id]=owner?.nativeArena&&plan?.nativeRead?(nativeScalars.has(field.canonical)&&!field.bit?at=>plan.nativeRead(baseOf(at)):at=>decode(field.canonical,plan.nativeRead(baseOf(at)))):at=>{at=convert(at?.address??at);const record=native?.(at);if(record){const value=record[field.name];return decode(field.canonical,value?.address??value);}if(owner?.depth)owner.flush();return read(at);};
+  writers[id]=owner?.nativeArena&&plan?.nativeWrite?((at,value)=>{plan.nativeWrite(baseOf(at),value);return value;}):(at,value)=>{
    at=convert(at?.address??at);const record=native?.(at);let encoded;
    if(record&&(nativeScalars.has(field.canonical)||pointer||field.canonical.startsWith('enum '))){
     if(typeof value==='number'&&Number.isInteger(value)){
@@ -29,7 +32,7 @@ export function createNativeAddressFields(env,services,schema,decode,convert=env
    encoded??=BigInt.asUintN(64,BigInt(value));
    if(owner?.depth)owner.flush();try{writeRaw(at,encoded);}finally{if(owner)owner.invalidate();}return value;
   };
-  addresses[id]=at=>convert(addressRaw(convert(at?.address??at)));
+  addresses[id]=at=>baseOf(addressRaw(baseOf(at)));
  }));
  const compound=(get,set,at,op,rhs)=>{
   const before=get(at);let after;
@@ -60,7 +63,7 @@ export function createNativeAddressFields(env,services,schema,decode,convert=env
 export function compileNativeFieldPlans(environment,schema,ctypes=environment.ctypes) {
  const {memory}=environment,scalarMethods={char:'Int8','signed char':'Int8','unsigned char':'Uint8',short:'Int16','unsigned short':'Uint16',int:'Int32','unsigned int':'Uint32',unsigned:'Uint32',long:'BigInt64','unsigned long':'BigUint64','long long':'BigInt64','unsigned long long':'BigUint64',float:'Float32',double:'Float64'};
  const owner=nativeStateFor(environment),arena=owner.nativeArena;
- const at=value=>environment.address(value);
+ const at=value=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0?value:environment.address(value);
  const readBytes=(p,n)=>{if(n===1)return memory.view.getUint8(p);if(n===2)return memory.view.getUint16(p,true);if(n===4)return memory.view.getUint32(p,true);let v=0;for(let i=0;i<n;i++)v+=memory.HEAPU8[p+i]*2**(8*i);return v;};
  const writeBytes=(p,n,v)=>{for(let i=0;i<n;i++)memory.HEAPU8[p+i]=v/2**(8*i)&255;};
  return Object.values(schema.schema).map(row=>{

@@ -2,6 +2,7 @@ import {recordNativeRngCaller} from './native/rng-output.js';
 // Object startup and name persistence, using unchanged O_INIT policy and its
 // existing measured adapter. Discovery/menu functions are deliberately absent.
 import * as policy from '../ported/o_init.js';
+import {createNativeObjectState} from './native/o_init.js';
 import {createOInitEnvironment} from './bindings/o_init.js';
 import {CPanic} from './runtime.js';
 export function enableObjectState(environment,layouts) {
@@ -43,6 +44,11 @@ export function enableObjectState(environment,layouts) {
     const adapter=createOInitEnvironment(local,layouts.o_init,policy);
     const names=['setgemprobs','randomize_gem_colors','shuffle','init_objects','init_oclass_probs','obj_shuffle_range','shuffle_all','objdescr_is','oinit','savenames','restnames','discover_object','observe_object'];
     const namespace=Object.fromEntries(names.map(name=>[name,policy[name]]));
+    const native=createNativeObjectState(adapter);
+    const observeObject=p=>environment.transport.scoped(()=>native.observe_object(adapter.object(p)));
+    observeObject.nativeDirect=true;
+    observeObject.nativePrepared=true;
+    namespace.observe_object=observeObject;
     namespace.objdescr_is=(...args)=>Number(policy.objdescr_is(...args));
     environment.register('object-state',namespace,adapter,{prepareArgs:(name,args)=>{
         if(name==='setgemprobs')args[0]=adapter.level(args[0]);

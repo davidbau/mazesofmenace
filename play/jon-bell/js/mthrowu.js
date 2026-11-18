@@ -467,7 +467,7 @@ import { delobj as delobj_mu, hold_another_object, stackobj } from './invent.js'
 import { obj_is_burning } from './light.js'; // relocate-fns
 import { is_pool as is_pool_mu } from './look.js'; // relocate-fns
 import { monPmname as monPmname_mu, nonliving as nonliving_mu, splitobj } from './makemon.js'; // relocate-fns
-import { BOULDER_MU, Blind, Blind_mu, Deaf, Deaf_mu, Hallucination, KILLED_BY, M2_ELF_MU, M2_GNOME_MU, MHU_NEED_RANGED_WEAPON, MHU_NEED_WEAPON, MON_WEP, OCLASS_TOOL_MHU, OCLASS_WEAPON_MHU, P_BOW_MHU, P_SPEAR_MHU, SILVER_MU, Soundeffect, Stone_resistance, Your1, _Underwater_mu, _hero_monst_mu, _hero_permonst_mu, _mf2, _uprop_on_mu, amorphous_mu, haseyes_pu, is_orc_mu, is_pole_mhu, is_vampshifter, je_Monnam, m_seenres, maybe_half_phys_mu, mdistu, mhis, mswings_verb, mt_flightcheck, noncorporeal_mu, poisoned_u, resists_acid_mu, s_suffix_mu, se_cough, se_dry_throat_rattle, se_splat_egg, touch_petrifies_mk, youmonst_data } from './mhitu.js'; // relocate-fns
+import { BOULDER_MU, Blind, Blind_mu, Deaf, Deaf_mu, Hallucination, KILLED_BY, M2_ELF_MU, M2_GNOME_MU, MHU_NEED_RANGED_WEAPON, MHU_NEED_WEAPON, MON_WEP, OCLASS_TOOL_MHU, OCLASS_WEAPON_MHU, P_BOW_MHU, P_SPEAR_MHU, SILVER_MU, Soundeffect, Stone_resistance, _Underwater_mu, _hero_monst_mu, _hero_permonst_mu, _mf2, _uprop_on_mu, amorphous_mu, haseyes_pu, is_orc_mu, is_pole_mhu, is_vampshifter, je_Monnam, m_seenres, maybe_half_phys_mu, mdistu, mhis, mswings_verb, mt_flightcheck, noncorporeal_mu, poisoned_u, resists_acid_mu, s_suffix_mu, se_cough, se_dry_throat_rattle, se_splat_egg, touch_petrifies_mk, youmonst_data } from './mhitu.js'; // relocate-fns
 import { resists_ston as resists_ston_mu } from './mklev.js'; // relocate-fns
 import { clear_dknown, is_flammable as is_flammable_mu, mksobj, obj_extract_self, place_object, remove_object } from './mkobj.js'; // relocate-fns
 import { MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js'; // relocate-fns
@@ -1642,7 +1642,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         u.ucreamed = (u.ucreamed | 0) + blindinc;
         make_blinded_real_mu(BlindedTimeout_mu() + blindinc, false);
         if (!Blind(game))
-            Your1('vision quickly clears.');
+            await pline('Your vision quickly clears.');
     }
     if (!game._pendingDeath) {
         game.thrownobj = null;

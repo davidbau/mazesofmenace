@@ -4,6 +4,7 @@ import * as worm from '../ported/worm.js';
 import {createWormState,withWormEnvironment} from './bindings/worm.js';
 import {withCEnvironment} from '../c-runtime/context.js';
 import abi from './worm-abi.json' with {type:'json'};
+import {nativeStateFor} from './native/state-bridge.js';
 
 export function enableWorms(environment,layouts){
  const {transport,services,ctypes,memory}=environment,L=Object.freeze({...layouts.worm});
@@ -34,6 +35,7 @@ export function enableWorms(environment,layouts){
  const typed=(type,value)=>type==='p'?ptr(value):type==='c'?transport.coordxy(value):type==='b'?transport.boolean(value):transport.int(value);
  for(const [name,types]of Object.entries(abi.dependencies))bridge[name]=(...args)=>actual(name,...types.map((type,i)=>typed(type,args[i])));
  const state=createWormState(bridge,L),namespace={};
+ const owner=nativeStateFor(environment);
  const monsterFunctions=new Set(abi.monsterArguments);
  for(const name of abi.publicFunctions)namespace[name]=(...args)=>withWormEnvironment(bridge,L,state,local=>{
   if(monsterFunctions.has(name))args[0]=local.monster(args[0]);
@@ -42,6 +44,15 @@ export function enableWorms(environment,layouts){
   const result=withCEnvironment(local,worm[name],...args);
   return result?.address??result;
  });
+ if(owner.spatial){
+  const {grid,geometry}=owner.spatial;
+  const context={int:transport.int,distmin:geometry.distmin,impossible:bridge.impossible,
+   m_at:grid.monsterAt,samePtr:(a,b)=>a===b,wtails:state.wtails,bool:Number};
+  const cross=(x1,y1,x2,y2)=>worm.worm_cross(x1,y1,x2,y2,context);
+  Object.assign(cross,{nativeState:owner,nativeDirect:true,nativePrepared:true});
+  owner.functions.set('worm_cross',cross);
+  namespace.worm_cross=cross;
+ }
  environment.register('worms',namespace);
  return {state,layout:L,limitation:'Original WORM connected; full save/restore, combat and level-transition lifecycle require integration evidence.'};
 }

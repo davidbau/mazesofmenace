@@ -4,6 +4,7 @@ import publicFunctions from '../public-functions.json' with {type:'json'};
 import {createNativeObjectAppraisal} from './object-appraisal.js';
 import {createNativeRecordViews} from './record-views.js';
 import {nativeStateFor} from './state-bridge.js';
+import {recordNativeRngCaller} from './rng-output.js';
 const games=new WeakMap();
 export function nativeObjectAppraisalFor(environment,layouts){
  if(games.has(environment))return games.get(environment);
@@ -16,6 +17,7 @@ export function nativeObjectAppraisalFor(environment,layouts){
   // Offsets are signed int indices; 64-bit pointer wrap is kept at this boundary.
   ptrAdd:(base,index,type)=>BigInt.asUintN(64,BigInt(address(base))+BigInt(index)*BigInt(ctypes.size(type))),ptrCompare:(a,b,op)=>{if(op!=='==')throw Error('Unreviewed appraisal pointer comparison');return a===b;},
   literal:S.literal,rng_log_enabled:S.rng_log_enabled,rng_log_set_caller:S.rng_log_set_caller,
+  recordRngCaller:(file,line,caller)=>recordNativeRngCaller(S,file,line,caller),
   rn2:n=>{const fn=owner.functions.get('rn2')??S.rn2?.nativeEntry??S.rn2;return fn(n);},
  };
  Object.defineProperties(context,{fmon:{get:()=>context.svl.level.monlist},fobj:{get:()=>context.svl.level.objlist}});

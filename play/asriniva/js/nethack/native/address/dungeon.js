@@ -250,6 +250,11 @@ const R259=NF.readers[259],W259=NF.writers[259],A259=NF.addresses[259];
 const R260=NF.readers[260],W260=NF.writers[260],A260=NF.addresses[260];
 const R261=NF.readers[261],W261=NF.writers[261],A261=NF.addresses[261];
 const R262=NF.readers[262],W262=NF.writers[262],A262=NF.addresses[262];
+const RC0=C.readInt8At,WC0=C.writeInt8At;
+const RC1=C.readInt8At,WC1=C.writeInt8At;
+const RC3=C.readInt16At,WC3=C.writeInt16At;
+const RC5=C.readInt32At,WC5=C.writeInt32At;
+const RC8=C.readBigInt64At,WC8=C.writeBigInt64At;
 
 /* NetHack 5.0	dungeon.c	$NHDT-Date: 1737343478 2025/01/19 19:24:38 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.228 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
@@ -489,7 +494,7 @@ function level_range(dgn,base,randc,chain,pd,adjusted_base)
         if(Number(base<0)) (base=(C.i32((C.i32((lmax+base))+1))));
     }
     if(Number(!!(Number(base<1)||Number(base>lmax)))) C.variadic(16,C.literal("level_range: base value out of range"));
-    (C.cell(adjusted_base,"int").value=base);
+    (WC5(adjusted_base,base));
     if(Number(randc==C.i32((-1)))) {
         /* from base to end of dungeon */
         return (C.i32((C.i32((lmax-base))+1)));
@@ -593,7 +598,7 @@ function add_branch(dgn,child_entry_level,pd)
     (new_branch=C.alloc(C.u32(BigInt(C.sizes["struct branch"]))));
     C.memset(new_branch,0,BigInt(C.sizes["struct branch"]));
     (W4(new_branch,0));
-    (W5(new_branch,(C.cell(C.staticAddress("branch_id"),"int").value=C.i32((C.cell(C.staticAddress("branch_id"),"int").value+1)))-1));
+    (W5(new_branch,(WC5(C.staticAddress("branch_id"),C.i32((RC5(C.staticAddress("branch_id"))+1))))-1));
     (W6(new_branch,correct_branch_type((A183(pd)+Number(branch_num)*C.sizes["struct tmpbranch"]))));
     (W25(A7(new_branch),parent_dnum(A71(A95(C.svd)+Number(dgn)*C.sizes["struct dungeon"]),pd)));
     (W26(A7(new_branch),parent_dlevel(A71(A95(C.svd)+Number(dgn)*C.sizes["struct dungeon"]),pd)));
@@ -668,16 +673,16 @@ function possible_places(idx,map,pd)
     let i; let start=C.local("int",0); let count;
     let lev=C.cell((A182(pd)+Number(idx)*8),"struct s_level *").value;
     /* init level possibilities */
-    for((i=0);Number(i<=32);((i=C.i32((i+1)))-1)) (C.cell((map+Number(i)*1),"signed char").value=(C.i8(0)));
+    for((i=0);Number(i<=32);((i=C.i32((i+1)))-1)) (WC1(map+Number(i)*1,C.i8(0)));
 
     /* get base and range and set those entries to true */
     (count=level_range(R25(A193(lev)),C.i32(R17(A220(A181(pd)+Number(idx)*C.sizes["struct tmplevel"]))),C.i32(R18(A220(A181(pd)+Number(idx)*C.sizes["struct tmplevel"]))),R223(A181(pd)+Number(idx)*C.sizes["struct tmplevel"]),pd,start.address));
-    for((i=start.value);Number(i<C.i32((start.value+count)));((i=C.i32((i+1)))-1)) (C.cell((map+Number(i)*1),"signed char").value=(C.i8(1)));
+    for((i=start.value);Number(i<C.i32((start.value+count)));((i=C.i32((i+1)))-1)) (WC1(map+Number(i)*1,C.i8(1)));
 
     /* mark off already placed levels */
     for((i=R184(pd));Number(i<idx);((i=C.i32((i+1)))-1)) {
-        if(Number(!!(C.cell((A182(pd)+Number(i)*8),"struct s_level *").value&&C.i32(C.cell((map+Number(R26(A193(C.cell((A182(pd)+Number(i)*8),"struct s_level *").value)))*1),"signed char").value)))) {
-            (C.cell((map+Number(R26(A193(C.cell((A182(pd)+Number(i)*8),"struct s_level *").value)))*1),"signed char").value=(C.i8(0)));
+        if(Number(!!(C.cell((A182(pd)+Number(i)*8),"struct s_level *").value&&C.i32(RC1(map+Number(R26(A193(C.cell((A182(pd)+Number(i)*8),"struct s_level *").value)))*1))))) {
+            (WC1(map+Number(R26(A193(C.cell((A182(pd)+Number(i)*8),"struct s_level *").value)))*1,C.i8(0)));
             (count=C.i32((count-1)));
         }
     }
@@ -692,7 +697,7 @@ function pick_level(map,nth)
     nth=C.i32(nth);
     /* an array MAXLEVEL+1 in size */
     let i;
-    for((i=C.i16(1));Number(C.i32(i)<=32);((i=C.i16((i+1)))-1)) if(Number(!!(C.i32(C.cell((map+Number(i)*1),"signed char").value)&&Number(!(((nth=C.i32((nth-1)))+1)))))) return i;
+    for((i=C.i16(1));Number(C.i32(i)<=32);((i=C.i16((i+1)))-1)) if(Number(!!(C.i32(RC1(map+Number(i)*1))&&Number(!(((nth=C.i32((nth-1)))+1)))))) return i;
 
     C.variadic(19,C.literal("pick_level:  ran out of valid levels"));
     /*NOTREACHED*/
@@ -725,7 +730,7 @@ function place_level(proto_index,pd)
     for(;npossible;(npossible=C.i32((npossible-1)))) {
         (W26(A193(lev),pick_level(map,((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dungeon.c",687,"place_level"),C.rn2(npossible))):C.rn2(npossible))))));
         if(place_level(C.i32((proto_index+1)),pd)) return (C.i8(1));
-        (C.cell((map+Number(R26(A193(lev)))*1),"signed char").value=(C.i8(0)));
+        (WC1(map+Number(R26(A193(lev)))*1,C.i8(0)));
         /* this choice didn't work */
     }
     return (C.i8(0));
@@ -748,12 +753,12 @@ function get_dgn_flags(L)
             C.lua_pushinteger(L,C.i64(C.i32((f+1))));
             C.lua_gettable(L,C.i32((-2)));
             if(Number(C.lua_type(L,C.i32((-1)))==4)) {
-                (dgn_flags=C.i32(dgn_flags|C.cell((C.staticAddress("flagstrs2i")+Number(C.luaL_checkoption(L,C.i32((-1)),0,C.staticAddress("flagstrs")))*4),"int").value));
+                (dgn_flags=C.i32(dgn_flags|RC5(C.staticAddress("flagstrs2i")+Number(C.luaL_checkoption(L,C.i32((-1)),0,C.staticAddress("flagstrs")))*4)));
                 C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
             } else C.variadic(20,C.literal("flags[%i] is not a string"),f);
         }
     } else if(Number(C.lua_type(L,C.i32((-1)))==4)) {
-        (dgn_flags=C.i32(dgn_flags|C.cell((C.staticAddress("flagstrs2i")+Number(C.luaL_checkoption(L,C.i32((-1)),0,C.staticAddress("flagstrs")))*4),"int").value));
+        (dgn_flags=C.i32(dgn_flags|RC5(C.staticAddress("flagstrs2i")+Number(C.luaL_checkoption(L,C.i32((-1)),0,C.staticAddress("flagstrs")))*4)));
     } else if(Number(C.lua_type(L,C.i32((-1)))!=0)) C.variadic(21,C.literal("flags is not an array or string"));
     C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
     return dgn_flags;
@@ -764,7 +769,7 @@ function get_dgn_align(L)
     L=C.ptr(L);
     
     
-    let a=C.cell((C.staticAddress("dgnaligns2i")+Number(C.get_table_option(L,C.literal("alignment"),C.literal("unaligned"),C.staticAddress("dgnaligns")))*4),"int").value;
+    let a=RC5(C.staticAddress("dgnaligns2i")+Number(C.get_table_option(L,C.literal("alignment"),C.literal("unaligned"),C.staticAddress("dgnaligns")))*4);
     return a;
 }
 
@@ -812,7 +817,7 @@ function init_dungeon_levels(L,pd,dngidx)
             (W221(tmpl,lvl_chance));
             (W222(tmpl,lvl_nlevels));
             (W224(tmpl,C.i32((lvl_flags|lvl_align))));
-            (W225(tmpl,C.i8((C.i32(C.cell(lvl_bonetag,"char").value)?C.i32(C.cell(lvl_bonetag,"char").value):0))));
+            (W225(tmpl,C.i8((C.i32(RC0(lvl_bonetag))?C.i32(RC0(lvl_bonetag)):0))));
             C.free(lvl_bonetag);
             (W223(tmpl,C.i32((-1))));
             if(lvl_chain) {
@@ -871,8 +876,8 @@ function init_dungeon_branches(L,pd,dngidx)
             (br_chain=C.get_table_str_opt(L,C.literal("chainlevel"),0));
             (br_base=C.get_table_int(L,C.literal("base")));
             (br_range=C.get_table_int_opt(L,C.literal("range"),0));
-            (br_type=C.cell((C.staticAddress("brtypes2i")+Number(C.get_table_option(L,C.literal("branchtype"),C.literal("stair"),C.staticAddress("brtypes")))*4),"int").value);
-            (br_up=C.cell((C.staticAddress("brdirstr2i")+Number(C.get_table_option(L,C.literal("direction"),C.literal("down"),C.staticAddress("brdirstr")))*4),"int").value);
+            (br_type=RC5(C.staticAddress("brtypes2i")+Number(C.get_table_option(L,C.literal("branchtype"),C.literal("stair"),C.staticAddress("brtypes")))*4));
+            (br_up=RC5(C.staticAddress("brdirstr2i")+Number(C.get_table_option(L,C.literal("direction"),C.literal("down"),C.staticAddress("brdirstr")))*4));
             (tmpb=(A183(pd)+Number(C.i32((R186(pd)+f)))*C.sizes["struct tmpbranch"]));
             do {
                 if(C.debugcore(C.literal("dungeon.c"),(C.i8(1)))) {
@@ -1029,7 +1034,7 @@ function init_dungeon_dungeons(L,pd,dngidx)
     /* branches end */
     (W208(A180(pd)+Number(dngidx)*C.sizes["struct tmpdungeon"],dgn_name));
     (W209(A180(pd)+Number(dngidx)*C.sizes["struct tmpdungeon"],dgn_protoname));
-    (W216(A180(pd)+Number(dngidx)*C.sizes["struct tmpdungeon"],C.i8((C.i32(C.cell(dgn_bonetag,"char").value)?C.i32(C.cell(dgn_bonetag,"char").value):0))));
+    (W216(A180(pd)+Number(dngidx)*C.sizes["struct tmpdungeon"],C.i8((C.i32(RC0(dgn_bonetag))?C.i32(RC0(dgn_bonetag)):0))));
     (W17(A210(A180(pd)+Number(dngidx)*C.sizes["struct tmpdungeon"]),C.i16(dgn_base)));
     (W18(A210(A180(pd)+Number(dngidx)*C.sizes["struct tmpdungeon"]),C.i16(dgn_range)));
     (W211(A180(pd)+Number(dngidx)*C.sizes["struct tmpdungeon"],dgn_flags));
@@ -1042,7 +1047,7 @@ function init_dungeon_dungeons(L,pd,dngidx)
     C.strcpy(A72(A95(C.svd)+Number(dngidx)*C.sizes["struct dungeon"]),dgn_protoname);
     C.strcpy(A74(A95(C.svd)+Number(dngidx)*C.sizes["struct dungeon"]),dgn_themerms);
     /* FIXME: accept "none", convert that to '\0' */
-    (W75(A95(C.svd)+Number(dngidx)*C.sizes["struct dungeon"],C.i8((C.i32(C.cell(dgn_bonetag,"char").value)?C.i32(C.cell(dgn_bonetag,"char").value):0))));
+    (W75(A95(C.svd)+Number(dngidx)*C.sizes["struct dungeon"],C.i8((C.i32(RC0(dgn_bonetag))?C.i32(RC0(dgn_bonetag)):0))));
     C.free(dgn_fill);
     /* free((genericptr) dgn_protoname); -- stored in pd.tmpdungeon[] */
     C.free(dgn_bonetag);
@@ -1077,9 +1082,9 @@ function init_dungeon_dungeons(L,pd,dngidx)
 function init_castle_tune()
 {
     let i;
-    for((i=0);Number(i<5);((i=C.i32((i+1)))-1)) (C.cell((A108(C.svt)+Number(i)*1),"char").value=C.i8(C.i32((65+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dungeon.c",1116,"init_castle_tune"),C.rn2(7))):C.rn2(7)))))));
+    for((i=0);Number(i<5);((i=C.i32((i+1)))-1)) (WC0(A108(C.svt)+Number(i)*1,C.i8(C.i32((65+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dungeon.c",1116,"init_castle_tune"),C.rn2(7))):C.rn2(7))))))));
 
-    (C.cell((A108(C.svt)+Number(5)*1),"char").value=C.i8(0));
+    (WC0(A108(C.svt)+Number(5)*1,C.i8(0)));
 }
 
 /* fix up the special level names and locations for quick access */
@@ -1092,7 +1097,7 @@ function fixup_level_locations()
      * Find most of the special levels and dungeons so we can access their
      * locations quickly.
      */
-    for((lev_map=C.staticAddress("level_map"));C.cell((R117(lev_map)+Number(0)*1),"char").value;((lev_map=C.ptr((lev_map+Number(C.sizes["struct level_map"]))))-Number(C.sizes["struct level_map"]))) {
+    for((lev_map=C.staticAddress("level_map"));RC0(R117(lev_map)+Number(0)*1);((lev_map=C.ptr((lev_map+Number(C.sizes["struct level_map"]))))-Number(C.sizes["struct level_map"]))) {
         (x=find_level(R117(lev_map)));
         if(x) {
             assign_level(R118(lev_map),A193(x));
@@ -1583,9 +1588,9 @@ function ceiling(x,y)
     /* other room types will no longer exist when we're interested --
      * see check_special_room()
      */
-    if(C.cell(C.in_rooms(x,y,C.VAULT),"char").value) (what=C.literal("vault's ceiling"));
- else if(C.cell(C.in_rooms(x,y,C.TEMPLE),"char").value) (what=C.literal("temple's ceiling"));
- else if(C.cell(C.in_rooms(x,y,C.SHOPBASE),"char").value) (what=C.literal("shop's ceiling"));
+    if(RC0(C.in_rooms(x,y,C.VAULT))) (what=C.literal("vault's ceiling"));
+ else if(RC0(C.in_rooms(x,y,C.TEMPLE))) (what=C.literal("temple's ceiling"));
+ else if(RC0(C.in_rooms(x,y,C.SHOPBASE))) (what=C.literal("shop's ceiling"));
  else if(((Number(!!((Number(!!(C.i32(R26(A51(A96(C.svd))))||C.i32(R25(A51(A96(C.svd)))))))&&C.i32(on_level(A248(C.u),A51(A96(C.svd))))))))) (what=C.literal("water above"));
  else if((Number(!!(Number(C.i32((R189(lev)))==C.AIR)||Number(C.i32((R189(lev)))==C.CLOUD))))) (what=C.literal("sky"));
  else if(((Number(!!((Number(!!(C.i32(R26(A52(A96(C.svd))))||C.i32(R25(A52(A96(C.svd)))))))&&C.i32(on_level(A248(C.u),A52(A96(C.svd))))))))) (what=C.literal("flames above"));
@@ -1917,7 +1922,7 @@ function lev_by_name(nam)
         if(Number(!(C.strncmpi(nam,C.literal("the "),4)))) (nam=C.ptr(nam+4*1));
         if(Number(!!(Number(((p=C.strstri(nam,C.literal(" level"))))!=0)&&Number(p==(C.eos(nam)-Number(6)*1))))) {
             (nam=C.strcpy(buf,nam));
-            (C.cell(((C.eos(buf)-Number(6)*1)),"char").value=C.i8(0));
+            (WC0(C.eos(buf)-Number(6)*1,C.i8(0)));
         }
         /* hell is the old name, and wouldn't match; gehennom would match its
            branch, yielding the castle level instead of valley of the dead */
@@ -1996,9 +2001,9 @@ function tport_menu(win,entry,lchoices,lvl_p,cannotreach)
     let tmpbuf=C.stackAlloc((1*256));
     let any=C.stackAlloc(C.sizes["union any"]);
     let clr=8;
-    (C.cell((A113(lchoices)+Number(R112(lchoices))*1),"signed char").value=C.i8(R26(lvl_p)));
-    (C.cell((A115(lchoices)+Number(R112(lchoices))*2),"short").value=R25(lvl_p));
-    (C.cell((A114(lchoices)+Number(R112(lchoices))*1),"signed char").value=depth(lvl_p));
+    (WC1(A113(lchoices)+Number(R112(lchoices))*1,C.i8(R26(lvl_p))));
+    (WC3(A115(lchoices)+Number(R112(lchoices))*2,R25(lvl_p)));
+    (WC1(A114(lchoices)+Number(R112(lchoices))*1,depth(lvl_p)));
     C.copy(any,A16(C.cg),C.sizes["union any"]);
     if(cannotreach) {
         /* not selectable, but still consumes next menuletter;
@@ -2129,9 +2134,9 @@ function print_dungeon(bymenu,rlev,rdgn)
             (idx=C.i32((R3(A158(selected.value+Number(0)*C.sizes["struct mi"]))-1)));
             C.free(selected.value);
             if(Number(!!(rlev&&rdgn))) {
-                (C.cell(rlev,"signed char").value=C.cell((A113(lchoices)+Number(idx)*1),"signed char").value);
-                (C.cell(rdgn,"short").value=C.cell((A115(lchoices)+Number(idx)*2),"short").value);
-                return C.cell((A114(lchoices)+Number(idx)*1),"signed char").value;
+                (WC1(rlev,RC1(A113(lchoices)+Number(idx)*1)));
+                (WC3(rdgn,RC3(A115(lchoices)+Number(idx)*2)));
+                return RC1(A114(lchoices)+Number(idx)*1);
             }
         }
         return C.i8(0);
@@ -2160,14 +2165,14 @@ function print_dungeon(bymenu,rlev,rdgn)
            given level; quest and ft.ludios have pairs (one in main
            dungeon matched with one in the corresponding branch), the
            elemental planes have singletons (connection to next plane) */
-        (C.cell(buf,"char").value=C.i8(0));
+        (WC0(buf,C.i8(0)));
         for((trap=R93(C.gf));trap;(trap=R226(trap))) if(Number(C.i32(R229(trap))==C.MAGIC_PORTAL)) break;
 
         if(trap) C.variadic(61,buf,C.literal("Portal @ (%d,%d), hero @ (%d,%d)"),C.i32(R227(trap)),C.i32(R228(trap)),C.i32(R244(C.u)),C.i32(R245(C.u)));
  else if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(((Number(!!((Number(!!(C.i32(R26(A50(A96(C.svd))))||C.i32(R25(A50(A96(C.svd)))))))&&C.i32(on_level(A248(C.u),A50(A96(C.svd))))))))||((Number(!!((Number(!!(C.i32(R26(A51(A96(C.svd))))||C.i32(R25(A51(A96(C.svd)))))))&&C.i32(on_level(A248(C.u),A51(A96(C.svd))))))))))||((Number(!!((Number(!!(C.i32(R26(A52(A96(C.svd))))||C.i32(R25(A52(A96(C.svd)))))))&&C.i32(on_level(A248(C.u),A52(A96(C.svd))))))))))||((Number(!!((Number(!!(C.i32(R26(A53(A96(C.svd))))||C.i32(R25(A53(A96(C.svd)))))))&&C.i32(on_level(A248(C.u),A53(A96(C.svd))))))))))||((Number(!!((Number(!!(C.i32(R26(A60(A96(C.svd))))||C.i32(R25(A60(A96(C.svd)))))))&&C.i32(on_level(A248(C.u),A60(A96(C.svd))))))))))||C.i32(at_dgn_entrance(C.literal("The Quest")))))||((Number(!!((Number(!!(C.i32(R26(A63(A96(C.svd))))||C.i32(R25(A63(A96(C.svd)))))))&&C.i32(on_level(A248(C.u),A63(A96(C.svd))))))))))) C.strcpy(buf,C.literal("No portal found."));
         /* only report "no portal found" when actually expecting a portal */
         /* only give output if we found a portal or expected one and didn't */
-        if(C.cell(buf,"char").value) {
+        if(RC0(buf)) {
             C.indirect(14,(R240(C.windowprocs)),win,0,C.literal(""));
             C.indirect(15,(R240(C.windowprocs)),win,0,buf);
         }
@@ -2232,7 +2237,7 @@ function query_annotation(lev)
     let nbuf=C.stackAlloc((1*256));
     /* Buffer for response */
     if(Number(!(((mptr=find_mapseen((lev?lev:A248(C.u)))))))) return;
-    (C.cell((nbuf+Number(0)*1),"char").value=C.i8(0));
+    (WC0(nbuf+Number(0)*1,C.i8(0)));
     if(R127(mptr)) {
         let tmpbuf=C.stackAlloc((1*256));
         C.variadic(65,tmpbuf,C.literal("Replace annotation \"%.30s%s\" with?"),R127(mptr),((Number(C.strlen(R127(mptr))>C.u64(30)))?C.literal("..."):C.literal("")));
@@ -2260,7 +2265,7 @@ function query_annotation(lev)
     }
     /* empty input or ESC means don't add or change annotation;
        space-only means discard current annotation without adding new one */
-    if(Number(!!(Number(!(C.cell(nbuf,"char").value))||Number(C.i32(C.cell(nbuf,"char").value)==27)))) return;
+    if(Number(!!(Number(!(RC0(nbuf)))||Number(C.i32(RC0(nbuf))==27)))) return;
     /* strip leading and trailing spaces, compress out consecutive spaces */
     C.mungspaces(nbuf);
     /* discard old annotation, if any */
@@ -2271,7 +2276,7 @@ function query_annotation(lev)
     }
     /* add new annotation, unless it's all spaces (which will be an
        empty string after mungspaces() above) */
-    if(Number(!!(C.i32(C.cell(nbuf,"char").value)&&C.strcmp(nbuf,C.literal(" "))))) {
+    if(Number(!!(C.i32(RC0(nbuf))&&C.strcmp(nbuf,C.literal(" "))))) {
         (W127(mptr,C.dupstr(nbuf)));
         /* _lth field does not include trailing '\0' in the count */
         (W128(mptr,C.u32(C.strlen(R127(mptr)))));
@@ -2435,7 +2440,7 @@ function load_mapseen(nhfp)
         /* length doesn't include terminator (which isn't saved & restored) */
         (W127(load,C.alloc(C.u32((R128(load)+C.u32(1))))));
         C.sfi_char(nhfp,R127(load),C.literal("mapseen-custom"),C.i32(R128(load)));
-        (C.cell((R127(load)+Number(R128(load))*1),"char").value=C.i8(0));
+        (WC0(R127(load)+Number(R128(load))*1,C.i8(0)));
     } else {
         (W127(load,0));
     }
@@ -2489,8 +2494,8 @@ function overview_stats(win,statsfmt,total_count,total_size)
         C.variadic(72,buf,statsfmt,hdrbuf,acount,asize);
         C.indirect(20,(R240(C.windowprocs)),win,0,buf);
     }
-    (C.cell(total_count,"long").value=C.i64(C.cell(total_count,"long").value+C.i64((C.i64((ocount+bcount))+acount))));
-    (C.cell(total_size,"long").value=C.i64(C.cell(total_size,"long").value+C.i64((C.i64((osize+bsize))+asize))));
+    (WC8(total_count,C.i64(RC8(total_count)+C.i64((C.i64((ocount+bcount))+acount)))));
+    (WC8(total_size,C.i64(RC8(total_size)+C.i64((C.i64((osize+bsize))+asize)))));
     } finally {C.stackRestore(stackFrame); }
 }
 
@@ -2588,7 +2593,7 @@ function update_lastseentyp(x,y)
     let ltyp=C.i32(R189((A66(A101(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]));
     if(Number(ltyp==C.DRAWBRIDGE_UP)) (ltyp=C.i32(C.db_under_typ(C.i32(R191((A66(A101(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))));
     if(Number(!!(Number(!!(Number(((mtmp=(C.cell(((A67(A101(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct monst *").value)))!=0)&&Number((C.i32((C.i32(R165(mtmp))&7)))==C.M_AP_FURNITURE)))&&C.canseemon(mtmp)))) (ltyp=C.cmap_to_type(C.i32(R164(mtmp))));
-    (C.cell(((A100(C.svl)+Number(x)*(1*21))+Number(y)*1),"signed char").value=C.i8(ltyp));
+    (WC1((A100(C.svl)+Number(x)*(1*21))+Number(y)*1,C.i8(ltyp)));
 }
 
 /* for some cases where deferred update needs to be done immediately;
@@ -2599,7 +2604,7 @@ function update_mapseen_for(x,y)
     y=C.i16(y);
     recalc_mapseen();
     /* whole level */
-    return C.i32(C.cell(((A100(C.svl)+Number(x)*(1*21))+Number(y)*1),"signed char").value);
+    return C.i32(RC1((A100(C.svl)+Number(x)*(1*21))+Number(y)*1));
 }
 
 /* count mapseen feature from lastseentyp at x,y */
@@ -2611,7 +2616,7 @@ function count_feat_lastseentyp(mptr,x,y)
     /* remembered data for a level; update feat.X counts */
     let count;
     let atmp;
-    switch(C.i32(C.cell(((A100(C.svl)+Number(x)*(1*21))+Number(y)*1),"signed char").value)) {
+    switch(C.i32(RC1((A100(C.svl)+Number(x)*(1*21))+Number(y)*1))) {
         /* levels that have these tend of have a lot of them */
         /*
      * FIXME?  due to theme rooms, lots of levels have an increased
@@ -2747,7 +2752,7 @@ function recalc_mapseen()
     (W154(A126(mptr),C.u32((Number(!!(C.i32(on_level(A248(C.u),A60(A96(C.svd))))&&C.i32(R187(A105(C.svq)))))))));
     /* flags.msanctum, .valley, and .vibrating_square handled below */
     /* track rooms the hero is in */
-    for((i=C.u32(0));Number(C.i32(((uroom=C.cell((A251(C.u)+Number(i)*1),"char").value)))!=0);(i=C.u32((i+1)))) {
+    for((i=C.u32(0));Number(C.i32(((uroom=RC0(A251(C.u)+Number(i)*1))))!=0);(i=C.u32((i+1)))) {
         (ridx=C.u32((C.u32(uroom)-C.u32(3))));
         (W156(A129(mptr)+Number(ridx)*C.sizes["struct mapseen_rooms"],C.u32(1)));
         (W157(A129(mptr)+Number(ridx)*C.sizes["struct mapseen_rooms"],C.u32(((Number(C.i32(R159(A106(C.svr)+Number(ridx)*C.sizes["struct mkroom"]))>=C.SHOPBASE))?(Number(!!(Number(!(((mtmp=C.shop_keeper(uroom)))))||Number(!(C.inhishop(mtmp)))))):((Number(C.i32(R159(A106(C.svr)+Number(ridx)*C.sizes["struct mkroom"]))==C.TEMPLE))?(Number(!!(Number(!(((mtmp=C.findpriest(uroom)))))||Number(!(C.inhistemple(mtmp)))))):0)))));
@@ -2842,7 +2847,7 @@ function recalc_mapseen()
     /* decide which past hero deaths have become known; there's no
        guarantee of either a grave or a ghost, so we go by whether the
        current hero has seen the map location where each old one died */
-    for((bp=R130(mptr));bp;(bp=R10(bp))) if(C.cell(((A100(C.svl)+Number(R13(bp))*(1*21))+Number(R14(bp))*1),"signed char").value) {
+    for((bp=R130(mptr));bp;(bp=R10(bp))) if(RC1((A100(C.svl)+Number(R13(bp))*(1*21))+Number(R14(bp))*1)) {
         (W15(bp,C.i8(1)));
         (W143(A126(mptr),C.u32(1)));
     }
@@ -2941,9 +2946,9 @@ function traverse_mapseenchn(viewendgame,win,why,reason,lastdun_p)
         if(C.i32((viewendgame^(Number(C.i32(R25(A124(mptr)))==C.i32(R25(A54(A96(C.svd))))))))) continue;
         /* only print out info for a level or a dungeon if it's of interest */
         if(Number(!!(Number(why!=0)||C.i32(interest_mapseen(mptr))))) {
-            (showheader=C.i8((Number(C.i32(R25(A124(mptr)))!=C.cell(lastdun_p,"int").value))));
+            (showheader=C.i8((Number(C.i32(R25(A124(mptr)))!=RC5(lastdun_p)))));
             print_mapseen(win,mptr,why,reason,showheader);
-            (C.cell(lastdun_p,"int").value=C.i32(R25(A124(mptr))));
+            (WC5(lastdun_p,C.i32(R25(A124(mptr)))));
         }
     }
 }
@@ -2958,7 +2963,7 @@ function seen_string(x,obj)
             return C.literal("no");
         /* an() returns too much.  index/strchr is ok in this case */
         case (1):
-            return (C.strchr(C.vowels,C.i32(C.cell(obj,"char").value))?C.literal("an"):C.literal("a"));
+            return (C.strchr(C.vowels,C.i32(RC0(obj)))?C.literal("an"):C.literal("a"));
         case (2):
             return C.literal("some");
         case (3):
@@ -2992,7 +2997,7 @@ function endgamelevelname(outbuf,indx)
     outbuf=C.ptr(outbuf);
     indx=C.i32(indx);
     let planename=0;
-    (C.cell(outbuf,"char").value=C.i8(0));
+    (WC0(outbuf,C.i8(0)));
     switch(indx) {
         case (C.i32((-5))):
             C.strcpy(outbuf,C.literal("Astral Plane"));
@@ -3011,7 +3016,7 @@ function endgamelevelname(outbuf,indx)
         break;
     }
     if(planename) C.variadic(73,outbuf,C.literal("Plane of %s"),planename);
- else if(Number(!(C.cell(outbuf,"char").value))) C.variadic(74,outbuf,C.literal("unknown plane #%d"),indx);
+ else if(Number(!(RC0(outbuf)))) C.variadic(74,outbuf,C.literal("unknown plane #%d"),indx);
     return outbuf;
 }
 
@@ -3045,7 +3050,7 @@ function tunesuffix(mptr,outbuf,bsz)
     const stackFrame=C.stackSave();
     try {
     /* size of outbuf */
-    (C.cell(outbuf,"char").value=C.i8(0));
+    (WC0(outbuf,C.i8(0)));
     if(Number(!!(C.i32(R148(A126(mptr)))&&C.i32(R234(A258(C.u)))))) {
         let tmp=C.stackAlloc((1*256));
         if(Number(C.i32(R234(A258(C.u)))==2)) C.variadic(75,tmp,C.literal("notes \"%s\""),A108(C.svt));
@@ -3112,7 +3117,7 @@ function print_mapseen(win,mptr,final,how,printdun)
     C.add_menu(win,C.nul_glyphinfo,any,C.i8(0),C.i8(0),0,8,buf,0);
     if(R142(A126(mptr))) return;
     if((Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(R131(A125(mptr)))||C.i32(R132(A125(mptr)))))||C.i32(R134(A125(mptr)))))||C.i32(R133(A125(mptr)))))||C.i32(R135(A125(mptr)))))||C.i32(R136(A125(mptr)))))||C.i32(R137(A125(mptr)))))||C.i32(R138(A125(mptr))))))) {
-        (C.cell((buf+Number(0)*1),"char").value=C.i8(0));
+        (WC0(buf+Number(0)*1,C.i8(0)));
         (i=0);
         /* interest counter */
         /* List interests in an order vaguely corresponding to
@@ -3169,13 +3174,13 @@ function print_mapseen(win,mptr,final,how,printdun)
         } while(0);
         /* capitalize afterwards */
         (i=C.i32(C.strlen(C.literal("      "))));
-        (C.cell((buf+Number(i)*1),"char").value=C.highc(C.cell((buf+Number(i)*1),"char").value));
+        (WC0(buf+Number(i)*1,C.highc(RC0(buf+Number(i)*1))));
         /* capitalizing it makes it a sentence; terminate with '.' */
         C.strcat(buf,C.literal("."));
         C.add_menu_str(win,buf);
     }
     /* we assume that these are mutually exclusive */
-    (C.cell(buf,"char").value=C.i8(0));
+    (WC0(buf,C.i8(0)));
     if(R144(A126(mptr))) {
         C.variadic(96,buf,C.literal("%sOracle of Delphi."),C.literal("      "));
     } else if((Number(C.i32(R25(A124(mptr)))==C.i32((R56(A96(C.svd))))))) {
@@ -3202,7 +3207,7 @@ function print_mapseen(win,mptr,final,how,printdun)
     } else if(R150(A126(mptr))) {
         C.variadic(107,buf,C.literal("%sMoloch's Sanctum."),C.literal("      "));
     }
-    if(C.cell(buf,"char").value) {
+    if(RC0(buf)) {
         C.add_menu_str(win,buf);
     }
     /* quest entrance is not mutually-exclusive with bigroom or rogue level */

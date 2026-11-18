@@ -82,6 +82,10 @@ export function createLibraryBindings({ regex = false, regexDialect = 'native' }
             ++calls.tgoto;
             return result(services, terminfo.tgoto(string(services, format), column, row));
         },
+        tgotoNative(services, format, column, row) {
+            ++calls.tgoto;
+            return terminfo.tgoto(string(services, format), column, row);
+        },
         tputs(services, value, lines, callback) {
             ++calls.tputs;
             return terminfo.tputs(string(services, value), lines, services.callback

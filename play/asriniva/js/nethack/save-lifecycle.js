@@ -3,6 +3,7 @@ import abi from './save-lifecycle-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as source from '../ported/save.js';
 import {createSaveEnvironment} from './bindings/save.js';
+import {nativeStateFor} from './native/state-bridge.js';
 
 export function enableSaveLifecycle(environment,layouts){
  const {services,ctypes,memory,transport,functions}=environment,L=layouts.save,address=environment.address;
@@ -58,6 +59,26 @@ export function enableSaveLifecycle(environment,layouts){
  // reference arguments and copy their values back through real SF owners.
  for(const [name,target]of Object.entries(abi.serializers))local[name]=(...args)=>resolve(target)(...boundary(args));
  const context=createSaveEnvironment(local,L);
+ const owner=nativeStateFor(environment);
+ if(owner.saveMapLocations)context.saveMapLocations=owner.saveMapLocations;
+ if(owner.chronicle){
+  context.chronicle=owner.chronicle;
+  context.chronicleBuffer=()=>{
+   const size=context.sizes.gamelog_line;
+   const at=transport.stackAlloc(size);
+   memory.memset(at,0,size);
+   const row=context.view('gamelog_line',at);
+   const capacity=owner.chronicle.reduce((size,event)=>Math.max(size,event.text.length+1),1);
+   const text=transport.stackAlloc(capacity);
+   return {store(event){
+    row.turn=event.turn;
+    row.flags=event.flags;
+    row.text=memory.writeString(text,event.text);
+    row.next=0;
+    return row;
+   }};
+  };
+ }
  const names=Object.keys(source).filter(name=>typeof source[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
  const parameters=name=>{const match=publicFunctions.functions[name].match(/^(.+?)\s*\((.*)\)$/);if(!match)throw new Error('Unknown SAVE prototype '+name);return match[2].split(',').map(v=>v.trim()).filter(v=>v&&v!=='void');};
  environment.register('save-lifecycle',Object.fromEntries(names.map(name=>[name,source[name]])),context,{prepareArgs:(name,args)=>args.map((value,i)=>{

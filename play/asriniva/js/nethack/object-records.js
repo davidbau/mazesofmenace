@@ -6,7 +6,9 @@ export function enableObjectRecords(environment,layouts) {
     const {ctypes,services,transport}=environment;
     for(const name of ['objects','mons','cg','svc','svl'])environment.requireGlobal(name);
     if(typeof services.rnd!=='function')throw new Error('Object records require shared RND');
-    environment.register('allocation-strings',{dupstr:(...args)=>environment.alloc('dupstr',...args)});
+    const dupstr=source=>environment.alloc('dupstr',source);
+    dupstr.nativeDirect=true;
+    environment.register('allocation-strings',{dupstr});
     const projection=(type,p,fields)=>{
         p=environment.address(p);if(!p)return 0;
         const view={address:p};

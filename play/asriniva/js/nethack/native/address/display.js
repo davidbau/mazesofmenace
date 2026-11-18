@@ -214,26 +214,26 @@ function mon_visible(mon)
 function see_with_infrared(mon)
 {
     mon=C.ptr(mon);
-    return (Number(!!(Number(!!(Number(!!(Number(!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"]))))))&&((C.i32((C.i32(C.display_read_permonst_mflags3(C.display_read_monst_data(mon)))&512))))))&&(Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(C.display_read_monst_my(mon))*8),"unsigned char *").value+Number(C.display_read_monst_mx(mon))*1),"unsigned char").value)&1)))!=0)))));
+    return (Number(!!(Number(!!(Number(!!(Number(!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"]))))))&&((C.i32((C.i32(C.display_read_permonst_mflags3(C.display_read_monst_data(mon)))&512))))))&&(Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(C.display_read_monst_my(mon))*8))+Number(C.display_read_monst_mx(mon))*1)))&1)))!=0)))));
 }
 
 function canseemon(mon)
 {
     mon=C.ptr(mon);
-    return (Number(!!(((C.i32(R92(mon))?C.i32(C.worm_known(mon)):(Number(!!((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(C.display_read_monst_my(mon))*8),"unsigned char *").value+Number(C.display_read_monst_mx(mon))*1),"unsigned char").value)&2)))!=0))||(Number(!!(Number(!!(Number(!!(Number(!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"]))))))&&((C.i32((C.i32(C.display_read_permonst_mflags3(C.display_read_monst_data(mon)))&512))))))&&(Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(C.display_read_monst_my(mon))*8),"unsigned char *").value+Number(C.display_read_monst_mx(mon))*1),"unsigned char").value)&1)))!=0))))))))))&&(Number(!!((Number(!!(Number(!(R88(mon)))||(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])))))))&&Number(!(R89(mon)))))))));
+    return (Number(!!(((C.i32(R92(mon))?C.i32(C.worm_known(mon)):(Number(!!((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(C.display_read_monst_my(mon))*8))+Number(C.display_read_monst_mx(mon))*1)))&2)))!=0))||(Number(!!(Number(!!(Number(!!(Number(!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"]))))))&&((C.i32((C.i32(C.display_read_permonst_mflags3(C.display_read_monst_data(mon)))&512))))))&&(Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(C.display_read_monst_my(mon))*8))+Number(C.display_read_monst_mx(mon))*1)))&1)))!=0))))))))))&&(Number(!!((Number(!!(Number(!(R88(mon)))||(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])))))))&&Number(!(R89(mon)))))))));
 }
 
 function knowninvisible(mon)
 {
     mon=C.ptr(mon);
-    return (Number(!!(C.i32(R88(mon))&&(Number(!!((Number(!!((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(C.display_read_monst_my(mon))*8),"unsigned char *").value+Number(C.display_read_monst_mx(mon))*1),"unsigned char").value)&2)))!=0))&&(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"]))))||(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"]))))))))))||(Number(!!(Number(!!(Number(!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&(C.i64((C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])&C.i64((~(C.i64((C.i64((67108864n|33554432n))|16777216n))))))))))&&Number(C.dist2((C.display_read_monst_mx(mon)),(C.display_read_monst_my(mon)),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=(C.i32((8*8)))))))))))));
+    return (Number(!!(C.i32(R88(mon))&&(Number(!!((Number(!!((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(C.display_read_monst_my(mon))*8))+Number(C.display_read_monst_mx(mon))*1)))&2)))!=0))&&(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"]))))||(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"]))))))))))||(Number(!!(Number(!!(Number(!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&(C.i64((C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])&C.i64((~(C.i64((C.i64((67108864n|33554432n))|16777216n))))))))))&&Number(C.dist2((C.display_read_monst_mx(mon)),(C.display_read_monst_my(mon)),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=(C.i32((8*8)))))))))))));
 }
 
 /* #define knowninvisible() isn't useful here */
 function is_safemon(mon)
 {
     mon=C.ptr(mon);
-    return (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(C.display_read_flag_safe_dog(C.flags))&&C.i32(R90(mon))))&&(Number(!!((Number(!!(((C.i32(R92(mon))?C.i32(C.worm_known(mon)):(Number(!!((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(C.display_read_monst_my(mon))*8),"unsigned char *").value+Number(C.display_read_monst_mx(mon))*1),"unsigned char").value)&2)))!=0))||(Number(!!(Number(!!(Number(!!(Number(!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"]))))))&&((C.i32((C.i32(C.display_read_permonst_mflags3(C.display_read_monst_data(mon)))&512))))))&&(Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(C.display_read_monst_my(mon))*8),"unsigned char *").value+Number(C.display_read_monst_mx(mon))*1),"unsigned char").value)&1)))!=0))))))))))&&(Number(!!((Number(!!(Number(!(R88(mon)))||(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])))))))&&Number(!(R89(mon)))))))))||(Number(!!(Number(!!((Number(!!(Number(!(R168(C.u)))||Number((mon)==C.display_read_you_ustuck(C.u)))))&&(Number(!!(Number(!((R169(C.u))))||(Number(!!(Number(C.dist2((C.display_read_monst_mx(mon)),(C.display_read_monst_my(mon)),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=2)&&C.i32(C.is_pool(C.display_read_monst_mx(mon),C.display_read_monst_my(mon)))))))))))&&(Number(!!(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"]))))||(Number(!!((Number(!((Number((C.u64((C.display_read_permonst_mflags1(C.display_read_monst_data(mon))&C.u64(65536n))))!=C.u64(0n))))))&&(Number(!!((Number(!!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])))))))||(Number(!!((C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"]))&&(Number(C.dist2((C.display_read_monst_mx(mon)),(C.display_read_monst_my(mon)),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=C.display_read_you_unblind_telepat_range(C.u))))))))))))))||(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"]))))&&(Number(!!(Number(!!(Number((C.u64((C.display_read_warntype_info_obj(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))||Number((C.u64((C.display_read_warntype_info_polyd(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))))||(Number(!!(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&&(Number(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))==C.display_read_monst_data(mon)))))))))))))))))))))))&&Number(!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.CONFUSION)*C.sizes["struct prop"])))))&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))))))&&Number(!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.STUNNED)*C.sizes["struct prop"]))))));
+    return (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(C.display_read_flag_safe_dog(C.flags))&&C.i32(R90(mon))))&&(Number(!!((Number(!!(((C.i32(R92(mon))?C.i32(C.worm_known(mon)):(Number(!!((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(C.display_read_monst_my(mon))*8))+Number(C.display_read_monst_mx(mon))*1)))&2)))!=0))||(Number(!!(Number(!!(Number(!!(Number(!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"]))))))&&((C.i32((C.i32(C.display_read_permonst_mflags3(C.display_read_monst_data(mon)))&512))))))&&(Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(C.display_read_monst_my(mon))*8))+Number(C.display_read_monst_mx(mon))*1)))&1)))!=0))))))))))&&(Number(!!((Number(!!(Number(!(R88(mon)))||(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])))))))&&Number(!(R89(mon)))))))))||(Number(!!(Number(!!((Number(!!(Number(!(R168(C.u)))||Number((mon)==C.display_read_you_ustuck(C.u)))))&&(Number(!!(Number(!((R169(C.u))))||(Number(!!(Number(C.dist2((C.display_read_monst_mx(mon)),(C.display_read_monst_my(mon)),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=2)&&C.i32(C.is_pool(C.display_read_monst_mx(mon),C.display_read_monst_my(mon)))))))))))&&(Number(!!(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"]))))||(Number(!!((Number(!((Number((C.u64((C.display_read_permonst_mflags1(C.display_read_monst_data(mon))&C.u64(65536n))))!=C.u64(0n))))))&&(Number(!!((Number(!!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])))))))||(Number(!!((C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"]))&&(Number(C.dist2((C.display_read_monst_mx(mon)),(C.display_read_monst_my(mon)),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=C.display_read_you_unblind_telepat_range(C.u))))))))))))))||(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"]))))&&(Number(!!(Number(!!(Number((C.u64((C.display_read_warntype_info_obj(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))||Number((C.u64((C.display_read_warntype_info_polyd(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))))||(Number(!!(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&&(Number(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))==C.display_read_monst_data(mon)))))))))))))))))))))))&&Number(!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.CONFUSION)*C.sizes["struct prop"])))))&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))))))&&Number(!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.STUNNED)*C.sizes["struct prop"]))))));
 }
 
 /* #define is_safemon() isn't useful here */
@@ -259,7 +259,7 @@ function magic_map_background(x,y,show)
      * Correct for out of sight lit corridors and rooms that the hero
      * doesn't remember as lit.
      */
-    if(Number(!!(Number(!((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))))&&Number(!(R125(lev)))))) {
+    if(Number(!!(Number(!((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8))+Number(x)*1)))&2)))!=0))))&&Number(!(R125(lev)))))) {
         /* Floor spaces are dark if unlit.  Corridors are dark if unlit. */
         if(Number(!!(Number(C.i32(C.display_read_rm_typ(lev))==C.ROOM)&&Number(glyph==(((Number((C.S_room)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_room)<=C.S_trwall))?(C.i32((C.i32(((C.S_room)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_room)<C.S_altar))?(C.i32(((C.i32(((C.S_room)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_room)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_room)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_room)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_room)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_room)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))))))) (glyph=((Number(!!(C.i32(C.display_read_flag_dark_room(C.flags))&&C.i32(C.display_read_instance_flags_wc_color(C.iflags)))))?(((Number((((((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.S_stone:C.S_darkroom)))==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((((((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.S_stone:C.S_darkroom)))<=C.S_trwall))?(C.i32((C.i32(((((((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.S_stone:C.S_darkroom)))-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((((((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.S_stone:C.S_darkroom)))<C.S_altar))?(C.i32(((C.i32(((((((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.S_stone:C.S_darkroom)))-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((((((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.S_stone:C.S_darkroom)))==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((((((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.S_stone:C.S_darkroom)))<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((((((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.S_stone:C.S_darkroom)))-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((((((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.S_stone:C.S_darkroom)))<=C.S_goodpos))?(C.i32(((C.i32(((((((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.S_stone:C.S_darkroom)))-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))):C.GLYPH_NOTHING_OFF));
  else if(Number(!!(Number(C.i32(C.display_read_rm_typ(lev))==C.CORR)&&Number(glyph==(((Number((C.S_litcorr)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_litcorr)<=C.S_trwall))?(C.i32((C.i32(((C.S_litcorr)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_litcorr)<C.S_altar))?(C.i32(((C.i32(((C.S_litcorr)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_litcorr)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_litcorr)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_litcorr)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_litcorr)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_litcorr)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))))))) (glyph=(((Number((C.S_corr)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_corr)<=C.S_trwall))?(C.i32((C.i32(((C.S_corr)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_corr)<C.S_altar))?(C.i32(((C.i32(((C.S_corr)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_corr)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_corr)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_corr)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_corr)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_corr)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))));
@@ -340,10 +340,10 @@ function map_object(obj,show)
     obj=C.ptr(obj);
     show=C.i32(show);
     let x=C.display_read_obj_ox(obj); let y=C.display_read_obj_oy(obj);
-    let glyph=(((Number(C.i32(C.display_read_obj_otyp(obj))==C.STATUE))?((((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(C.i32((((C.rn2_on_display_rng(C.NUMMONS)))+(((Number(!(C.rn2_on_display_rng(2))))?C.GLYPH_MON_MALE_OFF:C.GLYPH_MON_FEM_OFF))))):(C.i32((C.display_read_obj_corpsenm(obj)+(((Number((C.i32((C.i32(C.display_read_obj_spe(obj))&3)))==1))?(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_FEM_PILETOP_OFF:C.GLYPH_STATUE_FEM_OFF)):(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_MALE_PILETOP_OFF:C.GLYPH_STATUE_MALE_OFF))))))))):(((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(((Number(((W59(C.go,C.i32((C.rn2_on_display_rng(C.i32((C.NUM_OBJECTS-C.FIRST_OBJECT)))+C.FIRST_OBJECT)))))==C.CORPSE))?(C.i32(((C.rn2_on_display_rng(C.NUMMONS))+C.GLYPH_BODY_OFF))):(C.i32((C.display_read_instance_globals_o_otg_temp(C.go)+C.GLYPH_OBJ_OFF))))):((Number(C.i32(C.display_read_obj_otyp(obj))==C.CORPSE))?((C.i32((C.display_read_obj_corpsenm(obj)+(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_BODY_PILETOP_OFF:C.GLYPH_BODY_OFF)))))):((Number(!!(Number(!(R106(obj)))&&(Number(!!(Number(!!(Number(C.i32(C.display_read_obj_oclass(obj))==C.POTION_CLASS)||(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))>=C.FIRST_REAL_GEM)&&(Number(C.i32(C.display_read_obj_otyp(obj))<=C.LAST_GLASS_GEM)))))))||(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))>=C.FIRST_SPELL)&&(Number(C.i32(C.display_read_obj_otyp(obj))<=C.LAST_SPELL)))))))))))?((C.i32((C.i32(C.display_read_obj_oclass(obj))+(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF)))))):((C.i32((C.i32(C.display_read_obj_otyp(obj))+(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF)))))))))));
+    let glyph=(((Number(C.i32(C.display_read_obj_otyp(obj))==C.STATUE))?((((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(C.i32((((C.rn2_on_display_rng(C.NUMMONS)))+(((Number(!(C.rn2_on_display_rng(2))))?C.GLYPH_MON_MALE_OFF:C.GLYPH_MON_FEM_OFF))))):(C.i32((C.display_read_obj_corpsenm(obj)+(((Number((C.i32((C.i32(C.display_read_obj_spe(obj))&3)))==1))?(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8)))))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_FEM_PILETOP_OFF:C.GLYPH_STATUE_FEM_OFF)):(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8)))))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_MALE_PILETOP_OFF:C.GLYPH_STATUE_MALE_OFF))))))))):(((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(((Number(((W59(C.go,C.i32((C.rn2_on_display_rng(C.i32((C.NUM_OBJECTS-C.FIRST_OBJECT)))+C.FIRST_OBJECT)))))==C.CORPSE))?(C.i32(((C.rn2_on_display_rng(C.NUMMONS))+C.GLYPH_BODY_OFF))):(C.i32((C.display_read_instance_globals_o_otg_temp(C.go)+C.GLYPH_OBJ_OFF))))):((Number(C.i32(C.display_read_obj_otyp(obj))==C.CORPSE))?((C.i32((C.display_read_obj_corpsenm(obj)+(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8)))))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_BODY_PILETOP_OFF:C.GLYPH_BODY_OFF)))))):((Number(!!(Number(!(R106(obj)))&&(Number(!!(Number(!!(Number(C.i32(C.display_read_obj_oclass(obj))==C.POTION_CLASS)||(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))>=C.FIRST_REAL_GEM)&&(Number(C.i32(C.display_read_obj_otyp(obj))<=C.LAST_GLASS_GEM)))))))||(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))>=C.FIRST_SPELL)&&(Number(C.i32(C.display_read_obj_otyp(obj))<=C.LAST_SPELL)))))))))))?((C.i32((C.i32(C.display_read_obj_oclass(obj))+(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8)))))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF)))))):((C.i32((C.i32(C.display_read_obj_otyp(obj))+(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8)))))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF)))))))))));
     /* if this object is already displayed as a generic object, it might
        become a specific one now */
-    if(Number(!!(Number(!!((Number(!!((Number(!!(Number((glyph)>C.GLYPH_OBJ_OFF)&&Number((glyph)<C.i32((C.i32((C.GLYPH_OBJ_OFF+C.FIRST_OBJECT))-1))))))||(Number(!!(Number((glyph)>C.GLYPH_OBJ_PILETOP_OFF)&&Number((glyph)<C.i32((C.i32((C.GLYPH_OBJ_PILETOP_OFF+C.FIRST_OBJECT))-1)))))))))&&(Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))))&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))))))) {
+    if(Number(!!(Number(!!((Number(!!((Number(!!(Number((glyph)>C.GLYPH_OBJ_OFF)&&Number((glyph)<C.i32((C.i32((C.GLYPH_OBJ_OFF+C.FIRST_OBJECT))-1))))))||(Number(!!(Number((glyph)>C.GLYPH_OBJ_PILETOP_OFF)&&Number((glyph)<C.i32((C.i32((C.GLYPH_OBJ_PILETOP_OFF+C.FIRST_OBJECT))-1)))))))))&&(Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8))+Number(x)*1)))&2)))!=0))))&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))))))) {
         /* these 'r' and 'neardist' calculations match distant_name(objnam.c)
            and see_nearby_objects(below); we assume that this is a lone
            object or a pile-top, not something below the top of a pile */
@@ -352,7 +352,7 @@ function map_object(obj,show)
         /* same as r*r + r*(r-1) */
         if(Number(C.dist2((x),(y),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=neardist)) {
             C.observe_object(obj);
-            (glyph=(((Number(C.i32(C.display_read_obj_otyp(obj))==C.STATUE))?((((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(C.i32((((C.rn2_on_display_rng(C.NUMMONS)))+(((Number(!(C.rn2_on_display_rng(2))))?C.GLYPH_MON_MALE_OFF:C.GLYPH_MON_FEM_OFF))))):(C.i32((C.display_read_obj_corpsenm(obj)+(((Number((C.i32((C.i32(C.display_read_obj_spe(obj))&3)))==1))?(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_FEM_PILETOP_OFF:C.GLYPH_STATUE_FEM_OFF)):(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_MALE_PILETOP_OFF:C.GLYPH_STATUE_MALE_OFF))))))))):(((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(((Number(((W59(C.go,C.i32((C.rn2_on_display_rng(C.i32((C.NUM_OBJECTS-C.FIRST_OBJECT)))+C.FIRST_OBJECT)))))==C.CORPSE))?(C.i32(((C.rn2_on_display_rng(C.NUMMONS))+C.GLYPH_BODY_OFF))):(C.i32((C.display_read_instance_globals_o_otg_temp(C.go)+C.GLYPH_OBJ_OFF))))):((Number(C.i32(C.display_read_obj_otyp(obj))==C.CORPSE))?((C.i32((C.display_read_obj_corpsenm(obj)+(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_BODY_PILETOP_OFF:C.GLYPH_BODY_OFF)))))):((Number(!!(Number(!(R106(obj)))&&(Number(!!(Number(!!(Number(C.i32(C.display_read_obj_oclass(obj))==C.POTION_CLASS)||(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))>=C.FIRST_REAL_GEM)&&(Number(C.i32(C.display_read_obj_otyp(obj))<=C.LAST_GLASS_GEM)))))))||(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))>=C.FIRST_SPELL)&&(Number(C.i32(C.display_read_obj_otyp(obj))<=C.LAST_SPELL)))))))))))?((C.i32((C.i32(C.display_read_obj_oclass(obj))+(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF)))))):((C.i32((C.i32(C.display_read_obj_otyp(obj))+(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8),"struct obj *").value)))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF))))))))))));
+            (glyph=(((Number(C.i32(C.display_read_obj_otyp(obj))==C.STATUE))?((((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(C.i32((((C.rn2_on_display_rng(C.NUMMONS)))+(((Number(!(C.rn2_on_display_rng(2))))?C.GLYPH_MON_MALE_OFF:C.GLYPH_MON_FEM_OFF))))):(C.i32((C.display_read_obj_corpsenm(obj)+(((Number((C.i32((C.i32(C.display_read_obj_spe(obj))&3)))==1))?(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8)))))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_FEM_PILETOP_OFF:C.GLYPH_STATUE_FEM_OFF)):(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8)))))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_STATUE_MALE_PILETOP_OFF:C.GLYPH_STATUE_MALE_OFF))))))))):(((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"]))))))))))?(((Number(((W59(C.go,C.i32((C.rn2_on_display_rng(C.i32((C.NUM_OBJECTS-C.FIRST_OBJECT)))+C.FIRST_OBJECT)))))==C.CORPSE))?(C.i32(((C.rn2_on_display_rng(C.NUMMONS))+C.GLYPH_BODY_OFF))):(C.i32((C.display_read_instance_globals_o_otg_temp(C.go)+C.GLYPH_OBJ_OFF))))):((Number(C.i32(C.display_read_obj_otyp(obj))==C.CORPSE))?((C.i32((C.display_read_obj_corpsenm(obj)+(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8)))))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_BODY_PILETOP_OFF:C.GLYPH_BODY_OFF)))))):((Number(!!(Number(!(R106(obj)))&&(Number(!!(Number(!!(Number(C.i32(C.display_read_obj_oclass(obj))==C.POTION_CLASS)||(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))>=C.FIRST_REAL_GEM)&&(Number(C.i32(C.display_read_obj_otyp(obj))<=C.LAST_GLASS_GEM)))))))||(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))>=C.FIRST_SPELL)&&(Number(C.i32(C.display_read_obj_otyp(obj))<=C.LAST_SPELL)))))))))))?((C.i32((C.i32(C.display_read_obj_oclass(obj))+(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8)))))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF)))))):((C.i32((C.i32(C.display_read_obj_otyp(obj))+(((Number(!!(Number(!!(Number(C.i32(C.display_read_obj_where(obj))==1)&&(Number(((W60(C.go,C.display_read_vptrs_v_nexthere(C.display_address_obj_v(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8)))))))!=0))))&&(Number(!!(Number(C.i32(C.display_read_obj_otyp(obj))!=C.BOULDER)||Number(C.i32(C.display_read_obj_otyp(C.display_read_instance_globals_o_otg_otmp(C.go)))==C.BOULDER)))))))?C.GLYPH_OBJ_PILETOP_OFF:C.GLYPH_OBJ_OFF))))))))))));
         }
     }
     if(R75(C.display_address_dlevel_t_flags(C.display_address_instance_globals_saved_l_level(C.svl)))) {
@@ -420,7 +420,7 @@ function unmap_object(x,y)
     } else if(C.display_read_rm_seenv((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])) {
         let lev=((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]);
         if(Number(!!(Number(!!((Number(!!(Number(!!(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number((x))*(C.sizes["struct rm"]*21))+Number((y))*C.sizes["struct rm"]))==C.CORR)||Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number((x))*(C.sizes["struct rm"]*21))+Number((y))*C.sizes["struct rm"]))==C.ICE)))||Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number((x))*(C.sizes["struct rm"]*21))+Number((y))*C.sizes["struct rm"]))==C.ROOM))))&&Number(((ep=C.engr_at(x,y)))!=0)))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
-            if((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))) (W28(ep,C.u32(1)));
+            if((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8))+Number(x)*1)))&2)))!=0))) (W28(ep,C.u32(1)));
             map_engraving(ep,0);
         } else {
             map_background(x,y,0);
@@ -451,7 +451,7 @@ function map_location(x,y,show)
         let trap;
         let ml_ep;
         let _ml_reg;
-        if(Number(!!(((obj=(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value)))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
+        if(Number(!!(((obj=(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8)))))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
             map_object(obj,show);
         } else if(Number(!!(Number(!!(((trap=C.t_at(x,y)))&&C.i32(R147(trap))))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
             map_trap(trap,show);
@@ -477,7 +477,7 @@ function show_mon_or_warn(x,y,monglyph)
        that; if an object is in view there, start remembering it instead */
     if((Number((C.display_read_rm_glyph((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.GLYPH_INVIS_OFF))) {
         unmap_object(x,y);
-        if(Number(!!((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))&&Number(((o=(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value)))!=0)))) map_object(o,C.i32((C.i8(0))));
+        if(Number(!!((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8))+Number(x)*1)))&2)))!=0))&&Number(((o=(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8)))))!=0)))) map_object(o,C.i32((C.i8(0))));
     }
     show_glyph(x,y,monglyph);
 }
@@ -540,7 +540,7 @@ function display_monster(x,y,mon,sightflags,worm_tail)
                     if(Number(!(sensed))) {
                         show_glyph(x,y,glyph);
                         /* override real topology with mimic's fake one */
-                        (C.cell(((C.display_address_instance_globals_saved_l_lastseentyp(C.svl)+Number(x)*(1*21))+Number(y)*1),"signed char").value=C.i8(C.cmap_to_type(sym)));
+                        (C.writeInt8At(((C.display_address_instance_globals_saved_l_lastseentyp(C.svl)+Number(x)*(1*21))+Number(y)*1), C.i8(C.cmap_to_type(sym))));
                     }
                     break;
                 }            case (C.M_AP_OBJECT):
@@ -705,7 +705,7 @@ function feel_location(x,y)
      * We must return (so we don't erase the monster).  (We must also, in the
      * search function, be sure to skip over previously detected 'I's.)
      */
-    if(Number(!!((Number((C.display_read_rm_glyph(lev))==C.GLYPH_INVIS_OFF))&&(C.cell(((C.display_address_dlevel_t_monsters(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct monst *").value)))) return;
+    if(Number(!!((Number((C.display_read_rm_glyph(lev))==C.GLYPH_INVIS_OFF))&&(C.readPointerAt(((C.display_address_dlevel_t_monsters(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8)))))) return;
     /* The hero can't feel non pool locations while under water
        except for lava and ice. */
     if(Number(!!(Number(!!(Number(!!(C.i32((R169(C.u)))&&Number(!(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_water_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_water_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_water_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))))))&&Number(!(C.is_pool_or_lava(x,y)))))&&Number(!(C.is_ice(x,y)))))) return;
@@ -786,7 +786,7 @@ function feel_location(x,y)
             let trap;
             let ml_ep;
             let _ml_reg;
-            if(Number(!!(((obj=(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value)))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
+            if(Number(!!(((obj=(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8)))))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
                 map_object(obj,1);
             } else if(Number(!!(Number(!!(((trap=C.t_at(x,y)))&&C.i32(R147(trap))))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
                 map_trap(trap,1);
@@ -811,10 +811,10 @@ function feel_location(x,y)
              * Punished will still yield True but uchain might not be part
              * of the floor list anymore).
              */
-            if(Number(!!(Number(!!(Number(!!(Number(!!(C.global("uchain").value&&Number(C.i32(C.display_read_obj_where(C.global("uchain").value))==1)))&&Number(C.i32(C.display_read_obj_ox(C.global("uchain").value))==C.i32(x))))&&Number(C.i32(C.display_read_obj_oy(C.global("uchain").value))==C.i32(y))))&&Number(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value==C.global("uchain").value)))) (W165(C.u,C.i32(C.display_read_you_bc_felt(C.u)|2)));
+            if(Number(!!(Number(!!(Number(!!(Number(!!(C.global("uchain").value&&Number(C.i32(C.display_read_obj_where(C.global("uchain").value))==1)))&&Number(C.i32(C.display_read_obj_ox(C.global("uchain").value))==C.i32(x))))&&Number(C.i32(C.display_read_obj_oy(C.global("uchain").value))==C.i32(y))))&&Number(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8))==C.global("uchain").value)))) (W165(C.u,C.i32(C.display_read_you_bc_felt(C.u)|2)));
  else (W165(C.u,C.i32(C.display_read_you_bc_felt(C.u)&C.i32((~2)))));
             /* do not feel the chain */
-            if(Number(!!(Number(!!(Number(!!(Number(!!(C.global("uball").value&&Number(C.i32(C.display_read_obj_where(C.global("uball").value))==1)))&&Number(C.i32(C.display_read_obj_ox(C.global("uball").value))==C.i32(x))))&&Number(C.i32(C.display_read_obj_oy(C.global("uball").value))==C.i32(y))))&&Number(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value==C.global("uball").value)))) (W165(C.u,C.i32(C.display_read_you_bc_felt(C.u)|1)));
+            if(Number(!!(Number(!!(Number(!!(Number(!!(C.global("uball").value&&Number(C.i32(C.display_read_obj_where(C.global("uball").value))==1)))&&Number(C.i32(C.display_read_obj_ox(C.global("uball").value))==C.i32(x))))&&Number(C.i32(C.display_read_obj_oy(C.global("uball").value))==C.i32(y))))&&Number(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8))==C.global("uball").value)))) (W165(C.u,C.i32(C.display_read_you_bc_felt(C.u)|1)));
  else (W165(C.u,C.i32(C.display_read_you_bc_felt(C.u)&C.i32((~1)))));
             /* do not feel the ball */
         }
@@ -823,7 +823,7 @@ function feel_location(x,y)
  else if(Number(!!(Number(!!(Number(C.i32(C.display_read_rm_typ(lev))==C.CORR)&&Number(C.display_read_rm_glyph(lev)==(((Number((C.S_litcorr)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_litcorr)<=C.S_trwall))?(C.i32((C.i32(((C.S_litcorr)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_litcorr)<C.S_altar))?(C.i32(((C.i32(((C.S_litcorr)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_litcorr)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_litcorr)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_litcorr)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_litcorr)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_litcorr)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))))))&&Number(!(R125(lev)))))) show_glyph(x,y,(W119(lev,(Number((C.S_corr)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_corr)<=C.S_trwall))?(C.i32((C.i32(((C.S_corr)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_corr)<C.S_altar))?(C.i32(((C.i32(((C.S_corr)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_corr)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_corr)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_corr)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_corr)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_corr)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))));
     }
     /* draw monster on top if we can sense it */
-    if(Number(!!(Number(!!(Number(!((Number(!!(Number(C.i32((x))==C.i32(C.display_read_you_ux(C.u)))&&Number(C.i32((y))==C.i32(C.display_read_you_uy(C.u))))))))&&Number(((mon=(C.cell(((C.display_address_dlevel_t_monsters(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct monst *").value)))!=0)))&&(Number(!!(Number(!!((Number(!!(Number(!(R168(C.u)))||Number((mon)==C.display_read_you_ustuck(C.u)))))&&(Number(!!(Number(!((R169(C.u))))||(Number(!!(Number(C.dist2((C.display_read_monst_mx(mon)),(C.display_read_monst_my(mon)),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=2)&&C.i32(C.is_pool(C.display_read_monst_mx(mon),C.display_read_monst_my(mon)))))))))))&&(Number(!!(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"]))))||(Number(!!((Number(!((Number((C.u64((C.display_read_permonst_mflags1(C.display_read_monst_data(mon))&C.u64(65536n))))!=C.u64(0n))))))&&(Number(!!((Number(!!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])))))))||(Number(!!((C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"]))&&(Number(C.dist2((C.display_read_monst_mx(mon)),(C.display_read_monst_my(mon)),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=C.display_read_you_unblind_telepat_range(C.u))))))))))))))||(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"]))))&&(Number(!!(Number(!!(Number((C.u64((C.display_read_warntype_info_obj(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))||Number((C.u64((C.display_read_warntype_info_polyd(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))))||(Number(!!(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&&(Number(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))==C.display_read_monst_data(mon))))))))))))))))))))) display_monster(x,y,mon,((Number(!!((Number(!!((Number(!((Number((C.u64((C.display_read_permonst_mflags1(C.display_read_monst_data(mon))&C.u64(65536n))))!=C.u64(0n))))))&&(Number(!!((Number(!!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])))))))||(Number(!!((C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"]))&&(Number(C.dist2((C.display_read_monst_mx(mon)),(C.display_read_monst_my(mon)),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=C.display_read_you_unblind_telepat_range(C.u))))))))))))||(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"]))))&&(Number(!!(Number(!!(Number((C.u64((C.display_read_warntype_info_obj(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))||Number((C.u64((C.display_read_warntype_info_polyd(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))))||(Number(!!(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&&(Number(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))==C.display_read_monst_data(mon)))))))))))))))?1:2),C.i8((Number(!!((mon)&&(Number(!!((Number(C.i32(x)!=C.i32(C.display_read_monst_mx(mon))))||(Number(C.i32(y)!=C.i32(C.display_read_monst_my(mon))))))))))));
+    if(Number(!!(Number(!!(Number(!((Number(!!(Number(C.i32((x))==C.i32(C.display_read_you_ux(C.u)))&&Number(C.i32((y))==C.i32(C.display_read_you_uy(C.u))))))))&&Number(((mon=(C.readPointerAt(((C.display_address_dlevel_t_monsters(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8)))))!=0)))&&(Number(!!(Number(!!((Number(!!(Number(!(R168(C.u)))||Number((mon)==C.display_read_you_ustuck(C.u)))))&&(Number(!!(Number(!((R169(C.u))))||(Number(!!(Number(C.dist2((C.display_read_monst_mx(mon)),(C.display_read_monst_my(mon)),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=2)&&C.i32(C.is_pool(C.display_read_monst_mx(mon),C.display_read_monst_my(mon)))))))))))&&(Number(!!(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"]))))||(Number(!!((Number(!((Number((C.u64((C.display_read_permonst_mflags1(C.display_read_monst_data(mon))&C.u64(65536n))))!=C.u64(0n))))))&&(Number(!!((Number(!!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])))))))||(Number(!!((C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"]))&&(Number(C.dist2((C.display_read_monst_mx(mon)),(C.display_read_monst_my(mon)),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=C.display_read_you_unblind_telepat_range(C.u))))))))))))))||(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"]))))&&(Number(!!(Number(!!(Number((C.u64((C.display_read_warntype_info_obj(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))||Number((C.u64((C.display_read_warntype_info_polyd(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))))||(Number(!!(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&&(Number(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))==C.display_read_monst_data(mon))))))))))))))))))))) display_monster(x,y,mon,((Number(!!((Number(!!((Number(!((Number((C.u64((C.display_read_permonst_mflags1(C.display_read_monst_data(mon))&C.u64(65536n))))!=C.u64(0n))))))&&(Number(!!((Number(!!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])))))))||(Number(!!((C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"]))&&(Number(C.dist2((C.display_read_monst_mx(mon)),(C.display_read_monst_my(mon)),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=C.display_read_you_unblind_telepat_range(C.u))))))))))))||(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"]))))&&(Number(!!(Number(!!(Number((C.u64((C.display_read_warntype_info_obj(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))||Number((C.u64((C.display_read_warntype_info_polyd(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))))||(Number(!!(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&&(Number(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))==C.display_read_monst_data(mon)))))))))))))))?1:2),C.i8((Number(!!((mon)&&(Number(!!((Number(C.i32(x)!=C.i32(C.display_read_monst_mx(mon))))||(Number(C.i32(y)!=C.i32(C.display_read_monst_my(mon))))))))))));
 }
 
 /*
@@ -862,7 +862,7 @@ function newsym(x,y)
     }
     (lev=((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]));
     /* Can physically see the location. */
-    if((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))) {
+    if((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8))+Number(x)*1)))&2)))!=0))) {
         let reg=C.visible_region_at(x,y);
         /*
          * Don't use templit here:  E.g.
@@ -878,7 +878,7 @@ function newsym(x,y)
          */
         (W125(lev,C.u32((Number(C.i32(R124(lev))!=0)))));
         /* remember lit condition */
-        (mon=(C.cell(((C.display_address_dlevel_t_monsters(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct monst *").value));
+        (mon=(C.readPointerAt(((C.display_address_dlevel_t_monsters(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8))));
         (worm_tail=C.i8((Number(!!((mon)&&(Number(!!((Number(C.i32(x)!=C.i32(C.display_read_monst_mx(mon))))||(Number(C.i32(y)!=C.i32(C.display_read_monst_my(mon))))))))))));
         if(Number(((ep=C.engr_at(x,y)))!=0)) (W28(ep,C.u32(1)));
         /* even when covered by objects or a monster */
@@ -917,7 +917,7 @@ function newsym(x,y)
                 let trap;
                 let ml_ep;
                 let _ml_reg;
-                if(Number(!!(((obj=(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value)))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
+                if(Number(!!(((obj=(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8)))))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
                     map_object(obj,Number(!(see_self)));
                 } else if(Number(!!(Number(!!(((trap=C.t_at(x,y)))&&C.i32(R147(trap))))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
                     map_trap(trap,Number(!(see_self)));
@@ -945,7 +945,7 @@ function newsym(x,y)
                     let trap;
                     let ml_ep;
                     let _ml_reg;
-                    if(Number(!!(((obj=(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value)))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
+                    if(Number(!!(((obj=(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8)))))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
                         map_object(obj,C.i32(show));
                     } else if(Number(!!(Number(!!(((trap=C.t_at(x,y)))&&C.i32(R147(trap))))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
                         map_trap(trap,C.i32(show));
@@ -970,7 +970,7 @@ function newsym(x,y)
                     let trap;
                     let ml_ep;
                     let _ml_reg;
-                    if(Number(!!(((obj=(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value)))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
+                    if(Number(!!(((obj=(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8)))))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
                         map_object(obj,1);
                     } else if(Number(!!(Number(!!(((trap=C.t_at(x,y)))&&C.i32(R147(trap))))&&Number(!((Number(!!(Number(!!((Number(!!(C.i32(C.is_pool(x,y))&&Number(!((R169(C.u)))))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL))))||(Number(C.i32(C.display_read_rm_typ((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAWALL)))))))))) {
                         map_trap(trap,1);
@@ -991,7 +991,7 @@ function newsym(x,y)
             feel_location(C.display_read_you_ux(C.u),C.display_read_you_uy(C.u));
             /* forces an update */
             if((Number(!!((Number(!!(Number(!!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))||C.i32(R168(C.u))))||(Number(!!(Number(!((Number(!!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.INVIS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.INVIS)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.INVIS)*C.sizes["struct prop"]))))))&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])))))))))))&&Number(!(R170(C.u)))))))))||(Number(!!((C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"]))||(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"]))))))))))) show_glyph(C.display_read_you_ux(C.u),C.display_read_you_uy(C.u),(((Number(!!(C.display_read_you_usteed(C.u)&&(Number(!!((Number(!!(Number(!(R88(C.display_read_you_usteed(C.u))))||(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])))))))&&Number(!(R89(C.display_read_you_usteed(C.u))))))))))?(C.i32(((((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))?(C.rn2_on_display_rng(C.NUMMONS)):C.i32((C.display_read_permonst_pmidx(C.display_read_monst_data(C.display_read_you_usteed(C.u)))))))+(((Number(C.i32(R87(C.display_read_you_usteed(C.u)))==0))?C.GLYPH_RIDDEN_MALE_OFF:C.GLYPH_RIDDEN_FEM_OFF))))):(((Number((C.i32((C.i32(C.display_read_monst_m_ap_type(C.display_address_instance_globals_y_youmonst(C.gy)))&7)))==C.M_AP_NOTHING))?(C.i32(((((Number(!!((Number(C.display_read_you_umonnum(C.u)!=C.display_read_you_umonster(C.u)))||Number(!(C.display_read_flag_showrace(C.flags))))))?C.display_read_you_umonnum(C.u):C.i32(C.display_read_Race_mnum(C.display_address_instance_globals_u_urace(C.gu)))))+(((Number((((((((Number(C.display_read_you_umonnum(C.u)!=C.display_read_you_umonster(C.u)))?C.i32(R171(C.u)):C.i32(C.display_read_flag_female(C.flags))))?1:0))))==C.MALE))?C.GLYPH_MON_MALE_OFF:C.GLYPH_MON_FEM_OFF))))):((Number((C.i32((C.i32(C.display_read_monst_m_ap_type(C.display_address_instance_globals_y_youmonst(C.gy)))&7)))==C.M_AP_FURNITURE))?(((Number((C.i32(C.display_read_monst_mappearance(C.display_address_instance_globals_y_youmonst(C.gy))))==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.i32(C.display_read_monst_mappearance(C.display_address_instance_globals_y_youmonst(C.gy))))<=C.S_trwall))?(C.i32((C.i32(((C.i32(C.display_read_monst_mappearance(C.display_address_instance_globals_y_youmonst(C.gy))))-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.i32(C.display_read_monst_mappearance(C.display_address_instance_globals_y_youmonst(C.gy))))<C.S_altar))?(C.i32(((C.i32(((C.i32(C.display_read_monst_mappearance(C.display_address_instance_globals_y_youmonst(C.gy))))-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.i32(C.display_read_monst_mappearance(C.display_address_instance_globals_y_youmonst(C.gy))))==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.i32(C.display_read_monst_mappearance(C.display_address_instance_globals_y_youmonst(C.gy))))<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.i32(C.display_read_monst_mappearance(C.display_address_instance_globals_y_youmonst(C.gy))))-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.i32(C.display_read_monst_mappearance(C.display_address_instance_globals_y_youmonst(C.gy))))<=C.S_goodpos))?(C.i32(((C.i32(((C.i32(C.display_read_monst_mappearance(C.display_address_instance_globals_y_youmonst(C.gy))))-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))):((Number((C.i32((C.i32(C.display_read_monst_m_ap_type(C.display_address_instance_globals_y_youmonst(C.gy)))&7)))==C.M_AP_OBJECT))?(C.i32(((C.i32(C.display_read_monst_mappearance(C.display_address_instance_globals_y_youmonst(C.gy))))+C.GLYPH_OBJ_OFF))):(C.i32(((C.i32(C.display_read_monst_mappearance(C.display_address_instance_globals_y_youmonst(C.gy))))+(((Number(((((((Number(C.display_read_you_umonnum(C.u)!=C.display_read_you_umonster(C.u)))?C.i32(R171(C.u)):C.i32(C.display_read_flag_female(C.flags))))?1:0)))==C.MALE))?C.GLYPH_MON_MALE_OFF:C.GLYPH_MON_FEM_OFF))))))))))));
-        } else if(Number(!!(Number(((mon=(C.cell(((C.display_address_dlevel_t_monsters(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct monst *").value)))!=0)&&(Number(!!(Number(((see_it=(Number(!!(Number(!!((Number(!!((Number(!((Number((C.u64((C.display_read_permonst_mflags1(C.display_read_monst_data(mon))&C.u64(65536n))))!=C.u64(0n))))))&&(Number(!!((Number(!!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])))))))||(Number(!!((C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"]))&&(Number(C.dist2((C.display_read_monst_mx(mon)),(C.display_read_monst_my(mon)),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=C.display_read_you_unblind_telepat_range(C.u))))))))))))||(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"]))))&&(Number(!!(Number(!!(Number((C.u64((C.display_read_warntype_info_obj(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))||Number((C.u64((C.display_read_warntype_info_polyd(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))))||(Number(!!(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&&(Number(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))==C.display_read_monst_data(mon))))))))))))))||(Number(!!((Number(!!(Number(!!(Number(!!(Number(!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"]))))))&&((C.i32((C.i32(C.display_read_permonst_mflags3(C.display_read_monst_data(mon)))&512))))))&&(Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(C.display_read_monst_my(mon))*8),"unsigned char *").value+Number(C.display_read_monst_mx(mon))*1),"unsigned char").value)&1)))!=0)))))&&(Number(!!((Number(!!(Number(!(R88(mon)))||(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])))))))&&Number(!(R89(mon))))))))))))))!=0)||(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"]))))&&Number(!((Number(!!((mon)&&(Number(!!((Number(C.i32(x)!=C.i32(C.display_read_monst_mx(mon))))||(Number(C.i32(y)!=C.i32(C.display_read_monst_my(mon))))))))))))))))))))) {
+        } else if(Number(!!(Number(((mon=(C.readPointerAt(((C.display_address_dlevel_t_monsters(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(8*21))+Number(y)*8)))))!=0)&&(Number(!!(Number(((see_it=(Number(!!(Number(!!((Number(!!((Number(!((Number((C.u64((C.display_read_permonst_mflags1(C.display_read_monst_data(mon))&C.u64(65536n))))!=C.u64(0n))))))&&(Number(!!((Number(!!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"])))))))||(Number(!!((C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.TELEPAT)*C.sizes["struct prop"]))&&(Number(C.dist2((C.display_read_monst_mx(mon)),(C.display_read_monst_my(mon)),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))<=C.display_read_you_unblind_telepat_range(C.u))))))))))))||(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.WARN_OF_MON)*C.sizes["struct prop"]))))&&(Number(!!(Number(!!(Number((C.u64((C.display_read_warntype_info_obj(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))||Number((C.u64((C.display_read_warntype_info_polyd(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&C.display_read_permonst_mflags2(C.display_read_monst_data(mon)))))!=C.u64(0))))||(Number(!!(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))&&(Number(C.display_read_warntype_info_species(C.display_address_context_info_warntype(C.display_address_instance_globals_saved_c_context(C.svc)))==C.display_read_monst_data(mon))))))))))))))||(Number(!!((Number(!!(Number(!!(Number(!!(Number(!((Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(C.display_read_prop_blocked(C.display_address_you_uprops(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.INFRAVISION)*C.sizes["struct prop"]))))))&&((C.i32((C.i32(C.display_read_permonst_mflags3(C.display_read_monst_data(mon)))&512))))))&&(Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(C.display_read_monst_my(mon))*8))+Number(C.display_read_monst_mx(mon))*1)))&1)))!=0)))))&&(Number(!!((Number(!!(Number(!(R88(mon)))||(Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])))))))&&Number(!(R89(mon))))))))))))))!=0)||(Number(!!((Number(!!(C.display_read_prop_intrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"])||C.display_read_prop_extrinsic(C.display_address_you_uprops(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"]))))&&Number(!((Number(!!((mon)&&(Number(!!((Number(C.i32(x)!=C.i32(C.display_read_monst_mx(mon))))||(Number(C.i32(y)!=C.i32(C.display_read_monst_my(mon))))))))))))))))))))) {
             /* Seen or sensed monsters are printed every time.
                This also gets rid of any invisibility glyph. */
             display_monster(x,y,mon,(see_it?0:2),C.i8(((Number(!!((mon)&&(Number(!!((Number(C.i32(x)!=C.i32(C.display_read_monst_mx(mon))))||(Number(C.i32(y)!=C.i32(C.display_read_monst_my(mon))))))))))?C.i32((C.i8(1))):C.i32((C.i8(0))))));
@@ -1047,10 +1047,10 @@ function shieldeff(x,y)
     y=C.i16(y);
     let i;
     if(Number(!(C.display_read_flag_sparkle(C.flags)))) return;
-    if((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))) {
+    if((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8))+Number(x)*1)))&2)))!=0))) {
         /* Don't see anything if can't see the location */
         for((i=0);Number(i<21);((i=C.i32((i+1)))-1)) {
-            show_glyph(x,y,(((Number((C.cell((C.shield_static+Number(i)*4),"int").value)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.cell((C.shield_static+Number(i)*4),"int").value)<=C.S_trwall))?(C.i32((C.i32(((C.cell((C.shield_static+Number(i)*4),"int").value)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.cell((C.shield_static+Number(i)*4),"int").value)<C.S_altar))?(C.i32(((C.i32(((C.cell((C.shield_static+Number(i)*4),"int").value)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.cell((C.shield_static+Number(i)*4),"int").value)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.cell((C.shield_static+Number(i)*4),"int").value)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.cell((C.shield_static+Number(i)*4),"int").value)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.cell((C.shield_static+Number(i)*4),"int").value)<=C.S_goodpos))?(C.i32(((C.i32(((C.cell((C.shield_static+Number(i)*4),"int").value)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))));
+            show_glyph(x,y,(((Number((C.readInt32At((C.shield_static+Number(i)*4)))==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.readInt32At((C.shield_static+Number(i)*4)))<=C.S_trwall))?(C.i32((C.i32(((C.readInt32At((C.shield_static+Number(i)*4)))-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.readInt32At((C.shield_static+Number(i)*4)))<C.S_altar))?(C.i32(((C.i32(((C.readInt32At((C.shield_static+Number(i)*4)))-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.readInt32At((C.shield_static+Number(i)*4)))==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.readInt32At((C.shield_static+Number(i)*4)))<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.readInt32At((C.shield_static+Number(i)*4)))-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.readInt32At((C.shield_static+Number(i)*4)))<=C.S_goodpos))?(C.i32(((C.i32(((C.readInt32At((C.shield_static+Number(i)*4)))-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))));
             flush_screen(1);
             /* make sure the glyph shows up */
             C.indirect(0,(C.display_read_window_procs_win_delay_output(C.windowprocs)));
@@ -1113,104 +1113,104 @@ function tmp_at(x,y)
                 case ((C.i32((-3)))):
                     case ((C.i32((-4)))):
                         case ((C.i32((-5)))):
-                            if(Number(!(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value))) (tmp=C.staticAddress("tgfirst"));
+                            if(Number(!(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))))) (tmp=C.staticAddress("tgfirst"));
  else (tmp=C.alloc(C.u32(BigInt(C.sizes["struct tmp_glyph"]))));
         /* nested effect; we need dynamic memory */
-        (W142(tmp,C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value));
-        (C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value=tmp);
-        (W139(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value,0));
-        (W140(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value,C.i32(x)));
-        (W141(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value,C.i32(y)));
+        (W142(tmp,C.readPointerAt(C.staticAddress("tmp_at.tglyph"))));
+        (C.writePointerAt(C.staticAddress("tmp_at.tglyph"), tmp));
+        (W139(C.readPointerAt(C.staticAddress("tmp_at.tglyph")),0));
+        (W140(C.readPointerAt(C.staticAddress("tmp_at.tglyph")),C.i32(x)));
+        (W141(C.readPointerAt(C.staticAddress("tmp_at.tglyph")),C.i32(y)));
         flush_screen(0);
         /* flush buffered glyphs */
         return;
         case ((C.i32((-8)))):
             /* in case game ends with tmp_at() in progress */
-            while(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value) {
-                (tmp=C.display_read_tmp_glyph_prev(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value));
-                if(Number(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value!=C.staticAddress("tgfirst"))) C.free(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value);
-                (C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value=tmp);
+            while(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))) {
+                (tmp=C.display_read_tmp_glyph_prev(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))));
+                if(Number(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))!=C.staticAddress("tgfirst"))) C.free(C.readPointerAt(C.staticAddress("tmp_at.tglyph")));
+                (C.writePointerAt(C.staticAddress("tmp_at.tglyph"), tmp));
             }
         return;
         default:
             break;
     }
-    if(Number(!(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value))) {
+    if(Number(!(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))))) {
         C.variadic(2,C.literal("tmp_at: tglyph not initialized"));
     } else {
         switch(C.i32(x)) {
             case ((C.i32((-6)))):
-                (W141(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value,C.i32(y)));
+                (W141(C.readPointerAt(C.staticAddress("tmp_at.tglyph")),C.i32(y)));
             break;
             case ((C.i32((-7)))):
-                if(Number(!!(Number(C.display_read_tmp_glyph_style(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)==(C.i32((-1))))||Number(C.display_read_tmp_glyph_style(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)==(C.i32((-2))))))) {
+                if(Number(!!(Number(C.display_read_tmp_glyph_style(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))==(C.i32((-1))))||Number(C.display_read_tmp_glyph_style(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))==(C.i32((-2))))))) {
                     let i;
                     /* Erase (reset) from source to end */
-                    for((i=0);Number(i<C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value));((i=C.i32((i+1)))-1)) newsym(C.display_read_nhcoord_x(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(i)*C.sizes["struct nhcoord"]),C.display_read_nhcoord_y(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(i)*C.sizes["struct nhcoord"]));
+                    for((i=0);Number(i<C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))));((i=C.i32((i+1)))-1)) newsym(C.display_read_nhcoord_x(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(i)*C.sizes["struct nhcoord"]),C.display_read_nhcoord_y(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(i)*C.sizes["struct nhcoord"]));
 
-                } else if(Number(C.display_read_tmp_glyph_style(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)==(C.i32((-3))))) {
+                } else if(Number(C.display_read_tmp_glyph_style(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))==(C.i32((-3))))) {
                     let i;
-                    if(Number(!!(Number(C.i32(y)==(C.i32((-1))))&&Number(C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)>1)))) {
+                    if(Number(!!(Number(C.i32(y)==(C.i32((-1))))&&Number(C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))>1)))) {
                         /* backtrack */
-                        for((i=C.i32((C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)-1)));Number(i>0);((i=C.i32((i-1)))+1)) {
-                            newsym(C.display_read_nhcoord_x(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(i)*C.sizes["struct nhcoord"]),C.display_read_nhcoord_y(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(i)*C.sizes["struct nhcoord"]));
-                            show_glyph(C.display_read_nhcoord_x(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(C.i32((i-1)))*C.sizes["struct nhcoord"]),C.display_read_nhcoord_y(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(C.i32((i-1)))*C.sizes["struct nhcoord"]),C.display_read_tmp_glyph_glyph(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value));
+                        for((i=C.i32((C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))-1)));Number(i>0);((i=C.i32((i-1)))+1)) {
+                            newsym(C.display_read_nhcoord_x(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(i)*C.sizes["struct nhcoord"]),C.display_read_nhcoord_y(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(i)*C.sizes["struct nhcoord"]));
+                            show_glyph(C.display_read_nhcoord_x(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(C.i32((i-1)))*C.sizes["struct nhcoord"]),C.display_read_nhcoord_y(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(C.i32((i-1)))*C.sizes["struct nhcoord"]),C.display_read_tmp_glyph_glyph(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))));
                             flush_screen(0);
                             /* make sure it shows up */
                             C.indirect(1,(C.display_read_window_procs_win_delay_output(C.windowprocs)));
                         }
-                        (W139(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value,1));
+                        (W139(C.readPointerAt(C.staticAddress("tmp_at.tglyph")),1));
                     }
-                    for((i=0);Number(i<C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value));((i=C.i32((i+1)))-1)) newsym(C.display_read_nhcoord_x(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(i)*C.sizes["struct nhcoord"]),C.display_read_nhcoord_y(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(i)*C.sizes["struct nhcoord"]));
+                    for((i=0);Number(i<C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))));((i=C.i32((i+1)))-1)) newsym(C.display_read_nhcoord_x(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(i)*C.sizes["struct nhcoord"]),C.display_read_nhcoord_y(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(i)*C.sizes["struct nhcoord"]));
 
                 } else {
                     /* DISP_FLASH or DISP_ALWAYS */
-                    if(C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)) newsym(C.display_read_nhcoord_x(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(0)*C.sizes["struct nhcoord"]),C.display_read_nhcoord_y(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(0)*C.sizes["struct nhcoord"]));
+                    if(C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))) newsym(C.display_read_nhcoord_x(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(0)*C.sizes["struct nhcoord"]),C.display_read_nhcoord_y(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(0)*C.sizes["struct nhcoord"]));
                     /* been called at least once */
                 }
             /* tglyph->sidx = 0; -- about to be freed, so not necessary */
-            (tmp=C.display_read_tmp_glyph_prev(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value));
-            if(Number(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value!=C.staticAddress("tgfirst"))) C.free(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value);
-            (C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value=tmp);
+            (tmp=C.display_read_tmp_glyph_prev(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))));
+            if(Number(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))!=C.staticAddress("tgfirst"))) C.free(C.readPointerAt(C.staticAddress("tmp_at.tglyph")));
+            (C.writePointerAt(C.staticAddress("tmp_at.tglyph"), tmp));
             break;
             default:
                 /* do it */
                 if(Number(!(C.isok(x,y)))) break;
-            if(Number(!!(Number(C.display_read_tmp_glyph_style(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)==(C.i32((-1))))||Number(C.display_read_tmp_glyph_style(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)==(C.i32((-2))))))) {
-                if(Number(!!(Number(C.display_read_tmp_glyph_style(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)!=(C.i32((-2))))&&Number(!((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))))))) break;
-                if(Number(C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)>=(C.i32((80*2))))) break;
+            if(Number(!!(Number(C.display_read_tmp_glyph_style(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))==(C.i32((-1))))||Number(C.display_read_tmp_glyph_style(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))==(C.i32((-2))))))) {
+                if(Number(!!(Number(C.display_read_tmp_glyph_style(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))!=(C.i32((-2))))&&Number(!((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8))+Number(x)*1)))&2)))!=0))))))) break;
+                if(Number(C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))>=(C.i32((80*2))))) break;
                 /* too many locations */
                 /* save pos for later erasing */
-                (W96(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value))*C.sizes["struct nhcoord"],x));
-                (W97(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value))*C.sizes["struct nhcoord"],y));
-                (W139(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value,C.i32(C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+1)));
-            } else if(Number(C.display_read_tmp_glyph_style(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)==(C.i32((-3))))) {
-                if(Number(C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)>=(C.i32((80*2))))) break;
+                (W96(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))))*C.sizes["struct nhcoord"],x));
+                (W97(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))))*C.sizes["struct nhcoord"],y));
+                (W139(C.readPointerAt(C.staticAddress("tmp_at.tglyph")),C.i32(C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+1)));
+            } else if(Number(C.display_read_tmp_glyph_style(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))==(C.i32((-3))))) {
+                if(Number(C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))>=(C.i32((80*2))))) break;
                 /* too many locations */
-                if(C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)) {
+                if(C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))) {
                     let px; let py;
-                    (px=C.i32(C.display_read_nhcoord_x(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(C.i32((C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)-1)))*C.sizes["struct nhcoord"])));
-                    (py=C.i32(C.display_read_nhcoord_y(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(C.i32((C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)-1)))*C.sizes["struct nhcoord"])));
+                    (px=C.i32(C.display_read_nhcoord_x(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(C.i32((C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))-1)))*C.sizes["struct nhcoord"])));
+                    (py=C.i32(C.display_read_nhcoord_y(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(C.i32((C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))-1)))*C.sizes["struct nhcoord"])));
                     show_glyph(C.i16(px),C.i16(py),tether_glyph(C.i16(px),C.i16(py)));
                 }
                 /* save pos for later use or erasure */
-                (W96(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value))*C.sizes["struct nhcoord"],x));
-                (W97(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value))*C.sizes["struct nhcoord"],y));
-                (W139(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value,C.i32(C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+1)));
+                (W96(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))))*C.sizes["struct nhcoord"],x));
+                (W97(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))))*C.sizes["struct nhcoord"],y));
+                (W139(C.readPointerAt(C.staticAddress("tmp_at.tglyph")),C.i32(C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+1)));
             } else {
                 /* DISP_FLASH/ALWAYS */
-                if(C.display_read_tmp_glyph_sidx(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)) {
+                if(C.display_read_tmp_glyph_sidx(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))) {
                     /* not first call, so reset previous pos */
-                    newsym(C.display_read_nhcoord_x(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(0)*C.sizes["struct nhcoord"]),C.display_read_nhcoord_y(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(0)*C.sizes["struct nhcoord"]));
-                    (W139(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value,0));
+                    newsym(C.display_read_nhcoord_x(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(0)*C.sizes["struct nhcoord"]),C.display_read_nhcoord_y(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(0)*C.sizes["struct nhcoord"]));
+                    (W139(C.readPointerAt(C.staticAddress("tmp_at.tglyph")),0));
                     /* display is presently up to date */
                 }
-                if(Number(!!(Number(!((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))))&&Number(C.display_read_tmp_glyph_style(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)!=(C.i32((-5))))))) break;
-                (W96(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(0)*C.sizes["struct nhcoord"],x));
-                (W97(C.display_address_tmp_glyph_saved(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value)+Number(0)*C.sizes["struct nhcoord"],y));
-                (W139(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value,1));
+                if(Number(!!(Number(!((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8))+Number(x)*1)))&2)))!=0))))&&Number(C.display_read_tmp_glyph_style(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))!=(C.i32((-5))))))) break;
+                (W96(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(0)*C.sizes["struct nhcoord"],x));
+                (W97(C.display_address_tmp_glyph_saved(C.readPointerAt(C.staticAddress("tmp_at.tglyph")))+Number(0)*C.sizes["struct nhcoord"],y));
+                (W139(C.readPointerAt(C.staticAddress("tmp_at.tglyph")),1));
             }
-            show_glyph(x,y,C.display_read_tmp_glyph_glyph(C.cell(C.staticAddress("tmp_at.tglyph"),"struct tmp_glyph *").value));
+            show_glyph(x,y,C.display_read_tmp_glyph_glyph(C.readPointerAt(C.staticAddress("tmp_at.tglyph"))));
             /* show it */
             flush_screen(0);
             /* make sure it shows up */
@@ -1237,13 +1237,13 @@ function flash_glyph_at(x,y,tg,rpt)
     let i; let glyph=C.stackAlloc((4*2));
     (rpt=C.i32(rpt*2));
     /* two loop iterations per 'count' */
-    (C.cell((glyph+Number(0)*4),"int").value=tg);
-    (C.cell((glyph+Number(1)*4),"int").value=(C.i32((R75(C.display_address_dlevel_t_flags(C.display_address_instance_globals_saved_l_level(C.svl)))))?C.display_read_rm_glyph((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]):back_to_glyph(x,y)));
+    (C.writeInt32At((glyph+Number(0)*4), tg));
+    (C.writeInt32At((glyph+Number(1)*4), (C.i32((R75(C.display_address_dlevel_t_flags(C.display_address_instance_globals_saved_l_level(C.svl)))))?C.display_read_rm_glyph((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]):back_to_glyph(x,y))));
     /* even iteration count (guaranteed) ends with glyph[1] showing;
        caller might want to override that, but no newsym() calls here
        in case caller has tinkered with location visibility */
     for((i=0);Number(i<rpt);((i=C.i32((i+1)))-1)) {
-        show_glyph(x,y,C.cell((glyph+Number(C.i32((i%2)))*4),"int").value);
+        show_glyph(x,y,C.readInt32At((glyph+Number(C.i32((i%2)))*4)));
         flush_screen(1);
         C.indirect(2,(C.display_read_window_procs_win_delay_output(C.windowprocs)));
     }
@@ -1270,7 +1270,7 @@ function swallowed(first)
     } else {
         let x; let y;
         /* Clear old location */
-        for((y=C.i16(C.i32((C.i32(C.cell(C.staticAddress("swallowed.lasty"),"short").value)-1))));Number(C.i32(y)<=C.i32((C.i32(C.cell(C.staticAddress("swallowed.lasty"),"short").value)+1)));((y=C.i16((y+1)))-1)) for((x=C.i16(C.i32((C.i32(C.cell(C.staticAddress("swallowed.lastx"),"short").value)-1))));Number(C.i32(x)<=C.i32((C.i32(C.cell(C.staticAddress("swallowed.lastx"),"short").value)+1)));((x=C.i16((x+1)))-1)) if(C.isok(x,y)) show_glyph(x,y,C.GLYPH_UNEXPLORED_OFF);
+        for((y=C.i16(C.i32((C.i32(C.readInt16At(C.staticAddress("swallowed.lasty")))-1))));Number(C.i32(y)<=C.i32((C.i32(C.readInt16At(C.staticAddress("swallowed.lasty")))+1)));((y=C.i16((y+1)))-1)) for((x=C.i16(C.i32((C.i32(C.readInt16At(C.staticAddress("swallowed.lastx")))-1))));Number(C.i32(x)<=C.i32((C.i32(C.readInt16At(C.staticAddress("swallowed.lastx")))+1)));((x=C.i16((x+1)))-1)) if(C.isok(x,y)) show_glyph(x,y,C.GLYPH_UNEXPLORED_OFF);
 
 
     }
@@ -1295,8 +1295,8 @@ function swallowed(first)
         if(rght_ok) show_glyph(C.i16(C.i32((C.i32(C.display_read_you_ux(C.u))+1))),C.i16(C.i32((C.i32(C.display_read_you_uy(C.u))+1))),swallow_to_glyph(swallower,C.S_sw_br));
     }
     /* Update the swallowed position. */
-    (C.cell(C.staticAddress("swallowed.lastx"),"short").value=C.display_read_you_ux(C.u));
-    (C.cell(C.staticAddress("swallowed.lasty"),"short").value=C.display_read_you_uy(C.u));
+    (C.writeInt16At(C.staticAddress("swallowed.lastx"), C.display_read_you_ux(C.u)));
+    (C.writeInt16At(C.staticAddress("swallowed.lasty"), C.display_read_you_uy(C.u)));
 }
 
 /*
@@ -1314,16 +1314,16 @@ function under_water(mode)
     /* swallowing has a higher precedence than under water */
     if(Number(!!(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_water_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_water_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_water_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))||C.i32(R168(C.u))))) return;
     /* full update */
-    if(Number(!!(Number(mode==1)||C.i32(C.cell(C.staticAddress("under_water.dela"),"signed char").value)))) {
+    if(Number(!!(Number(mode==1)||C.i32(C.readInt8At(C.staticAddress("under_water.dela")))))) {
         cls();
-        (C.cell(C.staticAddress("under_water.dela"),"signed char").value=(C.i8(0)));
+        (C.writeInt8At(C.staticAddress("under_water.dela"), (C.i8(0))));
         /* delayed full update */
     } else if(Number(mode==2)) {
-        (C.cell(C.staticAddress("under_water.dela"),"signed char").value=(C.i8(1)));
+        (C.writeInt8At(C.staticAddress("under_water.dela"), (C.i8(1))));
         return;
         /* limited update */
     } else {
-        for((y=C.i16(C.i32((C.i32(C.cell(C.staticAddress("under_water.lasty"),"short").value)-1))));Number(C.i32(y)<=C.i32((C.i32(C.cell(C.staticAddress("under_water.lasty"),"short").value)+1)));((y=C.i16((y+1)))-1)) for((x=C.i16(C.i32((C.i32(C.cell(C.staticAddress("under_water.lastx"),"short").value)-1))));Number(C.i32(x)<=C.i32((C.i32(C.cell(C.staticAddress("under_water.lastx"),"short").value)+1)));((x=C.i16((x+1)))-1)) if(C.isok(x,y)) show_glyph(x,y,C.GLYPH_UNEXPLORED_OFF);
+        for((y=C.i16(C.i32((C.i32(C.readInt16At(C.staticAddress("under_water.lasty")))-1))));Number(C.i32(y)<=C.i32((C.i32(C.readInt16At(C.staticAddress("under_water.lasty")))+1)));((y=C.i16((y+1)))-1)) for((x=C.i16(C.i32((C.i32(C.readInt16At(C.staticAddress("under_water.lastx")))-1))));Number(C.i32(x)<=C.i32((C.i32(C.readInt16At(C.staticAddress("under_water.lastx")))+1)));((x=C.i16((x+1)))-1)) if(C.isok(x,y)) show_glyph(x,y,C.GLYPH_UNEXPLORED_OFF);
 
 
     }
@@ -1336,8 +1336,8 @@ function under_water(mode)
     }
 
 
-    (C.cell(C.staticAddress("under_water.lastx"),"short").value=C.display_read_you_ux(C.u));
-    (C.cell(C.staticAddress("under_water.lasty"),"short").value=C.display_read_you_uy(C.u));
+    (C.writeInt16At(C.staticAddress("under_water.lastx"), C.display_read_you_ux(C.u)));
+    (C.writeInt16At(C.staticAddress("under_water.lasty"), C.display_read_you_uy(C.u)));
 }
 
 /*
@@ -1352,12 +1352,12 @@ function under_ground(mode)
     /* swallowing has a higher precedence than under ground */
     if(R168(C.u)) return;
     /* full update */
-    if(Number(!!(Number(mode==1)||C.i32(C.cell(C.staticAddress("under_ground.dela"),"signed char").value)))) {
+    if(Number(!!(Number(mode==1)||C.i32(C.readInt8At(C.staticAddress("under_ground.dela")))))) {
         cls();
-        (C.cell(C.staticAddress("under_ground.dela"),"signed char").value=(C.i8(0)));
+        (C.writeInt8At(C.staticAddress("under_ground.dela"), (C.i8(0))));
         /* delayed full update */
     } else if(Number(mode==2)) {
-        (C.cell(C.staticAddress("under_ground.dela"),"signed char").value=(C.i8(1)));
+        (C.writeInt8At(C.staticAddress("under_ground.dela"), (C.i8(1))));
         return;
         /* limited update */
     } else {
@@ -1437,7 +1437,7 @@ function set_mimic_blocking()
 function see_objects()
 {
     let obj;
-    for((obj=C.display_read_dlevel_t_objlist(C.display_address_instance_globals_saved_l_level(C.svl)));obj;(obj=C.display_read_obj_nobj(obj))) if(Number((C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8),"struct obj *").value)==obj)) newsym(C.display_read_obj_ox(obj),C.display_read_obj_oy(obj));
+    for((obj=C.display_read_dlevel_t_objlist(C.display_address_instance_globals_saved_l_level(C.svl)));obj;(obj=C.display_read_obj_nobj(obj))) if(Number((C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(C.display_read_obj_ox(obj))*(8*21))+Number(C.display_read_obj_oy(obj))*8)))==obj)) newsym(C.display_read_obj_ox(obj),C.display_read_obj_oy(obj));
 
     /* Qt's "paper doll" subset of persistent inventory shows map tiles
        for objects which aren't on the floor so not handled by above loop;
@@ -1462,9 +1462,9 @@ function see_nearby_objects()
         if(Number(!(C.isok(ix,iy)))) continue;
         /* skip if no object or the object has already been marked as
                having been seen up close */
-        if(Number(!!(Number(((obj=(C.cell(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(ix)*(8*21))+Number(iy)*8),"struct obj *").value)))==0)||C.i32(R106(obj))))) continue;
+        if(Number(!!(Number(((obj=(C.readPointerAt(((C.display_address_dlevel_t_objects(C.display_address_instance_globals_saved_l_level(C.svl))+Number(ix)*(8*21))+Number(iy)*8)))))==0)||C.i32(R106(obj))))) continue;
         /* skip if the spot can't be seen or is too far (diagonal) */
-        if(Number(!!(Number(!((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(iy)*8),"unsigned char *").value+Number(ix)*1),"unsigned char").value)&2)))!=0))))||Number(C.dist2((ix),(iy),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))>neardist)))) continue;
+        if(Number(!!(Number(!((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(iy)*8))+Number(ix)*1)))&2)))!=0))))||Number(C.dist2((ix),(iy),C.display_read_you_ux(C.u),C.display_read_you_uy(C.u))>neardist)))) continue;
         C.observe_object(obj);
         /* operate on remembered glyph rather than current one */
         (glyph=C.display_read_rm_glyph((C.display_address_dlevel_t_locations(C.display_address_instance_globals_saved_l_level(C.svl))+Number(ix)*(C.sizes["struct rm"]*21))+Number(iy)*C.sizes["struct rm"]));
@@ -1624,18 +1624,18 @@ function reglyph_darkroom()
         if(Number(!(C.display_read_flag_dark_room(C.flags)))) {
             if(Number(!!(Number(C.display_read_rm_glyph(lev)==(((Number((C.S_corr)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_corr)<=C.S_trwall))?(C.i32((C.i32(((C.S_corr)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_corr)<C.S_altar))?(C.i32(((C.i32(((C.S_corr)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_corr)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_corr)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_corr)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_corr)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_corr)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))))&&C.i32(R125(lev))))) (W119(lev,(Number((C.S_litcorr)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_litcorr)<=C.S_trwall))?(C.i32((C.i32(((C.S_litcorr)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_litcorr)<C.S_altar))?(C.i32(((C.i32(((C.S_litcorr)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_litcorr)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_litcorr)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_litcorr)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_litcorr)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_litcorr)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH)))))));
         } else {
-            if(Number(!!(Number(C.display_read_rm_glyph(lev)==(((Number((C.S_litcorr)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_litcorr)<=C.S_trwall))?(C.i32((C.i32(((C.S_litcorr)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_litcorr)<C.S_altar))?(C.i32(((C.i32(((C.S_litcorr)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_litcorr)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_litcorr)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_litcorr)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_litcorr)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_litcorr)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))))&&Number(!((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))))))) (W119(lev,(Number((C.S_corr)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_corr)<=C.S_trwall))?(C.i32((C.i32(((C.S_corr)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_corr)<C.S_altar))?(C.i32(((C.i32(((C.S_corr)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_corr)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_corr)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_corr)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_corr)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_corr)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH)))))));
+            if(Number(!!(Number(C.display_read_rm_glyph(lev)==(((Number((C.S_litcorr)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_litcorr)<=C.S_trwall))?(C.i32((C.i32(((C.S_litcorr)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_litcorr)<C.S_altar))?(C.i32(((C.i32(((C.S_litcorr)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_litcorr)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_litcorr)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_litcorr)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_litcorr)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_litcorr)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))))&&Number(!((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8))+Number(x)*1)))&2)))!=0))))))) (W119(lev,(Number((C.S_corr)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_corr)<=C.S_trwall))?(C.i32((C.i32(((C.S_corr)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_corr)<C.S_altar))?(C.i32(((C.i32(((C.S_corr)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_corr)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_corr)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_corr)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_corr)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_corr)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH)))))));
         }
         if(Number(!!(Number(!!(Number(!(C.display_read_flag_dark_room(C.flags)))||Number(!(C.display_read_instance_flags_wc_color(C.iflags)))))||((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))))) {
             if(Number(C.display_read_rm_glyph(lev)==(((Number((C.S_darkroom)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_darkroom)<=C.S_trwall))?(C.i32((C.i32(((C.S_darkroom)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_darkroom)<C.S_altar))?(C.i32(((C.i32(((C.S_darkroom)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_darkroom)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_darkroom)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_darkroom)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_darkroom)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_darkroom)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))))) (W119(lev,C.i32(R125(lev))?(((Number((C.S_room)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_room)<=C.S_trwall))?(C.i32((C.i32(((C.S_room)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_room)<C.S_altar))?(C.i32(((C.i32(((C.S_room)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_room)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_room)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_room)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_room)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_room)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))):C.GLYPH_NOTHING_OFF));
         } else {
-            if(Number(!!(Number(!!(Number(!!(Number(C.display_read_rm_glyph(lev)==(((Number((C.S_room)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_room)<=C.S_trwall))?(C.i32((C.i32(((C.S_room)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_room)<C.S_altar))?(C.i32(((C.i32(((C.S_room)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_room)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_room)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_room)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_room)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_room)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))))&&C.i32(C.display_read_rm_seenv(lev))))&&C.i32(R125(lev))))&&Number(!((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))))))) (W119(lev,(Number((C.S_darkroom)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_darkroom)<=C.S_trwall))?(C.i32((C.i32(((C.S_darkroom)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_darkroom)<C.S_altar))?(C.i32(((C.i32(((C.S_darkroom)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_darkroom)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_darkroom)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_darkroom)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_darkroom)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_darkroom)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH)))))));
- else if(Number(!!(Number(!!(Number(!!(Number(C.display_read_rm_glyph(lev)==C.GLYPH_NOTHING_OFF)&&Number(C.i32(C.display_read_rm_typ(lev))==C.ROOM)))&&C.i32(C.display_read_rm_seenv(lev))))&&Number(!((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))))))) (W119(lev,(Number((C.S_darkroom)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_darkroom)<=C.S_trwall))?(C.i32((C.i32(((C.S_darkroom)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_darkroom)<C.S_altar))?(C.i32(((C.i32(((C.S_darkroom)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_darkroom)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_darkroom)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_darkroom)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_darkroom)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_darkroom)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH)))))));
+            if(Number(!!(Number(!!(Number(!!(Number(C.display_read_rm_glyph(lev)==(((Number((C.S_room)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_room)<=C.S_trwall))?(C.i32((C.i32(((C.S_room)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_room)<C.S_altar))?(C.i32(((C.i32(((C.S_room)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_room)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_room)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_room)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_room)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_room)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))))&&C.i32(C.display_read_rm_seenv(lev))))&&C.i32(R125(lev))))&&Number(!((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8))+Number(x)*1)))&2)))!=0))))))) (W119(lev,(Number((C.S_darkroom)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_darkroom)<=C.S_trwall))?(C.i32((C.i32(((C.S_darkroom)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_darkroom)<C.S_altar))?(C.i32(((C.i32(((C.S_darkroom)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_darkroom)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_darkroom)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_darkroom)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_darkroom)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_darkroom)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH)))))));
+ else if(Number(!!(Number(!!(Number(!!(Number(C.display_read_rm_glyph(lev)==C.GLYPH_NOTHING_OFF)&&Number(C.i32(C.display_read_rm_typ(lev))==C.ROOM)))&&C.i32(C.display_read_rm_seenv(lev))))&&Number(!((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8))+Number(x)*1)))&2)))!=0))))))) (W119(lev,(Number((C.S_darkroom)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_darkroom)<=C.S_trwall))?(C.i32((C.i32(((C.S_darkroom)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_darkroom)<C.S_altar))?(C.i32(((C.i32(((C.S_darkroom)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_darkroom)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_darkroom)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_darkroom)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_darkroom)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_darkroom)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH)))))));
         }
     }
 
-    if(Number(!!(C.i32(C.display_read_flag_dark_room(C.flags))&&C.i32(C.display_read_instance_flags_wc_color(C.iflags))))) (C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.S_darkroom)*1),"unsigned char").value=C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.S_room)*1),"unsigned char").value);
- else (C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.S_darkroom)*1),"unsigned char").value=C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.SYM_NOTHING+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1),"unsigned char").value);
+    if(Number(!!(C.i32(C.display_read_flag_dark_room(C.flags))&&C.i32(C.display_read_instance_flags_wc_color(C.iflags))))) (C.writeUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.S_darkroom)*1), C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.S_room)*1))));
+ else (C.writeUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.S_darkroom)*1), C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.SYM_NOTHING+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1))));
 }
 
 /* ======================================================================== */
@@ -1649,8 +1649,43 @@ function newsym_force(x,y)
     y=C.i16(y);
     newsym(x,y);
     (W35((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"],C.i8(1)));
-    if(Number(C.i32(C.cell((C.display_address_instance_globals_g_gbuf_start(C.gg)+Number(y)*2),"short").value)>C.i32(x))) (C.cell((C.display_address_instance_globals_g_gbuf_start(C.gg)+Number(y)*2),"short").value=x);
-    if(Number(C.i32(C.cell((C.display_address_instance_globals_g_gbuf_stop(C.gg)+Number(y)*2),"short").value)<C.i32(x))) (C.cell((C.display_address_instance_globals_g_gbuf_stop(C.gg)+Number(y)*2),"short").value=x);
+    if(Number(C.i32(C.readInt16At((C.display_address_instance_globals_g_gbuf_start(C.gg)+Number(y)*2)))>C.i32(x))) (C.writeInt16At((C.display_address_instance_globals_g_gbuf_start(C.gg)+Number(y)*2), x));
+    if(Number(C.i32(C.readInt16At((C.display_address_instance_globals_g_gbuf_stop(C.gg)+Number(y)*2)))<C.i32(x))) (C.writeInt16At((C.display_address_instance_globals_g_gbuf_stop(C.gg)+Number(y)*2), x));
+}
+
+function drawingSuspended()
+{
+    return C.display_read_instance_globals_i_in_mklev(C.gi)
+        || C.display_read_sinfo_saving(C.program_state)
+        || C.display_read_sinfo_restoring(C.program_state)
+        || C.display_read_sinfo_done_hup(C.program_state);
+}
+
+function heroPosition(x, y)
+{
+    return x === C.display_read_you_ux(C.u) && y === C.display_read_you_uy(C.u);
+}
+
+function glyphInRange(glyph, first)
+{
+    return glyph >= first && glyph < first + C.NUMMONS;
+}
+
+function petGlyph(glyph)
+{
+    return glyphInRange(glyph, C.GLYPH_PET_MALE_OFF)
+        || glyphInRange(glyph, C.GLYPH_PET_FEM_OFF);
+}
+
+function monsterGlyph(glyph)
+{
+    return glyphInRange(glyph, C.GLYPH_MON_MALE_OFF)
+        || glyphInRange(glyph, C.GLYPH_MON_FEM_OFF)
+        || petGlyph(glyph)
+        || glyphInRange(glyph, C.GLYPH_RIDDEN_MALE_OFF)
+        || glyphInRange(glyph, C.GLYPH_RIDDEN_FEM_OFF)
+        || glyphInRange(glyph, C.GLYPH_DETECT_MALE_OFF)
+        || glyphInRange(glyph, C.GLYPH_DETECT_FEM_OFF);
 }
 
 /*
@@ -1661,13 +1696,9 @@ function show_glyph(x,y,glyph)
     x=C.i16(x);
     y=C.i16(y);
     glyph=C.i32(glyph);
-    const stackFrame=C.stackSave();
-    try {
-    let glyphinfo=C.nativeLocalRecord("struct glyphinfo");
-    let show_glyph_change=(C.i8(0));
-    let oldglyph;
+    let announce = false;
     /* don't process map glyphs when saving, restoring, or in_mklev */
-    if((Number(!!(Number(!!(Number(!!(C.i32(C.display_read_instance_globals_i_in_mklev(C.gi))||C.display_read_sinfo_saving(C.program_state)))||C.display_read_sinfo_restoring(C.program_state)))||C.display_read_sinfo_done_hup(C.program_state))))) return;
+    if (drawingSuspended()) return;
     //if (glyph == 3972 || glyph == 3988)
     //    __debugbreak();
     /*
@@ -1775,35 +1806,60 @@ function show_glyph(x,y,glyph)
     /* without UNBUFFERED_GLYPHINFO defined the glyphinfo values are buffered
        alongside the glyphs themselves for better performance, increased
        buffer size */
-    map_glyphinfo(x,y,glyph,C.u32(0),glyphinfo);
-    (oldglyph=C.display_read_glyphinfo_glyph(C.display_address_gbuf_entry_glyphinfo((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"])));
-    if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(C.display_read_accessibility_data_glyph_updates(C.a11y))&&Number(!(C.display_read_accessibility_data_mon_notices_blocked(C.a11y)))))&&Number(!(C.display_read_sinfo_in_docrt(C.program_state)))))&&Number(!(C.display_read_sinfo_gameover(C.program_state)))))&&Number(!(C.display_read_sinfo_in_getlev(C.program_state)))))&&Number(!(C.display_read_sinfo_stopprint(C.program_state)))))&&Number(!((Number(!!(Number(!!(Number(!!(C.i32(C.display_read_instance_globals_i_in_mklev(C.gi))||C.display_read_sinfo_saving(C.program_state)))||C.display_read_sinfo_restoring(C.program_state)))||C.display_read_sinfo_done_hup(C.program_state))))))))&&(Number(!!(Number(oldglyph!=glyph)||C.i32(C.display_read_gbuf_entry_gnew((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"])))))))) {
-        let c=C.glyph_to_cmap(glyph);
-        if(Number(!!(Number(!!((Number(!!(Number(!!((Number((oldglyph)==C.GLYPH_NOTHING_OFF))||(Number((oldglyph)==C.GLYPH_UNEXPLORED_OFF))))||(Number(!!(Number((c)>=C.S_upstair)&&Number((c)<=C.S_fountain)))))))&&Number(!((Number(!!(Number((c)>=C.S_stone)&&Number((c)<=C.S_trwall))))))))&&Number(!((Number(!!(Number((c)>=C.S_room)&&Number((c)<=C.S_darkroom))))))))) {
-            if(Number(!!(Number(!!((Number(!!(C.i32(C.display_read_accessibility_data_mon_notices(C.a11y))&&(Number(!!(Number(!!(Number(!!((Number(!!((Number(!!(Number((glyph)>=C.GLYPH_MON_MALE_OFF)&&Number((glyph)<(C.i32((C.GLYPH_MON_MALE_OFF+C.NUMMONS)))))))||(Number(!!(Number((glyph)>=C.GLYPH_MON_FEM_OFF)&&Number((glyph)<(C.i32((C.GLYPH_MON_FEM_OFF+C.NUMMONS))))))))))||(Number(!!((Number(!!(Number((glyph)>=C.GLYPH_PET_MALE_OFF)&&Number((glyph)<(C.i32((C.GLYPH_PET_MALE_OFF+C.NUMMONS)))))))||(Number(!!(Number((glyph)>=C.GLYPH_PET_FEM_OFF)&&Number((glyph)<(C.i32((C.GLYPH_PET_FEM_OFF+C.NUMMONS))))))))))))||(Number(!!((Number(!!(Number((glyph)>=C.GLYPH_RIDDEN_MALE_OFF)&&Number((glyph)<(C.i32((C.GLYPH_RIDDEN_MALE_OFF+C.NUMMONS)))))))||(Number(!!(Number((glyph)>=C.GLYPH_RIDDEN_FEM_OFF)&&Number((glyph)<(C.i32((C.GLYPH_RIDDEN_FEM_OFF+C.NUMMONS))))))))))))||(Number(!!((Number(!!(Number((glyph)>=C.GLYPH_DETECT_MALE_OFF)&&Number((glyph)<(C.i32((C.GLYPH_DETECT_MALE_OFF+C.NUMMONS)))))))||(Number(!!(Number((glyph)>=C.GLYPH_DETECT_FEM_OFF)&&Number((glyph)<(C.i32((C.GLYPH_DETECT_FEM_OFF+C.NUMMONS))))))))))))))))||((Number(!!(Number(!!(Number(!!((Number(!!((Number(!!(Number((oldglyph)>=C.GLYPH_MON_MALE_OFF)&&Number((oldglyph)<(C.i32((C.GLYPH_MON_MALE_OFF+C.NUMMONS)))))))||(Number(!!(Number((oldglyph)>=C.GLYPH_MON_FEM_OFF)&&Number((oldglyph)<(C.i32((C.GLYPH_MON_FEM_OFF+C.NUMMONS))))))))))||(Number(!!((Number(!!(Number((oldglyph)>=C.GLYPH_PET_MALE_OFF)&&Number((oldglyph)<(C.i32((C.GLYPH_PET_MALE_OFF+C.NUMMONS)))))))||(Number(!!(Number((oldglyph)>=C.GLYPH_PET_FEM_OFF)&&Number((oldglyph)<(C.i32((C.GLYPH_PET_FEM_OFF+C.NUMMONS))))))))))))||(Number(!!((Number(!!(Number((oldglyph)>=C.GLYPH_RIDDEN_MALE_OFF)&&Number((oldglyph)<(C.i32((C.GLYPH_RIDDEN_MALE_OFF+C.NUMMONS)))))))||(Number(!!(Number((oldglyph)>=C.GLYPH_RIDDEN_FEM_OFF)&&Number((oldglyph)<(C.i32((C.GLYPH_RIDDEN_FEM_OFF+C.NUMMONS))))))))))))||(Number(!!((Number(!!(Number((oldglyph)>=C.GLYPH_DETECT_MALE_OFF)&&Number((oldglyph)<(C.i32((C.GLYPH_DETECT_MALE_OFF+C.NUMMONS)))))))||(Number(!!(Number((oldglyph)>=C.GLYPH_DETECT_FEM_OFF)&&Number((oldglyph)<(C.i32((C.GLYPH_DETECT_FEM_OFF+C.NUMMONS))))))))))))))))||(Number(!!(Number(C.i32((x))==C.i32(C.display_read_you_ux(C.u)))&&Number(C.i32((y))==C.i32(C.display_read_you_uy(C.u))))))))) {
-                ;
+    const appearance = glyphAppearance(x, y, glyph, 0);
+    const cell = C.display_address_instance_globals_g_gbuf(C.gg)
+        + (y * 80 + x) * C.sizes["gbuf_entry"];
+    const previous = C.display_address_gbuf_entry_glyphinfo(cell);
+    const oldGlyph = C.display_read_glyphinfo_glyph(previous);
+    if (C.display_read_accessibility_data_glyph_updates(C.a11y)
+        && !C.display_read_accessibility_data_mon_notices_blocked(C.a11y)
+        && !C.display_read_sinfo_in_docrt(C.program_state)
+        && !C.display_read_sinfo_gameover(C.program_state)
+        && !C.display_read_sinfo_in_getlev(C.program_state)
+        && !C.display_read_sinfo_stopprint(C.program_state)
+        && !drawingSuspended()
+        && (oldGlyph !== glyph || C.display_read_gbuf_entry_gnew(cell))) {
+        const cmap = C.glyph_to_cmap(glyph);
+        const newFeature = oldGlyph === C.GLYPH_NOTHING_OFF
+            || oldGlyph === C.GLYPH_UNEXPLORED_OFF
+            || (cmap >= C.S_upstair && cmap <= C.S_fountain);
+        if (newFeature && !(cmap >= C.S_stone && cmap <= C.S_trwall)
+            && !(cmap >= C.S_room && cmap <= C.S_darkroom)) {
+            if ((C.display_read_accessibility_data_mon_notices(C.a11y) && monsterGlyph(glyph))
+                || monsterGlyph(oldGlyph) || heroPosition(x, y)) {
                 /* nothing */
             } else {
-                (show_glyph_change=(C.i8(1)));
+                announce = true;
             }
         }
     }
-    if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(C.display_read_glyphinfo_glyph(C.display_address_gbuf_entry_glyphinfo((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"]))!=glyph)||Number(C.display_read_glyphinfo_ttychar(C.display_address_gbuf_entry_glyphinfo((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"]))!=C.display_read_glyphinfo_ttychar(glyphinfo))))||Number(C.display_read_glyph_map_entry_customcolor(C.display_address_glyphinfo_gm(C.display_address_gbuf_entry_glyphinfo((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"])))!=C.display_read_glyph_map_entry_customcolor(C.display_address_glyphinfo_gm(glyphinfo)))))||Number(C.display_read_glyph_map_entry_glyphflags(C.display_address_glyphinfo_gm(C.display_address_gbuf_entry_glyphinfo((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"])))!=C.display_read_glyph_map_entry_glyphflags(C.display_address_glyphinfo_gm(glyphinfo)))))||Number(C.display_read_classic_representation_color(C.display_address_glyph_map_entry_sym(C.display_address_glyphinfo_gm(C.display_address_gbuf_entry_glyphinfo((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"]))))!=C.display_read_classic_representation_color(C.display_address_glyph_map_entry_sym(C.display_address_glyphinfo_gm(glyphinfo))))))||Number(C.i32(C.display_read_glyph_map_entry_tileidx(C.display_address_glyphinfo_gm(C.display_address_gbuf_entry_glyphinfo((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"]))))!=C.i32(C.display_read_glyph_map_entry_tileidx(C.display_address_glyphinfo_gm(glyphinfo))))))||C.i32(C.display_read_instance_flags_use_background_glyph(C.iflags))))) {
+    const oldMap = C.display_address_glyphinfo_gm(previous);
+    if (oldGlyph !== glyph
+        || C.display_read_glyphinfo_ttychar(previous) !== appearance.ttychar
+        || C.display_read_glyph_map_entry_customcolor(oldMap) !== C.display_read_glyph_map_entry_customcolor(appearance.source)
+        || C.display_read_glyph_map_entry_glyphflags(oldMap) !== appearance.flags
+        || C.display_read_classic_representation_color(C.display_address_glyph_map_entry_sym(oldMap)) !== appearance.color
+        || C.display_read_glyph_map_entry_tileidx(oldMap) !== C.display_read_glyph_map_entry_tileidx(appearance.source)
+        || C.display_read_instance_flags_use_background_glyph(C.iflags)) {
         /* flags might change (single object vs pile, monster tamed or pet
            gone feral), color might change (altar's alignment converted by
            invisible hero), but ttychar normally won't change unless the
            glyph does too (changing boulder symbol would be an exception,
            but that triggers full redraw so doesn't matter here); still,
            be thorough and check everything */
-        (W43(C.display_address_gbuf_entry_glyphinfo((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"]),glyph));
-        (W35((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"],C.i8(1)));
-        (W43(C.display_address_gbuf_entry_glyphinfo((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"]),C.display_read_glyphinfo_glyph(glyphinfo)));
-        (W44(C.display_address_gbuf_entry_glyphinfo((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"]),C.display_read_glyphinfo_ttychar(glyphinfo)));
-        C.copy(C.display_address_glyphinfo_gm(C.display_address_gbuf_entry_glyphinfo((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"])),C.display_address_glyphinfo_gm(glyphinfo),C.sizes["struct glyph_map_entry"]);
-        if(Number(C.i32(C.cell((C.display_address_instance_globals_g_gbuf_start(C.gg)+Number(y)*2),"short").value)>C.i32(x))) (C.cell((C.display_address_instance_globals_g_gbuf_start(C.gg)+Number(y)*2),"short").value=x);
-        if(Number(C.i32(C.cell((C.display_address_instance_globals_g_gbuf_stop(C.gg)+Number(y)*2),"short").value)<C.i32(x))) (C.cell((C.display_address_instance_globals_g_gbuf_stop(C.gg)+Number(y)*2),"short").value=x);
+        W43(previous,glyph);
+        W35(cell,1);
+        W43(previous,glyph);
+        W44(previous,appearance.ttychar);
+        writeGlyphMapAppearance(previous, appearance);
+        const first = C.display_address_instance_globals_g_gbuf_start(C.gg) + y * 2;
+        const last = C.display_address_instance_globals_g_gbuf_stop(C.gg) + y * 2;
+        if (C.readInt16At(first) > x) C.writeInt16At(first, x);
+        if (C.readInt16At(last) < x) C.writeInt16At(last, x);
     }
-    if(show_glyph_change) {
+    if (announce) {
+        const stackFrame=C.stackSave();
+        try {
         let buf=C.stackAlloc((1*256));
         let cc=C.stackAlloc(C.sizes["struct nhcoord"]);
         let sym=0;
@@ -1814,8 +1870,8 @@ function show_glyph(x,y,glyph)
         C.do_screen_description(cc,(C.i8(1)),sym,buf,firstmatch.address,0);
         C.variadic(5,x,y,C.literal("%s."),firstmatch.value);
         (W2(C.a11y,tmp_accessiblemsg));
+        } finally {C.stackRestore(stackFrame);}
     }
-    } finally {C.stackRestore(stackFrame); }
 }
 
 /*
@@ -1830,17 +1886,22 @@ function show_glyph(x,y,glyph)
  */
 function clear_glyph_buffer()
 {
-    let x; let y;
-    let gptr=((C.display_address_instance_globals_g_gbuf(C.gg)+Number(0)*(C.sizes["gbuf_entry"]*80))+Number(0)*C.sizes["gbuf_entry"]);
-    let giptr=C.display_address_gbuf_entry_glyphinfo(gptr);
+    const stride = C.sizes["gbuf_entry"];
+    const buffer = C.display_address_instance_globals_g_gbuf(C.gg);
+    const blank = C.staticAddress("nul_gbuf");
+    const giptr = C.display_address_gbuf_entry_glyphinfo(buffer);
     (W35(C.staticAddress("nul_gbuf"),C.i8(((Number(!!(Number(!!(Number(!!(Number(!!(Number(C.display_read_glyphinfo_ttychar(giptr)!=C.display_read_glyphinfo_ttychar(C.display_address_gbuf_entry_glyphinfo(C.staticAddress("nul_gbuf"))))||Number(C.display_read_classic_representation_color(C.display_address_glyph_map_entry_sym(C.display_address_glyphinfo_gm(giptr)))!=C.display_read_classic_representation_color(C.display_address_glyph_map_entry_sym(C.display_address_glyphinfo_gm(C.display_address_gbuf_entry_glyphinfo(C.staticAddress("nul_gbuf"))))))))||Number(C.display_read_glyph_map_entry_glyphflags(C.display_address_glyphinfo_gm(giptr))!=C.display_read_glyph_map_entry_glyphflags(C.display_address_glyphinfo_gm(C.display_address_gbuf_entry_glyphinfo(C.staticAddress("nul_gbuf")))))))||Number(C.display_read_glyph_map_entry_customcolor(C.display_address_glyphinfo_gm(giptr))!=C.display_read_glyph_map_entry_customcolor(C.display_address_glyphinfo_gm(C.display_address_gbuf_entry_glyphinfo(C.staticAddress("nul_gbuf")))))))||Number(C.i32(C.display_read_glyph_map_entry_tileidx(C.display_address_glyphinfo_gm(giptr)))!=C.i32(C.display_read_glyph_map_entry_tileidx(C.display_address_glyphinfo_gm(C.display_address_gbuf_entry_glyphinfo(C.staticAddress("nul_gbuf")))))))))?1:0))));
-    for((y=C.i16(0));Number(C.i32(y)<21);((y=C.i16((y+1)))-1)) {
-        (gptr=((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(0)*C.sizes["gbuf_entry"]));
-        for((x=C.i16(80));x;((x=C.i16((x-1)))+1)) {
-            C.copy(((gptr=C.ptr((gptr+Number(C.sizes["gbuf_entry"]))))-Number(C.sizes["gbuf_entry"])),C.staticAddress("nul_gbuf"),C.sizes["gbuf_entry"]);
-        }
-        (C.cell((C.display_address_instance_globals_g_gbuf_start(C.gg)+Number(y)*2),"short").value=C.i16(1));
-        (C.cell((C.display_address_instance_globals_g_gbuf_stop(C.gg)+Number(y)*2),"short").value=C.i16(C.i32((80-1))));
+    // Every cell receives the same blank entry. Grow the initialized prefix
+    // with contiguous copies, then reset the per-row refresh boundaries.
+    const cellCount = 21 * 80;
+    C.copy(buffer, blank, stride);
+    for (let filled = 1; filled < cellCount; filled *= 2) {
+        const count = Math.min(filled, cellCount - filled);
+        C.copy(buffer + filled * stride, buffer, count * stride);
+    }
+    for (let y = 0; y < 21; y++) {
+        (C.writeInt16At((C.display_address_instance_globals_g_gbuf_start(C.gg)+Number(y)*2), C.i16(1)));
+        (C.writeInt16At((C.display_address_instance_globals_g_gbuf_stop(C.gg)+Number(y)*2), C.i16(C.i32((80-1)))));
     }
 }
 
@@ -1874,8 +1935,8 @@ function row_refresh(start,stop,y)
 function cls()
 {
     
-    if(C.cell(C.staticAddress("cls.in_cls"),"signed char").value) return;
-    (C.cell(C.staticAddress("cls.in_cls"),"signed char").value=(C.i8(1)));
+    if(C.readInt8At(C.staticAddress("cls.in_cls"))) return;
+    (C.writeInt8At(C.staticAddress("cls.in_cls"), (C.i8(1))));
     C.indirect(5,(C.display_read_window_procs_win_display_nhwindow(C.windowprocs)),C.global("WIN_MESSAGE").value,(C.i8(0)));
     /* flush messages */
     (W18(C.disp,C.i8(1)));
@@ -1884,7 +1945,7 @@ function cls()
     /* clear physical screen */
     clear_glyph_buffer();
     /* force gbuf[][].glyph to unexplored */
-    (C.cell(C.staticAddress("cls.in_cls"),"signed char").value=(C.i8(0)));
+    (C.writeInt8At(C.staticAddress("cls.in_cls"), (C.i8(0))));
 }
 
 /*
@@ -1892,53 +1953,95 @@ function cls()
  */
 function flush_screen(cursor_on_u)
 {
-    cursor_on_u=C.i32(cursor_on_u);
-    const stackFrame=C.stackSave();
-    try {
+    cursor_on_u = C.i32(cursor_on_u);
     /* Prevent infinite loops on errors:
      *      flush_screen->print_glyph->impossible->pline->flush_screen
      */
-    
-    
-    let x; let y;
-    let bkglyphinfo=C.nativeLocalRecord("struct glyphinfo"); C.copy(bkglyphinfo,C.staticAddress("nul_glyphinfo"),C.sizes["struct glyphinfo"]);
-    let bkglyph=C.local("int",0);
+
     /* 5.0: don't update map, status, or perm_invent during save/restore */
-    if((Number(!!(Number(!!(Number(!!(C.i32(C.display_read_instance_globals_i_in_mklev(C.gi))||C.display_read_sinfo_saving(C.program_state)))||C.display_read_sinfo_restoring(C.program_state)))||C.display_read_sinfo_done_hup(C.program_state))))) return;
-    if(Number(cursor_on_u==C.i32((-1)))) (C.cell(C.staticAddress("flush_screen.delay_flushing"),"int").value=Number(!(C.cell(C.staticAddress("flush_screen.delay_flushing"),"int").value)));
-    if(C.cell(C.staticAddress("flush_screen.delay_flushing"),"int").value) return;
-    if(C.cell(C.staticAddress("flush_screen.flushing"),"int").value) return;
+    if (drawingSuspended())
+        return;
+    const delay = C.staticAddress("flush_screen.delay_flushing");
+    if (cursor_on_u === -1)
+        C.writeInt32At(delay, Number(!C.readInt32At(delay)));
+    const flushing = C.staticAddress("flush_screen.flushing");
+    if (C.readInt32At(delay) || C.readInt32At(flushing))
+        return;
     /* if already flushing then return */
-    (C.cell(C.staticAddress("flush_screen.flushing"),"int").value=1);
-    if(C.display_read_sinfo_done_hup(C.program_state)) return;
-    /* get this done now, before we place the cursor on the hero */
-    if(Number(!!(C.i32(C.display_read_display_hints_botl(C.disp))||C.i32(C.display_read_display_hints_botlx(C.disp))))) C.bot();
- else if(C.display_read_display_hints_time_botl(C.disp)) C.timebot();
-    for((y=C.i16(0));Number(C.i32(y)<21);((y=C.i16((y+1)))-1)) {
-        let gptr=((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number((x=C.cell((C.display_address_instance_globals_g_gbuf_start(C.gg)+Number(y)*2),"short").value))*C.sizes["gbuf_entry"]);
-        for(;Number(C.i32(x)<=C.i32(C.cell((C.display_address_instance_globals_g_gbuf_stop(C.gg)+Number(y)*2),"short").value));(((gptr=C.ptr((gptr+Number(C.sizes["gbuf_entry"]))))-Number(C.sizes["gbuf_entry"])),((x=C.i16((x+1)))-1))) {
-            get_bkglyph_and_framecolor(x,y,bkglyph.address,C.display_address_glyphinfo_framecolor(bkglyphinfo));
-            if(Number(!!(C.i32(C.display_read_gbuf_entry_gnew(gptr))||(Number(!!(Number(C.display_read_win_settings_map_frame_color(C.display_address_instance_globals_w_wsettings(C.gw))!=C.u32(8))&&Number(C.display_read_glyphinfo_framecolor(bkglyphinfo)!=C.u32(8)))))))) {
-                /* map_glyphinfo() won't touch framecolor */
-                map_glyphinfo(x,y,bkglyph.value,C.u32(0),bkglyphinfo);
-                C.indirect(7,(C.display_read_window_procs_win_print_glyph(C.windowprocs)),C.global("WIN_MAP").value,x,y,(((Number(!!(Number(!!(Number(!!(Number(C.i32((x))<0)||Number(C.i32((y))<0)))||Number(C.i32((x))>=80)))||Number(C.i32((y))>=21))))?C.staticAddress("no_ginfo"):C.display_address_gbuf_entry_glyphinfo((C.display_address_instance_globals_g_gbuf(C.gg)+Number((y))*(C.sizes["gbuf_entry"]*80))+Number((x))*C.sizes["gbuf_entry"]))),bkglyphinfo);
-                (W35(gptr,C.i8(0)));
+    C.writeInt32At(flushing, 1);
+    if (C.display_read_sinfo_done_hup(C.program_state))
+        return;
+
+    const stackFrame = C.stackSave();
+    try {
+        /* get this done now, before we place the cursor on the hero */
+        if (C.display_read_display_hints_botl(C.disp) || C.display_read_display_hints_botlx(C.disp))
+            C.bot();
+        else if (C.display_read_display_hints_time_botl(C.disp))
+            C.timebot();
+
+        const stride = C.sizes["gbuf_entry"];
+        const strideRow = 80 * stride;
+        const base = C.display_address_instance_globals_g_gbuf(C.gg);
+        const start = C.display_address_instance_globals_g_gbuf_start(C.gg);
+        const stop = C.display_address_instance_globals_g_gbuf_stop(C.gg);
+        const nativeFrame = Object.hasOwn(C, "printGlyphFrame");
+        let background, frameColor, glyphSlot;
+        function allocateBackground() {
+            background = C.nativeLocalRecord("struct glyphinfo");
+            C.copy(background, C.staticAddress("nul_glyphinfo"), C.sizes["struct glyphinfo"]);
+            frameColor = C.display_address_glyphinfo_framecolor(background);
+            // The background glyph's own field gives the helper its output slot.
+            glyphSlot = C.display_address_glyphinfo_glyph(background);
+        }
+        if (!nativeFrame) allocateBackground();
+
+        for (let y = 0; y < 21; y++) {
+            let x = C.readInt16At(start + y * 2);
+            let cell = base + y * strideRow + x * stride;
+            for (; x <= C.readInt16At(stop + y * 2); x = C.i16(x + 1), cell += stride) {
+                let frame;
+                if (nativeFrame) {
+                    // TTY displays the frame color. Other ports receive the full background glyph.
+                    frame = backgroundFrameColor(x, y);
+                } else {
+                    get_bkglyph_and_framecolor(x, y, glyphSlot, frameColor);
+                    frame = C.display_read_glyphinfo_framecolor(background);
+                }
+                const changed = C.display_read_gbuf_entry_gnew(cell);
+                if (changed || frame !== 8) {
+                    const foreground = x < 0 || x >= 80 ? C.staticAddress("no_ginfo")
+                        : C.display_address_gbuf_entry_glyphinfo(cell);
+                    if (!nativeFrame || !C.printGlyphFrame(C.display_read_window_procs_win_print_glyph(C.windowprocs),
+                        C.mapWindowIdentifier(), x, y, foreground, frame)) {
+                        if (nativeFrame) {
+                            if (!background) allocateBackground();
+                            get_bkglyph_and_framecolor(x, y, glyphSlot, frameColor);
+                        }
+                        /* map_glyphinfo() won't touch framecolor */
+                        map_glyphinfo(x, y, C.display_read_glyphinfo_glyph(background), 0, background);
+                        C.indirect(7, C.display_read_window_procs_win_print_glyph(C.windowprocs),
+                            C.global("WIN_MAP").value, x, y, foreground, background);
+                    }
+                    W35(cell,0);
+                }
             }
         }
-    }
-{
-        let i;
-        for((i=0);Number(i<21);((i=C.i32((i+1)))-1)) {
-            (C.cell((C.display_address_instance_globals_g_gbuf_start(C.gg)+Number(i)*2),"short").value=C.i16(C.i32((80-1))));
-            (C.cell((C.display_address_instance_globals_g_gbuf_stop(C.gg)+Number(i)*2),"short").value=C.i16(0));
+        for (let y = 0; y < 21; y++) {
+            C.writeInt16At(start + y * 2, 79);
+            C.writeInt16At(stop + y * 2, 0);
         }
-    }    ;
-    /* after map update, before display_nhwindow(WIN_MAP) */
-    if(cursor_on_u) C.indirect(8,(C.display_read_window_procs_win_curs(C.windowprocs)),C.global("WIN_MAP").value,C.i32(C.display_read_you_ux(C.u)),C.i32(C.display_read_you_uy(C.u)));
-    /* move cursor to the hero */
-    C.indirect(9,(C.display_read_window_procs_win_display_nhwindow(C.windowprocs)),C.global("WIN_MAP").value,(C.i8(0)));
-    (C.cell(C.staticAddress("flush_screen.flushing"),"int").value=0);
-    } finally {C.stackRestore(stackFrame); }
+        /* after map update, before display_nhwindow(WIN_MAP) */
+        if (cursor_on_u) {
+            C.indirect(8, C.display_read_window_procs_win_curs(C.windowprocs), C.global("WIN_MAP").value,
+                C.display_read_you_ux(C.u), C.display_read_you_uy(C.u));
+        }
+        /* move cursor to the hero */
+        C.indirect(9, C.display_read_window_procs_win_display_nhwindow(C.windowprocs), C.global("WIN_MAP").value, 0);
+        C.writeInt32At(flushing, 0);
+    } finally {
+        C.stackRestore(stackFrame);
+    }
 }
 
 /* ======================================================================== */
@@ -2148,6 +2251,8 @@ function glyph_at(x,y)
     y=C.i16(y);
     if(Number(!!(Number(!!(Number(!!(Number(C.i32(x)<0)||Number(C.i32(y)<0)))||Number(C.i32(x)>=80)))||Number(C.i32(y)>=21)))) return (((Number((C.S_room)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((C.S_room)<=C.S_trwall))?(C.i32((C.i32(((C.S_room)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((C.S_room)<C.S_altar))?(C.i32(((C.i32(((C.S_room)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((C.S_room)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((C.S_room)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((C.S_room)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((C.S_room)<=C.S_goodpos))?(C.i32(((C.i32(((C.S_room)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH)))))));
     /* XXX */
+    if (Object.hasOwn(C, "glyphAtCell"))
+        return C.glyphAtCell(x, y);
     return C.display_read_glyphinfo_glyph(C.display_address_gbuf_entry_glyphinfo((C.display_address_instance_globals_g_gbuf(C.gg)+Number(y)*(C.sizes["gbuf_entry"]*80))+Number(x)*C.sizes["gbuf_entry"]));
     /* _glyph_at(x,y) */
 }
@@ -2210,37 +2315,57 @@ function get_bkglyph_and_framecolor(x,y,bkglyph,framecolor)
                 (idx=C.S_room);
             break;
         }
-        if(Number(!!(Number(!((Number((C.i32((C.i32(C.cell((C.cell((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))))&&(Number(!!(Number(!(R125(lev)))||C.i32(C.display_read_flag_dark_room(C.flags)))))))) {
+        if(Number(!!(Number(!((Number((C.i32((C.i32(C.readUint8At((C.readPointerAt((C.display_read_instance_globals_v_viz_array(C.gv)+Number(y)*8))+Number(x)*1)))&2)))!=0))))&&(Number(!!(Number(!(R125(lev)))||C.i32(C.display_read_flag_dark_room(C.flags)))))))) {
             /* Floor spaces and corridors are dark if unlit. */
             if(Number(!!(Number(C.i32(C.display_read_rm_typ(lev))==C.CORR)&&Number(idx==C.S_litcorr)))) (idx=C.S_corr);
  else if(Number(idx==C.S_room)) (idx=((Number(!!(C.i32(C.display_read_flag_dark_room(C.flags))&&C.i32(C.display_read_instance_flags_wc_color(C.iflags)))))?((((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_rogue_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.S_stone:C.S_darkroom)):C.S_stone));
         }
         if(Number(idx!=C.S_room)) (tmp_bkglyph=(((Number((idx)==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number((idx)<=C.S_trwall))?(C.i32((C.i32(((idx)-C.S_vwall))+((C.i32(C.In_mines(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(C.display_address_you_uz(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(C.display_read_d_level_dlevel(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))||C.i32(C.display_read_d_level_dnum(C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd)))))))&&C.i32(C.on_level(C.display_address_you_uz(C.u),C.display_address_dgn_topology_d_knox_level(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(C.display_read_d_level_dnum(C.display_address_you_uz(C.u)))==C.i32((C.display_read_dgn_topology_d_sokoban_dnum(C.display_address_instance_globals_saved_d_dungeon_topology(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number((idx)<C.S_altar))?(C.i32(((C.i32(((idx)-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number((idx)==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number((idx)<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32(((idx)-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number((idx)<=C.S_goodpos))?(C.i32(((C.i32(((idx)-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))));
     }
-    (C.cell(bkglyph,"int").value=tmp_bkglyph);
+    C.writeInt32At(bkglyph, tmp_bkglyph);
+    C.writeUint32At(framecolor, backgroundFrameColor(x,y));
+}
+
+function backgroundFrameColor(x,y)
+{
     /* this guard should be unnecessary */
-    if(Number(!!(Number(!!(C.i32(C.display_read_instance_flags_bgcolors(C.iflags))&&Number(C.display_read_win_settings_map_frame_color(C.display_address_instance_globals_w_wsettings(C.gw))!=C.u32(8))))&&C.i32(C.mapxy_valid(x,y))))) (C.cell(framecolor,"unsigned int").value=C.display_read_win_settings_map_frame_color(C.display_address_instance_globals_w_wsettings(C.gw)));
- else (C.cell(framecolor,"unsigned int").value=C.u32(8));
+    if (C.display_read_instance_flags_bgcolors(C.iflags)) {
+        const settings = C.display_address_instance_globals_w_wsettings(C.gw);
+        const color = C.display_read_win_settings_map_frame_color(settings);
+        if (color !== 8 && C.mapxy_valid(x,y))
+            return color;
+    }
+    return 8;
 }
 
 /* masks for per-level variances kept in gg.glyphmap_perlevel_flags */
-function map_glyphinfo(x,y,glyph,mgflags,glyphinfo)
+function map_glyphinfo(x, y, glyph, mgflags, glyphinfo)
 {
-    x=C.i16(x);
-    y=C.i16(y);
-    glyph=C.i32(glyph);
-    mgflags=C.u32(mgflags);
-    glyphinfo=C.ptr(glyphinfo);
-    let offset;
-    let is_you=C.i8((Number(!!((Number(!!(Number(C.i32((x))==C.i32(C.display_read_you_ux(C.u)))&&Number(C.i32((y))==C.i32(C.display_read_you_uy(C.u))))))&&(Number(!!(Number(!!(Number(!!((Number(!!((Number(!!(Number((glyph)>=C.GLYPH_MON_MALE_OFF)&&Number((glyph)<(C.i32((C.GLYPH_MON_MALE_OFF+C.NUMMONS)))))))||(Number(!!(Number((glyph)>=C.GLYPH_MON_FEM_OFF)&&Number((glyph)<(C.i32((C.GLYPH_MON_FEM_OFF+C.NUMMONS))))))))))||(Number(!!((Number(!!(Number((glyph)>=C.GLYPH_PET_MALE_OFF)&&Number((glyph)<(C.i32((C.GLYPH_PET_MALE_OFF+C.NUMMONS)))))))||(Number(!!(Number((glyph)>=C.GLYPH_PET_FEM_OFF)&&Number((glyph)<(C.i32((C.GLYPH_PET_FEM_OFF+C.NUMMONS))))))))))))||(Number(!!((Number(!!(Number((glyph)>=C.GLYPH_RIDDEN_MALE_OFF)&&Number((glyph)<(C.i32((C.GLYPH_RIDDEN_MALE_OFF+C.NUMMONS)))))))||(Number(!!(Number((glyph)>=C.GLYPH_RIDDEN_FEM_OFF)&&Number((glyph)<(C.i32((C.GLYPH_RIDDEN_FEM_OFF+C.NUMMONS))))))))))))||(Number(!!((Number(!!(Number((glyph)>=C.GLYPH_DETECT_MALE_OFF)&&Number((glyph)<(C.i32((C.GLYPH_DETECT_MALE_OFF+C.NUMMONS)))))))||(Number(!!(Number((glyph)>=C.GLYPH_DETECT_FEM_OFF)&&Number((glyph)<(C.i32((C.GLYPH_DETECT_FEM_OFF+C.NUMMONS)))))))))))))))));
+    x = C.i16(x);
+    y = C.i16(y);
+    glyph = C.i32(glyph);
+    mgflags = C.u32(mgflags);
+    glyphinfo = C.ptr(glyphinfo);
+    const appearance = glyphAppearance(x, y, glyph, mgflags);
+    writeGlyphMapAppearance(glyphinfo, appearance);
+    W44(glyphinfo,appearance.ttychar);
+    W43(glyphinfo,glyph);
+}
+
+function glyphAppearance(x, y, glyph, mgflags)
+{
+    const isYou = heroPosition(x, y) && monsterGlyph(glyph);
     /* verify hero or steed (not something underneath
                          when hero is invisible without see invisible,
                          or a temporary display effect like an explosion);
                          this is only approximate, because hero might be
                          mimicking an object (after eating mimic corpse or
                          if polyd into mimic) or furniture (only if polyd) */
-    let gmap=(C.staticAddress("glyphmap")+Number(glyph)*C.sizes["struct glyph_map_entry"]);
-    C.copy(C.display_address_glyphinfo_gm(glyphinfo),gmap,C.sizes["struct glyph_map_entry"]);
+    const source = C.staticAddress("glyphmap") + glyph * C.sizes["struct glyph_map_entry"];
+    const symbol = C.display_address_glyph_map_entry_sym(source);
+    let symidx = C.display_read_classic_representation_symidx(symbol);
+    let color = C.display_read_classic_representation_color(symbol);
+    let flags = C.display_read_glyph_map_entry_glyphflags(source);
     /* glyphflags, sym.symidx, sym.color, tileidx */
     /*
      * Only hero tinkering permitted on-the-fly (who).
@@ -2250,37 +2375,67 @@ function map_glyphinfo(x,y,glyph,mgflags,glyphinfo)
      * can't see himself/herself.  This applies to accessibility hacks
      * as well as to regular display.)
      */
-    if(is_you) {
-        if(Number(!!(Number(!!(Number(!(C.display_read_instance_flags_wc_color(C.iflags)))||(Number(C.display_read_you_umonnum(C.u)!=C.display_read_you_umonster(C.u)))))||Number(glyph!=(C.i32(((((Number(!!((Number(C.display_read_you_umonnum(C.u)!=C.display_read_you_umonster(C.u)))||Number(!(C.display_read_flag_showrace(C.flags))))))?C.display_read_you_umonnum(C.u):C.i32(C.display_read_Race_mnum(C.display_address_instance_globals_u_urace(C.gu)))))+(((Number((((((((Number(C.display_read_you_umonnum(C.u)!=C.display_read_you_umonster(C.u)))?C.i32(R171(C.u)):C.i32(C.display_read_flag_female(C.flags))))?1:0))))==C.MALE))?C.GLYPH_MON_MALE_OFF:C.GLYPH_MON_FEM_OFF))))))))) {
-            ;
+    if (isYou) {
+        const form = C.display_read_you_umonnum(C.u);
+        const unpolymorphed = form === C.display_read_you_umonster(C.u);
+        const showRace = C.display_read_flag_showrace(C.flags);
+        const species = showRace ? C.display_read_Race_mnum(C.display_address_instance_globals_u_urace(C.gu)) : form;
+        const genderOffset = Number(Boolean(C.display_read_flag_female(C.flags))) === C.MALE
+            ? C.GLYPH_MON_MALE_OFF : C.GLYPH_MON_FEM_OFF;
+        if (!C.display_read_instance_flags_wc_color(C.iflags)
+            || !unpolymorphed || glyph !== species + genderOffset) {
             /* color tweak not needed (!use_color) or not wanted (poly'd
                  or riding--which uses steed's color, not hero's) */
-        } else if(Number(!!((Number(!!(Number(C.display_read_instance_globals_c_currentgraphics(C.gc)==C.ROGUESET)&&(Number(C.u32(C.display_read_symsetentry_handling(C.display_address_instance_globals_s_symset(C.gs)+Number(C.display_read_instance_globals_c_currentgraphics(C.gc))*C.sizes["struct symsetentry"]))==C.u32((C.H_IBM)))))))&&Number(C.i32(R136(C.display_address_instance_globals_s_symset(C.gs)+Number(C.display_read_instance_globals_c_currentgraphics(C.gc))*C.sizes["struct symsetentry"]))==0)))) {
-            /* actually player should be yellow-on-gray if in corridor */
-            (W6(C.display_address_glyph_map_entry_sym(C.display_address_glyphinfo_gm(glyphinfo)),11));
-        } else if(C.display_read_flag_showrace(C.flags)) {
-            /* for showrace, non-human hero is displayed by the symbol of
+        } else {
+            const graphics = C.display_read_instance_globals_c_currentgraphics(C.gc);
+            const symset = C.display_address_instance_globals_s_symset(C.gs)
+                + graphics * C.sizes["struct symsetentry"];
+            if (graphics === C.ROGUESET
+                && C.display_read_symsetentry_handling(symset) === C.H_IBM
+                && !R136(symset)) {
+                /* actually player should be yellow-on-gray if in corridor */
+                color = 11;
+            } else if (showRace) {
+                /* for showrace, non-human hero is displayed by the symbol of
                corresponding type of monster rather than by '@' (handled
                by newsym()); we change the color to same as human hero */
-            (W6(C.display_address_glyph_map_entry_sym(C.display_address_glyphinfo_gm(glyphinfo)),15));
+                color = 15;
+            }
         }
         /* accessibility
           This unchanging display character for hero was requested by
           a blind player to enhance screen reader use.
           Turn on override symbol if caller hasn't specified NOOVERRIDE. */
-        if(Number(!!(Number(C.display_read_sysopt_s_accessibility(C.sysopt)==1)&&Number(!((C.u32((mgflags&C.u32(1))))))))) {
-            (offset=C.i32((C.SYM_HERO_OVERRIDE+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))));
-            if(((C.i64((C.display_read_instance_globals_g_glyphmap_perlevel_flags(C.gg)&C.i64(2))))?C.i32(C.cell((C.display_address_instance_globals_o_ov_rogue_syms(C.go)+Number(offset)*1),"unsigned char").value):C.i32(C.cell((C.display_address_instance_globals_o_ov_primary_syms(C.go)+Number(offset)*1),"unsigned char").value))) (W7(C.display_address_glyph_map_entry_sym(C.display_address_glyphinfo_gm(glyphinfo)),offset));
+        if (C.display_read_sysopt_s_accessibility(C.sysopt) === 1 && !(mgflags & 1)) {
+            const offset = C.SYM_HERO_OVERRIDE + C.MAXPCHARS + C.MAXOCLASSES + C.MAXMCLASSES + 6;
+            const overrides = C.display_read_instance_globals_g_glyphmap_perlevel_flags(C.gg) & 2n
+                ? C.display_address_instance_globals_o_ov_rogue_syms(C.go)
+                : C.display_address_instance_globals_o_ov_primary_syms(C.go);
+            if (C.readUint8At(overrides + offset))
+                symidx = offset;
         }
-        (W37(C.display_address_glyphinfo_gm(glyphinfo),C.u32(C.display_read_glyph_map_entry_glyphflags(C.display_address_glyphinfo_gm(glyphinfo))|C.u32(1))));
+        flags = (flags | 1) >>> 0;
     }
-    if(Number(!!(Number(!!(Number(C.display_read_sysopt_s_accessibility(C.sysopt)==1)&&(C.u32((mgflags&C.u32(1))))))&&(Number(!!((Number(!!(Number((glyph)>=C.GLYPH_PET_MALE_OFF)&&Number((glyph)<(C.i32((C.GLYPH_PET_MALE_OFF+C.NUMMONS)))))))||(Number(!!(Number((glyph)>=C.GLYPH_PET_FEM_OFF)&&Number((glyph)<(C.i32((C.GLYPH_PET_FEM_OFF+C.NUMMONS))))))))))))) {
+    if (C.display_read_sysopt_s_accessibility(C.sysopt) === 1 && (mgflags & 1) && petGlyph(glyph)) {
         /* one more accessibility kludge;
            turn off override symbol if caller has specified NOOVERRIDE */
-        (W7(C.display_address_glyph_map_entry_sym(C.display_address_glyphinfo_gm(glyphinfo)),C.i32((C.i32(C.display_read_permonst_mlet(C.mons+Number((((Number(!!(Number((glyph)>=C.GLYPH_MON_FEM_OFF)&&Number((glyph)<(C.i32((C.GLYPH_MON_FEM_OFF+C.NUMMONS)))))))?(C.i32(((glyph)-C.GLYPH_MON_FEM_OFF))):((Number(!!(Number((glyph)>=C.GLYPH_MON_MALE_OFF)&&Number((glyph)<(C.i32((C.GLYPH_MON_MALE_OFF+C.NUMMONS)))))))?(C.i32(((glyph)-C.GLYPH_MON_MALE_OFF))):((Number(!!(Number((glyph)>=C.GLYPH_PET_FEM_OFF)&&Number((glyph)<(C.i32((C.GLYPH_PET_FEM_OFF+C.NUMMONS)))))))?(C.i32(((glyph)-C.GLYPH_PET_FEM_OFF))):((Number(!!(Number((glyph)>=C.GLYPH_PET_MALE_OFF)&&Number((glyph)<(C.i32((C.GLYPH_PET_MALE_OFF+C.NUMMONS)))))))?(C.i32(((glyph)-C.GLYPH_PET_MALE_OFF))):((Number(!!(Number((glyph)>=C.GLYPH_DETECT_FEM_OFF)&&Number((glyph)<(C.i32((C.GLYPH_DETECT_FEM_OFF+C.NUMMONS)))))))?(C.i32(((glyph)-C.GLYPH_DETECT_FEM_OFF))):((Number(!!(Number((glyph)>=C.GLYPH_DETECT_MALE_OFF)&&Number((glyph)<(C.i32((C.GLYPH_DETECT_MALE_OFF+C.NUMMONS)))))))?(C.i32(((glyph)-C.GLYPH_DETECT_MALE_OFF))):((Number(!!(Number((glyph)>=C.GLYPH_RIDDEN_FEM_OFF)&&Number((glyph)<(C.i32((C.GLYPH_RIDDEN_FEM_OFF+C.NUMMONS)))))))?(C.i32(((glyph)-C.GLYPH_RIDDEN_FEM_OFF))):((Number(!!(Number((glyph)>=C.GLYPH_RIDDEN_MALE_OFF)&&Number((glyph)<(C.i32((C.GLYPH_RIDDEN_MALE_OFF+C.NUMMONS)))))))?(C.i32(((glyph)-C.GLYPH_RIDDEN_MALE_OFF))):C.NUMMONS))))))))))*C.sizes["struct permonst"]))+(C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))))));
+        const first = glyphInRange(glyph, C.GLYPH_PET_FEM_OFF) ? C.GLYPH_PET_FEM_OFF : C.GLYPH_PET_MALE_OFF;
+        const index = glyph - first;
+        symidx = C.display_read_permonst_mlet(C.mons + index * C.sizes["struct permonst"])
+            + C.MAXPCHARS + C.MAXOCLASSES;
     }
-    (W44(glyphinfo,C.i32(C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.display_read_classic_representation_symidx(C.display_address_glyph_map_entry_sym(C.display_address_glyphinfo_gm(glyphinfo))))*1),"unsigned char").value)));
-    (W43(glyphinfo,glyph));
+    const ttychar = C.readUint8At(C.display_address_instance_globals_s_showsyms(C.gs) + symidx);
+    return {source, symidx, color, flags, ttychar};
+}
+
+function writeGlyphMapAppearance(out, appearance)
+{
+    const gm = C.display_address_glyphinfo_gm(out);
+    C.copy(gm, appearance.source, C.sizes["struct glyph_map_entry"]);
+    const sym = C.display_address_glyph_map_entry_sym(gm);
+    W6(sym,appearance.color);
+    W7(sym,appearance.symidx);
+    W37(gm,appearance.flags);
 }
 
 /*
@@ -2337,8 +2492,11 @@ function reset_glyphmap(trigger)
             (W57(C.gg,C.i64(C.display_read_instance_globals_g_glyphmap_perlevel_flags(C.gg)|C.i64(2))));
         }
     }
-    for((glyph=0);Number(glyph<C.MAX_GLYPH);(glyph=C.i32((glyph+1)))) {
-        let gmap=(C.staticAddress("glyphmap")+Number(glyph)*C.sizes["struct glyph_map_entry"]);
+    const colorMask = Object.hasOwn(C, "displayColorMask") ? C.displayColorMask() : null;
+    const glyphMap = C.staticAddress("glyphmap");
+    const glyphSize = C.sizes["struct glyph_map_entry"];
+    for (glyph = 0; glyph < C.MAX_GLYPH; glyph++) {
+        const gmap = glyphMap + glyph * glyphSize;
         (W37(gmap,0));
         /*
          *  Map the glyph to a character and color.
@@ -2403,25 +2561,25 @@ function reset_glyphmap(trigger)
  else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_symdef_color(C.def_warnsyms+Number(offset)*C.sizes["struct symdef"])):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_EXPLODE_FROSTY_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_expl_tl+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.cell((C.staticAddress("explodecolors")+Number(C.expl_frosty)*4),"int").value:8));
+            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_frosty)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_EXPLODE_FIERY_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_expl_tl+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.cell((C.staticAddress("explodecolors")+Number(C.expl_fiery)*4),"int").value:8));
+            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_fiery)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_EXPLODE_MAGICAL_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_expl_tl+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.cell((C.staticAddress("explodecolors")+Number(C.expl_magical)*4),"int").value:8));
+            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_magical)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_EXPLODE_WET_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_expl_tl+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.cell((C.staticAddress("explodecolors")+Number(C.expl_wet)*4),"int").value:8));
+            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_wet)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_EXPLODE_MUDDY_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_expl_tl+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.cell((C.staticAddress("explodecolors")+Number(C.expl_muddy)*4),"int").value:8));
+            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_muddy)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_EXPLODE_NOXIOUS_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_expl_tl+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.cell((C.staticAddress("explodecolors")+Number(C.expl_noxious)*4),"int").value:8));
+            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_noxious)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_EXPLODE_DARK_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_expl_tl+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.cell((C.staticAddress("explodecolors")+Number(C.expl_dark)*4),"int").value:8));
+            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_dark)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_SWALLOW_OFF)))))>=0)) {
             /* see swallow_to_glyph() in display.c */
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32(((C.i32((C.S_sw_tl+(C.i32((offset&7))))))+(0)))));
@@ -2435,10 +2593,10 @@ function reset_glyphmap(trigger)
             /* see zapdir_to_glyph() in display.c */
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32(((C.i32((C.S_vbeam+(C.i32((offset&3))))))+(0)))));
             if(has_rogue_color) (color=8);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.cell((C.staticAddress("zapcolors")+Number((C.i32((offset>>2))))*4),"int").value:8));
+ else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("zapcolors")+Number((C.i32((offset>>2))))*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_B_OFF)))))>=0)) {
             let cmap=C.i32((C.S_grave+offset));
-            let sym=C.i32(C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((cmap+(0))))*1),"unsigned char").value);
+            let sym=C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((cmap+(0))))*1)));
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((cmap+(0)))));
             (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_symdef_color(C.defsyms+Number(cmap)*C.sizes["struct symdef"])):8));
             if(Number(!(C.display_read_instance_flags_wc_color(C.iflags)))) {
@@ -2450,13 +2608,13 @@ function reset_glyphmap(trigger)
                 switch(cmap) {
                     case (C.S_lava):
                         case (C.S_lavawall):
-                            if(Number(!!(Number(sym==C.i32(C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_pool+(0))))*1),"unsigned char").value))||Number(sym==C.i32(C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_water+(0))))*1),"unsigned char").value))))) (spec_cmap=C.u32(256));
+                            if(Number(!!(Number(sym==C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_pool+(0))))*1))))||Number(sym==C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_water+(0))))*1))))))) (spec_cmap=C.u32(256));
                     break;
                     case (C.S_ice):
-                        if(Number(!!(Number(sym==C.i32(C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_room+(0))))*1),"unsigned char").value))||Number(sym==C.i32(C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_darkroom+(0))))*1),"unsigned char").value))))) (spec_cmap=C.u32(512));
+                        if(Number(!!(Number(sym==C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_room+(0))))*1))))||Number(sym==C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_darkroom+(0))))*1))))))) (spec_cmap=C.u32(512));
                     break;
                     case (C.S_sink):
-                        if(Number(sym==C.i32(C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_fountain+(0))))*1),"unsigned char").value))) (spec_cmap=C.u32(512));
+                        if(Number(sym==C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_fountain+(0))))*1))))) (spec_cmap=C.u32(512));
                     break;
                 }
                 (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|spec_cmap)));
@@ -2467,12 +2625,12 @@ function reset_glyphmap(trigger)
             /* unaligned, chaotic, neutral, lawful, other altar */
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.S_altar+(0)))));
             if(has_rogue_color) (color=cmap_to_roguecolor(C.S_altar));
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.cell((C.staticAddress("altarcolors")+Number(offset)*4),"int").value:8));
+ else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("altarcolors")+Number(offset)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_A_OFF)))))>=0)) {
             let sym; let cmap=C.i32((C.S_ndoor+offset));
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((cmap+(0)))));
             (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_symdef_color(C.defsyms+Number(cmap)*C.sizes["struct symdef"])):8));
-            (sym=C.i32(C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.display_read_classic_representation_symidx(C.display_address_glyph_map_entry_sym(gmap)))*1),"unsigned char").value));
+            (sym=C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.display_read_classic_representation_symidx(C.display_address_glyph_map_entry_sym(gmap)))*1))));
             /*
              *   Some specialty color mappings not hardcoded in data init
              */
@@ -2480,28 +2638,28 @@ function reset_glyphmap(trigger)
                 (color=cmap_to_roguecolor(cmap));
                 /* provide a visible difference if normal and lit corridor
                use the same symbol */
-            } else if(Number(!!(Number(cmap==C.S_litcorr)&&Number(sym==C.i32(C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_corr+(0))))*1),"unsigned char").value))))) {
+            } else if(Number(!!(Number(cmap==C.S_litcorr)&&Number(sym==C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_corr+(0))))*1))))))) {
                 (color=15);
                 /* likewise for corridor and engraving-in-corridor */
-            } else if(Number(!!(Number(cmap==C.S_engrcorr)&&(Number(!!(Number(sym==C.i32(C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_corr+(0))))*1),"unsigned char").value))||Number(sym==C.i32(C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_litcorr+(0))))*1),"unsigned char").value)))))))) {
+            } else if(Number(!!(Number(cmap==C.S_engrcorr)&&(Number(!!(Number(sym==C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_corr+(0))))*1))))||Number(sym==C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_litcorr+(0))))*1)))))))))) {
                 (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32(512))));
             }
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_SOKO_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_vwall+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.cell((C.staticAddress("wallcolors")+Number(C.sokoban_walls)*4),"int").value:8));
+            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.sokoban_walls)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_KNOX_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_vwall+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.cell((C.staticAddress("wallcolors")+Number(C.knox_walls)*4),"int").value:8));
+            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.knox_walls)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_GEH_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_vwall+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.cell((C.staticAddress("wallcolors")+Number(C.gehennom_walls)*4),"int").value:8));
+            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.gehennom_walls)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_MINES_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_vwall+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.cell((C.staticAddress("wallcolors")+Number(C.mines_walls)*4),"int").value:8));
+            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.mines_walls)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_MAIN_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_vwall+offset))+(0)))));
             if(has_rogue_color) (color=cmap_to_roguecolor(C.i32((C.S_vwall+offset))));
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.cell((C.staticAddress("wallcolors")+Number(C.main_walls)*4),"int").value:8));
+ else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.main_walls)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_STONE_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),0));
             (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_symdef_color(C.defsyms+Number(C.S_stone)*C.sizes["struct symdef"])):8));
@@ -2589,12 +2747,14 @@ function reset_glyphmap(trigger)
         /* This was requested by a blind player to enhance screen reader use
          */
         if(Number(!!(Number(C.display_read_sysopt_s_accessibility(C.sysopt)==1)&&Number((C.u32((C.display_read_glyph_map_entry_glyphflags(gmap)&C.u32(16))))!=C.u32(0))))) {
-            let pet_override=(((C.i64((C.display_read_instance_globals_g_glyphmap_perlevel_flags(C.gg)&C.i64(2))))?C.i32(C.cell((C.display_address_instance_globals_o_ov_rogue_syms(C.go)+Number(C.i32((C.SYM_PET_OVERRIDE+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1),"unsigned char").value):C.i32(C.cell((C.display_address_instance_globals_o_ov_primary_syms(C.go)+Number(C.i32((C.SYM_PET_OVERRIDE+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1),"unsigned char").value)));
-            if(Number(C.i32(C.cell((C.display_address_instance_globals_s_showsyms(C.gs)+Number(pet_override)*1),"unsigned char").value)!=32)) (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.SYM_PET_OVERRIDE+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6)))))));
+            let pet_override=(((C.i64((C.display_read_instance_globals_g_glyphmap_perlevel_flags(C.gg)&C.i64(2))))?C.i32(C.readUint8At((C.display_address_instance_globals_o_ov_rogue_syms(C.go)+Number(C.i32((C.SYM_PET_OVERRIDE+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1))):C.i32(C.readUint8At((C.display_address_instance_globals_o_ov_primary_syms(C.go)+Number(C.i32((C.SYM_PET_OVERRIDE+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1)))));
+            if(Number(C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(pet_override)*1)))!=32)) (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.SYM_PET_OVERRIDE+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6)))))));
         }
         /* Turn off color if no color defined, or rogue level w/o PC graphics.
          */
-        if(Number(!!((Number(!!(Number(!(C.has_color(color)))||(Number(!!((C.i64((C.display_read_instance_globals_g_glyphmap_perlevel_flags(C.gg)&C.i64(2))))&&Number(!(has_rogue_color))))))))||Number(!(C.display_read_instance_flags_wc_color(C.iflags)))))) (color=8);
+        const colorSupported = colorMask === null ? C.has_color(color) : color >= 0 && color < 16 && (colorMask & (1 << color));
+        if (!colorSupported || ((C.display_read_instance_globals_g_glyphmap_perlevel_flags(C.gg) & 2n) && !has_rogue_color)
+            || !C.display_read_instance_flags_wc_color(C.iflags)) color = 8;
         (W6(C.display_address_glyph_map_entry_sym(gmap),color));
     }
     (W56(C.gg,C.display_read_instance_globals_saved_m_moves(C.svm)));
@@ -2808,7 +2968,7 @@ function set_seenv(lev,x0,y0,x,y)
     /* from */
     /*  to  */
     let dx=C.i16(C.i32((C.i32(x)-C.i32(x0)))); let dy=C.i16(C.i32((C.i32(y0)-C.i32(y))));
-    (W121(lev,C.u8(C.display_read_rm_seenv(lev)|C.i32(C.cell(((C.staticAddress("seenv_matrix")+Number(C.i32((((Number(C.i32((dy))<0)?C.i32((-1)):(Number(C.i32((dy))!=0))))+1)))*(1*3))+Number(C.i32((((Number(C.i32((dx))<0)?C.i32((-1)):(Number(C.i32((dx))!=0))))+1)))*1),"unsigned char").value))));
+    (W121(lev,C.u8(C.display_read_rm_seenv(lev)|C.i32(C.readUint8At(((C.staticAddress("seenv_matrix")+Number(C.i32((((Number(C.i32((dy))<0)?C.i32((-1)):(Number(C.i32((dy))!=0))))+1)))*(1*3))+Number(C.i32((((Number(C.i32((dx))<0)?C.i32((-1)):(Number(C.i32((dx))!=0))))+1)))*1))))));
 }
 
 /* Called by blackout(vault.c) when vault guard removes temporary corridor,
@@ -2824,7 +2984,7 @@ function unset_seenv(lev,x0,y0,x1,y1)
     /* from */
     /*  to; abs(x1-x0)==1 && abs(y0-y1)==1 */
     let dx=C.i16(C.i32((C.i32(x1)-C.i32(x0)))); let dy=C.i16(C.i32((C.i32(y0)-C.i32(y1))));
-    (W121(lev,C.u8(C.display_read_rm_seenv(lev)&C.i32((~C.i32(C.cell(((C.staticAddress("seenv_matrix")+Number(C.i32((C.i32(dy)+1)))*(1*3))+Number(C.i32((C.i32(dx)+1)))*1),"unsigned char").value))))));
+    (W121(lev,C.u8(C.display_read_rm_seenv(lev)&C.i32((~C.i32(C.readUint8At(((C.staticAddress("seenv_matrix")+Number(C.i32((C.i32(dy)+1)))*(1*3))+Number(C.i32((C.i32(dx)+1)))*1))))))));
 }
 
 /* ------------------------------------------------------------------------ */
@@ -2978,7 +3138,7 @@ function wall_angle(lev)
                 (col=0);
                 break;
             }
-            (idx=C.cell((row+Number(col)*4),"int").value);
+            (idx=C.readInt32At((row+Number(col)*4)));
         }
         do_twall();
         break;
@@ -3150,7 +3310,7 @@ function wall_angle(lev)
                             C.variadic(18,C.literal("wall_angle: bottom of crwall check"));
                             (col=5);
                         }
-                        (idx=C.cell((row+Number(col)*4),"int").value);
+                        (idx=C.readInt32At((row+Number(col)*4)));
                     }
                 }
                 do_crwall();

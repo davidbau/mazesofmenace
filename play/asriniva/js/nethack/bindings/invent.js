@@ -38,17 +38,19 @@ export function createInventEnvironment(services){
  env.initialize=initialize;
  for(const row of invent.inventStaticInitializers(env)){const at=env.staticAddress(row.name);services.heap().fill(0,at,at+row.size);if(row.values!==null)initialize(at,row.type,row.values);}
 
+ const itemLists=services.nativeOwner?.spatial?.itemLists;
+ if(itemLists)Object.defineProperty(env,'itemLists',{value:itemLists});
  env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);
  env.nativeNamespace=createNativeAddressNamespace(env);
  return env;
 }
 export function callInvent(services,name,...args){
- let state=states.get(services.moduleKey);
+ let state=states.get(services.nativeFixedProvider ? services : services.moduleKey);
  if(!state){
   state={services};
-  const forwarding=createServiceForwarder(state);
+  const forwarding=services.nativeFixedProvider ? services : createServiceForwarder(state);
   state.env=createInventEnvironment(forwarding);
-  states.set(services.moduleKey,state);
+  states.set(services.nativeFixedProvider ? services : services.moduleKey,state);
  }
  const previous=state.services;
  state.services=services;

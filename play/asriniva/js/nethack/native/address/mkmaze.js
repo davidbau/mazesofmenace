@@ -159,6 +159,11 @@ const R159=NF.readers[159],W159=NF.writers[159],A159=NF.addresses[159];
 const R160=NF.readers[160],W160=NF.writers[160],A160=NF.addresses[160];
 const R161=NF.readers[161],W161=NF.writers[161],A161=NF.addresses[161];
 const R162=NF.readers[162],W162=NF.writers[162],A162=NF.addresses[162];
+const RC0=C.readInt8At,WC0=C.writeInt8At;
+const RC1=C.readInt8At,WC1=C.writeInt8At;
+const RC2=C.readUint8At,WC2=C.writeUint8At;
+const RC3=C.readInt16At,WC3=C.writeInt16At;
+const RC5=C.readInt32At,WC5=C.writeInt32At;
 
 /* NetHack 5.0	mkmaze.c	$NHDT-Date: 1745114235 2025/04/19 17:57:15 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.179 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
@@ -281,7 +286,7 @@ function extend_spine(locale,wall_there,dx,dy)
     if(wall_there) {
         /* wall in that direction */
         if(dx) {
-            if(Number(!!(Number(!!(Number(!!(C.cell(((locale+Number(1)*(4*3))+Number(0)*4),"int").value&&C.cell(((locale+Number(1)*(4*3))+Number(2)*4),"int").value))&&C.cell(((locale+Number(nx)*(4*3))+Number(0)*4),"int").value))&&C.cell(((locale+Number(nx)*(4*3))+Number(2)*4),"int").value))) {
+            if(Number(!!(Number(!!(Number(!!(RC5((locale+Number(1)*(4*3))+Number(0)*4)&&RC5((locale+Number(1)*(4*3))+Number(2)*4)))&&RC5((locale+Number(nx)*(4*3))+Number(0)*4)))&&RC5((locale+Number(nx)*(4*3))+Number(2)*4)))) {
                 /* EW are wall/stone */
                 /* diag are wall/stone */
                 (spine=0);
@@ -290,7 +295,7 @@ function extend_spine(locale,wall_there,dx,dy)
             }
         } else {
             /* dy */
-            if(Number(!!(Number(!!(Number(!!(C.cell(((locale+Number(0)*(4*3))+Number(1)*4),"int").value&&C.cell(((locale+Number(2)*(4*3))+Number(1)*4),"int").value))&&C.cell(((locale+Number(0)*(4*3))+Number(ny)*4),"int").value))&&C.cell(((locale+Number(2)*(4*3))+Number(ny)*4),"int").value))) {
+            if(Number(!!(Number(!!(Number(!!(RC5((locale+Number(0)*(4*3))+Number(1)*4)&&RC5((locale+Number(2)*(4*3))+Number(1)*4)))&&RC5((locale+Number(0)*(4*3))+Number(ny)*4)))&&RC5((locale+Number(2)*(4*3))+Number(ny)*4)))) {
                 /* NS are wall/stone */
                 /* diag are wall/stone */
                 (spine=0);
@@ -360,18 +365,18 @@ function fix_wall_spines(x1,y1,x2,y2)
         /* set the locations TRUE if rock or wall or out of bounds */
         (loc_f=((Number(!!(Number(!!(Number(!!(Number(C.i32((x))>=C.i32((R2(A88(A61(C.gb))))))&&Number(C.i32((x))<=C.i32((R4(A88(A61(C.gb))))))))&&Number(C.i32((y))>=C.i32((R3(A88(A61(C.gb))))))))&&Number(C.i32((y))<=C.i32((R5(A88(A61(C.gb)))))))))?iswall:iswall_or_stone));
         /* for baalz insect */
-        (C.cell(((locale+Number(0)*(4*3))+Number(0)*4),"int").value=((loc_f))(C.i16(C.i32((C.i32(x)-1))),C.i16(C.i32((C.i32(y)-1)))));
-        (C.cell(((locale+Number(1)*(4*3))+Number(0)*4),"int").value=((loc_f))(x,C.i16(C.i32((C.i32(y)-1)))));
-        (C.cell(((locale+Number(2)*(4*3))+Number(0)*4),"int").value=((loc_f))(C.i16(C.i32((C.i32(x)+1))),C.i16(C.i32((C.i32(y)-1)))));
-        (C.cell(((locale+Number(0)*(4*3))+Number(1)*4),"int").value=((loc_f))(C.i16(C.i32((C.i32(x)-1))),y));
-        (C.cell(((locale+Number(2)*(4*3))+Number(1)*4),"int").value=((loc_f))(C.i16(C.i32((C.i32(x)+1))),y));
-        (C.cell(((locale+Number(0)*(4*3))+Number(2)*4),"int").value=((loc_f))(C.i16(C.i32((C.i32(x)-1))),C.i16(C.i32((C.i32(y)+1)))));
-        (C.cell(((locale+Number(1)*(4*3))+Number(2)*4),"int").value=((loc_f))(x,C.i16(C.i32((C.i32(y)+1)))));
-        (C.cell(((locale+Number(2)*(4*3))+Number(2)*4),"int").value=((loc_f))(C.i16(C.i32((C.i32(x)+1))),C.i16(C.i32((C.i32(y)+1)))));
+        (WC5((locale+Number(0)*(4*3))+Number(0)*4,((loc_f))(C.i16(C.i32((C.i32(x)-1))),C.i16(C.i32((C.i32(y)-1))))));
+        (WC5((locale+Number(1)*(4*3))+Number(0)*4,((loc_f))(x,C.i16(C.i32((C.i32(y)-1))))));
+        (WC5((locale+Number(2)*(4*3))+Number(0)*4,((loc_f))(C.i16(C.i32((C.i32(x)+1))),C.i16(C.i32((C.i32(y)-1))))));
+        (WC5((locale+Number(0)*(4*3))+Number(1)*4,((loc_f))(C.i16(C.i32((C.i32(x)-1))),y)));
+        (WC5((locale+Number(2)*(4*3))+Number(1)*4,((loc_f))(C.i16(C.i32((C.i32(x)+1))),y)));
+        (WC5((locale+Number(0)*(4*3))+Number(2)*4,((loc_f))(C.i16(C.i32((C.i32(x)-1))),C.i16(C.i32((C.i32(y)+1))))));
+        (WC5((locale+Number(1)*(4*3))+Number(2)*4,((loc_f))(x,C.i16(C.i32((C.i32(y)+1))))));
+        (WC5((locale+Number(2)*(4*3))+Number(2)*4,((loc_f))(C.i16(C.i32((C.i32(x)+1))),C.i16(C.i32((C.i32(y)+1))))));
         /* determine if wall should extend to each direction NSEW */
         (bits=C.i32((C.i32((C.i32(((C.i32((extend_spine(locale,iswall(x,C.i16(C.i32((C.i32(y)-1)))),0,C.i32((-1)))<<3)))|(C.i32((extend_spine(locale,iswall(x,C.i16(C.i32((C.i32(y)+1)))),0,1)<<2)))))|(C.i32((extend_spine(locale,iswall(C.i16(C.i32((C.i32(x)+1))),y),1,0)<<1)))))|extend_spine(locale,iswall(C.i16(C.i32((C.i32(x)-1))),y),C.i32((-1)),0))));
         /* don't change typ if wall is free-standing */
-        if(bits) (W131(lev,C.i8(C.cell((C.staticAddress("spine_array")+Number(bits)*2),"short").value)));
+        if(bits) (W131(lev,C.i8(RC3(C.staticAddress("spine_array")+Number(bits)*2))));
     }
 
     } finally {C.stackRestore(stackFrame); }
@@ -680,7 +685,7 @@ function fixup_special()
             place_lregion(R2(A88(r)),R3(A88(r)),R4(A88(r)),R5(A88(r)),R6(A89(r)),R7(A89(r)),R8(A89(r)),R9(A89(r)),R90(r),lev);
             break; /* source goto place_it joins the placement body then exits switch */
             case (C.LR_PORTAL):
-                if(Number(!!(Number(C.i32(C.cell(R146(A91(r)),"char").value)>=48)&&Number(C.i32(C.cell(R146(A91(r)),"char").value)<=57)))) {
+                if(Number(!!(Number(C.i32(RC0(R146(A91(r))))>=48)&&Number(C.i32(RC0(R146(A91(r))))<=57)))) {
                     /* "chutes and ladders" */
                     C.copy(lev,A158(C.u),C.sizes["struct d_level"]);
                     (W25(lev,C.i16(C.atoi(R146(A91(r))))));
@@ -957,7 +962,7 @@ function maze_remove_deadends(typ)
     try {
     let dirok=C.stackAlloc((1*4));
     let x; let y; let dir; let idx; let idx2; let dx; let dy; let dx2; let dy2;
-    (C.cell((dirok+Number(0)*1),"char").value=C.i8(0));
+    (WC0(dirok+Number(0)*1,C.i8(0)));
     /* lint suppression */
     for((x=C.i16(2));Number(C.i32(x)<R86(C.gx));((x=C.i16((x+1)))-1)) for((y=C.i16(2));Number(C.i32(y)<R87(C.gy));((y=C.i16((y+1)))-1)) if(Number(!!(Number(!!((Number(C.i32((R131((A44(A74(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))>=C.DOOR))&&(C.i32((C.i32(x)%2)))))&&(C.i32((C.i32(y)%2)))))) {
         (idx=(idx2=C.i16(0)));
@@ -1029,14 +1034,14 @@ function maze_remove_deadends(typ)
                 continue;
             }
             if(Number(!!(Number(!((Number(C.i32((R131((A44(A74(C.svl))+Number(dx)*(C.sizes["struct rm"]*21))+Number(dy)*C.sizes["struct rm"])))>=C.DOOR))))&&(Number(C.i32((R131((A44(A74(C.svl))+Number(dx2)*(C.sizes["struct rm"]*21))+Number(dy2)*C.sizes["struct rm"])))>=C.DOOR))))) {
-                (C.cell((dirok+Number(((idx=C.i16((idx+1)))-1))*1),"char").value=C.i8(dir));
+                (WC0(dirok+Number(((idx=C.i16((idx+1)))-1))*1,C.i8(dir)));
                 ((idx2=C.i16((idx2+1)))-1);
             }
         }
         if(Number(!!(Number(C.i32(idx2)>=3)&&Number(C.i32(idx)>0)))) {
             (dx=x);
             (dy=y);
-            (dir=C.i16(C.cell((dirok+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",939,"maze_remove_deadends"),C.rn2(C.i32(idx)))):C.rn2(C.i32(idx)))))*1),"char").value));
+            (dir=C.i16(RC0(dirok+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",939,"maze_remove_deadends"),C.rn2(C.i32(idx)))):C.rn2(C.i32(idx)))))*1)));
             do {
                 switch(C.i32(dir)) {
                     case (0):
@@ -1111,7 +1116,7 @@ function create_maze(corrwid,wallthick,rmdeadends)
         let mx; let my; let dx; let dy; let rx=1; let ry=1;
         /* back up the existing smaller maze */
         for((x=C.i16(1));Number(C.i32(x)<R86(C.gx));((x=C.i16((x+1)))-1)) for((y=C.i16(1));Number(C.i32(y)<R87(C.gy));((y=C.i16((y+1)))-1)) {
-            (C.cell(((tmpmap+Number(x)*(1*21))+Number(y)*1),"char").value=C.i8(R131((A44(A74(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])));
+            (WC0((tmpmap+Number(x)*(1*21))+Number(y)*1,C.i8(R131((A44(A74(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))));
         }
 
         /* do the scaling */
@@ -1123,7 +1128,7 @@ function create_maze(corrwid,wallthick,rmdeadends)
                 (my=((C.i32((C.i32(y)%2)))?corrwid:((Number(!!(Number(C.i32(y)==2)||Number(C.i32(y)==C.i32((rdy*2))))))?1:wallthick)));
                 for((dx=0);Number(dx<mx);((dx=C.i32((dx+1)))-1)) for((dy=0);Number(dy<my);((dy=C.i32((dy+1)))-1)) {
                     if(Number(!!(Number(C.i32((rx+dx))>=R86(C.gx))||Number(C.i32((ry+dy))>=R87(C.gy))))) break;
-                    (W131((A44(A74(C.svl))+Number(C.i32((rx+dx)))*(C.sizes["struct rm"]*21))+Number(C.i32((ry+dy)))*C.sizes["struct rm"],C.i8(C.cell(((tmpmap+Number(x)*(1*21))+Number(y)*1),"char").value)));
+                    (W131((A44(A74(C.svl))+Number(C.i32((rx+dx)))*(C.sizes["struct rm"]*21))+Number(C.i32((ry+dy)))*C.sizes["struct rm"],C.i8(RC0((tmpmap+Number(x)*(1*21))+Number(y)*1))));
                 }
 
                 (ry=C.i32(ry+my));
@@ -1217,10 +1222,10 @@ function makemaz(s)
     let protofile=C.stackAlloc((1*20));
     let sp=C.Is_special(A158(C.u));
     let mm=C.stackAlloc(C.sizes["struct nhcoord"]);
-    if(C.cell(s,"char").value) {
+    if(RC0(s)) {
         if(Number(!!(sp&&C.i32(R141(sp))))) C.variadic(10,(C.literal("makemaz")),1136,protofile,BigInt((1*20)),C.literal("%s-%d"),s,((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1136,"makemaz"),C.rnd(C.i32(R141(sp))))):C.rnd(C.i32(R141(sp))))));
  else C.strcpy(protofile,s);
-    } else if(C.cell((A50(A69(C.svd)+Number(R24(A158(C.u)))*C.sizes["struct dungeon"])),"char").value) {
+    } else if(RC0(A50(A69(C.svd)+Number(R24(A158(C.u)))*C.sizes["struct dungeon"]))) {
         if(Number(C.i32(C.dunlevs_in_dungeon(A158(C.u)))>1)) {
             if(Number(!!(sp&&C.i32(R141(sp))))) C.variadic(11,(C.literal("makemaz")),1144,protofile,BigInt((1*20)),C.literal("%s%d-%d"),A50(A69(C.svd)+Number(R24(A158(C.u)))*C.sizes["struct dungeon"]),C.i32(C.dunlev(A158(C.u))),((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1144,"makemaz"),C.rnd(C.i32(R141(sp))))):C.rnd(C.i32(R141(sp))))));
  else C.variadic(12,(C.literal("makemaz")),1148,protofile,BigInt((1*20)),C.literal("%s%d"),A50(A69(C.svd)+Number(R24(A158(C.u)))*C.sizes["struct dungeon"]),C.i32(C.dunlev(A158(C.u))));
@@ -1229,13 +1234,13 @@ function makemaz(s)
         } else C.strcpy(protofile,A50(A69(C.svd)+Number(R24(A158(C.u)))*C.sizes["struct dungeon"]));
     } else C.strcpy(protofile,C.literal(""));
     /* SPLEVTYPE format is "level-choice,level-choice"... */
-    if(Number(!!(Number(!!(Number(!!(C.i32(R58(C.flags))&&C.i32(C.cell(protofile,"char").value)))&&sp))&&C.i32(R141(sp))))) {
+    if(Number(!!(Number(!!(Number(!!(C.i32(R58(C.flags))&&C.i32(RC0(protofile))))&&sp))&&C.i32(R141(sp))))) {
         let ep=C.getenv(C.literal("SPLEVTYPE"));
         /* not nh_getenv */
         if(ep) {
             /* strrchr always succeeds due to code in prior block */
             let len=C.i32((C.i64(((C.i64(((C.strrchr(protofile,45)-protofile)/1)))+C.i64(1)))));
-            while(Number(!!(ep&&C.i32(C.cell(ep,"char").value)))) {
+            while(Number(!!(ep&&C.i32(RC0(ep))))) {
                 if(Number(!(C.strncmp(ep,protofile,C.u64(len))))) {
                     let pick=C.atoi((ep+Number(len)*1));
                     /* use choice only if valid */
@@ -1248,7 +1253,7 @@ function makemaz(s)
             }
         }
     }
-    if(C.cell(protofile,"char").value) {
+    if(RC0(protofile)) {
         check_ransacked(protofile);
         C.strcat(protofile,C.literal(".lua"));
         (W64(C.gi,C.i8(0)));
@@ -1316,10 +1321,10 @@ function walkfrom(x,y,typ)
     }
     while(1) {
         (q=0);
-        for((a=0);Number(a<4);((a=C.i32((a+1)))-1)) if(okay(x,y,C.i16(a))) (C.cell((dirs+Number(((q=C.i32((q+1)))-1))*4),"int").value=a);
+        for((a=0);Number(a<4);((a=C.i32((a+1)))-1)) if(okay(x,y,C.i16(a))) (WC5(dirs+Number(((q=C.i32((q+1)))-1))*4,a));
 
         if(Number(!(q))) return;
-        (dir=C.cell((dirs+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1304,"walkfrom"),C.rn2(q))):C.rn2(q))))*4),"int").value);
+        (dir=RC5(dirs+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1304,"walkfrom"),C.rn2(q))):C.rn2(q))))*4));
         do {
             switch(dir) {
                 case (0):
@@ -1462,10 +1467,10 @@ function get_level_extends(left,top,right,bottom)
         }
     }
     (ymax=C.i16(ymax+((Number(!!(C.i32(nonwall)||Number(!(R94(A48(A74(C.svl))))))))?2:1)));
-    (C.cell(left,"short").value=xmin);
-    (C.cell(right,"short").value=xmax);
-    (C.cell(top,"short").value=ymin);
-    (C.cell(bottom,"short").value=ymax);
+    (WC3(left,xmin));
+    (WC3(right,xmax));
+    (WC3(top,ymin));
+    (WC3(bottom,ymax));
 }
 
 /* put a non-diggable/non-phaseable boundary around the initial portion
@@ -1583,9 +1588,9 @@ function movebubbles()
          * Pick up everything inside of a bubble then fill all bubble
          * locations.
          */
-        for((b=(C.i32(C.cell(C.staticAddress("up"),"signed char").value)?R68(C.svb):R62(C.ge)));b;(b=(C.i32(C.cell(C.staticAddress("up"),"signed char").value)?R16(b):R15(b)))) {
+        for((b=(C.i32(RC1(C.staticAddress("up")))?R68(C.svb):R62(C.ge)));b;(b=(C.i32(RC1(C.staticAddress("up")))?R16(b):R15(b)))) {
             if(R17(b)) C.variadic(22,C.literal("movebubbles: cons != null"));
-            for(((i=0),(x=R10(b)));Number(i<C.i32(C.cell((A14(b)+Number(0)*1),"unsigned char").value));(((i=C.i32((i+1)))-1),((x=C.i16((x+1)))-1))) for(((j=0),(y=R11(b)));Number(j<C.i32(C.cell((A14(b)+Number(1)*1),"unsigned char").value));(((j=C.i32((j+1)))-1),((y=C.i16((y+1)))-1))) if(C.i32((C.i32(C.cell((A14(b)+Number(C.i32((j+2)))*1),"unsigned char").value)&(C.i32((1<<i)))))) {
+            for(((i=0),(x=R10(b)));Number(i<C.i32(RC2(A14(b)+Number(0)*1)));(((i=C.i32((i+1)))-1),((x=C.i16((x+1)))-1))) for(((j=0),(y=R11(b)));Number(j<C.i32(RC2(A14(b)+Number(1)*1)));(((j=C.i32((j+1)))-1),((y=C.i16((y+1)))-1))) if(C.i32((C.i32(RC2(A14(b)+Number(C.i32((j+2)))*1))&(C.i32((1<<i)))))) {
                 if(Number(!(C.isok(x,y)))) {
                     C.variadic(23,C.literal("movebubbles: bad pos (%d,%d)"),C.i32(x),C.i32(y));
                     continue;
@@ -1671,8 +1676,8 @@ function movebubbles()
      * all the junk that changes owners when bubbles overlap
      * would eventually end up in the last bubble in the chain.
      */
-    (C.cell(C.staticAddress("up"),"signed char").value=C.i8(Number(!(C.cell(C.staticAddress("up"),"signed char").value))));
-    for((b=(C.i32(C.cell(C.staticAddress("up"),"signed char").value)?R68(C.svb):R62(C.ge)));b;(b=(C.i32(C.cell(C.staticAddress("up"),"signed char").value)?R16(b):R15(b)))) {
+    (WC1(C.staticAddress("up"),C.i8(Number(!(RC1(C.staticAddress("up")))))));
+    for((b=(C.i32(RC1(C.staticAddress("up")))?R68(C.svb):R62(C.ge)));b;(b=(C.i32(RC1(C.staticAddress("up")))?R16(b):R15(b)))) {
         let rx=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1675,"movebubbles"),C.rn2(3))):C.rn2(3))); let ry=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1675,"movebubbles"),C.rn2(3))):C.rn2(3)));
         mv_bubble(b,C.i16(C.i32((C.i32((C.i32(R12(b))+1))-((Number(!(R12(b)))?rx:((rx?1:0))))))),C.i16(C.i32((C.i32((C.i32(R13(b))+1))-((Number(!(R13(b)))?ry:((ry?1:0))))))),(C.i8(0)));
     }
@@ -1863,18 +1868,18 @@ function mk_bubble(x,y,n)
         C.variadic(28,C.literal("n too large (mk_bubble)"));
         (n=C.i32((C.i32((C.u64((BigInt((8*7))/BigInt(8)))))-1)));
     }
-    if(Number(C.i32(C.cell((C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(1)*1),"unsigned char").value)>4)) {
+    if(Number(C.i32(RC2(C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(1)*1))>4)) {
         C.variadic(29,C.literal("bmask size is larger than MAX_BMASK"));
     }
     (b=C.alloc(C.u32(BigInt(C.sizes["struct bubble"]))));
-    if(Number((C.i32((C.i32((C.i32(x)+C.i32(C.cell((C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(0)*1),"unsigned char").value)))-1)))>(C.i32((R79(C.svx)-1))))) (x=C.i16(C.i32((C.i32(((C.i32((R79(C.svx)-1)))-C.i32(C.cell((C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(0)*1),"unsigned char").value)))+1))));
-    if(Number((C.i32((C.i32((C.i32(y)+C.i32(C.cell((C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(1)*1),"unsigned char").value)))-1)))>(C.i32((R81(C.svy)-1))))) (y=C.i16(C.i32((C.i32(((C.i32((R81(C.svy)-1)))-C.i32(C.cell((C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(1)*1),"unsigned char").value)))+1))));
+    if(Number((C.i32((C.i32((C.i32(x)+C.i32(RC2(C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(0)*1))))-1)))>(C.i32((R79(C.svx)-1))))) (x=C.i16(C.i32((C.i32(((C.i32((R79(C.svx)-1)))-C.i32(RC2(C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(0)*1))))+1))));
+    if(Number((C.i32((C.i32((C.i32(y)+C.i32(RC2(C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(1)*1))))-1)))>(C.i32((R81(C.svy)-1))))) (y=C.i16(C.i32((C.i32(((C.i32((R81(C.svy)-1)))-C.i32(RC2(C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(1)*1))))+1))));
     (W10(b,x));
     (W11(b,y));
     (W12(b,C.i8(C.i32((1-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1909,"mk_bubble"),C.rn2(3))):C.rn2(3))))))));
     (W13(b,C.i8(C.i32((1-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1910,"mk_bubble"),C.rn2(3))):C.rn2(3))))))));
     /* y dimension is the length of bitmap data - see bmask above */
-    C.memcpy(A14(b),C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value,C.u64((C.u64((C.i32((C.i32(C.cell((C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(1)*1),"unsigned char").value)+2))))*BigInt(1))));
+    C.memcpy(A14(b),C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value,C.u64((C.u64((C.i32((C.i32(RC2(C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(1)*1))+2))))*BigInt(1))));
     (W17(b,0));
     if(Number(!(R68(C.svb)))) (W68(C.svb,b));
     if(R62(C.ge)) {
@@ -1928,8 +1933,8 @@ function mv_bubble(b,dx,dy,ini)
          */
         if(Number(C.i32(R10(b))<=(C.i32((R78(C.svx)+1))))) (colli=C.i32(colli|2));
         if(Number(C.i32(R11(b))<=(C.i32((R80(C.svy)+1))))) (colli=C.i32(colli|1));
-        if(Number((C.i32((C.i32((C.i32(R10(b))+C.i32(C.cell((A14(b)+Number(0)*1),"unsigned char").value)))-1)))>=(C.i32((R79(C.svx)-1))))) (colli=C.i32(colli|2));
-        if(Number((C.i32((C.i32((C.i32(R11(b))+C.i32(C.cell((A14(b)+Number(1)*1),"unsigned char").value)))-1)))>=(C.i32((R81(C.svy)-1))))) (colli=C.i32(colli|1));
+        if(Number((C.i32((C.i32((C.i32(R10(b))+C.i32(RC2(A14(b)+Number(0)*1))))-1)))>=(C.i32((R79(C.svx)-1))))) (colli=C.i32(colli|2));
+        if(Number((C.i32((C.i32((C.i32(R11(b))+C.i32(RC2(A14(b)+Number(1)*1))))-1)))>=(C.i32((R81(C.svy)-1))))) (colli=C.i32(colli|1));
         if(Number(C.i32(R10(b))<(C.i32((R78(C.svx)+1))))) {
             C.variadic(30,C.literal("bubble xmin: x = %d, xmin = %d"),C.i32(R10(b)),(C.i32((R78(C.svx)+1))));
             (W10(b,C.i16((C.i32((R78(C.svx)+1))))));
@@ -1938,24 +1943,24 @@ function mv_bubble(b,dx,dy,ini)
             C.variadic(31,C.literal("bubble ymin: y = %d, ymin = %d"),C.i32(R11(b)),(C.i32((R80(C.svy)+1))));
             (W11(b,C.i16((C.i32((R80(C.svy)+1))))));
         }
-        if(Number((C.i32((C.i32((C.i32(R10(b))+C.i32(C.cell((A14(b)+Number(0)*1),"unsigned char").value)))-1)))>(C.i32((R79(C.svx)-1))))) {
-            C.variadic(32,C.literal("bubble xmax: x = %d, xmax = %d"),C.i32((C.i32((C.i32(R10(b))+C.i32(C.cell((A14(b)+Number(0)*1),"unsigned char").value)))-1)),(C.i32((R79(C.svx)-1))));
-            (W10(b,C.i16(C.i32((C.i32(((C.i32((R79(C.svx)-1)))-C.i32(C.cell((A14(b)+Number(0)*1),"unsigned char").value)))+1)))));
+        if(Number((C.i32((C.i32((C.i32(R10(b))+C.i32(RC2(A14(b)+Number(0)*1))))-1)))>(C.i32((R79(C.svx)-1))))) {
+            C.variadic(32,C.literal("bubble xmax: x = %d, xmax = %d"),C.i32((C.i32((C.i32(R10(b))+C.i32(RC2(A14(b)+Number(0)*1))))-1)),(C.i32((R79(C.svx)-1))));
+            (W10(b,C.i16(C.i32((C.i32(((C.i32((R79(C.svx)-1)))-C.i32(RC2(A14(b)+Number(0)*1))))+1)))));
         }
-        if(Number((C.i32((C.i32((C.i32(R11(b))+C.i32(C.cell((A14(b)+Number(1)*1),"unsigned char").value)))-1)))>(C.i32((R81(C.svy)-1))))) {
-            C.variadic(33,C.literal("bubble ymax: y = %d, ymax = %d"),C.i32((C.i32((C.i32(R11(b))+C.i32(C.cell((A14(b)+Number(1)*1),"unsigned char").value)))-1)),(C.i32((R81(C.svy)-1))));
-            (W11(b,C.i16(C.i32((C.i32(((C.i32((R81(C.svy)-1)))-C.i32(C.cell((A14(b)+Number(1)*1),"unsigned char").value)))+1)))));
+        if(Number((C.i32((C.i32((C.i32(R11(b))+C.i32(RC2(A14(b)+Number(1)*1))))-1)))>(C.i32((R81(C.svy)-1))))) {
+            C.variadic(33,C.literal("bubble ymax: y = %d, ymax = %d"),C.i32((C.i32((C.i32(R11(b))+C.i32(RC2(A14(b)+Number(1)*1))))-1)),(C.i32((R81(C.svy)-1))));
+            (W11(b,C.i16(C.i32((C.i32(((C.i32((R81(C.svy)-1)))-C.i32(RC2(A14(b)+Number(1)*1))))+1)))));
         }
         /* bounce if we're trying to move off the border */
         if(Number(!!(Number(C.i32(R10(b))==(C.i32((R78(C.svx)+1))))&&Number(C.i32(dx)<0)))) (dx=C.i16(C.i32((-C.i32(dx)))));
-        if(Number(!!(Number(C.i32((C.i32((C.i32(R10(b))+C.i32(C.cell((A14(b)+Number(0)*1),"unsigned char").value)))-1))==(C.i32((R79(C.svx)-1))))&&Number(C.i32(dx)>0)))) (dx=C.i16(C.i32((-C.i32(dx)))));
+        if(Number(!!(Number(C.i32((C.i32((C.i32(R10(b))+C.i32(RC2(A14(b)+Number(0)*1))))-1))==(C.i32((R79(C.svx)-1))))&&Number(C.i32(dx)>0)))) (dx=C.i16(C.i32((-C.i32(dx)))));
         if(Number(!!(Number(C.i32(R11(b))==(C.i32((R80(C.svy)+1))))&&Number(C.i32(dy)<0)))) (dy=C.i16(C.i32((-C.i32(dy)))));
-        if(Number(!!(Number(C.i32((C.i32((C.i32(R11(b))+C.i32(C.cell((A14(b)+Number(1)*1),"unsigned char").value)))-1))==(C.i32((R81(C.svy)-1))))&&Number(C.i32(dy)>0)))) (dy=C.i16(C.i32((-C.i32(dy)))));
+        if(Number(!!(Number(C.i32((C.i32((C.i32(R11(b))+C.i32(RC2(A14(b)+Number(1)*1))))-1))==(C.i32((R81(C.svy)-1))))&&Number(C.i32(dy)>0)))) (dy=C.i16(C.i32((-C.i32(dy)))));
         (W10(b,C.i16(R10(b)+C.i32(dx))));
         (W11(b,C.i16(R11(b)+C.i32(dy))));
     }
     /* draw the bubbles */
-    for(((i=0),(x=R10(b)));Number(i<C.i32(C.cell((A14(b)+Number(0)*1),"unsigned char").value));(((i=C.i32((i+1)))-1),((x=C.i16((x+1)))-1))) for(((j=0),(y=R11(b)));Number(j<C.i32(C.cell((A14(b)+Number(1)*1),"unsigned char").value));(((j=C.i32((j+1)))-1),((y=C.i16((y+1)))-1))) if(C.i32((C.i32(C.cell((A14(b)+Number(C.i32((j+2)))*1),"unsigned char").value)&(C.i32((1<<i)))))) {
+    for(((i=0),(x=R10(b)));Number(i<C.i32(RC2(A14(b)+Number(0)*1)));(((i=C.i32((i+1)))-1),((x=C.i16((x+1)))-1))) for(((j=0),(y=R11(b)));Number(j<C.i32(RC2(A14(b)+Number(1)*1)));(((j=C.i32((j+1)))-1),((y=C.i16((y+1)))-1))) if(C.i32((C.i32(RC2(A14(b)+Number(C.i32((j+2)))*1))&(C.i32((1<<i)))))) {
         if(((Number(!!((Number(!!(C.i32(R25(A38(A70(C.svd))))||C.i32(R24(A38(A70(C.svd)))))))&&C.i32(C.on_level(A158(C.u),A38(A70(C.svd))))))))) {
             (W131((A44(A74(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.i8(C.AIR)));
             (W135((A44(A74(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(1)));

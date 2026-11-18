@@ -547,41 +547,41 @@ export function probe_monster(mtmp) {
  * from turn to turn.  This function returns FALSE if the position
  * is not available or subject to the constraints above.
  */
-export function get_obj_location(obj, xp, yp, locflags) {
-    obj = C.argument(obj, "struct obj *");
-    xp = C.argument(xp, "coordxy *");
-    yp = C.argument(yp, "coordxy *");
-    locflags = C.argument(locflags, "int");
+export function get_obj_location(obj, xp, yp, locflags, context = C) {
+    obj = context.argument(obj, "struct obj *");
+    xp = context.argument(xp, "coordxy *");
+    yp = context.argument(yp, "coordxy *");
+    locflags = context.argument(locflags, "int");
     switch ((obj).where) {
         case (3):
-            C.store(xp, "coordxy", (C.u).ux);
-        C.store(yp, "coordxy", (C.u).uy);
-        return (C.char(1));
-        case C.OBJ_FLOOR:
-            C.store(xp, "coordxy", (obj).ox);
-        C.store(yp, "coordxy", (obj).oy);
-        return (C.char(1));
-        case C.OBJ_MINVENT:
+            context.store(xp, "coordxy", (context.u).ux);
+        context.store(yp, "coordxy", (context.u).uy);
+        return (context.char(1));
+        case context.OBJ_FLOOR:
+            context.store(xp, "coordxy", (obj).ox);
+        context.store(yp, "coordxy", (obj).oy);
+        return (context.char(1));
+        case context.OBJ_MINVENT:
             if ((((obj).ocarry).ocarry).mx) {
-                C.store(xp, "coordxy", (((obj).ocarry).ocarry).mx);
-                C.store(yp, "coordxy", (((obj).ocarry).ocarry).my);
-                return (C.char(1));
+                context.store(xp, "coordxy", (((obj).ocarry).ocarry).mx);
+                context.store(yp, "coordxy", (((obj).ocarry).ocarry).my);
+                return (context.char(1));
             }
         break;
 /* !mx => migrating monster */
-        case C.OBJ_BURIED:
-            if (C.int((locflags & C.BURIED_TOO))) {
-                C.store(xp, "coordxy", (obj).ox);
-                C.store(yp, "coordxy", (obj).oy);
-                return (C.char(1));
+        case context.OBJ_BURIED:
+            if (context.int((locflags & context.BURIED_TOO))) {
+                context.store(xp, "coordxy", (obj).ox);
+                context.store(yp, "coordxy", (obj).oy);
+                return (context.char(1));
             }
         break;
-        case C.OBJ_CONTAINED:
-            if (C.int((locflags & C.CONTAINED_TOO))) return get_obj_location(((obj).ocontainer).ocontainer, xp, yp, locflags);
+        case context.OBJ_CONTAINED:
+            if (context.int((locflags & context.CONTAINED_TOO))) return get_obj_location(((obj).ocontainer).ocontainer, xp, yp, locflags, context);
         break;
     }
-    C.store(xp, "coordxy", C.store(yp, "coordxy", C.short(0)));
-    return (C.char(0));
+    context.store(xp, "coordxy", context.store(yp, "coordxy", context.short(0)));
+    return (context.char(0));
 }
 
 export function get_mon_location(mon, xp, yp, locflags) /* non-zero means get location even if monster is buried */
@@ -1268,7 +1268,13 @@ export function obj_resists(obj, ochance, achance) /* percent chance for ordinar
         return (C.char(1));
     }
     else {
-        let chance = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 1469, C.literal("obj_resists")), C.rn2(100))) : C.rn2(100)));
+        if (C.rng_log_enabled()) {
+            if (Object.hasOwn(C, "recordRngCaller"))
+                C.recordRngCaller("zap.c", 1469, "obj_resists");
+            else
+                C.rng_log_set_caller(C.literal("zap.c"), 1469, C.literal("obj_resists"));
+        }
+        const chance = C.rn2(100);
         return C.char((Number(chance < ((((obj).oartifact) ? achance : ochance)))));
     }
 }
@@ -3158,12 +3164,12 @@ export function spell_hit_bonus(skill) {
     return hit_bon;
 }
 
-export function exclam(force) {
-    force = C.argument(force, "int");
+export function exclam(force, context = C) {
+    force = context.argument(force, "int");
 /* force == 0 occurs e.g. with sleep ray */
 /* note that large force is usual with wands so that !! would
             require information about hand/weapon/wand */
-    return ((((Number(force < 0))) ? C.literal("?") : (((Number(force <= 4))) ? C.literal(".") : C.literal("!"))));
+    return ((((Number(force < 0))) ? context.literal("?") : (((Number(force <= 4))) ? context.literal(".") : context.literal("!"))));
 }
 
 export function hit(str, mtmp, force) /* zap text or missile name */

@@ -1,7 +1,8 @@
 import {recordNativeRngCaller} from './native/rng-output.js';
+import {nativeStateFor} from './native/state-bridge.js';
 // Original QUEST decisions, one live native-shaped context over shared game state.
 import abi from './quest-abi.json' with {type:'json'};
-import * as source from '../ported/quest.js';
+import {createNativeQuest} from './native/quest.js';
 import {createQuestEnvironment} from './bindings/quest.js';
 export function enableQuest(environment,layouts){
  if(environment.hasFunction('onquest'))throw new Error('QUEST owner already registered');
@@ -30,10 +31,20 @@ export function enableQuest(environment,layouts){
  for(const name of ['You','pline','verbalize','impossible','livelog_printf'])local[name]=(...args)=>resolve(name)(...boundary(args));
  const context=createQuestEnvironment(local,L);Object.setPrototypeOf(context,local);
  const names=Object.keys(abi.public).filter(name=>!environment.hasFunction(name));
- environment.register('quest',Object.fromEntries(names.map(name=>[name,source[name]])),context,{prepareArgs:(name,args)=>{
+ const policy=createNativeQuest(context);
+ const native=nativeStateFor(environment);
+ const prepare=(name,args)=>{
   if(['artitouch','finish_quest'].includes(name))args[0]=context.object(address(args[0]));
   if(['leader_speaks','quest_chat','quest_talk','quest_stat_check'].includes(name))args[0]=context.monster(address(args[0]));
   if(name==='nemesis_stinks')args=args.map(value=>transport.short(value));return args;
- }});
+ };
+ const entries=Object.fromEntries(names.map(name=>{
+  const invoke=(...args)=>transport.scoped(()=>policy[name](...prepare(name,args)));
+  invoke.nativeDirect=true;
+  invoke.nativeState=native;
+  native.functions.set(name,invoke);
+  return [name,invoke];
+ }));
+ environment.register('quest',entries,context);
  return{context,exports:names,limitation:'Original QUEST public policies share actual quest, hero and world state. Missing foreign owners fail explicitly. Eligibility/status and reached real conversations require original-C acceptance; full quest dungeon progression is a separate gameplay requirement.'};
 }

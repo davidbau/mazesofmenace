@@ -37,7 +37,7 @@ export function createShkEnvironment(services){
  return env;
 }
 export function callShk(services,name,...args){
- let state=states.get(services.moduleKey);if(!state){state={services};const forwarding=createServiceForwarder(state);state.env=createShkEnvironment(forwarding);states.set(services.moduleKey,state);}
+ let state=states.get(services.nativeFixedProvider ? services : services.moduleKey);if(!state){state={services};const forwarding=services.nativeFixedProvider ? services : createServiceForwarder(state);state.env=createShkEnvironment(forwarding);states.set(services.nativeFixedProvider ? services : services.moduleKey,state);}
  const fn=state.env.nativeNamespace[name];if(typeof fn!=='function')throw Error('Unknown original SHK function '+name);
  const previous=state.services;state.services=services;
  try{const frame=services.stackSave();try{return fn(...args)??0;}finally{services.stackRestore(frame);}}finally{state.services=previous;}

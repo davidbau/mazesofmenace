@@ -1,4 +1,5 @@
 import {C} from '../c-runtime/context.js';
+import { terrainAt, doorMaskAt } from './level-grid.js';
 
 /* NetHack 5.0	monmove.c	$NHDT-Date: 1737392015 2025/01/20 08:53:35 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.266 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
@@ -160,8 +161,8 @@ export function watch_on_duty(mtmp)
 
     if (C.bool(C.bool(C.bool(C.bool(mtmp.mpeaceful && C.in_town(C.u.ux + C.u.dx, C.u.uy + C.u.dy))
         && mtmp.mcansee) && C.m_canseeu(mtmp)) && !C.rn2(3, 181, "watch_on_duty"))) {
-        if (C.bool(C.bool(C.picking_lock(x, y) && C.IS_DOOR(C.levl[x.value][y.value].typ))
-            && (C.levl[x.value][y.value].doormask & C.D_LOCKED))) {
+        if (C.bool(C.bool(C.picking_lock(x, y) && C.IS_DOOR(terrainAt(C, x.value, y.value)))
+            && (doorMaskAt(C, x.value, y.value) & C.D_LOCKED))) {
             if (C.couldsee(mtmp.mx, mtmp.my)) {
                 if (C.levl[x.value][y.value].looted & C.D_WARNED) {
                     mon_yells(mtmp, "Halt, thief!  You're under arrest!");
@@ -252,7 +253,7 @@ export function onscary(x, y, mtmp)
         return 1;
 
     /* should this still be true for defiled/molochian altars? */
-    if (C.bool(C.IS_ALTAR(C.levl[x][y].typ)
+    if (C.bool(C.IS_ALTAR(terrainAt(C, x, y))
         && (C.bool(mtmp.data.mlet == C.S_VAMPIRE || C.is_vampshifter(mtmp)))))
         return 1;
 
@@ -1088,10 +1089,10 @@ export function m_digweapon_check(mtmp, nix, niy)
         if (closed_door(nix, niy)) {
             if (C.bool(C.bool(!mw_tmp || !C.is_pick(mw_tmp)) || !C.is_axe(mw_tmp)))
                 mtmp.weapon_check = C.NEED_PICK_OR_AXE;
-        } else if (C.IS_TREE(C.levl[nix][niy].typ)) {
+        } else if (C.IS_TREE(terrainAt(C, nix, niy))) {
             if (C.bool(!mw_tmp || !C.is_axe(mw_tmp)))
                 mtmp.weapon_check = C.NEED_AXE;
-        } else if (C.IS_STWALL(C.levl[nix][niy].typ)) {
+        } else if (C.IS_STWALL(terrainAt(C, nix, niy))) {
             if (C.bool(!mw_tmp || !C.is_pick(mw_tmp)))
                 mtmp.weapon_check = C.NEED_PICK_AXE;
         }
@@ -1126,7 +1127,7 @@ export function leppie_stash(mtmp)
         && !C.DEADMONSTER(mtmp))
         && !C.m_canseeu(mtmp))
         && !C.loadChar(C.in_rooms(mtmp.mx, mtmp.my, C.SHOPBASE)))
-        && C.levl[mtmp.mx][mtmp.my].typ == C.ROOM)
+        && terrainAt(C, mtmp.mx, mtmp.my) == C.ROOM)
         && !C.t_at(mtmp.mx, mtmp.my))
         && C.rn2(4, 1164, "leppie_stash"))
         && (gold = C.findgold(mtmp.minvent)) != 0)) {
@@ -1197,10 +1198,10 @@ export function holds_up_web(x, y)
     let sway;
 
     if (C.bool(C.bool(C.bool(!C.isok(x, y)
-        || C.IS_OBSTRUCTED(C.levl[x][y].typ))
-        || (C.bool(C.bool((C.bool(C.levl[x][y].typ == C.STAIRS || C.levl[x][y].typ == C.LADDER))
+        || C.IS_OBSTRUCTED(terrainAt(C, x, y)))
+        || (C.bool(C.bool((C.bool(terrainAt(C, x, y) == C.STAIRS || terrainAt(C, x, y) == C.LADDER))
             && (sway = C.stairway_at(x, y)) != 0) && sway.up)))
-        || C.levl[x][y].typ == C.IRONBARS))
+        || terrainAt(C, x, y) == C.IRONBARS))
         return 1;
 
     return 0;
@@ -1444,8 +1445,8 @@ export function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel, can_u
            [if we did the shift sooner, before moving the monster,
            we would need to duplicate it in dog_move()...] */
         if (C.bool(C.bool(C.bool(C.bool(C.is_vampshifter(mtmp) && !C.amorphous(mtmp.data))
-            && C.IS_DOOR(C.levl[nix][niy].typ))
-            && ((C.levl[nix][niy].doormask & (C.D_LOCKED | C.D_CLOSED)) != 0))
+            && C.IS_DOOR(terrainAt(C, nix, niy)))
+            && ((doorMaskAt(C, nix, niy) & (C.D_LOCKED | C.D_CLOSED)) != 0))
             && can_fog(mtmp))) {
             /* note: remove_monster()+place_monster is not right for
                long worms but they won't reach here */
@@ -1478,7 +1479,7 @@ export function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel, can_u
         ptr = mtmp.data; /* in case mintrap() caused polymorph */
 
         /* open a door, or crash through it, if 'mtmp' can */
-        if (C.bool(C.bool(C.IS_DOOR(C.levl[mtmp.mx][mtmp.my].typ)
+        if (C.bool(C.bool(C.IS_DOOR(terrainAt(C, mtmp.mx, mtmp.my))
             && !C.passes_walls(ptr)) /* doesn't need to open doors */
             && !can_tunnel)) {     /* taken care of below */
             let here = C.levl[mtmp.mx][mtmp.my];
@@ -1586,7 +1587,7 @@ export function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel, can_u
                     C.add_damage(mtmp.mx, mtmp.my, 0n);
             }
 
-        } else if (C.levl[mtmp.mx][mtmp.my].typ == C.IRONBARS) {
+        } else if (terrainAt(C, mtmp.mx, mtmp.my) == C.IRONBARS) {
             /* 3.6.2: was using may_dig() but that doesn't handle bars;
                AD_RUST catches rust monsters but metallivorous() is
                    needed for xorns and rock moles */
@@ -2140,8 +2141,8 @@ export function closed_door(x, y)
 
 {
     x = C.coordxy(C.coordxy(x)); y = C.coordxy(C.coordxy(y));
-    return C.boolean((C.bool(C.IS_DOOR(C.levl[x][y].typ)
-                      && (C.levl[x][y].doormask & (C.D_LOCKED | C.D_CLOSED)))));
+    return C.boolean((C.bool(C.IS_DOOR(terrainAt(C, x, y))
+                      && (doorMaskAt(C, x, y) & (C.D_LOCKED | C.D_CLOSED)))));
 }
 
 export function accessible(x, y)

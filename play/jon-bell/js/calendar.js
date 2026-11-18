@@ -63,9 +63,14 @@ export function friday_13th() {
     return lt.tm_wday === 5 && lt.tm_mday === 13;
 }
 
-// C ref: calendar.c:46 getlt() — returns struct tm *.
+// C ref: calendar.c:41 getlt() — returns struct tm *.
 export function getlt() {
     return fixedDatetimeTm() ? recorder_localtime(getnow()) : null;
+}
+
+// C ref: calendar.c:49 getyear() — returns 1900 + getlt()->tm_year.
+export function getyear() {
+    return 1900 + getlt().tm_year;
 }
 
 const RECORDER_UTC_OFFSET_SEC = -4 * 3600;

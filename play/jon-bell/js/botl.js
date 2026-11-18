@@ -1,10 +1,11 @@
 // botl.js — C ref: botl.c.
 import { money_cnt } from './hack.js';
-import { CONFUSION, Is_rogue_level, OVERLOADED, P_LANCE, P_MORNING_STAR, P_POLEARMS, P_QUARTERSTAFF, P_UNICORN_HORN, SATIATED, SICK, SLIMED, SLT_ENCUMBER, STARVED, gs } from './const.js';
+import { CONFUSION, Is_rogue_level, OVERLOADED, P_LANCE, P_MORNING_STAR, P_POLEARMS, P_QUARTERSTAFF, P_UNICORN_HORN, SATIATED, SICK, SLIMED, SLT_ENCUMBER, STARVED, TT_LAVA, gs } from './const.js';
 import { COIN_CLASS_DISP, _ROLE_NAME_TO_IDX, _ROLE_RANKS, _capture_botl, _disp_Blind, _equipView, _hallucinating_dsp, _live_deaf, _live_flying, _live_lev, _mon_mlevel, _statusLine1, _statusLine1Raw, _statusLine2, _statusLine2Parts, _statusRows3, _status_sgr, _threeStatusLines, status_xp_bot_eval, status_hpbar_attr_eval, status_r1_hpbar_bot_note, suppress_map_output } from './display.js';
 import { bimanual } from './do_wear.js';
 import { game } from './gstate.js';
 import { humanoid } from './makemon.js';
+import { sticks } from './mondata.js';
 import { helm_simple_name } from './objnam.js';
 import { SYM_OFFSETS, primary_showsym } from './symbols.js';
 import { weapon_descr, weapon_type } from './weapon.js';
@@ -290,6 +291,9 @@ export async function bot() {
     game._botlPaintedSlimed = !!(game.u?.uprops?.[SLIMED]?.intrinsic | 0);
     game._botlPaintedSickType = (game.u?.uprops?.[SICK]?.intrinsic | 0) ? (game.u.usick_type | 0) : 0;
     if ((game?.u?.uhp | 0) !== -1 && !game._botlHeldEat) {
+        game._botlPaintedInLava = !!(game.u?.utrap && (game.u.utraptype | 0) === TT_LAVA);
+        game._botlPaintedTrapType = game.u?.utrap ? (game.u.utraptype | 0) : -1;
+        { const u = game.u; game._botlPaintedGrab = u ? !!(u.ustuck && !u.uswallow && !(((u.umonnum | 0) !== (u.umonster | 0)) && sticks(game.youmonst?.data)) && (u.ustuck.data?.mlet | 0) === 57) : false; }
         /* botl.c:1635-1636 and wintty.c:4472: only a live, enabled XP/HD
          * field receives a new value; the other field's text survives. */
         const poly = (game.u.umonnum | 0) !== (game.u.umonster | 0);
@@ -523,8 +527,7 @@ export function timebot() {
          * BL_FLUSH renders nothing until a real bot() has pushed every field
          * in this process — a game restored with u.uhp == -1 never does. */
         const ttyValid = !!g._ttyStatusValid;
-        if (ttyValid && g._statusBlankAfterDocrt === true)
-        if (g._statusBlankAfterDocrt === true && g._statusEverPainted)
+        if (ttyValid && g._statusBlankAfterDocrt === true && g._statusEverPainted)
             g._statusTimeOnly = g.moves | 0; /* botl.c:259 guards bot() only, not timebot() */
         /* botl.c:1285-1294 stat_update_time(): BL_TIME alone goes through
          * eval_notify_windowport_field, so a changed clock marks it chg. */
@@ -533,8 +536,7 @@ export function timebot() {
         /* stat_update_time() -> tty_status_update(BL_TIME) writes only the T:
          * field; over rows cls() blanked (and bot() declined, botl.c:259) it is
          * the one cell run that appears. */
-        if (ttyValid && (g._statusBlankAfterDocrt === true || g._status_blanked))
-        if ((g._statusBlankAfterDocrt === true || g._status_blanked)
+        if (ttyValid && (g._statusBlankAfterDocrt === true || g._status_blanked)
             && g._statusEverPainted)
             g._blankTimePaint = 'T:' + (g.moves | 0);
     }
@@ -741,7 +743,7 @@ async function query_arrayvalue(querystr, arr, arrmin, arrmax, preserveStatus) {
  * The rolelist, the color/attribute retries and the " or " split into two rules
  * follow C; free-text fields are handled in status_hilite_menu below. */
 const TEXTMATCH_MENU_FLDS = ['title', 'hunger', 'alignment', 'carrying-capacity'];
-async function status_hilite_add_title_textmatch(fld, preserveStatus) {
+async function status_hilite_add_title_textmatch(fld, preserveStatus, retryBox) {
     const name = INITBLSTATS[fld][0];
     const ranks = ROLE_RANKS[role_index_by_name(game.urole?.name?.m || game.urole?.name?.f || '')].rank;
     const female = !!game.flags?.female;
@@ -780,6 +782,11 @@ async function status_hilite_add_title_textmatch(fld, preserveStatus) {
     if (!fixed) rolelist.push('"none of the above (polymorphed)"');
     const w = fixed || { min: 0, max: rolelist.length, reject: 0 };
     for (;;) {
+        if (retryBox && retryBox.n++ > 5) {
+            await pline("That's enough tries.");
+            await drainTopline();
+            return 'limit';
+        }
         const rv = await query_arrayvalue(`Choose ${name} text value to match:`, rolelist, w.min, w.max, preserveStatus);
         if (rv < w.reject) return false;
         let textmatch = rolelist[rv];
@@ -974,8 +981,14 @@ export async function status_hilite_menu(preserveStatus = false) {
             /* C botl.c:4112-4125,4245-4268 BL_TH_CONDITION: query_conditions() (botl.c:3107),
              * then the color/attribute retries; a cancelled color re-asks the conditions. */
             if (beh === 103) {
-                let added = false;
+                let added = false, hitLimit = false;
                 for (;;) {
+                    if (retry++ > 5) {
+                        await pline("That's enough tries.");
+                        await drainTopline();
+                        hitLimit = true;
+                        break;
+                    }
                     const cm = new TtyMenu();
                     COND_NAMES.forEach((cn, i) => cm.add_menu(i + 1, 0, ATR_NONE, cn, false, false));
                     cm.end_menu('Choose status conditions');
@@ -1006,18 +1019,23 @@ export async function status_hilite_menu(preserveStatus = false) {
                     added = true;
                     break;
                 }
+                if (hitLimit) { beh = 0; break; }
                 beh = !added ? 0 : adding ? await status_hilite_menu_choose_behavior(fld, true)
                     : await status_hilite_menu_fld_current(fld, INITBLSTATS[fld][0]);
-                if (added) adding = true;
+                if (added) { adding = true; retry = 0; }
             }
             if (beh === 104 && TEXTMATCH_MENU_FLDS.includes(INITBLSTATS[fld][0])) {
-                const added = await status_hilite_add_title_textmatch(fld, flushed || adding);
+                const retryBox = { n: retry };
+                const res = await status_hilite_add_title_textmatch(fld, flushed || adding, retryBox);
+                retry = retryBox.n;
+                if (res === 'limit') { beh = 0; break; }
+                const added = res === true;
                 if (added) flushed = !game._statusBlankAfterDocrt;
                 /* C botl.c:4445-4447: once adding, each add re-offers the behavior menu */
                 beh = !added ? await status_hilite_menu_choose_behavior(fld, flushed || adding)
                     : adding ? await status_hilite_menu_choose_behavior(fld, true)
                     : await status_hilite_menu_fld_current(fld, INITBLSTATS[fld][0]);
-                if (added) { adding = true; flushed = true; }
+                if (added) { adding = true; flushed = true; retry = 0; }
             }
             /* C botl.c:4204-4243: other text fields use getlin; cancelled
              * colors retry the value, cancelled attributes retry the color. */
@@ -1151,7 +1169,7 @@ export async function status_hilite_menu(preserveStatus = false) {
                 retry = 0;
             }
             if (!(beh === 105 || beh === 106 || beh === 103 || beh === 102 || beh === 100 || beh === 101
-                  || (beh === 104 && TEXTMATCH_MENU_FLDS.includes(INITBLSTATS[fld][0])))) break;
+                  || beh === 104)) break;
         }
         if (beh > 0) throw new Error('not yet ported: status_hilite_menu_add value entry');
         if (game._statusHiliteRemovedPending) { /* botl.c:4550-4551 */
@@ -1251,7 +1269,7 @@ export async function cond_menu() {
                 changed = true;
             }
         }
-        if (changed) game.botl = true;
+        if (changed && game.disp) game.disp.botl = 1;
     }
     return changed;
 }

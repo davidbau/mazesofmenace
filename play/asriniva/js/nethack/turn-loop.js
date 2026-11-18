@@ -1,9 +1,10 @@
 import {recordNativeRngCaller} from './native/rng-output.js';
 // Original ALLMAIN turn policies retain the existing startup context/owner.
 import * as allmain from '../ported/allmain.js';
+import {createTurnState} from '../ported/turn-state.js';
+import {CombatDamage,createActorFields} from '../ported/actor-fields.js';
 import abi from './turn-loop-abi.json' with {type:'json'};
 import {createNativeRecordViews} from './native/record-views.js';
-import {createNativeTurnLoop} from './native/turn-loop.js';
 import {nativeStateFor} from './native/state-bridge.js';
 
 // BEGIN GENERATED ALLMAIN HEADERS
@@ -124,9 +125,120 @@ export function enableTurnLoop(environment,layouts,startup){
  // and returns C addresses. Its actual source find_level body remains the owner.
  C.find_level=name=>{const at=resolve('find_level')(text(name));return at?views.record('struct s_level',at):0;};
  C.nativeTurn=fn=>{const saved=transport.stackSave();nativeState.enter();try{return fn();}finally{try{nativeState.leave();}finally{transport.stackRestore(saved);}}};
- const native=createNativeTurnLoop(C);
+ C.monsterTurns=nativeState.spatial?.monsterTurns;
+ const heroAddress=environment.requireGlobal('u');
+ const contextAddress=ctypes.fieldAddress('struct instance_globals_saved_c',environment.requireGlobal('svc'),'context');
+ const actorField=field=>ctypes.fieldAddress('struct you',heroAddress,field);
+ const turnField=field=>ctypes.fieldAddress('struct context_info',contextAddress,field);
+ C.turnState=createTurnState(nativeState.nativeArena,{
+  movement:actorField('umovement')/2,moved:actorField('umoved'),levelChange:actorField('utotype'),
+  turnTaken:turnField('move'),monstersMoving:turnField('mon_moving'),
+ });
+ const native={
+  moveloop_preamble:resuming=>allmain.moveloop_preamble(resuming,C),
+  moveloop_core:()=>allmain.moveloop_core(C),
+  moveloop:resuming=>allmain.moveloop(resuming,C),
+  stop_occupation:()=>allmain.stop_occupation(C),
+  timet_to_seconds:time=>allmain.timet_to_seconds(time,C),
+  timet_delta:(end,start)=>allmain.timet_delta(end,start,C),
+ };
  const entries=['moveloop_preamble','moveloop_core','moveloop','stop_occupation','timet_to_seconds','timet_delta'];
  const implementations=Object.fromEntries(entries.filter(name=>!environment.hasFunction(name)).map(name=>{let started=false;const invoke=(...args)=>{if(!started){environment.startModule('game-startup');started=true;}if(name==='moveloop_preamble'||name==='moveloop')args[0]=transport.char(args[0]);else if(name==='timet_to_seconds'||name==='timet_delta')args=args.map(transport.long);return name==='moveloop'?native[name](...args):C.nativeTurn(()=>native[name](...args));};invoke.nativeState=nativeState;invoke.nativeDirect=true;nativeState.functions.set(name,invoke);return [name,invoke];}));
  environment.extend('game-startup',implementations);
- return {environment:C,state:C.allmainState,entries:Object.keys(implementations),native,views,limitation:'Native ALLMAIN turns share startup state and canonical typed actors; finite recording acceptance is required separately.'};
+ return {environment:C,state:C.allmainState,entries:Object.keys(implementations),native,views,
+  displayExecution:()=>nativeState.functions.get('suppress_map_output')?.nativeValuesEntry?.nativeExecutionState,
+  limitation:'Native ALLMAIN turns share startup state and canonical typed actors; finite recording acceptance is required separately.'};
+}
+
+
+// Bind the full-game turn graph at the first native turn, after startup has
+// installed the live level, windows, RNG and module initializers.
+export function connectTurnPolicies({turn,monsters,monsterMovement,vision,heroMovement,commands,heroCombat,monsterAttack,monsterCombat,timers,environment}) {
+ const context=turn.environment;
+ const enterTurn=context.nativeTurn;
+ context.nativeTurn=fn=>enterTurn(()=>{
+  const lifecycle=monsters.context;
+  const monsterContext=monsterMovement.context;
+  const actions=monsterContext.nativeMovement;
+  const sight=vision.context.nativeVision;
+  const {movemon,mcalcmove,mcalcdistress}=lifecycle.nativeLifecycle;
+  Object.assign(context,{movemon,mcalcmove,mcalcdistress,
+   m_everyturn_effect:actions.m_everyturn_effect,vision_recalc:sight.vision_recalc});
+  Object.assign(lifecycle,{
+   dochugw:actions.dochugw,m_everyturn_effect:actions.m_everyturn_effect,
+   mon_regen:actions.mon_regen,vision_recalc:sight.vision_recalc,
+  });
+  timers.bindDependencies();
+  context.nh_timeout=timers.policies.nh_timeout;
+  const sharedState=nativeStateFor(environment);
+  const arena=sharedState.nativeArena;
+  const {itemLists}=sharedState.spatial;
+  // These policies only test for presence. The object handle is enough.
+  timers.environment.carrying=itemLists.hero;
+  heroCombat.context.carrying=itemLists.hero;
+  monsterAttack.context.sobj_at=itemLists.floor;
+  const actorFields=createActorFields(arena,environment.ctypes.record('struct monst').fields);
+  for(const policy of [heroCombat.context,monsterAttack.context,monsterCombat.context])
+   Object.defineProperty(policy,'actorFields',{value:actorFields});
+  const heroAttacks=heroCombat.context.nativeNamespace;
+  for(const policy of [monsterAttack.context,monsterCombat.context]){
+   Object.defineProperty(policy,'combatDamage',{value:()=>
+    new CombatDamage(environment.transport.stackAlloc.reserve(4))});
+   policy.mhitm_adtyping=heroAttacks.mhitm_adtyping;
+   policy.mhitm_knockback=heroAttacks.mhitm_knockback;
+  }
+  const legacyFieldRef=heroCombat.context.fieldRef;
+  heroCombat.context.fieldRef=(record,name)=>{
+   if(!(record instanceof CombatDamage))return legacyFieldRef(record,name);
+   if(name!=='damage')throw new Error('Unexpected damage reference '+name);
+   if(!record.damageWord){
+    const address=record.reserveDamage();
+    const index=address/4;
+    arena.Int32[index]=record.damage;
+    record.damageWord={
+     address,
+     read:()=>arena.Int32[index],
+     write:value=>{arena.Int32[index]=value;},
+    };
+   }
+   const cell=record.damageWord;
+   return {address:cell.address,get value(){return cell.read();},set value(value){cell.write(value);}};
+  };
+  const attackHero=monsterAttack.native.mattacku;
+  const attackMonster=monsterCombat.native.mattackm;
+  const hero=heroMovement.context;
+  const moveHero=hero.nativeMovement.domove;
+  Object.assign(moveHero,{nativeState:sharedState,nativeDirect:true});
+  hero.do_attack=heroCombat.context.nativeNamespace.do_attack;
+  Object.assign(monsterContext,{mattacku:attackHero,mattackm:attackMonster,vision_recalc:sight.vision_recalc});
+  monsterAttack.context.mattackm=attackMonster;
+  context.domove=moveHero;
+  const display=turn.displayExecution()?.namespace;
+  if (display) {
+   const canSee=monster=>display.canseemon(environment.address(monster));
+   const safeMonster=monster=>display.is_safemon(environment.address(monster));
+   for (const policy of [hero,lifecycle,monsterContext,vision.context,
+                         heroCombat.context,monsterAttack.context,monsterCombat.context]) {
+    policy.newsym=display.newsym;
+    policy.glyph_at=display.glyph_at;
+   }
+   Object.assign(hero,{is_safemon:safeMonster,unmap_invisible:display.unmap_invisible});
+   Object.assign(heroCombat.context,{canseemon:canSee,is_safemon:safeMonster});
+   context.see_monsters=display.see_monsters;
+  }
+
+
+  // CMD owns its table initialization. Bind the source policy only after that
+  // provider has established its namespace. The argument is already a key.
+  const executeCommand=context.rhack;
+  context.rhack=key=>{
+   const command=commands.nativeExecution.namespace;
+   if(typeof command?.rhack!=='function')return executeCommand(key);
+   commands.nativeExecution.context.domove=moveHero;
+   context.rhack=command.rhack;
+   return command.rhack(key);
+  };
+  context.nativeTurn=enterTurn;
+  return fn();
+ });
 }

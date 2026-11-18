@@ -98,23 +98,6 @@ export function insert_rtoption(buf) {
     return buf;
 }
 
-function tty_putstr_lines(str) {
-    const out = [];
-    while (str.length >= COLNO) {
-        let brk = str.lastIndexOf(' ', COLNO - 1);
-        if (brk <= 0) {           /* unbreakable — hard-split at the margin */
-            brk = COLNO - 1;
-            out.push(str.slice(0, brk));
-            str = str.slice(brk);
-        } else {
-            out.push(str.slice(0, brk));
-            str = str.slice(brk + 1);
-        }
-    }
-    out.push(str);
-    return out;
-}
-
 /**
  * doextversion() — the '#version' command, and help_menu_items[0].
  * C source: nethack-c/src/version.c:167-277
@@ -151,9 +134,9 @@ export function doextversion() {
         tail = buf.slice(p - 1);          /* *--p = ' ' restores the space */
         buf = buf.slice(0, p - 1);
     }
-    for (const ln of tty_putstr_lines(buf)) win.push(ln);
+    win.push(buf);
     if (tail !== null)
-        for (const ln of tty_putstr_lines(tail)) win.push(ln);
+        win.push(tail);
 
     prolog = true; /* to skip indented program name */
     for (;;) {
@@ -187,7 +170,7 @@ export function doextversion() {
             buf = insert_rtoption(buf);
 
         if (buf.length)
-            for (const ln of tty_putstr_lines(buf)) win.push(ln);
+            win.push(buf);
     }
     return win;
 }

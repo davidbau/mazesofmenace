@@ -144,13 +144,22 @@ export function createStandaloneEnvironment(options={}) {
         memset:(d,v,n)=>memory.memset(address(d),v,Number(n)),
         callComparator:(fn,a,b)=>typeof fn==='function'?fn(a,b):functions.indirect(fn,'ipp',a,b),
     });
+    services.memset.nativeStateIndependent=true;
+    for(const name of ['strcpy','strchr']){
+        const legacy=services[name];
+        const stringAddress=value=>typeof value==='string'?services.literal(value):address(value);
+        const entry=name==='strcpy'?(out,value)=>legacy(address(out),stringAddress(value))
+            :(input,value)=>legacy(stringAddress(input),value);
+        entry.nativeStateIndependent=true;
+        legacy.nativeValuesEntry=entry;
+    }
     const states=new Map();
     const addressAdapters=new Map();let itemInventory,monsterSelection,monsterCreation,heroStartup,were,dogmove,mhitm,vault,quest;
     const linker=createLinker({memory,transport,functions,services,ctypes,
         prototypes:publicFunctions.functions,withEnvironment:withCEnvironment,
         resolveFunction:name=>environment.resolve(name)});
     const {functionPointer,deferFunctions,resolve,extend,register,start,call,
-        allocateGlobal,requireGlobal,linkGlobal}=linker;
+        allocateGlobal,requireGlobal,bindGlobal,linkGlobal}=linker;
     Object.assign(services,{global:requireGlobal,storage:requireGlobal});
     function enableRect(layout,{rn2,impossible=message=>diagnostics.push(message)}={}) {
         let generator;
@@ -274,11 +283,12 @@ export function createStandaloneEnvironment(options={}) {
     function enableDependencies() {
         const runtime=createLibraryBindings({regex:true,regexDialect:'sdk'});
         for(const name of ['tgetent','tgetflag','tgetnum','tgetstr','tparm','tgoto','tputs','regcomp','regexec','regerror','regfree','compressFile'])services[name]=(...args)=>runtime[name](services,...args);
+        services.nativeTgoto=(format,column,row)=>runtime.tgotoNative(services,format,column,row);
         services.nativeTputs=(text,lines,emit)=>runtime.tputsNative(services,text,lines,emit);
         services.tgetent=(_buffer,name)=>runtime.tgetent(services,name);
         return runtime;
     }
-    const environment={...base,services,transport,functions,bitfields,ctypes,diagnostics,register,extend,deferFunctions,start,call,functionPointer,allocateGlobal,requireGlobal,linkGlobal,enableRect,enableHacklib,enableDecl,enableDrawing,enableObjects,enableMonst,enableStdio,enableRnd,enableSys,enableTrack,enableCommandGeometry,enableDependencies,
+    const environment={...base,services,transport,functions,bitfields,ctypes,diagnostics,register,extend,deferFunctions,start,call,functionPointer,allocateGlobal,requireGlobal,bindGlobal,linkGlobal,enableRect,enableHacklib,enableDecl,enableDrawing,enableObjects,enableMonst,enableStdio,enableRnd,enableSys,enableTrack,enableCommandGeometry,enableDependencies,
         // Reuse the public native-width boundary for standalone allocation callers.
         alloc:(name,...args)=>(name==='alloc'||name==='re_alloc')?resolve(name)(...args):base.alloc(name,...args),
         setEnvironment:(name,value)=>{inputs.setEnvironment(name,value);if(value===null||value===undefined)delete ENV[name];else ENV[name]=String(value);},

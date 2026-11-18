@@ -1,5 +1,6 @@
 // Original DATE storage and VERSION policies; all shared roots remain live.
 import * as version from '../ported/version.js';
+import {createNativeVersion} from './native/version.js';
 import abi from './persistence-transport-abi.json' with {type:'json'};
 import * as date from '../ported/date.js';
 import {initializeDate} from './bindings/date.js';
@@ -32,7 +33,11 @@ export function enableVersionInfo(environment,layouts){
   raw_print:value=>environment.functions.indirect(ctypes.getField('struct window_procs',environment.requireGlobal('windowprocs'),'win_raw_print','void *'),'vp',text(value)),
  });
  const state=createVersionState(local,L,version),context=createVersionEnvironment(local,L,state);
- environment.register('version',version,context,{prepareArgs:(name,args)=>{
+ const policy=createNativeVersion(context);
+ const statusVersion=(buf,size,indent)=>policy.status_version(buf,size,indent);
+ statusVersion.nativeDirect=true;
+ statusVersion.nativePrepared=true;
+ environment.register('version',{...version,status_version:statusVersion},context,{prepareArgs:(name,args)=>{
   args=[...args];if(['version_string','getversionstring','status_version'].includes(name))args[1]=context.size_t(args[1]);
   if(name==='status_version')args[2]=context.boolean(args[2]);if(name==='early_version_info')args[0]=context.boolean(args[0]);
   if(name==='check_version'){args[0]=context.versionInfo(args[0]);args[2]=context.boolean(args[2]);args[3]=context.ulong(args[3]);}

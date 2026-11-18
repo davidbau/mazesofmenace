@@ -28,6 +28,7 @@ export function enableGlyphs(environment,layouts){
  });
  for(const name of ['strcmp','strcpy','strcat'])local[name]=(a,b)=>services[name](text(a),text(b));
  const names=Object.keys(glyphs).filter(name=>typeof glyphs[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
+ local.glyphCache={entries:null,byGlyph:new Map(),read:value=>memory.readString(environment.address(value))};
  environment.register('glyphs',Object.fromEntries(names.map(name=>{let started=false;const invoke=(...args)=>{if(!started){environment.startModule('glyphs');started=true;}const result=call(name,...args);return typeof result==='boolean'?Number(result):result?.address??result??0;};invoke.nativeState=nativeOwner;invoke.nativeDirect=true;nativeOwner.functions.set(name,invoke);return[name,invoke];})));
  const owner={services:local,finds,dump,call,get context(){return bridge.context(local);},limitation:'Native glyph policy/state is connected; independent C and strict recording acceptance are reported separately.'};owners.set(environment,owner);return owner;
 }

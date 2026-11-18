@@ -130,6 +130,11 @@ const R129=NF.readers[129],W129=NF.writers[129],A129=NF.addresses[129];
 const R130=NF.readers[130],W130=NF.writers[130],A130=NF.addresses[130];
 const R131=NF.readers[131],W131=NF.writers[131],A131=NF.addresses[131];
 const R132=NF.readers[132],W132=NF.writers[132],A132=NF.addresses[132];
+const RC0=C.readInt8At,WC0=C.writeInt8At;
+const RC1=C.readInt8At,WC1=C.writeInt8At;
+const RC2=C.readUint8At,WC2=C.writeUint8At;
+const RC3=C.readInt16At,WC3=C.writeInt16At;
+const RC5=C.readInt32At,WC5=C.writeInt32At;
 
 /* NetHack 5.0	detect.c	$NHDT-Date: 1763708572 2025/11/20 23:02:52 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.191 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
@@ -636,7 +641,7 @@ function object_detect(detector,class_)
      * We can exclude checking the buried obj chain for boulders below.
      */
     (sym=(class_?C.i32(R5(C.def_oc_syms+Number(class_)*C.sizes["struct class_sym"])):0));
-    if(Number(!!(sym&&Number(sym==C.i32(C.cell((A49(C.gs)+Number(C.i32((C.SYM_BOULDER+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1),"unsigned char").value))))) (boulder=C.ROCK_CLASS);
+    if(Number(!!(sym&&Number(sym==C.i32(RC2(A49(C.gs)+Number(C.i32((C.SYM_BOULDER+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1)))))) (boulder=C.ROCK_CLASS);
     if(Number(!!((Number(!!(R102(A122(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R102(A122(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))||(Number(!!(R102(A122(C.u)+Number(C.CONFUSION)*C.sizes["struct prop"])&&Number(class_==C.SCROLL_CLASS))))))) C.strcpy(stuff,R2(C.c_common_strings));
  else C.strcpy(stuff,(class_?R6(C.def_oc_syms+Number(class_)*C.sizes["struct class_sym"]):C.literal("objects")));
     if(Number(!!(boulder&&Number(class_!=C.ROCK_CLASS)))) C.strcat(stuff,C.literal(" and/or large stones"));
@@ -885,25 +890,25 @@ function detect_obj_traps(objlist,show_them,how,ft)
     (W114(C.dummytrap,C.u32(C.TRAPPED_CHEST)));
     (trapglyph=(ft?(((Number(((C.i32((C.i32((C.S_arrow_trap+((C.i32(R114(C.dummytrap))))))-1))))==C.S_stone))?C.GLYPH_CMAP_STONE_OFF:((Number(((C.i32((C.i32((C.S_arrow_trap+((C.i32(R114(C.dummytrap))))))-1))))<=C.S_trwall))?(C.i32((C.i32((((C.i32((C.i32((C.S_arrow_trap+((C.i32(R114(C.dummytrap))))))-1))))-C.S_vwall))+((C.i32(C.In_mines(A121(C.u)))?C.GLYPH_CMAP_MINES_OFF:(C.i32(C.In_hell(A121(C.u)))?C.GLYPH_CMAP_GEH_OFF:(((Number(!!((Number(!!(C.i32(R9(A16(A50(C.svd))))||C.i32(R8(A16(A50(C.svd)))))))&&C.i32(C.on_level(A121(C.u),A16(A50(C.svd))))))))?C.GLYPH_CMAP_KNOX_OFF:((Number(C.i32(R8(A121(C.u)))==C.i32((R15(A50(C.svd))))))?C.GLYPH_CMAP_SOKO_OFF:C.GLYPH_CMAP_MAIN_OFF)))))))):((Number(((C.i32((C.i32((C.S_arrow_trap+((C.i32(R114(C.dummytrap))))))-1))))<C.S_altar))?(C.i32(((C.i32((((C.i32((C.i32((C.S_arrow_trap+((C.i32(R114(C.dummytrap))))))-1))))-C.S_ndoor)))+C.GLYPH_CMAP_A_OFF))):((Number(((C.i32((C.i32((C.S_arrow_trap+((C.i32(R114(C.dummytrap))))))-1))))==C.S_altar))?(((Number((C.i32(((2)&16)))==16))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_other))):((Number((C.i32(((2)&7)))==4))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_lawful))):((Number((C.i32(((2)&7)))==2))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_neutral))):((Number((C.i32(((2)&7)))==1))?(C.i32((C.GLYPH_ALTAR_OFF+C.altar_chaotic))):(C.i32((C.GLYPH_ALTAR_OFF+C.altar_unaligned)))))))):((Number(((C.i32((C.i32((C.S_arrow_trap+((C.i32(R114(C.dummytrap))))))-1))))<C.i32((C.S_arrow_trap+(C.i32((C.TRAPNUM-1)))))))?(C.i32(((C.i32((((C.i32((C.i32((C.S_arrow_trap+((C.i32(R114(C.dummytrap))))))-1))))-C.S_grave)))+C.GLYPH_CMAP_B_OFF))):((Number(((C.i32((C.i32((C.S_arrow_trap+((C.i32(R114(C.dummytrap))))))-1))))<=C.S_goodpos))?(C.i32(((C.i32((((C.i32((C.i32((C.S_arrow_trap+((C.i32(R114(C.dummytrap))))))-1))))-C.S_digbeam)))+C.GLYPH_CMAP_C_OFF))):C.MAX_GLYPH))))))):C.GLYPH_NOTHING_OFF));
     for((otmp=objlist);otmp;(otmp=R78(otmp))) {
-        (C.cell(xAddress,"short").value=(C.cell(yAddress,"short").value=C.i16(0)));
+        (WC3(xAddress,WC3(yAddress,C.i16(0))));
         /* lint suppression */
         if(Number(!!((Number(!!((Number(!!(Number(C.i32(R83(otmp))==C.LARGE_BOX)||Number(C.i32(R83(otmp))==C.CHEST))))&&C.i32(R92(otmp)))))||(Number(R80(otmp)!=0))))) {
             /* !get_obj_location and !isok should both be impossible here */
-            if(Number(!!(Number(!!(Number(!(C.get_obj_location(otmp,xAddress,yAddress,C.i32((2|1)))))||Number(!(C.isok(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value)))))||(Number(!!(ft&&(Number(!!(Number(C.i32(C.cell(xAddress,"short").value)!=C.i32(R76(A29(ft))))||Number(C.i32(C.cell(yAddress,"short").value)!=C.i32(R77(A29(ft))))))))))))) continue;
+            if(Number(!!(Number(!!(Number(!(C.get_obj_location(otmp,xAddress,yAddress,C.i32((2|1)))))||Number(!(C.isok(RC3(xAddress),RC3(yAddress))))))||(Number(!!(ft&&(Number(!!(Number(C.i32(RC3(xAddress))!=C.i32(R76(A29(ft))))||Number(C.i32(RC3(yAddress))!=C.i32(R77(A29(ft))))))))))))) continue;
         }
         if(Number(!!((Number(!!(Number(C.i32(R83(otmp))==C.LARGE_BOX)||Number(C.i32(R83(otmp))==C.CHEST))))&&C.i32(R92(otmp))))) {
             (W90(otmp,C.u32(1)));
             C.observe_object(otmp);
-            (result=C.i32(result|((Number(!!(Number(C.i32((C.cell(xAddress,"short").value))==C.i32(R119(C.u)))&&Number(C.i32((C.cell(yAddress,"short").value))==C.i32(R120(C.u))))))?1:2)));
+            (result=C.i32(result|((Number(!!(Number(C.i32((RC3(xAddress)))==C.i32(R119(C.u)))&&Number(C.i32((RC3(yAddress)))==C.i32(R120(C.u))))))?1:2)));
             if(ft) {
-                C.flash_glyph_at(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,trapglyph,6);
+                C.flash_glyph_at(RC3(xAddress),RC3(yAddress),trapglyph,6);
             }
             if(show_them) {
-                ((W112(C.dummytrap,C.cell(xAddress,"short").value)),(W113(C.dummytrap,C.cell(yAddress,"short").value)));
-                sense_trap(C.dummytrap,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,how);
+                ((W112(C.dummytrap,RC3(xAddress))),(W113(C.dummytrap,RC3(yAddress))));
+                sense_trap(C.dummytrap,RC3(xAddress),RC3(yAddress),how);
             }
             if(ft) {
-                foundone(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,trapglyph);
+                foundone(RC3(xAddress),RC3(yAddress),trapglyph);
                 ((W32(ft,C.u8((R32(ft)+1))))-1);
             }
         }
@@ -1236,7 +1241,7 @@ function use_crystal_ball(optr)
             (ret=object_detect(0,class_));
         } else if(Number(((class_=C.def_char_to_monclass(ch)))!=C.MAXMCLASSES)) {
             (ret=monster_detect(0,class_));
-        } else if(Number(!!(C.i32(C.cell((A49(C.gs)+Number(C.i32((C.SYM_BOULDER+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1),"unsigned char").value)&&(Number(C.i32(ch)==C.i32(C.cell((A49(C.gs)+Number(C.i32((C.SYM_BOULDER+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1),"unsigned char").value)))))) {
+        } else if(Number(!!(C.i32(RC2(A49(C.gs)+Number(C.i32((C.SYM_BOULDER+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1))&&(Number(C.i32(ch)==C.i32(RC2(A49(C.gs)+Number(C.i32((C.SYM_BOULDER+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1))))))) {
             (ret=object_detect(0,C.ROCK_CLASS));
         } else if(Number(C.i32(ch)==94)) {
             (ret=trap_detect(0));
@@ -1366,8 +1371,8 @@ function do_vicinity_map(sobj)
      * monsters as 'remembered, unseen'.
      */
     /* if hero is engulfed, show engulfer at <u.ux,u.uy> */
-    (save_viz_uyux=C.i8(C.cell((C.cell((R55(C.gv)+Number(R120(C.u))*8),"unsigned char *").value+Number(R119(C.u))*1),"unsigned char").value));
-    if(R125(C.u)) (C.cell((C.cell((R55(C.gv)+Number(R120(C.u))*8),"unsigned char *").value+Number(R119(C.u))*1),"unsigned char").value=C.u8(C.cell((C.cell((R55(C.gv)+Number(R120(C.u))*8),"unsigned char *").value+Number(R119(C.u))*1),"unsigned char").value|2));
+    (save_viz_uyux=C.i8(RC2(C.cell((R55(C.gv)+Number(R120(C.u))*8),"unsigned char *").value+Number(R119(C.u))*1)));
+    if(R125(C.u)) (WC2(C.cell((R55(C.gv)+Number(R120(C.u))*8),"unsigned char *").value+Number(R119(C.u))*1,C.u8(RC2(C.cell((R55(C.gv)+Number(R120(C.u))*8),"unsigned char *").value+Number(R119(C.u))*1)|2)));
     /* <x,y> are reversed, [y][x] */
     (save_EDetect_mons=R100(A122(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"]));
     /* for skilled spell, getpos() scanning of the map will display all
@@ -1425,7 +1430,7 @@ function do_vicinity_map(sobj)
     }
     reconstrain_map();
     (W100(A122(C.u)+Number(C.DETECT_MONSTERS)*C.sizes["struct prop"],save_EDetect_mons));
-    (C.cell((C.cell((R55(C.gv)+Number(R120(C.u))*8),"unsigned char *").value+Number(R119(C.u))*1),"unsigned char").value=C.u8(save_viz_uyux));
+    (WC2(C.cell((R55(C.gv)+Number(R120(C.u))*8),"unsigned char *").value+Number(R119(C.u))*1,C.u8(save_viz_uyux)));
     /* replace monsters with remembered,unseen monster, then run
        see_monsters() to update visible ones and warned-of ones */
     for((zx=lo_x);Number(zx<=hi_x);((zx=C.i32((zx+1)))-1)) for((zy=lo_y);Number(zy<=hi_y);((zy=C.i32((zy+1)))-1)) {
@@ -1470,10 +1475,10 @@ function foundone(zx,zy,glyph)
     glyph=C.i32(glyph);
     if(Number(!!((Number(!!(Number((glyph)>=C.GLYPH_CMAP_STONE_OFF)&&Number((glyph)<(C.i32((C.GLYPH_CMAP_C_OFF+(C.i32(((C.i32((C.S_goodpos-C.S_digbeam)))+1))))))))))||(Number((glyph)==C.GLYPH_UNEXPLORED_OFF))))) (W105((A17(A53(C.svl))+Number(zx)*(C.sizes["struct rm"]*21))+Number(zy)*C.sizes["struct rm"],C.u8(255)));
 {
-        let save_viz=C.cell((C.cell((R55(C.gv)+Number(zy)*8),"unsigned char *").value+Number(zx)*1),"unsigned char").value;
-        if(Number(!((Number(!!((Number(!!(R102(A122(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R101(A122(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))) (C.cell((C.cell((R55(C.gv)+Number(zy)*8),"unsigned char *").value+Number(zx)*1),"unsigned char").value=C.u8(C.i32((1|2))));
+        let save_viz=RC2(C.cell((R55(C.gv)+Number(zy)*8),"unsigned char *").value+Number(zx)*1);
+        if(Number(!((Number(!!((Number(!!(R102(A122(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R101(A122(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))) (WC2(C.cell((R55(C.gv)+Number(zy)*8),"unsigned char *").value+Number(zx)*1,C.u8(C.i32((1|2)))));
         C.newsym(zx,zy);
-        (C.cell((C.cell((R55(C.gv)+Number(zy)*8),"unsigned char *").value+Number(zx)*1),"unsigned char").value=save_viz);
+        (WC2(C.cell((R55(C.gv)+Number(zy)*8),"unsigned char *").value+Number(zx)*1,save_viz));
     }    /*
      * This works [for non-monsters at present] but flash_glyph_at()
      * seems preferrable because the tmp_at() variation requires that
@@ -1572,54 +1577,54 @@ function openone(zx,zy,num)
     zy=C.i16(zy);
     const stackFrame=C.stackSave();
     try {
-    const zxAddress=C.stackAlloc(2); C.cell(zxAddress,"short").value=zx;
-    const zyAddress=C.stackAlloc(2); C.cell(zyAddress,"short").value=zy;
+    const zxAddress=C.stackAlloc(2); WC3(zxAddress,zx);
+    const zyAddress=C.stackAlloc(2); WC3(zyAddress,zy);
     let ttmp;
     let otmp;
     let num_p=num;
-    if((Number(C.cell(((A18(A53(C.svl))+Number(C.cell(zxAddress,"short").value)*(8*21))+Number(C.cell(zyAddress,"short").value)*8),"struct obj *").value!=0))) {
-        for((otmp=C.cell(((A18(A53(C.svl))+Number(C.cell(zxAddress,"short").value)*(8*21))+Number(C.cell(zyAddress,"short").value)*8),"struct obj *").value);otmp;(otmp=R117(A79(otmp)))) {
+    if((Number(C.cell(((A18(A53(C.svl))+Number(RC3(zxAddress))*(8*21))+Number(RC3(zyAddress))*8),"struct obj *").value!=0))) {
+        for((otmp=C.cell(((A18(A53(C.svl))+Number(RC3(zxAddress))*(8*21))+Number(RC3(zyAddress))*8),"struct obj *").value);otmp;(otmp=R117(A79(otmp)))) {
             if(Number(!!((Number(!!(Number(C.i32(R83(otmp))==C.LARGE_BOX)||Number(C.i32(R83(otmp))==C.CHEST))))&&C.i32(R91(otmp))))) {
                 (W91(otmp,C.u32(0)));
-                (((C.cell(num_p,"int").value)=C.i32(((C.cell(num_p,"int").value)+1)))-1);
+                ((WC5(num_p,C.i32(((RC5(num_p))+1))))-1);
             }
         }
         /* let it fall to the next cases. could be on trap. */
     }
     /* note: secret doors can't be trapped; they use levl[][].wall_info;
        see rm.h for the troublesome overlay of doormask and wall_info */
-    if(Number(!!(Number(C.i32(R104((A17(A53(C.svl))+Number(C.cell(zxAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(zyAddress,"short").value)*C.sizes["struct rm"]))==C.SDOOR)||(Number(!!(Number(C.i32(R104((A17(A53(C.svl))+Number(C.cell(zxAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(zyAddress,"short").value)*C.sizes["struct rm"]))==C.DOOR)&&(C.i32((C.i32(R106((A17(A53(C.svl))+Number(C.cell(zxAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(zyAddress,"short").value)*C.sizes["struct rm"]))&(C.i32((4|8)))))))))))) {
-        if(Number(C.i32(R104((A17(A53(C.svl))+Number(C.cell(zxAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(zyAddress,"short").value)*C.sizes["struct rm"]))==C.SDOOR)) cvt_sdoor_to_door(((A17(A53(C.svl))+Number(C.cell(zxAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(zyAddress,"short").value)*C.sizes["struct rm"]));
+    if(Number(!!(Number(C.i32(R104((A17(A53(C.svl))+Number(RC3(zxAddress))*(C.sizes["struct rm"]*21))+Number(RC3(zyAddress))*C.sizes["struct rm"]))==C.SDOOR)||(Number(!!(Number(C.i32(R104((A17(A53(C.svl))+Number(RC3(zxAddress))*(C.sizes["struct rm"]*21))+Number(RC3(zyAddress))*C.sizes["struct rm"]))==C.DOOR)&&(C.i32((C.i32(R106((A17(A53(C.svl))+Number(RC3(zxAddress))*(C.sizes["struct rm"]*21))+Number(RC3(zyAddress))*C.sizes["struct rm"]))&(C.i32((4|8)))))))))))) {
+        if(Number(C.i32(R104((A17(A53(C.svl))+Number(RC3(zxAddress))*(C.sizes["struct rm"]*21))+Number(RC3(zyAddress))*C.sizes["struct rm"]))==C.SDOOR)) cvt_sdoor_to_door(((A17(A53(C.svl))+Number(RC3(zxAddress))*(C.sizes["struct rm"]*21))+Number(RC3(zyAddress))*C.sizes["struct rm"]));
         /* .typ = DOOR */
-        if(C.i32((C.i32(R106((A17(A53(C.svl))+Number(C.cell(zxAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(zyAddress,"short").value)*C.sizes["struct rm"]))&16))) {
-            if(Number(C.dist2((C.cell(zxAddress,"short").value),(C.cell(zyAddress,"short").value),R119(C.u),R120(C.u))<3)) C.b_trapped(C.literal("door"),C.NO_PART);
- else C.variadic(47,C.literal("You %s an explosion!"),((Number((C.i32((C.i32(C.cell((C.cell((R55(C.gv)+Number(C.cell(zyAddress,"short").value)*8),"unsigned char *").value+Number(C.cell(zxAddress,"short").value)*1),"unsigned char").value)&2)))!=0))?C.literal("see"):((Number(!((Number(!!(Number(!!(R102(A122(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R116(A130(C.u))))))))?C.literal("hear"):C.literal("feel the shock of")))));
-            C.wake_nearto(C.cell(zxAddress,"short").value,C.cell(zyAddress,"short").value,C.i32((11*11)));
-            (W106((A17(A53(C.svl))+Number(C.cell(zxAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(zyAddress,"short").value)*C.sizes["struct rm"],C.u32(0)));
-        } else (W106((A17(A53(C.svl))+Number(C.cell(zxAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(zyAddress,"short").value)*C.sizes["struct rm"],C.u32(2)));
-        C.unblock_point(C.i32(C.cell(zxAddress,"short").value),C.i32(C.cell(zyAddress,"short").value));
-        C.newsym(C.cell(zxAddress,"short").value,C.cell(zyAddress,"short").value);
-        (((C.cell(num_p,"int").value)=C.i32(((C.cell(num_p,"int").value)+1)))-1);
-    } else if(Number(C.i32(R104((A17(A53(C.svl))+Number(C.cell(zxAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(zyAddress,"short").value)*C.sizes["struct rm"]))==C.SCORR)) {
-        (W104((A17(A53(C.svl))+Number(C.cell(zxAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(zyAddress,"short").value)*C.sizes["struct rm"],C.i8(C.CORR)));
-        C.unblock_point(C.i32(C.cell(zxAddress,"short").value),C.i32(C.cell(zyAddress,"short").value));
-        C.newsym(C.cell(zxAddress,"short").value,C.cell(zyAddress,"short").value);
-        (((C.cell(num_p,"int").value)=C.i32(((C.cell(num_p,"int").value)+1)))-1);
-    } else if(Number(((ttmp=C.t_at(C.cell(zxAddress,"short").value,C.cell(zyAddress,"short").value)))!=0)) {
+        if(C.i32((C.i32(R106((A17(A53(C.svl))+Number(RC3(zxAddress))*(C.sizes["struct rm"]*21))+Number(RC3(zyAddress))*C.sizes["struct rm"]))&16))) {
+            if(Number(C.dist2((RC3(zxAddress)),(RC3(zyAddress)),R119(C.u),R120(C.u))<3)) C.b_trapped(C.literal("door"),C.NO_PART);
+ else C.variadic(47,C.literal("You %s an explosion!"),((Number((C.i32((C.i32(RC2(C.cell((R55(C.gv)+Number(RC3(zyAddress))*8),"unsigned char *").value+Number(RC3(zxAddress))*1))&2)))!=0))?C.literal("see"):((Number(!((Number(!!(Number(!!(R102(A122(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R116(A130(C.u))))))))?C.literal("hear"):C.literal("feel the shock of")))));
+            C.wake_nearto(RC3(zxAddress),RC3(zyAddress),C.i32((11*11)));
+            (W106((A17(A53(C.svl))+Number(RC3(zxAddress))*(C.sizes["struct rm"]*21))+Number(RC3(zyAddress))*C.sizes["struct rm"],C.u32(0)));
+        } else (W106((A17(A53(C.svl))+Number(RC3(zxAddress))*(C.sizes["struct rm"]*21))+Number(RC3(zyAddress))*C.sizes["struct rm"],C.u32(2)));
+        C.unblock_point(C.i32(RC3(zxAddress)),C.i32(RC3(zyAddress)));
+        C.newsym(RC3(zxAddress),RC3(zyAddress));
+        ((WC5(num_p,C.i32(((RC5(num_p))+1))))-1);
+    } else if(Number(C.i32(R104((A17(A53(C.svl))+Number(RC3(zxAddress))*(C.sizes["struct rm"]*21))+Number(RC3(zyAddress))*C.sizes["struct rm"]))==C.SCORR)) {
+        (W104((A17(A53(C.svl))+Number(RC3(zxAddress))*(C.sizes["struct rm"]*21))+Number(RC3(zyAddress))*C.sizes["struct rm"],C.i8(C.CORR)));
+        C.unblock_point(C.i32(RC3(zxAddress)),C.i32(RC3(zyAddress)));
+        C.newsym(RC3(zxAddress),RC3(zyAddress));
+        ((WC5(num_p,C.i32(((RC5(num_p))+1))))-1);
+    } else if(Number(((ttmp=C.t_at(RC3(zxAddress),RC3(zyAddress))))!=0)) {
         let mon;
         let dummyAddress=C.stackAlloc(1);
         /* unneeded "you notice it arg" */
         if(Number(!!(Number(!(R115(ttmp)))&&Number(C.i32(R114(ttmp))!=C.STATUE_TRAP)))) {
             (W115(ttmp,C.u32(1)));
-            C.newsym(C.cell(zxAddress,"short").value,C.cell(zyAddress,"short").value);
-            (((C.cell(num_p,"int").value)=C.i32(((C.cell(num_p,"int").value)+1)))-1);
+            C.newsym(RC3(zxAddress),RC3(zyAddress));
+            ((WC5(num_p,C.i32(((RC5(num_p))+1))))-1);
         }
-        (mon=((Number(!!(Number(C.i32((C.cell(zxAddress,"short").value))==C.i32(R119(C.u)))&&Number(C.i32((C.cell(zyAddress,"short").value))==C.i32(R120(C.u))))))?A56(C.gy):(C.cell(((A19(A53(C.svl))+Number(C.cell(zxAddress,"short").value)*(8*21))+Number(C.cell(zyAddress,"short").value)*8),"struct monst *").value)));
-        if(Number(!!(C.i32(C.openholdingtrap(mon,dummyAddress))||C.i32(C.openfallingtrap(mon,(C.i8(1)),dummyAddress))))) (((C.cell(num_p,"int").value)=C.i32(((C.cell(num_p,"int").value)+1)))-1);
+        (mon=((Number(!!(Number(C.i32((RC3(zxAddress)))==C.i32(R119(C.u)))&&Number(C.i32((RC3(zyAddress)))==C.i32(R120(C.u))))))?A56(C.gy):(C.cell(((A19(A53(C.svl))+Number(RC3(zxAddress))*(8*21))+Number(RC3(zyAddress))*8),"struct monst *").value)));
+        if(Number(!!(C.i32(C.openholdingtrap(mon,dummyAddress))||C.i32(C.openfallingtrap(mon,(C.i8(1)),dummyAddress))))) ((WC5(num_p,C.i32(((RC5(num_p))+1))))-1);
     } else if(C.find_drawbridge(zxAddress,zyAddress)) {
         /* make sure it isn't an open drawbridge */
-        C.open_drawbridge(C.cell(zxAddress,"short").value,C.cell(zyAddress,"short").value);
-        (((C.cell(num_p,"int").value)=C.i32(((C.cell(num_p,"int").value)+1)))-1);
+        C.open_drawbridge(RC3(zxAddress),RC3(zyAddress));
+        ((WC5(num_p,C.i32(((RC5(num_p))+1))))-1);
     }
     } finally {C.stackRestore(stackFrame); }
 }
@@ -1647,7 +1652,7 @@ function findit()
     C.do_clear_area(R119(C.u),R120(C.u),8,C.functionPointer("findone"),found);
     /* count that controls "reveal" punctuation; 0..4 */
     (k=C.i32((C.i32((C.i32((Number(!(Number(!(R30(found)))))+Number(!(Number(!(R31(found)))))))+Number(!(Number(!(R32(found)))))))+Number(!(Number(!(R33(found))))))));
-    (C.cell((buf+Number(0)*1),"char").value=C.i8(0));
+    (WC0(buf+Number(0)*1,C.i8(0)));
     if(R30(found)) {
         if(Number(C.i32(R30(found))>1)) C.variadic(48,C.eos(buf),C.literal("%d secret doors"),C.i32(R30(found)));
  else C.strcat(buf,C.literal("a secret door"));
@@ -1655,14 +1660,14 @@ function findit()
     }
     /* note: non-\0 *buf implies that at least one previous type is present */
     if(R31(found)) {
-        if(C.cell(buf,"char").value) C.strcat(buf,((Number(k==2))?C.literal(" and "):C.literal(", ")));
+        if(RC0(buf)) C.strcat(buf,((Number(k==2))?C.literal(" and "):C.literal(", ")));
         /* "doors and corrs" or "doors, corrs ..." */
         if(Number(C.i32(R31(found))>1)) C.variadic(49,C.eos(buf),C.literal("%d secret corridors"),C.i32(R31(found)));
  else C.strcat(buf,C.literal("a secret corridor"));
         (num=C.i32(num+C.i32(R31(found))));
     }
     if(R32(found)) {
-        if(C.cell(buf,"char").value) C.strcat(buf,((Number(!!(Number(k==3)&&Number(!(R33(found))))))?C.literal(", and "):((Number(k==2))?C.literal(" and "):C.literal(", "))));
+        if(RC0(buf)) C.strcat(buf,((Number(!!(Number(k==3)&&Number(!(R33(found))))))?C.literal(", and "):((Number(k==2))?C.literal(" and "):C.literal(", "))));
         /* "doors, corrs, and traps" or "{doors|corrs} and traps"
                    * or "..., traps ..." */
         if(Number(C.i32(R32(found))>1)) C.variadic(50,C.eos(buf),C.literal("%d traps"),C.i32(R32(found)));
@@ -1671,12 +1676,12 @@ function findit()
     }
     /* sdoors, scorrs, and traps call tmp_at() */
     if(R33(found)) {
-        if(C.cell(buf,"char").value) C.strcat(buf,((Number(k>2))?C.literal(", and "):C.literal(" and ")));
+        if(RC0(buf)) C.strcat(buf,((Number(k>2))?C.literal(", and "):C.literal(" and ")));
         if(Number(C.i32(R33(found))>1)) C.variadic(51,C.eos(buf),C.literal("%d hidden monsters"),C.i32(R33(found)));
  else C.strcat(buf,C.literal("a hidden monster"));
         (num=C.i32(num+C.i32(R33(found))));
     }
-    if(C.cell(buf,"char").value) C.variadic(52,C.literal("reveal %s!"),buf);
+    if(RC0(buf)) C.variadic(52,C.literal("reveal %s!"),buf);
     if(R34(found)) {
         if(Number(C.i32(R34(found))>1)) C.variadic(53,buf,C.literal("%d%s unseen monsters"),C.i32(R34(found)),(C.i32(R36(found))?C.literal(" other"):C.literal("")));
  else C.variadic(54,buf,C.literal("%s unseen monster"),(C.i32(R36(found))?C.literal("another"):C.literal("an")));
@@ -1700,7 +1705,7 @@ function openit()
 {
     const stackFrame=C.stackSave();
     try {
-    let numAddress=C.stackAlloc(4); C.cell(numAddress,"int").value=0;
+    let numAddress=C.stackAlloc(4); WC5(numAddress,0);
     if(R125(C.u)) {
         if((Number(C.dmgtype_fromattack((R61(R131(C.u))),26,11)!=0))) {
             /* purple worm */
@@ -1713,7 +1718,7 @@ function openit()
         return C.i32((-1));
     }
     C.do_clear_area(R119(C.u),R120(C.u),8,C.functionPointer("openone"),numAddress);
-    return C.cell(numAddress,"int").value;
+    return RC5(numAddress);
     } finally {C.stackRestore(stackFrame); }
 }
 
@@ -1935,7 +1940,7 @@ function reveal_terrain_getglyph(x,y,swallowed,default_glyph,which_subset)
     /* for 'full', show the actual terrain for the entire level,
        otherwise what the hero remembers for seen locations with
        monsters, objects, and/or traps removed as caller dictates */
-    (seenv=C.u8(((Number(!!(C.i32(full)||C.i32(R57(A23(A53(C.svl)))))))?C.i32(R105((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])):((Number((C.i32((C.i32(C.cell((C.cell((R55(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))?C.i32((C.u8(255))):0))));
+    (seenv=C.u8(((Number(!!(C.i32(full)||C.i32(R57(A23(A53(C.svl)))))))?C.i32(R105((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])):((Number((C.i32((C.i32(RC2(C.cell((R55(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1))&2)))!=0))?C.i32((C.u8(255))):0))));
     if(full) {
         (W105((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u8(255)));
         (glyph=C.back_to_glyph(x,y));
@@ -1980,7 +1985,7 @@ function reveal_terrain_getglyph(x,y,swallowed,default_glyph,which_subset)
                 /* FIXME? what about objects temporarily hidden by regions?
                    when objects are being shown, shouldn't showing them take
                    precedence over showing the region, just like traps? */
-            } else if(Number(C.i32(C.cell(((A52(C.svl)+Number(x)*(1*21))+Number(y)*1),"signed char").value)==C.i32(R104((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))) {
+            } else if(Number(C.i32(RC1((A52(C.svl)+Number(x)*(1*21))+Number(y)*1))==C.i32(R104((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))) {
                 (glyph=C.back_to_glyph(x,y));
             } else {
                 /* look for a mimic here posing as furniture;
@@ -2002,7 +2007,7 @@ function reveal_terrain_getglyph(x,y,swallowed,default_glyph,which_subset)
                      * doormask==D_OPEN for an open door remembered as a wall.
                      */
                     C.copyRecord(save_spot,((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),C.sizes["struct rm"]);
-                    (W104((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.cell(((A52(C.svl)+Number(x)*(1*21))+Number(y)*1),"signed char").value));
+                    (W104((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],RC1((A52(C.svl)+Number(x)*(1*21))+Number(y)*1)));
                     if(Number(!!((Number(!!(C.i32((R104((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))&&Number(C.i32((R104((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))<=C.DBWALL))))||Number(C.i32(R104((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.SDOOR)))) C.xy_set_wall_state(x,y);
                     /* levl[x][y].wall_info */
                     (glyph=C.back_to_glyph(x,y));

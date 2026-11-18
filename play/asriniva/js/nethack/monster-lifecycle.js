@@ -19,7 +19,7 @@ export function enableMonsterLifecycle(environment,layouts){
  for(const key of nativeMonMembers)Object.defineProperty(local,key,{configurable:true,enumerable:true,get(){
   const selected=nativeState.functions.get(key);if(selected)return selected.nativeValuesEntry??selected;
   let value=services[key];if(value===undefined){const resolved=environment.resolve(key);value=services[key]??resolved;}
-  if(typeof value!=='function')return value;const prepared=value.nativeEntry;if(prepared?.nativeState===nativeState)return prepared.nativeValuesEntry??prepared;
+  if(typeof value!=='function'||value.nativeStateIndependent)return value;const prepared=value.nativeEntry;if(prepared?.nativeState===nativeState)return prepared.nativeValuesEntry??prepared;
   let fn=wrappers.get(key);if(!fn){fn=(...args)=>{const target=environment.hasFunction(key)?environment.resolve(key):typeof services[key]==='function'?services[key]:environment.resolve(key);return nativeState.boundary(target,...args.map(v=>v?.address??v));};if('address' in value)Object.defineProperty(fn,'address',{get:()=>value.address});wrappers.set(key,fn);}return fn;
  },set(value){Object.defineProperty(this,key,{value,writable:true,configurable:true,enumerable:true});}});
 

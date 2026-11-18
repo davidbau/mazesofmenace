@@ -18,6 +18,7 @@ export function createCmdEnvironment(services,layout,namespace) {
     const fill=(at,t,value)=>{const a=array(t);if(a){const count=a.dims[0],sub=a.dims.length===1?a.base:a.base.replace(/\(\*\)/,'(*'+a.dims.slice(1).map(n=>'['+n+']').join('')+')')+(a.base.includes('(*)')?'':a.dims.slice(1).map(n=>'['+n+']').join('')),step=typeSize(sub);if(a.base==='char'&&a.dims.length===1&&typeof value==='number'){const heap=services.heap();heap.set(heap.slice(value,value+count),at);return;}for(let i=0;i<count;i++)fill(at+i*step,sub,value?.[i]??0);return;}const record=Object.entries(schema.schema).find(([name,row])=>row.ctype===t);if(record){record[1].fields.forEach((field,i)=>{const p=env.field(at,record[0],field.name);if(Object.values(schema.schema).some(row=>row.ctype===field.canonical)||field.canonical.includes('['))fill(p.address,field.canonical,value?.[i]??0);else p.value=value?.[i]??0;});return;}env.cell(at,t).value=value??0;};
     env.fillArray=fill;
     env.functionPointer=name=>{const fn=services.functionPointers[name];if(!fn)throw Error('Review CMD function pointer '+name);return ptr(fn());};
+    env.functionPointer.nativeAddress=true;
     schema.backings.forEach((row,i)=>{if(!row.name.includes('.')){const at=ptr(services.global(schema.globals.length+i));Object.defineProperty(env,row.name,{value:at});if(!(services.referenceData&&schema.publicData.includes(row.name)))fill(at,row.type,namespace.initializers[row.name](env));}});
     env.staticData=(owner,name,initializer)=>{const key=owner+'.'+name,index=schema.backings.findIndex(row=>row.name===key),row=schema.backings[index];if(index<0)throw Error('Review CMD local static '+key);const at=ptr(services.global(schema.globals.length+index));if(!initialized.has(key)){fill(at,row.type,initializer());initialized.add(key);}return at;};
     env.variadic=(site,...args)=>{const entry=schema.variadics[site];if(!entry||entry.site!==site)throw Error('Review CMD varargs site');return services['var'+site](...args);};
@@ -44,17 +45,17 @@ export function createCmdEnvironment(services,layout,namespace) {
 // Runtime scope only: no source CMD algorithm or data.
 const cmdStates=new WeakMap();
 export function initializeCmd(services,layout,namespace){
- let state=cmdStates.get(services.moduleKey);
+ let state=cmdStates.get(services.nativeFixedProvider ? services : services.moduleKey);
  if(!state){
   state={services};
-  const forwarding=createServiceForwarder(state);
+  const forwarding=services.nativeFixedProvider ? services : createServiceForwarder(state);
   state.env=createCmdEnvironment(forwarding,layout,namespace);
-  cmdStates.set(services.moduleKey,state);
+  cmdStates.set(services.nativeFixedProvider ? services : services.moduleKey,state);
  }
  return state.env;
 }
 export function callCmd(services,layout,namespace,name,...args){
- const env=initializeCmd(services,layout,namespace),state=cmdStates.get(services.moduleKey),previous=state.services;
+ const env=initializeCmd(services,layout,namespace),state=cmdStates.get(services.nativeFixedProvider ? services : services.moduleKey),previous=state.services;
  if(typeof namespace[name]!=='function')throw Error('Unknown original CMD function '+name);
  state.services=services;
  try{

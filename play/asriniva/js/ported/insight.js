@@ -2444,7 +2444,7 @@ export function sokoban_in_play()
 export function do_gamelog()
 {
 // #ifdef CHRONICLE
-    if (C.gg.gamelog) {
+    if (Object.hasOwn(C, "chronicle") ? C.chronicle.length : C.gg.gamelog) {
         C.callLocal(show_gamelog, C.ENL_GAMEINPROGRESS);
     } else {
         C.pline("No chronicled events.");
@@ -2456,6 +2456,15 @@ export function do_gamelog()
     return C.ECMD_OK;
 }
 
+function* chronicleEvents()
+{
+    if (Object.hasOwn(C, "chronicle"))
+        yield* C.chronicle;
+    else
+        for (let event = C.gg.gamelog; event; event = event.next)
+            yield event;
+}
+
 /* 'major' events for dumplog; inclusion or exclusion here may need tuning */
 /* explicitly for dumplog */
 
@@ -2465,7 +2474,6 @@ export function show_gamelog(final)
 {
     final=C.int(final);
 // #ifdef CHRONICLE
-    let llmsg;
     let win;
     const buf = C.stackAlloc(C.BUFSZ);
     let eventcnt = C.int(0);
@@ -2473,7 +2481,7 @@ export function show_gamelog(final)
     win = C.int(C.create_nhwindow(C.NHW_TEXT));
     C.Sprintf(buf, "%s events:", final ? "Major" : "Logged");
     C.putstr(win, 0, buf);
-    for (llmsg = C.gg.gamelog; llmsg; llmsg = llmsg.next) {
+    for (const llmsg of chronicleEvents()) {
         if (final && !(((llmsg).flags & (0n | C.LL_WISH | C.LL_ACHIEVE | C.LL_UMONST | C.LL_DIVINEGIFT | C.LL_LIFESAVE | C.LL_ARTIFACT | C.LL_GENOCIDE | C.LL_DUMP)) != 0))
             continue;
         if (!final && !C.wizard && (((llmsg).flags & C.LL_SPOILER) != 0))

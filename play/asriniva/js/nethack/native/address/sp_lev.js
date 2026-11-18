@@ -376,6 +376,11 @@ const R382=NF.readers[382],W382=NF.writers[382],A382=NF.addresses[382];
 const R383=NF.readers[383],W383=NF.writers[383],A383=NF.addresses[383];
 const R384=NF.readers[384],W384=NF.writers[384],A384=NF.addresses[384];
 const R385=NF.readers[385],W385=NF.writers[385],A385=NF.addresses[385];
+const RC0=C.readInt8At,WC0=C.writeInt8At;
+const RC1=C.readInt8At,WC1=C.writeInt8At;
+const RC3=C.readInt16At,WC3=C.writeInt16At;
+const RC5=C.readInt32At,WC5=C.writeInt32At;
+const RC10=C.readBigInt64At,WC10=C.writeBigInt64At;
 
 /* NetHack 5.0	sp_lev.c	$NHDT-Date: 1737610109 2025/01/22 21:28:29 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.373 $ */
 /*      Copyright (c) 1989 by Jean-Christophe Collet */
@@ -434,7 +439,7 @@ function mapfrag_fromstr(str)
     (W164(mf,C.str_lines_maxlen(R166(mf))));
     (W165(mf,0));
     (tmps=R166(mf));
-    while(Number(!!(tmps&&C.i32(C.cell(tmps,"char").value)))) {
+    while(Number(!!(tmps&&C.i32(RC0(tmps))))) {
         let s1=C.strchr(tmps,10);
         if(Number(R165(mf)>21)) {
             C.free(R166(mf));
@@ -462,7 +467,7 @@ function mapfrag_get(mf,x,y)
     x=C.i32(x);
     y=C.i32(y);
     if(Number(!!(Number(!!(Number(!!(Number(y<0)||Number(x<0)))||Number(y>C.i32((R165(mf)-1)))))||Number(x>C.i32((R164(mf)-1)))))) C.variadic(0,C.literal("outside mapfrag (%i,%i), wanted (%i,%i)"),R164(mf),R165(mf),x,y);
-    return C.splev_chr2typ(C.cell((R166(mf)+Number(C.i32((C.i32((y*(C.i32((R164(mf)+1)))))+x)))*1),"char").value);
+    return C.splev_chr2typ(RC0(R166(mf)+Number(C.i32((C.i32((y*(C.i32((R164(mf)+1)))))+x)))*1));
 }
 
 function mapfrag_canmatch(mf)
@@ -506,7 +511,7 @@ function mapfrag_match(mf,x,y)
 function solidify_map()
 {
     let x; let y;
-    for((x=C.i16(0));Number(C.i32(x)<80);(()=>{const old=x;const next=C.i16((old+1));x=next;return old;})()) for((y=C.i16(0));Number(C.i32(y)<21);(()=>{const old=y;const next=C.i16((old+1));y=next;return old;})()) if(Number(!!((Number(C.i32((R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))<=C.DBWALL))&&Number(!(C.cell(((C.SpLev_Map+Number(x)*(1*21))+Number(y)*1),"char").value))))) (()=>{const slot=C.field(((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),"rm","flags");const old=slot.value;const next=C.u32(C.i32(C.i32(old)|(C.i32((8|16)))));slot.value=next;return next;})();
+    for((x=C.i16(0));Number(C.i32(x)<80);(()=>{const old=x;const next=C.i16((old+1));x=next;return old;})()) for((y=C.i16(0));Number(C.i32(y)<21);(()=>{const old=y;const next=C.i16((old+1));y=next;return old;})()) if(Number(!!((Number(C.i32((R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))<=C.DBWALL))&&Number(!(RC0((C.SpLev_Map+Number(x)*(1*21))+Number(y)*1)))))) (()=>{const slot=C.field(((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),"rm","flags");const old=slot.value;const next=C.u32(C.i32(C.i32(old)|(C.i32((8|16)))));slot.value=next;return next;})();
 
 
 }
@@ -716,10 +721,10 @@ function flip_level(flp,extras)
     if(Number((C.i32((flp&3)))==0)) return;
     C.get_level_extends(minxAddress,minyAddress,maxxAddress,maxyAddress);
     /* get_level_extends() returns -1,-1 to COLNO,ROWNO at max */
-    if(Number(C.i32(C.cell(minyAddress,"short").value)<0)) (C.cell(minyAddress,"short").value=C.i16(0));
-    if(Number(C.i32(C.cell(minxAddress,"short").value)<1)) (C.cell(minxAddress,"short").value=C.i16(1));
-    if(Number(C.i32(C.cell(maxxAddress,"short").value)>=80)) (C.cell(maxxAddress,"short").value=C.i16((C.i32((80-1)))));
-    if(Number(C.i32(C.cell(maxyAddress,"short").value)>=21)) (C.cell(maxyAddress,"short").value=C.i16((C.i32((21-1)))));
+    if(Number(C.i32(RC3(minyAddress))<0)) (WC3(minyAddress,C.i16(0)));
+    if(Number(C.i32(RC3(minxAddress))<1)) (WC3(minxAddress,C.i16(1)));
+    if(Number(C.i32(RC3(maxxAddress))>=80)) (WC3(maxxAddress,C.i16((C.i32((80-1))))));
+    if(Number(C.i32(RC3(maxyAddress))>=21)) (WC3(maxyAddress,C.i16((C.i32((21-1))))));
     if(extras) {
         if(Number(!!((Number(C.global("uball").value!=0))&&Number(C.i32(R260(C.global("uball").value))!=0)))) {
             (ball_active=(C.i8(1)));
@@ -730,32 +735,32 @@ function flip_level(flp,extras)
                outside, un-place here and subsequently re-place them on
                hero's [possibly new] spot below */
             if((Number(C.i32(R260(C.global("uball").value))==3))) ((W253(C.global("uball").value,R379(C.u))),(W254(C.global("uball").value,R380(C.u))));
-            (ball_fliparea=C.i8((Number(!!((Number((Number(!!(Number(!!(Number(!!(Number(C.i32((R253(C.global("uball").value)))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R253(C.global("uball").value)))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R254(C.global("uball").value)))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R254(C.global("uball").value)))<=C.i32(C.cell(maxyAddress,"short").value)))))==(Number(!!(Number(!!(Number(!!(Number(C.i32((R253(C.global("uchain").value)))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R253(C.global("uchain").value)))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R254(C.global("uchain").value)))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R254(C.global("uchain").value)))<=C.i32(C.cell(maxyAddress,"short").value)))))))&&(Number((Number(!!(Number(!!(Number(!!(Number(C.i32((R253(C.global("uball").value)))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R253(C.global("uball").value)))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R254(C.global("uball").value)))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R254(C.global("uball").value)))<=C.i32(C.cell(maxyAddress,"short").value)))))==(Number(!!(Number(!!(Number(!!(Number(C.i32((R379(C.u)))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R379(C.u)))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R380(C.u)))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R380(C.u)))<=C.i32(C.cell(maxyAddress,"short").value))))))))))));
+            (ball_fliparea=C.i8((Number(!!((Number((Number(!!(Number(!!(Number(!!(Number(C.i32((R253(C.global("uball").value)))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R253(C.global("uball").value)))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R254(C.global("uball").value)))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R254(C.global("uball").value)))<=C.i32(RC3(maxyAddress))))))==(Number(!!(Number(!!(Number(!!(Number(C.i32((R253(C.global("uchain").value)))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R253(C.global("uchain").value)))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R254(C.global("uchain").value)))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R254(C.global("uchain").value)))<=C.i32(RC3(maxyAddress))))))))&&(Number((Number(!!(Number(!!(Number(!!(Number(C.i32((R253(C.global("uball").value)))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R253(C.global("uball").value)))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R254(C.global("uball").value)))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R254(C.global("uball").value)))<=C.i32(RC3(maxyAddress))))))==(Number(!!(Number(!!(Number(!!(Number(C.i32((R379(C.u)))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R379(C.u)))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R380(C.u)))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R380(C.u)))<=C.i32(RC3(maxyAddress)))))))))))));
             if(Number(!(ball_fliparea))) C.unplacebc();
         }
     }
     /* stairs and ladders */
     for((stway=R94(C.gs));stway;(stway=R361(stway))) {
-        if(C.i32((flp&1))) (W359(stway,C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R359(stway))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-        if(C.i32((flp&2))) (W358(stway,C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R358(stway))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+        if(C.i32((flp&1))) (W359(stway,C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R359(stway))))))+C.i32(RC3(minyAddress))))))));
+        if(C.i32((flp&2))) (W358(stway,C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R358(stway))))))+C.i32(RC3(minxAddress))))))));
     }
     /* traps */
     for((ttmp=R80(C.gf));ttmp;(ttmp=R367(ttmp))) {
-        if(Number(!((Number(!!(Number(!!(Number(!!(Number(C.i32((R368(ttmp)))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R368(ttmp)))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R369(ttmp)))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R369(ttmp)))<=C.i32(C.cell(maxyAddress,"short").value)))))))) continue;
+        if(Number(!((Number(!!(Number(!!(Number(!!(Number(C.i32((R368(ttmp)))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R368(ttmp)))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R369(ttmp)))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R369(ttmp)))<=C.i32(RC3(maxyAddress))))))))) continue;
         if(C.i32((flp&1))) {
-            (W369(ttmp,C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R369(ttmp))))))+C.i32(C.cell(minyAddress,"short").value)))))));
+            (W369(ttmp,C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R369(ttmp))))))+C.i32(RC3(minyAddress))))))));
             if(Number(C.i32(R371(ttmp))==C.ROLLING_BOULDER_TRAP)) {
-                (W242(A370(ttmp),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R242(A370(ttmp)))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-                (W242(A377(A372(ttmp)),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R242(A377(A372(ttmp))))))))+C.i32(C.cell(minyAddress,"short").value)))))));
+                (W242(A370(ttmp),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R242(A370(ttmp)))))))+C.i32(RC3(minyAddress))))))));
+                (W242(A377(A372(ttmp)),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R242(A377(A372(ttmp))))))))+C.i32(RC3(minyAddress))))))));
             } else if(Number(!!((Number(!!(Number(C.i32((R371(ttmp)))==C.PIT)||Number(C.i32((R371(ttmp)))==C.SPIKED_PIT))))&&C.i32(R378(A372(ttmp)))))) {
                 (W378(A372(ttmp),C.u8(flip_encoded_dir_bits(flp,C.i32(R378(A372(ttmp)))))));
             }
         }
         if(C.i32((flp&2))) {
-            (W368(ttmp,C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R368(ttmp))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+            (W368(ttmp,C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R368(ttmp))))))+C.i32(RC3(minxAddress))))))));
             if(Number(C.i32(R371(ttmp))==C.ROLLING_BOULDER_TRAP)) {
-                (W241(A370(ttmp),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R241(A370(ttmp)))))))+C.i32(C.cell(minxAddress,"short").value)))))));
-                (W241(A377(A372(ttmp)),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R241(A377(A372(ttmp))))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+                (W241(A370(ttmp),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R241(A370(ttmp)))))))+C.i32(RC3(minxAddress))))))));
+                (W241(A377(A372(ttmp)),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R241(A377(A372(ttmp))))))))+C.i32(RC3(minxAddress))))))));
             } else if(Number(!!((Number(!!(Number(C.i32((R371(ttmp)))==C.PIT)||Number(C.i32((R371(ttmp)))==C.SPIKED_PIT))))&&C.i32(R378(A372(ttmp)))))) {
                 (W378(A372(ttmp),C.u8(flip_encoded_dir_bits(flp,C.i32(R378(A372(ttmp)))))));
             }
@@ -763,59 +768,59 @@ function flip_level(flp,extras)
     }
     /* objects */
     for((otmp=R42(A102(C.svl)));otmp;(otmp=R251(otmp))) {
-        if(Number(!((Number(!!(Number(!!(Number(!!(Number(C.i32((R253(otmp)))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R253(otmp)))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R254(otmp)))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R254(otmp)))<=C.i32(C.cell(maxyAddress,"short").value)))))))) continue;
-        if(C.i32((flp&1))) (W254(otmp,C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R254(otmp))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-        if(C.i32((flp&2))) (W253(otmp,C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R253(otmp))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+        if(Number(!((Number(!!(Number(!!(Number(!!(Number(C.i32((R253(otmp)))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R253(otmp)))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R254(otmp)))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R254(otmp)))<=C.i32(RC3(maxyAddress))))))))) continue;
+        if(C.i32((flp&1))) (W254(otmp,C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R254(otmp))))))+C.i32(RC3(minyAddress))))))));
+        if(C.i32((flp&2))) (W253(otmp,C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R253(otmp))))))+C.i32(RC3(minxAddress))))))));
     }
     /* buried objects */
     for((otmp=R43(A102(C.svl)));otmp;(otmp=R251(otmp))) {
-        if(Number(!((Number(!!(Number(!!(Number(!!(Number(C.i32((R253(otmp)))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R253(otmp)))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R254(otmp)))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R254(otmp)))<=C.i32(C.cell(maxyAddress,"short").value)))))))) continue;
-        if(C.i32((flp&1))) (W254(otmp,C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R254(otmp))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-        if(C.i32((flp&2))) (W253(otmp,C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R253(otmp))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+        if(Number(!((Number(!!(Number(!!(Number(!!(Number(C.i32((R253(otmp)))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R253(otmp)))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R254(otmp)))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R254(otmp)))<=C.i32(RC3(maxyAddress))))))))) continue;
+        if(C.i32((flp&1))) (W254(otmp,C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R254(otmp))))))+C.i32(RC3(minyAddress))))))));
+        if(C.i32((flp&2))) (W253(otmp,C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R253(otmp))))))+C.i32(RC3(minxAddress))))))));
     }
     /* monsters */
     for((mtmp=R44(A102(C.svl)));mtmp;(mtmp=R181(mtmp))) {
         if(R206(mtmp)) {
-            if(extras) flip_vault_guard(flp,mtmp,C.cell(minxAddress,"short").value,C.cell(minyAddress,"short").value,C.cell(maxxAddress,"short").value,C.cell(maxyAddress,"short").value);
+            if(extras) flip_vault_guard(flp,mtmp,RC3(minxAddress),RC3(minyAddress),RC3(maxxAddress),RC3(maxyAddress));
             /* flip mtmp->mextra->egd */
             if(Number(C.i32(R185(mtmp))==0)) continue;
             /* not on map so don't flip guard->mx,my */
         }
         /* skip the occasional earth elemental outside the flip area */
-        if(Number(!((Number(!!(Number(!!(Number(!!(Number(C.i32((R185(mtmp)))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R185(mtmp)))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R186(mtmp)))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R186(mtmp)))<=C.i32(C.cell(maxyAddress,"short").value)))))))) continue;
-        if(C.i32((flp&1))) (W186(mtmp,C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R186(mtmp))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-        if(C.i32((flp&2))) (W185(mtmp,C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R185(mtmp))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+        if(Number(!((Number(!!(Number(!!(Number(!!(Number(C.i32((R185(mtmp)))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R185(mtmp)))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R186(mtmp)))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R186(mtmp)))<=C.i32(RC3(maxyAddress))))))))) continue;
+        if(C.i32((flp&1))) (W186(mtmp,C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R186(mtmp))))))+C.i32(RC3(minyAddress))))))));
+        if(C.i32((flp&2))) (W185(mtmp,C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R185(mtmp))))))+C.i32(RC3(minxAddress))))))));
         do {
-            if(Number(!!(C.i32(R241(A210(mtmp)))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A210(mtmp))))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R241(A210(mtmp))))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R242(A210(mtmp))))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R242(A210(mtmp))))<=C.i32(C.cell(maxyAddress,"short").value)))))))) {
-                if(C.i32((flp&1))) (W242(A210(mtmp),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R242(A210(mtmp)))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-                if(C.i32((flp&2))) (W241(A210(mtmp),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R241(A210(mtmp)))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+            if(Number(!!(C.i32(R241(A210(mtmp)))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A210(mtmp))))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R241(A210(mtmp))))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R242(A210(mtmp))))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R242(A210(mtmp))))<=C.i32(RC3(maxyAddress))))))))) {
+                if(C.i32((flp&1))) (W242(A210(mtmp),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R242(A210(mtmp)))))))+C.i32(RC3(minyAddress))))))));
+                if(C.i32((flp&2))) (W241(A210(mtmp),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R241(A210(mtmp)))))))+C.i32(RC3(minxAddress))))))));
             }
         } while(0);
         if(R207(mtmp)) {
             do {
-                if(Number(!!(C.i32(R241(A59(R168(R213(mtmp)))))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A59(R168(R213(mtmp))))))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R241(A59(R168(R213(mtmp))))))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R242(A59(R168(R213(mtmp))))))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R242(A59(R168(R213(mtmp))))))<=C.i32(C.cell(maxyAddress,"short").value)))))))) {
-                    if(C.i32((flp&1))) (W242(A59(R168(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R242(A59(R168(R213(mtmp)))))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-                    if(C.i32((flp&2))) (W241(A59(R168(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R241(A59(R168(R213(mtmp)))))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+                if(Number(!!(C.i32(R241(A59(R168(R213(mtmp)))))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A59(R168(R213(mtmp))))))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R241(A59(R168(R213(mtmp))))))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R242(A59(R168(R213(mtmp))))))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R242(A59(R168(R213(mtmp))))))<=C.i32(RC3(maxyAddress))))))))) {
+                    if(C.i32((flp&1))) (W242(A59(R168(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R242(A59(R168(R213(mtmp)))))))))+C.i32(RC3(minyAddress))))))));
+                    if(C.i32((flp&2))) (W241(A59(R168(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R241(A59(R168(R213(mtmp)))))))))+C.i32(RC3(minxAddress))))))));
                 }
             } while(0);
         } else if(R205(mtmp)) {
             do {
-                if(Number(!!(C.i32(R241(A61(R169(R213(mtmp)))))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A61(R169(R213(mtmp))))))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R241(A61(R169(R213(mtmp))))))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R242(A61(R169(R213(mtmp))))))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R242(A61(R169(R213(mtmp))))))<=C.i32(C.cell(maxyAddress,"short").value)))))))) {
-                    if(C.i32((flp&1))) (W242(A61(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R242(A61(R169(R213(mtmp)))))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-                    if(C.i32((flp&2))) (W241(A61(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R241(A61(R169(R213(mtmp)))))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+                if(Number(!!(C.i32(R241(A61(R169(R213(mtmp)))))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A61(R169(R213(mtmp))))))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R241(A61(R169(R213(mtmp))))))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R242(A61(R169(R213(mtmp))))))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R242(A61(R169(R213(mtmp))))))<=C.i32(RC3(maxyAddress))))))))) {
+                    if(C.i32((flp&1))) (W242(A61(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R242(A61(R169(R213(mtmp)))))))))+C.i32(RC3(minyAddress))))))));
+                    if(C.i32((flp&2))) (W241(A61(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R241(A61(R169(R213(mtmp)))))))))+C.i32(RC3(minxAddress))))))));
                 }
             } while(0);
             /* shk's preferred spot */
             do {
-                if(Number(!!(C.i32(R241(A62(R169(R213(mtmp)))))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A62(R169(R213(mtmp))))))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R241(A62(R169(R213(mtmp))))))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R242(A62(R169(R213(mtmp))))))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R242(A62(R169(R213(mtmp))))))<=C.i32(C.cell(maxyAddress,"short").value)))))))) {
-                    if(C.i32((flp&1))) (W242(A62(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R242(A62(R169(R213(mtmp)))))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-                    if(C.i32((flp&2))) (W241(A62(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R241(A62(R169(R213(mtmp)))))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+                if(Number(!!(C.i32(R241(A62(R169(R213(mtmp)))))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A62(R169(R213(mtmp))))))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R241(A62(R169(R213(mtmp))))))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R242(A62(R169(R213(mtmp))))))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R242(A62(R169(R213(mtmp))))))<=C.i32(RC3(maxyAddress))))))))) {
+                    if(C.i32((flp&1))) (W242(A62(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R242(A62(R169(R213(mtmp)))))))))+C.i32(RC3(minyAddress))))))));
+                    if(C.i32((flp&2))) (W241(A62(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R241(A62(R169(R213(mtmp)))))))))+C.i32(RC3(minxAddress))))))));
                 }
             } while(0);
             /* shop door */
         } else if(R208(mtmp)) {
-            if(C.i32((flp&1))) C.flip_worm_segs_vertical(mtmp,C.i32(C.cell(minyAddress,"short").value),C.i32(C.cell(maxyAddress,"short").value));
-            if(C.i32((flp&2))) C.flip_worm_segs_horizontal(mtmp,C.i32(C.cell(minxAddress,"short").value),C.i32(C.cell(maxxAddress,"short").value));
+            if(C.i32((flp&1))) C.flip_worm_segs_vertical(mtmp,C.i32(RC3(minyAddress)),C.i32(RC3(maxyAddress)));
+            if(C.i32((flp&2))) C.flip_worm_segs_horizontal(mtmp,C.i32(RC3(minxAddress)),C.i32(RC3(maxxAddress)));
         }
         /* not useful unless tracking also gets flipped */
     }
@@ -823,28 +828,28 @@ function flip_level(flp,extras)
         /* #wizfliplevel rather than level creation */
         for((mtmp=R86(C.gm));mtmp;(mtmp=R181(mtmp))) {
             if(Number(!!(C.i32(R206(mtmp))&&C.i32(C.on_level(A383(C.u),A52(R167(R213(mtmp)))))))) {
-                flip_vault_guard(flp,mtmp,C.cell(minxAddress,"short").value,C.cell(minyAddress,"short").value,C.cell(maxxAddress,"short").value,C.cell(maxyAddress,"short").value);
+                flip_vault_guard(flp,mtmp,RC3(minxAddress),RC3(minyAddress),RC3(maxxAddress),RC3(maxyAddress));
                 /* egd */
             } else if(Number(!!(C.i32(R207(mtmp))&&C.i32(C.on_level(A383(C.u),A60(R168(R213(mtmp)))))))) {
                 do {
-                    if(Number(!!(C.i32(R241(A59(R168(R213(mtmp)))))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A59(R168(R213(mtmp))))))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R241(A59(R168(R213(mtmp))))))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R242(A59(R168(R213(mtmp))))))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R242(A59(R168(R213(mtmp))))))<=C.i32(C.cell(maxyAddress,"short").value)))))))) {
-                        if(C.i32((flp&1))) (W242(A59(R168(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R242(A59(R168(R213(mtmp)))))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-                        if(C.i32((flp&2))) (W241(A59(R168(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R241(A59(R168(R213(mtmp)))))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+                    if(Number(!!(C.i32(R241(A59(R168(R213(mtmp)))))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A59(R168(R213(mtmp))))))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R241(A59(R168(R213(mtmp))))))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R242(A59(R168(R213(mtmp))))))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R242(A59(R168(R213(mtmp))))))<=C.i32(RC3(maxyAddress))))))))) {
+                        if(C.i32((flp&1))) (W242(A59(R168(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R242(A59(R168(R213(mtmp)))))))))+C.i32(RC3(minyAddress))))))));
+                        if(C.i32((flp&2))) (W241(A59(R168(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R241(A59(R168(R213(mtmp)))))))))+C.i32(RC3(minxAddress))))))));
                     }
                 } while(0);
                 /* priest's altar */
             } else if(Number(!!(C.i32(R205(mtmp))&&C.i32(C.on_level(A383(C.u),A63(R169(R213(mtmp)))))))) {
                 do {
-                    if(Number(!!(C.i32(R241(A61(R169(R213(mtmp)))))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A61(R169(R213(mtmp))))))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R241(A61(R169(R213(mtmp))))))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R242(A61(R169(R213(mtmp))))))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R242(A61(R169(R213(mtmp))))))<=C.i32(C.cell(maxyAddress,"short").value)))))))) {
-                        if(C.i32((flp&1))) (W242(A61(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R242(A61(R169(R213(mtmp)))))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-                        if(C.i32((flp&2))) (W241(A61(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R241(A61(R169(R213(mtmp)))))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+                    if(Number(!!(C.i32(R241(A61(R169(R213(mtmp)))))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A61(R169(R213(mtmp))))))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R241(A61(R169(R213(mtmp))))))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R242(A61(R169(R213(mtmp))))))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R242(A61(R169(R213(mtmp))))))<=C.i32(RC3(maxyAddress))))))))) {
+                        if(C.i32((flp&1))) (W242(A61(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R242(A61(R169(R213(mtmp)))))))))+C.i32(RC3(minyAddress))))))));
+                        if(C.i32((flp&2))) (W241(A61(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R241(A61(R169(R213(mtmp)))))))))+C.i32(RC3(minxAddress))))))));
                     }
                 } while(0);
                 /* shk's preferred spot */
                 do {
-                    if(Number(!!(C.i32(R241(A62(R169(R213(mtmp)))))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A62(R169(R213(mtmp))))))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R241(A62(R169(R213(mtmp))))))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R242(A62(R169(R213(mtmp))))))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R242(A62(R169(R213(mtmp))))))<=C.i32(C.cell(maxyAddress,"short").value)))))))) {
-                        if(C.i32((flp&1))) (W242(A62(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R242(A62(R169(R213(mtmp)))))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-                        if(C.i32((flp&2))) (W241(A62(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R241(A62(R169(R213(mtmp)))))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+                    if(Number(!!(C.i32(R241(A62(R169(R213(mtmp)))))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A62(R169(R213(mtmp))))))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R241(A62(R169(R213(mtmp))))))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R242(A62(R169(R213(mtmp))))))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R242(A62(R169(R213(mtmp))))))<=C.i32(RC3(maxyAddress))))))))) {
+                        if(C.i32((flp&1))) (W242(A62(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R242(A62(R169(R213(mtmp)))))))))+C.i32(RC3(minyAddress))))))));
+                        if(C.i32((flp&2))) (W241(A62(R169(R213(mtmp))),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R241(A62(R169(R213(mtmp)))))))))+C.i32(RC3(minxAddress))))))));
                     }
                 } while(0);
                 /* shop door */
@@ -853,21 +858,21 @@ function flip_level(flp,extras)
     }
     /* engravings */
     for((etmp=C.global("head_engr").value);etmp;(etmp=R54(etmp))) {
-        if(C.i32((flp&1))) (W56(etmp,C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R56(etmp))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-        if(C.i32((flp&2))) (W55(etmp,C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R55(etmp))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+        if(C.i32((flp&1))) (W56(etmp,C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R56(etmp))))))+C.i32(RC3(minyAddress))))))));
+        if(C.i32((flp&2))) (W55(etmp,C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R55(etmp))))))+C.i32(RC3(minxAddress))))))));
     }
     /* level (teleport) regions */
     for((i=0);Number(i<R92(C.gn));(()=>{const old=i;const next=C.i32((old+1));i=next;return old;})()) {
         if(C.i32((flp&1))) {
-            (W346(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R346(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-            (W348(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R348(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(C.cell(minyAddress,"short").value)))))));
+            (W346(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R346(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(RC3(minyAddress))))))));
+            (W348(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R348(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(RC3(minyAddress))))))));
             if(Number(C.i32(R346(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"])))>C.i32(R348(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]))))) {
                 (itmp=C.i32(R346(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]))));
                 (W346(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]),R348(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]))));
                 (W348(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16(itmp)));
             }
-            (W342(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R342(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-            (W344(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R344(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(C.cell(minyAddress,"short").value)))))));
+            (W342(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R342(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(RC3(minyAddress))))))));
+            (W344(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R344(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(RC3(minyAddress))))))));
             if(Number(C.i32(R342(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"])))>C.i32(R344(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]))))) {
                 (itmp=C.i32(R342(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]))));
                 (W342(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]),R344(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]))));
@@ -875,15 +880,15 @@ function flip_level(flp,extras)
             }
         }
         if(C.i32((flp&2))) {
-            (W345(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R345(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(C.cell(minxAddress,"short").value)))))));
-            (W347(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R347(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+            (W345(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R345(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(RC3(minxAddress))))))));
+            (W347(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R347(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(RC3(minxAddress))))))));
             if(Number(C.i32(R345(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"])))>C.i32(R347(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]))))) {
                 (itmp=C.i32(R345(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]))));
                 (W345(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]),R347(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]))));
                 (W347(A130(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16(itmp)));
             }
-            (W341(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R341(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(C.cell(minxAddress,"short").value)))))));
-            (W343(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R343(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+            (W341(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R341(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(RC3(minxAddress))))))));
+            (W343(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R343(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"])))))))+C.i32(RC3(minxAddress))))))));
             if(Number(C.i32(R341(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"])))>C.i32(R343(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]))))) {
                 (itmp=C.i32(R341(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]))));
                 (W341(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]),R343(A131(R84(C.gl)+Number(i)*C.sizes["lev_region"]))));
@@ -895,25 +900,25 @@ function flip_level(flp,extras)
     for((i=0);Number(i<R105(C.svn));(()=>{const old=i;const next=C.i32((old+1));i=next;return old;})()) {
         let j; let tmp1; let tmp2;
         if(C.i32((flp&1))) {
-            (tmp1=(C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R248(A0(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)))))))+C.i32(C.cell(minyAddress,"short").value)))));
-            (tmp2=(C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R250(A0(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)))))))+C.i32(C.cell(minyAddress,"short").value)))));
+            (tmp1=(C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R248(A0(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)))))))+C.i32(RC3(minyAddress))))));
+            (tmp2=(C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R250(A0(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)))))))+C.i32(RC3(minyAddress))))));
             (W248(A0(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value),C.i16(((Number((tmp1)<(tmp2))?(tmp1):(tmp2))))));
             (W250(A0(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value),C.i16(((Number((tmp1)>(tmp2))?(tmp1):(tmp2))))));
             for((j=0);Number(j<C.i32(R2(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)));(()=>{const old=j;const next=C.i32((old+1));j=next;return old;})()) {
-                (tmp1=(C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R248(R1(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)+Number(j)*C.sizes["struct nhrect"]))))))+C.i32(C.cell(minyAddress,"short").value)))));
-                (tmp2=(C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R250(R1(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)+Number(j)*C.sizes["struct nhrect"]))))))+C.i32(C.cell(minyAddress,"short").value)))));
+                (tmp1=(C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R248(R1(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)+Number(j)*C.sizes["struct nhrect"]))))))+C.i32(RC3(minyAddress))))));
+                (tmp2=(C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R250(R1(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)+Number(j)*C.sizes["struct nhrect"]))))))+C.i32(RC3(minyAddress))))));
                 (W248(R1(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)+Number(j)*C.sizes["struct nhrect"],C.i16(((Number((tmp1)<(tmp2))?(tmp1):(tmp2))))));
                 (W250(R1(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)+Number(j)*C.sizes["struct nhrect"],C.i16(((Number((tmp1)>(tmp2))?(tmp1):(tmp2))))));
             }
         }
         if(C.i32((flp&2))) {
-            (tmp1=(C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R247(A0(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)))))))+C.i32(C.cell(minxAddress,"short").value)))));
-            (tmp2=(C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R249(A0(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)))))))+C.i32(C.cell(minxAddress,"short").value)))));
+            (tmp1=(C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R247(A0(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)))))))+C.i32(RC3(minxAddress))))));
+            (tmp2=(C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R249(A0(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)))))))+C.i32(RC3(minxAddress))))));
             (W247(A0(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value),C.i16(((Number((tmp1)<(tmp2))?(tmp1):(tmp2))))));
             (W249(A0(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value),C.i16(((Number((tmp1)>(tmp2))?(tmp1):(tmp2))))));
             for((j=0);Number(j<C.i32(R2(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)));(()=>{const old=j;const next=C.i32((old+1));j=next;return old;})()) {
-                (tmp1=(C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R247(R1(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)+Number(j)*C.sizes["struct nhrect"]))))))+C.i32(C.cell(minxAddress,"short").value)))));
-                (tmp2=(C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R249(R1(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)+Number(j)*C.sizes["struct nhrect"]))))))+C.i32(C.cell(minxAddress,"short").value)))));
+                (tmp1=(C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R247(R1(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)+Number(j)*C.sizes["struct nhrect"]))))))+C.i32(RC3(minxAddress))))));
+                (tmp2=(C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R249(R1(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)+Number(j)*C.sizes["struct nhrect"]))))))+C.i32(RC3(minxAddress))))));
                 (W247(R1(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)+Number(j)*C.sizes["struct nhrect"],C.i16(((Number((tmp1)<(tmp2))?(tmp1):(tmp2))))));
                 (W249(R1(C.cell((R93(C.gr)+Number(i)*8),"NhRegion *").value)+Number(j)*C.sizes["struct nhrect"],C.i16(((Number((tmp1)>(tmp2))?(tmp1):(tmp2))))));
             }
@@ -923,8 +928,8 @@ function flip_level(flp,extras)
     for((sroom=(A106(C.svr)+Number(0)*C.sizes["struct mkroom"]));;(()=>{const old=sroom;const next=C.ptr((old+Number(C.sizes["struct mkroom"])));sroom=next;return old;})()) {
         if(Number(C.i32(R171(sroom))<0)) break;
         if(C.i32((flp&1))) {
-            (W172(sroom,C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R172(sroom))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-            (W173(sroom,C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R173(sroom))))))+C.i32(C.cell(minyAddress,"short").value)))))));
+            (W172(sroom,C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R172(sroom))))))+C.i32(RC3(minyAddress))))))));
+            (W173(sroom,C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R173(sroom))))))+C.i32(RC3(minyAddress))))))));
             if(Number(C.i32(R172(sroom))>C.i32(R173(sroom)))) {
                 (itmp=C.i32(R172(sroom)));
                 (W172(sroom,R173(sroom)));
@@ -932,8 +937,8 @@ function flip_level(flp,extras)
             }
         }
         if(C.i32((flp&2))) {
-            (W170(sroom,C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R170(sroom))))))+C.i32(C.cell(minxAddress,"short").value)))))));
-            (W171(sroom,C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R171(sroom))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+            (W170(sroom,C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R170(sroom))))))+C.i32(RC3(minxAddress))))))));
+            (W171(sroom,C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R171(sroom))))))+C.i32(RC3(minxAddress))))))));
             if(Number(C.i32(R170(sroom))>C.i32(R171(sroom)))) {
                 (itmp=C.i32(R170(sroom)));
                 (W170(sroom,R171(sroom)));
@@ -943,8 +948,8 @@ function flip_level(flp,extras)
         if(R178(sroom)) for((i=0);Number(i<C.i32(R178(sroom)));(()=>{const old=i;const next=C.i32((old+1));i=next;return old;})()) {
             let rroom=C.cell((A180(sroom)+Number(i)*8),"struct mkroom *").value;
             if(C.i32((flp&1))) {
-                (W172(rroom,C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R172(rroom))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-                (W173(rroom,C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R173(rroom))))))+C.i32(C.cell(minyAddress,"short").value)))))));
+                (W172(rroom,C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R172(rroom))))))+C.i32(RC3(minyAddress))))))));
+                (W173(rroom,C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R173(rroom))))))+C.i32(RC3(minyAddress))))))));
                 if(Number(C.i32(R172(rroom))>C.i32(R173(rroom)))) {
                     (itmp=C.i32(R172(rroom)));
                     (W172(rroom,R173(rroom)));
@@ -952,8 +957,8 @@ function flip_level(flp,extras)
                 }
             }
             if(C.i32((flp&2))) {
-                (W170(rroom,C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R170(rroom))))))+C.i32(C.cell(minxAddress,"short").value)))))));
-                (W171(rroom,C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R171(rroom))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+                (W170(rroom,C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R170(rroom))))))+C.i32(RC3(minxAddress))))))));
+                (W171(rroom,C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R171(rroom))))))+C.i32(RC3(minxAddress))))))));
                 if(Number(C.i32(R170(rroom))>C.i32(R171(rroom)))) {
                     (itmp=C.i32(R170(rroom)));
                     (W170(rroom,R171(rroom)));
@@ -965,16 +970,16 @@ function flip_level(flp,extras)
     /* doors */
     for((i=0);Number(i<R79(C.gd));(()=>{const old=i;const next=C.i32((old+1));i=next;return old;})()) {
         do {
-            if(Number(!!(C.i32(R241(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"]))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"])))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R241(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"])))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R242(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"])))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R242(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"])))<=C.i32(C.cell(maxyAddress,"short").value)))))))) {
-                if(C.i32((flp&1))) (W242(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"],C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R242(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"]))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-                if(C.i32((flp&2))) (W241(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"],C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R241(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"]))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+            if(Number(!!(C.i32(R241(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"]))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"])))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R241(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"])))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R242(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"])))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R242(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"])))<=C.i32(RC3(maxyAddress))))))))) {
+                if(C.i32((flp&1))) (W242(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"],C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R242(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"]))))))+C.i32(RC3(minyAddress))))))));
+                if(C.i32((flp&2))) (W241(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"],C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R241(R99(C.svd)+Number(i)*C.sizes["struct nhcoord"]))))))+C.i32(RC3(minxAddress))))))));
             }
         } while(0);
     }
     /* the map */
     if(C.i32((flp&1))) {
-        for((x=C.i32(C.cell(minxAddress,"short").value));Number(x<=C.i32(C.cell(maxxAddress,"short").value));(()=>{const old=x;const next=C.i32((old+1));x=next;return old;})()) for((y=C.i32(C.cell(minyAddress,"short").value));Number(y<(C.i32((C.i32(C.cell(minyAddress,"short").value)+(C.i32(Math.trunc(((C.i32((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32(C.cell(minyAddress,"short").value)))+1)))/2))))))));(()=>{const old=y;const next=C.i32((old+1));y=next;return old;})()) {
-            let ny=(C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-(y))))+C.i32(C.cell(minyAddress,"short").value))));
+        for((x=C.i32(RC3(minxAddress)));Number(x<=C.i32(RC3(maxxAddress)));(()=>{const old=x;const next=C.i32((old+1));x=next;return old;})()) for((y=C.i32(RC3(minyAddress)));Number(y<(C.i32((C.i32(RC3(minyAddress))+(C.i32(Math.trunc(((C.i32((C.i32((C.i32(RC3(maxyAddress))-C.i32(RC3(minyAddress))))+1)))/2))))))));(()=>{const old=y;const next=C.i32((old+1));y=next;return old;})()) {
+            let ny=(C.i32(((C.i32((C.i32(RC3(maxyAddress))-(y))))+C.i32(RC3(minyAddress)))));
             flip_dbridge_vertical(((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]));
             flip_dbridge_vertical(((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(ny)*C.sizes["struct rm"]));
             C.copyRecord(trm,((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),C.sizes["struct rm"]);
@@ -990,8 +995,8 @@ function flip_level(flp,extras)
 
     }
     if(C.i32((flp&2))) {
-        for((x=C.i32(C.cell(minxAddress,"short").value));Number(x<(C.i32((C.i32(C.cell(minxAddress,"short").value)+(C.i32(Math.trunc(((C.i32((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32(C.cell(minxAddress,"short").value)))+1)))/2))))))));(()=>{const old=x;const next=C.i32((old+1));x=next;return old;})()) for((y=C.i32(C.cell(minyAddress,"short").value));Number(y<=C.i32(C.cell(maxyAddress,"short").value));(()=>{const old=y;const next=C.i32((old+1));y=next;return old;})()) {
-            let nx=(C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-(x))))+C.i32(C.cell(minxAddress,"short").value))));
+        for((x=C.i32(RC3(minxAddress)));Number(x<(C.i32((C.i32(RC3(minxAddress))+(C.i32(Math.trunc(((C.i32((C.i32((C.i32(RC3(maxxAddress))-C.i32(RC3(minxAddress))))+1)))/2))))))));(()=>{const old=x;const next=C.i32((old+1));x=next;return old;})()) for((y=C.i32(RC3(minyAddress)));Number(y<=C.i32(RC3(maxyAddress)));(()=>{const old=y;const next=C.i32((old+1));y=next;return old;})()) {
+            let nx=(C.i32(((C.i32((C.i32(RC3(maxxAddress))-(x))))+C.i32(RC3(minxAddress)))));
             flip_dbridge_horizontal(((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]));
             flip_dbridge_horizontal(((A39(A102(C.svl))+Number(nx)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]));
             C.copyRecord(trm,((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),C.sizes["struct rm"]);
@@ -1011,16 +1016,16 @@ function flip_level(flp,extras)
         if(Number(C.i32(R73(timer))==C.MELT_ICE_AWAY)) {
             let ty=C.i64((R24(A74(timer))&C.i64(65535)));
             let tx=C.i64(((C.i64((R24(A74(timer))>>BigInt(16))))&C.i64(65535)));
-            if(C.i32((flp&1))) (ty=(C.i64(((C.i64((C.i64(C.cell(maxyAddress,"short").value)-(ty))))+C.i64(C.cell(minyAddress,"short").value)))));
-            if(C.i32((flp&2))) (tx=(C.i64(((C.i64((C.i64(C.cell(maxxAddress,"short").value)-(tx))))+C.i64(C.cell(minxAddress,"short").value)))));
+            if(C.i32((flp&1))) (ty=(C.i64(((C.i64((C.i64(RC3(maxyAddress))-(ty))))+C.i64(RC3(minyAddress))))));
+            if(C.i32((flp&2))) (tx=(C.i64(((C.i64((C.i64(RC3(maxxAddress))-(tx))))+C.i64(RC3(minxAddress))))));
             (W24(A74(timer),C.i64(((C.i64((tx<<BigInt(16))))|ty))));
         }
     }
     /* exclusion zones */
     for((ez=R100(C.sve));ez;(ez=R69(ez))) {
         if(C.i32((flp&1))) {
-            (W66(ez,C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R66(ez))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-            (W68(ez,C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R68(ez))))))+C.i32(C.cell(minyAddress,"short").value)))))));
+            (W66(ez,C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R66(ez))))))+C.i32(RC3(minyAddress))))))));
+            (W68(ez,C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R68(ez))))))+C.i32(RC3(minyAddress))))))));
             if(Number(C.i32(R66(ez))>C.i32(R68(ez)))) {
                 (itmp=C.i32(R66(ez)));
                 (W66(ez,R68(ez)));
@@ -1028,8 +1033,8 @@ function flip_level(flp,extras)
             }
         }
         if(C.i32((flp&2))) {
-            (W65(ez,C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R65(ez))))))+C.i32(C.cell(minxAddress,"short").value)))))));
-            (W67(ez,C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R67(ez))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+            (W65(ez,C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R65(ez))))))+C.i32(RC3(minxAddress))))))));
+            (W67(ez,C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R67(ez))))))+C.i32(RC3(minxAddress))))))));
             if(Number(C.i32(R65(ez))>C.i32(R67(ez)))) {
                 (itmp=C.i32(R65(ez)));
                 (W65(ez,R67(ez)));
@@ -1040,24 +1045,24 @@ function flip_level(flp,extras)
     if(extras) {
         /* for #wizfliplevel rather than during level creation */
         /* flip hero location only if inside the flippable area */
-        if((Number(!!(Number(!!(Number(!!(Number(C.i32((R379(C.u)))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R379(C.u)))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R380(C.u)))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R380(C.u)))<=C.i32(C.cell(maxyAddress,"short").value)))))) {
-            if(C.i32((flp&1))) (W380(C.u,C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R380(C.u))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-            if(C.i32((flp&2))) (W379(C.u,C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R379(C.u))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+        if((Number(!!(Number(!!(Number(!!(Number(C.i32((R379(C.u)))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R379(C.u)))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R380(C.u)))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R380(C.u)))<=C.i32(RC3(maxyAddress))))))) {
+            if(C.i32((flp&1))) (W380(C.u,C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R380(C.u))))))+C.i32(RC3(minyAddress))))))));
+            if(C.i32((flp&2))) (W379(C.u,C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R379(C.u))))))+C.i32(RC3(minxAddress))))))));
             /* we could flip <ux0,uy0> too if it's inside the flip area,
                but have to resort to this if outside, so just do this */
             ((W381(C.u,R379(C.u))),(W382(C.u,R380(C.u))));
         }
         if(Number(!!(C.i32(ball_active)&&Number(!(ball_fliparea))))) C.placebc();
         do {
-            if(Number(!!(C.i32(R241(A77(C.iflags)))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A77(C.iflags))))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R241(A77(C.iflags))))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R242(A77(C.iflags))))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R242(A77(C.iflags))))<=C.i32(C.cell(maxyAddress,"short").value)))))))) {
-                if(C.i32((flp&1))) (W242(A77(C.iflags),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R242(A77(C.iflags)))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-                if(C.i32((flp&2))) (W241(A77(C.iflags),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R241(A77(C.iflags)))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+            if(Number(!!(C.i32(R241(A77(C.iflags)))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A77(C.iflags))))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R241(A77(C.iflags))))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R242(A77(C.iflags))))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R242(A77(C.iflags))))<=C.i32(RC3(maxyAddress))))))))) {
+                if(C.i32((flp&1))) (W242(A77(C.iflags),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R242(A77(C.iflags)))))))+C.i32(RC3(minyAddress))))))));
+                if(C.i32((flp&2))) (W241(A77(C.iflags),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R241(A77(C.iflags)))))))+C.i32(RC3(minxAddress))))))));
             }
         } while(0);
         do {
-            if(Number(!!(C.i32(R241(A38(A27(A97(C.svc)))))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A38(A27(A97(C.svc))))))>=C.i32(C.cell(minxAddress,"short").value))&&Number(C.i32((R241(A38(A27(A97(C.svc))))))<=C.i32(C.cell(maxxAddress,"short").value))))&&Number(C.i32((R242(A38(A27(A97(C.svc))))))>=C.i32(C.cell(minyAddress,"short").value))))&&Number(C.i32((R242(A38(A27(A97(C.svc))))))<=C.i32(C.cell(maxyAddress,"short").value)))))))) {
-                if(C.i32((flp&1))) (W242(A38(A27(A97(C.svc))),C.i16((C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32((R242(A38(A27(A97(C.svc)))))))))+C.i32(C.cell(minyAddress,"short").value)))))));
-                if(C.i32((flp&2))) (W241(A38(A27(A97(C.svc))),C.i16((C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32((R241(A38(A27(A97(C.svc)))))))))+C.i32(C.cell(minxAddress,"short").value)))))));
+            if(Number(!!(C.i32(R241(A38(A27(A97(C.svc)))))&&(Number(!!(Number(!!(Number(!!(Number(C.i32((R241(A38(A27(A97(C.svc))))))>=C.i32(RC3(minxAddress)))&&Number(C.i32((R241(A38(A27(A97(C.svc))))))<=C.i32(RC3(maxxAddress)))))&&Number(C.i32((R242(A38(A27(A97(C.svc))))))>=C.i32(RC3(minyAddress)))))&&Number(C.i32((R242(A38(A27(A97(C.svc))))))<=C.i32(RC3(maxyAddress))))))))) {
+                if(C.i32((flp&1))) (W242(A38(A27(A97(C.svc))),C.i16((C.i32(((C.i32((C.i32(RC3(maxyAddress))-C.i32((R242(A38(A27(A97(C.svc)))))))))+C.i32(RC3(minyAddress))))))));
+                if(C.i32((flp&2))) (W241(A38(A27(A97(C.svc))),C.i16((C.i32(((C.i32((C.i32(RC3(maxxAddress))-C.i32((R241(A38(A27(A97(C.svc)))))))))+C.i32(RC3(minxAddress))))))));
             }
         } while(0);
     }
@@ -1065,7 +1070,7 @@ function flip_level(flp,extras)
     if(Number(!!(C.i32(extras)&&flp))) {
         C.set_wall_state();
         /* after wall_spines; flips seenv and wall joins */
-        flip_visuals(flp,C.i32(C.cell(minxAddress,"short").value),C.i32(C.cell(minyAddress,"short").value),C.i32(C.cell(maxxAddress,"short").value),C.i32(C.cell(maxyAddress,"short").value));
+        flip_visuals(flp,C.i32(RC3(minxAddress)),C.i32(RC3(minyAddress)),C.i32(RC3(maxxAddress)),C.i32(RC3(maxyAddress)));
     }
     C.vision_reset();
     } finally {C.stackRestore(stackFrame); }
@@ -1123,7 +1128,7 @@ function sel_set_wall_property(x,y,arg)
 {
     x=C.i16(x);
     y=C.i16(y);
-    let prop=C.cell(arg,"int").value;
+    let prop=RC5(arg);
     if(Number(!!(Number(!!((Number(C.i32((R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))<=C.DBWALL))||(Number(!!(Number(C.i32((R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))==C.TREE)||(Number(!!(C.i32(R154(A45(A102(C.svl))))&&Number(C.i32((R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))==C.STONE)))))))))||Number(C.i32(R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.IRONBARS)))) (()=>{const slot=C.field(((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),"rm","flags");const old=slot.value;const next=C.u32(C.i32(C.i32(old)|prop));slot.value=next;return next;})();
     /* 3.6.2: made iron bars eligible to be flagged nondiggable
            (checked by chewing(hack.c) and zap_over_floor(zap.c)) */
@@ -1141,7 +1146,7 @@ function set_wall_property(x1,y1,x2,y2,prop)
     prop=C.i32(prop);
     const stackFrame=C.stackSave();
     try {
-    const propAddress=C.stackAlloc(4);C.cell(propAddress,"int").value=prop;
+    const propAddress=C.stackAlloc(4);WC5(propAddress,prop);
     let x; let y;
     (x1=C.i16(((Number(C.i32((x1))>(1))?C.i32((x1)):(1)))));
     (x2=C.i16(((Number(C.i32((x2))<(C.i32((80-1))))?C.i32((x2)):(C.i32((80-1)))))));
@@ -1170,7 +1175,7 @@ function remove_boundary_syms()
 
 
     if(has_bounds) {
-        for((x=C.i16(0));Number(C.i32(x)<R110(C.gx));(()=>{const old=x;const next=C.i16((old+1));x=next;return old;})()) for((y=C.i16(0));Number(C.i32(y)<R113(C.gy));(()=>{const old=y;const next=C.i16((old+1));y=next;return old;})()) if(Number(!!((Number(C.i32(R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.CROSSWALL))&&C.i32(C.cell(((C.SpLev_Map+Number(x)*(1*21))+Number(y)*1),"char").value)))) (W317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.i8(C.ROOM)));
+        for((x=C.i16(0));Number(C.i32(x)<R110(C.gx));(()=>{const old=x;const next=C.i16((old+1));x=next;return old;})()) for((y=C.i16(0));Number(C.i32(y)<R113(C.gy));(()=>{const old=y;const next=C.i16((old+1));y=next;return old;})()) if(Number(!!((Number(C.i32(R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.CROSSWALL))&&C.i32(RC0((C.SpLev_Map+Number(x)*(1*21))+Number(y)*1))))) (W317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.i8(C.ROOM)));
 
 
     }
@@ -1267,7 +1272,7 @@ function link_doors_rooms()
 function rnddoor()
 {
     const state=C.staticData("rnddoor","state",()=>[0,1,2,4,8]);
-    return C.cell((state+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1152,"rnddoor"),C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))))*4),"int").value;
+    return RC5(state+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1152,"rnddoor"),C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))))*4);
 }
 
 /*
@@ -1331,7 +1336,7 @@ function get_location(x,y,humidity,croom)
             (sx=C.i32(R112(C.gx)));
             (sy=C.i32(R115(C.gy)));
         }
-        if(Number(C.i32(C.cell(x,"short").value)>=0)) {
+        if(Number(C.i32(RC3(x))>=0)) {
             /* normal locations */
             (()=>{const slot=C.cell(x,"short");const old=slot.value;const next=C.i16(C.i32(C.i32(old)+mx));slot.value=next;return next;})();
             (()=>{const slot=C.cell(y,"short");const old=slot.value;const next=C.i16(C.i32(C.i32(old)+my));slot.value=next;return next;})();
@@ -1342,39 +1347,39 @@ function get_location(x,y,humidity,croom)
                     /* handle irregular areas */
                     let tmpc=C.stackAlloc(C.sizes["struct nhcoord"]);
                     C.somexy(croom,tmpc);
-                    (C.cell(x,"short").value=R241(tmpc));
-                    (C.cell(y,"short").value=R242(tmpc));
+                    (WC3(x,R241(tmpc)));
+                    (WC3(y,R242(tmpc)));
                 } else {
-                    (C.cell(x,"short").value=C.i16(C.i32((mx+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1233,"get_location"),C.rn2(sx))):C.rn2(sx)))))));
-                    (C.cell(y,"short").value=C.i16(C.i32((my+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1234,"get_location"),C.rn2(sy))):C.rn2(sy)))))));
+                    (WC3(x,C.i16(C.i32((mx+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1233,"get_location"),C.rn2(sx))):C.rn2(sx))))))));
+                    (WC3(y,C.i16(C.i32((my+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1234,"get_location"),C.rn2(sy))):C.rn2(sy))))))));
                 }
-                if(is_ok_location(C.cell(x,"short").value,C.cell(y,"short").value,humidity)) break;
+                if(is_ok_location(RC3(x),RC3(y),humidity)) break;
             } while(Number((()=>{const old=cpt;const next=C.i32((old+1));cpt=next;return next;})()<100));
             if(Number(cpt>=100)) {
                 let xx; let yy;
                 /* last try */
                 for((xx=0);Number(xx<sx);(()=>{const old=xx;const next=C.i32((old+1));xx=next;return old;})()) for((yy=0);Number(yy<sy);(()=>{const old=yy;const next=C.i32((old+1));yy=next;return old;})()) {
-                    (C.cell(x,"short").value=C.i16(C.i32((mx+xx))));
-                    (C.cell(y,"short").value=C.i16(C.i32((my+yy))));
-                    if(is_ok_location(C.cell(x,"short").value,C.cell(y,"short").value,humidity)) break found_it;
+                    (WC3(x,C.i16(C.i32((mx+xx)))));
+                    (WC3(y,C.i16(C.i32((my+yy)))));
+                    if(is_ok_location(RC3(x),RC3(y),humidity)) break found_it;
                 }
 
                 if(Number(!((C.u32((humidity&C.u32(32))))))) {
                     C.variadic(1,C.literal("get_location:  can't find a place!"));
                 } else {
-                    (C.cell(x,"short").value=(C.cell(y,"short").value=C.i16(C.i32((-1)))));
+                    (WC3(x,WC3(y,C.i16(C.i32((-1))))));
                 }
             }
         }
     }
     ;
-    if(Number(!!(Number(!((C.u32((humidity&C.u32(16))))))&&Number(!(C.isok(C.cell(x,"short").value,C.cell(y,"short").value)))))) {
+    if(Number(!!(Number(!((C.u32((humidity&C.u32(16))))))&&Number(!(C.isok(RC3(x),RC3(y))))))) {
         if(Number(!((C.u32((humidity&C.u32(32))))))) {
             /*warning("get_location:  (%d,%d) out of bounds", *x, *y);*/
-            (C.cell(x,"short").value=C.i16(R110(C.gx)));
-            (C.cell(y,"short").value=C.i16(R113(C.gy)));
+            (WC3(x,C.i16(R110(C.gx))));
+            (WC3(y,C.i16(R113(C.gy))));
         } else {
-            (C.cell(x,"short").value=(C.cell(y,"short").value=C.i16(C.i32((-1)))));
+            (WC3(x,WC3(y,C.i16(C.i32((-1))))));
         }
     }
     } finally {C.stackRestore(stackFrame); }
@@ -1441,10 +1446,10 @@ function get_location_coord(x,y,humidity,croom,crd)
     try {
     let c=C.stackAlloc(C.sizes["unpacked_coord"]);
     C.copyRecord(c,get_unpacked_coord(crd,humidity),C.sizes["unpacked_coord"]);
-    (C.cell(x,"short").value=C.i16(R375(c)));
-    (C.cell(y,"short").value=C.i16(R376(c)));
+    (WC3(x,C.i16(R375(c))));
+    (WC3(y,C.i16(R376(c))));
     get_location(x,y,C.u32((R374(c)|C.u32(((C.i32(R373(c))?32:0))))),croom);
-    if(Number(!!(Number(!!(Number(C.i32(C.cell(x,"short").value)==C.i32((-1)))&&Number(C.i32(C.cell(y,"short").value)==C.i32((-1)))))&&C.i32(R373(c))))) get_location(x,y,C.u32(humidity),croom);
+    if(Number(!!(Number(!!(Number(C.i32(RC3(x))==C.i32((-1)))&&Number(C.i32(RC3(y))==C.i32((-1)))))&&C.i32(R373(c))))) get_location(x,y,C.u32(humidity),croom);
     } finally {C.stackRestore(stackFrame); }
 }
 
@@ -1457,14 +1462,14 @@ function get_room_loc(x,y,croom)
     const stackFrame=C.stackSave();
     try {
     let c=C.stackAlloc(C.sizes["struct nhcoord"]);
-    if(Number(!!(Number(C.i32(C.cell(x,"short").value)<0)&&Number(C.i32(C.cell(y,"short").value)<0)))) {
+    if(Number(!!(Number(C.i32(RC3(x))<0)&&Number(C.i32(RC3(y))<0)))) {
         if(C.somexy(croom,c)) {
-            (C.cell(x,"short").value=R241(c));
-            (C.cell(y,"short").value=R242(c));
+            (WC3(x,R241(c)));
+            (WC3(y,R242(c)));
         } else C.variadic(2,C.literal("get_room_loc : can't find a place!"));
     } else {
-        if(Number(C.i32(C.cell(x,"short").value)<0)) (C.cell(x,"short").value=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1372,"get_room_loc"),C.rn2(C.i32((C.i32((C.i32(R171(croom))-C.i32(R170(croom))))+1))))):C.rn2(C.i32((C.i32((C.i32(R171(croom))-C.i32(R170(croom))))+1)))))));
-        if(Number(C.i32(C.cell(y,"short").value)<0)) (C.cell(y,"short").value=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1374,"get_room_loc"),C.rn2(C.i32((C.i32((C.i32(R173(croom))-C.i32(R172(croom))))+1))))):C.rn2(C.i32((C.i32((C.i32(R173(croom))-C.i32(R172(croom))))+1)))))));
+        if(Number(C.i32(RC3(x))<0)) (WC3(x,C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1372,"get_room_loc"),C.rn2(C.i32((C.i32((C.i32(R171(croom))-C.i32(R170(croom))))+1))))):C.rn2(C.i32((C.i32((C.i32(R171(croom))-C.i32(R170(croom))))+1))))))));
+        if(Number(C.i32(RC3(y))<0)) (WC3(y,C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1374,"get_room_loc"),C.rn2(C.i32((C.i32((C.i32(R173(croom))-C.i32(R172(croom))))+1))))):C.rn2(C.i32((C.i32((C.i32(R173(croom))-C.i32(R172(croom))))+1))))))));
         (()=>{const slot=C.cell(x,"short");const old=slot.value;const next=C.i16(C.i32(C.i32(old)+C.i32(R170(croom))));slot.value=next;return next;})();
         (()=>{const slot=C.cell(y,"short");const old=slot.value;const next=C.i16(C.i32(C.i32(old)+C.i32(R172(croom))));slot.value=next;return next;})();
     }
@@ -1483,41 +1488,41 @@ function get_free_room_loc(x,y,croom,pos)
     let try_xAddress=C.stackAlloc(2); let try_yAddress=C.stackAlloc(2);
     let trycnt=0;
     get_location_coord(try_xAddress,try_yAddress,1,croom,pos);
-    if(Number(C.i32(R317((A39(A102(C.svl))+Number(C.cell(try_xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(try_yAddress,"short").value)*C.sizes["struct rm"]))!=C.ROOM)) {
+    if(Number(C.i32(R317((A39(A102(C.svl))+Number(RC3(try_xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(try_yAddress))*C.sizes["struct rm"]))!=C.ROOM)) {
         do {
-            ((C.cell(try_xAddress,"short").value=C.cell(x,"short").value),(C.cell(try_yAddress,"short").value=C.cell(y,"short").value));
+            ((WC3(try_xAddress,RC3(x))),(WC3(try_yAddress,RC3(y))));
             get_room_loc(try_xAddress,try_yAddress,croom);
-        } while(Number(!!(Number(C.i32(R317((A39(A102(C.svl))+Number(C.cell(try_xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(try_yAddress,"short").value)*C.sizes["struct rm"]))!=C.ROOM)&&Number((()=>{const old=trycnt;const next=C.i32((old+1));trycnt=next;return next;})()<=100))));
+        } while(Number(!!(Number(C.i32(R317((A39(A102(C.svl))+Number(RC3(try_xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(try_yAddress))*C.sizes["struct rm"]))!=C.ROOM)&&Number((()=>{const old=trycnt;const next=C.i32((old+1));trycnt=next;return next;})()<=100))));
         if(Number(trycnt>100)) C.variadic(3,C.literal("get_free_room_loc:  can't find a place!"));
     }
-    ((C.cell(x,"short").value=C.cell(try_xAddress,"short").value),(C.cell(y,"short").value=C.cell(try_yAddress,"short").value));
+    ((WC3(x,RC3(try_xAddress))),(WC3(y,RC3(try_yAddress))));
     } finally {C.stackRestore(stackFrame); }
 }
 
 function check_room(lowx,ddx,lowy,ddy,vault)
 {
     vault=C.i8(vault);
-    let x; let y; let hix=C.i32((C.i32(C.cell(lowx,"short").value)+C.i32(C.cell(ddx,"short").value))); let hiy=C.i32((C.i32(C.cell(lowy,"short").value)+C.i32(C.cell(ddy,"short").value)));
+    let x; let y; let hix=C.i32((C.i32(RC3(lowx))+C.i32(RC3(ddx)))); let hiy=C.i32((C.i32(RC3(lowy))+C.i32(RC3(ddy))));
     let lev;
     let xlim; let ylim; let ymax;
     let s_lowx; let s_ddx; let s_lowy; let s_ddy;
-    (s_lowx=C.cell(lowx,"short").value);
-    (s_ddx=C.cell(ddx,"short").value);
-    (s_lowy=C.cell(lowy,"short").value);
-    (s_ddy=C.cell(ddy,"short").value);
+    (s_lowx=RC3(lowx));
+    (s_ddx=RC3(ddx));
+    (s_lowy=RC3(lowy));
+    (s_ddy=RC3(ddy));
     (xlim=C.i32((4+((C.i32(vault)?1:0)))));
     (ylim=C.i32((3+((C.i32(vault)?1:0)))));
-    if(Number(C.i32(C.cell(lowx,"short").value)<3)) (C.cell(lowx,"short").value=C.i16(3));
-    if(Number(C.i32(C.cell(lowy,"short").value)<2)) (C.cell(lowy,"short").value=C.i16(2));
+    if(Number(C.i32(RC3(lowx))<3)) (WC3(lowx,C.i16(3)));
+    if(Number(C.i32(RC3(lowy))<2)) (WC3(lowy,C.i16(2)));
     if(Number(hix>C.i32((80-3)))) (hix=C.i32((80-3)));
     if(Number(hiy>C.i32((21-3)))) (hiy=C.i32((21-3)));
     chk: for(;;) {
-        if(Number(!!(Number(hix<=C.i32(C.cell(lowx,"short").value))||Number(hiy<=C.i32(C.cell(lowy,"short").value))))) return (C.i8(0));
-        if(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(R82(C.gi))&&(Number(C.i32(s_lowx)!=C.i32(C.cell(lowx,"short").value)))))&&(Number(C.i32(s_ddx)!=C.i32(C.cell(ddx,"short").value)))))&&(Number(C.i32(s_lowy)!=C.i32(C.cell(lowy,"short").value)))))&&(Number(C.i32(s_ddy)!=C.i32(C.cell(ddy,"short").value)))))) return (C.i8(0));
+        if(Number(!!(Number(hix<=C.i32(RC3(lowx)))||Number(hiy<=C.i32(RC3(lowy)))))) return (C.i8(0));
+        if(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(R82(C.gi))&&(Number(C.i32(s_lowx)!=C.i32(RC3(lowx))))))&&(Number(C.i32(s_ddx)!=C.i32(RC3(ddx))))))&&(Number(C.i32(s_lowy)!=C.i32(RC3(lowy))))))&&(Number(C.i32(s_ddy)!=C.i32(RC3(ddy))))))) return (C.i8(0));
         /* check area around room (and make room smaller if necessary) */
-        for((x=C.i32((C.i32(C.cell(lowx,"short").value)-xlim)));Number(x<=C.i32((hix+xlim)));(()=>{const old=x;const next=C.i32((old+1));x=next;return old;})()) {
+        for((x=C.i32((C.i32(RC3(lowx))-xlim)));Number(x<=C.i32((hix+xlim)));(()=>{const old=x;const next=C.i32((old+1));x=next;return old;})()) {
             if(Number(!!(Number(x<=0)||Number(x>=80)))) continue;
-            (y=C.i32((C.i32(C.cell(lowy,"short").value)-ylim)));
+            (y=C.i32((C.i32(RC3(lowy))-ylim)));
             (ymax=C.i32((hiy+ylim)));
             if(Number(y<0)) (y=0);
             if(Number(ymax>=21)) (ymax=(C.i32((21-1))));
@@ -1535,17 +1540,17 @@ function check_room(lowx,ddx,lowy,ddy,vault)
                     }
                     if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1455,"check_room"),C.rn2(3))):C.rn2(3)))))) return (C.i8(0));
                     if(R82(C.gi)) return (C.i8(0));
-                    if(Number(x<C.i32(C.cell(lowx,"short").value))) (C.cell(lowx,"short").value=C.i16(C.i32((C.i32((x+xlim))+1))));
+                    if(Number(x<C.i32(RC3(lowx)))) (WC3(lowx,C.i16(C.i32((C.i32((x+xlim))+1)))));
  else (hix=C.i32((C.i32((x-xlim))-1)));
-                    if(Number(y<C.i32(C.cell(lowy,"short").value))) (C.cell(lowy,"short").value=C.i16(C.i32((C.i32((y+ylim))+1))));
+                    if(Number(y<C.i32(RC3(lowy)))) (WC3(lowy,C.i16(C.i32((C.i32((y+ylim))+1)))));
  else (hiy=C.i32((C.i32((y-ylim))-1)));
                     continue chk;
                 }
             }
         }
-        (C.cell(ddx,"short").value=C.i16(C.i32((hix-C.i32(C.cell(lowx,"short").value)))));
-        (C.cell(ddy,"short").value=C.i16(C.i32((hiy-C.i32(C.cell(lowy,"short").value)))));
-        if(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(R82(C.gi))&&(Number(C.i32(s_lowx)!=C.i32(C.cell(lowx,"short").value)))))&&(Number(C.i32(s_ddx)!=C.i32(C.cell(ddx,"short").value)))))&&(Number(C.i32(s_lowy)!=C.i32(C.cell(lowy,"short").value)))))&&(Number(C.i32(s_ddy)!=C.i32(C.cell(ddy,"short").value)))))) return (C.i8(0));
+        (WC3(ddx,C.i16(C.i32((hix-C.i32(RC3(lowx)))))));
+        (WC3(ddy,C.i16(C.i32((hiy-C.i32(RC3(lowy)))))));
+        if(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(R82(C.gi))&&(Number(C.i32(s_lowx)!=C.i32(RC3(lowx))))))&&(Number(C.i32(s_ddx)!=C.i32(RC3(ddx))))))&&(Number(C.i32(s_lowy)!=C.i32(RC3(lowy))))))&&(Number(C.i32(s_ddy)!=C.i32(RC3(ddy))))))) return (C.i8(0));
         return (C.i8(1));
     }
 }
@@ -1566,7 +1571,7 @@ function create_room(x,y,w,h,xal,yal,rtype,rlit)
     rlit=C.i16(rlit);
     const stackFrame=C.stackSave();
     try {
-    let xabsAddress=C.stackAlloc(2); C.cell(xabsAddress,"short").value=C.i16(0); let yabsAddress=C.stackAlloc(2); C.cell(yabsAddress,"short").value=C.i16(0);
+    let xabsAddress=C.stackAlloc(2); WC3(xabsAddress,C.i16(0)); let yabsAddress=C.stackAlloc(2); WC3(yabsAddress,C.i16(0));
     let wtmp; let htmp; let xaltmp; let yaltmp; let xtmp; let ytmp;
     let r1=0; let r2=C.stackAlloc(C.sizes["struct nhrect"]);
     let trycnt=0;
@@ -1617,34 +1622,34 @@ function create_room(x,y,w,h,xal,yal,rtype,rlit)
             (lx=R247(r1));
             (ly=R248(r1));
             if(vault) {
-                (C.cell(dxAddress,"short").value=(C.cell(dyAddress,"short").value=C.i16(1)));
+                (WC3(dxAddress,WC3(dyAddress,C.i16(1))));
             } else {
-                (C.cell(dxAddress,"short").value=C.i16(C.i32((2+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1548,"create_room"),C.rn2(((Number(C.i32((C.i32(hx)-C.i32(lx)))>28))?12:8)))):C.rn2(((Number(C.i32((C.i32(hx)-C.i32(lx)))>28))?12:8))))))));
-                (C.cell(dyAddress,"short").value=C.i16(C.i32((2+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1549,"create_room"),C.rn2(4))):C.rn2(4)))))));
-                if(Number(C.i32((C.i32(C.cell(dxAddress,"short").value)*C.i32(C.cell(dyAddress,"short").value)))>50)) (C.cell(dyAddress,"short").value=C.i16(C.i32(Math.trunc((50/C.i32(C.cell(dxAddress,"short").value))))));
+                (WC3(dxAddress,C.i16(C.i32((2+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1548,"create_room"),C.rn2(((Number(C.i32((C.i32(hx)-C.i32(lx)))>28))?12:8)))):C.rn2(((Number(C.i32((C.i32(hx)-C.i32(lx)))>28))?12:8)))))))));
+                (WC3(dyAddress,C.i16(C.i32((2+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1549,"create_room"),C.rn2(4))):C.rn2(4))))))));
+                if(Number(C.i32((C.i32(RC3(dxAddress))*C.i32(RC3(dyAddress))))>50)) (WC3(dyAddress,C.i16(C.i32(Math.trunc((50/C.i32(RC3(dxAddress))))))));
             }
             (xborder=C.i16(((Number(!!(Number(C.i32(lx)>0)&&Number(C.i32(hx)<C.i32((80-1))))))?C.i32((2*xlim)):C.i32((xlim+1)))));
             (yborder=C.i16(((Number(!!(Number(C.i32(ly)>0)&&Number(C.i32(hy)<C.i32((21-1))))))?C.i32((2*ylim)):C.i32((ylim+1)))));
-            if(Number(!!(Number(C.i32((C.i32(hx)-C.i32(lx)))<C.i32((C.i32((C.i32(C.cell(dxAddress,"short").value)+3))+C.i32(xborder))))||Number(C.i32((C.i32(hy)-C.i32(ly)))<C.i32((C.i32((C.i32(C.cell(dyAddress,"short").value)+3))+C.i32(yborder))))))) {
+            if(Number(!!(Number(C.i32((C.i32(hx)-C.i32(lx)))<C.i32((C.i32((C.i32(RC3(dxAddress))+3))+C.i32(xborder))))||Number(C.i32((C.i32(hy)-C.i32(ly)))<C.i32((C.i32((C.i32(RC3(dyAddress))+3))+C.i32(yborder))))))) {
                 (r1=0);
                 continue;
             }
-            (C.cell(xabsAddress,"short").value=C.i16(C.i32((C.i32((C.i32(lx)+((Number(C.i32(lx)>0)?xlim:3))))+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1560,"create_room"),C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hx)-((Number(C.i32(lx)>0)?C.i32(lx):3))))-C.i32(C.cell(dxAddress,"short").value)))-C.i32(xborder)))+1))))):C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hx)-((Number(C.i32(lx)>0)?C.i32(lx):3))))-C.i32(C.cell(dxAddress,"short").value)))-C.i32(xborder)))+1)))))))));
-            (C.cell(yabsAddress,"short").value=C.i16(C.i32((C.i32((C.i32(ly)+((Number(C.i32(ly)>0)?ylim:2))))+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1562,"create_room"),C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hy)-((Number(C.i32(ly)>0)?C.i32(ly):2))))-C.i32(C.cell(dyAddress,"short").value)))-C.i32(yborder)))+1))))):C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hy)-((Number(C.i32(ly)>0)?C.i32(ly):2))))-C.i32(C.cell(dyAddress,"short").value)))-C.i32(yborder)))+1)))))))));
-            if(Number(!!(Number(!!(Number(!!(Number(C.i32(ly)==0)&&Number(C.i32(hy)>=C.i32((21-1)))))&&(Number(!!(Number(!(R104(C.svn)))||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1564,"create_room"),C.rn2(R104(C.svn)))):C.rn2(R104(C.svn)))))))))))&&(Number(C.i32((C.i32(C.cell(yabsAddress,"short").value)+C.i32(C.cell(dyAddress,"short").value)))>C.i32(Math.trunc((21/2)))))))) {
-                (C.cell(yabsAddress,"short").value=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1566,"create_room"),C.rn2(3))):C.rn2(3)))+(2))))));
-                if(Number(!!(Number(R104(C.svn)<4)&&Number(C.i32(C.cell(dyAddress,"short").value)>1)))) (()=>{const slot=C.cell(dyAddress,"short");const old=slot.value;const next=C.i16((old-1));slot.value=next;return old;})();
+            (WC3(xabsAddress,C.i16(C.i32((C.i32((C.i32(lx)+((Number(C.i32(lx)>0)?xlim:3))))+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1560,"create_room"),C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hx)-((Number(C.i32(lx)>0)?C.i32(lx):3))))-C.i32(RC3(dxAddress))))-C.i32(xborder)))+1))))):C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hx)-((Number(C.i32(lx)>0)?C.i32(lx):3))))-C.i32(RC3(dxAddress))))-C.i32(xborder)))+1))))))))));
+            (WC3(yabsAddress,C.i16(C.i32((C.i32((C.i32(ly)+((Number(C.i32(ly)>0)?ylim:2))))+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1562,"create_room"),C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hy)-((Number(C.i32(ly)>0)?C.i32(ly):2))))-C.i32(RC3(dyAddress))))-C.i32(yborder)))+1))))):C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hy)-((Number(C.i32(ly)>0)?C.i32(ly):2))))-C.i32(RC3(dyAddress))))-C.i32(yborder)))+1))))))))));
+            if(Number(!!(Number(!!(Number(!!(Number(C.i32(ly)==0)&&Number(C.i32(hy)>=C.i32((21-1)))))&&(Number(!!(Number(!(R104(C.svn)))||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1564,"create_room"),C.rn2(R104(C.svn)))):C.rn2(R104(C.svn)))))))))))&&(Number(C.i32((C.i32(RC3(yabsAddress))+C.i32(RC3(dyAddress))))>C.i32(Math.trunc((21/2)))))))) {
+                (WC3(yabsAddress,C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1566,"create_room"),C.rn2(3))):C.rn2(3)))+(2)))))));
+                if(Number(!!(Number(R104(C.svn)<4)&&Number(C.i32(RC3(dyAddress))>1)))) (()=>{const slot=C.cell(dyAddress,"short");const old=slot.value;const next=C.i16((old-1));slot.value=next;return old;})();
             }
             if(Number(!(check_room(xabsAddress,dxAddress,yabsAddress,dyAddress,vault)))) {
                 (r1=0);
                 continue;
             }
-            (wtmp=C.i32((C.i32(C.cell(dxAddress,"short").value)+1)));
-            (htmp=C.i32((C.i32(C.cell(dyAddress,"short").value)+1)));
-            (W247(r2,C.i16(C.i32((C.i32(C.cell(xabsAddress,"short").value)-1)))));
-            (W248(r2,C.i16(C.i32((C.i32(C.cell(yabsAddress,"short").value)-1)))));
-            (W249(r2,C.i16(C.i32((C.i32(C.cell(xabsAddress,"short").value)+wtmp)))));
-            (W250(r2,C.i16(C.i32((C.i32(C.cell(yabsAddress,"short").value)+htmp)))));
+            (wtmp=C.i32((C.i32(RC3(dxAddress))+1)));
+            (htmp=C.i32((C.i32(RC3(dyAddress))+1)));
+            (W247(r2,C.i16(C.i32((C.i32(RC3(xabsAddress))-1)))));
+            (W248(r2,C.i16(C.i32((C.i32(RC3(yabsAddress))-1)))));
+            (W249(r2,C.i16(C.i32((C.i32(RC3(xabsAddress))+wtmp)))));
+            (W250(r2,C.i16(C.i32((C.i32(RC3(yabsAddress))+htmp)))));
         } else {
             /* Only some parameters are random */
             let rndpos=0;
@@ -1665,8 +1670,8 @@ function create_room(x,y,w,h,xal,yal,rtype,rlit)
             if(Number(yaltmp==C.i32((-1)))) (yaltmp=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1596,"create_room"),C.rnd(3))):C.rnd(3))));
             /* Vertical alignment is RANDOM */
             /* Try to generate real (absolute) coordinates here! */
-            (C.cell(xabsAddress,"short").value=C.i16(C.i32(((C.i32(Math.trunc(((C.i32(((C.i32((xtmp-1)))*80)))/5))))+1))));
-            (C.cell(yabsAddress,"short").value=C.i16(C.i32(((C.i32(Math.trunc(((C.i32(((C.i32((ytmp-1)))*21)))/5))))+1))));
+            (WC3(xabsAddress,C.i16(C.i32(((C.i32(Math.trunc(((C.i32(((C.i32((xtmp-1)))*80)))/5))))+1)))));
+            (WC3(yabsAddress,C.i16(C.i32(((C.i32(Math.trunc(((C.i32(((C.i32((ytmp-1)))*21)))/5))))+1)))));
             switch(xaltmp) {
                 case (1):
                     break;
@@ -1687,18 +1692,18 @@ function create_room(x,y,w,h,xal,yal,rtype,rlit)
                     (()=>{const slot=C.cell(yabsAddress,"short");const old=slot.value;const next=C.i16(C.i32(C.i32(old)+C.i32(Math.trunc(((C.i32(((C.i32(Math.trunc((21/5))))-htmp)))/2)))));slot.value=next;return next;})();
                 break;
             }
-            if(Number(C.i32((C.i32((C.i32(C.cell(xabsAddress,"short").value)+wtmp))-1))>C.i32((80-2)))) (C.cell(xabsAddress,"short").value=C.i16(C.i32((C.i32((80-wtmp))-3))));
-            if(Number(C.i32(C.cell(xabsAddress,"short").value)<2)) (C.cell(xabsAddress,"short").value=C.i16(2));
-            if(Number(C.i32((C.i32((C.i32(C.cell(yabsAddress,"short").value)+htmp))-1))>C.i32((21-2)))) (C.cell(yabsAddress,"short").value=C.i16(C.i32((C.i32((21-htmp))-3))));
-            if(Number(C.i32(C.cell(yabsAddress,"short").value)<2)) (C.cell(yabsAddress,"short").value=C.i16(2));
+            if(Number(C.i32((C.i32((C.i32(RC3(xabsAddress))+wtmp))-1))>C.i32((80-2)))) (WC3(xabsAddress,C.i16(C.i32((C.i32((80-wtmp))-3)))));
+            if(Number(C.i32(RC3(xabsAddress))<2)) (WC3(xabsAddress,C.i16(2)));
+            if(Number(C.i32((C.i32((C.i32(RC3(yabsAddress))+htmp))-1))>C.i32((21-2)))) (WC3(yabsAddress,C.i16(C.i32((C.i32((21-htmp))-3)))));
+            if(Number(C.i32(RC3(yabsAddress))<2)) (WC3(yabsAddress,C.i16(2)));
             /* Try to find a rectangle that fit our room ! */
-            (W247(r2,C.i16(C.i32((C.i32(C.cell(xabsAddress,"short").value)-1)))));
-            (W248(r2,C.i16(C.i32((C.i32(C.cell(yabsAddress,"short").value)-1)))));
-            (W249(r2,C.i16(C.i32((C.i32((C.i32(C.cell(xabsAddress,"short").value)+wtmp))+rndpos)))));
-            (W250(r2,C.i16(C.i32((C.i32((C.i32(C.cell(yabsAddress,"short").value)+htmp))+rndpos)))));
+            (W247(r2,C.i16(C.i32((C.i32(RC3(xabsAddress))-1)))));
+            (W248(r2,C.i16(C.i32((C.i32(RC3(yabsAddress))-1)))));
+            (W249(r2,C.i16(C.i32((C.i32((C.i32(RC3(xabsAddress))+wtmp))+rndpos)))));
+            (W250(r2,C.i16(C.i32((C.i32((C.i32(RC3(yabsAddress))+htmp))+rndpos)))));
             (r1=C.get_rect(r2));
-            (C.cell(dxAddress,"short").value=C.i16(wtmp));
-            (C.cell(dyAddress,"short").value=C.i16(htmp));
+            (WC3(dxAddress,C.i16(wtmp)));
+            (WC3(dyAddress,C.i16(htmp)));
             if(Number(!!(r1&&Number(!(check_room(xabsAddress,dxAddress,yabsAddress,dyAddress,vault)))))) {
                 (r1=0);
             }
@@ -1710,11 +1715,11 @@ function create_room(x,y,w,h,xal,yal,rtype,rlit)
     }
     C.split_rects(r1,r2);
     if(Number(!(vault))) {
-        (C.cell((A95(C.gs)+Number(R104(C.svn))*4),"int").value=R104(C.svn));
-        C.add_room(C.cell(xabsAddress,"short").value,C.cell(yabsAddress,"short").value,C.i16(C.i32((C.i32((C.i32(C.cell(xabsAddress,"short").value)+wtmp))-1))),C.i16(C.i32((C.i32((C.i32(C.cell(yabsAddress,"short").value)+htmp))-1))),C.i8(rlit),C.i8(rtype),(C.i8(0)));
+        (WC5(A95(C.gs)+Number(R104(C.svn))*4,R104(C.svn)));
+        C.add_room(RC3(xabsAddress),RC3(yabsAddress),C.i16(C.i32((C.i32((C.i32(RC3(xabsAddress))+wtmp))-1))),C.i16(C.i32((C.i32((C.i32(RC3(yabsAddress))+htmp))-1))),C.i8(rlit),C.i8(rtype),(C.i8(0)));
     } else {
-        (W170(A106(C.svr)+Number(R104(C.svn))*C.sizes["struct mkroom"],C.cell(xabsAddress,"short").value));
-        (W172(A106(C.svr)+Number(R104(C.svn))*C.sizes["struct mkroom"],C.cell(yabsAddress,"short").value));
+        (W170(A106(C.svr)+Number(R104(C.svn))*C.sizes["struct mkroom"],RC3(xabsAddress)));
+        (W172(A106(C.svr)+Number(R104(C.svn))*C.sizes["struct mkroom"],RC3(yabsAddress)));
     }
     return (C.i8(1));
     } finally {C.stackRestore(stackFrame); }
@@ -1827,7 +1832,7 @@ function create_trap(t,croom)
 {
     const stackFrame=C.stackSave();
     try {
-    let xAddress=C.stackAlloc(2); C.cell(xAddress,"short").value=C.i16(C.i32((-1))); let yAddress=C.stackAlloc(2); C.cell(yAddress,"short").value=C.i16(C.i32((-1)));
+    let xAddress=C.stackAlloc(2); WC3(xAddress,C.i16(C.i32((-1)))); let yAddress=C.stackAlloc(2); WC3(yAddress,C.i16(C.i32((-1))));
     let tm=C.stackAlloc(C.sizes["struct nhcoord"]);
     let mktrap_flags=2;
     if(Number(C.i32(R354(t))==C.VIBRATING_SQUARE)) {
@@ -1840,14 +1845,14 @@ function create_trap(t,croom)
         let trycnt=0;
         do {
             get_location_coord(xAddress,yAddress,1,croom,R353(t));
-        } while(Number(!!((Number(!!(Number(C.i32(R317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"]))==C.STAIRS)||Number(C.i32(R317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"]))==C.LADDER))))&&Number((()=>{const old=trycnt;const next=C.i32((old+1));trycnt=next;return next;})()<=100))));
+        } while(Number(!!((Number(!!(Number(C.i32(R317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"]))==C.STAIRS)||Number(C.i32(R317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"]))==C.LADDER))))&&Number((()=>{const old=trycnt;const next=C.i32((old+1));trycnt=next;return next;})()<=100))));
         if(Number(trycnt>100)) return;
     }
     if(Number(!(R355(t)))) (()=>{const old=mktrap_flags;const next=C.u32(C.u32(C.u32(old)|4));mktrap_flags=next;return next;})();
     if(R356(t)) (()=>{const old=mktrap_flags;const next=C.u32(C.u32(C.u32(old)|1));mktrap_flags=next;return next;})();
     if(R357(t)) (()=>{const old=mktrap_flags;const next=C.u32(C.u32(C.u32(old)|8));mktrap_flags=next;return next;})();
-    (W241(tm,C.cell(xAddress,"short").value));
-    (W242(tm,C.cell(yAddress,"short").value));
+    (W241(tm,RC3(xAddress)));
+    (W242(tm,RC3(yAddress)));
     C.mktrap(C.i32(R354(t)),mktrap_flags,0,tm);
     } finally {C.stackRestore(stackFrame); }
 }
@@ -1903,8 +1908,8 @@ function sp_amask_to_amask(sp_amask)
 {
     sp_amask=C.u32(sp_amask);
     let amask;
-    if(Number(sp_amask==C.u32(32))) (amask=(C.u32((((Number(C.i32((C.cell((A385(C.u)+Number(1)*1),"signed char").value))==(C.i32((-128)))))?0:((Number(C.i32((C.cell((A385(C.u)+Number(1)*1),"signed char").value))==1))?4:(C.i32((C.i32((C.cell((A385(C.u)+Number(1)*1),"signed char").value))+2)))))))));
- else if(Number(sp_amask==C.u32(64))) (amask=(C.u32((((Number((noncoalignment(C.cell((A385(C.u)+Number(1)*1),"signed char").value))==(C.i32((-128)))))?0:((Number((noncoalignment(C.cell((A385(C.u)+Number(1)*1),"signed char").value))==1))?4:(C.i32(((noncoalignment(C.cell((A385(C.u)+Number(1)*1),"signed char").value))+2)))))))));
+    if(Number(sp_amask==C.u32(32))) (amask=(C.u32((((Number(C.i32((RC1(A385(C.u)+Number(1)*1)))==(C.i32((-128)))))?0:((Number(C.i32((RC1(A385(C.u)+Number(1)*1)))==1))?4:(C.i32((C.i32((RC1(A385(C.u)+Number(1)*1)))+2)))))))));
+ else if(Number(sp_amask==C.u32(64))) (amask=(C.u32((((Number((noncoalignment(RC1(A385(C.u)+Number(1)*1)))==(C.i32((-128)))))?0:((Number((noncoalignment(RC1(A385(C.u)+Number(1)*1)))==1))?4:(C.i32(((noncoalignment(RC1(A385(C.u)+Number(1)*1)))+2)))))))));
  else if(Number(sp_amask==C.u32(128))) (amask=C.induced_align(80));
  else (amask=C.u32((sp_amask&C.u32(7))));
     return amask;
@@ -1944,7 +1949,7 @@ function create_monster(m,croom)
         let loc=pm_to_humidity(pm);
         /* If water-liking monster, first try is without DRY */
         get_location_coord(xAddress,yAddress,C.i32((loc|32)),croom,R218(m));
-        if(Number(!!(Number(C.i32(C.cell(xAddress,"short").value)==C.i32((-1)))&&Number(C.i32(C.cell(yAddress,"short").value)==C.i32((-1)))))) {
+        if(Number(!!(Number(C.i32(RC3(xAddress))==C.i32((-1)))&&Number(C.i32(RC3(yAddress))==C.i32((-1)))))) {
             (()=>{const old=loc;const next=C.i32(C.i32(C.i32(old)|1));loc=next;return next;})();
             get_location_coord(xAddress,yAddress,loc,croom,R218(m));
         }
@@ -1952,15 +1957,15 @@ function create_monster(m,croom)
         get_location_coord(xAddress,yAddress,1,croom,R218(m));
     }
     /* try to find a close place if someone else is already there */
-    if(Number(!!((Number(C.cell(((A41(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(8*21))+Number(C.cell(yAddress,"short").value)*8),"struct monst *").value!=0))&&C.i32(C.enexto(cc,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,pm))))) ((C.cell(xAddress,"short").value=R241(cc)),(C.cell(yAddress,"short").value=R242(cc)));
-    if(Number(!!(croom&&Number(!(C.inside_room(croom,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value)))))) return;
-    if(Number(R217(m)!=C.u32(128))) (mtmp=C.mk_roamer(pm,(C.i8((((Number((C.u32(((amask)&C.u32(7))))==C.u32(0)))?(C.i32((-128))):((Number((C.u32(((amask)&C.u32(7))))==C.u32(4)))?1:C.i32(((C.i32((C.u32(((amask)&C.u32(7))))))-2))))))),C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,R223(m)));
- else if(Number(!!(Number(C.PM_ARCHEOLOGIST<=C.i32(R216(m)))&&Number(C.i32(R216(m))<=C.PM_WIZARD)))) (mtmp=C.mk_mplayer(pm,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,(C.i8(0))));
- else (mtmp=C.makemon(pm,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,R239(m)));
+    if(Number(!!((Number(C.cell(((A41(A102(C.svl))+Number(RC3(xAddress))*(8*21))+Number(RC3(yAddress))*8),"struct monst *").value!=0))&&C.i32(C.enexto(cc,RC3(xAddress),RC3(yAddress),pm))))) ((WC3(xAddress,R241(cc))),(WC3(yAddress,R242(cc))));
+    if(Number(!!(croom&&Number(!(C.inside_room(croom,RC3(xAddress),RC3(yAddress))))))) return;
+    if(Number(R217(m)!=C.u32(128))) (mtmp=C.mk_roamer(pm,(C.i8((((Number((C.u32(((amask)&C.u32(7))))==C.u32(0)))?(C.i32((-128))):((Number((C.u32(((amask)&C.u32(7))))==C.u32(4)))?1:C.i32(((C.i32((C.u32(((amask)&C.u32(7))))))-2))))))),RC3(xAddress),RC3(yAddress),R223(m)));
+ else if(Number(!!(Number(C.PM_ARCHEOLOGIST<=C.i32(R216(m)))&&Number(C.i32(R216(m))<=C.PM_WIZARD)))) (mtmp=C.mk_mplayer(pm,RC3(xAddress),RC3(yAddress),(C.i8(0))));
+ else (mtmp=C.makemon(pm,RC3(xAddress),RC3(yAddress),R239(m)));
     if(mtmp) {
-        ((C.cell(xAddress,"short").value=R185(mtmp)),(C.cell(yAddress,"short").value=R186(mtmp)));
+        ((WC3(xAddress,R185(mtmp))),(WC3(yAddress,R186(mtmp))));
         /* sanity precaution */
-        ((W219(m,C.cell(xAddress,"short").value)),(W220(m,C.cell(yAddress,"short").value)));
+        ((W219(m,RC3(xAddress))),(W220(m,RC3(yAddress))));
         /* handle specific attributes for some special monsters */
         if(R362(A214(m))) (mtmp=C.christen_monst(mtmp,R362(A214(m))));
         /*
@@ -1994,16 +1999,16 @@ function create_monster(m,croom)
                     (W188(mtmp,C.u8(C.M_AP_OBJECT)));
                     (W187(mtmp,C.u32(i)));
                     /* try to avoid placing mimic boulder on a trap */
-                    if(Number(!!(Number(!!(Number(i==C.BOULDER)&&Number(C.i32(R219(m))<0)))&&C.i32(m_bad_boulder_spot(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value))))) {
+                    if(Number(!!(Number(!!(Number(i==C.BOULDER)&&Number(C.i32(R219(m))<0)))&&C.i32(m_bad_boulder_spot(RC3(xAddress),RC3(yAddress)))))) {
                         let retrylimit=10;
-                        (C.cell(((A41(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(8*21))+Number(C.cell(yAddress,"short").value)*8),"struct monst *").value=0);
+                        (C.cell(((A41(A102(C.svl))+Number(RC3(xAddress))*(8*21))+Number(RC3(yAddress))*8),"struct monst *").value=0);
                         do {
-                            (C.cell(xAddress,"short").value=R219(m));
-                            (C.cell(yAddress,"short").value=R220(m));
+                            (WC3(xAddress,R219(m)));
+                            (WC3(yAddress,R220(m)));
                             get_location(xAddress,yAddress,C.u32(1),croom);
-                            if(Number(!!((Number(C.cell(((A41(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(8*21))+Number(C.cell(yAddress,"short").value)*8),"struct monst *").value!=0))&&C.i32(C.enexto(cc,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,pm))))) ((C.cell(xAddress,"short").value=R241(cc)),(C.cell(yAddress,"short").value=R242(cc)));
-                        } while(Number(!!(C.i32(m_bad_boulder_spot(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value))&&Number((()=>{const old=retrylimit;const next=C.i32((old-1));retrylimit=next;return next;})()>0))));
-                        C.place_monster(mtmp,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value);
+                            if(Number(!!((Number(C.cell(((A41(A102(C.svl))+Number(RC3(xAddress))*(8*21))+Number(RC3(yAddress))*8),"struct monst *").value!=0))&&C.i32(C.enexto(cc,RC3(xAddress),RC3(yAddress),pm))))) ((WC3(xAddress,R241(cc))),(WC3(yAddress,R242(cc))));
+                        } while(Number(!!(C.i32(m_bad_boulder_spot(RC3(xAddress),RC3(yAddress)))&&Number((()=>{const old=retrylimit;const next=C.i32((old-1));retrylimit=next;return next;})()>0))));
+                        C.place_monster(mtmp,RC3(xAddress),RC3(yAddress));
                         /* if we didn't find a good spot
                            then mimic something else */
                         if(Number(!(retrylimit))) C.set_mimic_sym(mtmp);
@@ -2012,12 +2017,12 @@ function create_monster(m,croom)
                 break;
                 case (C.M_AP_MONSTER):
 {
-                        let mndxAddress=C.stackAlloc(4); let gender_name_varAddress=C.stackAlloc(4); C.cell(gender_name_varAddress,"int").value=C.NEUTRAL;
-                        if(Number(!(C.strncmpi((R362(A215(m))),(C.literal("random")),C.i32((-1)))))) (C.cell(mndxAddress,"int").value=C.select_newcham_form(mtmp));
- else (C.cell(mndxAddress,"int").value=C.name_to_mon(R362(A215(m)),gender_name_varAddress));
-                        if(Number(!!(Number(C.cell(mndxAddress,"int").value==C.NON_PM)||(Number(!!((Number(!!(Number(!!(Number(C.i32(R183(mtmp))==C.PM_VAMPIRE)||Number(C.i32(R183(mtmp))==C.PM_VAMPIRE_LEADER)))||Number(C.i32(R183(mtmp))==C.PM_VLAD_THE_IMPALER))))&&Number(!(C.validvamp(mtmp,mndxAddress,C.S_HUMAN))))))))) {
+                        let mndxAddress=C.stackAlloc(4); let gender_name_varAddress=C.stackAlloc(4); WC5(gender_name_varAddress,C.NEUTRAL);
+                        if(Number(!(C.strncmpi((R362(A215(m))),(C.literal("random")),C.i32((-1)))))) (WC5(mndxAddress,C.select_newcham_form(mtmp)));
+ else (WC5(mndxAddress,C.name_to_mon(R362(A215(m)),gender_name_varAddress)));
+                        if(Number(!!(Number(RC5(mndxAddress)==C.NON_PM)||(Number(!!((Number(!!(Number(!!(Number(C.i32(R183(mtmp))==C.PM_VAMPIRE)||Number(C.i32(R183(mtmp))==C.PM_VAMPIRE_LEADER)))||Number(C.i32(R183(mtmp))==C.PM_VLAD_THE_IMPALER))))&&Number(!(C.validvamp(mtmp,mndxAddress,C.S_HUMAN))))))))) {
                             C.variadic(11,C.literal("create_monster: invalid %s (\"%s\")"),((Number(C.i32(R305(R182(mtmp)))==C.S_MIMIC))?C.literal("mimic appearance"):((Number(R182(mtmp)==(C.mons+Number(C.PM_WIZARD_OF_YENDOR)*C.sizes["struct permonst"])))?C.literal("Wizard appearance"):((Number(!!(Number(!!(Number(C.i32(R183(mtmp))==C.PM_VAMPIRE)||Number(C.i32(R183(mtmp))==C.PM_VAMPIRE_LEADER)))||Number(C.i32(R183(mtmp))==C.PM_VLAD_THE_IMPALER))))?C.literal("vampire shape"):C.literal("chameleon shape")))),R362(A215(m)));
-                        } else if(Number((C.mons+Number(C.cell(mndxAddress,"int").value)*C.sizes["struct permonst"])==R182(mtmp))) {
+                        } else if(Number((C.mons+Number(RC5(mndxAddress))*C.sizes["struct permonst"])==R182(mtmp))) {
                             /* explicitly forcing a mimic to appear as itself */
                             (W188(mtmp,C.u8(C.M_AP_NOTHING)));
                             (W187(mtmp,C.u32(0)));
@@ -2025,13 +2030,13 @@ function create_monster(m,croom)
                             /* this is ordinarily only used for Wizard clones
                        and hasn't been exhaustively tested for mimics */
                             (W188(mtmp,C.u8(C.M_AP_MONSTER)));
-                            (W187(mtmp,C.u32(C.cell(mndxAddress,"int").value)));
+                            (W187(mtmp,C.u32(RC5(mndxAddress))));
                         } else {
                             /* chameleon or vampire */
-                            let mdat=(C.mons+Number(C.cell(mndxAddress,"int").value)*C.sizes["struct permonst"]);
+                            let mdat=(C.mons+Number(RC5(mndxAddress))*C.sizes["struct permonst"]);
                             let olddata=R182(mtmp);
                             C.mgender_from_permonst(mtmp,mdat);
-                            if(Number(C.cell(gender_name_varAddress,"int").value!=C.NEUTRAL)) (W189(mtmp,C.u32(C.cell(gender_name_varAddress,"int").value)));
+                            if(Number(RC5(gender_name_varAddress)!=C.NEUTRAL)) (W189(mtmp,C.u32(RC5(gender_name_varAddress))));
                             C.set_mon_data(mtmp,mdat);
                             if(Number((((Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R305(olddata))==C.S_LIGHT)||Number((olddata)==(C.mons+Number(C.PM_FLAMING_SPHERE)*C.sizes["struct permonst"]))))||Number((olddata)==(C.mons+Number(C.PM_SHOCKING_SPHERE)*C.sizes["struct permonst"]))))||Number((olddata)==(C.mons+Number(C.PM_BABY_GOLD_DRAGON)*C.sizes["struct permonst"]))))||Number((olddata)==(C.mons+Number(C.PM_FIRE_VORTEX)*C.sizes["struct permonst"])))))?1:((Number(!!(Number((olddata)==(C.mons+Number(C.PM_FIRE_ELEMENTAL)*C.sizes["struct permonst"]))||Number((olddata)==(C.mons+Number(C.PM_GOLD_DRAGON)*C.sizes["struct permonst"])))))?1:0)))!=(((Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R305(R182(mtmp)))==C.S_LIGHT)||Number((R182(mtmp))==(C.mons+Number(C.PM_FLAMING_SPHERE)*C.sizes["struct permonst"]))))||Number((R182(mtmp))==(C.mons+Number(C.PM_SHOCKING_SPHERE)*C.sizes["struct permonst"]))))||Number((R182(mtmp))==(C.mons+Number(C.PM_BABY_GOLD_DRAGON)*C.sizes["struct permonst"]))))||Number((R182(mtmp))==(C.mons+Number(C.PM_FIRE_VORTEX)*C.sizes["struct permonst"])))))?1:((Number(!!(Number((R182(mtmp))==(C.mons+Number(C.PM_FIRE_ELEMENTAL)*C.sizes["struct permonst"]))||Number((R182(mtmp))==(C.mons+Number(C.PM_GOLD_DRAGON)*C.sizes["struct permonst"])))))?1:0))))) {
                                 /* used to give light, now doesn't, or vice versa,
@@ -2046,7 +2051,7 @@ function create_monster(m,croom)
                     C.variadic(12,C.literal("create_monster: unimplemented mon appear type [%d,\"%s\"]"),C.i32(R222(m)),R362(A215(m)));
                 break;
             }
-            if(C.does_block(C.i32(C.cell(xAddress,"short").value),C.i32(C.cell(yAddress,"short").value),((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"]))) C.block_point(C.i32(C.cell(xAddress,"short").value),C.i32(C.cell(yAddress,"short").value));
+            if(C.does_block(C.i32(RC3(xAddress)),C.i32(RC3(yAddress)),((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"]))) C.block_point(C.i32(RC3(xAddress)),C.i32(RC3(yAddress)));
         }
         (W189(mtmp,C.u32(R225(m))));
         if(Number(C.i32(R223(m))>(C.i32((-1))))) {
@@ -2119,9 +2124,9 @@ function create_object(o,croom)
     if(Number(C.i32(R288(o))>=0)) (c=C.i8(R288(o)));
  else (c=C.i8(0));
     if(Number(!(c))) {
-        (otmp=C.mkobj_at(C.i8(C.RANDOM_CLASS),C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,C.i8(Number(!(named)))));
+        (otmp=C.mkobj_at(C.i8(C.RANDOM_CLASS),RC3(xAddress),RC3(yAddress),C.i8(Number(!(named)))));
     } else if(Number(C.i32(R283(o))!=C.i32((-1)))) {
-        (otmp=C.mksobj_at(C.i32(R283(o)),C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,(C.i8(1)),C.i8(Number(!(named)))));
+        (otmp=C.mksobj_at(C.i32(R283(o)),RC3(xAddress),RC3(yAddress),(C.i8(1)),C.i8(Number(!(named)))));
     } else {
         /*
          * The special levels are compiled with the default "text" object
@@ -2130,8 +2135,8 @@ function create_object(o,croom)
         let oclass=C.i8(C.def_char_to_objclass(c));
         if(Number(C.i32(oclass)==C.MAXOCLASSES)) C.variadic(13,C.literal("create_object:  unexpected object class '%c'"),C.i32(c));
         /* KMH -- Create piles of gold properly */
-        if(Number(C.i32(oclass)==C.COIN_CLASS)) (otmp=C.mkgold(0n,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value));
- else (otmp=C.mkobj_at(oclass,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,C.i8(Number(!(named)))));
+        if(Number(C.i32(oclass)==C.COIN_CLASS)) (otmp=C.mkgold(0n,RC3(xAddress),RC3(yAddress)));
+ else (otmp=C.mkobj_at(oclass,RC3(xAddress),RC3(yAddress),C.i8(Number(!(named)))));
     }
     if(Number(C.i32(R284(o))!=C.i32((-127)))) (W258(otmp,C.i8(R284(o))));
     /* That means NOT RANDOM! */
@@ -2207,7 +2212,7 @@ function create_object(o,croom)
     }
     /* contents (of a container or monster's inventory) */
     if(Number(!!(C.i32((C.i32(R289(o))&1))||C.cell(C.invent_carrying_monster,"struct monst *").value))) {
-        if(Number(!(C.cell(C.container_idx,"int").value))) {
+        if(Number(!(RC5(C.container_idx)))) {
             if(Number(!(C.cell(C.invent_carrying_monster,"struct monst *").value))) {
                 /*impossible("create_object: no container");*/
                 /* don't complain, the monster may be gone legally
@@ -2225,7 +2230,7 @@ function create_object(o,croom)
  else C.mpickobj(C.cell(C.invent_carrying_monster,"struct monst *").value,otmp);
             }
         } else {
-            let cobj=C.cell((C.container_obj+Number(C.i32((C.cell(C.container_idx,"int").value-1)))*8),"struct obj *").value;
+            let cobj=C.cell((C.container_obj+Number(C.i32((RC5(C.container_idx)-1)))*8),"struct obj *").value;
             C.remove_object(otmp);
             if(cobj) {
                 (otmp=C.add_to_container(cobj,otmp));
@@ -2244,8 +2249,8 @@ function create_object(o,croom)
     /* container */
     if(C.i32((C.i32(R289(o))&2))) {
         C.delete_contents(otmp);
-        if(Number(C.cell(C.container_idx,"int").value<10)) {
-            (C.cell((C.container_obj+Number(C.cell(C.container_idx,"int").value)*8),"struct obj *").value=otmp);
+        if(Number(RC5(C.container_idx)<10)) {
+            (C.cell((C.container_obj+Number(RC5(C.container_idx))*8),"struct obj *").value=otmp);
             (()=>{const slot=C.cell(C.container_idx,"int");const old=slot.value;const next=C.i32((old+1));slot.value=next;return old;})();
         } else C.variadic(14,C.literal("create_object: too deeply nested containers."));
     }
@@ -2321,8 +2326,8 @@ function create_object(o,croom)
         if(R292(o)) {
             let deallocedAddress=C.stackAlloc(1);
             C.bury_an_obj(otmp,deallocedAddress);
-            if(C.cell(deallocedAddress,"signed char").value) {
-                if(C.cell(C.container_idx,"int").value) (C.cell((C.container_obj+Number(C.i32((C.cell(C.container_idx,"int").value-1)))*8),"struct obj *").value=0);
+            if(RC1(deallocedAddress)) {
+                if(RC5(C.container_idx)) (C.cell((C.container_obj+Number(C.i32((RC5(C.container_idx)-1)))*8),"struct obj *").value=0);
                 (otmp=0);
             }
         }
@@ -2339,7 +2344,7 @@ function create_altar(a,croom)
     const stackFrame=C.stackSave();
     try {
     let sproom;
-    let xAddress=C.stackAlloc(2); C.cell(xAddress,"short").value=C.i16(C.i32((-1))); let yAddress=C.stackAlloc(2); C.cell(yAddress,"short").value=C.i16(C.i32((-1)));
+    let xAddress=C.stackAlloc(2); WC3(xAddress,C.i16(C.i32((-1)))); let yAddress=C.stackAlloc(2); WC3(yAddress,C.i16(C.i32((-1))));
     let amask;
     let croom_is_temple=(C.i8(1));
     if(croom) {
@@ -2347,21 +2352,21 @@ function create_altar(a,croom)
         if(Number(C.i32(R174(croom))!=C.TEMPLE)) (croom_is_temple=(C.i8(0)));
     } else {
         get_location_coord(xAddress,yAddress,1,croom,R21(a));
-        if(Number(C.i32(((sproom=C.i8(C.cell(C.in_rooms(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,C.TEMPLE),"char").value))))!=0)) (croom=(A106(C.svr)+Number(C.i32((C.i32(sproom)-3)))*C.sizes["struct mkroom"]));
+        if(Number(C.i32(((sproom=C.i8(RC0(C.in_rooms(RC3(xAddress),RC3(yAddress),C.TEMPLE))))))!=0)) (croom=(A106(C.svr)+Number(C.i32((C.i32(sproom)-3)))*C.sizes["struct mkroom"]));
  else (croom_is_temple=(C.i8(0)));
     }
     /* check for existing features */
-    if(Number(!(C.set_levltyp(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,C.i8(C.ALTAR))))) return;
+    if(Number(!(C.set_levltyp(RC3(xAddress),RC3(yAddress),C.i8(C.ALTAR))))) return;
     (amask=sp_amask_to_amask(R22(a)));
-    (W319((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"],amask));
+    (W319((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"],amask));
     if(Number(C.i32(R23(a))<0)) (W23(a,C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2474,"create_altar"),C.rn2(2))):C.rn2(2))))));
     /* handle random case */
     if(Number(!!(Number(!(croom_is_temple))||Number(!(R23(a)))))) return;
     if(R23(a)) {
         /* Is it a shrine  or sanctum? */
-        C.priestini(A383(C.u),croom,C.i32(C.cell(xAddress,"short").value),C.i32(C.cell(yAddress,"short").value),C.i8((Number(C.i32(R23(a))>1))));
-        (()=>{const slot=C.field(((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"]),"rm","flags");const old=slot.value;const next=C.u32(C.i32(C.i32(old)|8));slot.value=next;return next;})();
-        if(Number(C.i32(R23(a))==2)) (()=>{const slot=C.field(((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"]),"rm","flags");const old=slot.value;const next=C.u32(C.i32(C.i32(old)|16));slot.value=next;return next;})();
+        C.priestini(A383(C.u),croom,C.i32(RC3(xAddress)),C.i32(RC3(yAddress)),C.i8((Number(C.i32(R23(a))>1))));
+        (()=>{const slot=C.field(((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"]),"rm","flags");const old=slot.value;const next=C.u32(C.i32(C.i32(old)|8));slot.value=next;return next;})();
+        if(Number(C.i32(R23(a))==2)) (()=>{const slot=C.field(((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"]),"rm","flags");const old=slot.value;const next=C.u32(C.i32(C.i32(old)|16));slot.value=next;return next;})();
         /* high altar or sanctum */
         (W144(A45(A102(C.svl)),C.u32((C.i8(1)))));
     }
@@ -2408,8 +2413,8 @@ function search_door(croom,x,y,wall,cnt)
     }
     while(Number(!!(Number(xx<=C.i32((C.i32(R171(croom))+1)))&&Number(yy<=C.i32((C.i32(R173(croom))+1)))))) {
         if(Number(!!((Number(C.i32((R317((A39(A102(C.svl))+Number(xx)*(C.sizes["struct rm"]*21))+Number(yy)*C.sizes["struct rm"])))==C.DOOR))||Number(C.i32(R317((A39(A102(C.svl))+Number(xx)*(C.sizes["struct rm"]*21))+Number(yy)*C.sizes["struct rm"]))==C.SDOOR)))) {
-            (C.cell(x,"short").value=C.i16(xx));
-            (C.cell(y,"short").value=C.i16(yy));
+            (WC3(x,C.i16(xx)));
+            (WC3(y,C.i16(yy)));
             if(Number((()=>{const old=cnt;const next=C.i32((old-1));cnt=next;return old;})()<=0)) return (C.i8(1));
         }
         (()=>{const old=xx;const next=C.i32(C.i32(C.i32(old)+dx));xx=next;return next;})();
@@ -2432,7 +2437,7 @@ function dig_corridor(org,dest,npoints,nxcor,ftyp,btyp)
     let dx=0; let dy=0; let dix; let diy; let cct;
     let crm;
     let tx; let ty; let xx; let yy;
-    if(npoints) (C.cell(npoints,"int").value=0);
+    if(npoints) (WC5(npoints,0));
     (xx=C.i32(R241(org)));
     (yy=C.i32(R242(org)));
     (tx=C.i32(R241(dest)));
@@ -2745,7 +2750,7 @@ function maze1xy(m,humidity)
         (y=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2909,"maze1xy"),C.rn2(C.i32((R113(C.gy)-3))))):C.rn2(C.i32((R113(C.gy)-3)))))+(3)))));
         if(Number((()=>{const old=tryct;const next=C.i32((old-1));tryct=next;return next;})()<0)) break;
         /* give up */
-    } while(Number(!!(Number(!!(Number(!!(Number(!((C.i32((x%2)))))||Number(!((C.i32((y%2)))))))||C.i32(C.cell(((C.SpLev_Map+Number(x)*(1*21))+Number(y)*1),"char").value)))||Number(!(is_ok_location(C.i16(x),C.i16(y),C.u32(humidity)))))));
+    } while(Number(!!(Number(!!(Number(!!(Number(!((C.i32((x%2)))))||Number(!((C.i32((y%2)))))))||C.i32(RC0((C.SpLev_Map+Number(x)*(1*21))+Number(y)*1))))||Number(!(is_ok_location(C.i16(x),C.i16(y),C.u32(humidity)))))));
     ((W241(m,C.i16(x))),(W242(m,C.i16(y))));
 }
 
@@ -2765,7 +2770,7 @@ function fill_empty_maze()
     let mm=C.stackAlloc(C.sizes["struct nhcoord"]);
     (mapcountmax=(mapcount=C.i32(((C.i32((R110(C.gx)-2)))*(C.i32((R113(C.gy)-2)))))));
     (mapcountmax=C.i32(Math.trunc((mapcountmax/2))));
-    for((x=C.i16(2));Number(C.i32(x)<R110(C.gx));(()=>{const old=x;const next=C.i16((old+1));x=next;return old;})()) for((y=C.i16(0));Number(C.i32(y)<R113(C.gy));(()=>{const old=y;const next=C.i16((old+1));y=next;return old;})()) if(C.cell(((C.SpLev_Map+Number(x)*(1*21))+Number(y)*1),"char").value) (()=>{const old=mapcount;const next=C.i32((old-1));mapcount=next;return old;})();
+    for((x=C.i16(2));Number(C.i32(x)<R110(C.gx));(()=>{const old=x;const next=C.i16((old+1));x=next;return old;})()) for((y=C.i16(0));Number(C.i32(y)<R113(C.gy));(()=>{const old=y;const next=C.i16((old+1));y=next;return old;})()) if(RC0((C.SpLev_Map+Number(x)*(1*21))+Number(y)*1)) (()=>{const old=mapcount;const next=C.i32((old-1));mapcount=next;return old;})();
 
 
     if((Number(mapcount>(C.i32(Math.trunc((mapcountmax/10))))))) {
@@ -2828,7 +2833,7 @@ function splev_initlev(linit)
         case (C.LVLINIT_MINES):
             if(Number(C.i32(R124(linit))==(C.i32((-1))))) (W124(linit,C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3006,"splev_initlev"),C.rn2(2))):C.rn2(2))))));
         if(Number(C.i32(R119(linit))>C.i32((-1)))) lvlfill_solid(R119(linit),C.i8(0));
-        (W126(linit,C.cell(C.icedpools,"signed char").value));
+        (W126(linit,RC1(C.icedpools)));
         C.mkmap(linit);
         break;
         case (C.LVLINIT_SWAMP):
@@ -2848,9 +2853,9 @@ function spo_end_moninvent()
 /*ARGUSED*/
 function spo_pop_container()
 {
-    if(Number(C.cell(C.container_idx,"int").value>0)) {
+    if(Number(RC5(C.container_idx)>0)) {
         (()=>{const slot=C.cell(C.container_idx,"int");const old=slot.value;const next=C.i32((old-1));slot.value=next;return old;})();
-        (C.cell((C.container_obj+Number(C.cell(C.container_idx,"int").value)*8),"struct obj *").value=0);
+        (C.cell((C.container_obj+Number(RC5(C.container_idx))*8),"struct obj *").value=0);
     }
 }
 
@@ -2894,10 +2899,10 @@ function lspo_message(L)
     (old_n=C.i32((R83(C.gl)?(C.u32((C.Strlen_(R83(C.gl),(C.literal("lspo_message")),3094)+C.u32(1)))):C.u32(0))));
     (n=C.i32(C.Strlen_(msg,(C.literal("lspo_message")),3095)));
     (levmsg=C.alloc(C.u32(C.i32((C.i32((old_n+n))+1)))));
-    if(old_n) (C.cell((levmsg+Number(C.i32((old_n-1)))*1),"char").value=C.i8(10));
+    if(old_n) (WC0(levmsg+Number(C.i32((old_n-1)))*1,C.i8(10)));
     if(R83(C.gl)) C.memcpy(levmsg,R83(C.gl),C.u64(C.i32((old_n-1))));
     C.memcpy((levmsg+Number(old_n)*1),msg,C.u64(n));
-    (C.cell((levmsg+Number(C.i32((old_n+n)))*1),"char").value=C.i8(0));
+    (WC0(levmsg+Number(C.i32((old_n+n)))*1,C.i8(0)));
     do {
         if(R83(C.gl)) C.free((R83(C.gl)));
     } while(0);
@@ -2910,7 +2915,7 @@ function get_table_align(L)
 {
     const gtaligns=C.staticData("get_table_align","gtaligns",()=>[C.literal("noalign"),C.literal("law"),C.literal("neutral"),C.literal("chaos"),C.literal("coaligned"),C.literal("noncoaligned"),C.literal("random"),0]);
     const aligns2i=C.staticData("get_table_align","aligns2i",()=>[0,4,2,1,32,64,128,0]);
-    let a=C.cell((aligns2i+Number(C.get_table_option(L,C.literal("align"),C.literal("random"),gtaligns))*4),"int").value;
+    let a=RC5(aligns2i+Number(C.get_table_option(L,C.literal("align"),C.literal("random"),gtaligns))*4);
     return a;
 }
 
@@ -2918,7 +2923,7 @@ function get_table_monclass(L)
 {
     let s=C.get_table_str_opt(L,C.literal("class"),0);
     let ret=C.i32((-1));
-    if(Number(!!(s&&Number(C.strlen(s)==C.u64(1))))) (ret=C.i32(C.cell(s,"char").value));
+    if(Number(!!(s&&Number(C.strlen(s)==C.u64(1))))) (ret=C.i32(RC0(s)));
     do {
         if(s) C.free((s));
     } while(0);
@@ -2929,15 +2934,15 @@ function find_montype(L,s,mgender)
 {
     const stackFrame=C.stackSave();
     try {
-    let i; let mgendAddress=C.stackAlloc(4); C.cell(mgendAddress,"int").value=C.NEUTRAL;
+    let i; let mgendAddress=C.stackAlloc(4); WC5(mgendAddress,C.NEUTRAL);
     (i=C.name_to_monplus(s,0,mgendAddress));
     if(Number(!!(Number(i>=C.LOW_PM)&&Number(i<C.NUMMONS)))) {
-        if(Number(!!((Number((C.u64((R308(C.mons+Number(i)*C.sizes["struct permonst"])&C.u64(65536n))))!=C.u64(0n)))||(Number((C.u64((R308(C.mons+Number(i)*C.sizes["struct permonst"])&C.u64(131072n))))!=C.u64(0n)))))) (C.cell(mgendAddress,"int").value=((Number((C.u64((R308(C.mons+Number(i)*C.sizes["struct permonst"])&C.u64(131072n))))!=C.u64(0n)))?C.FEMALE:C.MALE));
- else (C.cell(mgendAddress,"int").value=((Number(C.cell(mgendAddress,"int").value==C.FEMALE))?C.FEMALE:((Number(C.cell(mgendAddress,"int").value==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3156,"find_montype"),C.rn2(2))):C.rn2(2))))));
-        if(mgender) (C.cell(mgender,"int").value=C.cell(mgendAddress,"int").value);
+        if(Number(!!((Number((C.u64((R308(C.mons+Number(i)*C.sizes["struct permonst"])&C.u64(65536n))))!=C.u64(0n)))||(Number((C.u64((R308(C.mons+Number(i)*C.sizes["struct permonst"])&C.u64(131072n))))!=C.u64(0n)))))) (WC5(mgendAddress,(Number((C.u64((R308(C.mons+Number(i)*C.sizes["struct permonst"])&C.u64(131072n))))!=C.u64(0n)))?C.FEMALE:C.MALE));
+ else (WC5(mgendAddress,(Number(RC5(mgendAddress)==C.FEMALE))?C.FEMALE:((Number(RC5(mgendAddress)==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3156,"find_montype"),C.rn2(2))):C.rn2(2))))));
+        if(mgender) (WC5(mgender,RC5(mgendAddress)));
         return i;
     }
-    if(mgender) (C.cell(mgender,"int").value=C.NEUTRAL);
+    if(mgender) (WC5(mgender,C.NEUTRAL));
     return C.NON_PM;
     } finally {C.stackRestore(stackFrame); }
 }
@@ -2966,15 +2971,15 @@ function get_table_xy_or_coord(L,x,y)
 {
     const stackFrame=C.stackSave();
     try {
-    let mxAddress=C.stackAlloc(8); C.cell(mxAddress,"long long").value=C.i64(C.get_table_int_opt(L,C.literal("x"),C.i32((-1))));
-    let myAddress=C.stackAlloc(8); C.cell(myAddress,"long long").value=C.i64(C.get_table_int_opt(L,C.literal("y"),C.i32((-1))));
-    if(Number(!!(Number(C.cell(mxAddress,"long long").value==C.i64(C.i32((-1))))&&Number(C.cell(myAddress,"long long").value==C.i64(C.i32((-1))))))) {
+    let mxAddress=C.stackAlloc(8); WC10(mxAddress,C.i64(C.get_table_int_opt(L,C.literal("x"),C.i32((-1)))));
+    let myAddress=C.stackAlloc(8); WC10(myAddress,C.i64(C.get_table_int_opt(L,C.literal("y"),C.i32((-1)))));
+    if(Number(!!(Number(RC10(mxAddress)==C.i64(C.i32((-1))))&&Number(RC10(myAddress)==C.i64(C.i32((-1))))))) {
         C.lua_getfield(L,1,C.literal("coord"));
         get_coord(L,C.i32((-1)),mxAddress,myAddress);
         C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
     }
-    (C.cell(x,"long long").value=C.cell(mxAddress,"long long").value);
-    (C.cell(y,"long long").value=C.cell(myAddress,"long long").value);
+    (WC10(x,RC10(mxAddress)));
+    (WC10(y,RC10(myAddress)));
     } finally {C.stackRestore(stackFrame); }
 }
 
@@ -2991,8 +2996,8 @@ function lspo_monster(L)
     try {
     let argc=C.lua_gettop(L);
     let tmpmons=C.stackAlloc(C.sizes["monster"]);
-    let mxAddress=C.stackAlloc(8); C.cell(mxAddress,"long long").value=C.i64(C.i32((-1))); let myAddress=C.stackAlloc(8); C.cell(myAddress,"long long").value=C.i64(C.i32((-1)));
-    let mgendAddress=C.stackAlloc(4); C.cell(mgendAddress,"int").value=C.NEUTRAL;
+    let mxAddress=C.stackAlloc(8); WC10(mxAddress,C.i64(C.i32((-1)))); let myAddress=C.stackAlloc(8); WC10(myAddress,C.i64(C.i32((-1))));
+    let mgendAddress=C.stackAlloc(4); WC5(mgendAddress,C.NEUTRAL);
     let mappear=0;
     create_des_coder();
     (W223(tmpmons,C.i8(C.i32((-1)))));
@@ -3019,35 +3024,35 @@ function lspo_monster(L)
     if(Number(!!(Number(argc==1)&&Number(C.lua_type(L,1)==4)))) {
         let paramstr=(C.luaL_checklstring(L,(1),0));
         if(Number(C.strlen(paramstr)==C.u64(1))) {
-            (W221(tmpmons,C.i16(C.cell(paramstr,"char").value)));
+            (W221(tmpmons,C.i16(RC0(paramstr))));
             (W216(tmpmons,C.i16(C.NON_PM)));
         } else {
             (W221(tmpmons,C.i16(C.i32((-1)))));
             (W216(tmpmons,C.i16(find_montype(L,paramstr,mgendAddress))));
-            (W225(tmpmons,C.i16(((Number(C.cell(mgendAddress,"int").value==C.FEMALE))?C.FEMALE:((Number(C.cell(mgendAddress,"int").value==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3256,"lspo_monster"),C.rn2(2))):C.rn2(2))))))));
+            (W225(tmpmons,C.i16(((Number(RC5(mgendAddress)==C.FEMALE))?C.FEMALE:((Number(RC5(mgendAddress)==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3256,"lspo_monster"),C.rn2(2))):C.rn2(2))))))));
         }
     } else if(Number(!!(Number(!!(Number(argc==2)&&Number(C.lua_type(L,1)==4)))&&Number(C.lua_type(L,2)==5)))) {
         let paramstr=(C.luaL_checklstring(L,(1),0));
         get_coord(L,2,mxAddress,myAddress);
         if(Number(C.strlen(paramstr)==C.u64(1))) {
-            (W221(tmpmons,C.i16(C.cell(paramstr,"char").value)));
+            (W221(tmpmons,C.i16(RC0(paramstr))));
             (W216(tmpmons,C.i16(C.NON_PM)));
         } else {
             (W221(tmpmons,C.i16(C.i32((-1)))));
             (W216(tmpmons,C.i16(find_montype(L,paramstr,mgendAddress))));
-            (W225(tmpmons,C.i16(((Number(C.cell(mgendAddress,"int").value==C.FEMALE))?C.FEMALE:((Number(C.cell(mgendAddress,"int").value==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3271,"lspo_monster"),C.rn2(2))):C.rn2(2))))))));
+            (W225(tmpmons,C.i16(((Number(RC5(mgendAddress)==C.FEMALE))?C.FEMALE:((Number(RC5(mgendAddress)==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3271,"lspo_monster"),C.rn2(2))):C.rn2(2))))))));
         }
     } else if(Number(argc==3)) {
         let paramstr=(C.luaL_checklstring(L,(1),0));
-        (C.cell(mxAddress,"long long").value=C.luaL_checkinteger(L,2));
-        (C.cell(myAddress,"long long").value=C.luaL_checkinteger(L,3));
+        (WC10(mxAddress,C.luaL_checkinteger(L,2)));
+        (WC10(myAddress,C.luaL_checkinteger(L,3)));
         if(Number(C.strlen(paramstr)==C.u64(1))) {
-            (W221(tmpmons,C.i16(C.cell(paramstr,"char").value)));
+            (W221(tmpmons,C.i16(RC0(paramstr))));
             (W216(tmpmons,C.i16(C.NON_PM)));
         } else {
             (W221(tmpmons,C.i16(C.i32((-1)))));
             (W216(tmpmons,C.i16(find_montype(L,paramstr,mgendAddress))));
-            (W225(tmpmons,C.i16(((Number(C.cell(mgendAddress,"int").value==C.FEMALE))?C.FEMALE:((Number(C.cell(mgendAddress,"int").value==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3287,"lspo_monster"),C.rn2(2))):C.rn2(2))))))));
+            (W225(tmpmons,C.i16(((Number(RC5(mgendAddress)==C.FEMALE))?C.FEMALE:((Number(RC5(mgendAddress)==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3287,"lspo_monster"),C.rn2(2))):C.rn2(2))))))));
         }
     } else {
         let keep_default_invent=C.i32((-1));
@@ -3102,7 +3107,7 @@ function lspo_monster(L)
          * gender, override that random one now, unless it *is* a one-gender
          * species, in which case don't override (don't permit creation of a
          * male nymph or female Nazgul, etc.) */
-        if(Number(!!(Number(C.cell(mgendAddress,"int").value!=C.NEUTRAL)&&(Number(!!(Number(!!(Number(C.i32(R225(tmpmons))==(C.i32((-1))))||(Number((C.u64((R308(C.mons+Number(R216(tmpmons))*C.sizes["struct permonst"])&C.u64(131072n))))!=C.u64(0n)))))||(Number((C.u64((R308(C.mons+Number(R216(tmpmons))*C.sizes["struct permonst"])&C.u64(65536n))))!=C.u64(0n))))))))) (W225(tmpmons,C.i16(C.cell(mgendAddress,"int").value)));
+        if(Number(!!(Number(RC5(mgendAddress)!=C.NEUTRAL)&&(Number(!!(Number(!!(Number(C.i32(R225(tmpmons))==(C.i32((-1))))||(Number((C.u64((R308(C.mons+Number(R216(tmpmons))*C.sizes["struct permonst"])&C.u64(131072n))))!=C.u64(0n)))))||(Number((C.u64((R308(C.mons+Number(R216(tmpmons))*C.sizes["struct permonst"])&C.u64(65536n))))!=C.u64(0n))))))))) (W225(tmpmons,C.i16(RC5(mgendAddress))));
         /* safety net - if find_montype did not find a gender for this species
          * (should cause a lua error anyway) */
         if(Number(C.i32(R225(tmpmons))==(C.i32((-1))))) (W225(tmpmons,C.i16(0)));
@@ -3121,8 +3126,8 @@ function lspo_monster(L)
             if(Number(keep_default_invent==C.i32((C.i8(0))))) (W238(tmpmons,C.i16(0)));
         }
     }
-    if(Number(!!(Number(C.cell(mxAddress,"long long").value==C.i64(C.i32((-1))))&&Number(C.cell(myAddress,"long long").value==C.i64(C.i32((-1))))))) (W218(tmpmons,C.i64((16777216n|C.i64((0))))));
- else (W218(tmpmons,C.i64((C.i64(((C.i64(((C.cell(mxAddress,"long long").value)&C.i64(255))))+(C.i64(((C.i64(((C.cell(myAddress,"long long").value)&C.i64(255))))<<BigInt(16))))))))));
+    if(Number(!!(Number(RC10(mxAddress)==C.i64(C.i32((-1))))&&Number(RC10(myAddress)==C.i64(C.i32((-1))))))) (W218(tmpmons,C.i64((16777216n|C.i64((0))))));
+ else (W218(tmpmons,C.i64((C.i64(((C.i64(((RC10(mxAddress))&C.i64(255))))+(C.i64(((C.i64(((RC10(myAddress))&C.i64(255))))<<BigInt(16))))))))));
     if(Number(!!(Number(C.i32(R216(tmpmons))!=C.NON_PM)&&Number(C.i32(R221(tmpmons))==C.i32((-1)))))) (W221(tmpmons,C.i16((R25(C.def_monsyms+Number(C.i32(R305(C.mons+Number(R216(tmpmons))*C.sizes["struct permonst"])))*C.sizes["struct class_sym"])))));
     create_monster(tmpmons,R330(R78(C.gc)));
     if(Number(!!((C.i32((C.i32(R238(tmpmons))&1)))&&Number(C.lua_type(L,C.i32((-1)))==6)))) {
@@ -3178,7 +3183,7 @@ function get_table_buc(L)
 {
     const bucs=C.staticData("get_table_buc","bucs",()=>[C.literal("random"),C.literal("blessed"),C.literal("uncursed"),C.literal("cursed"),C.literal("not-cursed"),C.literal("not-uncursed"),C.literal("not-blessed"),0]);
     const bucs2i=C.staticData("get_table_buc","bucs2i",()=>[0,1,2,3,4,5,6,0]);
-    let curse_state=C.cell((bucs2i+Number(C.get_table_option(L,C.literal("buc"),C.literal("random"),bucs))*4),"int").value;
+    let curse_state=RC5(bucs2i+Number(C.get_table_option(L,C.literal("buc"),C.literal("random"),bucs))*4);
     return curse_state;
 }
 
@@ -3186,7 +3191,7 @@ function get_table_objclass(L)
 {
     let s=C.get_table_str_opt(L,C.literal("class"),0);
     let ret=C.i32((-1));
-    if(Number(!!(s&&Number(C.strlen(s)==C.u64(1))))) (ret=C.i32(C.cell(s,"char").value));
+    if(Number(!!(s&&Number(C.strlen(s)==C.u64(1))))) (ret=C.i32(RC0(s)));
     do {
         if(s) C.free((s));
     } while(0);
@@ -3197,7 +3202,7 @@ function get_table_objclass(L)
 function find_objtype(L,s,oclass)
 {
     oclass=C.i8(oclass);
-    if(Number(!!(s&&C.i32(C.cell(s,"char").value)))) {
+    if(Number(!!(s&&C.i32(RC0(s))))) {
         let i;
         let objname;
         let class_=C.i8(C.def_char_to_objclass(oclass));
@@ -3280,7 +3285,7 @@ function lspo_object(L)
     /* invis, greased, broken, achievement */
     let quancnt;
     let tmpobj=C.stackAlloc(C.sizes["object"]);
-    let oxAddress=C.stackAlloc(8); C.cell(oxAddress,"long long").value=C.i64(C.i32((-1))); let oyAddress=C.stackAlloc(8); C.cell(oyAddress,"long long").value=C.i64(C.i32((-1)));
+    let oxAddress=C.stackAlloc(8); WC10(oxAddress,C.i64(C.i32((-1)))); let oyAddress=C.stackAlloc(8); WC10(oyAddress,C.i64(C.i32((-1))));
     let argc=C.lua_gettop(L);
     let maybe_contents=0;
     let otmp=0;
@@ -3296,7 +3301,7 @@ function lspo_object(L)
     if(Number(!!(Number(argc==1)&&Number(C.lua_type(L,1)==4)))) {
         let paramstr=(C.luaL_checklstring(L,(1),0));
         if(Number(C.strlen(paramstr)==C.u64(1))) {
-            (W288(tmpobj,C.i16(C.cell(paramstr,"char").value)));
+            (W288(tmpobj,C.i16(RC0(paramstr))));
             (W283(tmpobj,C.i16(C.STRANGE_OBJECT)));
         } else {
             (W288(tmpobj,C.i16(C.i32((-1)))));
@@ -3306,7 +3311,7 @@ function lspo_object(L)
         let paramstr=(C.luaL_checklstring(L,(1),0));
         get_coord(L,2,oxAddress,oyAddress);
         if(Number(C.strlen(paramstr)==C.u64(1))) {
-            (W288(tmpobj,C.i16(C.cell(paramstr,"char").value)));
+            (W288(tmpobj,C.i16(RC0(paramstr))));
             (W283(tmpobj,C.i16(C.STRANGE_OBJECT)));
         } else {
             (W288(tmpobj,C.i16(C.i32((-1)))));
@@ -3314,10 +3319,10 @@ function lspo_object(L)
         }
     } else if(Number(!!(Number(!!(Number(argc==3)&&Number(C.lua_type(L,2)==3)))&&Number(C.lua_type(L,3)==3)))) {
         let paramstr=(C.luaL_checklstring(L,(1),0));
-        (C.cell(oxAddress,"long long").value=C.luaL_checkinteger(L,2));
-        (C.cell(oyAddress,"long long").value=C.luaL_checkinteger(L,3));
+        (WC10(oxAddress,C.luaL_checkinteger(L,2)));
+        (WC10(oyAddress,C.luaL_checkinteger(L,3)));
         if(Number(C.strlen(paramstr)==C.u64(1))) {
-            (W288(tmpobj,C.i16(C.cell(paramstr,"char").value)));
+            (W288(tmpobj,C.i16(RC0(paramstr))));
             (W283(tmpobj,C.i16(C.STRANGE_OBJECT)));
         } else {
             (W288(tmpobj,C.i16(C.i32((-1)))));
@@ -3345,8 +3350,8 @@ function lspo_object(L)
         (W288(tmpobj,C.i16(get_table_objclass(L))));
         (maybe_contents=1);
     }
-    if(Number(!!(Number(C.cell(oxAddress,"long long").value==C.i64(C.i32((-1))))&&Number(C.cell(oyAddress,"long long").value==C.i64(C.i32((-1))))))) (W285(tmpobj,C.i64((16777216n|C.i64((0))))));
- else (W285(tmpobj,C.i64((C.i64(((C.i64(((C.cell(oxAddress,"long long").value)&C.i64(255))))+(C.i64(((C.i64(((C.cell(oyAddress,"long long").value)&C.i64(255))))<<BigInt(16))))))))));
+    if(Number(!!(Number(RC10(oxAddress)==C.i64(C.i32((-1))))&&Number(RC10(oyAddress)==C.i64(C.i32((-1))))))) (W285(tmpobj,C.i64((16777216n|C.i64((0))))));
+ else (W285(tmpobj,C.i64((C.i64(((C.i64(((RC10(oxAddress))&C.i64(255))))+(C.i64(((C.i64(((RC10(oyAddress))&C.i64(255))))<<BigInt(16))))))))));
     if(Number(!!(Number(C.i32(R288(tmpobj))==C.i32((-1)))&&Number(C.i32(R283(tmpobj))>C.STRANGE_OBJECT)))) (W288(tmpobj,C.i16(R276(C.objects+Number(R283(tmpobj))*C.sizes["struct objclass"]))));
  else if(Number(!!(Number(C.i32(R288(tmpobj))>C.i32((-1)))&&Number(C.i32(R283(tmpobj))==C.STRANGE_OBJECT)))) (W283(tmpobj,C.i16(C.i32((-1)))));
     if(Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R283(tmpobj))==C.STATUE)||Number(C.i32(R283(tmpobj))==C.EGG)))||Number(C.i32(R283(tmpobj))==C.CORPSE)))||Number(C.i32(R283(tmpobj))==C.TIN)))||Number(C.i32(R283(tmpobj))==C.FIGURINE)))) {
@@ -3362,8 +3367,8 @@ function lspo_object(L)
                 (W282(tmpobj,C.NON_PM));
                 (W284(tmpobj,C.i16((Number(!(C.strncmpi((montype),(C.literal("spinach")),C.i32((-1)))))?1:0))));
                 (nonpmobj=(C.i8(1)));
-            } else if(Number(!!(Number(C.strlen(montype)==C.u64(1))&&Number(C.def_char_to_monclass(C.cell(montype,"char").value)!=C.MAXMCLASSES)))) {
-                (pm=C.mkclass(C.i8(C.def_char_to_monclass(C.cell(montype,"char").value)),C.i32((512|32768))));
+            } else if(Number(!!(Number(C.strlen(montype)==C.u64(1))&&Number(C.def_char_to_monclass(RC0(montype))!=C.MAXMCLASSES)))) {
+                (pm=C.mkclass(C.i8(C.def_char_to_monclass(RC0(montype))),C.i32((512|32768))));
             } else {
                 for((i=C.LOW_PM);Number(i<C.NUMMONS);(()=>{const old=i;const next=C.i32((old+1));i=next;return old;})()) if(Number(!!(Number(!!(Number(!(C.strncmpi((C.cell((A303(C.mons+Number(i)*C.sizes["struct permonst"])+Number(C.NEUTRAL)*8),"char *").value),(montype),C.i32((-1)))))||(Number(!!(Number(C.cell((A303(C.mons+Number(i)*C.sizes["struct permonst"])+Number(C.MALE)*8),"char *").value!=0)&&Number(!(C.strncmpi((C.cell((A303(C.mons+Number(i)*C.sizes["struct permonst"])+Number(C.MALE)*8),"char *").value),(montype),C.i32((-1))))))))))||(Number(!!(Number(C.cell((A303(C.mons+Number(i)*C.sizes["struct permonst"])+Number(C.FEMALE)*8),"char *").value!=0)&&Number(!(C.strncmpi((C.cell((A303(C.mons+Number(i)*C.sizes["struct permonst"])+Number(C.FEMALE)*8),"char *").value),(montype),C.i32((-1))))))))))) {
                     (pm=(C.mons+Number(i)*C.sizes["struct permonst"]));
@@ -3389,7 +3394,7 @@ function lspo_object(L)
         }
     }
     (quancnt=C.i64(((Number(C.i32(R283(tmpobj))>C.STRANGE_OBJECT))?R291(tmpobj):0)));
-    if(C.cell(C.container_idx,"int").value) (()=>{const slot=C.field(tmpobj,"object","containment");const old=slot.value;const next=C.i16(C.i32(C.i32(old)|1));slot.value=next;return next;})();
+    if(RC5(C.container_idx)) (()=>{const slot=C.field(tmpobj,"object","containment");const old=slot.value;const next=C.i16(C.i32(C.i32(old)|1));slot.value=next;return next;})();
     if(maybe_contents) {
         C.lua_getfield(L,1,C.literal("contents"));
         if(Number(!((Number(C.lua_type(L,(C.i32((-1))))==0))))) (()=>{const slot=C.field(tmpobj,"object","containment");const old=slot.value;const next=C.i16(C.i32(C.i32(old)|2));slot.value=next;return next;})();
@@ -3431,7 +3436,7 @@ function lspo_level_flags(L)
  else if(Number(!(C.strncmpi((s),(C.literal("mazelevel")),C.i32((-1)))))) (W153(A45(A102(C.svl)),C.u32(1)));
  else if(Number(!(C.strncmpi((s),(C.literal("shroud")),C.i32((-1)))))) (W149(A45(A102(C.svl)),C.u32(1)));
  else if(Number(!(C.strncmpi((s),(C.literal("graveyard")),C.i32((-1)))))) (W151(A45(A102(C.svl)),C.u32(1)));
- else if(Number(!(C.strncmpi((s),(C.literal("icedpools")),C.i32((-1)))))) (C.cell(C.icedpools,"signed char").value=C.i8(1));
+ else if(Number(!(C.strncmpi((s),(C.literal("icedpools")),C.i32((-1)))))) (WC1(C.icedpools,C.i8(1)));
  else if(Number(!(C.strncmpi((s),(C.literal("corrmaze")),C.i32((-1)))))) (W155(A45(A102(C.svl)),C.u32(1)));
  else if(Number(!(C.strncmpi((s),(C.literal("premapped")),C.i32((-1)))))) (W328(R78(C.gc),1));
  else if(Number(!(C.strncmpi((s),(C.literal("solidify")),C.i32((-1)))))) (W329(R78(C.gc),C.i8(1)));
@@ -3471,8 +3476,8 @@ function lspo_level_init(L)
     let init_lev=C.stackAlloc(C.sizes["lev_init"]);
     create_des_coder();
     C.lcheck_param_table(L);
-    (C.cell(C.splev_init_present,"signed char").value=(C.i8(1)));
-    (W118(init_lev,C.i16(C.cell((initstyles2i+Number(C.get_table_option(L,C.literal("style"),C.literal("solidfill"),initstyles))*4),"int").value)));
+    (WC1(C.splev_init_present,C.i8(1)));
+    (W118(init_lev,C.i16(RC5(initstyles2i+Number(C.get_table_option(L,C.literal("style"),C.literal("solidfill"),initstyles))*4))));
     (W120(init_lev,C.i8(C.get_table_mapchr_opt(L,C.literal("fg"),C.i8(C.ROOM)))));
     (W121(init_lev,C.i8(C.get_table_mapchr_opt(L,C.literal("bg"),C.i8(C.INVALID_TYPE)))));
     (W122(init_lev,C.i8(C.get_table_boolean_opt(L,C.literal("smoothed"),C.i32((C.i8(0)))))));
@@ -3502,7 +3507,7 @@ function lspo_engraving(L)
     let etyp=1;
     let txt=0;
     let ecoord;
-    let xAddress=C.stackAlloc(2); C.cell(xAddress,"short").value=C.i16(C.i32((-1))); let yAddress=C.stackAlloc(2); C.cell(yAddress,"short").value=C.i16(C.i32((-1)));
+    let xAddress=C.stackAlloc(2); WC3(xAddress,C.i16(C.i32((-1)))); let yAddress=C.stackAlloc(2); WC3(yAddress,C.i16(C.i32((-1))));
     let argc=C.lua_gettop(L);
     let guardobjs=(C.i8(0));
     let wipeout=(C.i8(1));
@@ -3512,30 +3517,30 @@ function lspo_engraving(L)
         let exAddress=C.stackAlloc(8); let eyAddress=C.stackAlloc(8);
         C.lcheck_param_table(L);
         get_table_xy_or_coord(L,exAddress,eyAddress);
-        (C.cell(xAddress,"short").value=C.i16(C.cell(exAddress,"long long").value));
-        (C.cell(yAddress,"short").value=C.i16(C.cell(eyAddress,"long long").value));
-        (etyp=C.cell((engrtypes2i+Number(C.get_table_option(L,C.literal("type"),C.literal("engrave"),engrtypes))*4),"int").value);
+        (WC3(xAddress,C.i16(RC10(exAddress))));
+        (WC3(yAddress,C.i16(RC10(eyAddress))));
+        (etyp=RC5(engrtypes2i+Number(C.get_table_option(L,C.literal("type"),C.literal("engrave"),engrtypes))*4));
         (txt=C.get_table_str(L,C.literal("text")));
         (wipeout=C.i8(C.get_table_boolean_opt(L,C.literal("degrade"),C.i32((C.i8(1))))));
         (guardobjs=C.i8(C.get_table_boolean_opt(L,C.literal("guardobjects"),C.i32((C.i8(0))))));
     } else if(Number(argc==3)) {
         let exAddress=C.stackAlloc(8); let eyAddress=C.stackAlloc(8);
         get_coord(L,1,exAddress,eyAddress);
-        (C.cell(xAddress,"short").value=C.i16(C.cell(exAddress,"long long").value));
-        (C.cell(yAddress,"short").value=C.i16(C.cell(eyAddress,"long long").value));
-        (etyp=C.cell((engrtypes2i+Number(C.luaL_checkoption(L,2,C.literal("engrave"),engrtypes))*4),"int").value);
+        (WC3(xAddress,C.i16(RC10(exAddress))));
+        (WC3(yAddress,C.i16(RC10(eyAddress))));
+        (etyp=RC5(engrtypes2i+Number(C.luaL_checkoption(L,2,C.literal("engrave"),engrtypes))*4));
         (txt=C.dupstr((C.luaL_checklstring(L,(3),0))));
     } else {
         C.nhl_error(L,C.literal("Wrong parameters"));
     }
-    if(Number(!!(Number(C.i32(C.cell(xAddress,"short").value)==C.i32((-1)))&&Number(C.i32(C.cell(yAddress,"short").value)==C.i32((-1)))))) (ecoord=(C.i64((16777216n|C.i64((0))))));
- else (ecoord=C.i64((C.i32(((C.i32((C.i32((C.cell(xAddress,"short").value))&255)))+(C.i32(((C.i32((C.i32((C.cell(yAddress,"short").value))&255)))<<16))))))));
+    if(Number(!!(Number(C.i32(RC3(xAddress))==C.i32((-1)))&&Number(C.i32(RC3(yAddress))==C.i32((-1)))))) (ecoord=(C.i64((16777216n|C.i64((0))))));
+ else (ecoord=C.i64((C.i32(((C.i32((C.i32((RC3(xAddress)))&255)))+(C.i32(((C.i32((C.i32((RC3(yAddress)))&255)))<<16))))))));
     get_location_coord(xAddress,yAddress,1,R330(R78(C.gc)),ecoord);
-    C.make_engr_at(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,txt,0,0n,etyp);
+    C.make_engr_at(RC3(xAddress),RC3(yAddress),txt,0,0n,etyp);
     do {
         if(txt) C.free((txt));
     } while(0);
-    (ep=C.engr_at(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value));
+    (ep=C.engr_at(RC3(xAddress),RC3(yAddress)));
     if(ep) {
         (W57(ep,C.u32(guardobjs)));
         (W58(ep,C.u32(Number(!(wipeout)))));
@@ -3575,7 +3580,7 @@ function get_table_roomtype_opt(L,name,defval)
     defval=C.i32(defval);
     let roomstr=C.get_table_str_opt(L,name,C.emptystr);
     let i; let res=defval;
-    if(Number(!!(roomstr&&C.i32(C.cell(roomstr,"char").value)))) {
+    if(Number(!!(roomstr&&C.i32(RC0(roomstr))))) {
         for((i=0);R349(C.room_types+Number(i)*C.sizes["sp_lev_room_type"]);(()=>{const old=i;const next=C.i32((old+1));i=next;return old;})()) if(Number(!(C.strncmpi((roomstr),(R349(C.room_types+Number(i)*C.sizes["sp_lev_room_type"])),C.i32((-1)))))) {
             (res=R350(C.room_types+Number(i)*C.sizes["sp_lev_room_type"]));
             break;
@@ -3612,26 +3617,26 @@ function lspo_room(L)
         let tmpcr;
         let rxAddress=C.stackAlloc(8); let ryAddress=C.stackAlloc(8);
         get_table_xy_or_coord(L,rxAddress,ryAddress);
-        ((W6(tmproom,C.i16(C.cell(rxAddress,"long long").value))),(W7(tmproom,C.i16(C.cell(ryAddress,"long long").value))));
+        ((W6(tmproom,C.i16(RC10(rxAddress)))),(W7(tmproom,C.i16(RC10(ryAddress)))));
         if(Number(!!((Number(!!(Number(C.i32(R6(tmproom))==C.i32((-1)))||Number(C.i32(R7(tmproom))==C.i32((-1))))))&&Number(C.i32(R6(tmproom))!=C.i32(R7(tmproom)))))) C.nhl_error(L,C.literal("Room must have both x and y"));
         (W8(tmproom,C.i16(C.get_table_int_opt(L,C.literal("w"),C.i32((-1))))));
         (W9(tmproom,C.i16(C.get_table_int_opt(L,C.literal("h"),C.i32((-1))))));
         if(Number(!!((Number(!!(Number(C.i32(R8(tmproom))==C.i32((-1)))||Number(C.i32(R9(tmproom))==C.i32((-1))))))&&Number(C.i32(R8(tmproom))!=C.i32(R9(tmproom)))))) C.nhl_error(L,C.literal("Room must have both w and h"));
-        (W10(tmproom,C.i16(C.cell((l_or_r2i+Number(C.get_table_option(L,C.literal("xalign"),C.literal("random"),left_or_right))*4),"int").value)));
-        (W11(tmproom,C.i16(C.cell((t_or_b2i+Number(C.get_table_option(L,C.literal("yalign"),C.literal("random"),top_or_bot))*4),"int").value)));
+        (W10(tmproom,C.i16(RC5(l_or_r2i+Number(C.get_table_option(L,C.literal("xalign"),C.literal("random"),left_or_right))*4))));
+        (W11(tmproom,C.i16(RC5(t_or_b2i+Number(C.get_table_option(L,C.literal("yalign"),C.literal("random"),top_or_bot))*4))));
         (W12(tmproom,C.i16(get_table_roomtype_opt(L,C.literal("type"),C.OROOM))));
         (W13(tmproom,C.i16(C.get_table_int_opt(L,C.literal("chance"),100))));
         (W14(tmproom,C.i16(C.get_table_int_opt(L,C.literal("lit"),C.i32((-1))))));
         /* theme rooms default to unfilled */
         (W15(tmproom,C.i16(C.get_table_int_opt(L,C.literal("filled"),(C.i32(R82(C.gi))?0:1)))));
         (W16(tmproom,C.i8(C.get_table_boolean_opt(L,C.literal("joined"),C.i32((C.i8(1)))))));
-        if(Number(!(C.cell((A333(R78(C.gc))+Number(C.i32((R334(R78(C.gc))-1)))*1),"signed char").value))) {
+        if(Number(!(RC1(A333(R78(C.gc))+Number(C.i32((R334(R78(C.gc))-1)))*1)))) {
             (tmpcr=build_room(tmproom,R330(R78(C.gc))));
             if(tmpcr) {
                 let n=R334(R78(C.gc));
                 (C.cell((A332(R78(C.gc))+Number(n)*8),"struct mkroom *").value=tmpcr);
                 /* TRUE to get here... */
-                (C.cell((A333(R78(C.gc))+Number(n)*1),"signed char").value=(C.i8(0)));
+                (WC1(A333(R78(C.gc))+Number(n)*1,C.i8(0)));
                 /* added a subroom, make parent room irregular */
                 if(C.cell((A332(R78(C.gc))+Number(C.i32((n-1)))*8),"struct mkroom *").value) (W179(C.cell((A332(R78(C.gc))+Number(C.i32((n-1)))*8),"struct mkroom *").value,C.i8(1)));
                 (()=>{const slot=C.field(R78(C.gc),"sp_coder","n_subroom");const old=slot.value;const next=C.i32((old+1));slot.value=next;return old;})();
@@ -3651,7 +3656,7 @@ function lspo_room(L)
         /* failed to create parent room, so fail this too */
     }
     (C.cell((A332(R78(C.gc))+Number(R334(R78(C.gc)))*8),"struct mkroom *").value=0);
-    (C.cell((A333(R78(C.gc))+Number(R334(R78(C.gc)))*1),"signed char").value=(C.i8(1)));
+    (WC1(A333(R78(C.gc))+Number(R334(R78(C.gc)))*1,C.i8(1)));
     (()=>{const slot=C.field(R78(C.gc),"sp_coder","n_subroom");const old=slot.value;const next=C.i32((old+1));slot.value=next;return old;})();
     update_croom();
     spo_endroom(R78(C.gc));
@@ -3665,7 +3670,7 @@ function spo_endroom(coder)
     if(Number(R334(R78(C.gc))>1)) {
         (()=>{const slot=C.field(R78(C.gc),"sp_coder","n_subroom");const old=slot.value;const next=C.i32((old-1));slot.value=next;return old;})();
         (C.cell((A332(R78(C.gc))+Number(R334(R78(C.gc)))*8),"struct mkroom *").value=0);
-        (C.cell((A333(R78(C.gc))+Number(R334(R78(C.gc)))*1),"signed char").value=(C.i8(1)));
+        (WC1(A333(R78(C.gc))+Number(R334(R78(C.gc)))*1,C.i8(1)));
     } else {
         /* no subroom, get out of top-level room */
         /* Need to ensure xstart/ystart/xsize/ysize have something sensible,
@@ -3694,7 +3699,7 @@ function l_create_stairway(L,using_ladder)
     const stairdirs=C.staticData("l_create_stairway","stairdirs",()=>[C.literal("down"),C.literal("up"),0]);
     const stairdirs2i=C.staticData("l_create_stairway","stairdirs2i",()=>[0,1]);
     let argc=C.lua_gettop(L);
-    let xAddress=C.stackAlloc(2); C.cell(xAddress,"short").value=C.i16(C.i32((-1))); let yAddress=C.stackAlloc(2); C.cell(yAddress,"short").value=C.i16(C.i32((-1)));
+    let xAddress=C.stackAlloc(2); WC3(xAddress,C.i16(C.i32((-1)))); let yAddress=C.stackAlloc(2); WC3(yAddress,C.i16(C.i32((-1))));
     let badtrap;
     let scoord;
     let up=0;
@@ -3702,47 +3707,47 @@ function l_create_stairway(L,using_ladder)
     let ltype=C.lua_type(L,1);
     create_des_coder();
     if(Number(!!(Number(argc==1)&&Number(ltype==5)))) {
-        let axAddress=C.stackAlloc(8); C.cell(axAddress,"long long").value=C.i64(C.i32((-1))); let ayAddress=C.stackAlloc(8); C.cell(ayAddress,"long long").value=C.i64(C.i32((-1)));
+        let axAddress=C.stackAlloc(8); WC10(axAddress,C.i64(C.i32((-1)))); let ayAddress=C.stackAlloc(8); WC10(ayAddress,C.i64(C.i32((-1))));
         C.lcheck_param_table(L);
         get_table_xy_or_coord(L,axAddress,ayAddress);
-        (up=C.cell((stairdirs2i+Number(C.get_table_option(L,C.literal("dir"),C.literal("down"),stairdirs))*4),"int").value);
-        (C.cell(xAddress,"short").value=C.i16(C.cell(axAddress,"long long").value));
-        (C.cell(yAddress,"short").value=C.i16(C.cell(ayAddress,"long long").value));
+        (up=RC5(stairdirs2i+Number(C.get_table_option(L,C.literal("dir"),C.literal("down"),stairdirs))*4));
+        (WC3(xAddress,C.i16(RC10(axAddress))));
+        (WC3(yAddress,C.i16(RC10(ayAddress))));
     } else {
-        let ixAddress=C.stackAlloc(8); C.cell(ixAddress,"long long").value=C.i64(C.i32((-1))); let iyAddress=C.stackAlloc(8); C.cell(iyAddress,"long long").value=C.i64(C.i32((-1)));
+        let ixAddress=C.stackAlloc(8); WC10(ixAddress,C.i64(C.i32((-1)))); let iyAddress=C.stackAlloc(8); WC10(iyAddress,C.i64(C.i32((-1))));
         if(Number(!!(Number(argc>0)&&Number(ltype==4)))) {
-            (up=C.cell((stairdirs2i+Number(C.luaL_checkoption(L,1,C.literal("down"),stairdirs))*4),"int").value);
+            (up=RC5(stairdirs2i+Number(C.luaL_checkoption(L,1,C.literal("down"),stairdirs))*4));
             ((C.lua_rotate(L,(1),C.i32((-1))),C.lua_settop(L,C.i32((C.i32((-(1)))-1)))));
         }
         C.nhl_get_xy_params(L,ixAddress,iyAddress);
-        (C.cell(xAddress,"short").value=C.i16(C.cell(ixAddress,"long long").value));
-        (C.cell(yAddress,"short").value=C.i16(C.cell(iyAddress,"long long").value));
+        (WC3(xAddress,C.i16(RC10(ixAddress))));
+        (WC3(yAddress,C.i16(RC10(iyAddress))));
     }
-    if(Number(!!(Number(C.i32(C.cell(xAddress,"short").value)==C.i32((-1)))&&Number(C.i32(C.cell(yAddress,"short").value)==C.i32((-1)))))) {
+    if(Number(!!(Number(C.i32(RC3(xAddress))==C.i32((-1)))&&Number(C.i32(RC3(yAddress))==C.i32((-1)))))) {
         set_ok_location_func(C.functionPointer("good_stair_loc"));
         (scoord=(C.i64((16777216n|C.i64((0))))));
-    } else (scoord=C.i64((C.i32(((C.i32((C.i32((C.cell(xAddress,"short").value))&255)))+(C.i32(((C.i32((C.i32((C.cell(yAddress,"short").value))&255)))<<16))))))));
+    } else (scoord=C.i64((C.i32(((C.i32((C.i32((RC3(xAddress)))&255)))+(C.i32(((C.i32((C.i32((RC3(yAddress)))&255)))<<16))))))));
     get_location_coord(xAddress,yAddress,1,R330(R78(C.gc)),scoord);
     set_ok_location_func(0);
-    if(Number(((badtrap=C.t_at(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value)))!=0)) C.deltrap(badtrap);
-    (C.cell(((C.SpLev_Map+Number(C.cell(xAddress,"short").value)*(1*21))+Number(C.cell(yAddress,"short").value)*1),"char").value=C.i8(1));
+    if(Number(((badtrap=C.t_at(RC3(xAddress),RC3(yAddress))))!=0)) C.deltrap(badtrap);
+    (WC0((C.SpLev_Map+Number(RC3(xAddress))*(1*21))+Number(RC3(yAddress))*1,C.i8(1)));
     if(using_ladder) {
-        (W317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"],C.i8(C.LADDER)));
+        (W317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"],C.i8(C.LADDER)));
         if(up) {
             let dest=C.stackAlloc(C.sizes["struct d_level"]);
             (W31(dest,R31(A383(C.u))));
             (W32(dest,C.i16(C.i32((C.i32(R32(A383(C.u)))-1)))));
-            C.stairway_add(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,(C.i8(1)),(C.i8(1)),dest);
-            (W319((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"],C.u32(1)));
+            C.stairway_add(RC3(xAddress),RC3(yAddress),(C.i8(1)),(C.i8(1)),dest);
+            (W319((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"],C.u32(1)));
         } else {
             let dest=C.stackAlloc(C.sizes["struct d_level"]);
             (W31(dest,R31(A383(C.u))));
             (W32(dest,C.i16(C.i32((C.i32(R32(A383(C.u)))+1)))));
-            C.stairway_add(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,(C.i8(0)),(C.i8(1)),dest);
-            (W319((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"],C.u32(2)));
+            C.stairway_add(RC3(xAddress),RC3(yAddress),(C.i8(0)),(C.i8(1)),dest);
+            (W319((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"],C.u32(2)));
         }
     } else {
-        C.mkstairs(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,C.i8(up),R330(R78(C.gc)),C.i8(Number(!((C.i64((scoord&16777216n)))))));
+        C.mkstairs(RC3(xAddress),RC3(yAddress),C.i8(up),R330(R78(C.gc)),C.i8(Number(!((C.i64((scoord&16777216n)))))));
     }
     return 0;
     } finally {C.stackRestore(stackFrame); }
@@ -3784,21 +3789,21 @@ function lspo_grave(L)
     let txt;
     create_des_coder();
     if(Number(argc==3)) {
-        (C.cell(xAddress,"short").value=C.i16((C.cell(axAddress,"long long").value=C.luaL_checkinteger(L,1))));
-        (C.cell(yAddress,"short").value=C.i16((C.cell(ayAddress,"long long").value=C.luaL_checkinteger(L,2))));
+        (WC3(xAddress,C.i16((WC10(axAddress,C.luaL_checkinteger(L,1))))));
+        (WC3(yAddress,C.i16((WC10(ayAddress,C.luaL_checkinteger(L,2))))));
         (txt=C.dupstr((C.luaL_checklstring(L,(3),0))));
     } else {
         C.lcheck_param_table(L);
         get_table_xy_or_coord(L,axAddress,ayAddress);
-        ((C.cell(xAddress,"short").value=C.i16(C.cell(axAddress,"long long").value)),(C.cell(yAddress,"short").value=C.i16(C.cell(ayAddress,"long long").value)));
+        ((WC3(xAddress,C.i16(RC10(axAddress)))),(WC3(yAddress,C.i16(RC10(ayAddress)))));
         (txt=C.get_table_str_opt(L,C.literal("text"),0));
     }
-    if(Number(!!(Number(C.i32(C.cell(xAddress,"short").value)==C.i32((-1)))&&Number(C.i32(C.cell(yAddress,"short").value)==C.i32((-1)))))) (scoord=(C.i64((16777216n|C.i64((0))))));
- else (scoord=C.i64((C.i64(((C.i64(((C.cell(axAddress,"long long").value)&C.i64(255))))+(C.i64(((C.i64(((C.cell(ayAddress,"long long").value)&C.i64(255))))<<BigInt(16)))))))));
+    if(Number(!!(Number(C.i32(RC3(xAddress))==C.i32((-1)))&&Number(C.i32(RC3(yAddress))==C.i32((-1)))))) (scoord=(C.i64((16777216n|C.i64((0))))));
+ else (scoord=C.i64((C.i64(((C.i64(((RC10(axAddress))&C.i64(255))))+(C.i64(((C.i64(((RC10(ayAddress))&C.i64(255))))<<BigInt(16)))))))));
     get_location_coord(xAddress,yAddress,1,R330(R78(C.gc)),scoord);
-    if(Number(!!(C.isok(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value)&&Number(!(C.t_at(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value)))))) {
-        (W317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"],C.i8(C.GRAVE)));
-        C.make_grave(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,txt);
+    if(Number(!!(C.isok(RC3(xAddress),RC3(yAddress))&&Number(!(C.t_at(RC3(xAddress),RC3(yAddress))))))) {
+        (W317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"],C.i8(C.GRAVE)));
+        C.make_grave(RC3(xAddress),RC3(yAddress),txt);
         /* note: 'txt' might be Null */
     }
     do {
@@ -3825,9 +3830,9 @@ function lspo_altar(L)
     C.lcheck_param_table(L);
     get_table_xy_or_coord(L,xAddress,yAddress);
     (al=get_table_align(L));
-    (shrine=C.cell((shrines2i+Number(C.get_table_option(L,C.literal("type"),C.literal("altar"),shrines))*4),"int").value);
-    if(Number(!!(Number(C.cell(xAddress,"long long").value==C.i64(C.i32((-1))))&&Number(C.cell(yAddress,"long long").value==C.i64(C.i32((-1))))))) (acoord=(C.i64((16777216n|C.i64((0))))));
- else (acoord=C.i64((C.i64(((C.i64(((C.cell(xAddress,"long long").value)&C.i64(255))))+(C.i64(((C.i64(((C.cell(yAddress,"long long").value)&C.i64(255))))<<BigInt(16)))))))));
+    (shrine=RC5(shrines2i+Number(C.get_table_option(L,C.literal("type"),C.literal("altar"),shrines))*4));
+    if(Number(!!(Number(RC10(xAddress)==C.i64(C.i32((-1))))&&Number(RC10(yAddress)==C.i64(C.i32((-1))))))) (acoord=(C.i64((16777216n|C.i64((0))))));
+ else (acoord=C.i64((C.i64(((C.i64(((RC10(xAddress))&C.i64(255))))+(C.i64(((C.i64(((RC10(yAddress))&C.i64(255))))<<BigInt(16)))))))));
     (W21(tmpaltar,acoord));
     (W22(tmpaltar,C.u32(al)));
     (W23(tmpaltar,C.i16(shrine)));
@@ -3842,7 +3847,7 @@ function get_table_traptype_opt(L,name,defval)
     defval=C.i32(defval);
     let trapstr=C.get_table_str_opt(L,name,C.emptystr);
     let i; let res=defval;
-    if(Number(!!(trapstr&&C.i32(C.cell(trapstr,"char").value)))) {
+    if(Number(!!(trapstr&&C.i32(RC0(trapstr))))) {
         for((i=0);R351(C.trap_types+Number(i)*C.sizes["sp_lev_trap_type"]);(()=>{const old=i;const next=C.i32((old+1));i=next;return old;})()) if(Number(!(C.strncmpi((trapstr),(R351(C.trap_types+Number(i)*C.sizes["sp_lev_trap_type"])),C.i32((-1)))))) {
             (res=R352(C.trap_types+Number(i)*C.sizes["sp_lev_trap_type"]));
             break;
@@ -3892,7 +3897,7 @@ function lspo_trap(L)
     if(Number(!!(Number(argc==1)&&Number(C.lua_type(L,1)==4)))) {
         let trapstr=(C.luaL_checklstring(L,(1),0));
         (W354(tmptrap,C.i16(get_traptype_byname(trapstr))));
-        (C.cell(xAddress,"long long").value=(C.cell(yAddress,"long long").value=C.i64(C.i32((-1)))));
+        (WC10(xAddress,WC10(yAddress,C.i64(C.i32((-1))))));
     } else if(Number(!!(Number(!!(Number(argc==2)&&Number(C.lua_type(L,1)==4)))&&Number(C.lua_type(L,2)==5)))) {
         let trapstr=(C.luaL_checklstring(L,(1),0));
         (W354(tmptrap,C.i16(get_traptype_byname(trapstr))));
@@ -3900,8 +3905,8 @@ function lspo_trap(L)
     } else if(Number(argc==3)) {
         let trapstr=(C.luaL_checklstring(L,(1),0));
         (W354(tmptrap,C.i16(get_traptype_byname(trapstr))));
-        (C.cell(xAddress,"long long").value=C.luaL_checkinteger(L,2));
-        (C.cell(yAddress,"long long").value=C.luaL_checkinteger(L,3));
+        (WC10(xAddress,C.luaL_checkinteger(L,2)));
+        (WC10(yAddress,C.luaL_checkinteger(L,3)));
     } else {
         C.lcheck_param_table(L);
         get_table_xy_or_coord(L,xAddress,yAddress);
@@ -3911,24 +3916,24 @@ function lspo_trap(L)
         (W357(tmptrap,C.i8(Number(!(C.get_table_boolean_opt(L,C.literal("victim"),C.i32((C.i8(1)))))))));
         C.lua_getfield(L,C.i32((-1)),C.literal("launchfrom"));
         if(Number(C.lua_type(L,C.i32((-1)))==5)) {
-            let lxAddress=C.stackAlloc(8); C.cell(lxAddress,"long long").value=C.i64(C.i32((-1))); let lyAddress=C.stackAlloc(8); C.cell(lyAddress,"long long").value=C.i64(C.i32((-1)));
+            let lxAddress=C.stackAlloc(8); WC10(lxAddress,C.i64(C.i32((-1)))); let lyAddress=C.stackAlloc(8); WC10(lyAddress,C.i64(C.i32((-1))));
             get_coord(L,C.i32((-1)),lxAddress,lyAddress);
             C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
-            (W116(A85(C.gl),C.i16(C.cell(lxAddress,"long long").value)));
-            (W117(A85(C.gl),C.i16(C.cell(lyAddress,"long long").value)));
+            (W116(A85(C.gl),C.i16(RC10(lxAddress))));
+            (W117(A85(C.gl),C.i16(RC10(lyAddress))));
         } else C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
         C.lua_getfield(L,C.i32((-1)),C.literal("teledest"));
         if(Number(C.lua_type(L,C.i32((-1)))==5)) {
-            let lxAddress=C.stackAlloc(8); C.cell(lxAddress,"long long").value=C.i64(C.i32((-1))); let lyAddress=C.stackAlloc(8); C.cell(lyAddress,"long long").value=C.i64(C.i32((-1)));
+            let lxAddress=C.stackAlloc(8); WC10(lxAddress,C.i64(C.i32((-1)))); let lyAddress=C.stackAlloc(8); WC10(lyAddress,C.i64(C.i32((-1))));
             get_coord(L,C.i32((-1)),lxAddress,lyAddress);
             C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
-            (W116(A85(C.gl),C.i16(C.cell(lxAddress,"long long").value)));
-            (W117(A85(C.gl),C.i16(C.cell(lyAddress,"long long").value)));
+            (W116(A85(C.gl),C.i16(RC10(lxAddress))));
+            (W117(A85(C.gl),C.i16(RC10(lyAddress))));
         } else C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
     }
     if(Number(C.i32(R354(tmptrap))==C.NO_TRAP)) C.nhl_error(L,C.literal("Unknown trap type"));
-    if(Number(!!(Number(C.cell(xAddress,"long long").value==C.i64(C.i32((-1))))&&Number(C.cell(yAddress,"long long").value==C.i64(C.i32((-1))))))) (W353(tmptrap,C.i64((16777216n|C.i64((0))))));
- else (W353(tmptrap,C.i64((C.i64(((C.i64(((C.cell(xAddress,"long long").value)&C.i64(255))))+(C.i64(((C.i64(((C.cell(yAddress,"long long").value)&C.i64(255))))<<BigInt(16))))))))));
+    if(Number(!!(Number(RC10(xAddress)==C.i64(C.i32((-1))))&&Number(RC10(yAddress)==C.i64(C.i32((-1))))))) (W353(tmptrap,C.i64((16777216n|C.i64((0))))));
+ else (W353(tmptrap,C.i64((C.i64(((C.i64(((RC10(xAddress))&C.i64(255))))+(C.i64(((C.i64(((RC10(yAddress))&C.i64(255))))<<BigInt(16))))))))));
     create_trap(tmptrap,R330(R78(C.gc)));
     (W116(A85(C.gl),W117(A85(C.gl),C.i16(0))));
     return 0;
@@ -3952,28 +3957,28 @@ function lspo_gold(L)
     create_des_coder();
     if(Number(argc==3)) {
         (amount=C.i64(C.luaL_checkinteger(L,1)));
-        (C.cell(xAddress,"short").value=C.i16((C.cell(gldxAddress,"long long").value=C.luaL_checkinteger(L,2))));
-        (C.cell(yAddress,"short").value=C.i16((C.cell(gldyAddress,"long long").value=C.luaL_checkinteger(L,3))));
+        (WC3(xAddress,C.i16((WC10(gldxAddress,C.luaL_checkinteger(L,2))))));
+        (WC3(yAddress,C.i16((WC10(gldyAddress,C.luaL_checkinteger(L,3))))));
     } else if(Number(!!(Number(argc==2)&&Number(C.lua_type(L,2)==5)))) {
         (amount=C.i64(C.luaL_checkinteger(L,1)));
         get_coord(L,2,gldxAddress,gldyAddress);
-        (C.cell(xAddress,"short").value=C.i16(C.cell(gldxAddress,"long long").value));
-        (C.cell(yAddress,"short").value=C.i16(C.cell(gldyAddress,"long long").value));
+        (WC3(xAddress,C.i16(RC10(gldxAddress))));
+        (WC3(yAddress,C.i16(RC10(gldyAddress))));
     } else if(Number(!!(Number(argc==0)||(Number(!!(Number(argc==1)&&Number(C.lua_type(L,1)==5))))))) {
         C.lcheck_param_table(L);
         (amount=C.i64(C.get_table_int_opt(L,C.literal("amount"),C.i32((-1)))));
         get_table_xy_or_coord(L,gldxAddress,gldyAddress);
-        ((C.cell(xAddress,"short").value=C.i16(C.cell(gldxAddress,"long long").value)),(C.cell(yAddress,"short").value=C.i16(C.cell(gldyAddress,"long long").value)));
+        ((WC3(xAddress,C.i16(RC10(gldxAddress)))),(WC3(yAddress,C.i16(RC10(gldyAddress)))));
     } else {
         C.nhl_error(L,C.literal("Wrong parameters"));
         /*NOTREACHED*/
         return 0;
     }
-    if(Number(!!(Number(C.i32(C.cell(xAddress,"short").value)==C.i32((-1)))&&Number(C.i32(C.cell(yAddress,"short").value)==C.i32((-1)))))) (gcoord=(C.i64((16777216n|C.i64((0))))));
- else (gcoord=C.i64((C.i64(((C.i64(((C.cell(gldxAddress,"long long").value)&C.i64(255))))+(C.i64(((C.i64(((C.cell(gldyAddress,"long long").value)&C.i64(255))))<<BigInt(16)))))))));
+    if(Number(!!(Number(C.i32(RC3(xAddress))==C.i32((-1)))&&Number(C.i32(RC3(yAddress))==C.i32((-1)))))) (gcoord=(C.i64((16777216n|C.i64((0))))));
+ else (gcoord=C.i64((C.i64(((C.i64(((RC10(gldxAddress))&C.i64(255))))+(C.i64(((C.i64(((RC10(gldyAddress))&C.i64(255))))<<BigInt(16)))))))));
     get_location_coord(xAddress,yAddress,1,R330(R78(C.gc)),gcoord);
     if(Number(amount<C.i64(0))) (amount=C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",4518,"lspo_gold"),C.rnd(200))):C.rnd(200)))));
-    C.mkgold(amount,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value);
+    C.mkgold(amount,RC3(xAddress),RC3(yAddress));
     return 0;
     } finally {C.stackRestore(stackFrame); }
 }
@@ -3991,10 +3996,10 @@ function lspo_corridor(L)
     C.lcheck_param_table(L);
     (W338(A29(tc),C.i16(C.get_table_int(L,C.literal("srcroom")))));
     (W340(A29(tc),C.i16(C.get_table_int(L,C.literal("srcdoor")))));
-    (W339(A29(tc),C.i16(C.cell((walldirs2i+Number(C.get_table_option(L,C.literal("srcwall"),C.literal("all"),walldirs))*4),"int").value)));
+    (W339(A29(tc),C.i16(RC5(walldirs2i+Number(C.get_table_option(L,C.literal("srcwall"),C.literal("all"),walldirs))*4))));
     (W338(A30(tc),C.i16(C.get_table_int(L,C.literal("destroom")))));
     (W340(A30(tc),C.i16(C.get_table_int(L,C.literal("destdoor")))));
-    (W339(A30(tc),C.i16(C.cell((walldirs2i+Number(C.get_table_option(L,C.literal("destwall"),C.literal("all"),walldirs))*4),"int").value)));
+    (W339(A30(tc),C.i16(RC5(walldirs2i+Number(C.get_table_option(L,C.literal("destwall"),C.literal("all"),walldirs))*4))));
     create_corridor(tc);
     return 0;
     } finally {C.stackRestore(stackFrame); }
@@ -4022,7 +4027,7 @@ function lspo_random_corridors(L)
 function random_wdir()
 {
     const wdirs=C.staticData("random_wdir","wdirs",()=>[C.i16(1),C.i16(2),C.i16(4),C.i16(8)]);
-    return C.cell((wdirs+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",4581,"random_wdir"),C.rn2(4))):C.rn2(4))))*2),"short").value;
+    return RC3(wdirs+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",4581,"random_wdir"),C.rn2(4))):C.rn2(4))))*2);
 }
 
 const floodfillchk_match_under_typ=C=>0;
@@ -4030,13 +4035,13 @@ function floodfillchk_match_under(x,y)
 {
     x=C.i16(x);
     y=C.i16(y);
-    return (Number(C.i32(C.cell(C.floodfillchk_match_under_typ,"signed char").value)==C.i32(R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))));
+    return (Number(C.i32(RC1(C.floodfillchk_match_under_typ))==C.i32(R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))));
 }
 
 function set_floodfillchk_match_under(typ)
 {
     typ=C.i16(typ);
-    (C.cell(C.floodfillchk_match_under_typ,"signed char").value=C.i8(typ));
+    (WC1(C.floodfillchk_match_under_typ,C.i8(typ)));
     C.set_selection_floodfillchk(C.functionPointer("floodfillchk_match_under"));
 }
 
@@ -4064,8 +4069,8 @@ function sel_set_ter(x,y,arg)
         if(Number(!!(C.i32(x)&&(Number(!!((Number(!!(C.i32((R317((A39(A102(C.svl))+Number(C.i32((C.i32(x)-1)))*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))&&Number(C.i32((R317((A39(A102(C.svl))+Number(C.i32((C.i32(x)-1)))*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))<=C.DBWALL))))||C.i32(R320((A39(A102(C.svl))+Number(C.i32((C.i32(x)-1)))*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))))))) (W320((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(1)));
     } else if(Number(!!(Number(C.i32(R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.HWALL)||Number(C.i32(R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.IRONBARS)))) {
         (W320((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(1)));
-    } else if(Number(!!(C.i32(C.cell(C.splev_init_present,"signed char").value)&&Number(C.i32(R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.ICE)))) {
-        (W319((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32((C.i32(C.cell(C.icedpools,"signed char").value)?8:16))));
+    } else if(Number(!!(C.i32(RC1(C.splev_init_present))&&Number(C.i32(R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.ICE)))) {
+        (W319((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32((C.i32(RC1(C.icedpools))?8:16))));
     } else if(Number(C.i32(R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.CLOUD)) {
         C.del_engr_at(x,y);
         /* clouds cannot have engravings */
@@ -4082,14 +4087,14 @@ function sel_set_feature(x,y,arg)
         return;
     }
     if((Number(!!(Number(C.i32((R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))>=C.STAIRS)&&Number(C.i32((R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))<=C.ALTAR))))) return;
-    (W317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.i8((C.cell(arg,"int").value))));
+    (W317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.i8((RC5(arg)))));
 }
 
 function sel_set_door(dx,dy,arg)
 {
     dx=C.i16(dx);
     dy=C.i16(dy);
-    let typ=C.cell(arg,"short").value;
+    let typ=RC3(arg);
     let x=dx; let y=dy;
     if(Number(!!(Number(!((Number(C.i32((R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))==C.DOOR))))&&Number(C.i32(R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))!=C.SDOOR)))) (W317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.i8(((C.i32((C.i32(typ)&32)))?C.SDOOR:C.DOOR))));
     if(C.i32((C.i32(typ)&32))) {
@@ -4099,7 +4104,7 @@ function sel_set_door(dx,dy,arg)
     set_door_orientation(C.i32(x),C.i32(y));
     /* set/clear levl[x][y].horizontal */
     (W319((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(typ)));
-    (C.cell(((C.SpLev_Map+Number(x)*(1*21))+Number(y)*1),"char").value=C.i8(1));
+    (WC0((C.SpLev_Map+Number(x)*(1*21))+Number(y)*1,C.i8(1)));
 }
 
 /* door({ x = 1, y = 1, state = "nodoor" }); */
@@ -4118,37 +4123,37 @@ function lspo_door(L)
     let argc=C.lua_gettop(L);
     create_des_coder();
     if(Number(argc==3)) {
-        (msk=C.cell((doorstates2i+Number(C.luaL_checkoption(L,1,C.literal("random"),doorstates))*4),"int").value);
-        (C.cell(xAddress,"short").value=C.i16(C.luaL_checkinteger(L,2)));
-        (C.cell(yAddress,"short").value=C.i16(C.luaL_checkinteger(L,3)));
+        (msk=RC5(doorstates2i+Number(C.luaL_checkoption(L,1,C.literal("random"),doorstates))*4));
+        (WC3(xAddress,C.i16(C.luaL_checkinteger(L,2))));
+        (WC3(yAddress,C.i16(C.luaL_checkinteger(L,3))));
     } else {
         let dxAddress=C.stackAlloc(8); let dyAddress=C.stackAlloc(8);
         C.lcheck_param_table(L);
         get_table_xy_or_coord(L,dxAddress,dyAddress);
-        ((C.cell(xAddress,"short").value=C.i16(C.cell(dxAddress,"long long").value)),(C.cell(yAddress,"short").value=C.i16(C.cell(dyAddress,"long long").value)));
-        (msk=C.cell((doorstates2i+Number(C.get_table_option(L,C.literal("state"),C.literal("random"),doorstates))*4),"int").value);
+        ((WC3(xAddress,C.i16(RC10(dxAddress)))),(WC3(yAddress,C.i16(RC10(dyAddress)))));
+        (msk=RC5(doorstates2i+Number(C.get_table_option(L,C.literal("state"),C.literal("random"),doorstates))*4));
     }
-    (C.cell(typAddress,"short").value=C.i16(((Number(msk==C.i32((-1))))?rnddoor():C.i32(C.i16(msk)))));
-    if(Number(!!(Number(C.i32(C.cell(xAddress,"short").value)==C.i32((-1)))&&Number(C.i32(C.cell(yAddress,"short").value)==C.i32((-1)))))) {
+    (WC3(typAddress,C.i16(((Number(msk==C.i32((-1))))?rnddoor():C.i32(C.i16(msk))))));
+    if(Number(!!(Number(C.i32(RC3(xAddress))==C.i32((-1)))&&Number(C.i32(RC3(yAddress))==C.i32((-1)))))) {
         const walldirs=C.staticData("lspo_door","walldirs",()=>[C.literal("all"),C.literal("random"),C.literal("north"),C.literal("west"),C.literal("east"),C.literal("south"),0]);
         /* Note that "random" is also W_ANY, because create_door just wants a
          * mask of acceptable walls */
         const walldirs2i=C.staticData("lspo_door","walldirs2i",()=>[(C.i32((C.i32((C.i32((1|2))|4))|8))),(C.i32((C.i32((C.i32((1|2))|4))|8))),1,8,4,2,0]);
         let tmpd=C.stackAlloc(C.sizes["room_door"]);
-        (W326(tmpd,C.i16(((Number(C.i32(C.cell(typAddress,"short").value)==32))?1:0))));
+        (W326(tmpd,C.i16(((Number(C.i32(RC3(typAddress))==32))?1:0))));
         (W327(tmpd,C.i16(msk)));
         (W325(tmpd,C.i16(C.get_table_int_opt(L,C.literal("pos"),C.i32((-1))))));
-        (W324(tmpd,C.i16(C.cell((walldirs2i+Number(C.get_table_option(L,C.literal("wall"),C.literal("all"),walldirs))*4),"int").value)));
+        (W324(tmpd,C.i16(RC5(walldirs2i+Number(C.get_table_option(L,C.literal("wall"),C.literal("all"),walldirs))*4))));
         create_door(tmpd,R330(R78(C.gc)));
     } else {
         /*selection_iterate(sel, sel_set_door, (genericptr_t) &typ);*/
-        get_location_coord(xAddress,yAddress,16,R330(R78(C.gc)),C.i64((C.i32(((C.i32((C.i32((C.cell(xAddress,"short").value))&255)))+(C.i32(((C.i32((C.i32((C.cell(yAddress,"short").value))&255)))<<16))))))));
-        if(Number(!(C.isok(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value)))) {
+        get_location_coord(xAddress,yAddress,16,R330(R78(C.gc)),C.i64((C.i32(((C.i32((C.i32((RC3(xAddress)))&255)))+(C.i32(((C.i32((C.i32((RC3(yAddress)))&255)))<<16))))))));
+        if(Number(!(C.isok(RC3(xAddress),RC3(yAddress))))) {
             C.nhl_error(L,C.literal("door coord not ok"));
             /*NOTREACHED*/
             return 0;
         }
-        sel_set_door(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,typAddress);
+        sel_set_door(RC3(xAddress),RC3(yAddress),typAddress);
     }
     return 0;
     } finally {C.stackRestore(stackFrame); }
@@ -4221,21 +4226,21 @@ function nhl_abs_coord(L)
     const stackFrame=C.stackSave();
     try {
     let argc=C.lua_gettop(L);
-    let xAddress=C.stackAlloc(2); C.cell(xAddress,"short").value=C.i16(C.i32((-1))); let yAddress=C.stackAlloc(2); C.cell(yAddress,"short").value=C.i16(C.i32((-1)));
+    let xAddress=C.stackAlloc(2); WC3(xAddress,C.i16(C.i32((-1)))); let yAddress=C.stackAlloc(2); WC3(yAddress,C.i16(C.i32((-1))));
     if(Number(argc==2)) {
-        (C.cell(xAddress,"short").value=C.i16(C.lua_tointegerx(L,(1),0)));
-        (C.cell(yAddress,"short").value=C.i16(C.lua_tointegerx(L,(2),0)));
+        (WC3(xAddress,C.i16(C.lua_tointegerx(L,(1),0))));
+        (WC3(yAddress,C.i16(C.lua_tointegerx(L,(2),0))));
         cvt_to_abscoord(xAddress,yAddress);
-        C.lua_pushinteger(L,C.i64(C.cell(xAddress,"short").value));
-        C.lua_pushinteger(L,C.i64(C.cell(yAddress,"short").value));
+        C.lua_pushinteger(L,C.i64(RC3(xAddress)));
+        C.lua_pushinteger(L,C.i64(RC3(yAddress)));
         return 2;
     } else if(Number(!!(Number(argc==1)&&Number(C.lua_type(L,1)==5)))) {
-        (C.cell(xAddress,"short").value=C.i16(C.get_table_int(L,C.literal("x"))));
-        (C.cell(yAddress,"short").value=C.i16(C.get_table_int(L,C.literal("y"))));
+        (WC3(xAddress,C.i16(C.get_table_int(L,C.literal("x")))));
+        (WC3(yAddress,C.i16(C.get_table_int(L,C.literal("y")))));
         cvt_to_abscoord(xAddress,yAddress);
         C.lua_createtable(L,0,0);
-        C.nhl_add_table_entry_int(L,C.literal("x"),C.i64(C.cell(xAddress,"short").value));
-        C.nhl_add_table_entry_int(L,C.literal("y"),C.i64(C.cell(yAddress,"short").value));
+        C.nhl_add_table_entry_int(L,C.literal("x"),C.i64(RC3(xAddress)));
+        C.nhl_add_table_entry_int(L,C.literal("y"),C.i64(RC3(yAddress)));
         return 1;
     } else {
         C.nhl_error(L,C.literal("nhl_abs_coord: Wrong args"));
@@ -4264,57 +4269,57 @@ function lspo_feature(L)
     let humidity;
     create_des_coder();
     if(Number(!!(Number(argc==1)&&Number(C.lua_type(L,1)==4)))) {
-        (C.cell(typAddress,"int").value=C.cell((features2i+Number(C.luaL_checkoption(L,1,0,features))*4),"int").value);
-        (C.cell(xAddress,"short").value=(C.cell(yAddress,"short").value=C.i16(C.i32((-1)))));
+        (WC5(typAddress,RC5(features2i+Number(C.luaL_checkoption(L,1,0,features))*4)));
+        (WC3(xAddress,WC3(yAddress,C.i16(C.i32((-1))))));
     } else if(Number(!!(Number(!!(Number(argc==2)&&Number(C.lua_type(L,1)==4)))&&Number(C.lua_type(L,2)==5)))) {
         let fxAddress=C.stackAlloc(8); let fyAddress=C.stackAlloc(8);
-        (C.cell(typAddress,"int").value=C.cell((features2i+Number(C.luaL_checkoption(L,1,0,features))*4),"int").value);
+        (WC5(typAddress,RC5(features2i+Number(C.luaL_checkoption(L,1,0,features))*4)));
         get_coord(L,2,fxAddress,fyAddress);
-        (C.cell(xAddress,"short").value=C.i16(C.cell(fxAddress,"long long").value));
-        (C.cell(yAddress,"short").value=C.i16(C.cell(fyAddress,"long long").value));
+        (WC3(xAddress,C.i16(RC10(fxAddress))));
+        (WC3(yAddress,C.i16(RC10(fyAddress))));
     } else if(Number(argc==3)) {
-        (C.cell(typAddress,"int").value=C.cell((features2i+Number(C.luaL_checkoption(L,1,0,features))*4),"int").value);
-        (C.cell(xAddress,"short").value=C.i16(C.luaL_checkinteger(L,2)));
-        (C.cell(yAddress,"short").value=C.i16(C.luaL_checkinteger(L,3)));
+        (WC5(typAddress,RC5(features2i+Number(C.luaL_checkoption(L,1,0,features))*4)));
+        (WC3(xAddress,C.i16(C.luaL_checkinteger(L,2))));
+        (WC3(yAddress,C.i16(C.luaL_checkinteger(L,3))));
     } else {
         let fxAddress=C.stackAlloc(8); let fyAddress=C.stackAlloc(8);
         C.lcheck_param_table(L);
         get_table_xy_or_coord(L,fxAddress,fyAddress);
-        ((C.cell(xAddress,"short").value=C.i16(C.cell(fxAddress,"long long").value)),(C.cell(yAddress,"short").value=C.i16(C.cell(fyAddress,"long long").value)));
-        (C.cell(typAddress,"int").value=C.cell((features2i+Number(C.get_table_option(L,C.literal("type"),0,features))*4),"int").value);
+        ((WC3(xAddress,C.i16(RC10(fxAddress)))),(WC3(yAddress,C.i16(RC10(fyAddress)))));
+        (WC5(typAddress,RC5(features2i+Number(C.get_table_option(L,C.literal("type"),0,features))*4)));
         (can_have_flags=(C.i8(1)));
     }
-    if(Number(!!(Number(C.i32(C.cell(xAddress,"short").value)==C.i32((-1)))&&Number(C.i32(C.cell(yAddress,"short").value)==C.i32((-1)))))) {
+    if(Number(!!(Number(C.i32(RC3(xAddress))==C.i32((-1)))&&Number(C.i32(RC3(yAddress))==C.i32((-1)))))) {
         (fcoord=(C.i64((16777216n|C.i64((0))))));
         (humidity=1);
         /* pick a regular space, no rock or other furniture */
     } else {
-        (fcoord=C.i64((C.i32(((C.i32((C.i32((C.cell(xAddress,"short").value))&255)))+(C.i32(((C.i32((C.i32((C.cell(yAddress,"short").value))&255)))<<16))))))));
+        (fcoord=C.i64((C.i32(((C.i32((C.i32((RC3(xAddress)))&255)))+(C.i32(((C.i32((C.i32((RC3(yAddress)))&255)))<<16))))))));
         (humidity=16);
         /* assume the author knows what they're doing */
     }
     get_location_coord(xAddress,yAddress,humidity,R330(R78(C.gc)),fcoord);
-    if(Number(C.cell(typAddress,"int").value==C.STONE)) C.variadic(28,C.literal("feature has unknown type param."));
- else sel_set_feature(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,typAddress);
-    if(Number(!!(Number(C.i32(R317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"]))!=C.cell(typAddress,"int").value)||Number(!(can_have_flags))))) return 0;
-    switch(C.cell(typAddress,"int").value) {
+    if(Number(RC5(typAddress)==C.STONE)) C.variadic(28,C.literal("feature has unknown type param."));
+ else sel_set_feature(RC3(xAddress),RC3(yAddress),typAddress);
+    if(Number(!!(Number(C.i32(R317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"]))!=RC5(typAddress))||Number(!(can_have_flags))))) return 0;
+    switch(RC5(typAddress)) {
         default:
             break;
         case (C.FOUNTAIN):
-            l_table_getset_feature_flag(L,C.i32(C.cell(xAddress,"short").value),C.i32(C.cell(yAddress,"short").value),C.literal("looted"),1);
-        l_table_getset_feature_flag(L,C.i32(C.cell(xAddress,"short").value),C.i32(C.cell(yAddress,"short").value),C.literal("warned"),2);
+            l_table_getset_feature_flag(L,C.i32(RC3(xAddress)),C.i32(RC3(yAddress)),C.literal("looted"),1);
+        l_table_getset_feature_flag(L,C.i32(RC3(xAddress)),C.i32(RC3(yAddress)),C.literal("warned"),2);
         break;
         case (C.SINK):
-            l_table_getset_feature_flag(L,C.i32(C.cell(xAddress,"short").value),C.i32(C.cell(yAddress,"short").value),C.literal("pudding"),1);
-        l_table_getset_feature_flag(L,C.i32(C.cell(xAddress,"short").value),C.i32(C.cell(yAddress,"short").value),C.literal("dishwasher"),2);
-        l_table_getset_feature_flag(L,C.i32(C.cell(xAddress,"short").value),C.i32(C.cell(yAddress,"short").value),C.literal("ring"),4);
+            l_table_getset_feature_flag(L,C.i32(RC3(xAddress)),C.i32(RC3(yAddress)),C.literal("pudding"),1);
+        l_table_getset_feature_flag(L,C.i32(RC3(xAddress)),C.i32(RC3(yAddress)),C.literal("dishwasher"),2);
+        l_table_getset_feature_flag(L,C.i32(RC3(xAddress)),C.i32(RC3(yAddress)),C.literal("ring"),4);
         break;
         case (C.THRONE):
-            l_table_getset_feature_flag(L,C.i32(C.cell(xAddress,"short").value),C.i32(C.cell(yAddress,"short").value),C.literal("looted"),1);
+            l_table_getset_feature_flag(L,C.i32(RC3(xAddress)),C.i32(RC3(yAddress)),C.literal("looted"),1);
         break;
         case (C.TREE):
-            l_table_getset_feature_flag(L,C.i32(C.cell(xAddress,"short").value),C.i32(C.cell(yAddress,"short").value),C.literal("looted"),1);
-        l_table_getset_feature_flag(L,C.i32(C.cell(xAddress,"short").value),C.i32(C.cell(yAddress,"short").value),C.literal("swarm"),2);
+            l_table_getset_feature_flag(L,C.i32(RC3(xAddress)),C.i32(RC3(yAddress)),C.literal("looted"),1);
+        l_table_getset_feature_flag(L,C.i32(RC3(xAddress)),C.i32(RC3(yAddress)),C.literal("swarm"),2);
         break;
     }
     return 0;
@@ -4339,8 +4344,8 @@ function lspo_gas_cloud(L)
         let reg;
         C.lcheck_param_table(L);
         get_table_xy_or_coord(L,txAddress,tyAddress);
-        ((x=C.i16(C.cell(txAddress,"long long").value)),(y=C.i16(C.cell(tyAddress,"long long").value)));
-        if(Number(!!(Number(C.cell(txAddress,"long long").value==C.i64(C.i32((-1))))&&Number(C.cell(tyAddress,"long long").value==C.i64(C.i32((-1))))))) {
+        ((x=C.i16(RC10(txAddress))),(y=C.i16(RC10(tyAddress))));
+        if(Number(!!(Number(RC10(txAddress)==C.i64(C.i32((-1))))&&Number(RC10(tyAddress)==C.i64(C.i32((-1))))))) {
             C.lua_getfield(L,1,C.literal("selection"));
             (sel=C.l_selection_check(L,C.i32((-1))));
             C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
@@ -4372,7 +4377,7 @@ function lspo_terrain(L)
     const stackFrame=C.stackSave();
     try {
     let tmpterrain=C.stackAlloc(C.sizes["terrain"]);
-    let xAddress=C.stackAlloc(2); C.cell(xAddress,"short").value=C.i16(0); let yAddress=C.stackAlloc(2); C.cell(yAddress,"short").value=C.i16(0);
+    let xAddress=C.stackAlloc(2); WC3(xAddress,C.i16(0)); let yAddress=C.stackAlloc(2); WC3(yAddress,C.i16(0));
     let sel=0;
     let argc=C.lua_gettop(L);
     create_des_coder();
@@ -4382,8 +4387,8 @@ function lspo_terrain(L)
         let txAddress=C.stackAlloc(8); let tyAddress=C.stackAlloc(8);
         C.lcheck_param_table(L);
         get_table_xy_or_coord(L,txAddress,tyAddress);
-        ((C.cell(xAddress,"short").value=C.i16(C.cell(txAddress,"long long").value)),(C.cell(yAddress,"short").value=C.i16(C.cell(tyAddress,"long long").value)));
-        if(Number(!!(Number(C.cell(txAddress,"long long").value==C.i64(C.i32((-1))))&&Number(C.cell(tyAddress,"long long").value==C.i64(C.i32((-1))))))) {
+        ((WC3(xAddress,C.i16(RC10(txAddress)))),(WC3(yAddress,C.i16(RC10(tyAddress)))));
+        if(Number(!!(Number(RC10(txAddress)==C.i64(C.i32((-1))))&&Number(RC10(tyAddress)==C.i64(C.i32((-1))))))) {
             C.lua_getfield(L,1,C.literal("selection"));
             (sel=C.l_selection_check(L,C.i32((-1))));
             C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
@@ -4395,14 +4400,14 @@ function lspo_terrain(L)
         (W365(tmpterrain,C.i16(C.check_mapchr((C.luaL_checklstring(L,(2),0))))));
         C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
         get_coord(L,1,txAddress,tyAddress);
-        (C.cell(xAddress,"short").value=C.i16(C.cell(txAddress,"long long").value));
-        (C.cell(yAddress,"short").value=C.i16(C.cell(tyAddress,"long long").value));
+        (WC3(xAddress,C.i16(RC10(txAddress))));
+        (WC3(yAddress,C.i16(RC10(tyAddress))));
     } else if(Number(argc==2)) {
         (sel=C.l_selection_check(L,1));
         (W365(tmpterrain,C.i16(C.check_mapchr((C.luaL_checklstring(L,(2),0))))));
     } else if(Number(argc==3)) {
-        (C.cell(xAddress,"short").value=C.i16(C.luaL_checkinteger(L,1)));
-        (C.cell(yAddress,"short").value=C.i16(C.luaL_checkinteger(L,2)));
+        (WC3(xAddress,C.i16(C.luaL_checkinteger(L,1))));
+        (WC3(yAddress,C.i16(C.luaL_checkinteger(L,2))));
         (W365(tmpterrain,C.i16(C.check_mapchr((C.luaL_checklstring(L,(3),0))))));
     } else {
         C.nhl_error(L,C.literal("wrong parameters"));
@@ -4411,13 +4416,13 @@ function lspo_terrain(L)
     if(sel) {
         C.selection_iterate(sel,C.functionPointer("sel_set_ter"),tmpterrain);
     } else {
-        get_location_coord(xAddress,yAddress,16,R330(R78(C.gc)),C.i64((C.i32(((C.i32((C.i32((C.cell(xAddress,"short").value))&255)))+(C.i32(((C.i32((C.i32((C.cell(yAddress,"short").value))&255)))<<16))))))));
-        if(Number(!(C.isok(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value)))) {
+        get_location_coord(xAddress,yAddress,16,R330(R78(C.gc)),C.i64((C.i32(((C.i32((C.i32((RC3(xAddress)))&255)))+(C.i32(((C.i32((C.i32((RC3(yAddress)))&255)))<<16))))))));
+        if(Number(!(C.isok(RC3(xAddress),RC3(yAddress))))) {
             C.nhl_error(L,C.literal("terrain coord not ok"));
             /*NOTREACHED*/
             return 0;
         }
-        sel_set_ter(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,tmpterrain);
+        sel_set_ter(RC3(xAddress),RC3(yAddress),tmpterrain);
     }
     return 0;
     } finally {C.stackRestore(stackFrame); }
@@ -4463,14 +4468,14 @@ function lspo_replace_terrain(L)
     }
     (chance=C.get_table_int_opt(L,C.literal("chance"),100));
     (tolit=C.get_table_int_opt(L,C.literal("lit"),C.i32((-2))));
-    (C.cell(x1Address,"long long").value=C.i64(C.get_table_int_opt(L,C.literal("x1"),C.i32((-1)))));
-    (C.cell(y1Address,"long long").value=C.i64(C.get_table_int_opt(L,C.literal("y1"),C.i32((-1)))));
-    (C.cell(x2Address,"long long").value=C.i64(C.get_table_int_opt(L,C.literal("x2"),C.i32((-1)))));
-    (C.cell(y2Address,"long long").value=C.i64(C.get_table_int_opt(L,C.literal("y2"),C.i32((-1)))));
-    if(Number(!!(Number(!!(Number(!!(Number(C.cell(x1Address,"long long").value==C.i64(C.i32((-1))))&&Number(C.cell(y1Address,"long long").value==C.i64(C.i32((-1))))))&&Number(C.cell(x2Address,"long long").value==C.i64(C.i32((-1))))))&&Number(C.cell(y2Address,"long long").value==C.i64(C.i32((-1))))))) {
+    (WC10(x1Address,C.i64(C.get_table_int_opt(L,C.literal("x1"),C.i32((-1))))));
+    (WC10(y1Address,C.i64(C.get_table_int_opt(L,C.literal("y1"),C.i32((-1))))));
+    (WC10(x2Address,C.i64(C.get_table_int_opt(L,C.literal("x2"),C.i32((-1))))));
+    (WC10(y2Address,C.i64(C.get_table_int_opt(L,C.literal("y2"),C.i32((-1))))));
+    if(Number(!!(Number(!!(Number(!!(Number(RC10(x1Address)==C.i64(C.i32((-1))))&&Number(RC10(y1Address)==C.i64(C.i32((-1))))))&&Number(RC10(x2Address)==C.i64(C.i32((-1))))))&&Number(RC10(y2Address)==C.i64(C.i32((-1))))))) {
         get_table_region(L,C.literal("region"),x1Address,y1Address,x2Address,y2Address,(C.i8(1)));
     }
-    if(Number(!!(Number(!!(Number(!!(Number(C.cell(x1Address,"long long").value==C.i64(C.i32((-1))))&&Number(C.cell(y1Address,"long long").value==C.i64(C.i32((-1))))))&&Number(C.cell(x2Address,"long long").value==C.i64(C.i32((-1))))))&&Number(C.cell(y2Address,"long long").value==C.i64(C.i32((-1))))))) {
+    if(Number(!!(Number(!!(Number(!!(Number(RC10(x1Address)==C.i64(C.i32((-1))))&&Number(RC10(y1Address)==C.i64(C.i32((-1))))))&&Number(RC10(x2Address)==C.i64(C.i32((-1))))))&&Number(RC10(y2Address)==C.i64(C.i32((-1))))))) {
         C.lua_getfield(L,1,C.literal("selection"));
         if(Number(C.lua_type(L,C.i32((-1)))!=0)) (sel=C.l_selection_check(L,C.i32((-1))));
         C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
@@ -4478,14 +4483,14 @@ function lspo_replace_terrain(L)
     if(Number(!(sel))) {
         (sel=C.selection_new());
         (freesel=(C.i8(1)));
-        if(Number(!!(Number(!!(Number(!!(Number(C.cell(x1Address,"long long").value==C.i64(C.i32((-1))))&&Number(C.cell(y1Address,"long long").value==C.i64(C.i32((-1))))))&&Number(C.cell(x2Address,"long long").value==C.i64(C.i32((-1))))))&&Number(C.cell(y2Address,"long long").value==C.i64(C.i32((-1))))))) {
+        if(Number(!!(Number(!!(Number(!!(Number(RC10(x1Address)==C.i64(C.i32((-1))))&&Number(RC10(y1Address)==C.i64(C.i32((-1))))))&&Number(RC10(x2Address)==C.i64(C.i32((-1))))))&&Number(RC10(y2Address)==C.i64(C.i32((-1))))))) {
             C.selection_clear(sel,1);
         } else {
             let rx1Address=C.stackAlloc(2); let ry1Address=C.stackAlloc(2); let rx2Address=C.stackAlloc(2); let ry2Address=C.stackAlloc(2);
-            ((((C.cell(rx1Address,"short").value=C.i16(C.cell(x1Address,"long long").value)),(C.cell(ry1Address,"short").value=C.i16(C.cell(y1Address,"long long").value))),(C.cell(rx2Address,"short").value=C.i16(C.cell(x2Address,"long long").value))),(C.cell(ry2Address,"short").value=C.i16(C.cell(y2Address,"long long").value)));
+            ((((WC3(rx1Address,C.i16(RC10(x1Address)))),(WC3(ry1Address,C.i16(RC10(y1Address))))),(WC3(rx2Address,C.i16(RC10(x2Address))))),(WC3(ry2Address,C.i16(RC10(y2Address)))));
             get_location(rx1Address,ry1Address,C.u32(16),R330(R78(C.gc)));
             get_location(rx2Address,ry2Address,C.u32(16),R330(R78(C.gc)));
-            for((x=C.i16(((Number(C.i32((C.cell(rx1Address,"short").value))>(0))?C.i32((C.cell(rx1Address,"short").value)):(0)))));Number(C.i32(x)<=((Number(C.i32((C.cell(rx2Address,"short").value))<(C.i32((80-1))))?C.i32((C.cell(rx2Address,"short").value)):(C.i32((80-1))))));(()=>{const old=x;const next=C.i16((old+1));x=next;return old;})()) for((y=C.i16(((Number(C.i32((C.cell(ry1Address,"short").value))>(0))?C.i32((C.cell(ry1Address,"short").value)):(0)))));Number(C.i32(y)<=((Number(C.i32((C.cell(ry2Address,"short").value))<(C.i32((21-1))))?C.i32((C.cell(ry2Address,"short").value)):(C.i32((21-1))))));(()=>{const old=y;const next=C.i16((old+1));y=next;return old;})()) C.selection_setpoint(x,y,sel,1);
+            for((x=C.i16(((Number(C.i32((RC3(rx1Address)))>(0))?C.i32((RC3(rx1Address))):(0)))));Number(C.i32(x)<=((Number(C.i32((RC3(rx2Address)))<(C.i32((80-1))))?C.i32((RC3(rx2Address))):(C.i32((80-1))))));(()=>{const old=x;const next=C.i16((old+1));x=next;return old;})()) for((y=C.i16(((Number(C.i32((RC3(ry1Address)))>(0))?C.i32((RC3(ry1Address))):(0)))));Number(C.i32(y)<=((Number(C.i32((RC3(ry2Address)))<(C.i32((21-1))))?C.i32((RC3(ry2Address))):(C.i32((21-1))))));(()=>{const old=y;const next=C.i16((old+1));y=next;return old;})()) C.selection_setpoint(x,y,sel,1);
 
 
         }
@@ -4521,20 +4526,20 @@ function generate_way_out_method(nx,ny,ov)
         (ov3=C.selection_clone(ov2));
         /* try to make a secret door */
         while(C.selection_rndcoord(ov3,xAddress,yAddress,(C.i8(1)))) {
-            if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.isok(C.i16(C.i32((C.i32(C.cell(xAddress,"short").value)+1))),C.cell(yAddress,"short").value)&&Number(!(C.selection_getpoint(C.i16(C.i32((C.i32(C.cell(xAddress,"short").value)+1))),C.cell(yAddress,"short").value,ov)))))&&(Number(!!(C.i32((R317((A39(A102(C.svl))+Number(C.i32((C.i32(C.cell(xAddress,"short").value)+1)))*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"])))&&Number(C.i32((R317((A39(A102(C.svl))+Number(C.i32((C.i32(C.cell(xAddress,"short").value)+1)))*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"])))<=C.DBWALL))))))&&C.isok(C.i16(C.i32((C.i32(C.cell(xAddress,"short").value)+2))),C.cell(yAddress,"short").value)))&&C.i32(C.selection_getpoint(C.i16(C.i32((C.i32(C.cell(xAddress,"short").value)+2))),C.cell(yAddress,"short").value,ov))))&&(Number(C.i32((R317((A39(A102(C.svl))+Number(C.i32((C.i32(C.cell(xAddress,"short").value)+2)))*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"])))>=C.DOOR))))) {
-                (W317((A39(A102(C.svl))+Number(C.i32((C.i32(C.cell(xAddress,"short").value)+1)))*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"],C.i8(C.SDOOR)));
+            if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.isok(C.i16(C.i32((C.i32(RC3(xAddress))+1))),RC3(yAddress))&&Number(!(C.selection_getpoint(C.i16(C.i32((C.i32(RC3(xAddress))+1))),RC3(yAddress),ov)))))&&(Number(!!(C.i32((R317((A39(A102(C.svl))+Number(C.i32((C.i32(RC3(xAddress))+1)))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"])))&&Number(C.i32((R317((A39(A102(C.svl))+Number(C.i32((C.i32(RC3(xAddress))+1)))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"])))<=C.DBWALL))))))&&C.isok(C.i16(C.i32((C.i32(RC3(xAddress))+2))),RC3(yAddress))))&&C.i32(C.selection_getpoint(C.i16(C.i32((C.i32(RC3(xAddress))+2))),RC3(yAddress),ov))))&&(Number(C.i32((R317((A39(A102(C.svl))+Number(C.i32((C.i32(RC3(xAddress))+2)))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"])))>=C.DOOR))))) {
+                (W317((A39(A102(C.svl))+Number(C.i32((C.i32(RC3(xAddress))+1)))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"],C.i8(C.SDOOR)));
                 break gotitdone;
             }
-            if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.isok(C.i16(C.i32((C.i32(C.cell(xAddress,"short").value)-1))),C.cell(yAddress,"short").value)&&Number(!(C.selection_getpoint(C.i16(C.i32((C.i32(C.cell(xAddress,"short").value)-1))),C.cell(yAddress,"short").value,ov)))))&&(Number(!!(C.i32((R317((A39(A102(C.svl))+Number(C.i32((C.i32(C.cell(xAddress,"short").value)-1)))*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"])))&&Number(C.i32((R317((A39(A102(C.svl))+Number(C.i32((C.i32(C.cell(xAddress,"short").value)-1)))*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"])))<=C.DBWALL))))))&&C.isok(C.i16(C.i32((C.i32(C.cell(xAddress,"short").value)-2))),C.cell(yAddress,"short").value)))&&C.i32(C.selection_getpoint(C.i16(C.i32((C.i32(C.cell(xAddress,"short").value)-2))),C.cell(yAddress,"short").value,ov))))&&(Number(C.i32((R317((A39(A102(C.svl))+Number(C.i32((C.i32(C.cell(xAddress,"short").value)-2)))*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"])))>=C.DOOR))))) {
-                (W317((A39(A102(C.svl))+Number(C.i32((C.i32(C.cell(xAddress,"short").value)-1)))*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"],C.i8(C.SDOOR)));
+            if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.isok(C.i16(C.i32((C.i32(RC3(xAddress))-1))),RC3(yAddress))&&Number(!(C.selection_getpoint(C.i16(C.i32((C.i32(RC3(xAddress))-1))),RC3(yAddress),ov)))))&&(Number(!!(C.i32((R317((A39(A102(C.svl))+Number(C.i32((C.i32(RC3(xAddress))-1)))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"])))&&Number(C.i32((R317((A39(A102(C.svl))+Number(C.i32((C.i32(RC3(xAddress))-1)))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"])))<=C.DBWALL))))))&&C.isok(C.i16(C.i32((C.i32(RC3(xAddress))-2))),RC3(yAddress))))&&C.i32(C.selection_getpoint(C.i16(C.i32((C.i32(RC3(xAddress))-2))),RC3(yAddress),ov))))&&(Number(C.i32((R317((A39(A102(C.svl))+Number(C.i32((C.i32(RC3(xAddress))-2)))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"])))>=C.DOOR))))) {
+                (W317((A39(A102(C.svl))+Number(C.i32((C.i32(RC3(xAddress))-1)))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"],C.i8(C.SDOOR)));
                 break gotitdone;
             }
-            if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.isok(C.cell(xAddress,"short").value,C.i16(C.i32((C.i32(C.cell(yAddress,"short").value)+1))))&&Number(!(C.selection_getpoint(C.cell(xAddress,"short").value,C.i16(C.i32((C.i32(C.cell(yAddress,"short").value)+1))),ov)))))&&(Number(!!(C.i32((R317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(C.cell(yAddress,"short").value)+1)))*C.sizes["struct rm"])))&&Number(C.i32((R317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(C.cell(yAddress,"short").value)+1)))*C.sizes["struct rm"])))<=C.DBWALL))))))&&C.isok(C.cell(xAddress,"short").value,C.i16(C.i32((C.i32(C.cell(yAddress,"short").value)+2))))))&&C.i32(C.selection_getpoint(C.cell(xAddress,"short").value,C.i16(C.i32((C.i32(C.cell(yAddress,"short").value)+2))),ov))))&&(Number(C.i32((R317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(C.cell(yAddress,"short").value)+2)))*C.sizes["struct rm"])))>=C.DOOR))))) {
-                (W317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(C.cell(yAddress,"short").value)+1)))*C.sizes["struct rm"],C.i8(C.SDOOR)));
+            if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.isok(RC3(xAddress),C.i16(C.i32((C.i32(RC3(yAddress))+1))))&&Number(!(C.selection_getpoint(RC3(xAddress),C.i16(C.i32((C.i32(RC3(yAddress))+1))),ov)))))&&(Number(!!(C.i32((R317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(RC3(yAddress))+1)))*C.sizes["struct rm"])))&&Number(C.i32((R317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(RC3(yAddress))+1)))*C.sizes["struct rm"])))<=C.DBWALL))))))&&C.isok(RC3(xAddress),C.i16(C.i32((C.i32(RC3(yAddress))+2))))))&&C.i32(C.selection_getpoint(RC3(xAddress),C.i16(C.i32((C.i32(RC3(yAddress))+2))),ov))))&&(Number(C.i32((R317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(RC3(yAddress))+2)))*C.sizes["struct rm"])))>=C.DOOR))))) {
+                (W317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(RC3(yAddress))+1)))*C.sizes["struct rm"],C.i8(C.SDOOR)));
                 break gotitdone;
             }
-            if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.isok(C.cell(xAddress,"short").value,C.i16(C.i32((C.i32(C.cell(yAddress,"short").value)-1))))&&Number(!(C.selection_getpoint(C.cell(xAddress,"short").value,C.i16(C.i32((C.i32(C.cell(yAddress,"short").value)-1))),ov)))))&&(Number(!!(C.i32((R317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(C.cell(yAddress,"short").value)-1)))*C.sizes["struct rm"])))&&Number(C.i32((R317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(C.cell(yAddress,"short").value)-1)))*C.sizes["struct rm"])))<=C.DBWALL))))))&&C.isok(C.cell(xAddress,"short").value,C.i16(C.i32((C.i32(C.cell(yAddress,"short").value)-2))))))&&C.i32(C.selection_getpoint(C.cell(xAddress,"short").value,C.i16(C.i32((C.i32(C.cell(yAddress,"short").value)-2))),ov))))&&(Number(C.i32((R317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(C.cell(yAddress,"short").value)-2)))*C.sizes["struct rm"])))>=C.DOOR))))) {
-                (W317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(C.cell(yAddress,"short").value)-1)))*C.sizes["struct rm"],C.i8(C.SDOOR)));
+            if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.isok(RC3(xAddress),C.i16(C.i32((C.i32(RC3(yAddress))-1))))&&Number(!(C.selection_getpoint(RC3(xAddress),C.i16(C.i32((C.i32(RC3(yAddress))-1))),ov)))))&&(Number(!!(C.i32((R317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(RC3(yAddress))-1)))*C.sizes["struct rm"])))&&Number(C.i32((R317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(RC3(yAddress))-1)))*C.sizes["struct rm"])))<=C.DBWALL))))))&&C.isok(RC3(xAddress),C.i16(C.i32((C.i32(RC3(yAddress))-2))))))&&C.i32(C.selection_getpoint(RC3(xAddress),C.i16(C.i32((C.i32(RC3(yAddress))-2))),ov))))&&(Number(C.i32((R317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(RC3(yAddress))-2)))*C.sizes["struct rm"])))>=C.DOOR))))) {
+                (W317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(RC3(yAddress))-1)))*C.sizes["struct rm"],C.i8(C.SDOOR)));
                 break gotitdone;
             }
         }
@@ -4543,12 +4548,12 @@ function generate_way_out_method(nx,ny,ov)
             C.selection_free(ov3,(C.i8(1)));
             (ov3=C.selection_clone(ov2));
             while(C.selection_rndcoord(ov3,xAddress,yAddress,(C.i8(1)))) {
-                if(C.maketrap(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",5198,"generate_way_out_method"),C.rn2(2))):C.rn2(2)))?C.HOLE:C.TRAPDOOR))) break gotitdone;
+                if(C.maketrap(RC3(xAddress),RC3(yAddress),(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",5198,"generate_way_out_method"),C.rn2(2))):C.rn2(2)))?C.HOLE:C.TRAPDOOR))) break gotitdone;
             }
         }
         /* generate one of the escape items */
         if(C.selection_rndcoord(ov2,xAddress,yAddress,(C.i8(0)))) {
-            C.mksobj_at(C.cell((escapeitems+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",5205,"generate_way_out_method"),C.rn2(C.i32((C.u64((BigInt((4*6))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*6))/BigInt(4)))))))))*4),"int").value,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,(C.i8(1)),(C.i8(0)));
+            C.mksobj_at(RC5(escapeitems+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",5205,"generate_way_out_method"),C.rn2(C.i32((C.u64((BigInt((4*6))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*6))/BigInt(4)))))))))*4),RC3(xAddress),RC3(yAddress),(C.i8(1)),(C.i8(0)));
             break gotitdone;
         }
         (res=(C.i8(0)));
@@ -4632,10 +4637,10 @@ function get_table_region(L,name,x1,y1,x2,y2,optional)
         C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
         return 0;
     }
-    (C.cell(x1,"long long").value=get_table_intarray_entry(L,C.i32((-1)),1));
-    (C.cell(y1,"long long").value=get_table_intarray_entry(L,C.i32((-1)),2));
-    (C.cell(x2,"long long").value=get_table_intarray_entry(L,C.i32((-1)),3));
-    (C.cell(y2,"long long").value=get_table_intarray_entry(L,C.i32((-1)),4));
+    (WC10(x1,get_table_intarray_entry(L,C.i32((-1)),1)));
+    (WC10(y1,get_table_intarray_entry(L,C.i32((-1)),2)));
+    (WC10(x2,get_table_intarray_entry(L,C.i32((-1)),3)));
+    (WC10(y2,get_table_intarray_entry(L,C.i32((-1)),4)));
     C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
     return 1;
 }
@@ -4650,14 +4655,14 @@ function get_coord(L,i,x,y)
         let gotx=(C.i8(0));
         C.lua_getfield(L,i,C.literal("x"));
         if(Number(!((Number(C.lua_type(L,(C.i32((-1))))==0))))) {
-            (C.cell(x,"long long").value=C.luaL_checkinteger(L,C.i32((-1))));
+            (WC10(x,C.luaL_checkinteger(L,C.i32((-1)))));
             (gotx=(C.i8(1)));
         }
         C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
         if(gotx) {
             C.lua_getfield(L,i,C.literal("y"));
             if(Number(!((Number(C.lua_type(L,(C.i32((-1))))==0))))) {
-                (C.cell(y,"long long").value=C.luaL_checkinteger(L,C.i32((-1))));
+                (WC10(y,C.luaL_checkinteger(L,C.i32((-1)))));
                 C.lua_settop(L,C.i32((C.i32((-(1)))-1)));
                 (ret=(C.i8(1)));
             } else {
@@ -4674,8 +4679,8 @@ function get_coord(L,i,x,y)
                 /*NOTREACHED*/
                 return (C.i8(0));
             }
-            (C.cell(x,"long long").value=get_table_intarray_entry(L,i,1));
-            (C.cell(y,"long long").value=get_table_intarray_entry(L,i,2));
+            (WC10(x,get_table_intarray_entry(L,i,1)));
+            (WC10(y,get_table_intarray_entry(L,i,2)));
             return (C.i8(1));
         }
     } else if(Number(ltyp!=0)) {
@@ -4722,23 +4727,23 @@ function l_get_lregion(L,tmplregion)
     try {
     let x1Address=C.stackAlloc(8); let y1Address=C.stackAlloc(8); let x2Address=C.stackAlloc(8); let y2Address=C.stackAlloc(8);
     get_table_region(L,C.literal("region"),x1Address,y1Address,x2Address,y2Address,(C.i8(0)));
-    (W345(A130(tmplregion),C.i16(C.cell(x1Address,"long long").value)));
-    (W346(A130(tmplregion),C.i16(C.cell(y1Address,"long long").value)));
-    (W347(A130(tmplregion),C.i16(C.cell(x2Address,"long long").value)));
-    (W348(A130(tmplregion),C.i16(C.cell(y2Address,"long long").value)));
-    (C.cell(x1Address,"long long").value=(C.cell(y1Address,"long long").value=(C.cell(x2Address,"long long").value=(C.cell(y2Address,"long long").value=C.i64(C.i32((-1)))))));
+    (W345(A130(tmplregion),C.i16(RC10(x1Address))));
+    (W346(A130(tmplregion),C.i16(RC10(y1Address))));
+    (W347(A130(tmplregion),C.i16(RC10(x2Address))));
+    (W348(A130(tmplregion),C.i16(RC10(y2Address))));
+    (WC10(x1Address,WC10(y1Address,WC10(x2Address,WC10(y2Address,C.i64(C.i32((-1))))))));
     get_table_region(L,C.literal("exclude"),x1Address,y1Address,x2Address,y2Address,(C.i8(1)));
-    (W341(A131(tmplregion),C.i16(C.cell(x1Address,"long long").value)));
-    (W342(A131(tmplregion),C.i16(C.cell(y1Address,"long long").value)));
-    (W343(A131(tmplregion),C.i16(C.cell(x2Address,"long long").value)));
-    (W344(A131(tmplregion),C.i16(C.cell(y2Address,"long long").value)));
+    (W341(A131(tmplregion),C.i16(RC10(x1Address))));
+    (W342(A131(tmplregion),C.i16(RC10(y1Address))));
+    (W343(A131(tmplregion),C.i16(RC10(x2Address))));
+    (W344(A131(tmplregion),C.i16(RC10(y2Address))));
     (W132(tmplregion,C.i8(C.get_table_boolean_opt(L,C.literal("region_islev"),0))));
     (W133(tmplregion,C.i8(C.get_table_boolean_opt(L,C.literal("exclude_islev"),0))));
     /* if x1 is still negative, exclude wasn't specified, so we should treat
      * it as if there is no exclude region at all. Force exclude_islev to
      * true so the -1,-1,-1,-1 region is safely off the map and won't
      * interfere with branch or portal placement. */
-    if(Number(C.cell(x1Address,"long long").value<C.i64(0))) (W133(tmplregion,C.i8(1)));
+    if(Number(RC10(x1Address)<C.i64(0))) (W133(tmplregion,C.i8(1)));
     } finally {C.stackRestore(stackFrame); }
 }
 
@@ -4756,7 +4761,7 @@ function lspo_teleport_region(L)
     create_des_coder();
     C.lcheck_param_table(L);
     l_get_lregion(L,tmplregion);
-    (W134(tmplregion,C.i16(C.cell((teledirs2i+Number(C.get_table_option(L,C.literal("dir"),C.literal("both"),teledirs))*4),"int").value)));
+    (W134(tmplregion,C.i16(RC5(teledirs2i+Number(C.get_table_option(L,C.literal("dir"),C.literal("both"),teledirs))*4))));
     (W135(tmplregion,C.i16(0)));
     (W362(A136(tmplregion),0));
     levregion_add(tmplregion);
@@ -4783,7 +4788,7 @@ function lspo_levregion(L)
     create_des_coder();
     C.lcheck_param_table(L);
     l_get_lregion(L,tmplregion);
-    (W134(tmplregion,C.i16(C.cell((regiontypes2i+Number(C.get_table_option(L,C.literal("type"),C.literal("stair-down"),regiontypes))*4),"int").value)));
+    (W134(tmplregion,C.i16(RC5(regiontypes2i+Number(C.get_table_option(L,C.literal("type"),C.literal("stair-down"),regiontypes))*4))));
     (W135(tmplregion,C.i16(C.get_table_int_opt(L,C.literal("padding"),0))));
     (W362(A136(tmplregion),C.get_table_str_opt(L,C.literal("name"),0)));
     levregion_add(tmplregion);
@@ -4803,16 +4808,16 @@ function lspo_exclusion(L)
     let a1Address=C.stackAlloc(2); let b1Address=C.stackAlloc(2); let a2Address=C.stackAlloc(2); let b2Address=C.stackAlloc(2);
     create_des_coder();
     C.lcheck_param_table(L);
-    (W64(ez,C.i16(C.cell((ez_types2i+Number(C.get_table_option(L,C.literal("type"),C.literal("teleport"),ez_types))*4),"int").value)));
+    (W64(ez,C.i16(RC5(ez_types2i+Number(C.get_table_option(L,C.literal("type"),C.literal("teleport"),ez_types))*4))));
     get_table_region(L,C.literal("region"),x1Address,y1Address,x2Address,y2Address,(C.i8(0)));
-    ((C.cell(a1Address,"short").value=C.i16(C.cell(x1Address,"long long").value)),(C.cell(b1Address,"short").value=C.i16(C.cell(y1Address,"long long").value)));
-    ((C.cell(a2Address,"short").value=C.i16(C.cell(x2Address,"long long").value)),(C.cell(b2Address,"short").value=C.i16(C.cell(y2Address,"long long").value)));
-    get_location_coord(a1Address,b1Address,C.i32((16|32)),R330(R78(C.gc)),C.i64((C.i32(((C.i32((C.i32((C.cell(a1Address,"short").value))&255)))+(C.i32(((C.i32((C.i32((C.cell(b1Address,"short").value))&255)))<<16))))))));
-    get_location_coord(a2Address,b2Address,C.i32((16|32)),R330(R78(C.gc)),C.i64((C.i32(((C.i32((C.i32((C.cell(a2Address,"short").value))&255)))+(C.i32(((C.i32((C.i32((C.cell(b2Address,"short").value))&255)))<<16))))))));
-    (W65(ez,C.cell(a1Address,"short").value));
-    (W66(ez,C.cell(b1Address,"short").value));
-    (W67(ez,C.cell(a2Address,"short").value));
-    (W68(ez,C.cell(b2Address,"short").value));
+    ((WC3(a1Address,C.i16(RC10(x1Address)))),(WC3(b1Address,C.i16(RC10(y1Address)))));
+    ((WC3(a2Address,C.i16(RC10(x2Address)))),(WC3(b2Address,C.i16(RC10(y2Address)))));
+    get_location_coord(a1Address,b1Address,C.i32((16|32)),R330(R78(C.gc)),C.i64((C.i32(((C.i32((C.i32((RC3(a1Address)))&255)))+(C.i32(((C.i32((C.i32((RC3(b1Address)))&255)))<<16))))))));
+    get_location_coord(a2Address,b2Address,C.i32((16|32)),R330(R78(C.gc)),C.i64((C.i32(((C.i32((C.i32((RC3(a2Address)))&255)))+(C.i32(((C.i32((C.i32((RC3(b2Address)))&255)))<<16))))))));
+    (W65(ez,RC3(a1Address)));
+    (W66(ez,RC3(b1Address)));
+    (W67(ez,RC3(a2Address)));
+    (W68(ez,RC3(b2Address)));
     (W69(ez,R100(C.sve)));
     (W100(C.sve,ez));
     return 0;
@@ -4823,7 +4828,7 @@ function sel_set_lit(x,y,arg)
 {
     x=C.i16(x);
     y=C.i16(y);
-    let lit=C.cell(arg,"int").value;
+    let lit=RC5(arg);
     (W321((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(((Number(!!((Number(!!(Number(C.i32((R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))==C.LAVAPOOL)||Number(C.i32((R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))==C.LAVAWALL))))||lit)))?1:0))));
 }
 
@@ -4844,17 +4849,17 @@ function get_table_coords_or_region(L,dx1,dy1,dx2,dy2)
 {
     const stackFrame=C.stackSave();
     try {
-    (C.cell(dx1,"short").value=C.i16(C.get_table_int_opt(L,C.literal("x1"),C.i32((-1)))));
-    (C.cell(dy1,"short").value=C.i16(C.get_table_int_opt(L,C.literal("y1"),C.i32((-1)))));
-    (C.cell(dx2,"short").value=C.i16(C.get_table_int_opt(L,C.literal("x2"),C.i32((-1)))));
-    (C.cell(dy2,"short").value=C.i16(C.get_table_int_opt(L,C.literal("y2"),C.i32((-1)))));
-    if(Number(!!(Number(!!(Number(!!(Number(C.i32(C.cell(dx1,"short").value)==C.i32((-1)))&&Number(C.i32(C.cell(dy1,"short").value)==C.i32((-1)))))&&Number(C.i32(C.cell(dx2,"short").value)==C.i32((-1)))))&&Number(C.i32(C.cell(dy2,"short").value)==C.i32((-1)))))) {
+    (WC3(dx1,C.i16(C.get_table_int_opt(L,C.literal("x1"),C.i32((-1))))));
+    (WC3(dy1,C.i16(C.get_table_int_opt(L,C.literal("y1"),C.i32((-1))))));
+    (WC3(dx2,C.i16(C.get_table_int_opt(L,C.literal("x2"),C.i32((-1))))));
+    (WC3(dy2,C.i16(C.get_table_int_opt(L,C.literal("y2"),C.i32((-1))))));
+    if(Number(!!(Number(!!(Number(!!(Number(C.i32(RC3(dx1))==C.i32((-1)))&&Number(C.i32(RC3(dy1))==C.i32((-1)))))&&Number(C.i32(RC3(dx2))==C.i32((-1)))))&&Number(C.i32(RC3(dy2))==C.i32((-1)))))) {
         let rx1Address=C.stackAlloc(8); let ry1Address=C.stackAlloc(8); let rx2Address=C.stackAlloc(8); let ry2Address=C.stackAlloc(8);
         get_table_region(L,C.literal("region"),rx1Address,ry1Address,rx2Address,ry2Address,(C.i8(0)));
-        (C.cell(dx1,"short").value=C.i16(C.cell(rx1Address,"long long").value));
-        (C.cell(dy1,"short").value=C.i16(C.cell(ry1Address,"long long").value));
-        (C.cell(dx2,"short").value=C.i16(C.cell(rx2Address,"long long").value));
-        (C.cell(dy2,"short").value=C.i16(C.cell(ry2Address,"long long").value));
+        (WC3(dx1,C.i16(RC10(rx1Address))));
+        (WC3(dy1,C.i16(RC10(ry1Address))));
+        (WC3(dx2,C.i16(RC10(rx2Address))));
+        (WC3(dy2,C.i16(RC10(ry2Address))));
     }
     } finally {C.stackRestore(stackFrame); }
 }
@@ -4870,7 +4875,7 @@ function lspo_region(L)
     let dx1Address=C.stackAlloc(2); let dy1Address=C.stackAlloc(2); let dx2Address=C.stackAlloc(2); let dy2Address=C.stackAlloc(2);
     let troom;
     let do_arrival_room=(C.i8(0)); let room_not_needed; let irregular=(C.i8(0)); let joined=(C.i8(1));
-    let rtype=C.OROOM; let rlitAddress=C.stackAlloc(4); C.cell(rlitAddress,"int").value=1; let needfill=0;
+    let rtype=C.OROOM; let rlitAddress=C.stackAlloc(4); WC5(rlitAddress,1); let needfill=0;
     let argc=C.lua_gettop(L);
     create_des_coder();
     if(Number(argc<=1)) {
@@ -4882,20 +4887,20 @@ function lspo_region(L)
         (joined=C.i8(C.get_table_boolean_opt(L,C.literal("joined"),C.i32((C.i8(1))))));
         (do_arrival_room=C.i8(C.get_table_boolean_opt(L,C.literal("arrival_room"),0)));
         (rtype=get_table_roomtype_opt(L,C.literal("type"),C.OROOM));
-        (C.cell(rlitAddress,"int").value=C.get_table_int_opt(L,C.literal("lit"),C.i32((-1))));
+        (WC5(rlitAddress,C.get_table_int_opt(L,C.literal("lit"),C.i32((-1)))));
         get_table_coords_or_region(L,dx1Address,dy1Address,dx2Address,dy2Address);
-        if(Number(!!(Number(!!(Number(!!(Number(C.i32(C.cell(dx1Address,"short").value)==C.i32((-1)))&&Number(C.i32(C.cell(dy1Address,"short").value)==C.i32((-1)))))&&Number(C.i32(C.cell(dx2Address,"short").value)==C.i32((-1)))))&&Number(C.i32(C.cell(dy2Address,"short").value)==C.i32((-1)))))) {
+        if(Number(!!(Number(!!(Number(!!(Number(C.i32(RC3(dx1Address))==C.i32((-1)))&&Number(C.i32(RC3(dy1Address))==C.i32((-1)))))&&Number(C.i32(RC3(dx2Address))==C.i32((-1)))))&&Number(C.i32(RC3(dy2Address))==C.i32((-1)))))) {
             C.nhl_error(L,C.literal("region needs region"));
         }
     } else if(Number(argc==2)) {
         /* region(selection, "lit"); */
         const lits=C.staticData("lspo_region","lits",()=>[C.literal("unlit"),C.literal("lit"),0]);
         let orig=C.l_selection_check(L,1); let sel=C.selection_clone(orig);
-        (C.cell(rlitAddress,"int").value=C.luaL_checkoption(L,2,C.literal("lit"),lits));
+        (WC5(rlitAddress,C.luaL_checkoption(L,2,C.literal("lit"),lits)));
         /*
     TODO: lit=random
         */
-        if(C.cell(rlitAddress,"int").value) C.selection_do_grow(sel,(C.i32((C.i32((C.i32((1|2))|4))|8))));
+        if(RC5(rlitAddress)) C.selection_do_grow(sel,(C.i32((C.i32((C.i32((1|2))|4))|8))));
         C.selection_iterate(sel,C.functionPointer("sel_set_lit"),rlitAddress);
         C.selection_free(sel,(C.i8(1)));
         /* TODO: skip the rest of this function? */
@@ -4905,7 +4910,7 @@ function lspo_region(L)
         /*NOTREACHED*/
         return 0;
     }
-    (C.cell(rlitAddress,"int").value=C.i32(C.litstate_rnd(C.cell(rlitAddress,"int").value)));
+    (WC5(rlitAddress,C.i32(C.litstate_rnd(RC5(rlitAddress)))));
     get_location(dx1Address,dy1Address,C.u32(16),0);
     get_location(dx2Address,dy2Address,C.u32(16),0);
     /* Many regions are simple, rectangular areas that just need to set
@@ -4921,11 +4926,11 @@ function lspo_region(L)
     if(Number(!!(C.i32(room_not_needed)||Number(R104(C.svn)>=40)))) {
         let tmpregion=C.stackAlloc(C.sizes["region"]);
         if(Number(!(room_not_needed))) C.variadic(30,C.literal("Too many rooms on new level!"));
-        (W315(tmpregion,C.i16(C.cell(rlitAddress,"int").value)));
-        (W311(tmpregion,C.cell(dx1Address,"short").value));
-        (W312(tmpregion,C.cell(dy1Address,"short").value));
-        (W313(tmpregion,C.cell(dx2Address,"short").value));
-        (W314(tmpregion,C.cell(dy2Address,"short").value));
+        (W315(tmpregion,C.i16(RC5(rlitAddress))));
+        (W311(tmpregion,RC3(dx1Address)));
+        (W312(tmpregion,RC3(dy1Address)));
+        (W313(tmpregion,RC3(dx2Address)));
+        (W314(tmpregion,RC3(dy2Address)));
         light_region(tmpregion);
         return 0;
     }
@@ -4934,15 +4939,15 @@ function lspo_region(L)
     (W176(troom,C.i8(needfill)));
     (W177(troom,joined));
     if(irregular) {
-        (W87(C.gm,W88(C.gm,C.cell(dx1Address,"short").value)));
-        (W89(C.gm,W90(C.gm,C.cell(dy1Address,"short").value)));
-        (C.cell((A95(C.gs)+Number(R104(C.svn))*4),"int").value=R104(C.svn));
-        C.flood_fill_rm(C.cell(dx1Address,"short").value,C.cell(dy1Address,"short").value,C.i32((R104(C.svn)+3)),C.i8(C.cell(rlitAddress,"int").value),(C.i8(1)));
+        (W87(C.gm,W88(C.gm,RC3(dx1Address))));
+        (W89(C.gm,W90(C.gm,RC3(dy1Address))));
+        (WC5(A95(C.gs)+Number(R104(C.svn))*4,R104(C.svn)));
+        C.flood_fill_rm(RC3(dx1Address),RC3(dy1Address),C.i32((R104(C.svn)+3)),C.i8(RC5(rlitAddress)),(C.i8(1)));
         C.add_room(R87(C.gm),R89(C.gm),R88(C.gm),R90(C.gm),(C.i8(0)),C.i8(rtype),(C.i8(1)));
-        (W175(troom,C.i8(C.cell(rlitAddress,"int").value)));
+        (W175(troom,C.i8(RC5(rlitAddress))));
         (W179(troom,C.i8(1)));
     } else {
-        C.add_room(C.cell(dx1Address,"short").value,C.cell(dy1Address,"short").value,C.cell(dx2Address,"short").value,C.cell(dy2Address,"short").value,C.i8(C.cell(rlitAddress,"int").value),C.i8(rtype),(C.i8(1)));
+        C.add_room(RC3(dx1Address),RC3(dy1Address),RC3(dx2Address),RC3(dy2Address),C.i8(RC5(rlitAddress)),C.i8(rtype),(C.i8(1)));
         /* set roomno */
         C.topologize(troom);
         /* set roomno */
@@ -4952,7 +4957,7 @@ function lspo_region(L)
             C.variadic(31,C.literal("region as subroom"));
         } else {
             (C.cell((A332(R78(C.gc))+Number(R334(R78(C.gc)))*8),"struct mkroom *").value=troom);
-            (C.cell((A333(R78(C.gc))+Number(R334(R78(C.gc)))*1),"signed char").value=(C.i8(0)));
+            (WC1(A333(R78(C.gc))+Number(R334(R78(C.gc)))*1,C.i8(0)));
             (()=>{const slot=C.field(R78(C.gc),"sp_coder","n_subroom");const old=slot.value;const next=C.i32((old+1));slot.value=next;return old;})();
             update_croom();
             C.lua_getfield(L,1,C.literal("contents"));
@@ -4989,20 +4994,20 @@ function lspo_drawbridge(L)
     create_des_coder();
     C.lcheck_param_table(L);
     get_table_xy_or_coord(L,mxAddress,myAddress);
-    (dir=C.cell((mwdirs2i+Number(C.get_table_option(L,C.literal("dir"),C.literal("random"),mwdirs))*4),"int").value);
-    (dcoord=C.i64((C.i64(((C.i64(((C.cell(mxAddress,"long long").value)&C.i64(255))))+(C.i64(((C.i64(((C.cell(myAddress,"long long").value)&C.i64(255))))<<BigInt(16)))))))));
-    (db_open=C.cell((dbopens2i+Number(C.get_table_option(L,C.literal("state"),C.literal("random"),dbopens))*4),"int").value);
-    (C.cell(xAddress,"short").value=C.i16(C.cell(mxAddress,"long long").value));
-    (C.cell(yAddress,"short").value=C.i16(C.cell(myAddress,"long long").value));
+    (dir=RC5(mwdirs2i+Number(C.get_table_option(L,C.literal("dir"),C.literal("random"),mwdirs))*4));
+    (dcoord=C.i64((C.i64(((C.i64(((RC10(mxAddress))&C.i64(255))))+(C.i64(((C.i64(((RC10(myAddress))&C.i64(255))))<<BigInt(16)))))))));
+    (db_open=RC5(dbopens2i+Number(C.get_table_option(L,C.literal("state"),C.literal("random"),dbopens))*4));
+    (WC3(xAddress,C.i16(RC10(mxAddress))));
+    (WC3(yAddress,C.i16(RC10(myAddress))));
     get_location_coord(xAddress,yAddress,C.i32((C.i32((1|2))|4)),R330(R78(C.gc)),dcoord);
-    if(Number(!(C.isok(C.i16(C.cell(mxAddress,"long long").value),C.i16(C.cell(myAddress,"long long").value))))) {
+    if(Number(!(C.isok(C.i16(RC10(mxAddress)),C.i16(RC10(myAddress)))))) {
         C.nhl_error(L,C.literal("drawbridge coord not ok"));
         /*NOTREACHED*/
         return 0;
     }
     if(Number(db_open==C.i32((-1)))) (db_open=Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",5757,"lspo_drawbridge"),C.rn2(2))):C.rn2(2))))));
-    if(Number(!(C.create_drawbridge(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,dir,C.i8((db_open?C.i32((C.i8(1))):C.i32((C.i8(0))))))))) C.variadic(32,C.literal("Cannot create drawbridge."));
-    (C.cell(((C.SpLev_Map+Number(C.cell(xAddress,"short").value)*(1*21))+Number(C.cell(yAddress,"short").value)*1),"char").value=C.i8(1));
+    if(Number(!(C.create_drawbridge(RC3(xAddress),RC3(yAddress),dir,C.i8((db_open?C.i32((C.i8(1))):C.i32((C.i8(0))))))))) C.variadic(32,C.literal("Cannot create drawbridge."));
+    (WC0((C.SpLev_Map+Number(RC3(xAddress))*(1*21))+Number(RC3(yAddress))*1,C.i8(1)));
     return 0;
     } finally {C.stackRestore(stackFrame); }
 }
@@ -5024,21 +5029,21 @@ function lspo_mazewalk(L)
     let argc=C.lua_gettop(L);
     create_des_coder();
     if(Number(argc==3)) {
-        (C.cell(mxAddress,"long long").value=C.luaL_checkinteger(L,1));
-        (C.cell(myAddress,"long long").value=C.luaL_checkinteger(L,2));
-        (dir=C.cell((mwdirs2i+Number(C.luaL_checkoption(L,3,C.literal("random"),mwdirs))*4),"int").value);
+        (WC10(mxAddress,C.luaL_checkinteger(L,1)));
+        (WC10(myAddress,C.luaL_checkinteger(L,2)));
+        (dir=RC5(mwdirs2i+Number(C.luaL_checkoption(L,3,C.literal("random"),mwdirs))*4));
     } else {
         C.lcheck_param_table(L);
         get_table_xy_or_coord(L,mxAddress,myAddress);
         (ftyp=C.i16(C.get_table_mapchr_opt(L,C.literal("typ"),C.i8(C.ROOM))));
         (fstocked=C.get_table_boolean_opt(L,C.literal("stocked"),1));
-        (dir=C.cell((mwdirs2i+Number(C.get_table_option(L,C.literal("dir"),C.literal("random"),mwdirs))*4),"int").value);
+        (dir=RC5(mwdirs2i+Number(C.get_table_option(L,C.literal("dir"),C.literal("random"),mwdirs))*4));
     }
-    (mcoord=C.i64((C.i64(((C.i64(((C.cell(mxAddress,"long long").value)&C.i64(255))))+(C.i64(((C.i64(((C.cell(myAddress,"long long").value)&C.i64(255))))<<BigInt(16)))))))));
-    (C.cell(xAddress,"short").value=C.i16(C.cell(mxAddress,"long long").value));
-    (C.cell(yAddress,"short").value=C.i16(C.cell(myAddress,"long long").value));
+    (mcoord=C.i64((C.i64(((C.i64(((RC10(mxAddress))&C.i64(255))))+(C.i64(((C.i64(((RC10(myAddress))&C.i64(255))))<<BigInt(16)))))))));
+    (WC3(xAddress,C.i16(RC10(mxAddress))));
+    (WC3(yAddress,C.i16(RC10(myAddress))));
     get_location_coord(xAddress,yAddress,16,R330(R78(C.gc)),mcoord);
-    if(Number(!(C.isok(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value)))) {
+    if(Number(!(C.isok(RC3(xAddress),RC3(yAddress))))) {
         C.nhl_error(L,C.literal("mazewalk coord not ok"));
         /*NOTREACHED*/
         return 0;
@@ -5064,27 +5069,27 @@ function lspo_mazewalk(L)
         default:
             C.variadic(33,C.literal("mazewalk: Bad direction"));
     }
-    if(Number(!((Number(C.i32((R317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"])))==C.DOOR))))) {
-        (W317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"],C.i8(ftyp)));
-        (W319((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"],C.u32(0)));
+    if(Number(!((Number(C.i32((R317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"])))==C.DOOR))))) {
+        (W317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"],C.i8(ftyp)));
+        (W319((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"],C.u32(0)));
     }
     /*
      * We must be sure that the parity of the coordinates for
      * walkfrom() is odd.  But we must also take into account
      * what direction was chosen.
      */
-    if(Number(!((C.i32((C.i32(C.cell(xAddress,"short").value)%2)))))) {
+    if(Number(!((C.i32((C.i32(RC3(xAddress))%2)))))) {
         if(Number(dir==4)) (()=>{const slot=C.cell(xAddress,"short");const old=slot.value;const next=C.i16((old+1));slot.value=next;return old;})();
  else (()=>{const slot=C.cell(xAddress,"short");const old=slot.value;const next=C.i16((old-1));slot.value=next;return old;})();
         /* no need for IS_DOOR check; out of map bounds */
-        (W317((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"],C.i8(ftyp)));
-        (W319((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"],C.u32(0)));
+        (W317((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"],C.i8(ftyp)));
+        (W319((A39(A102(C.svl))+Number(RC3(xAddress))*(C.sizes["struct rm"]*21))+Number(RC3(yAddress))*C.sizes["struct rm"],C.u32(0)));
     }
-    if(Number(!((C.i32((C.i32(C.cell(yAddress,"short").value)%2)))))) {
+    if(Number(!((C.i32((C.i32(RC3(yAddress))%2)))))) {
         if(Number(dir==2)) (()=>{const slot=C.cell(yAddress,"short");const old=slot.value;const next=C.i16((old+1));slot.value=next;return old;})();
  else (()=>{const slot=C.cell(yAddress,"short");const old=slot.value;const next=C.i16((old-1));slot.value=next;return old;})();
     }
-    C.walkfrom(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,C.i8(ftyp));
+    C.walkfrom(RC3(xAddress),RC3(yAddress),C.i8(ftyp));
     if(fstocked) fill_empty_maze();
     return 0;
     } finally {C.stackRestore(stackFrame); }
@@ -5098,19 +5103,19 @@ function lspo_wall_property(L)
     try {
     const wprops=C.staticData("lspo_wall_property","wprops",()=>[C.literal("nondiggable"),C.literal("nonpasswall"),0]);
     const wprop2i=C.staticData("lspo_wall_property","wprop2i",()=>[8,16,C.i32((-1))]);
-    let dx1Address=C.stackAlloc(2); C.cell(dx1Address,"short").value=C.i16(C.i32((-1))); let dy1Address=C.stackAlloc(2); C.cell(dy1Address,"short").value=C.i16(C.i32((-1))); let dx2Address=C.stackAlloc(2); C.cell(dx2Address,"short").value=C.i16(C.i32((-1))); let dy2Address=C.stackAlloc(2); C.cell(dy2Address,"short").value=C.i16(C.i32((-1)));
+    let dx1Address=C.stackAlloc(2); WC3(dx1Address,C.i16(C.i32((-1)))); let dy1Address=C.stackAlloc(2); WC3(dy1Address,C.i16(C.i32((-1)))); let dx2Address=C.stackAlloc(2); WC3(dx2Address,C.i16(C.i32((-1)))); let dy2Address=C.stackAlloc(2); WC3(dy2Address,C.i16(C.i32((-1))));
     let wprop;
     create_des_coder();
     C.lcheck_param_table(L);
     get_table_coords_or_region(L,dx1Address,dy1Address,dx2Address,dy2Address);
-    (wprop=C.cell((wprop2i+Number(C.get_table_option(L,C.literal("property"),C.literal("nondiggable"),wprops))*4),"int").value);
-    if(Number(C.i32(C.cell(dx1Address,"short").value)==C.i32((-1)))) (C.cell(dx1Address,"short").value=C.i16(C.i32((C.i32(R111(C.gx))-1))));
-    if(Number(C.i32(C.cell(dy1Address,"short").value)==C.i32((-1)))) (C.cell(dy1Address,"short").value=C.i16(C.i32((C.i32(R114(C.gy))-1))));
-    if(Number(C.i32(C.cell(dx2Address,"short").value)==C.i32((-1)))) (C.cell(dx2Address,"short").value=C.i16(C.i32((C.i32((C.i32(R111(C.gx))+C.i32(R112(C.gx))))+1))));
-    if(Number(C.i32(C.cell(dy2Address,"short").value)==C.i32((-1)))) (C.cell(dy2Address,"short").value=C.i16(C.i32((C.i32((C.i32(R114(C.gy))+C.i32(R115(C.gy))))+1))));
+    (wprop=RC5(wprop2i+Number(C.get_table_option(L,C.literal("property"),C.literal("nondiggable"),wprops))*4));
+    if(Number(C.i32(RC3(dx1Address))==C.i32((-1)))) (WC3(dx1Address,C.i16(C.i32((C.i32(R111(C.gx))-1)))));
+    if(Number(C.i32(RC3(dy1Address))==C.i32((-1)))) (WC3(dy1Address,C.i16(C.i32((C.i32(R114(C.gy))-1)))));
+    if(Number(C.i32(RC3(dx2Address))==C.i32((-1)))) (WC3(dx2Address,C.i16(C.i32((C.i32((C.i32(R111(C.gx))+C.i32(R112(C.gx))))+1)))));
+    if(Number(C.i32(RC3(dy2Address))==C.i32((-1)))) (WC3(dy2Address,C.i16(C.i32((C.i32((C.i32(R114(C.gy))+C.i32(R115(C.gy))))+1)))));
     get_location(dx1Address,dy1Address,C.u32(16),0);
     get_location(dx2Address,dy2Address,C.u32(16),0);
-    set_wall_property(C.cell(dx1Address,"short").value,C.cell(dy1Address,"short").value,C.cell(dx2Address,"short").value,C.cell(dy2Address,"short").value,wprop);
+    set_wall_property(RC3(dx1Address),RC3(dy1Address),RC3(dx2Address),RC3(dy2Address),wprop);
     return 0;
     } finally {C.stackRestore(stackFrame); }
 }
@@ -5120,7 +5125,7 @@ function set_wallprop_in_selection(L,prop)
     prop=C.i32(prop);
     const stackFrame=C.stackSave();
     try {
-    const propAddress=C.stackAlloc(4);C.cell(propAddress,"int").value=prop;
+    const propAddress=C.stackAlloc(4);WC5(propAddress,prop);
     let argc=C.lua_gettop(L);
     let freesel=(C.i8(0));
     let sel=0;
@@ -5253,7 +5258,7 @@ TODO: gc.coder->croom needs to be updated
     const top_or_bot=C.staticData("lspo_map","top_or_bot",()=>[C.literal("top"),C.literal("center"),C.literal("bottom"),C.literal("none"),0]);
     const t_or_b2i=C.staticData("lspo_map","t_or_b2i",()=>[1,3,5,C.i32((-1)),C.i32((-1))]);
     let lr; let tb;
-    let xAddress=C.stackAlloc(8); C.cell(xAddress,"long long").value=C.i64(C.i32((-1))); let yAddress=C.stackAlloc(8); C.cell(yAddress,"long long").value=C.i64(C.i32((-1)));
+    let xAddress=C.stackAlloc(8); WC10(xAddress,C.i64(C.i32((-1)))); let yAddress=C.stackAlloc(8); WC10(yAddress,C.i64(C.i32((-1))));
     let mfAddress=C.stackAlloc(8);
     let tmpstr;
     let argc=C.lua_gettop(L);
@@ -5271,8 +5276,8 @@ TODO: gc.coder->croom needs to be updated
         C.free(tmpstr);
     } else {
         C.lcheck_param_table(L);
-        (lr=C.cell((l_or_r2i+Number(C.get_table_option(L,C.literal("halign"),C.literal("none"),left_or_right))*4),"int").value);
-        (tb=C.cell((t_or_b2i+Number(C.get_table_option(L,C.literal("valign"),C.literal("none"),top_or_bot))*4),"int").value);
+        (lr=RC5(l_or_r2i+Number(C.get_table_option(L,C.literal("halign"),C.literal("none"),left_or_right))*4));
+        (tb=RC5(t_or_b2i+Number(C.get_table_option(L,C.literal("valign"),C.literal("none"),top_or_bot))*4));
         get_table_xy_or_coord(L,xAddress,yAddress);
         (tmpstr=C.get_table_str(L,C.literal("map")));
         (lit=C.i8(C.get_table_boolean_opt(L,C.literal("lit"),C.i32((C.i8(0))))));
@@ -5292,8 +5297,8 @@ TODO: gc.coder->croom needs to be updated
         return 0;
     }
     (sel=C.selection_new());
-    (ox=C.i32(C.cell(xAddress,"long long").value));
-    (oy=C.i32(C.cell(yAddress,"long long").value));
+    (ox=C.i32(RC10(xAddress)));
+    (oy=C.i32(RC10(yAddress)));
     skipmap: {
         redo_maploc: for(;;) {
             (W112(C.gx,C.i16(R164(C.cell(mfAddress,"struct mapfragment *").value))));
@@ -5302,34 +5307,34 @@ TODO: gc.coder->croom needs to be updated
                 if(Number(!!(C.i32(R82(C.gi))&&(Number(!!(Number(ox==C.i32((-1)))||Number(oy==C.i32((-1))))))))) {
                     if(Number(ox==C.i32((-1)))) {
                         if(R330(R78(C.gc))) {
-                            (C.cell(xAddress,"long long").value=C.i64(C.i32((C.somex(R330(R78(C.gc)))-R164(C.cell(mfAddress,"struct mapfragment *").value)))));
-                            if(Number(C.cell(xAddress,"long long").value<C.i64(1))) (C.cell(xAddress,"long long").value=C.i64(1));
+                            (WC10(xAddress,C.i64(C.i32((C.somex(R330(R78(C.gc)))-R164(C.cell(mfAddress,"struct mapfragment *").value))))));
+                            if(Number(RC10(xAddress)<C.i64(1))) (WC10(xAddress,C.i64(1)));
                         } else {
-                            (C.cell(xAddress,"long long").value=C.i64(C.i32((1+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",6154,"lspo_map"),C.rn2(C.i32((C.i32((80-1))-R164(C.cell(mfAddress,"struct mapfragment *").value)))))):C.rn2(C.i32((C.i32((80-1))-R164(C.cell(mfAddress,"struct mapfragment *").value))))))))));
+                            (WC10(xAddress,C.i64(C.i32((1+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",6154,"lspo_map"),C.rn2(C.i32((C.i32((80-1))-R164(C.cell(mfAddress,"struct mapfragment *").value)))))):C.rn2(C.i32((C.i32((80-1))-R164(C.cell(mfAddress,"struct mapfragment *").value)))))))))));
                         }
                     }
                     if(Number(oy==C.i32((-1)))) {
                         if(R330(R78(C.gc))) {
-                            (C.cell(yAddress,"long long").value=C.i64(C.i32((C.somey(R330(R78(C.gc)))-R165(C.cell(mfAddress,"struct mapfragment *").value)))));
-                            if(Number(C.cell(yAddress,"long long").value<C.i64(1))) (C.cell(yAddress,"long long").value=C.i64(1));
+                            (WC10(yAddress,C.i64(C.i32((C.somey(R330(R78(C.gc)))-R165(C.cell(mfAddress,"struct mapfragment *").value))))));
+                            if(Number(RC10(yAddress)<C.i64(1))) (WC10(yAddress,C.i64(1)));
                         } else {
-                            (C.cell(yAddress,"long long").value=C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",6164,"lspo_map"),C.rn2(C.i32((21-R165(C.cell(mfAddress,"struct mapfragment *").value)))))):C.rn2(C.i32((21-R165(C.cell(mfAddress,"struct mapfragment *").value))))))));
+                            (WC10(yAddress,C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",6164,"lspo_map"),C.rn2(C.i32((21-R165(C.cell(mfAddress,"struct mapfragment *").value)))))):C.rn2(C.i32((21-R165(C.cell(mfAddress,"struct mapfragment *").value)))))))));
                         }
                     }
                 }
-                if(C.isok(C.i16(C.cell(xAddress,"long long").value),C.i16(C.cell(yAddress,"long long").value))) {
+                if(C.isok(C.i16(RC10(xAddress)),C.i16(RC10(yAddress)))) {
                     /* x,y is given, place map starting at x,y */
                     if(R330(R78(C.gc))) {
                         /* in a room? adjust to room relative coords */
-                        (W111(C.gx,C.i16(C.i64((C.cell(xAddress,"long long").value+C.i64(R170(R330(R78(C.gc)))))))));
-                        (W114(C.gy,C.i16(C.i64((C.cell(yAddress,"long long").value+C.i64(R172(R330(R78(C.gc)))))))));
+                        (W111(C.gx,C.i16(C.i64((RC10(xAddress)+C.i64(R170(R330(R78(C.gc)))))))));
+                        (W114(C.gy,C.i16(C.i64((RC10(yAddress)+C.i64(R172(R330(R78(C.gc)))))))));
                         (W112(C.gx,C.i16(((Number((R164(C.cell(mfAddress,"struct mapfragment *").value))<((C.i32((C.i32(R171(R330(R78(C.gc))))-C.i32(R170(R330(R78(C.gc)))))))))?(R164(C.cell(mfAddress,"struct mapfragment *").value)):((C.i32((C.i32(R171(R330(R78(C.gc))))-C.i32(R170(R330(R78(C.gc)))))))))))));
                         (W115(C.gy,C.i16(((Number((R165(C.cell(mfAddress,"struct mapfragment *").value))<((C.i32((C.i32(R173(R330(R78(C.gc))))-C.i32(R172(R330(R78(C.gc)))))))))?(R165(C.cell(mfAddress,"struct mapfragment *").value)):((C.i32((C.i32(R173(R330(R78(C.gc))))-C.i32(R172(R330(R78(C.gc)))))))))))));
                     } else {
                         (W112(C.gx,C.i16(R164(C.cell(mfAddress,"struct mapfragment *").value))));
                         (W115(C.gy,C.i16(R165(C.cell(mfAddress,"struct mapfragment *").value))));
-                        (W111(C.gx,C.i16(C.cell(xAddress,"long long").value)));
-                        (W114(C.gy,C.i16(C.cell(yAddress,"long long").value)));
+                        (W111(C.gx,C.i16(RC10(xAddress))));
+                        (W114(C.gy,C.i16(RC10(yAddress))));
                     }
                 } else {
                     mapfrag_free(mfAddress);
@@ -5341,7 +5346,7 @@ TODO: gc.coder->croom needs to be updated
                 /* place map starting at halign,valign */
                 switch(lr) {
                     case (1):
-                        (W111(C.gx,C.i16((C.i32(C.cell(C.splev_init_present,"signed char").value)?1:3))));
+                        (W111(C.gx,C.i16((C.i32(RC1(C.splev_init_present))?1:3))));
                     break;
                     case (2):
                         (W111(C.gx,C.i16(C.i32((2+(C.i32(Math.trunc(((C.i32((C.i32((R110(C.gx)-2))-C.i32(R112(C.gx)))))/4)))))))));
@@ -5388,15 +5393,15 @@ TODO: gc.coder->croom needs to be updated
                 /* Themed rooms should never overwrite anything */
                 if(R82(C.gi)) {
                     let isokp=(C.i8(1));
-                    for((C.cell(yAddress,"long long").value=C.i64(C.i32((C.i32(R114(C.gy))-1))));Number(C.cell(yAddress,"long long").value<C.i64(C.i32((((Number((21)<(C.i32((C.i32(R114(C.gy))+C.i32(R115(C.gy))))))?(21):(C.i32((C.i32(R114(C.gy))+C.i32(R115(C.gy)))))))+1))));(()=>{const slot=C.cell(yAddress,"long long");const old=slot.value;const next=C.i64((old+1n));slot.value=next;return old;})()) for((C.cell(xAddress,"long long").value=C.i64(C.i32((C.i32(R111(C.gx))-1))));Number(C.cell(xAddress,"long long").value<C.i64(C.i32((((Number((80)<(C.i32((C.i32(R111(C.gx))+C.i32(R112(C.gx))))))?(80):(C.i32((C.i32(R111(C.gx))+C.i32(R112(C.gx)))))))+1))));(()=>{const slot=C.cell(xAddress,"long long");const old=slot.value;const next=C.i64((old+1n));slot.value=next;return old;})()) {
-                        if(Number(!(C.isok(C.i16(C.cell(xAddress,"long long").value),C.i16(C.cell(yAddress,"long long").value))))) {
+                    for((WC10(yAddress,C.i64(C.i32((C.i32(R114(C.gy))-1)))));Number(RC10(yAddress)<C.i64(C.i32((((Number((21)<(C.i32((C.i32(R114(C.gy))+C.i32(R115(C.gy))))))?(21):(C.i32((C.i32(R114(C.gy))+C.i32(R115(C.gy)))))))+1))));(()=>{const slot=C.cell(yAddress,"long long");const old=slot.value;const next=C.i64((old+1n));slot.value=next;return old;})()) for((WC10(xAddress,C.i64(C.i32((C.i32(R111(C.gx))-1)))));Number(RC10(xAddress)<C.i64(C.i32((((Number((80)<(C.i32((C.i32(R111(C.gx))+C.i32(R112(C.gx))))))?(80):(C.i32((C.i32(R111(C.gx))+C.i32(R112(C.gx)))))))+1))));(()=>{const slot=C.cell(xAddress,"long long");const old=slot.value;const next=C.i64((old+1n));slot.value=next;return old;})()) {
+                        if(Number(!(C.isok(C.i16(RC10(xAddress)),C.i16(RC10(yAddress)))))) {
                             (isokp=(C.i8(0)));
-                        } else if(Number(!!(Number(!!(Number(!!(Number(C.cell(yAddress,"long long").value<C.i64(R114(C.gy)))||Number(C.cell(yAddress,"long long").value>=C.i64((C.i32((C.i32(R114(C.gy))+C.i32(R115(C.gy)))))))))||Number(C.cell(xAddress,"long long").value<C.i64(R111(C.gx)))))||Number(C.cell(xAddress,"long long").value>=C.i64((C.i32((C.i32(R111(C.gx))+C.i32(R112(C.gx)))))))))) {
-                            if(Number(!!(Number(C.i32(R317((A39(A102(C.svl))+Number(C.cell(xAddress,"long long").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"long long").value)*C.sizes["struct rm"]))!=C.STONE)||Number(C.i32(R322((A39(A102(C.svl))+Number(C.cell(xAddress,"long long").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"long long").value)*C.sizes["struct rm"]))!=0)))) (isokp=(C.i8(0)));
+                        } else if(Number(!!(Number(!!(Number(!!(Number(RC10(yAddress)<C.i64(R114(C.gy)))||Number(RC10(yAddress)>=C.i64((C.i32((C.i32(R114(C.gy))+C.i32(R115(C.gy)))))))))||Number(RC10(xAddress)<C.i64(R111(C.gx)))))||Number(RC10(xAddress)>=C.i64((C.i32((C.i32(R111(C.gx))+C.i32(R112(C.gx)))))))))) {
+                            if(Number(!!(Number(C.i32(R317((A39(A102(C.svl))+Number(RC10(xAddress))*(C.sizes["struct rm"]*21))+Number(RC10(yAddress))*C.sizes["struct rm"]))!=C.STONE)||Number(C.i32(R322((A39(A102(C.svl))+Number(RC10(xAddress))*(C.sizes["struct rm"]*21))+Number(RC10(yAddress))*C.sizes["struct rm"]))!=0)))) (isokp=(C.i8(0)));
                         } else {
-                            (mptyp=C.i16(mapfrag_get(C.cell(mfAddress,"struct mapfragment *").value,C.i32(C.i64((C.cell(xAddress,"long long").value-C.i64(R111(C.gx))))),C.i32(C.i64((C.cell(yAddress,"long long").value-C.i64(R114(C.gy))))))));
+                            (mptyp=C.i16(mapfrag_get(C.cell(mfAddress,"struct mapfragment *").value,C.i32(C.i64((RC10(xAddress)-C.i64(R111(C.gx))))),C.i32(C.i64((RC10(yAddress)-C.i64(R114(C.gy))))))));
                             if(Number(C.i32(mptyp)>=C.MAX_TYPE)) continue;
-                            if(Number(!!((Number(!!(Number(C.i32(R317((A39(A102(C.svl))+Number(C.cell(xAddress,"long long").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"long long").value)*C.sizes["struct rm"]))!=C.STONE)&&Number(C.i32(R317((A39(A102(C.svl))+Number(C.cell(xAddress,"long long").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"long long").value)*C.sizes["struct rm"]))!=C.i32(mptyp)))))||Number(C.i32(R322((A39(A102(C.svl))+Number(C.cell(xAddress,"long long").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"long long").value)*C.sizes["struct rm"]))!=0)))) (isokp=(C.i8(0)));
+                            if(Number(!!((Number(!!(Number(C.i32(R317((A39(A102(C.svl))+Number(RC10(xAddress))*(C.sizes["struct rm"]*21))+Number(RC10(yAddress))*C.sizes["struct rm"]))!=C.STONE)&&Number(C.i32(R317((A39(A102(C.svl))+Number(RC10(xAddress))*(C.sizes["struct rm"]*21))+Number(RC10(yAddress))*C.sizes["struct rm"]))!=C.i32(mptyp)))))||Number(C.i32(R322((A39(A102(C.svl))+Number(RC10(xAddress))*(C.sizes["struct rm"]*21))+Number(RC10(yAddress))*C.sizes["struct rm"]))!=0)))) (isokp=(C.i8(0)));
                         }
                         if(Number(!(isokp))) {
                             if(Number(!!(Number((()=>{const old=tryct;const next=C.i32((old+1));tryct=next;return old;})()<100)&&(Number(!!(Number(lr==C.i32((-1)))||Number(tb==C.i32((-1))))))))) continue redo_maploc;
@@ -5407,23 +5412,23 @@ TODO: gc.coder->croom needs to be updated
 
                 }
                 /* Load the map */
-                for((C.cell(yAddress,"long long").value=C.i64(R114(C.gy)));Number(C.cell(yAddress,"long long").value<C.i64(((Number((21)<(C.i32((C.i32(R114(C.gy))+C.i32(R115(C.gy))))))?(21):(C.i32((C.i32(R114(C.gy))+C.i32(R115(C.gy)))))))));(()=>{const slot=C.cell(yAddress,"long long");const old=slot.value;const next=C.i64((old+1n));slot.value=next;return old;})()) for((C.cell(xAddress,"long long").value=C.i64(R111(C.gx)));Number(C.cell(xAddress,"long long").value<C.i64(((Number((80)<(C.i32((C.i32(R111(C.gx))+C.i32(R112(C.gx))))))?(80):(C.i32((C.i32(R111(C.gx))+C.i32(R112(C.gx)))))))));(()=>{const slot=C.cell(xAddress,"long long");const old=slot.value;const next=C.i64((old+1n));slot.value=next;return old;})()) {
-                    (mptyp=C.i16(mapfrag_get(C.cell(mfAddress,"struct mapfragment *").value,C.i32((C.i64((C.cell(xAddress,"long long").value-C.i64(R111(C.gx)))))),C.i32((C.i64((C.cell(yAddress,"long long").value-C.i64(R114(C.gy)))))))));
+                for((WC10(yAddress,C.i64(R114(C.gy))));Number(RC10(yAddress)<C.i64(((Number((21)<(C.i32((C.i32(R114(C.gy))+C.i32(R115(C.gy))))))?(21):(C.i32((C.i32(R114(C.gy))+C.i32(R115(C.gy)))))))));(()=>{const slot=C.cell(yAddress,"long long");const old=slot.value;const next=C.i64((old+1n));slot.value=next;return old;})()) for((WC10(xAddress,C.i64(R111(C.gx))));Number(RC10(xAddress)<C.i64(((Number((80)<(C.i32((C.i32(R111(C.gx))+C.i32(R112(C.gx))))))?(80):(C.i32((C.i32(R111(C.gx))+C.i32(R112(C.gx)))))))));(()=>{const slot=C.cell(xAddress,"long long");const old=slot.value;const next=C.i64((old+1n));slot.value=next;return old;})()) {
+                    (mptyp=C.i16(mapfrag_get(C.cell(mfAddress,"struct mapfragment *").value,C.i32((C.i64((RC10(xAddress)-C.i64(R111(C.gx)))))),C.i32((C.i64((RC10(yAddress)-C.i64(R114(C.gy)))))))));
                     if(Number(C.i32(mptyp)==C.INVALID_TYPE)) {
                         /* TODO: warn about illegal map char */
                         continue;
                     }
                     if(Number(C.i32(mptyp)>=C.MAX_TYPE)) continue;
                     /* clear out levl: load_common_data may set them */
-                    (W319((A39(A102(C.svl))+Number(C.cell(xAddress,"long long").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"long long").value)*C.sizes["struct rm"],C.u32(0)));
-                    (W320((A39(A102(C.svl))+Number(C.cell(xAddress,"long long").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"long long").value)*C.sizes["struct rm"],C.u32(0)));
-                    (W322((A39(A102(C.svl))+Number(C.cell(xAddress,"long long").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"long long").value)*C.sizes["struct rm"],C.u32(0)));
-                    (W323((A39(A102(C.svl))+Number(C.cell(xAddress,"long long").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"long long").value)*C.sizes["struct rm"],C.u32(0)));
-                    (C.cell(((C.SpLev_Map+Number(C.cell(xAddress,"long long").value)*(1*21))+Number(C.cell(yAddress,"long long").value)*1),"char").value=C.i8(1));
-                    C.selection_setpoint(C.i16(C.cell(xAddress,"long long").value),C.i16(C.cell(yAddress,"long long").value),sel,1);
+                    (W319((A39(A102(C.svl))+Number(RC10(xAddress))*(C.sizes["struct rm"]*21))+Number(RC10(yAddress))*C.sizes["struct rm"],C.u32(0)));
+                    (W320((A39(A102(C.svl))+Number(RC10(xAddress))*(C.sizes["struct rm"]*21))+Number(RC10(yAddress))*C.sizes["struct rm"],C.u32(0)));
+                    (W322((A39(A102(C.svl))+Number(RC10(xAddress))*(C.sizes["struct rm"]*21))+Number(RC10(yAddress))*C.sizes["struct rm"],C.u32(0)));
+                    (W323((A39(A102(C.svl))+Number(RC10(xAddress))*(C.sizes["struct rm"]*21))+Number(RC10(yAddress))*C.sizes["struct rm"],C.u32(0)));
+                    (WC0((C.SpLev_Map+Number(RC10(xAddress))*(1*21))+Number(RC10(yAddress))*1,C.i8(1)));
+                    C.selection_setpoint(C.i16(RC10(xAddress)),C.i16(RC10(yAddress)),sel,1);
                     (W365(terr,mptyp));
                     (W366(terr,C.i16(lit)));
-                    sel_set_ter(C.i16(C.cell(xAddress,"long long").value),C.i16(C.cell(yAddress,"long long").value),terr);
+                    sel_set_ter(C.i16(RC10(xAddress)),C.i16(RC10(yAddress)),terr);
                 }
 
             }
@@ -5467,16 +5472,16 @@ function sp_level_coder_init()
     (W334(coder,1));
     (W335(coder,C.i8(0)));
     (W331(coder,0));
-    (C.cell(C.splev_init_present,"signed char").value=(C.i8(0)));
-    (C.cell(C.icedpools,"signed char").value=(C.i8(0)));
+    (WC1(C.splev_init_present,C.i8(0)));
+    (WC1(C.icedpools,C.i8(0)));
     for((tmpi=0);Number(tmpi<=5);(()=>{const old=tmpi;const next=C.i32((old+1));tmpi=next;return old;})()) {
         (C.cell((A332(coder)+Number(tmpi)*8),"struct mkroom *").value=0);
-        (C.cell((A333(coder)+Number(tmpi)*1),"signed char").value=(C.i8(0)));
+        (WC1(A333(coder)+Number(tmpi)*1,C.i8(0)));
     }
     update_croom();
     for((tmpi=0);Number(tmpi<10);(()=>{const old=tmpi;const next=C.i32((old+1));tmpi=next;return old;})()) (C.cell((C.container_obj+Number(tmpi)*8),"struct obj *").value=0);
 
-    (C.cell(C.container_idx,"int").value=0);
+    (WC5(C.container_idx,0));
     (C.cell(C.invent_carrying_monster,"struct monst *").value=0);
     C.memset(C.SpLev_Map,0,BigInt((1*1680)));
     (W153(A45(A102(C.svl)),C.u32(0)));

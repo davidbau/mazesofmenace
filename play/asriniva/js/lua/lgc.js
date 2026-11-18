@@ -15,15 +15,28 @@ export class LuaHeap {
     this.vm=vm;this.records=new Map();this.lists={allgc:null,finobj:null,tobefnz:null,fixedgc:null};this.boundaries={};this.currentWhite=1;this.stringTableSize=128;this.grayLists={grayagain:null,weak:null,allweak:null,ephemeron:null};this.grayAgain=new Set();this.objects = new Map(); this.roots = new Set(); this.pins = new Set();
     this.registration = 0; this.cycle = 0; this.collecting = false; this.finalizing = false; this.closing = false; this.closed = false;
     this.stopped = false; this.warning = options.warning ?? null; this.memoryTracker = createMemoryTracker(options);
+    this.nativeStringStorage = options.nativeStringStorage ?? false;
     this.layout = { ...LUA_MANAGED_LAYOUT, ...options.memoryLayout }; this.strings = new Map(); this.prototypeStrings = new Map(); this.prototypes = new Map(); this.upvalueBlocks = new Map(); this.transient = new Set(); this.fixed = new Map();this.temporaryBlocks=new Map();
     this.memoryTracker.collect = () => this.collect(true);
     try { this.reserve(this.fixed,'global',this.layout.global+this.layout.thread+this.layout.extra,8); } catch (error) { this.releaseBlocks(this.fixed); throw error; }
   }
   initializeStrings() {
     // f_luaopen: stack and registry already exist before luaS/luaT/luaX init.
-    this.reserve(this.fixed,'stringtable',this.stringTableSize*8);
+    this.resizeStringDirectory(this.stringTableSize, {safe: true});
     const names=['not enough memory','__index','__newindex','__gc','__mode','__len','__eq','__add','__sub','__mul','__mod','__pow','__div','__idiv','__band','__bor','__bxor','__shl','__shr','__unm','__bnot','__lt','__le','__concat','__call','__close','_ENV','and','break','do','else','elseif','end','false','for','function','goto','if','in','local','nil','not','or','repeat','return','then','true','until','while'];
     for(const name of names){this.string(name);this.pins.add(name);const record=this.records.get(name);this.moveRecord(record,'fixedgc');record.white=0;record.black=false;record.age=4;}
+  }
+  resizeStringDirectory(slots, options) {
+    const previous = this.fixed.get('stringtable');
+    const size = slots * 8;
+    // The VM's actual intern directory is a JS Map. Its internal C layout
+    // still contributes to Lua's byte counts and collector thresholds.
+    const pointer = this.memoryTracker.realloc(previous?.pointer ?? null,
+      previous?.size ?? 0, size, {...options, logical: this.nativeStringStorage});
+    if (pointer !== null) {
+      this.fixed.set('stringtable', {pointer, size});
+      this.stringTableSize = slots;
+    }
   }
   allocationObserver() {
     const heap=this;
@@ -93,10 +106,10 @@ export class LuaHeap {
   linkGrayAgain(record) {this.linkGray(record,'grayagain');}
   barrierForward(parent,value){const record=this.records.get(parent),child=this.records.get(value);if(!record?.black||!child||child.white===0)return;if(this.scheduler&&this.scheduler.state>=3&&this.scheduler.state<=6&&this.scheduler.mode===0){record.white=this.currentWhite;record.black=false;return;}this.reallyMark(child);if(record.age>=2&&child.age<2)child.age=2;}
   barrier(parent,value) {const record=this.records.get(parent),child=this.records.get(value);if(!record||!child)return;if(record.black&&child.white!==0){if(record.age===6)record.black=false;else this.linkGrayAgain(record);if(record.age>=2)record.age=5;}}
-  reserve(blocks, name, size, tag = 0) {
+  reserve(blocks, name, size, tag = 0, options) {
     const previous = blocks.get(name), oldSize = previous?.size ?? 0;
     if (oldSize === size) return;
-    const pointer = this.memoryTracker.realloc(previous?.pointer ?? null, previous ? oldSize : tag, size);
+    const pointer = this.memoryTracker.realloc(previous?.pointer ?? null, previous ? oldSize : tag, size, options);
     if (size) blocks.set(name, { pointer, size }); else blocks.delete(name);
   }
   releaseBlocks(blocks) { for (const { pointer, size } of blocks.values()) this.memoryTracker.realloc(pointer, size, 0); blocks.clear(); }
@@ -123,9 +136,8 @@ export class LuaHeap {
       try { if(this.strings.size>=this.stringTableSize){
         // luaS_resize is allowed to fail: keep the old hash and still attempt
         // the new TString allocation after an unsuccessful emergency retry.
-        const previous=this.fixed.get('stringtable'),size=this.stringTableSize*16,pointer=this.memoryTracker.realloc(previous.pointer,previous.size,size,{safe:false});
-        if(pointer!==null){this.fixed.set('stringtable',{pointer,size});this.stringTableSize*=2;}
-      }const blocks = new Map(); this.reserve(blocks, 'string', this.layout.string + value.length + 1,4); this.strings.set(value, blocks);this.newRecord(value,'shortstring',blocks); }
+        this.resizeStringDirectory(this.stringTableSize * 2, {safe: false});
+      }const blocks = new Map(); this.reserve(blocks, 'string', this.layout.string + value.length + 1,4,{logical:this.nativeStringStorage}); this.strings.set(value, blocks);this.newRecord(value,'shortstring',blocks); }
       finally { this.transient.delete(value); }
     }
     return value;
@@ -340,8 +352,7 @@ export class LuaHeap {
   }
   checkSizes() {
     if(this.scheduler?.emergency||this.stringTableSize<=128||this.strings.size>=this.stringTableSize/4)return;
-    const old=this.fixed.get('stringtable'),size=Math.max(128,this.stringTableSize/2),pointer=this.memoryTracker.realloc(old.pointer,old.size,size*8,{safe:false,retry:false});
-    if(pointer!==null){this.fixed.set('stringtable',{pointer,size:size*8});this.stringTableSize=size;}
+    this.resizeStringDirectory(Math.max(128,this.stringTableSize/2), {safe: false, retry: false});
   }
   setPhase(state) {if(this.scheduler)this.scheduler.phase(state);}
   clearGrayLists() {this.grayLists={grayagain:null,weak:null,allweak:null,ephemeron:null};this.grayAgain.clear();}

@@ -14,7 +14,7 @@ export function withSelvarEnvironment(services,layout,state,callback){
 }
 
 // Live C views, scalar conversions and header macros outside the translated TU.
-export function createSelvarEnvironment(services, layout, state,servicePrototype=services) {
+export function createSelvarEnvironment(services, layout, state,servicePrototype=services, fixedProvider=false) {
     const widths = { pointerSize: 8, longSize: 8, intSize: 4, charSize: 1, charSigned: 1,
         booleanSize: 1, booleanSigned: 1, coordxySize: 2, coordxySigned: 1,
         floatSize: 4, CHAR_BIT: 8, sel_wid_size: 4, sel_hei_size: 4,
@@ -26,7 +26,7 @@ export function createSelvarEnvironment(services, layout, state,servicePrototype
     const address = value => Number(value?.address ?? value ?? 0);
     const global = index => address(services.global(index));
     let dataView,signedBytes;
-    const view=()=>{const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;};
+    const view=fixedProvider?()=>services.dataView():()=>{const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;};
     const pointer = at => CAdapter.readPointerNumber(view,at);
     const int = v => CAdapter.signedInt(v);
     const coordxy = v => int(v) << 16 >> 16;
@@ -43,21 +43,30 @@ export function createSelvarEnvironment(services, layout, state,servicePrototype
             });
         return result;
     }
+    const selections = new Map();
     function selection(value) {
         const at = address(value);
         if (!at) return 0;
-        return { address: at,
+        const retained = selections.get(at);
+        if (retained) return retained;
+        const bounds = fixedProvider ? rect(at + layout.sel_bounds) : undefined;
+        const result = { address: at,
             get wid() { return view().getInt32(at + layout.sel_wid, true); },
             set wid(v) { view().setInt32(at + layout.sel_wid, int(v), true); },
             get hei() { return view().getInt32(at + layout.sel_hei, true); },
             set hei(v) { view().setInt32(at + layout.sel_hei, int(v), true); },
             get bounds_dirty() { return view().getInt8(at + layout.sel_bounds_dirty); },
             set bounds_dirty(v) { view().setInt8(at + layout.sel_bounds_dirty, char(v)); },
-            get bounds() { return rect(at + layout.sel_bounds); },
+            get bounds() { return bounds ?? rect(at + layout.sel_bounds); },
             set bounds(v) { services.heap().copyWithin(at + layout.sel_bounds, address(v), address(v) + layout.rectSize); },
             get map() { return pointer(at + layout.sel_map); },
             set map(v) { view().setBigUint64(at + layout.sel_map, BigInt(address(v)), true); },
         };
+        if (fixedProvider) {
+            selections.set(at, result);
+            if (selections.size > 32) selections.delete(selections.keys().next().value);
+        }
+        return result;
     }
     function room(value) {
         const at = address(value);

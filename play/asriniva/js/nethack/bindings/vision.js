@@ -79,7 +79,7 @@ export function createVisionEnvironment(services,layout){
     });
     const prop=n=>env.u.uprops[n];for(const[key,name]of [['Blind','BLINDED'],['See_invisible','SEE_INVIS'],['Detect_monsters','DETECT_MONSTERS']])Object.defineProperty(env,key,{get(){const p=prop(layout[name]);return key==='Blind'?(p.intrinsic||p.extrinsic)&&!p.blocked:p.intrinsic||p.extrinsic;}});
     env.IS_OBSTRUCTED=t=>t<layout.POOL;env.IS_DOOR=t=>t===layout.DOOR;env.IS_WALL=t=>t&&t<=layout.DBWALL;env.IS_WATERWALL=t=>t===layout.WATER;
-    env.m_at=(x,y)=>nativeState.spatial?.monsters[x][y]??env.svl.level.monsters[x][y];
+    env.m_at=nativeState.spatial?.grid.monsterAt??((x,y)=>env.svl.level.monsters[x][y]);
     env.is_lightblocker_mappear=m=>{const type=m.m_ap_type&layout.M_AP_TYPMASK;return type===layout.M_AP_OBJECT&&m.mappearance===layout.BOULDER||type===layout.M_AP_FURNITURE&&(m.mappearance===layout.S_hcdoor||m.mappearance===layout.S_vcdoor||m.mappearance<layout.S_ndoor||m.mappearance===layout.S_tree);};
     env.MATCH_WARN_OF_MON=m=>{const p=prop(layout.WARN_OF_MON),w=env.svc.context.warntype;return (p.intrinsic||p.extrinsic)&&((w.obj&m.data.mflags2)!==0n||(w.polyd&m.data.mflags2)!==0n||w.species&&addr(w.species)===addr(m.data));};
     for(const[name,field]of [['Is_waterlevel','d_water_level'],['Is_airlevel','d_air_level'],['Is_rogue_level','d_rogue_level']])env[name]=l=>{const z=env.svd.dungeon_topology[field];return (z.dlevel||z.dnum)&&services.on_level(l,z);};
@@ -104,6 +104,7 @@ export function createVisionEnvironment(services,layout){
     }
     if(nativeState.nativeArena&&services.nativeGlobalBindings===true)env.assert=(ok,expression,fn,line)=>{if(!ok)return services.assert(ok,expression,fn,line);};
     env.nativeVisibilityState=workspace;
+    env.levelGrid=nativeState.spatial?.grid;
     env.nativeVision=createNativeVision(env);
     return env;
 }

@@ -5,5 +5,5 @@ import {typeAliases} from './declarations.js';
 export function createNetHackRuntime(base,metadata,getenv) {
     return createRuntime({memory:base.memory,nativeStack:true,metadata:withNetHackEnums(metadata),typeAliases,
         conversionAliases:{boolean:'char',coordxy:'short'},
-        inheritedServices:base.services,initialServices:{getenv}});
+        inheritedServices:base.services,initialServices:{getenv,dataView:()=>base.memory.view}});
 }

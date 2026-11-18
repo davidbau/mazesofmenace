@@ -15,7 +15,7 @@ export function feature_notice_version(value) {
 // interactive caller. Startup config-error presentation remains a shared gap.
 export function optfn_suppress_alert_set(flags, op, negated = false, initial = true) {
     if (negated)
-        return { ok: false, message: null, error: 'The suppress_alert option may not be negated.' };
+        return { ok: false, message: null, error: 'The suppress_alert option may not both have a value and be negated.' };
     if (!op) return { ok: true, message: null, error: null };
     const fnv = get_feature_notice_ver(op);
     if (fnv === 0n) return { ok: true, message: null, error: null };

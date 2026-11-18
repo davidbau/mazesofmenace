@@ -12,9 +12,20 @@ import {createNativeNhlua} from './native/nhlua.js';
 import {nativeStateFor} from './native/state-bridge.js';
 export function enableLuaSandbox(environment,layouts){
  const native=nativeStateFor(environment);
- const {services,functions}=environment,schema=nhlua.nhluaSchema,lua=environment.enableLua();
+ const {services,functions,memory}=environment,schema=nhlua.nhluaSchema,pointers=new Map();
+ const userFields=schema.records.nhl_user_data.fields;
+ const stateOffset=userFields.find(field=>field.name==='L').offset;
+ const limitOffset=userFields.find(field=>field.name==='memlimit').offset;
+ const lua=environment.enableLua({ownsStringStorage:(id,data)=>{
+  if(!id||id!==Number(pointers.get('nhl_alloc')))return false;
+  return bytes=>{
+   if(!data||!memory.view.getBigUint64(data+stateOffset,true))return true;
+   const limit=memory.view.getUint32(data+limitOffset,true);
+   return !limit||bytes<=limit;
+  };
+ }});
  const layout=layouts.nhlua;
- const globals=Object.keys(schema.foreignGlobals),names=Object.keys(schema.data),local=Object.create(services),pointers=new Map(),jumps=new Map();
+ const globals=Object.keys(schema.foreignGlobals),names=Object.keys(schema.data),local=Object.create(services),jumps=new Map();
  function size(t){return typeof t==='string'?Number(t.slice(1))/8:t.pointer?8:t.record?schema.records[t.record].size:t.array.reduce((a,b)=>a*b,size(t.of));}
  const storage=names.map(n=>environment.allocateGlobal('nhlua.'+n,size(schema.data[n].type)));
  const signature=(result,args)=>[result,...args].map(t=>typeof t==='object'?'p':t==='void'?'v':t[0]==='f'?'d':t.endsWith('64')?'j':'i').join('');

@@ -7,7 +7,7 @@ import { rounddiv } from './hack.js';
 import { u_carried_gloves } from './invent.js';
 import { set_msg_xy as set_msg_xy_mu } from './pline.js';
 import { registerStaticReset } from './statics.js';
-import { yyyymmdd } from './calendar.js';
+import { getyear, yyyymmdd } from './calendar.js';
 import { attacktype_fordmg } from './mondata.js';
 import { drain_item } from './zap.js';
 import { stagger } from './mondata.js';
@@ -1889,7 +1889,8 @@ export async function doseduce(mon) {
 
     if (u.uarm || u.uarmc) {
         if (!Deaf_mu()) {
-            if (yyyymmdd(0) % 10000 === 229 && mon.female) {
+            /* C mhitu.c:25,2141: ld() == (yyyymmdd(0) - (getyear() * 10000L)) == 0xe5 */
+            if (((yyyymmdd(0) - (getyear() * 10000)) === 0xe5) && mon.female) {
                 const gloves = u_carried_gloves();
                 if (gloves) observe_object_mu(gloves);
                 await verbalize_ds(`Well, then you owe me ${gloves ? await yname_mu(gloves) : 'twelve pairs of gloves'}${gloves ? ' and eleven more pairs of gloves' : ''}!`);

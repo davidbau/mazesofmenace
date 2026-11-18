@@ -159,6 +159,10 @@ const R154=NF.readers[154],W154=NF.writers[154],A154=NF.addresses[154];
 const R155=NF.readers[155],W155=NF.writers[155],A155=NF.addresses[155];
 const R156=NF.readers[156],W156=NF.writers[156],A156=NF.addresses[156];
 const R157=NF.readers[157],W157=NF.writers[157],A157=NF.addresses[157];
+const RC0=C.readInt8At,WC0=C.writeInt8At;
+const RC1=C.readInt8At,WC1=C.writeInt8At;
+const RC2=C.readUint8At,WC2=C.writeUint8At;
+const RC5=C.readInt32At,WC5=C.writeInt32At;
 
 /* NetHack 5.0	pray.c	$NHDT-Date: 1762680996 2025/11/09 01:36:36 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.244 $ */
 /* Copyright (c) Benson I. Margulies, Mike Stephenson, Steve Linhart, 1989. */
@@ -284,7 +288,7 @@ function in_trouble()
     if(C.region_danger()) return 8;
     if(Number(!!((Number(!!(Number(!((Number(R131(C.u)!=R130(C.u)))))||(Number(!!(R104(A129(C.u)+Number(C.UNCHANGING)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.UNCHANGING)*C.sizes["struct prop"])))))))&&C.i32(critically_low_hp((C.i8(0))))))) return 7;
     if((Number(!!(Number((R134(C.u))>=C.LOW_PM)&&Number((R134(C.u))<C.NUMMONS))))) return 6;
-    if(Number(!!(Number(C.near_capacity()>=C.EXT_ENCUMBER)&&Number(C.i32((C.i32((C.cell((A10(A142(C.u))+Number(C.A_STR)*1),"signed char").value))-C.i32((C.cell((A10(A141(C.u))+Number(C.A_STR)*1),"signed char").value))))>3)))) return 5;
+    if(Number(!!(Number(C.near_capacity()>=C.EXT_ENCUMBER)&&Number(C.i32((C.i32((RC1(A10(A142(C.u))+Number(C.A_STR)*1)))-C.i32((RC1(A10(A141(C.u))+Number(C.A_STR)*1)))))>3)))) return 5;
     if(stuck_in_wall()) return 4;
     if(Number(!!(Number(!!((Number(!!(Number(!!((C.global("uarmf").value)&&Number(C.i32(R73(C.global("uarmf").value))==(C.LEVITATION_BOOTS))))&&C.i32(R79(C.global("uarmf").value)))))||C.stuck_ring(C.global("uleft").value,C.RIN_LEVITATION)))||C.stuck_ring(C.global("uright").value,C.RIN_LEVITATION)))) return 3;
     if(Number(!!((Number((C.u64((R99(R56(A51(C.gy)))&C.u64(8192n))))!=C.u64(0n)))||Number(!(C.freehand()))))) {
@@ -310,7 +314,7 @@ function in_trouble()
     /* deafness isn't its own trouble; healing magic cures deafness
        when it cures blindness, so do the same with trouble repair */
     if(Number((C.i64((R104(A129(C.u)+Number(C.DEAF)*C.sizes["struct prop"])&16777215n)))>1n)) return (C.i32((-5)));
-    for((i=0);Number(i<C.A_MAX);((i=C.i32((i+1)))-1)) if(Number(C.i32((C.cell((A10(A141(C.u))+Number(i)*1),"signed char").value))<C.i32((C.cell((A10(A142(C.u))+Number(i)*1),"signed char").value)))) return (C.i32((-6)));
+    for((i=0);Number(i<C.A_MAX);((i=C.i32((i+1)))-1)) if(Number(C.i32((RC1(A10(A141(C.u))+Number(i)*1)))<C.i32((RC1(A10(A142(C.u))+Number(i)*1))))) return (C.i32((-6)));
 
     if(Number(!!((Number(!!(R104(A129(C.u)+Number(C.WOUNDED_LEGS)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.WOUNDED_LEGS)*C.sizes["struct prop"]))))&&Number(!(R155(C.u)))))) return (C.i32((-7)));
     if(Number(R128(C.u)>=C.u32(C.HUNGRY))) return (C.i32((-8)));
@@ -482,8 +486,8 @@ function fix_worst_trouble(trouble)
         break;
         case (5):
             /* override Fixed_abil; uncurse that if feasible */
-            C.variadic(8,C.literal("%sstronger."),((Number(C.i32((C.i32((C.cell((A10(A142(C.u))+Number(C.A_STR)*1),"signed char").value))-C.i32((C.cell((A10(A141(C.u))+Number(C.A_STR)*1),"signed char").value))))>6))?C.literal("much "):C.literal("")));
-        ((C.cell((A10(A141(C.u))+Number(C.A_STR)*1),"signed char").value)=(C.cell((A10(A142(C.u))+Number(C.A_STR)*1),"signed char").value));
+            C.variadic(8,C.literal("%sstronger."),((Number(C.i32((C.i32((RC1(A10(A142(C.u))+Number(C.A_STR)*1)))-C.i32((RC1(A10(A141(C.u))+Number(C.A_STR)*1)))))>6))?C.literal("much "):C.literal("")));
+        (WC1(A10(A141(C.u))+Number(C.A_STR)*1,RC1(A10(A142(C.u))+Number(C.A_STR)*1)));
         (W25(C.disp,C.i8(1)));
         if(R102(A129(C.u)+Number(C.FIXED_ABIL)*C.sizes["struct prop"])) {
             if(Number(((otmp=C.stuck_ring(C.global("uleft").value,C.RIN_SUSTAIN_ABILITY)))!=0)) {
@@ -575,8 +579,8 @@ function fix_worst_trouble(trouble)
             if((Number(!!(R104(A129(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R104(A129(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))) C.variadic(14,C.literal("There's a tiger in your tank."));
  else C.variadic(15,C.literal("in good health again."));
         for((i=0);Number(i<C.A_MAX);((i=C.i32((i+1)))-1)) {
-            if(Number(C.i32((C.cell((A10(A141(C.u))+Number(i)*1),"signed char").value))<C.i32((C.cell((A10(A142(C.u))+Number(i)*1),"signed char").value)))) {
-                ((C.cell((A10(A141(C.u))+Number(i)*1),"signed char").value)=(C.cell((A10(A142(C.u))+Number(i)*1),"signed char").value));
+            if(Number(C.i32((RC1(A10(A141(C.u))+Number(i)*1)))<C.i32((RC1(A10(A142(C.u))+Number(i)*1))))) {
+                (WC1(A10(A141(C.u))+Number(i)*1,RC1(A10(A142(C.u))+Number(i)*1)));
                 (W25(C.disp,C.i8(1)));
             }
         }
@@ -588,7 +592,7 @@ function fix_worst_trouble(trouble)
                 let msgbuf=C.stackAlloc((1*256));
                 let eyes=C.body_part(C.EYE);
                 let cure_deaf=C.i8(((C.i64((R104(A129(C.u)+Number(C.DEAF)*C.sizes["struct prop"])&16777215n)))?C.i32((C.i8(1))):C.i32((C.i8(0)))));
-                (C.cell((msgbuf+Number(0)*1),"char").value=C.i8(0));
+                (WC0(msgbuf+Number(0)*1,C.i8(0)));
                 if((Number(!!(R104(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])&&Number(!(R103(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))) {
                     if(Number(((Number(!((Number((C.u64((R99(R56(A51(C.gy)))&C.u64(4096n))))==C.u64(0n)))))?0:((Number(!!(Number((R56(A51(C.gy)))==(C.mons+Number(C.PM_CYCLOPS)*C.sizes["struct permonst"]))||Number((R56(A51(C.gy)))==(C.mons+Number(C.PM_FLOATING_EYE)*C.sizes["struct permonst"])))))?1:2)))!=1)) (eyes=C.makeplural(eyes));
                     C.variadic(16,msgbuf,C.literal("Your %s %s better"),eyes,C.vtense(eyes,C.literal("feel")));
@@ -597,9 +601,9 @@ function fix_worst_trouble(trouble)
                 }
                 if(cure_deaf) {
                     C.make_deaf(0n,(C.i8(0)));
-                    if(Number(!((Number(!!(Number(!!(R104(A129(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R116(A140(C.u))))))))) C.variadic(17,C.eos(msgbuf),C.literal("%s can hear again"),(Number(!(C.cell(msgbuf,"char").value))?C.literal("You"):C.literal(" and you")));
+                    if(Number(!((Number(!!(Number(!!(R104(A129(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R116(A140(C.u))))))))) C.variadic(17,C.eos(msgbuf),C.literal("%s can hear again"),(Number(!(RC0(msgbuf)))?C.literal("You"):C.literal(" and you")));
                 }
-                if(C.cell(msgbuf,"char").value) C.variadic(18,C.literal("%s."),msgbuf);
+                if(RC0(msgbuf)) C.variadic(18,C.literal("%s."),msgbuf);
                 break;
             }        case ((C.i32((-7)))):
             C.heal_legs(0);
@@ -973,7 +977,7 @@ function give_spell()
                become discovered (below) without needing to be read */
             if(Number(!!(Number(!(R91(C.objects+Number(C.SPE_BLANK_PAPER)*C.sizes["struct objclass"])))||C.carrying(C.MAGIC_MARKER)))) break;
         }
-        (W73(otmp,C.i16(C.rnd_class(C.cell((A42(C.svb)+Number(C.SPBOOK_CLASS)*4),"int").value,C.SPE_BLANK_PAPER))));
+        (W73(otmp,C.i16(C.rnd_class(RC5(A42(C.svb)+Number(C.SPBOOK_CLASS)*4),C.SPE_BLANK_PAPER))));
     }
     /*
      * 25% chance of learning the spell directly instead of
@@ -1101,7 +1105,7 @@ function pleased(g_align)
         case (1):
             if(Number(!!(C.global("uwep").value&&(Number(!!(Number(!!(C.welded(C.global("uwep").value)||Number(C.i32(R76(C.global("uwep").value))==C.WEAPON_CLASS)))||(Number(!!(Number(C.i32(R76(C.global("uwep").value))==C.TOOL_CLASS)&&Number(C.i32(R93(C.objects+Number(R73(C.global("uwep").value))*C.sizes["struct objclass"]))!=C.P_NONE)))))))))) {
                 let repair_buf=C.stackAlloc((1*256));
-                (C.cell(repair_buf,"char").value=C.i8(0));
+                (WC0(repair_buf,C.i8(0)));
                 if(Number(!!(C.i32(R84(C.global("uwep").value))||C.i32(R85(C.global("uwep").value))))) C.variadic(64,repair_buf,C.literal(" and %s now as good as new"),C.otense(C.global("uwep").value,C.literal("are")));
                 if(R79(C.global("uwep").value)) {
                     if(Number(!((Number(!!((Number(!!(R104(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R103(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))) {
@@ -1111,7 +1115,7 @@ function pleased(g_align)
                     C.uncurse(C.global("uwep").value);
                     (W82(C.global("uwep").value,C.u32(1)));
                     /* ok to bypass set_bknown() */
-                    (C.cell(repair_buf,"char").value=C.i8(0));
+                    (WC0(repair_buf,C.i8(0)));
                 } else if(Number(!(R80(C.global("uwep").value)))) {
                     if(Number(!((Number(!!((Number(!!(R104(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R103(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))) {
                         C.variadic(67,C.literal("%s with %s aura%s."),C.Yobjnam2(C.global("uwep").value,C.literal("softly glow")),C.an(C.hcolor(R14(C.c_color_names))),repair_buf);
@@ -1120,7 +1124,7 @@ function pleased(g_align)
                     C.bless(C.global("uwep").value);
                     (W82(C.global("uwep").value,C.u32(1)));
                     /* ok to bypass set_bknown() */
-                    (C.cell(repair_buf,"char").value=C.i8(0));
+                    (WC0(repair_buf,C.i8(0)));
                 }
                 /* fix any rust/burn/rot damage, but don't protect
                    against future damage */
@@ -1128,7 +1132,7 @@ function pleased(g_align)
                     (W84(C.global("uwep").value,W85(C.global("uwep").value,C.u32(0))));
                     /* only give this message if we didn't just bless
                        or uncurse (which has already given a message) */
-                    if(C.cell(repair_buf,"char").value) C.variadic(69,C.literal("%s as good as new!"),C.Yobjnam2(C.global("uwep").value,((Number(!!((Number(!!(R104(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R103(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))?C.literal("feel"):C.literal("look"))));
+                    if(RC0(repair_buf)) C.variadic(69,C.literal("%s as good as new!"),C.Yobjnam2(C.global("uwep").value,((Number(!!((Number(!!(R104(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R103(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))?C.literal("feel"):C.literal("look"))));
                 }
                 C.update_inventory();
             }
@@ -1173,8 +1177,8 @@ function pleased(g_align)
         }
         (W147(C.u,R148(C.u)));
         if((Number(R131(C.u)!=R130(C.u)))) (W132(C.u,R133(C.u)));
-        if(Number(C.i32((C.cell((A10(A141(C.u))+Number(C.A_STR)*1),"signed char").value))<C.i32((C.cell((A10(A142(C.u))+Number(C.A_STR)*1),"signed char").value)))) {
-            ((C.cell((A10(A141(C.u))+Number(C.A_STR)*1),"signed char").value)=(C.cell((A10(A142(C.u))+Number(C.A_STR)*1),"signed char").value));
+        if(Number(C.i32((RC1(A10(A141(C.u))+Number(C.A_STR)*1)))<C.i32((RC1(A10(A142(C.u))+Number(C.A_STR)*1))))) {
+            (WC1(A10(A141(C.u))+Number(C.A_STR)*1,RC1(A10(A142(C.u))+Number(C.A_STR)*1)));
             (W25(C.disp,C.i8(1)));
             /* before potential message */
             C.encumber_msg();
@@ -1488,7 +1492,7 @@ function offer_different_alignment_altar(otmp,altaralign)
     /* Is this a conversion ? */
     /* An unaligned altar in Gehennom will always elicit rejection. */
     if(Number(!!((Number(R9(A143(C.u))<0))||(Number(!!(Number(C.i32(altaralign)==(C.i32((-128))))&&C.i32(C.In_hell(A121(C.u))))))))) {
-        if(Number(!!(Number(C.i32(C.cell((A144(C.u)+Number(0)*1),"signed char").value)==C.i32(C.cell((A144(C.u)+Number(1)*1),"signed char").value))&&Number(C.i32(altaralign)!=(C.i32((-128))))))) {
+        if(Number(!!(Number(C.i32(RC1(A144(C.u)+Number(0)*1))==C.i32(RC1(A144(C.u)+Number(1)*1)))&&Number(C.i32(altaralign)!=(C.i32((-128))))))) {
             C.variadic(112,C.literal("have a strong feeling that %s is angry..."),u_gname());
             consume_offering(otmp);
             C.variadic(113,C.literal("%s accepts your allegiance."),a_gname());
@@ -2041,7 +2045,7 @@ function maybe_turn_mon_iter(mtmp)
     /* 3.6.3: used to use cansee() here but the purpose is to prevent
        #turn operating through walls, not to require that the hero be
        able to see the target location */
-    if(Number(!!(Number(!((Number((C.i32((C.i32(C.cell((C.cell((R50(C.gv)+Number(R59(mtmp))*8),"unsigned char *").value+Number(R58(mtmp))*1),"unsigned char").value)&1)))!=0))))||Number(C.dist2((R58(mtmp)),(R59(mtmp)),R119(C.u),R120(C.u))>C.turn_undead_range)))) return;
+    if(Number(!!(Number(!((Number((C.i32((C.i32(RC2(C.cell((R50(C.gv)+Number(R59(mtmp))*8),"unsigned char *").value+Number(R58(mtmp))*1))&1)))!=0))))||Number(C.dist2((R58(mtmp)),(R59(mtmp)),R119(C.u),R120(C.u))>C.turn_undead_range)))) return;
     if(Number(!!(Number(!(R67(mtmp)))&&(Number(!!(Number(!!((Number((C.u64((R100(R56(mtmp))&C.u64(2n))))!=C.u64(0n)))||(Number(!!(Number(!!(Number(C.i32(R57(mtmp))==C.PM_VAMPIRE)||Number(C.i32(R57(mtmp))==C.PM_VAMPIRE_LEADER)))||Number(C.i32(R57(mtmp))==C.PM_VLAD_THE_IMPALER))))))||(Number(!!((Number((C.u64((R100(R56(mtmp))&C.u64(256n))))!=C.u64(0n)))&&(Number(R122(C.u)>(C.i32(Math.trunc((30/2))))))))))))))) {
         (W64(mtmp,C.u32(0)));
         if(R104(A129(C.u)+Number(C.CONFUSION)*C.sizes["struct prop"])) {
@@ -2217,7 +2221,7 @@ function align_gname(alignment)
         (gnam=C.literal("someone"));
         break;
     }
-    if(Number(C.i32(C.cell(gnam,"char").value)==95)) (gnam=C.ptr((gnam+Number(1))));
+    if(Number(C.i32(RC0(gnam))==95)) (gnam=C.ptr((gnam+Number(1))));
     return gnam;
 }
 
@@ -2279,7 +2283,7 @@ function halu_gname(alignment)
         (gnam=C.literal("your Friend the Computer"));
         /* Paranoia */
     }
-    if(Number(C.i32(C.cell(gnam,"char").value)==95)) (gnam=C.ptr((gnam+Number(1))));
+    if(Number(C.i32(RC0(gnam))==95)) (gnam=C.ptr((gnam+Number(1))));
     return gnam;
 }
 
@@ -2302,7 +2306,7 @@ function align_gtitle(alignment)
             (gnam=0);
         break;
     }
-    if(Number(!!(gnam&&Number(C.i32(C.cell(gnam,"char").value)==95)))) (result=C.literal("goddess"));
+    if(Number(!!(gnam&&Number(C.i32(RC0(gnam))==95)))) (result=C.literal("goddess"));
     return result;
 }
 

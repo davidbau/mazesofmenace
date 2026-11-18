@@ -162,6 +162,9 @@ export function savefile_name(plname) {
 }
 
 export const NOT_SAVED = [
+    // pline.c:50-60 and save.c:1086,1164: these allocations/counters are
+    // process state, separate from the tty history written by save_msghistory.
+    '_youBuf', 'saved_plines', 'saved_pline_index', 'early_raw_messages',
     'roleoptvals', // C options.c:800-844: saveoptvals/restoptvals are #if 0.
     // C do_name.c:22-23: nextmbuf's storage is process-local static data.
     '_mbufs',

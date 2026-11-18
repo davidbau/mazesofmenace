@@ -177,11 +177,15 @@ export async function ustatusline() {
         info += _a_monnam(u.ustuck);
     }
 
-    /* insight.c:3500-3503 — visible_region_at */
+    /* insight.c:3479-3483 — Snprintf appends only the space left in info,
+     * including its terminating NUL.  The existing text can contain a
+     * monster's name, so strlen counts UTF-8 bytes rather than JS characters. */
     if (!u.uswallow) {
         let reg = _visible_region_at(u.ux, u.uy);
-        if (reg && info.length < BUFSZ) {
-            info += ', in a cloud of ' + (_reg_damg(reg) ? 'poison gas' : 'vapor');
+        const ln = new TextEncoder().encode(info).length;
+        if (reg && ln < BUFSZ) {
+            const cloud = ', in a cloud of ' + (_reg_damg(reg) ? 'poison gas' : 'vapor');
+            info += cloud.slice(0, BUFSZ - ln - 1);
         }
     }
 
@@ -620,8 +624,10 @@ export function enlght_line(start, middle, end, ps) {
     ];
     let buf = ` ${start}${middle}${end}${ps}.`;
     if (buf.indexOf(" not ") !== -1) {
+        /* insight.c:153 calls strsubst once per pair (hacklib.c:536-550),
+         * which replaces only the first occurrence. */
         for (const [twowords, contrctn] of CONTRA)
-            buf = buf.split(twowords).join(contrctn);
+            buf = buf.replace(twowords, contrctn);
     }
     enlght_out(buf);
 }
@@ -1056,7 +1062,8 @@ function num_extinct() {
     const mons = monsPack.mons, vitals = game.mvitals || [];
     let n = 0;
     for (let i = LOW_PM; i < mons.length; i++) {
-        if ((mons[i]?.[3] | 0) & G_UNIQ) continue;
+        /* UniqCritterIndx (insight.c:2777-2778) exempts high clerics. */
+        if (((mons[i]?.[3] | 0) & G_UNIQ) && i !== PM_HIGH_PRIEST) continue;
         if (((vitals[i]?.mvflags | 0) & G_GONE) === G_EXTINCT) n++;
     }
     return n;
@@ -1068,7 +1075,7 @@ function num_gone(mvflags, mindx) {
     let n = 0;
     if (Array.isArray(mindx)) mindx.fill(0);
     for (let i = LOW_PM; i < mons.length; i++) {
-        if ((mons[i]?.[3] | 0) & G_UNIQ) continue;
+        if (((mons[i]?.[3] | 0) & G_UNIQ) && i !== PM_HIGH_PRIEST) continue;
         if ((vitals[i]?.mvflags | 0) & (mvflags | 0)) {
             if (Array.isArray(mindx)) mindx[n] = i;
             n++;

@@ -264,6 +264,7 @@ export function createInsightEnvironment(services,L,state){
  C.which_armor=(...a)=>wrap(services.which_armor(...a),"struct obj");
  C.vanqorders=state.vanqorders;C.punctclasses=state.punctclasses;C.achieve_msg=state.achieve_msg;
  C.qsort=(p,n,s,fn)=>{if(fn!==core.vanqsort_cmp)throw Error('INSIGHT comparator identity');return services.qsort(p,n,s);};
+ if(Object.hasOwn(services,'chronicle'))Object.defineProperty(C,'chronicle',{value:services.chronicle});
  return C;
 }
 function stateFor(services,L){let state=states.get(services.moduleKey);if(!state){

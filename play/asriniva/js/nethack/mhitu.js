@@ -36,7 +36,7 @@ export function enableMhitu(environment,layouts){
  let context,native;
  const getContext=()=>{if(!context){context=createMhituEnvironment(local,L);native=createNativeMonsterAttack(context);}return context;};
  const invoke=(name,args)=>{const env=getContext(),saved=nativeState.depth?undefined:transport.stackSave();nativeState.enter();try{const v=native[name](...prepareMhituArguments(env,L,name,args));return typeof v==='string'?services.literal(v):typeof v==='boolean'?Number(v):v?.address??v;}finally{try{nativeState.leave();}finally{if(saved!==undefined)transport.stackRestore(saved);}}};
- const owner={services:local,state:getMhituState(local),call:(name,...args)=>invoke(name,args),get context(){return getContext();},exports:abi.public,limitation:'Native MHITU shares canonical actors and source-private state; finite original-C and recording acceptance is reported separately.'};
+ const owner={services:local,state:getMhituState(local),call:(name,...args)=>invoke(name,args),get context(){return getContext();},get native(){getContext();return native;},exports:abi.public,limitation:'Native MHITU shares canonical actors and source-private state; finite original-C and recording acceptance is reported separately.'};
  environment.register('mhitu',Object.fromEntries(abi.public.filter(n=>!environment.hasFunction(n)).map(n=>{let started=false;const call=(...args)=>{if(!started){environment.startModule('mhitu');started=true;}return invoke(n,args);};call.nativeState=nativeState;call.nativeDirect=true;nativeState.functions.set(n,call);return[n,call];})),local);
  owners.set(environment,owner);return owner;
 }

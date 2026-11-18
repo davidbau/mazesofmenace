@@ -51,6 +51,7 @@ export function createNativeGlyphsBridge(layout){
    objects:indexed(i=>typed('object',services.element(3,i,0))),loadsyms:indexed(i=>typed('symparse',services.element(4,i,0))),monsdump:indexed(i=>typed('enum',services.element(5,i,0))),obj_descr:indexed(i=>typed('descr',services.element(6,i,0))),mons:indexed(i=>typed('monster',services.element(7,i,0))),
    Snprintf(fn,line,out,size,format,a=0,b=0){return format==='G_%s%d'?services.formatInt(fn,line,out,size,format,a,b):services.format(fn,line,out,size,format,a,b);},Strcpy:(a,b)=>services.strcpy(a,b),Strcat:(a,b)=>services.strcat(a,b),
   });
+  if(Object.hasOwn(input,'glyphCache'))env.glyphCache=input.glyphCache;
   for(const key of ['res_nothing','res_dump_glyphids','res_fill_cache','find_nothing','find_pm','find_oc','find_cmap','find_glyph'])env[key]=original[key];
   abi.globals.forEach((path,i)=>{const parts=path.split('.'),key=parts.pop();let object=env;for(const part of parts)object=object[part]??=Object.create(null);Object.defineProperty(object,key,{get:()=>Number(services.global(i)),set:v=>services.setGlobal(i,BigInt(v))});});
   abi.headers.forEach((name,i)=>{const header=glyphHeaders[i];if(!header)throw Error('Missing native glyph header '+name);env[name]=glyph=>header(Number(glyph)|0);});

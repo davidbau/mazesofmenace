@@ -21,6 +21,7 @@ export function createDungeonEnvironment(services){
  env.ownedFunctionPointer=name=>{const i=schema.ownedFunctionPointers.indexOf(name);if(i<0)throw Error('Review DUNGEON owned callback '+name);return services.ownedFunctionPointer(i);};
  env.nativeFunctionPointer=name=>{const i=schema.nativeFunctionPointers.indexOf(name);if(i<0)throw Error('Review DUNGEON native function identity '+name);return services.nativeFunctionPointer(i);};
  env.indirect=(site,fn,...args)=>{if(!schema.callbackCalls[site])throw Error('Review DUNGEON indirect call');return services['indirect'+site](fn,...args);};
+ if(services.nativeFixedProvider===true)env.indirect.nativeAddress=true;
  env.dynamicVariadic=(target,site,...args)=>{if(!schema.dynamicVariadics[site]?.targets.includes(target))throw Error('Review DUNGEON dynamic vararg target');return services['dynamic'+site+'_'+target](...args);};
  const recordKey=t=>Object.keys(schema.schema).find(k=>schema.schema[k].ctype===t)??t.replace(/^(struct|union) /,'');
  const sizeOf=t=>{return Crt.typeSize(types,env,sizeOf,t);};
@@ -33,13 +34,13 @@ export function createDungeonEnvironment(services){
  return env;
 }
 export function callDungeon(services,name,...args){
- let state=states.get(services.moduleKey);
+ let state=states.get(services.nativeFixedProvider ? services : services.moduleKey);
  if(!state){
   state={services};
   // Keep the prototype stable while native callbacks supply per-call services.
-  const forwarding=createServiceForwarder(state);
+  const forwarding=services.nativeFixedProvider ? services : createServiceForwarder(state);
   state.env=createDungeonEnvironment(forwarding);
-  states.set(services.moduleKey,state);
+  states.set(services.nativeFixedProvider ? services : services.moduleKey,state);
  }
  const fn=state.env.nativeNamespace[name];if(typeof fn!=='function')throw Error('Unknown original DUNGEON function '+name);
  const previous=state.services;

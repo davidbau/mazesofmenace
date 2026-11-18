@@ -253,12 +253,13 @@ export function forcelock()
     return 0;
 }
 
-export function reset_pick()
+export function reset_pick(context = C)
 {
-    C.gx.xlock.usedtime = C.gx.xlock.chance = C.gx.xlock.picktyp = 0;
-    C.gx.xlock.magic_key = 0;
-    C.gx.xlock.door = 0;
-    C.gx.xlock.box = 0;
+    const lock = context.gx.xlock;
+    lock.usedtime = lock.chance = lock.picktyp = 0;
+    lock.magic_key = 0;
+    lock.door = 0;
+    lock.box = 0;
 }
 
 /* level change or object deletion; context may no longer be valid */

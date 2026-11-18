@@ -629,7 +629,7 @@ export function book_substitution(old_obj, new_obj)
 }
 
 /* called from moveloop() */
-export function age_spells()
+export function age_spells(context = C)
 {
     let i;
     /*
@@ -638,9 +638,18 @@ export function age_spells()
      * The hero's speed, rest status, conscious status etc.
      * does not alter the loss of memory.
      */
-    for (i = 0; i < C.MAXSPELL && C.svs.spl_book[i].sp_id != C.NO_SPELL; i++)
-        if (C.svs.spl_book[i].sp_know)
-            C.svs.spl_book[i].sp_know--;
+    const book = context.spellAging;
+    if (book) {
+        for (i = 0; i < context.MAXSPELL && book.id(i) != context.NO_SPELL; i++) {
+            const knowledge = book.knowledge(i);
+            if (knowledge)
+                book.setKnowledge(i, knowledge - 1);
+        }
+    } else {
+        for (i = 0; i < context.MAXSPELL && context.svs.spl_book[i].sp_id != context.NO_SPELL; i++)
+            if (context.svs.spl_book[i].sp_know)
+                context.svs.spl_book[i].sp_know--;
+    }
     return;
 }
 

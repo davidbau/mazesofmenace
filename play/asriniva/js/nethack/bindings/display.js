@@ -33,18 +33,41 @@ export function createDisplayEnvironment(services){
  // JavaScript owns all original static values; C reserves native typed zero objects.
  for(const row of display.displayStaticInitializers(env))env.initialize(env.staticAddress(row.name),row.type,row.values);
 
+ const envOwner=services.nativeEnvironment,arena=services.nativeOwner?.nativeArena;
+ if(envOwner&&arena){
+  // The bound sites enforce their own callback boundary for foreign handlers.
+  env.indirect.nativeAddress=true;
+  const {ctypes}=envOwner;
+  const base=ctypes.fieldAddress('struct instance_globals_g',envOwner.requireGlobal('gg'),'gbuf');
+  const glyphOffset=ctypes.record('gbuf_entry').fields.glyphinfo.offset+
+    ctypes.record('struct glyphinfo').fields.glyph.offset;
+  const stride=ctypes.size('gbuf_entry')/4;
+  const start=(base+glyphOffset)/4;
+  const glyphAtCell=(x,y)=>arena.Int32[start+(y*80+x)*stride];
+  Object.defineProperty(glyphAtCell,'nativeAddress',{value:true});
+  Object.defineProperty(env,'glyphAtCell',{value:glyphAtCell});
+  if(envOwner.displayColorMask)Object.defineProperty(env,'displayColorMask',{value:envOwner.displayColorMask});
+  const printGlyphFrame=(token,win,x,y,foreground,frame)=>
+   envOwner.nativeWindowCallbacks?.printGlyphFrame(token,win,x,y,foreground,frame)??false;
+  printGlyphFrame.nativeAddress=true;
+  Object.defineProperty(env,'printGlyphFrame',{value:printGlyphFrame});
+  const mapWindow=envOwner.bindGlobal('WIN_MAP');
+  const mapWindowIdentifier=()=>arena.view.getInt32(mapWindow(),true);
+  mapWindowIdentifier.nativeAddress=true;
+  Object.defineProperty(env,'mapWindowIdentifier',{value:mapWindowIdentifier});
+ }
  env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);
  installNativeDisplayValues(env,services,schema,decode);
  env.nativeNamespace=createNativeAddressNamespace(env);
  return env;
 }
 function displayState(services){
- let state=states.get(services.moduleKey);
+ let state=states.get(services.nativeFixedProvider ? services : services.moduleKey);
  if(!state){
   state={services};
-  const forwarding=createServiceForwarder(state);
+  const forwarding=services.nativeFixedProvider ? services : createServiceForwarder(state);
   state.env=createDisplayEnvironment(forwarding);
-  states.set(services.moduleKey,state);
+  states.set(services.nativeFixedProvider ? services : services.moduleKey,state);
  }
  return state;
 }

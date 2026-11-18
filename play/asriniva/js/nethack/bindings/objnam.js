@@ -177,6 +177,11 @@ export function createObjnamEnvironment(services,L,state){
     }
     C.object=p=>ptr(p,'struct obj');C.fruit=p=>ptr(p,'struct fruit');C.permonst=p=>ptr(p,'struct permonst');C.readData=p=>ptr(p,'struct _readobjnam_data');
     if(native){C.nativeState=native;C.nativeNamespace=createNativeObjnam(C);}
+    if (Object.hasOwn(services, 'verbText')) {
+        C.verbText = services.verbText;
+        C.writeVerb = services.writeVerb;
+        C.startsWithArticle = services.startsWithArticle;
+    }
     return C;
 }
 function stateFor(services){let state=states.get(services.moduleKey);if(!state){state={obufidx:0,statics:new Map(),tables:new Map(),environments:new WeakMap()};states.set(services.moduleKey,state);}return state;}

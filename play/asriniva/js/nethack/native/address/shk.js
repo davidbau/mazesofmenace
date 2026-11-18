@@ -215,6 +215,13 @@ const R211=NF.readers[211],W211=NF.writers[211],A211=NF.addresses[211];
 const R212=NF.readers[212],W212=NF.writers[212],A212=NF.addresses[212];
 const R213=NF.readers[213],W213=NF.writers[213],A213=NF.addresses[213];
 const R214=NF.readers[214],W214=NF.writers[214],A214=NF.addresses[214];
+const RC0=C.readInt8At,WC0=C.writeInt8At;
+const RC1=C.readInt8At,WC1=C.writeInt8At;
+const RC2=C.readUint8At,WC2=C.writeUint8At;
+const RC3=C.readInt16At,WC3=C.writeInt16At;
+const RC5=C.readInt32At,WC5=C.writeInt32At;
+const RC6=C.readUint32At,WC6=C.writeUint32At;
+const RC8=C.readBigInt64At,WC8=C.writeBigInt64At;
 
 /* NetHack 5.0	shk.c	$NHDT-Date: 1736516428 2025/01/10 05:40:28 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.306 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
@@ -360,8 +367,8 @@ function shkgone(mtmp)
             (W43(eshk,0));
             /* remove eshk->shoproom from u.ushops */
             do {
-                (C.cell(p,"char").value=C.cell(((p+Number(1)*1)),"char").value);
-            } while(C.cell((()=>{const old=p;p=C.ptr((old+Number(1)));return p;})(),"char").value);
+                (WC0(p,RC0(p+Number(1)*1)));
+            } while(RC0((()=>{const old=p;p=C.ptr((old+Number(1)));return p;})()));
         }
     }
 }
@@ -378,7 +385,7 @@ function replshk(mtmp,mtmp2)
     mtmp=C.ptr(mtmp);
     mtmp2=C.ptr(mtmp2);
     (W84(A69(C.svr)+Number(C.i32((C.i32(R34(R77(R104(mtmp2))))-3)))*C.sizes["struct mkroom"],mtmp2));
-    if(Number(!!(inhishop(mtmp)&&Number(C.i32(C.cell(A201(C.u),"char").value)==C.i32(R34(R77(R104(mtmp)))))))) {
+    if(Number(!!(inhishop(mtmp)&&Number(C.i32(RC0(A201(C.u)))==C.i32(R34(R77(R104(mtmp)))))))) {
         (W43(R77(R104(mtmp2)),A42(R77(R104(mtmp2)))+Number(0)*C.sizes["struct bill_x"]));
     }
 }
@@ -649,14 +656,14 @@ function u_left_shop(leavestring,newlev)
      *   (he wasn't strictly-inside last turn anyway)))
      * THEN (there's nothing to do, so just return)
      */
-    if(Number(!!(Number(!(C.cell(leavestring,"char").value))&&(Number(!!(Number(!(R164((A21(A65(C.svl))+Number(R194(C.u))*(C.sizes["struct rm"]*21))+Number(R195(C.u))*C.sizes["struct rm"])))||C.i32(R164((A21(A65(C.svl))+Number(R196(C.u))*(C.sizes["struct rm"]*21))+Number(R197(C.u))*C.sizes["struct rm"])))))))) return;
-    (shkp=shop_keeper(C.i8((C.i32(C.cell(leavestring,"char").value)?C.i32(C.cell(leavestring,"char").value):C.i32(C.cell(A202(C.u),"char").value)))));
+    if(Number(!!(Number(!(RC0(leavestring)))&&(Number(!!(Number(!(R164((A21(A65(C.svl))+Number(R194(C.u))*(C.sizes["struct rm"]*21))+Number(R195(C.u))*C.sizes["struct rm"])))||C.i32(R164((A21(A65(C.svl))+Number(R196(C.u))*(C.sizes["struct rm"]*21))+Number(R197(C.u))*C.sizes["struct rm"])))))))) return;
+    (shkp=shop_keeper(C.i8((C.i32(RC0(leavestring))?C.i32(RC0(leavestring)):C.i32(RC0(A202(C.u)))))));
     if(Number(!!(Number(!(shkp))||Number(!(inhishop(shkp)))))) return;
     /* shk died, teleported, changed levels... */
     (eshkp=(R77(R104(shkp))));
     if(Number(!!(Number(!(R41(eshkp)))&&Number(!(R31(eshkp)))))) return;
     /* bill is settled */
-    if(Number(!!(Number(!(C.cell(leavestring,"char").value))&&Number(!((Number(!!((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))||Number(C.i32(R152(R86(shkp)))<=C.MS_ANIMAL))))))))) {
+    if(Number(!!(Number(!(RC0(leavestring)))&&Number(!((Number(!!((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))||Number(C.i32(R152(R86(shkp)))<=C.MS_ANIMAL))))))))) {
         /*
          * Player just stepped onto shop-boundary (known from above logic).
          * Try to intimidate him into paying his bill
@@ -683,25 +690,25 @@ function credit_report(shkp,idx,silent)
     let eshkp=(R77(R104(shkp)));
     
     if(Number(!(idx))) {
-        (C.cell(((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(0)*8),"long").value=(C.cell(((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(0)*8),"long").value=0n));
-        (C.cell(((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(1)*8),"long").value=(C.cell(((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(1)*8),"long").value=0n));
-        (C.cell(((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(2)*8),"long").value=(C.cell(((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(2)*8),"long").value=0n));
+        (WC8((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(0)*8,WC8((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(0)*8,0n)));
+        (WC8((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(1)*8,WC8((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(1)*8,0n)));
+        (WC8((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(2)*8,WC8((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(2)*8,0n)));
     } else {
         (idx=1);
     }
-    (C.cell(((C.staticAddress("credit_report.credit_snap")+Number(idx)*(8*3))+Number(0)*8),"long").value=R30(eshkp));
-    (C.cell(((C.staticAddress("credit_report.credit_snap")+Number(idx)*(8*3))+Number(1)*8),"long").value=R31(eshkp));
-    (C.cell(((C.staticAddress("credit_report.credit_snap")+Number(idx)*(8*3))+Number(2)*8),"long").value=R32(eshkp));
+    (WC8((C.staticAddress("credit_report.credit_snap")+Number(idx)*(8*3))+Number(0)*8,R30(eshkp)));
+    (WC8((C.staticAddress("credit_report.credit_snap")+Number(idx)*(8*3))+Number(1)*8,R31(eshkp)));
+    (WC8((C.staticAddress("credit_report.credit_snap")+Number(idx)*(8*3))+Number(2)*8,R32(eshkp)));
     if(Number(!!(idx&&Number(!(silent))))) {
         let amt=0n;
         let msg=C.literal("debt has increased");
-        if(Number(C.cell(((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(0)*8),"long").value<C.cell(((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(0)*8),"long").value)) {
-            (amt=C.i64((C.cell(((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(0)*8),"long").value-C.cell(((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(0)*8),"long").value)));
+        if(Number(RC8((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(0)*8)<RC8((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(0)*8))) {
+            (amt=C.i64((RC8((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(0)*8)-RC8((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(0)*8))));
             (msg=C.literal("credit has been reduced"));
-        } else if(Number(C.cell(((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(1)*8),"long").value>C.cell(((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(1)*8),"long").value)) {
-            (amt=C.i64((C.cell(((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(1)*8),"long").value-C.cell(((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(1)*8),"long").value)));
-        } else if(Number(C.cell(((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(2)*8),"long").value>C.cell(((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(2)*8),"long").value)) {
-            (amt=C.i64((C.cell(((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(2)*8),"long").value-C.cell(((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(2)*8),"long").value)));
+        } else if(Number(RC8((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(1)*8)>RC8((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(1)*8))) {
+            (amt=C.i64((RC8((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(1)*8)-RC8((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(1)*8))));
+        } else if(Number(RC8((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(2)*8)>RC8((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(2)*8))) {
+            (amt=C.i64((RC8((C.staticAddress("credit_report.credit_snap")+Number(1)*(8*3))+Number(2)*8)-RC8((C.staticAddress("credit_report.credit_snap")+Number(0)*(8*3))+Number(2)*8))));
         }
         if(amt) C.variadic(17,C.literal("%s by %ld %s."),msg,amt,C.currency(amt));
     }
@@ -714,7 +721,7 @@ function remote_burglary(x,y)
     y=C.i16(y);
     let shkp;
     let eshkp;
-    (shkp=shop_keeper(C.cell(C.in_rooms(x,y,C.SHOPBASE),"char").value));
+    (shkp=shop_keeper(RC0(C.in_rooms(x,y,C.SHOPBASE))));
     if(Number(!!(Number(!(shkp))||Number(!(inhishop(shkp)))))) return;
     /* shk died, teleported, changed levels... */
     (eshkp=(R77(R104(shkp))));
@@ -762,7 +769,7 @@ function deserted_shop(enterstring)
     enterstring=C.ptr(enterstring);
     /*const*/
     let mtmp;
-    let r=(A69(C.svr)+Number(C.i32((C.i32(C.cell(enterstring,"char").value)-3)))*C.sizes["struct mkroom"]);
+    let r=(A69(C.svr)+Number(C.i32((C.i32(RC0(enterstring))-3)))*C.sizes["struct mkroom"]);
     let x; let y; let m=0; let n=0;
     for((x=C.i32(R79(r)));Number(x<=C.i32(R80(r)));(()=>{const old=x;x=C.i32((old+1));return x;})()) for((y=C.i32(R81(r)));Number(y<=C.i32(R82(r)));(()=>{const old=y;y=C.i32((old+1));return y;})()) {
         if((Number(!!(Number((x)==C.i32(R194(C.u)))&&Number((y)==C.i32(R195(C.u))))))) continue;
@@ -785,26 +792,26 @@ function u_entered_shop(enterstring)
     let shkp;
     let eshkp;
     let rt;
-    if(Number(!(C.cell(enterstring,"char").value))) return;
-    (shkp=shop_keeper(C.cell(enterstring,"char").value));
+    if(Number(!(RC0(enterstring)))) return;
+    (shkp=shop_keeper(RC0(enterstring)));
     if(Number(!(shkp))) {
-        if(Number(!!(Number(!(C.strchr(C.staticAddress("u_entered_shop.empty_shops"),C.i32(C.cell(enterstring,"char").value))))&&(Number(C.in_rooms(R194(C.u),R195(C.u),C.SHOPBASE)!=C.in_rooms(R196(C.u),R197(C.u),C.SHOPBASE)))))) deserted_shop(enterstring);
+        if(Number(!!(Number(!(C.strchr(C.staticAddress("u_entered_shop.empty_shops"),C.i32(RC0(enterstring)))))&&(Number(C.in_rooms(R194(C.u),R195(C.u),C.SHOPBASE)!=C.in_rooms(R196(C.u),R197(C.u),C.SHOPBASE)))))) deserted_shop(enterstring);
         C.strcpy(C.staticAddress("u_entered_shop.empty_shops"),A201(C.u));
-        (C.cell((A201(C.u)+Number(0)*1),"char").value=C.i8(0));
+        (WC0(A201(C.u)+Number(0)*1,C.i8(0)));
         return;
     }
     (eshkp=(R77(R104(shkp))));
     if(Number(!(inhishop(shkp)))) {
         /* dump core when referenced */
         (W43(eshkp,C.ptr(C.i32((-1000)))));
-        if(Number(!(C.strchr(C.staticAddress("u_entered_shop.empty_shops"),C.i32(C.cell(enterstring,"char").value))))) deserted_shop(enterstring);
+        if(Number(!(C.strchr(C.staticAddress("u_entered_shop.empty_shops"),C.i32(RC0(enterstring)))))) deserted_shop(enterstring);
         C.strcpy(C.staticAddress("u_entered_shop.empty_shops"),A201(C.u));
-        (C.cell((A201(C.u)+Number(0)*1),"char").value=C.i8(0));
+        (WC0(A201(C.u)+Number(0)*1,C.i8(0)));
         return;
     }
     C.record_achievement(C.i8(C.ACH_SHOP));
     (W43(eshkp,A42(eshkp)+Number(0)*C.sizes["struct bill_x"]));
-    if(Number(!!((Number(!!(Number(!(R44(eshkp)))||C.i32(C.cell(A45(eshkp),"char").value))))&&C.strncmpi(A45(eshkp),A68(C.svp),32)))) {
+    if(Number(!!((Number(!!(Number(!(R44(eshkp)))||C.i32(RC0(A45(eshkp))))))&&C.strncmpi(A45(eshkp),A68(C.svp),32)))) {
         /* You seem to be new here */
         (W44(eshkp,0));
         (W35(eshkp,C.i8(0)));
@@ -823,7 +830,7 @@ function u_entered_shop(enterstring)
         }
         return;
     }
-    (rt=C.i32(R83(A69(C.svr)+Number(C.i32((C.i32(C.cell(enterstring,"char").value)-3)))*C.sizes["struct mkroom"])));
+    (rt=C.i32(R83(A69(C.svr)+Number(C.i32((C.i32(RC0(enterstring))-3)))*C.sizes["struct mkroom"])));
     if((Number(!((R100(shkp)))))) {
         if(Number(!!(Number(!((Number(!!(Number(!!(R157(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R181(A210(C.u))))))))&&Number(!((Number(!!((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))||Number(C.i32(R152(R86(shkp)))<=C.MS_ANIMAL))))))))) {
             ;
@@ -910,12 +917,12 @@ function pick_pick(obj)
     obj=C.ptr(obj);
     let shkp;
     if(Number(!!(C.i32(R124(obj))||Number(!((Number(!!((Number(!!(Number(C.i32(R118(obj))==C.WEAPON_CLASS)||Number(C.i32(R118(obj))==C.TOOL_CLASS))))&&Number(C.i32(R140(C.objects+Number(R114(obj))*C.sizes["struct objclass"]))==C.P_PICK_AXE))))))))) return;
-    (shkp=shop_keeper(C.cell(A201(C.u),"char").value));
+    (shkp=shop_keeper(RC0(A201(C.u))));
     if(Number(!!(shkp&&inhishop(shkp)))) {
         
         /* if you bring a sack of N picks into a shop to sell,
            don't repeat this N times when they're taken out */
-        if(Number(R66(C.svm)!=C.cell(C.staticAddress("pick_pick.pickmovetime"),"long").value)) {
+        if(Number(R66(C.svm)!=RC8(C.staticAddress("pick_pick.pickmovetime")))) {
             if(Number(!!(Number(!((Number(!!(Number(!!(R157(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R181(A210(C.u))))))))&&Number(!((Number(!!((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))||Number(C.i32(R152(R86(shkp)))<=C.MS_ANIMAL))))))))) {
                 ;
                 C.variadic(38,C.literal("You sneaky %s!  Get out of here with that pick!"),cad((C.i8(0))));
@@ -923,7 +930,7 @@ function pick_pick(obj)
                 C.variadic(39,C.literal("%s %s your pick!"),C.Shknam(shkp),((Number((C.u64((R153(R86(shkp))&C.u64(4096n))))==C.u64(0n)))?C.literal("glares at"):C.literal("is dismayed because of")));
             }
         }
-        (C.cell(C.staticAddress("pick_pick.pickmovetime"),"long").value=R66(C.svm));
+        (WC8(C.staticAddress("pick_pick.pickmovetime"),R66(C.svm)));
     }
 }
 
@@ -1053,7 +1060,7 @@ function find_objowner(obj,x,y)
            in practice it will usually be one room but can sometimes be two;
            check shk and bill for each room rather than just the first;
            fallback to the first shk if obj isn't on the relevant bill(s) */
-        for((roomindx=where);C.cell(roomindx,"char").value;(()=>{const old=roomindx;roomindx=C.ptr((old+Number(1)));return roomindx;})()) if(Number(((shkp=shop_keeper(C.cell(roomindx,"char").value)))!=0)) {
+        for((roomindx=where);RC0(roomindx);(()=>{const old=roomindx;roomindx=C.ptr((old+Number(1)));return roomindx;})()) if(Number(((shkp=shop_keeper(RC0(roomindx))))!=0)) {
             if(onshopbill(obj,shkp,(C.i8(1)))) return shkp;
             if(Number(!(deflt_shkp))) (deflt_shkp=shkp);
         }
@@ -1146,7 +1153,7 @@ function obfree(obj,merge)
 
     }
     /* sanity check, in case obj is on bill but not marked 'unpaid' */
-    if(Number(!(shkp))) (shkp=shop_keeper(C.cell(A201(C.u),"char").value));
+    if(Number(!(shkp))) (shkp=shop_keeper(RC0(A201(C.u))));
     /*
      * Note:  `shkp = shop_keeper(*u.ushops)' used to be
      *    unconditional.  But obfree() is used all over
@@ -1662,7 +1669,7 @@ function dopay()
             (nxtm=shkp);
         }
         if((Number(!!(C.canseemon(shkp)||C.sensemon(shkp))))) (()=>{const old=seensk;seensk=C.i32((old+1));return old;})();
-        if(Number(!!(inhishop(shkp)&&(Number(C.i32(C.cell(A201(C.u),"char").value)==C.i32(R34(R77(R104(shkp))))))))) (resident=shkp);
+        if(Number(!!(inhishop(shkp)&&(Number(C.i32(RC0(A201(C.u)))==C.i32(R34(R77(R104(shkp))))))))) (resident=shkp);
     }
     if(Number(!!(nxtm&&Number(nexttosk==1)))) {
         (shkp=nxtm);
@@ -1712,7 +1719,7 @@ function dopay()
             return 0;
         }
         (mtmp=(C.cell(((A23(A65(C.svl))+Number(cx)*(8*21))+Number(cy)*8),"struct monst *").value));
-        if(Number(!!(Number(!((Number((C.i32((C.i32(C.cell((C.cell((R73(C.gv)+Number(cy)*8),"unsigned char *").value+Number(cx)*1),"unsigned char").value)&2)))!=0))))&&(Number(!!(Number(!(mtmp))||Number(!((Number(!!(C.canseemon(mtmp)||C.sensemon(mtmp)))))))))))) {
+        if(Number(!!(Number(!((Number((C.i32((C.i32(RC2(C.cell((R73(C.gv)+Number(cy)*8),"unsigned char *").value+Number(cx)*1))&2)))!=0))))&&(Number(!!(Number(!(mtmp))||Number(!((Number(!!(C.canseemon(mtmp)||C.sensemon(mtmp)))))))))))) {
             C.variadic(69,C.literal("can't %s anyone there."),(Number(!((Number(!!((Number(!!(R157(A204(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R156(A204(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))?C.literal("see"):C.literal("sense")));
             return 0;
         }
@@ -1904,7 +1911,7 @@ function pay_billed_items(shkp,ibillct,ibill,stashed_gold,paid_p)
     let eshkp=(R77(R104(shkp)));
     (umoney=C.money_cnt(R56(C.gi)));
     if(Number(!!(Number(!(umoney))&&Number(!(R30(eshkp)))))) {
-        C.variadic(104,C.literal("%shave no gold or credit%s."),(C.i32(stashed_gold)?C.literal("seem to "):C.literal("")),(C.i32(C.cell(paid_p,"signed char").value)?C.literal(" left"):C.literal("")));
+        C.variadic(104,C.literal("%shave no gold or credit%s."),(C.i32(stashed_gold)?C.literal("seem to "):C.literal("")),(C.i32(RC1(paid_p))?C.literal(" left"):C.literal("")));
         return (C.i8(1));
     }
     (bp=R43(eshkp));
@@ -1979,13 +1986,13 @@ function pay_billed_items(shkp,ibillct,ibill,stashed_gold,paid_p)
             case (0):
                 return (C.i8(0));
             case ((C.i32((-2)))):
-                (C.cell(paid_p,"signed char").value=(C.i8(1)));
+                (WC1(paid_p,C.i8(1)));
             return (C.i8(1));
             case ((C.i32((-1)))):
                 continue;
             /* case PAY_SOME: //no longer used */
             case (1):
-                (C.cell(paid_p,"signed char").value=(C.i8(1)));
+                (WC1(paid_p,C.i8(1)));
             if(Number(!!(C.i32(itemize)||C.i32(queuedpay)))) {
                 C.update_inventory();
                 C.bot();
@@ -2179,14 +2186,14 @@ function buy_container(shkp,indx,ibillct,ibill)
         }
         /* record this for the second pass; unless it's the container--that
            will be deferred until after the loop so that it will be last */
-        if(Number(R7(bp)!=R111(container))) (C.cell((boids+Number((()=>{const old=boidsct;boidsct=C.i32((old+1));return old;})())*4),"unsigned int").value=R7(bp));
+        if(Number(R7(bp)!=R111(container))) (WC6(boids+Number((()=>{const old=boidsct;boidsct=C.i32((old+1));return old;})())*4,R7(bp)));
     }
-    if(unpaidcontainer) (C.cell((boids+Number((()=>{const old=boidsct;boidsct=C.i32((old+1));return old;})())*4),"unsigned int").value=R111(container));
+    if(unpaidcontainer) (WC6(boids+Number((()=>{const old=boidsct;boidsct=C.i32((old+1));return old;})())*4,R111(container)));
     /* now make the actual purchasing pass; we've collected a set of
        o_id values in order to avoid traversing the shk's bill while it
        undergoes updates */
     for((j=0);Number(j<boidsct);(()=>{const old=j;j=C.i32((old+1));return j;})()) {
-        (boid=C.cell((boids+Number(j)*4),"unsigned int").value);
+        (boid=RC6(boids+Number(j)*4));
         for(((i=0),(bp=R43(eshkp)));Number(i<ebillct);((()=>{const old=i;i=C.i32((old+1));return i;})(),(()=>{const old=bp;bp=C.ptr((old+Number(C.sizes["struct bill_x"])));return bp;})())) if(Number(R7(bp)==boid)) break;
 
         if(Number(i==ebillct)) {
@@ -2378,8 +2385,8 @@ function inherits(shkp,numsk,croaked,silently)
     /* The simplifying principle is that first-come
        already took everything you had. */
     if(Number(numsk>1)) {
-        if(Number(!!(Number(!!((Number((C.i32((C.i32(C.cell((C.cell((R73(C.gv)+Number(R90(shkp))*8),"unsigned char *").value+Number(R89(shkp))*1),"unsigned char").value)&2)))!=0))&&croaked))&&Number(!(silently))))) {
-            (C.cell((takes+Number(0)*1),"char").value=C.i8(0));
+        if(Number(!!(Number(!!((Number((C.i32((C.i32(RC2(C.cell((R73(C.gv)+Number(R90(shkp))*8),"unsigned char *").value+Number(R89(shkp))*1))&2)))!=0))&&croaked))&&Number(!(silently))))) {
+            (WC0(takes+Number(0)*1,C.i8(0)));
             if(Number(!!((Number((C.u64((R153(R86(shkp))&C.u64(32768n))))==C.u64(0n)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",2600,"inherits"),C.rn2(2))):C.rn2(2)))))))) C.variadic(119,takes,C.literal(", shakes %s %s,"),(R2(C.genders+Number(C.pronoun_gender(shkp,C.u32((C.i32((1|2))))))*C.sizes["struct Gender"])),C.mbodypart(shkp,C.HEAD));
             C.variadic(120,C.literal("%s %slooks at your corpse%s and %s."),C.Shknam(shkp),((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))?C.literal("wakes up, "):C.literal("")),takes,(Number(!(inhishop(shkp)))?C.literal("disappears"):C.literal("sighs")));
         }
@@ -2401,7 +2408,7 @@ function inherits(shkp,numsk,croaked,silently)
     if(Number(!!(Number(!!(C.i32(R35(eshkp))||(Number(!((R100(shkp)))))))||C.i32(take)))) {
         if(Number(!(R56(C.gi)))) break skip; /* original goto */
         (umoney=C.money_cnt(R56(C.gi)));
-        (C.cell((takes+Number(0)*1),"char").value=C.i8(0));
+        (WC0(takes+Number(0)*1,C.i8(0)));
         if((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))) C.strcat(takes,C.literal("wakes up and "));
         if(Number(!((Number(C.dist2((R89(shkp)),(R90(shkp)),R194(C.u),R195(C.u))<=2))))) C.strcat(takes,C.literal("comes and "));
         C.strcat(takes,C.literal("takes"));
@@ -2566,16 +2573,16 @@ function get_cost_of_shop_item(obj,nochrg)
     let x=C.local("get_cost_of_shop_item.x@98652","short"); let y=C.local("get_cost_of_shop_item.y@98655","short");
     let freespot;
     let cost=0n;
-    (C.cell(nochrg,"int").value=C.i32((-1)));
+    (WC5(nochrg,C.i32((-1))));
     /* assume 'not applicable' */
-    if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(C.cell(A201(C.u),"char").value)&&Number(C.i32(R118(obj))!=C.COIN_CLASS)))&&Number(obj!=C.global("uball").value)))&&Number(obj!=C.global("uchain").value)))&&C.i32(C.get_obj_location(obj,x.address,y.address,1))))&&Number(C.i32(C.cell(C.in_rooms(x.value,y.value,C.SHOPBASE),"char").value)==C.i32(C.cell(A201(C.u),"char").value))))&&Number(((shkp=shop_keeper(inside_shop(x.value,y.value))))!=0)))&&inhishop(shkp)))) {
+    if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(RC0(A201(C.u)))&&Number(C.i32(R118(obj))!=C.COIN_CLASS)))&&Number(obj!=C.global("uball").value)))&&Number(obj!=C.global("uchain").value)))&&C.i32(C.get_obj_location(obj,x.address,y.address,1))))&&Number(C.i32(RC0(C.in_rooms(x.value,y.value,C.SHOPBASE)))==C.i32(RC0(A201(C.u))))))&&Number(((shkp=shop_keeper(inside_shop(x.value,y.value))))!=0)))&&inhishop(shkp)))) {
         for((top=obj);Number(C.i32(R120(top))==2);(top=R183(A109(top)))) continue;
 
         (freespot=C.i8((Number(!!(Number(!!(Number(C.i32(R120(top))==1)&&Number(C.i32(x.value)==C.i32(R106(A38(R77(R104(shkp))))))))&&Number(C.i32(y.value)==C.i32(R107(A38(R77(R104(shkp)))))))))));
         /* no_charge is only set for floor items inside shop proper;
            items on freespot are implicitly 'no charge' */
-        (C.cell(nochrg,"int").value=(Number(!!(Number(C.i32(R120(top))==1)&&(Number(!!(C.i32(R125(obj))||C.i32(freespot))))))));
-        if(((Number(C.i32(R120(top))==3))?C.i32(R124(obj)):Number(!(C.cell(nochrg,"int").value)))) {
+        (WC5(nochrg,Number(!!(Number(C.i32(R120(top))==1)&&(Number(!!(C.i32(R125(obj))||C.i32(freespot))))))));
+        if(((Number(C.i32(R120(top))==3))?C.i32(R124(obj)):Number(!(RC5(nochrg))))) {
             let per_unit_cost=get_cost(obj,shkp);
             (cost=C.i64((get_pricing_units(obj)*per_unit_cost)));
         }
@@ -2944,8 +2951,8 @@ function unpaid_cost(unp_obj,cost_type)
     /* if two shops share a wall, this might find wrong shk */
     /* (shouldn't happen) */
     /* didn't find shk?  try searching bills */
-    for((shop=A201(C.u));C.cell(shop,"char").value;(()=>{const old=shop;shop=C.ptr((old+Number(1)));return old;})()) {
-        if(Number(((shkp=shop_keeper(C.cell(shop,"char").value)))!=0)) {
+    for((shop=A201(C.u));RC0(shop);(()=>{const old=shop;shop=C.ptr((old+Number(1)));return old;})()) {
+        if(Number(((shkp=shop_keeper(RC0(shop))))!=0)) {
             if(((bp=onbill(unp_obj,shkp,(C.i8(1)))))) {
                 (amt=R9(bp));
                 if(Number(C.i32(cost_type)!=C.COST_SINGLEOBJ)) {
@@ -2983,7 +2990,7 @@ function add_one_tobill(obj,dummy,shkp)
        might be going onto the bill because hero just snagged it with
        a grappling hook from outside without ever having been inside */
     if(Number(!(R43(eshkp)))) (W43(eshkp,A42(eshkp)+Number(0)*C.sizes["struct bill_x"]));
-    if(Number(!(billable(shkp.address,obj,C.cell(A201(C.u),"char").value,(C.i8(1)))))) {
+    if(Number(!(billable(shkp.address,obj,RC0(A201(C.u)),(C.i8(1)))))) {
         /* shk doesn't want it */
         (unbilled=(C.i8(1)));
     } else if(Number(R41(eshkp)==200)) {
@@ -3084,7 +3091,7 @@ function shk_names_obj(shkp,obj,fmt,amt,arg)
     /* Use an alternate message when extra information is being provided */
     if(was_unknown) {
         C.variadic(134,fmtbuf,C.literal("%%s; you %s"),fmt);
-        (C.cell((obj_name+Number(0)*1),"char").value=C.highc(C.cell((obj_name+Number(0)*1),"char").value));
+        (WC0(obj_name+Number(0)*1,C.highc(RC0(obj_name+Number(0)*1))));
         C.variadic(135,fmtbuf,obj_name,((Number(R116(obj)>1n))?C.literal("them"):C.literal("it")),amt,(((Number((amt)==C.i64(1)))?C.literal(""):C.literal("s"))),arg);
     } else {
         C.variadic(136,fmt,obj_name,amt,(((Number((amt)==C.i64(1)))?C.literal(""):C.literal("s"))),arg);
@@ -3138,7 +3145,7 @@ function addtobill(obj,ininv,dummy,silent)
     let ltmp; let cltmp; let gltmp;
     let contentscount;
     let container;
-    if(Number(!(billable(shkp.address,obj,C.cell(A201(C.u),"char").value,(C.i8(1)))))) return;
+    if(Number(!(billable(shkp.address,obj,RC0(A201(C.u)),(C.i8(1)))))) return;
     if(Number(C.i32(R118(obj))==C.COIN_CLASS)) {
         costly_gold(R112(obj),R113(obj),R116(obj),silent);
         return;
@@ -3231,7 +3238,7 @@ function splitbill(obj,otmp)
     /* otmp has been split off from obj */
     let bp;
     let tmp;
-    let shkp=shop_keeper(C.cell(A201(C.u),"char").value);
+    let shkp=shop_keeper(RC0(A201(C.u)));
     if(Number(!!(Number(!(shkp))||Number(!(inhishop(shkp)))))) {
         C.variadic(143,C.literal("splitbill: no resident shopkeeper??"));
         return;
@@ -3365,7 +3372,7 @@ function stolen_value(obj,x,y,peaceful,silent)
     if(Number(((shkp.value=find_objowner(obj,x,y)))!=0)) {
         (roomno=C.i8(R34(R77(R104(shkp.value)))));
     } else {
-        (roomno=C.cell(C.in_rooms(x,y,C.SHOPBASE),"char").value);
+        (roomno=RC0(C.in_rooms(x,y,C.SHOPBASE)));
     }
     /* gather information for message(s) prior to manipulating bill */
     (was_unpaid=C.i8((C.i32(R124(obj))?C.i32((C.i8(1))):C.i32((C.i8(0))))));
@@ -3502,9 +3509,9 @@ function sellobj(obj,x,y)
     let saleitem; let cgold=(C.i8(0)); let container=C.i8((Number(R110(obj)!=0)));
     let isgold=C.i8((Number(C.i32(R118(obj))==C.COIN_CLASS)));
     let only_partially_your_contents=(C.i8(0));
-    if(Number(!(C.cell(A201(C.u),"char").value))) return;
+    if(Number(!(RC0(A201(C.u))))) return;
     /* do cheapest exclusion test first */
-    (shkp=shop_keeper(C.cell(C.in_rooms(x,y,C.SHOPBASE),"char").value));
+    (shkp=shop_keeper(RC0(C.in_rooms(x,y,C.SHOPBASE))));
     if(Number(!!(Number(!(shkp))||Number(!(inhishop(shkp)))))) return;
     if(Number(!(costly_spot(x,y)))) return;
     if(Number(!!(Number(!!(C.i32(R124(obj))&&Number(!(container))))&&Number(!(isgold))))) {
@@ -3658,7 +3665,7 @@ function sellobj(obj,x,y)
             C.variadic(168,qsfx,C.literal("%s.  Sell %s?"),((Number(!!(cltmp&&ltmp)))?((C.i32(only_partially_your_contents)?(((Number(yourc==1n))?C.literal(" and item inside"):C.literal(" and items inside"))):C.staticAddress("and_its_contents"))):C.literal("")),(C.i32(one)?C.literal("it"):C.literal("them")));
             record_price_quote(C.i32(R114(obj)),C.u64(C.i64((offer/R116(obj)))),(C.i8(0)));
             C.safe_qbuf(qbuf,qbuf,qsfx,obj,C.functionAddress("xname"),C.functionAddress("simpleonames"),(C.i32(one)?C.literal("that"):C.literal("those")));
-        } else (C.cell((qbuf+Number(0)*1),"char").value=C.i8(0));
+        } else (WC0(qbuf+Number(0)*1,C.i8(0)));
         /* just to pacify lint */
         switch((C.i32(R63(C.gs))?C.i32(R63(C.gs)):C.i32(C.yn_function(qbuf,C.ynaqchars,C.i8(110),(C.i8(1)))))) {
             case (113):
@@ -3700,7 +3707,7 @@ function doinvbill(mode)
     let buf_p;
     let datawin;
     quit: {
-    (shkp=shop_keeper(C.cell(A201(C.u),"char").value));
+    (shkp=shop_keeper(RC0(A201(C.u))));
     if(Number(!!(Number(!(shkp))||Number(!(inhishop(shkp)))))) {
         if(Number(mode!=0)) C.variadic(170,C.literal("doinvbill: no shopkeeper?"));
         return 0;
@@ -3820,13 +3827,13 @@ function shkcatch(obj,x,y)
     let shkp;
     (shkp=shop_keeper(inside_shop(x,y)));
     if(Number(!!(Number(!(shkp))||Number(!(inhishop(shkp)))))) return 0;
-    if(Number(!!(Number(!!(Number(!!(Number(!((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))))&&(Number(!!(Number(C.i32(C.cell(A201(C.u),"char").value)!=C.i32(R34(R77(R104(shkp)))))||Number(!(inside_shop(R194(C.u),R195(C.u)))))))))&&Number(C.dist2(R89(shkp),R90(shkp),x,y)<3)))&&(Number(!!(Number(C.i32(R89(shkp))!=C.i32(x))||Number(C.i32(R90(shkp))!=C.i32(y)))))))) {
+    if(Number(!!(Number(!!(Number(!!(Number(!((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))))&&(Number(!!(Number(C.i32(RC0(A201(C.u)))!=C.i32(R34(R77(R104(shkp)))))||Number(!(inside_shop(R194(C.u),R195(C.u)))))))))&&Number(C.dist2(R89(shkp),R90(shkp),x,y)<3)))&&(Number(!!(Number(C.i32(R89(shkp))!=C.i32(x))||Number(C.i32(R90(shkp))!=C.i32(y)))))))) {
         /* if it is the shk's pos, you hit and anger him */
         if(Number(!!(Number(!!(Number(C.mnearto(shkp,x,y,(C.i8(1)),C.u32(4))==2)&&Number(!((Number(!!(Number(!!(R157(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R181(A210(C.u))))))))))&&Number(!((Number(!!((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))||Number(C.i32(R152(R86(shkp)))<=C.MS_ANIMAL))))))))) {
             ;
             C.variadic(172,C.literal("Out of my way, scum!"));
         }
-        if((Number((C.i32((C.i32(C.cell((C.cell((R73(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))) {
+        if((Number((C.i32((C.i32(RC2(C.cell((R73(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1))&2)))!=0))) {
             C.variadic(173,C.literal("%s nimbly%s catches %s."),C.Shknam(shkp),((Number(!!(Number(C.i32(x)==C.i32(R89(shkp)))&&Number(C.i32(y)==C.i32(R90(shkp))))))?C.literal(""):C.literal(" reaches over and")),C.the(C.xname(obj)));
             if(Number(!((Number(!!(C.canseemon(shkp)||C.sensemon(shkp))))))) C.map_invisible(x,y);
             C.callback(14,(R193(C.windowprocs)));
@@ -3849,9 +3856,9 @@ function add_damage(x,y,cost)
     if((Number(C.i32((R160((A21(A65(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))==C.DOOR))) {
         let mtmp;
         /* Don't schedule for repair unless it's a real shop entrance */
-        for((shops=C.in_rooms(x,y,C.SHOPBASE));C.cell(shops,"char").value;(()=>{const old=shops;shops=C.ptr((old+Number(1)));return old;})()) if(Number(!!(Number(!!(Number(((mtmp=shop_keeper(C.cell(shops,"char").value)))!=0)&&Number(C.i32(x)==C.i32(R106(A39(R77(R104(mtmp))))))))&&Number(C.i32(y)==C.i32(R107(A39(R77(R104(mtmp))))))))) break;
+        for((shops=C.in_rooms(x,y,C.SHOPBASE));RC0(shops);(()=>{const old=shops;shops=C.ptr((old+Number(1)));return old;})()) if(Number(!!(Number(!!(Number(((mtmp=shop_keeper(RC0(shops))))!=0)&&Number(C.i32(x)==C.i32(R106(A39(R77(R104(mtmp))))))))&&Number(C.i32(y)==C.i32(R107(A39(R77(R104(mtmp))))))))) break;
 
-        if(Number(!(C.cell(shops,"char").value))) return;
+        if(Number(!(RC0(shops)))) return;
     }
     for((tmp_dam=R27(A65(C.svl)));tmp_dam;(tmp_dam=R14(tmp_dam))) if(Number(!!(Number(C.i32(R106(A17(tmp_dam)))==C.i32(x))&&Number(C.i32(R107(A17(tmp_dam)))==C.i32(y))))) {
         (W16(tmp_dam,C.i64(R16(tmp_dam)+cost)));
@@ -3871,7 +3878,7 @@ function add_damage(x,y,cost)
     (W14(tmp_dam,R27(A65(C.svl))));
     (W27(A65(C.svl),tmp_dam));
     /* If player saw damage, display walls post-repair as walls, not stone */
-    if((Number((C.i32((C.i32(C.cell((C.cell((R73(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))) (W161((A21(A65(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u8(255)));
+    if((Number((C.i32((C.i32(RC2(C.cell((R73(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1))&2)))!=0))) (W161((A21(A65(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u8(255)));
 }
 
 /* is shopkeeper impaired, so they cannot act? */
@@ -4000,9 +4007,9 @@ function litter_getpos(litter,x,y,shkp)
             (ix=C.i32((C.i32(x)+(C.i32(((C.i32((i%3)))-1))))));
             (iy=C.i32((C.i32(y)+(C.i32(((C.i32(Math.trunc((i/3))))-1))))));
             if(Number(!!(Number(!!(Number(i==4)||Number(!(C.isok(C.i16(ix),C.i16(iy))))))||Number(!((Number(C.i32((R160((A21(A65(C.svl))+Number(ix)*(C.sizes["struct rm"]*21))+Number(iy)*C.sizes["struct rm"])))>=C.POOL))))))) continue;
-            (C.cell((litter+Number(i)*1),"unsigned char").value=C.u8(2));
+            (WC2(litter+Number(i)*1,C.u8(2)));
             if(Number(C.i32(inside_shop(C.i16(ix),C.i16(iy)))==C.i32(R34(R77(R104(shkp)))))) {
-                (C.cell((litter+Number(i)*1),"unsigned char").value=C.u8(C.u32(C.cell((litter+Number(i)*1),"unsigned char").value)|4));
+                (WC2(litter+Number(i)*1,C.u8(C.u32(RC2(litter+Number(i)*1))|4)));
                 (()=>{const old=k;k=C.u8((old+1));return k;})();
             }
         }
@@ -4057,8 +4064,8 @@ function litter_scatter(litter,x,y,shkp)
                    never become Null and while-loop won't terminate */
                 do {
                     (i=C.i32(((C.i32((i+1)))%9)));
-                } while(Number(!!((()=>{const old=trylimit;trylimit=C.i32((old-1));return trylimit;})()&&Number(!((C.u32((C.u32(C.cell((litter+Number(i)*1),"unsigned char").value)&4))))))));
-                if(Number((C.u32((C.u32(C.cell((litter+Number(i)*1),"unsigned char").value)&(C.u32((2|4))))))!=C.u32(0))) {
+                } while(Number(!!((()=>{const old=trylimit;trylimit=C.i32((old-1));return trylimit;})()&&Number(!((C.u32((C.u32(RC2(litter+Number(i)*1))&4))))))));
+                if(Number((C.u32((C.u32(RC2(litter+Number(i)*1))&(C.u32((2|4))))))!=C.u32(0))) {
                     (ix=C.i32((C.i32(x)+(C.i32(((C.i32((i%3)))-1))))));
                     (iy=C.i32((C.i32(y)+(C.i32(((C.i32(Math.trunc((i/3))))-1))))));
                 } else {
@@ -4087,7 +4094,7 @@ function litter_scatter(litter,x,y,shkp)
                 }
                 C.remove_object(otmp);
                 C.place_object(otmp,C.i16(ix),C.i16(iy));
-                (C.cell((litter+Number(i)*1),"unsigned char").value=C.u8(C.u32(C.cell((litter+Number(i)*1),"unsigned char").value)|1));
+                (WC2(litter+Number(i)*1,C.u8(C.u32(RC2(litter+Number(i)*1))|1)));
             }
         }
         /* while level.objects[x][y] != 0 */
@@ -4099,7 +4106,7 @@ function litter_newsyms(litter,x,y)
     x=C.i16(x);
     y=C.i16(y);
     let i;
-    for((i=0);Number(i<9);(()=>{const old=i;i=C.i32((old+1));return old;})()) if(C.u32((C.u32(C.cell((litter+Number(i)*1),"unsigned char").value)&1))) C.newsym(C.i16(C.i32((C.i32(x)+(C.i32(((C.i32((i%3)))-1)))))),C.i16(C.i32((C.i32(y)+(C.i32(((C.i32(Math.trunc((i/3))))-1)))))));
+    for((i=0);Number(i<9);(()=>{const old=i;i=C.i32((old+1));return old;})()) if(C.u32((C.u32(RC2(litter+Number(i)*1))&1))) C.newsym(C.i16(C.i32((C.i32(x)+(C.i32(((C.i32((i%3)))-1)))))),C.i16(C.i32((C.i32(y)+(C.i32(((C.i32(Math.trunc((i/3))))-1)))))));
 
 }
 
@@ -4124,7 +4131,7 @@ function repair_damage(shkp,tmp_dam,catchup)
     if(Number(!(repairable_damage(tmp_dam,shkp)))) return 0;
     (x=R106(A17(tmp_dam)));
     (y=R107(A17(tmp_dam)));
-    (seeit=C.i8((Number((C.i32((C.i32(C.cell((C.cell((R73(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1),"unsigned char").value)&2)))!=0))));
+    (seeit=C.i8((Number((C.i32((C.i32(RC2(C.cell((R73(C.gv)+Number(y)*8),"unsigned char *").value+Number(x)*1))&2)))!=0))));
     (ttmp=C.t_at(x,y));
     if(ttmp) {
         switch(C.i32(R177(ttmp))) {
@@ -4136,17 +4143,17 @@ function repair_damage(shkp,tmp_dam,catchup)
             (W115(otmp,C.u32(C.weight(otmp))));
             if(Number(!(catchup))) {
                 if(Number(!!(C.canseemon(shkp)&&Number(C.dist2(x,y,R89(shkp),R90(shkp))<=2)))) C.variadic(177,C.literal("%s untraps %s."),C.Shknam(shkp),C.ansimpleoname(otmp));
- else if(Number(!!(C.i32(R178(ttmp))&&(Number((C.i32((C.i32(C.cell((C.cell((R73(C.gv)+Number(R176(ttmp))*8),"unsigned char *").value+Number(R175(ttmp))*1),"unsigned char").value)&2)))!=0))))) C.variadic(178,C.literal("The %s vanishes."),C.trapname(C.i32(R177(ttmp)),(C.i8(1))));
+ else if(Number(!!(C.i32(R178(ttmp))&&(Number((C.i32((C.i32(RC2(C.cell((R73(C.gv)+Number(R176(ttmp))*8),"unsigned char *").value+Number(R175(ttmp))*1))&2)))!=0))))) C.variadic(178,C.literal("The %s vanishes."),C.trapname(C.i32(R177(ttmp)),(C.i8(1))));
             }
             C.mpickobj(shkp,otmp);
             break;
             case (C.HOLE):
                 case (C.PIT):
                     case (C.SPIKED_PIT):
-                        if(Number(!!(Number(!!(Number(!(catchup))&&C.i32(R178(ttmp))))&&(Number((C.i32((C.i32(C.cell((C.cell((R73(C.gv)+Number(R176(ttmp))*8),"unsigned char *").value+Number(R175(ttmp))*1),"unsigned char").value)&2)))!=0))))) C.variadic(179,C.literal("The %s is filled in."),C.trapname(C.i32(R177(ttmp)),(C.i8(1))));
+                        if(Number(!!(Number(!!(Number(!(catchup))&&C.i32(R178(ttmp))))&&(Number((C.i32((C.i32(RC2(C.cell((R73(C.gv)+Number(R176(ttmp))*8),"unsigned char *").value+Number(R175(ttmp))*1))&2)))!=0))))) C.variadic(179,C.literal("The %s is filled in."),C.trapname(C.i32(R177(ttmp)),(C.i8(1))));
             break;
             default:
-                if(Number(!!(Number(!!(Number(!(catchup))&&C.i32(R178(ttmp))))&&(Number((C.i32((C.i32(C.cell((C.cell((R73(C.gv)+Number(R176(ttmp))*8),"unsigned char *").value+Number(R175(ttmp))*1),"unsigned char").value)&2)))!=0))))) C.variadic(180,C.literal("The %s vanishes."),C.trapname(C.i32(R177(ttmp)),(C.i8(1))));
+                if(Number(!!(Number(!!(Number(!(catchup))&&C.i32(R178(ttmp))))&&(Number((C.i32((C.i32(RC2(C.cell((R73(C.gv)+Number(R176(ttmp))*8),"unsigned char *").value+Number(R175(ttmp))*1))&2)))!=0))))) C.variadic(180,C.literal("The %s vanishes."),C.trapname(C.i32(R177(ttmp)),(C.i8(1))));
             break;
         }
         C.deltrap(ttmp);
@@ -4282,7 +4289,7 @@ function shk_move(shkp)
         (gty=R195(C.u));
     } else if((Number(!((R100(shkp)))))) {
         /* Move towards the hero if the shopkeeper can see him. */
-        if(Number(!!(C.i32(R96(shkp))&&(Number(!!(Number(!!((Number(!!(Number(!((Number(!!((Number(!!(R157(A204(C.u)+Number(C.INVIS)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.INVIS)*C.sizes["struct prop"]))))&&Number(!(R156(A204(C.u)+Number(C.INVIS)*C.sizes["struct prop"]))))))))||(Number((C.u64((R153(R86(shkp))&C.u64(16777216n))))!=C.u64(0n))))))&&Number(!((R208(C.u))))))&&(Number((C.i32((C.i32(C.cell((C.cell((R73(C.gv)+Number(R90(shkp))*8),"unsigned char *").value+Number(R89(shkp))*1),"unsigned char").value)&1)))!=0)))))))) {
+        if(Number(!!(C.i32(R96(shkp))&&(Number(!!(Number(!!((Number(!!(Number(!((Number(!!((Number(!!(R157(A204(C.u)+Number(C.INVIS)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.INVIS)*C.sizes["struct prop"]))))&&Number(!(R156(A204(C.u)+Number(C.INVIS)*C.sizes["struct prop"]))))))))||(Number((C.u64((R153(R86(shkp))&C.u64(16777216n))))!=C.u64(0n))))))&&Number(!((R208(C.u))))))&&(Number((C.i32((C.i32(RC2(C.cell((R73(C.gv)+Number(R90(shkp))*8),"unsigned char *").value+Number(R89(shkp))*1))&1)))!=0)))))))) {
             (gtx=R194(C.u));
             (gty=R195(C.u));
         }
@@ -4297,7 +4304,7 @@ function shk_move(shkp)
                 if(Number(!!(C.i32(satdoor)&&C.i32(badinv)))) return 0;
                 (avoid=C.i8(Number(!(badinv))));
             } else {
-                (avoid=C.i8((Number(!!(C.i32(C.cell(A201(C.u),"char").value)&&Number(C.dist2((gtx),(gty),R194(C.u),R195(C.u))>8))))));
+                (avoid=C.i8((Number(!!(C.i32(RC0(A201(C.u)))&&Number(C.dist2((gtx),(gty),R194(C.u),R195(C.u))>8))))));
                 (badinv=(C.i8(0)));
             }
             if(Number(!!((Number(!!((Number(!!(Number(!!(Number(!(R29(eshkp)))&&Number(!(R41(eshkp)))))&&Number(!(R31(eshkp))))))||C.i32(avoid))))&&Number((C.dist2(omx,omy,gtx,gty))<3)))) {
@@ -4335,7 +4342,7 @@ function is_fshk(mtmp)
 function shopdig(fall)
 {
     fall=C.i32(fall);
-    let shkp=shop_keeper(C.cell(A201(C.u),"char").value);
+    let shkp=shop_keeper(RC0(A201(C.u)));
     let lang;
     let grabs=C.literal("grabs");
     if(Number(!(shkp))) return;
@@ -4406,16 +4413,16 @@ function makekops(mm)
     try {
     
     let k_cnt=C.automatic("makekops.k_cnt@174324",(4*4)); let cnt; let mndx; let k;
-    (C.cell((k_cnt+Number(0)*4),"int").value=(cnt=C.i32((C.abs(C.i32(C.depth(A198(C.u))))+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5119,"makekops"),C.rnd(5))):C.rnd(5)))))));
-    (C.cell((k_cnt+Number(1)*4),"int").value=C.i32(((C.i32(Math.trunc((cnt/3))))+1)));
+    (WC5(k_cnt+Number(0)*4,cnt=C.i32((C.abs(C.i32(C.depth(A198(C.u))))+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5119,"makekops"),C.rnd(5))):C.rnd(5)))))));
+    (WC5(k_cnt+Number(1)*4,C.i32(((C.i32(Math.trunc((cnt/3))))+1))));
     /* at least one sarge */
-    (C.cell((k_cnt+Number(2)*4),"int").value=(C.i32(Math.trunc((cnt/6)))));
+    (WC5(k_cnt+Number(2)*4,C.i32(Math.trunc((cnt/6)))));
     /* maybe a lieutenant */
-    (C.cell((k_cnt+Number(3)*4),"int").value=(C.i32(Math.trunc((cnt/9)))));
+    (WC5(k_cnt+Number(3)*4,C.i32(Math.trunc((cnt/9)))));
     /* and maybe a kaptain */
     for((k=0);Number(k<4);(()=>{const old=k;k=C.i32((old+1));return old;})()) {
-        if(Number(((cnt=C.cell((k_cnt+Number(k)*4),"int").value))==0)) break;
-        (mndx=C.i32(C.cell((C.staticAddress("makekops.k_mndx")+Number(k)*2),"short").value));
+        if(Number(((cnt=RC5(k_cnt+Number(k)*4)))==0)) break;
+        (mndx=C.i32(RC3(C.staticAddress("makekops.k_mndx")+Number(k)*2)));
         if(C.i32((C.i32(R105(A67(C.svm)+Number(mndx)*C.sizes["struct mvitals"]))&(C.i32((2|1)))))) continue;
         while((()=>{const old=cnt;cnt=C.i32((old-1));return old;})()) if(C.enexto(mm,R106(mm),R107(mm),(C.mons+Number(mndx)*C.sizes["struct permonst"]))) C.makemon((C.mons+Number(mndx)*C.sizes["struct permonst"]),R106(mm),R107(mm),C.u32(131072n));
 
@@ -4465,7 +4472,7 @@ function pay_for_damage(dmgstr,cant_mollify)
     try {
     let shkp=0;
     let shops_affected=C.automatic("pay_for_damage.shops_affected@176298",(1*5));
-    let uinshp=C.i8((Number(C.i32(C.cell(A201(C.u),"char").value)!=0)));
+    let uinshp=C.i8((Number(C.i32(RC0(A201(C.u)))!=0)));
     let qbuf=C.automatic("pay_for_damage.qbuf@176368",(1*80));
     let x; let y;
     let animal; let pursue;
@@ -4478,10 +4485,10 @@ function pay_for_damage(dmgstr,cant_mollify)
         if(Number(!!(Number(R15(tmp_dam)!=R66(C.svm))||Number(!(R16(tmp_dam)))))) continue;
         (cost_of_damage=C.i64(cost_of_damage+R16(tmp_dam)));
         C.strcpy(shops_affected,C.in_rooms(R106(A17(tmp_dam)),R107(A17(tmp_dam)),C.SHOPBASE));
-        for((shp=shops_affected);C.cell(shp,"char").value;(()=>{const old=shp;shp=C.ptr((old+Number(1)));return old;})()) {
+        for((shp=shops_affected);RC0(shp);(()=>{const old=shp;shp=C.ptr((old+Number(1)));return old;})()) {
             let tmp_shk;
             let shk_distance;
-            if(Number(!(((tmp_shk=shop_keeper(C.cell(shp,"char").value)))))) continue;
+            if(Number(!(((tmp_shk=shop_keeper(RC0(shp))))))) continue;
             if(Number(tmp_shk==shkp)) {
                 let damage_distance=C.u32(C.dist2((R106(A17(tmp_dam))),(R107(A17(tmp_dam))),R194(C.u),R195(C.u)));
                 if(Number(damage_distance<nearest_damage)) {
@@ -4515,8 +4522,8 @@ function pay_for_damage(dmgstr,cant_mollify)
         return;
     }
     /* if the shk is not in their shop.. */
-    if(Number(!(C.cell(C.in_rooms(R89(shkp),R90(shkp),C.SHOPBASE),"char").value))) {
-        if(Number(!((Number((C.i32((C.i32(C.cell((C.cell((R73(C.gv)+Number(R90(shkp))*8),"unsigned char *").value+Number(R89(shkp))*1),"unsigned char").value)&2)))!=0))))) return;
+    if(Number(!(RC0(C.in_rooms(R89(shkp),R90(shkp),C.SHOPBASE))))) {
+        if(Number(!((Number((C.i32((C.i32(RC2(C.cell((R73(C.gv)+Number(R90(shkp))*8),"unsigned char *").value+Number(R89(shkp))*1))&2)))!=0))))) return;
         (pursue=(C.i8(1)));
         getcad(shkp,dmgstr,x,y,uinshp,animal,pursue);
         return;
@@ -4600,7 +4607,7 @@ function costly_spot(x,y)
     let shkp;
     let eshkp;
     if(Number(!(R75(A28(A65(C.svl)))))) return (C.i8(0));
-    (shkp=shop_keeper(C.cell(C.in_rooms(x,y,C.SHOPBASE),"char").value));
+    (shkp=shop_keeper(RC0(C.in_rooms(x,y,C.SHOPBASE))));
     if(Number(!!(Number(!(shkp))||Number(!(inhishop(shkp)))))) return (C.i8(0));
     (eshkp=(R77(R104(shkp))));
     return C.i8((Number(!!(C.i32(inside_shop(x,y))&&Number(!((Number(!!(Number(C.i32(x)==C.i32(R106(A38(eshkp))))&&Number(C.i32(y)==C.i32(R107(A38(eshkp)))))))))))));
@@ -4630,7 +4637,7 @@ function shop_object(x,y)
     y=C.i16(y);
     let otmp;
     let shkp;
-    (shkp=shop_keeper(C.cell(C.in_rooms(x,y,C.SHOPBASE),"char").value));
+    (shkp=shop_keeper(RC0(C.in_rooms(x,y,C.SHOPBASE))));
     if(Number(!!(Number(!(shkp))||Number(!(inhishop(shkp)))))) return 0;
     for((otmp=C.cell(((A22(A65(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value);otmp;(otmp=R182(A109(otmp)))) if(Number(C.i32(R118(otmp))!=C.COIN_CLASS)) break;
 
@@ -4862,8 +4869,8 @@ function check_unpaid_usage(otmp,altusage)
     let fmt; let arg1; let arg2;
     let buf=C.automatic("check_unpaid_usage.buf@194421",(1*256));
     let tmp;
-    if(Number(!!(Number(!!(Number(!(R124(otmp)))||Number(!(C.cell(A201(C.u),"char").value))))||(Number(!!(Number(C.i32(R117(otmp))<=0)&&C.i32(R138(C.objects+Number(R114(otmp))*C.sizes["struct objclass"])))))))) return;
-    (shkp=shop_keeper(C.cell(A201(C.u),"char").value));
+    if(Number(!!(Number(!!(Number(!(R124(otmp)))||Number(!(RC0(A201(C.u))))))||(Number(!!(Number(C.i32(R117(otmp))<=0)&&C.i32(R138(C.objects+Number(R114(otmp))*C.sizes["struct objclass"])))))))) return;
+    (shkp=shop_keeper(RC0(A201(C.u))));
     if(Number(!!(Number(!(shkp))||Number(!(inhishop(shkp)))))) return;
     if(Number(((tmp=cost_per_charge(shkp,otmp,altusage)))==0n)) return;
     (arg1=(arg2=C.literal("")));
@@ -4914,7 +4921,7 @@ function costly_gold(x,y,amount,silent)
     /* shkp is guaranteed to exist after successful costly_spot(), but
        the static analyzer isn't smart enough to realize that, so follow
        the shkp assignment with a redundant test that will always fail */
-    (shkp=shop_keeper(C.cell(C.in_rooms(x,y,C.SHOPBASE),"char").value));
+    (shkp=shop_keeper(RC0(C.in_rooms(x,y,C.SHOPBASE))));
     if(Number(!(shkp))) return;
     (eshkp=(R77(R104(shkp))));
     if(Number(R30(eshkp)>=amount)) {
@@ -4942,11 +4949,11 @@ function block_door(x,y)
 {
     x=C.i16(x);
     y=C.i16(y);
-    let roomno=C.i32(C.cell(C.in_rooms(x,y,C.SHOPBASE),"char").value);
+    let roomno=C.i32(RC0(C.in_rooms(x,y,C.SHOPBASE)));
     let shkp;
     if(Number(!!(Number(roomno<0)||Number(!((Number(C.i32(R83(A69(C.svr)+Number(roomno)*C.sizes["struct mkroom"]))>=C.SHOPBASE))))))) return (C.i8(0));
     if(Number(!((Number(C.i32((R160((A21(A65(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))==C.DOOR))))) return (C.i8(0));
-    if(Number(roomno!=C.i32(C.cell(A201(C.u),"char").value))) return (C.i8(0));
+    if(Number(roomno!=C.i32(RC0(A201(C.u))))) return (C.i8(0));
     (shkp=shop_keeper(C.i8(roomno)));
     if(Number(!!(Number(!(shkp))||Number(!(inhishop(shkp)))))) return (C.i8(0));
     if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R89(shkp))==C.i32(R106(A38(R77(R104(shkp))))))&&Number(C.i32(R90(shkp))==C.i32(R107(A38(R77(R104(shkp))))))))&&Number(C.i32(R106(A39(R77(R104(shkp)))))==C.i32(x))))&&Number(C.i32(R107(A39(R77(R104(shkp)))))==C.i32(y))))&&Number(!((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))))))&&(Number(!!(Number(!!(R31(R77(R104(shkp)))||R41(R77(R104(shkp)))))||R29(R77(R104(shkp))))))))) {
@@ -4970,7 +4977,7 @@ function block_entry(x,y)
     let roomno;
     let shkp;
     if(Number(!((Number(!!((Number(C.i32((R160((A21(A65(C.svl))+Number(R194(C.u))*(C.sizes["struct rm"]*21))+Number(R195(C.u))*C.sizes["struct rm"])))==C.DOOR))&&Number(C.i32(R162((A21(A65(C.svl))+Number(R194(C.u))*(C.sizes["struct rm"]*21))+Number(R195(C.u))*C.sizes["struct rm"]))==1))))))) return (C.i8(0));
-    (roomno=C.i32(C.cell(C.in_rooms(x,y,C.SHOPBASE),"char").value));
+    (roomno=C.i32(RC0(C.in_rooms(x,y,C.SHOPBASE))));
     if(Number(!!(Number(roomno<0)||Number(!((Number(C.i32(R83(A69(C.svr)+Number(roomno)*C.sizes["struct mkroom"]))>=C.SHOPBASE))))))) return (C.i8(0));
     (shkp=shop_keeper(C.i8(roomno)));
     if(Number(!!(Number(!(shkp))||Number(!(inhishop(shkp)))))) return (C.i8(0));
@@ -4990,7 +4997,7 @@ function shk_your(buf,obj)
     buf=C.ptr(buf);
     obj=C.ptr(obj);
     let chk_pm=C.i8(Number(!!(Number(C.i32(R114(obj))==C.CORPSE)&&(Number(!!(Number((R131(obj))>=C.LOW_PM)&&Number((R131(obj))<C.NUMMONS)))))));
-    (C.cell((buf+Number(0)*1),"char").value=C.i8(0));
+    (WC0(buf+Number(0)*1,C.i8(0)));
     if(Number(!!(C.i32(chk_pm)&&(Number((C.u64((R154(C.mons+Number(R131(obj))*C.sizes["struct permonst"])&C.u64(524288n))))!=C.u64(0n)))))) return buf;
  else if(Number(!!(C.i32(chk_pm)&&C.i32(C.the_unique_pm((C.mons+Number(R131(obj))*C.sizes["struct permonst"])))))) C.strcpy(buf,C.literal("the"));
  else if(Number(!!(Number(!(shk_owns(buf,obj)))&&Number(!(mon_owns(buf,obj)))))) C.strcpy(buf,C.cell((A11(C.c_common_strings)+Number(((Number(C.i32(R120(obj))==3))?1:0))*8),"char *").value);
@@ -5004,7 +5011,7 @@ function Shk_Your(buf,obj)
     buf=C.ptr(buf);
     obj=C.ptr(obj);
     shk_your(buf,obj);
-    (C.cell(buf,"char").value=C.highc(C.cell(buf,"char").value));
+    (WC0(buf,C.highc(RC0(buf))));
     return buf;
 }
 
@@ -5062,7 +5069,7 @@ function cad(altusage)
         /* alternate usage adds a leading double quote and trailing
            exclamation point plus sentence separating spaces */
         C.variadic(242,cadbuf,C.literal("\"%s!  "),res);
-        (C.cell((cadbuf+Number(1)*1),"char").value=C.highc(C.cell((cadbuf+Number(1)*1),"char").value));
+        (WC0(cadbuf+Number(1)*1,C.highc(RC0(cadbuf+Number(1)*1))));
         (res=cadbuf);
     }
     return res;
@@ -5115,11 +5122,11 @@ function globby_bill_fixup(obj_absorber,obj_absorbed)
 
     } else if(R124(obj_absorbed)) {
         if(Number(!!(Number(!!(Number(C.i32(R120(obj_absorbed))==0)&&C.i32(floor_absorber)))&&C.i32(costly_spot(C.i16(x),C.i16(y)))))) {
-            (shkp.value=shop_keeper(C.cell(C.in_rooms(C.i16(x),C.i16(y),C.SHOPBASE),"char").value));
+            (shkp.value=shop_keeper(RC0(C.in_rooms(C.i16(x),C.i16(y),C.SHOPBASE))));
         }
     }
     /* sanity check, in case obj is on bill but not marked 'unpaid' */
-    if(Number(!(shkp.value))) (shkp.value=shop_keeper(C.cell(A201(C.u),"char").value));
+    if(Number(!(shkp.value))) (shkp.value=shop_keeper(RC0(A201(C.u))));
     if(Number(!(shkp.value))) return;
     (bp_absorber=onbill(obj_absorber,shkp.value,(C.i8(0))));
     (bp=onbill(obj_absorbed,shkp.value,(C.i8(0))));

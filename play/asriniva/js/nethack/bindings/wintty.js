@@ -16,6 +16,7 @@ export function createWinttyEnvironment(services,L,state){
     const canonical=memo(t=>{t=clean(t);const seen=new Set();while(schema.aliases[t]&&!seen.has(t)){seen.add(t);const enumKey='enum_signed_'+t.replace(/\W+/g,'_').replace(/^_|_$/g,'');t=t.startsWith('enum ')&&L[enumKey]!==undefined?(Number(L[enumKey])?'int':'unsigned int'):clean(schema.aliases[t]);}return t;});
     const key=memo(t=>canonical(t).replace(/\W+/g,'_').replace(/^_|_$/g,''));
     const native=services.nativeOwner?.nativeArena?services.nativeOwner:undefined,nativeRecords=native?.nativeRecords;
+    const fixed=services.nativeFixedProvider===true,aliased=new WeakSet();
     const nativeTypes=new Map(Object.keys(schema.records).map(type=>[canonical(type).replace(/^(struct |union )/,''),canonical(type)]));
     const recordType=o=>nativeRecords?nativeTypes.get(nativeRecords.kindOf(o))??o.nativeType:o.nativeType;
     let dataView;
@@ -65,7 +66,7 @@ export function createWinttyEnvironment(services,L,state){
         return scalar(p,t,value,true);
     }
     function record(p,t){
-        if(nativeRecords){t=canonical(t);const result=nativeRecords.record(t,p);if(result)CAdapter.installStringAliases(result,schema.fieldAliases[t]??{},true);return result;}
+        if(nativeRecords)return nativeRecord(p,canonical(t));
         if(!raw(p))return 0;t=canonical(t);const at=raw(p),fields=schema.records[t];
         if(!fields)throw Error('WINTTY unreviewed native record '+t);
         return new Proxy({address:at>9007199254740991n?at:Number(at),nativeType:t},{
@@ -76,6 +77,14 @@ export function createWinttyEnvironment(services,L,state){
                 if(d.bit)services.setBit(o.address,bitIndices[t+'.'+f],Number(v));
                 else write(address(o.address)+Number(L['offset_'+key(t)+'_'+f]),d.type,v);return true;}
         });
+    }
+    function nativeRecord(p,type){
+            const result=nativeRecords.record(type,p),aliases=schema.fieldAliases[type];
+            if(result&&aliases&&(!fixed||!aliased.has(result))){
+                CAdapter.installStringAliases(result,aliases,true);
+                if(fixed)aliased.add(result);
+            }
+            return result;
     }
     const bitIndices={};
     function tablePointer(table,index=0,type='char *'){
@@ -150,9 +159,68 @@ export function createWinttyEnvironment(services,L,state){
     C.callLocal=(fn,...args)=>{return CAdapter.callWithStack(services,fn,...args);};
     C.callback=(name,fn)=>{const token=services.callbackPointer(name);if(!token)throw Error('WINTTY missing native callback identity '+name);return token;};
     C.callIndirect=(token,type,...args)=>services.callIndirect(token,type,...args);
+    function globalReader(at,t){
+        const type=canonical(t);
+        if(arrayType(type))return at;
+        if(type.includes('('))return ()=>dv().getBigUint64(at(),true);
+        if(type.endsWith('*')){
+            const target=canonical(type.slice(0,-1));
+            const pointer=()=>native.nativeArena.pointer(at());
+            return schema.records[target]?()=>nativeRecord(pointer(),target):pointer;
+        }
+        if(schema.records[type]){
+            let value;
+            return ()=>value??=nativeRecord(at(),type);
+        }
+        const [bytes,signed]=primitive[type]??[];
+        if(!bytes)throw Error('WINTTY unreviewed global type '+type);
+        const method='get'+(bytes===8?'Big':'')+(signed?'Int':'Uint')+bytes*8;
+        return ()=>dv()[method](at(),true);
+    }
+    const fixedGlobals=new Map();
     for(const [index,[name,t]]of Object.entries(schema.globals).entries()){
-        const at=()=>services.global(index);
-        Object.defineProperty(C,name,{get:()=>read(at(),t),set:v=>write(at(),t,v)});
+        const at=fixed?services.bindGlobal(index):()=>services.global(index);
+        if(fixed)fixedGlobals.set(name,at);
+        Object.defineProperty(C,name,{get:fixed?globalReader(at,t):()=>read(at(),t),set:v=>write(at(),t,v)});
+    }
+    if(fixed){
+        const wins=fixedGlobals.get('wins')(),glyphGraphics=fixedGlobals.get('gc')()+L.offset_struct_instance_globals_c_currentgraphics;
+        const symbols=fixedGlobals.get('gs')()+L.offset_struct_instance_globals_s_symset;
+        C.windowAt=window=>nativeRecord(native.nativeArena.pointer(wins+window*8),'struct WinDesc');
+        C.currentGraphicsHandling=()=>{
+            const graphics=dv().getInt32(glyphGraphics,true);
+            return dv().getUint32(symbols+graphics*L.struct_symsetentry_size+L.offset_struct_symsetentry_handling,true);
+        };
+    }else{
+        C.windowAt=window=>C.deref(C.ptrAdd(C.wins,window,'struct WinDesc *'),'struct WinDesc *');
+        C.currentGraphicsHandling=()=>C.uint(C.deref(C.ptrAdd(C.gs.symset,C.gc.currentgraphics,'struct symsetentry'),'struct symsetentry').handling);
+    }
+    if(fixed){
+        const gm=L.offset_struct_glyphinfo_gm;
+        const sym=gm+L.offset_struct_glyph_map_entry_sym;
+        const scalar=(offset,method,fromObject)=>value=>typeof value==='number'&&value
+            ? dv()[method](value+offset,true) : fromObject(value);
+        C.glyphInput=value=>isNativeValueReference(value)?value.object():address(value);
+        C.glyphChar=scalar(L.offset_struct_glyphinfo_ttychar,'getInt32',value=>value.ttychar);
+        C.glyphColor=scalar(sym+L.offset_struct_classic_representation_color,'getInt32',value=>value.gm.sym.color);
+        C.glyphFlags=scalar(gm+L.offset_struct_glyph_map_entry_glyphflags,'getUint32',value=>value.gm.glyphflags);
+        C.glyphCustomColor=scalar(gm+L.offset_struct_glyph_map_entry_customcolor,'getUint32',value=>value.gm.customcolor);
+        C.glyphColorIndex=scalar(gm+L.offset_struct_glyph_map_entry_color256idx,'getUint16',value=>value.gm.color256idx);
+        C.glyphFrameColor=scalar(L.offset_struct_glyphinfo_framecolor,'getUint32',value=>value.framecolor);
+        C.glyphUtf8=value=>{
+            if(typeof value!=='number')return value.gm.u?.utf8str;
+            const unicode=native.nativeArena.pointer(value+gm+L.offset_struct_glyph_map_entry_u);
+            return unicode&&native.nativeArena.pointer(unicode+L.offset_struct_unicode_representation_utf8str);
+        };
+    }else{
+        C.glyphInput=value=>C.argument(value,'const glyph_info *');
+        C.glyphChar=value=>value.ttychar;
+        C.glyphColor=value=>value.gm.sym.color;
+        C.glyphFlags=value=>value.gm.glyphflags;
+        C.glyphCustomColor=value=>value.gm.customcolor;
+        C.glyphColorIndex=value=>value.gm.color256idx;
+        C.glyphFrameColor=value=>value.framecolor;
+        C.glyphUtf8=value=>value.gm.u?.utf8str;
     }
     for(const [name,t]of Object.entries(nativeReturns)){
         if(t.includes('*'))C[name]=(...a)=>C.castPointer(services[name](...a),t);
@@ -183,6 +251,17 @@ function stateFor(services){let state=states.get(services.moduleKey);if(!state){
 export function winttyState(services){return stateFor(services);}
 export function callWintty(services,L,name,...args){
     const state=stateFor(services);let entry=state.environments.get(L);
+    if(services.nativeFixedProvider===true){
+        if(!entry){
+            entry={environment:createWinttyEnvironment(services,L,state),services};
+            state.environments.set(L,entry);
+        }
+        if(entry.services!==services)throw new Error('Fixed WINTTY service owner changed');
+        if(name===null)return;
+        const C=entry.environment,saved=services.stackSave();
+        C.nativeState.enter();
+        try{return C.nativeNamespace[name](...args);}finally{C.nativeState.leave();services.stackRestore(saved);}
+    }
     if(!entry){
         const slot={current:services};
         // These are dependency accessors, not source callbacks. The active

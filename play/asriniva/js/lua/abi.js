@@ -235,6 +235,7 @@ export function createLuaAbi(options = {}) {
     };
     try {
       record.state = createLuaCState({ ...options, libraries: false, userdataFactory,
+        nativeStringStorage: options.ownsStringStorage?.(allocator,allocatorData) ?? false,
         memoryAllocator, memoryUserdata: allocatorData, memoryLayout: { ...services.memoryLayout(), ...options.memoryLayout },
         warning: (message, continued = 0) => {
           if (record.warn) services.callback(record.warn)(BigInt(record.warnData), BigInt(stringPointer(record, message)), Number(continued));
@@ -356,7 +357,7 @@ export function createLuaAbi(options = {}) {
         if ((nativeValues?Number(a):decodeNumber(a)) !== 504 || address(b) !== 136) throw new LuaError('Lua version/number size mismatch');
         return 0;
       case 'lua_tocfunction': {const value=state.value(index);if(!state.lua_iscfunction(index))return 0;const pointer=value?.luaAbiCFunctionPointer??value?.luaNativeCallback?.luaCFunctionPointer;if(!pointer)throw new LuaError('Lua C function has no registered ABI address');return pointer;}
-      case 'lua_setallocf': record.allocator=address(a);record.allocatorData=address(b);record.state.vm.heap.memoryTracker.setallocf(record.memoryAllocator,record.allocatorData);return 0;
+      case 'lua_setallocf': record.allocator=address(a);record.allocatorData=address(b);record.state.vm.heap.nativeStringStorage=false;record.state.vm.heap.memoryTracker.setallocf(record.memoryAllocator,record.allocatorData);return 0;
       case 'lua_getallocf': writePointer(address(a), record.allocatorData); return record.allocator;
       case 'lua_atpanic': {
         const previous = record.panic; record.panic = address(a); return previous;

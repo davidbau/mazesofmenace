@@ -558,7 +558,6 @@ export function done_timeout(how, which)
 
 export function nh_timeout()
 {
-    let upp;
     let kptr;
     let was_flying;
     let sleeptime;
@@ -638,10 +637,18 @@ export function nh_timeout()
     }
 
     was_flying = C.Flying;
-    for (upp = C.u.uprops[0]; upp.index < C.PROP_COUNT; upp = C.u.uprops[upp.index + 1])
-        if ((upp.intrinsic & C.TIMEOUT) && !(C.long(--upp.intrinsic) & C.TIMEOUT)) {
-            kptr = C.find_delayed_killer(upp.index);
-            switch (upp.index) {
+    for (let propertyIndex = 0; propertyIndex < C.PROP_COUNT; propertyIndex++) {
+        let expired;
+        if (Object.hasOwn(C, 'tickProperty')) {
+            expired = C.tickProperty(propertyIndex);
+        } else {
+            const property = C.u.uprops[propertyIndex];
+            expired = (property.intrinsic & C.TIMEOUT)
+                && !(C.long(--property.intrinsic) & C.TIMEOUT);
+        }
+        if (expired) {
+            kptr = C.find_delayed_killer(propertyIndex);
+            switch (propertyIndex) {
             case C.STONED:
                 if (kptr && C.loadChar(kptr.name)) {
                     C.svk.killer.format = kptr.format;
@@ -914,6 +921,8 @@ export function nh_timeout()
                 break;
             }
         }
+
+    }
 
     C.callLocal(run_timers);
 }

@@ -15,6 +15,14 @@ export function connectNativeDisplayWindows(environment,services,schema,windowFi
   const declaration=fields[field]?.ctype,match=declaration?.match(/^(.*?)\s*\(\*\)\s*\((.*?)\)/);
   const parameters=match?.[2].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void');
   if(!match||[match[1],...parameters].map(code).join('')!==signature||typeof fallback!=='function')throw Error('Review native '+label+' window ABI '+site);
-  services['indirect'+site]=(token,...args)=>environment.nativeWindowCallbacks?environment.nativeWindowCallbacks.invokeCaptured(field,signature,token,...args):fallback(token,...args);
+  let installed,invoke;
+  services['indirect'+site]=(token,...args)=>{
+   const callbacks=environment.nativeWindowCallbacks;
+   if(callbacks){
+    if(callbacks!==installed){invoke=callbacks.bindCaptured(field,signature);installed=callbacks;}
+    return invoke(token,...args);
+   }
+   return services.nativeOwner?services.nativeOwner.boundary(fallback,token,...args):fallback(token,...args);
+  };
  }
 }

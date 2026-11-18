@@ -179,6 +179,11 @@ cmdq_print(int q)
 export function cmdq_add_ec(q,fn)
 {
     q=C.i32(q);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        repeat.push({ typ: C.CMDQ_EXTCMD, ec_entry: ext_func_tab_from_func(fn) });
+        return;
+    }
     let tmp=C.alloc(C.u32(BigInt(C.sizes["struct _cmd_queue"])));
     let cq=C.cell((C.field(C.gc,"instance_globals_c","command_queue").address+Number(q)*8),"struct _cmd_queue *").value;
     (C.field(tmp,"_cmd_queue","typ").value=C.CMDQ_EXTCMD);
@@ -195,6 +200,11 @@ export function cmdq_add_key(q,key)
 {
     q=C.i32(q);
     key=C.i8(key);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        repeat.push({ typ: C.CMDQ_KEY, key });
+        return;
+    }
     let tmp=C.alloc(C.u32(BigInt(C.sizes["struct _cmd_queue"])));
     let cq=C.cell((C.field(C.gc,"instance_globals_c","command_queue").address+Number(q)*8),"struct _cmd_queue *").value;
     (C.field(tmp,"_cmd_queue","typ").value=C.CMDQ_KEY);
@@ -213,6 +223,11 @@ export function cmdq_add_dir(q,dx,dy,dz)
     dx=C.i8(dx);
     dy=C.i8(dy);
     dz=C.i8(dz);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        repeat.push({ typ: C.CMDQ_DIR, dirx: dx, diry: dy, dirz: dz });
+        return;
+    }
     let tmp=C.alloc(C.u32(BigInt(C.sizes["struct _cmd_queue"])));
     let cq=C.cell((C.field(C.gc,"instance_globals_c","command_queue").address+Number(q)*8),"struct _cmd_queue *").value;
     (C.field(tmp,"_cmd_queue","typ").value=C.CMDQ_DIR);
@@ -230,6 +245,11 @@ export function cmdq_add_dir(q,dx,dy,dz)
 export function cmdq_add_userinput(q)
 {
     q=C.i32(q);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        repeat.push({ typ: C.CMDQ_USER_INPUT });
+        return;
+    }
     let tmp=C.alloc(C.u32(BigInt(C.sizes["struct _cmd_queue"])));
     let cq=C.cell((C.field(C.gc,"instance_globals_c","command_queue").address+Number(q)*8),"struct _cmd_queue *").value;
     (C.field(tmp,"_cmd_queue","typ").value=C.CMDQ_USER_INPUT);
@@ -245,6 +265,11 @@ export function cmdq_add_int(q,val)
 {
     q=C.i32(q);
     val=C.i32(val);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        repeat.push({ typ: C.CMDQ_INT, intval: val });
+        return;
+    }
     let tmp=C.alloc(C.u32(BigInt(C.sizes["struct _cmd_queue"])));
     let cq=C.cell((C.field(C.gc,"instance_globals_c","command_queue").address+Number(q)*8),"struct _cmd_queue *").value;
     (C.field(tmp,"_cmd_queue","typ").value=C.CMDQ_INT);
@@ -260,6 +285,12 @@ export function cmdq_add_int(q,val)
 export function cmdq_shift(q)
 {
     q=C.i32(q);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        if (repeat.length > 1)
+            repeat.unshift(repeat.pop());
+        return;
+    }
     let tmp=0;
     let cq=C.cell((C.field(C.gc,"instance_globals_c","command_queue").address+Number(q)*8),"struct _cmd_queue *").value;
     while(Number(!!(Number(!!(cq&&C.field(cq,"_cmd_queue","next").value))&&C.field(C.field(cq,"_cmd_queue","next").value,"_cmd_queue","next").value))) (cq=C.field(cq,"_cmd_queue","next").value);
@@ -287,6 +318,9 @@ export function cmdq_reverse(head)
 export function cmdq_copy(q)
 {
     q=C.i32(q);
+    const repeat = repeatEntries(q);
+    if (repeat)
+        return commandListBytes(repeat);
     let tmp=0;
     let cq=C.cell((C.field(C.gc,"instance_globals_c","command_queue").address+Number(q)*8),"struct _cmd_queue *").value;
     while(cq) {
@@ -306,6 +340,9 @@ export function cmdq_copy(q)
 export function cmdq_pop()
 {
     let q=((C.field(C.gi,"instance_globals_i","in_doagain").value)?C.CQ_REPEAT:C.CQ_CANNED);
+    const repeat = repeatEntries(q);
+    if (repeat)
+        return repeat.length ? commandBytes(repeat.shift(), 0) : 0;
     let tmp=C.cell((C.field(C.gc,"instance_globals_c","command_queue").address+Number(q)*8),"struct _cmd_queue *").value;
     if(tmp) {
         (C.cell((C.field(C.gc,"instance_globals_c","command_queue").address+Number(q)*8),"struct _cmd_queue *").value=C.field(tmp,"_cmd_queue","next").value);
@@ -318,6 +355,17 @@ export function cmdq_pop()
 export function cmdq_peek(q)
 {
     q=C.i32(q);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        if (!repeat.length)
+            return 0;
+        // An address returned by peek can be retained and mutated. Once
+        // exposed, the linked nodes own the queue until it is cleared.
+        const head = commandListBytes(repeat);
+        C.repeatCommands.entries = null;
+        C.cell(C.field(C.gc, "instance_globals_c", "command_queue").address + q * 8, "struct _cmd_queue *").value = head;
+        return head;
+    }
     return C.cell((C.field(C.gc,"instance_globals_c","command_queue").address+Number(q)*8),"struct _cmd_queue *").value;
 }
 
@@ -325,6 +373,11 @@ export function cmdq_peek(q)
 export function cmdq_clear(q)
 {
     q=C.i32(q);
+    const repeat = repeatEntries(q);
+    if (repeat) {
+        repeat.length = 0;
+        return;
+    }
     let tmp=C.cell((C.field(C.gc,"instance_globals_c","command_queue").address+Number(q)*8),"struct _cmd_queue *").value;
     let tmp2;
     while(tmp) {
@@ -333,6 +386,59 @@ export function cmdq_clear(q)
         (tmp=tmp2);
     }
     (C.cell((C.field(C.gc,"instance_globals_c","command_queue").address+Number(q)*8),"struct _cmd_queue *").value=0);
+    if (q === C.CQ_REPEAT && C.repeatCommands)
+        C.repeatCommands.entries = [];
+}
+
+function repeatEntries(q)
+{
+    return q === C.CQ_REPEAT ? C.repeatCommands?.entries : undefined;
+}
+
+function commandBytes(entry, next)
+{
+    const at = C.alloc(C.sizes["struct _cmd_queue"]);
+    for (const key of Object.keys(entry))
+        C.field(at, "_cmd_queue", key).value = entry[key];
+    C.field(at, "_cmd_queue", "next").value = next;
+    return at;
+}
+
+function commandListBytes(entries)
+{
+    let head = 0;
+    for (let i = entries.length - 1; i >= 0; --i)
+        head = commandBytes(entries[i], head);
+    return head;
+}
+
+function takeCommand()
+{
+    const repeat = repeatEntries(C.CQ_REPEAT);
+    if (repeat && C.field(C.gi, "instance_globals_i", "in_doagain").value)
+        return repeat.shift() ?? 0;
+    return cmdq_pop();
+}
+
+function commandField(entry, key)
+{
+    if (typeof entry === "object")
+        return entry[key];
+    switch (key) {
+    case "typ": return C.field(entry, "_cmd_queue", "typ").value;
+    case "key": return C.field(entry, "_cmd_queue", "key").value;
+    case "ec_entry": return C.field(entry, "_cmd_queue", "ec_entry").value;
+    case "dirx": return C.field(entry, "_cmd_queue", "dirx").value;
+    case "diry": return C.field(entry, "_cmd_queue", "diry").value;
+    case "dirz": return C.field(entry, "_cmd_queue", "dirz").value;
+    default: throw new Error('Unexpected command queue field ' + key);
+    }
+}
+
+function releaseCommand(entry)
+{
+    if (typeof entry !== "object")
+        C.free(entry);
 }
 
 export function pgetchar()
@@ -1342,17 +1448,24 @@ export function do_repeat()
     let res=0;
     if(Number(!(C.field(C.gi,"instance_globals_i","in_doagain").value))) {
         let repeat_copy;
-        if(Number(!(cmdq_peek(C.CQ_REPEAT)))) {
+        const repeat = repeatEntries(C.CQ_REPEAT);
+        if (!(repeat ? repeat.length : cmdq_peek(C.CQ_REPEAT))) {
             C.variadic(35,C.literal("There is no command available to repeat."));
             return 4;
         }
-        (repeat_copy=cmdq_copy(C.CQ_REPEAT));
+        repeat_copy = repeat ? repeat.slice() : cmdq_copy(C.CQ_REPEAT);
         (C.field(C.gi,"instance_globals_i","in_doagain").value=C.i32((C.i8(1))));
         rhack(0);
         /* read and execute command */
         (C.field(C.gi,"instance_globals_i","in_doagain").value=C.i32((C.i8(0))));
         cmdq_clear(C.CQ_REPEAT);
-        (C.cell((C.field(C.gc,"instance_globals_c","command_queue").address+Number(C.CQ_REPEAT)*8),"struct _cmd_queue *").value=repeat_copy);
+        if (repeat) {
+            C.repeatCommands.entries = repeat_copy;
+        } else {
+            if (C.repeatCommands)
+                C.repeatCommands.entries = null;
+            C.cell(C.field(C.gc,"instance_globals_c","command_queue").address + C.CQ_REPEAT * 8, "struct _cmd_queue *").value = repeat_copy;
+        }
         (C.field(C.iflags,"instance_flags","menu_requested").value=(C.i8(0)));
         if(C.field(C.field(C.svc,"instance_globals_saved_c","context").address,"context_info","move").value) (res=1);
     }
@@ -2616,7 +2729,7 @@ export function rhack(key)
     const stackFrame=C.stackSave();
     try {
     let bad_command; let firsttime=C.i8((Number(key==0)));
-    let cq=C.stackAlloc(C.sizes["struct _cmd_queue"]); let cmdq=0;
+    let cmdq;
     let cmdq_ec=0; let prefix_seen=0;
     let was_m_prefix=(C.i8(0));
     let func=C.functionPointer("dummyfunction");
@@ -2626,15 +2739,18 @@ export function rhack(key)
         let cmdqJoin=false;
         do_cmdq_extcmd: {
             if(C.field(C.program_state,"sinfo","done_hup").value) end_of_input();
-            if(Number(((cmdq=cmdq_pop()))!=0)) {
+            if ((cmdq = takeCommand())) {
                 /* doing queued commands */
-                C.copyRecord(cq,cmdq,C.sizes["struct _cmd_queue"]);
-                C.free(cmdq);
-                if(Number(!!(Number(C.field(cq,"_cmd_queue","typ").value==C.CMDQ_EXTCMD)&&Number(((cmdq_ec=C.field(cq,"_cmd_queue","ec_entry").value))!=0)))) { cmdqJoin=true; break do_cmdq_extcmd; }
+                const type = commandField(cmdq, "typ");
+                const queuedKey = type === C.CMDQ_KEY ? commandField(cmdq, "key") : 0;
+                if (type === C.CMDQ_EXTCMD)
+                    cmdq_ec = commandField(cmdq, "ec_entry");
+                releaseCommand(cmdq);
+                if (type === C.CMDQ_EXTCMD && cmdq_ec) { cmdqJoin=true; break do_cmdq_extcmd; }
                 /* already handled a queued command (goto do_cmdq_extcmd);
            if something other than a key is queued, we'll drop down
            to the !*cmd handling which clears out the command-queue */
-                (key=((Number(C.field(cq,"_cmd_queue","typ").value==C.CMDQ_KEY))?C.i32(C.field(cq,"_cmd_queue","key").value):0));
+                key = C.i32(queuedKey);
             } else if(firsttime) {
                 (key=parse());
                 /* parse() pushed a cmd but didn't return any key */
@@ -2897,24 +3013,24 @@ export function getdir(s)
     try {
     let dirsym;
     let is_mov;
-    let cmdq=cmdq_pop();
+    let cmdq=takeCommand();
     let queuedDirJoin=false;
     got_dirsym: {
         if(cmdq) {
-            if(Number(C.field(cmdq,"_cmd_queue","typ").value==C.CMDQ_DIR)) {
-                if(Number(!(C.field(cmdq,"_cmd_queue","dirz").value))) {
-                    (dirsym=C.cell((C.field(C.field(C.gc,"instance_globals_c","Cmd").address,"cmd","dirchars").value+Number(xytodir(C.i32(C.field(cmdq,"_cmd_queue","dirx").value),C.i32(C.field(cmdq,"_cmd_queue","diry").value)))*1),"char").value);
+            if(Number(commandField(cmdq, "typ")==C.CMDQ_DIR)) {
+                if(Number(!(commandField(cmdq, "dirz")))) {
+                    (dirsym=C.cell((C.field(C.field(C.gc,"instance_globals_c","Cmd").address,"cmd","dirchars").value+Number(xytodir(C.i32(commandField(cmdq, "dirx")),C.i32(commandField(cmdq, "diry"))))*1),"char").value);
                 } else {
-                    (dirsym=C.cell((C.field(C.field(C.gc,"instance_globals_c","Cmd").address,"cmd","dirchars").value+Number(((Number(C.i32(C.field(cmdq,"_cmd_queue","dirz").value)>0))?C.DIR_DOWN:C.DIR_UP))*1),"char").value);
+                    (dirsym=C.cell((C.field(C.field(C.gc,"instance_globals_c","Cmd").address,"cmd","dirchars").value+Number(((Number(C.i32(commandField(cmdq, "dirz"))>0))?C.DIR_DOWN:C.DIR_UP))*1),"char").value);
                 }
-            } else if(Number(C.field(cmdq,"_cmd_queue","typ").value==C.CMDQ_KEY)) {
-                (dirsym=C.field(cmdq,"_cmd_queue","key").value);
+            } else if(Number(commandField(cmdq, "typ")==C.CMDQ_KEY)) {
+                (dirsym=commandField(cmdq, "key"));
             } else {
                 cmdq_clear(C.CQ_CANNED);
                 (dirsym=C.i8(0));
                 C.variadic(85,C.literal("getdir: command queue had no dir?"));
             }
-            C.free(cmdq);
+            releaseCommand(cmdq);
             { queuedDirJoin=true; break got_dirsym; }
         }
     }
@@ -4171,7 +4287,7 @@ export function yn_function(query,resp,def,addcmdq)
     const stackFrame=C.stackSave();
     try {
     let resAddress=C.stackAlloc(1); C.cell(resAddress,"char").value=C.i8(27); let qbuf=C.stackAlloc((1*128));
-    let cq=C.stackAlloc(C.sizes["struct _cmd_queue"]); let cmdq;
+    let cmdq, queuedType = C.CMDQ_USER_INPUT, queuedKey = 0;
     let idx=C.field(C.gs,"instance_globals_s","saved_pline_index").value;
     /* buffer to hold query+space+formatted_single_char_response */
     let dumplog_buf=C.stackAlloc((1*144));
@@ -4186,16 +4302,16 @@ export function yn_function(query,resp,def,addcmdq)
         C.strcpy((qbuf+Number(C.i32((C.i32((128-1))-3)))*1),C.literal("..."));
         (query=qbuf);
     }
-    if(Number(!!(C.i32(addcmdq)&&Number(((cmdq=cmdq_pop()))!=0)))) {
-        C.copyRecord(cq,cmdq,C.sizes["struct _cmd_queue"]);
-        C.free(cmdq);
-    } else {
-        (C.field(cq,"_cmd_queue","typ").value=C.CMDQ_USER_INPUT);
-        (C.field(cq,"_cmd_queue","key").value=C.i8(0));
-        /* lint suppression */
+    if (addcmdq && (cmdq = takeCommand())) {
+        queuedType = commandField(cmdq, "typ");
+        if (queuedType === C.CMDQ_KEY)
+            queuedKey = commandField(cmdq, "key");
+        releaseCommand(cmdq);
     }
-    if(Number(C.field(cq,"_cmd_queue","typ").value!=C.CMDQ_USER_INPUT)) {
-        if(Number(C.field(cq,"_cmd_queue","typ").value==C.CMDQ_KEY)) (C.cell(resAddress,"char").value=C.field(cq,"_cmd_queue","key").value);
+    /* lint suppression */
+    if (queuedType !== C.CMDQ_USER_INPUT) {
+        if (queuedType === C.CMDQ_KEY)
+            C.cell(resAddress, "char").value = queuedKey;
  else cmdq_clear(C.CQ_CANNED);
         /* 'res' is ESC */
         (addcmdq=(C.i8(0)));

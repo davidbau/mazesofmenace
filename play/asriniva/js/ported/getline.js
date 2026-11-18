@@ -260,31 +260,31 @@ export function hooked_tty_getlin(
 }
 
 
-export function xwaitforspace(s) /* chars allowed besides return */
+export function xwaitforspace(s, context = C) /* chars allowed besides return */
 {
-    let c, x = C.ttyDisplay ? C.ttyDisplay.dismiss_more : 10;
+    let c, x = context.ttyDisplay ? context.ttyDisplay.dismiss_more : 10;
 
-    C.morc = 0;
+    context.morc = 0;
     while (
 // #ifdef HANGUPHANDLING
-        !C.program_state.done_hup &&
+        !context.program_state.done_hup &&
 // #endif
-        (c = C.tty_nhgetch()) != C.EOF) {
+        (c = context.tty_nhgetch()) != context.EOF) {
         if (c == 10 || c == 13)
             break;
 
-        if (C.iflags.cbreak) {
+        if (context.iflags.cbreak) {
             if (c == 27) {
-                if (C.ttyDisplay)
-                    C.ttyDisplay.dismiss_more = 1;
-                C.morc = 27;
+                if (context.ttyDisplay)
+                    context.ttyDisplay.dismiss_more = 1;
+                context.morc = 27;
                 break;
             }
-            if ((s && C.strchr(s, c)) || c == x || (x == 10 && c == 13)) {
-                C.morc = C.char(c);
+            if ((s && context.strchr(s, c)) || c == x || (x == 10 && c == 13)) {
+                context.morc = context.char(c);
                 break;
             }
-            C.tty_nhbell();
+            context.tty_nhbell();
         }
     }
 }

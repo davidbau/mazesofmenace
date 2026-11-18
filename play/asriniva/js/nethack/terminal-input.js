@@ -17,7 +17,7 @@ export function enableTerminalInput(environment,layouts,{readKey}={}){
  Object.assign(local,{
   heap:()=>memory.HEAPU8,rectState:undefined,trackState:undefined,
   global:index=>{const name=abi.globals[index];if(!name)throw new Error('Unknown GETLINE global '+index);return environment.requireGlobal(name);},
-  scalar:index=>ctypes.load('char',scalar(index)),setScalar:(index,value)=>ctypes.store('char',scalar(index),transport.char(value)),
+  scalar:index=>memory.view.getInt8(scalar(index)),setScalar:(index,value)=>memory.view.setInt8(scalar(index),transport.char(value)),
   windowMessage:()=>ctypes.load('int',environment.requireGlobal('WIN_MESSAGE')),
   stdout:()=>services.stdout,fflush:stream=>services.fflush(address(stream)),
   custompline:(flags,format,query)=>resolve('custompline')(transport.uint(flags),text(format),text(query)),
@@ -49,6 +49,9 @@ export function enableTerminalInput(environment,layouts,{readKey}={}){
  Object.setPrototypeOf(context,local);
  const names=Object.keys(getline).filter(name=>typeof getline[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
  const prepareArgs=(name,args)=>{if(name==='tty_getlin'){args[0]=text(args[0]);args[1]=address(args[1]);}else if(name==='xwaitforspace')args[0]=text(args[0]);return args;};
- environment.register('terminal-input',Object.fromEntries(names.map(name=>[name,getline[name]])),context,{prepareArgs});
+ const waitForSpace=characters=>getline.xwaitforspace(text(characters),context);
+ waitForSpace.nativeDirect=true;
+ waitForSpace.nativePrepared=true;
+ environment.register('terminal-input',Object.fromEntries(names.map(name=>[name,name==='xwaitforspace'?waitForSpace:getline[name]])),context,{prepareArgs});
  return {state,context,services:local,scalars:scalarCells,call:(name,...args)=>transport.scoped(()=>withCEnvironment(context,getline[name],...prepareArgs(name,args))),limitation:'GETLINE shared tty/scalar transport connected; real input, editing/completion and interruption paths require original-C verification.'};
 }

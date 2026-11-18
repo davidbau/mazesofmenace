@@ -15,24 +15,24 @@ import { C } from '../c-runtime/context.js';
 /* in extern.h; why here too? */
 /* !SFCTOOL */
 /* return a file's name without its path and optionally trailing 'type' */
-export function nh_basename(fname,keep_suffix)
+export function nh_basename(fname,keep_suffix,context=C)
 {
-    fname=C.ptr(fname);
-    keep_suffix=C.i8(keep_suffix);
+    fname=context.ptr(fname);
+    keep_suffix=context.i8(keep_suffix);
     
     let p;
-    if(Number(((p=C.strrchr(fname,47)))!=0)) (fname=(p+Number(1)*1));
-    if(Number(!!(Number(((p=C.strrchr(fname,46)))!=0)&&Number(!(keep_suffix))))) {
-        let ln=C.u64((C.i64(((p-fname)/1))));
+    if(Number(((p=context.strrchr(fname,47)))!=0)) (fname=(p+Number(1)*1));
+    if(Number(!!(Number(((p=context.strrchr(fname,46)))!=0)&&Number(!(keep_suffix))))) {
+        let ln=context.u64((context.i64(((p-fname)/1))));
         /* note that without path, name should be reasonable length;
            it is expected to refer to a source file name or run-time
            configuration file name and those aren't arbitrarily long;
            if "name" part of "name.suffix" is too long for 'basebuf[]',
            just return that as-is without stripping off ".suffix" */
         if(Number(ln<BigInt((1*80)))) {
-            C.strncpy(C.staticAddress("nh_basename.basebuf"),fname,ln);
-            (C.cell((C.staticAddress("nh_basename.basebuf")+Number(ln)*1),"char").value=C.i8(0));
-            (fname=C.staticAddress("nh_basename.basebuf"));
+            context.strncpy(context.staticAddress("nh_basename.basebuf"),fname,ln);
+            (context.cell((context.staticAddress("nh_basename.basebuf")+Number(ln)*1),"char").value=context.i8(0));
+            (fname=context.staticAddress("nh_basename.basebuf"));
         }
     }
     /* VMS */
@@ -148,11 +148,11 @@ export function fname_decode(quotechar,s,callerbuf,bufsz)
 
 /*empty*/
 /*ARGSUSED*/
-export function fqname(basenam,whichprefix,buffnum)
+export function fqname(basenam,whichprefix,buffnum, context=C)
 {
-    basenam=C.ptr(basenam);
-    whichprefix=C.i32(whichprefix);
-    buffnum=C.i32(buffnum);
+    basenam=context.ptr(basenam);
+    whichprefix=context.i32(whichprefix);
+    buffnum=context.i32(buffnum);
     return basenam;
     /* XXX */
     /* !PREFIXES_IN_USE */
@@ -170,14 +170,14 @@ export function validate_prefix_locations(reasonbuf)
 
 /* fopen a file, with OS-dependent bells and whistles */
 /* NOTE: a simpler version of this routine also exists in util/dlb_main.c */
-export function fopen_datafile(filename,mode,prefix)
+export function fopen_datafile(filename,mode,prefix, context=C)
 {
-    filename=C.ptr(filename);
-    mode=C.ptr(mode);
-    prefix=C.i32(prefix);
+    filename=context.ptr(filename);
+    mode=context.ptr(mode);
+    prefix=context.i32(prefix);
     let fp;
-    (filename=fqname(filename,prefix,(Number(prefix==9)?3:0)));
-    (fp=C.fopen(filename,mode));
+    (filename=fqname(filename,prefix,(Number(prefix==9)?3:0),context));
+    (fp=context.fopen(filename,mode));
     return fp;
 }
 
@@ -1215,37 +1215,37 @@ export function contains_directory(s)
 /* !(UNIX || VMS || AMIGA || WIN32 || MSDOS) */
 /* !USE_FCNTL */
 /* lock a file */
-export function lock_file(filename,whichprefix,retryct)
+export function lock_file(filename,whichprefix,retryct, context=C)
 {
-    filename=C.ptr(filename);
-    whichprefix=C.i32(whichprefix);
-    retryct=C.i32(retryct);
-    ((C.field(C.gn,"instance_globals_n","nesting").value=C.i32((C.field(C.gn,"instance_globals_n","nesting").value+1)))-1);
-    if(Number(C.field(C.gn,"instance_globals_n","nesting").value>1)) {
-        C.variadic(26,C.literal("TRIED TO NEST LOCKS"));
-        return C.i8(1);
+    filename=context.ptr(filename);
+    whichprefix=context.i32(whichprefix);
+    retryct=context.i32(retryct);
+    ((context.field(context.gn,"instance_globals_n","nesting").value=context.i32((context.field(context.gn,"instance_globals_n","nesting").value+1)))-1);
+    if(Number(context.field(context.gn,"instance_globals_n","nesting").value>1)) {
+        context.variadic(26,context.literal("TRIED TO NEST LOCKS"));
+        return context.i8(1);
     }
     /* LOCKDIR should be subsumed by LOCKPREFIX */
-    (filename=fqname(filename,whichprefix,0));
-    (C.cell(C.staticAddress("lockfd"),"int").value=C.variadic(27,filename,2));
-    if(Number(C.cell(C.staticAddress("lockfd"),"int").value==C.i32((-1)))) {
-        if(Number(!(C.field(C.program_state,"sinfo","done_hup").value))) C.variadic(28,C.literal("Cannot open file %s.  Is NetHack installed correctly?"),filename);
-        ((C.field(C.gn,"instance_globals_n","nesting").value=C.i32((C.field(C.gn,"instance_globals_n","nesting").value-1)))+1);
-        return C.i8(0);
+    (filename=fqname(filename,whichprefix,0,context));
+    (context.cell(context.staticAddress("lockfd"),"int").value=context.variadic(27,filename,2));
+    if(Number(context.cell(context.staticAddress("lockfd"),"int").value==context.i32((-1)))) {
+        if(Number(!(context.field(context.program_state,"sinfo","done_hup").value))) context.variadic(28,context.literal("Cannot open file %s.  Is NetHack installed correctly?"),filename);
+        ((context.field(context.gn,"instance_globals_n","nesting").value=context.i32((context.field(context.gn,"instance_globals_n","nesting").value-1)))+1);
+        return context.i8(0);
     }
-    (C.field(C.staticAddress("sflock"),"flock","l_type").value=C.i16(1));
-    (C.field(C.staticAddress("sflock"),"flock","l_whence").value=C.i16((0)));
-    (C.field(C.staticAddress("sflock"),"flock","l_start").value=C.i64(0));
-    (C.field(C.staticAddress("sflock"),"flock","l_len").value=C.i64(0));
-    while(Number(C.variadic(29,C.cell(C.staticAddress("lockfd"),"int").value,6,C.staticAddress("sflock"))==C.i32((-1)))) {
-        if(((retryct=C.i32((retryct-1)))+1)) {
-            if(Number(!(C.field(C.program_state,"sinfo","done_hup").value))) C.variadic(30,C.literal("Waiting for release of fcntl lock on %s.  (%d retries left.)"),filename,retryct);
-            C.sleep(C.u32(1));
+    (context.field(context.staticAddress("sflock"),"flock","l_type").value=context.i16(1));
+    (context.field(context.staticAddress("sflock"),"flock","l_whence").value=context.i16((0)));
+    (context.field(context.staticAddress("sflock"),"flock","l_start").value=context.i64(0));
+    (context.field(context.staticAddress("sflock"),"flock","l_len").value=context.i64(0));
+    while(Number(context.variadic(29,context.cell(context.staticAddress("lockfd"),"int").value,6,context.staticAddress("sflock"))==context.i32((-1)))) {
+        if(((retryct=context.i32((retryct-1)))+1)) {
+            if(Number(!(context.field(context.program_state,"sinfo","done_hup").value))) context.variadic(30,context.literal("Waiting for release of fcntl lock on %s.  (%d retries left.)"),filename,retryct);
+            context.sleep(context.u32(1));
         } else {
-            if(Number(!(C.field(C.program_state,"sinfo","done_hup").value))) C.callback(2,(C.field(C.windowprocs,"window_procs","win_raw_print").value),C.literal("I give up.  Sorry."));
-            if(Number(!(C.field(C.program_state,"sinfo","done_hup").value))) C.variadic(31,C.literal("Some other process has an unnatural grip on %s."),filename);
-            ((C.field(C.gn,"instance_globals_n","nesting").value=C.i32((C.field(C.gn,"instance_globals_n","nesting").value-1)))+1);
-            return C.i8(0);
+            if(Number(!(context.field(context.program_state,"sinfo","done_hup").value))) context.callback(2,(context.field(context.windowprocs,"window_procs","win_raw_print").value),context.literal("I give up.  Sorry."));
+            if(Number(!(context.field(context.program_state,"sinfo","done_hup").value))) context.variadic(31,context.literal("Some other process has an unnatural grip on %s."),filename);
+            ((context.field(context.gn,"instance_globals_n","nesting").value=context.i32((context.field(context.gn,"instance_globals_n","nesting").value-1)))+1);
+            return context.i8(0);
         }
         /* George Barbanis */
         /* c__translate(vmsfiles.c) */
@@ -1256,26 +1256,26 @@ export function lock_file(filename,whichprefix,retryct)
     /* UNIX || VMS */
     /* in case dead process was here first */
     /* AMIGA || WIN32 || MSDOS */
-    return C.i8(1);
+    return context.i8(1);
 }
 
 /* for unlock_file, use the unlink() routine in vmsunix.c */
 /* unlock file, which must be currently locked by lock_file */
-export function unlock_file(filename)
+export function unlock_file(filename, context=C)
 {
-    filename=C.ptr(filename);
-    if(Number(C.field(C.gn,"instance_globals_n","nesting").value==1)) {
-        (C.field(C.staticAddress("sflock"),"flock","l_type").value=C.i16(2));
-        if(Number(C.cell(C.staticAddress("lockfd"),"int").value>=0)) {
-            if(Number(C.variadic(32,C.cell(C.staticAddress("lockfd"),"int").value,6,C.staticAddress("sflock"))==C.i32((-1)))) if(Number(!(C.field(C.program_state,"sinfo","done_hup").value))) C.variadic(33,C.literal("Can't remove fcntl lock on %s."),filename);
-            (C.close(C.cell(C.staticAddress("lockfd"),"int").value),(C.cell(C.staticAddress("lockfd"),"int").value=C.i32((-1))));
+    filename=context.ptr(filename);
+    if(Number(context.field(context.gn,"instance_globals_n","nesting").value==1)) {
+        (context.field(context.staticAddress("sflock"),"flock","l_type").value=context.i16(2));
+        if(Number(context.cell(context.staticAddress("lockfd"),"int").value>=0)) {
+            if(Number(context.variadic(32,context.cell(context.staticAddress("lockfd"),"int").value,6,context.staticAddress("sflock"))==context.i32((-1)))) if(Number(!(context.field(context.program_state,"sinfo","done_hup").value))) context.variadic(33,context.literal("Can't remove fcntl lock on %s."),filename);
+            (context.close(context.cell(context.staticAddress("lockfd"),"int").value),(context.cell(context.staticAddress("lockfd"),"int").value=context.i32((-1))));
         }
         /* LOCKDIR should be subsumed by LOCKPREFIX */
         /* UNIX || VMS */
         /* AMIGA || WIN32 || MSDOS */
         /* USE_FCNTL */
     }
-    ((C.field(C.gn,"instance_globals_n","nesting").value=C.i32((C.field(C.gn,"instance_globals_n","nesting").value-1)))+1);
+    ((context.field(context.gn,"instance_globals_n","nesting").value=context.i32((context.field(context.gn,"instance_globals_n","nesting").value-1)))+1);
 }
 
 /* ----------  END FILE LOCKING HANDLING ----------- */
@@ -1591,21 +1591,31 @@ export function do_deferred_showpaths(code)
  * pass FALSE to override wildcard matching; useful for files
  * like dungeon.c and questpgr.c, which generate a ridiculous amount of
  * output if DEBUG is defined and effectively block the use of a wildcard */
-export function debugcore(filename,wildcards)
+export function debugcore(filename,wildcards,context=C)
 {
-    filename=C.ptr(filename);
-    wildcards=C.i8(wildcards);
-    let debugfiles; let p;
+    const fromString = typeof filename === "string" && Boolean(context.debugEnabled);
+    if (!fromString)
+        filename = context.ptr(filename);
+    wildcards = context.i8(wildcards);
     /* debugpline() messages might disclose information that the player
        doesn't normally get to see, so only display them in wizard mode */
-    if(Number(!(C.field(C.flags,"flag","debug").value))) return C.i8(0);
-    if(Number(!!(Number(!(filename))||Number(!(C.cell(filename,"char").value))))) return C.i8(0);
+    if (!(context.debugEnabled ? context.debugEnabled() : context.field(context.flags,"flag","debug").value))
+        return 0;
+    if (fromString && (!filename || filename[0] === "\0"))
+        return 0;
+    const byteAt = context.debugByte ?? (at => context.cell(at, "char").value);
+    if (!fromString && (!filename || !byteAt(filename)))
+        return 0;
     /* sanity precaution */
-    (debugfiles=C.field(C.sysopt,"sysopt_s","debugfiles").value);
+    const debugfiles = context.debugFiles ? context.debugFiles()
+        : context.field(context.sysopt, "sysopt_s", "debugfiles").value;
     /* usual case: sysopt.debugfiles will be empty */
-    if(Number(!!(Number(!(debugfiles))||Number(!(C.cell(debugfiles,"char").value))))) return C.i8(0);
+    if (!debugfiles || !byteAt(debugfiles))
+        return 0;
+    if (fromString)
+        filename = context.literal(filename);
     /* strip filename's path if present */
-    (filename=nh_basename(filename,C.i8(1)));
+    filename = nh_basename(filename, 1, context);
     /*
      * Wildcard match will only work if there's a single pattern (which
      * might be a single file name without any wildcarding) rather than
@@ -1614,13 +1624,17 @@ export function debugcore(filename,wildcards)
      * attempt a wildcard match against each element, but that would be
      * overkill for the intended usage.]
      */
-    if(Number(!!(C.i32(wildcards)&&C.i32(C.pmatch(debugfiles,filename))))) return C.i8(1);
+    if (wildcards && context.i32(context.pmatch(debugfiles, filename)))
+        return 1;
     /* check whether filename is an element of the list */
-    if(Number(((p=C.strstr(debugfiles,filename)))!=0)) {
-        let l=C.i32(C.strlen(filename));
-        if(Number(!!((Number(!!(Number(!!(Number(p==debugfiles)||Number(C.i32(C.cell((p+Number(C.i32((-1)))*1),"char").value)==32)))||Number(C.i32(C.cell((p+Number(C.i32((-1)))*1),"char").value)==47))))&&(Number(!!(Number(C.i32(C.cell((p+Number(l)*1),"char").value)==32)||Number(C.i32(C.cell((p+Number(l)*1),"char").value)==0))))))) return C.i8(1);
+    const match = context.strstr(debugfiles, filename);
+    if (match) {
+        const end = match + context.i32(context.strlen(filename));
+        const startsName = match === debugfiles || byteAt(match - 1) === 32 || byteAt(match - 1) === 47;
+        if (startsName && (byteAt(end) === 32 || byteAt(end) === 0))
+            return 1;
     }
-    return C.i8(0);
+    return context.i8(0);
 }
 
 /*DEBUG*/
@@ -1943,32 +1957,35 @@ export function Death_quote(buf,bufsz)
  * iff the ll_type matches sysopt.livelog mask.
  * lltype is included in LL entry for post-process filtering also.
  */
-export function livelog_add(ll_type,str)
+export function livelog_add(ll_type,str, context=C)
 {
-    ll_type=C.i64(ll_type);
-    str=C.ptr(str);
+    ll_type=context.i64(ll_type);
+    const mask = Object.hasOwn(context, "livelogMask")
+        ? context.livelogMask : () => context.field(context.sysopt, "sysopt_s", "livelog").value;
+    if (!(ll_type & mask()))
+        return;
+    str = context.ptr(typeof str === "string" ? context.literal(str) : str);
     let livelogfile;
     let now;
     let gindx; let aindx;
-    if(Number(!((C.i64((ll_type&C.field(C.sysopt,"sysopt_s","livelog").value)))))) return;
-    if(lock_file(C.literal("livelog"),5,10)) {
-        if(Number(!(((livelogfile=fopen_datafile(C.literal("livelog"),C.literal("a"),5)))))) {
-            C.variadic(59,C.literal("Cannot open live log file!"));
-            unlock_file(C.literal("livelog"));
+    if(lock_file(context.literal("livelog"),5,10,context)) {
+        if(Number(!(((livelogfile=fopen_datafile(context.literal("livelog"),context.literal("a"),5,context)))))) {
+            context.variadic(59,context.literal("Cannot open live log file!"));
+            unlock_file(context.literal("livelog"),context);
             return;
         }
-        (now=C.getnow());
-        (gindx=(C.i32(C.field(C.flags,"flag","female").value)?1:0));
+        (now=context.getnow());
+        (gindx=(context.i32(context.field(context.flags,"flag","female").value)?1:0));
         /* note on alignment designation:
                aligns[] uses [0] lawful, [1] neutral, [2] chaotic;
                u.ualign.type uses -1 chaotic, 0 neutral, 1 lawful;
            so subtracting from 1 converts from either to the other */
-        (aindx=C.i32((1-C.i32(C.field(C.field(C.u,"you","ualign").address,"align","type").value))));
+        (aindx=context.i32((1-context.i32(context.field(context.field(context.u,"you","ualign").address,"align","type").value))));
         /* format relies on STD C's implicit concatenation of
            adjacent string literals */
-        C.variadic(60,livelogfile,C.literal("lltype=%ld\tname=%s\trole=%s\trace=%s\tgender=%s\talign=%s\tturns=%ld\tstarttime=%ld\tcurtime=%ld\tmessage=%s\n"),(C.i64((ll_type&C.field(C.sysopt,"sysopt_s","livelog").value))),C.field(C.svp,"instance_globals_saved_p","plname").address,C.field(C.field(C.gu,"instance_globals_u","urole").address,"Role","filecode").value,C.field(C.field(C.gu,"instance_globals_u","urace").address,"Race","filecode").value,C.field((C.genders+Number(gindx)*C.sizes["struct Gender"]),"Gender","filecode").value,C.field((C.aligns+Number(aindx)*C.sizes["struct Align"]),"Align","filecode").value,C.field(C.svm,"instance_globals_saved_m","moves").value,C.timet_to_seconds(C.global("ubirthday").value),C.timet_to_seconds(now),str);
-        C.fclose(livelogfile);
-        unlock_file(C.literal("livelog"));
+        context.variadic(60,livelogfile,context.literal("lltype=%ld\tname=%s\trole=%s\trace=%s\tgender=%s\talign=%s\tturns=%ld\tstarttime=%ld\tcurtime=%ld\tmessage=%s\n"),(context.i64((ll_type&mask()))),context.field(context.svp,"instance_globals_saved_p","plname").address,context.field(context.field(context.gu,"instance_globals_u","urole").address,"Role","filecode").value,context.field(context.field(context.gu,"instance_globals_u","urace").address,"Race","filecode").value,context.field((context.genders+Number(gindx)*context.sizes["struct Gender"]),"Gender","filecode").value,context.field((context.aligns+Number(aindx)*context.sizes["struct Align"]),"Align","filecode").value,context.field(context.svm,"instance_globals_saved_m","moves").value,context.timet_to_seconds(context.global("ubirthday").value),context.timet_to_seconds(now),str);
+        context.fclose(livelogfile);
+        unlock_file(context.literal("livelog"),context);
     }
 }
 

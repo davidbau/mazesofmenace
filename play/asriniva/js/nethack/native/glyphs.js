@@ -75,7 +75,7 @@ function glyphrep_to_custom_map_entries(op, glyphptr)
     let rgb = 0n;
     let slash = C.FALSE, colon = C.FALSE;
 
-    if (!C.glyphsState.glyphid_cache)
+    if (!glyphid_cache_status())
         reslt = 1; /* for debugger use only; no cache available */
     C.nhUse(reslt);
 
@@ -254,6 +254,14 @@ function fill_glyphid_cache()
 {
     let reslt = 0;
 
+    if (Object.hasOwn(C, "glyphCache")) {
+        if (!glyphid_cache_status()) init_glyph_cache();
+        const find = C.glyphsState.glyphcache_find;
+        C.copyFind(find, C.zero_find);
+        find.restype = C.res_fill_cache;
+        if (!parse_id(0, find, true)) free_glyphid_cache();
+        return;
+    }
     if (!C.glyphsState.glyphid_cache) {
         init_glyph_cache();
     }
@@ -292,6 +300,11 @@ function init_glyph_cache()
         C.glyphsState.glyphid_cache_size <<= 1n;
     }
 
+    if (Object.hasOwn(C, "glyphCache")) {
+        C.glyphCache.entries = new Array(Number(C.glyphsState.glyphid_cache_size));
+        C.glyphCache.byGlyph.clear();
+        return;
+    }
     C.glyphsState.glyphid_cache = C.cacheArray(C.alloc(C.glyphsState.glyphid_cache_size * BigInt(C.cacheEntrySize)));
     for (glyph = 0n; glyph < C.glyphsState.glyphid_cache_size; ++glyph) {
         C.glyphsState.glyphid_cache[glyph].glyphnum = 0;
@@ -303,6 +316,15 @@ function free_glyphid_cache()
 {
     let idx;
 
+    if (Object.hasOwn(C, "glyphCache")) {
+        if (C.glyphCache.entries) {
+            for (const entry of C.glyphCache.entries)
+                if (entry?.pointer) C.free(entry.pointer);
+            C.glyphCache.entries = null;
+            C.glyphCache.byGlyph.clear();
+        }
+        return;
+    }
     if (!C.glyphsState.glyphid_cache)
         return;
     for (idx = 0n; idx < C.glyphsState.glyphid_cache_size; ++idx) {
@@ -317,6 +339,20 @@ function free_glyphid_cache()
 
 function add_glyph_to_cache(glyphnum, id)
 {
+    if (Object.hasOwn(C, "glyphCache")) {
+        const {entries, byGlyph} = C.glyphCache;
+        const original = C.glyphCache.read(id);
+        const text = foldGlyphName(original);
+        for (const index of glyphCacheProbes(text, entries.length)) {
+            if (!entries[index]) {
+                entries[index] = {glyphnum, text, original, pointer: 0};
+                if (!byGlyph.has(glyphnum) || index < byGlyph.get(glyphnum)) byGlyph.set(glyphnum, index);
+                return;
+            }
+        }
+        C.panic("glyphid_cache full");
+        return;
+    }
     let hash = glyph_hash(id);
     let hash1 = (BigInt(hash) & (C.glyphsState.glyphid_cache_size - 1n));
     let hash2 = 
@@ -339,6 +375,17 @@ function add_glyph_to_cache(glyphnum, id)
 
 function find_glyph_in_cache(id)
 {
+    if (Object.hasOwn(C, "glyphCache")) {
+        const entries = C.glyphCache.entries;
+        const text = foldGlyphName(C.glyphCache.read(id));
+        for (const index of glyphCacheProbes(text, entries.length)) {
+            const entry = entries[index];
+            if (!entry) break;
+            if (text === (entry.pointer ? foldGlyphName(C.glyphCache.read(entry.pointer)) : entry.text))
+                return entry.glyphnum;
+        }
+        return -1;
+    }
     let hash = glyph_hash(id);
     let hash1 = (BigInt(hash) & (C.glyphsState.glyphid_cache_size - 1n));
     let hash2 = 
@@ -363,6 +410,11 @@ function find_glyphid_in_cache_by_glyphnum(glyphnum)
 {
     let idx;
 
+    if (Object.hasOwn(C, "glyphCache")) {
+        const {entries, byGlyph} = C.glyphCache;
+        const match = entries?.[byGlyph.get(Number(glyphnum))];
+        return match ? (match.pointer ||= C.dupstr(match.original)) : 0;
+    }
     if (!C.glyphsState.glyphid_cache)
         return 0;
     for (idx = 0n; idx < C.glyphsState.glyphid_cache_size; ++idx) {
@@ -391,8 +443,31 @@ function glyph_hash(id)
     return hash;
 }
 
+function foldGlyphName(text)
+{
+    return text.replace(/[A-Z]/g, letter => letter.toLowerCase());
+}
+
+function *glyphCacheProbes(text, capacity)
+{
+    let hash = 0;
+    for (let i = 0; i < text.length; ++i) {
+        const byte = text.charCodeAt(i) << 24 >> 24;
+        hash = ((hash << 1) | (hash >>> 31)) ^ byte;
+    }
+    const mask = capacity - 1;
+    const first = hash & mask;
+    const step = ((hash >>> C.glyphsState.glyphid_cache_lsize) & mask) | 1;
+    let position = first;
+    do {
+        yield position;
+        position = (position + step) & mask;
+    } while (position !== first);
+}
+
 function glyphid_cache_status()
 {
+    if (Object.hasOwn(C, "glyphCache")) return C.glyphCache.entries !== null;
     return (C.glyphsState.glyphid_cache != 0);
 }
 
@@ -411,7 +486,7 @@ function glyphrep(op)
 {
     let reslt = 0; const glyph = C.intLocal(C.NO_GLYPH);
 
-    if (!C.glyphsState.glyphid_cache)
+    if (!glyphid_cache_status())
         reslt = 1;      /* for debugger use only; no cache available */
     C.nhUse(reslt);
     reslt = glyphrep_to_custom_map_entries(op, glyph);
@@ -731,7 +806,7 @@ function wizcustom_glyphids(win)
     let glyphnum;
     let id;
 
-    if (!C.glyphsState.glyphid_cache)
+    if (!glyphid_cache_status())
         return;
     for (glyphnum = 0; glyphnum < C.MAX_GLYPH; ++glyphnum) {
         id = find_glyphid_in_cache_by_glyphnum(glyphnum);
@@ -741,7 +816,7 @@ function wizcustom_glyphids(win)
     }
 }
 
-function parse_id(id, findwhat)
+function parse_id(id, findwhat, fillingOwnedCache = false)
 {
     let fp = 0;
     let i = 0, j, mnum, glyph,
@@ -761,8 +836,8 @@ function parse_id(id, findwhat)
             }
         }
         if (findwhat.restype == C.res_fill_cache) {
-            if (findwhat.reserved
-                && C.samePtr(findwhat.reserved, C.glyphsState.glyphid_cache)) {
+            if (fillingOwnedCache || (findwhat.reserved
+                && C.samePtr(findwhat.reserved, C.glyphsState.glyphid_cache))) {
                 filling_cache = C.TRUE;
             } else {
                 return 0;
@@ -773,7 +848,7 @@ function parse_id(id, findwhat)
     is_G = (id && C.loadChar(id, 0) == 71 && C.loadChar(id, 1) == 95);
     is_S = (id && C.loadChar(id, 0) == 83 && C.loadChar(id, 1) == 95);
 
-    if ((is_G && !C.glyphsState.glyphid_cache) || filling_cache || dump_ids || is_S) {
+    if ((is_G && !glyphid_cache_status()) || filling_cache || dump_ids || is_S) {
         while (C.loadsyms[i].range) {
             if (!pm_offset && C.loadsyms[i].range == C.SYM_MON)
                 pm_offset = i;
@@ -791,7 +866,7 @@ function parse_id(id, findwhat)
         }
     }
     if (is_G || filling_cache || dump_ids) {
-        if (!filling_cache && id && C.glyphsState.glyphid_cache) {
+        if (!filling_cache && id && glyphid_cache_status()) {
             let val = find_glyph_in_cache(id);
             if (val >= 0) {
                 findwhat.findtype = C.find_glyph;

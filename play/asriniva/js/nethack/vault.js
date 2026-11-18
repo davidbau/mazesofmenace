@@ -1,9 +1,9 @@
 import {recordNativeRngCaller} from './native/rng-output.js';
+import {nativeStateFor} from './native/state-bridge.js';
 // Original whole VAULT context on measured shared DECL/record transport.
 import abi from './vault-abi.json' with {type:'json'};
-import * as source from '../ported/vault.js';
+import {createNativeVault} from './native/vault.js';
 import {createVaultEnvironment} from './bindings/vault.js';
-import {withCEnvironment} from '../c-runtime/context.js';
 import {createRecordViews} from './record-views.js';
 const owners=new WeakMap();
 export function enableVault(environment,layouts){
@@ -37,6 +37,19 @@ export function enableVault(environment,layouts){
  const names=Object.keys(abi.public).filter(name=>!environment.hasFunction(name));
  const parameters=name=>abi.public[name].match(/\(([^)]*)\)/)[1].split(',').map(v=>v.trim()).filter(v=>v&&v!=='void');
  const prepare=(name,args)=>{const types=parameters(name);args=args.map((value,i)=>{const type=types[i];if(!type)throw new Error('Extra VAULT argument '+name);return type.includes('*')?text(value):type==='boolean'||type==='schar'?transport.char(value):type==='coordxy'?transport.short(value):type==='long'?transport.long(value):type==='unsigned int'?transport.uint(value):transport.int(value);});if(monsterArgs.includes(name))args[0]=context.monster(args[0]);if(name==='move_gold')args[0]=context.object(args[0]);if(name==='find_guard_dest'){args[1]=context.coordPointer(args[1]);args[2]=context.coordPointer(args[2]);}return args;};
- environment.register('vault',Object.fromEntries(names.map(name=>[name,(...args)=>{const result=source[name](...args),type=abi.public[name].split(' (')[0];return type==='boolean'?Number(Boolean(result)):type==='char'?transport.char(result):result?.address??result??0;}])),context,{prepareArgs:prepare});
+ const policy=createNativeVault(context);
+ const native=nativeStateFor(environment);
+ const entries=Object.fromEntries(names.map(name=>{
+  const type=abi.public[name].split(' (')[0];
+  const invoke=(...args)=>transport.scoped(()=>{
+   const result=policy[name](...prepare(name,args));
+   return type==='boolean'?Number(Boolean(result)):type==='char'?transport.char(result):result?.address??result??0;
+  });
+  invoke.nativeDirect=true;
+  invoke.nativeState=native;
+  native.functions.set(name,invoke);
+  return [name,invoke];
+ }));
+ environment.register('vault',entries,context);
  const owner={context,services:local,exports:names,limitation:'Whole original VAULT context and source-public dispatch connected; existing companion-extra and other public owners preserved. Reached guardless end-game accounting and other branches need strict original-C acceptance; guard creation/path/terrain/gold/visibility/message/RNG branches remain separately unverified until tested.'};owners.set(environment,owner);return owner;
 }

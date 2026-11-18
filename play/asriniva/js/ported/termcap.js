@@ -570,7 +570,10 @@ export function nocmov(x,y)
 export function cmov(x,y)
 {
     x=C.int(x);y=C.int(y);
-    C.callLocal(xputs,C.tgoto(C.nh_CM, x, y));
+    if (C.emitCursorPosition)
+        C.emitCursorPosition(C.nh_CM, x, y);
+    else
+        C.callLocal(xputs,C.tgoto(C.nh_CM, x, y));
     C.ttyDisplay.cury = C.short(y);
     C.ttyDisplay.curx = C.short(x);
 }
@@ -1007,8 +1010,12 @@ export function home()
     
     if (C.HO)
         C.callLocal(xputs,C.HO);
-    else if (C.nh_CM)
-        C.callLocal(xputs,C.tgoto(C.nh_CM, 0, 0));
+    else if (C.nh_CM) {
+        if (C.emitCursorPosition)
+            C.emitCursorPosition(C.nh_CM, 0, 0);
+        else
+            C.callLocal(xputs,C.tgoto(C.nh_CM, 0, 0));
+    }
     else
         C.tty_curs(C.BASE_WINDOW, 1, 0); /* using UP ... */
     C.ttyDisplay.curx = C.short(C.ttyDisplay.cury = C.short(0));

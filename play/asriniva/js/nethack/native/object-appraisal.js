@@ -59,7 +59,13 @@ function obj_resists(obj, ochance, achance) /* percent chance for ordinary objec
         return (C.char(1));
     }
     else {
-        let chance = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 1469, C.literal("obj_resists")), C.rn2(100))) : C.rn2(100)));
+        if (C.rng_log_enabled()) {
+            if (Object.hasOwn(C, "recordRngCaller"))
+                C.recordRngCaller("zap.c", 1469, "obj_resists");
+            else
+                C.rng_log_set_caller(C.literal("zap.c"), 1469, C.literal("obj_resists"));
+        }
+        const chance = C.rn2(100);
         return C.char((Number(chance < ((((obj).oartifact) ? achance : ochance)))));
     }
 }

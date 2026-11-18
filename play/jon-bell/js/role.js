@@ -694,7 +694,7 @@ export function Goodbye() {
 /* C global.h:113 #define strcmpi(a, b) strncmpi((a), (b), -1): the count -1 never
  * runs out, so the comparison ends only at a NUL. */
 function strcmpi(s1, s2) {
-    return strncmpi(s1, s2, Infinity);
+    return strncmpi(s1, s2, -1);
 }
 
 /** C str2role(const char *str) — role.c:746-775

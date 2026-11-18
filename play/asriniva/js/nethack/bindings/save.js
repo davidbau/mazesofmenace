@@ -44,6 +44,9 @@ export function createSaveEnvironment(services,layout) {
     for(const name of ['open_savefile','create_savefile','open_levelfile','create_levelfile','get_freeing_nhfile'])env[name]=(...args)=>view('nh_file',services[name](...args));
     function withReferences(args,call){const saved=services.stackSave(),refs=[];try{return call(args.map(v=>{if(!v?.reference)return v;const t={int:'i32',unsigned:'u32',ulong:'u64',xint8:'i8'}[v.type];if(!t)throw Error('SAVE reference type '+v.type);const d={t},at=addr(services.stackAlloc(width(d)));write(d,at,v.get());refs.push({v,d,at});return at;}));}
         finally{try{for(const {v,d,at}of refs)v.set(read(d,at));}finally{services.stackRestore(saved);}}}
-    for(const name of Object.keys(services))if(/^Sf[io]_/.test(name)){const call=services[name];env[name]=(...args)=>withReferences(args,converted=>call(...converted));}
+    for(const name of Object.keys(services))if(/^Sf[io]_/.test(name)){
+        const call=services[name];
+        env[name]=(...args)=>args.some(value=>value?.reference)?withReferences(args,converted=>call(...converted)):call(...args);
+    }
     return env;
 }

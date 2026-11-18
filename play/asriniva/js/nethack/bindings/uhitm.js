@@ -1,3 +1,4 @@
+import {CombatDamage} from '../../ported/actor-fields.js';
 import {createNativeUhitm} from '../native/uhitm.js';
 import {installNativeIntegerCasts} from '../native/execution.js';
 import {createNativeScalarLocal} from '../native/scalar-local.js';
@@ -44,7 +45,7 @@ export function createUhitmEnvironment(services,L){
  }
  // Function-pointer records retain token conversion at the callback boundary.
  const callbackRecords=new Set(Object.entries(records).filter(([,fields])=>Object.values(fields).some(field=>field.type.includes('(*)'))).map(([type])=>type));
- const record=native?(type,value)=>{if(callbackRecords.has(type))return legacyRecord(type,value);const result=native.nativeRecords.record(type,value);if(result)CAdapter.installStringAliases(result,fieldAliases,true);return result;}:legacyRecord;
+ const record=native?(type,value)=>{if(type==='struct mhitm_data'&&value instanceof CombatDamage)return value;if(callbackRecords.has(type))return legacyRecord(type,value);const result=native.nativeRecords.record(type,value);if(result)CAdapter.installStringAliases(result,fieldAliases,true);return result;}:legacyRecord;
  const env=Object.assign(Object.create(services),L,{
   record,
   int:v=>Number(BigInt.asIntN(32,(typeof v==='bigint'?v:BigInt(Math.trunc(v))))),uint:v=>Number(BigInt.asUintN(32,(typeof v==='bigint'?v:BigInt(Math.trunc(v))))),

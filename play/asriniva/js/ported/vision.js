@@ -1,4 +1,5 @@
 import {C} from '../c-runtime/context.js';
+import { terrainAt } from './level-grid.js';
 /* NetHack 5.0	vision.c	$NHDT-Date: 1777205478 2026/04/26 04:11:18 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.75 $ */
 /* Copyright (c) Dean Luick, with acknowledgements to Dave Cohrs, 1990. */
 /* NetHack may be freely redistributed.  See license for details.       */
@@ -170,9 +171,14 @@ export function does_block(x, y, lev)
     } /* gs.seethru */
 
     /* Boulders block light. */
-    for (obj = C.svl.level.objects[x][y]; obj; obj = obj.nexthere)
-        if (obj.otyp == C.BOULDER)
+    if (Object.hasOwn(C, 'levelGrid') && C.levelGrid) {
+        if (C.levelGrid.containsObjectType(x, y, C.BOULDER))
             return 1;
+    } else {
+        for (obj = C.svl.level.objects[x][y]; obj; obj = obj.nexthere)
+            if (obj.otyp == C.BOULDER)
+                return 1;
+    }
 
     /* Mimics mimicking a door or boulder or ... block light. */
     if ((mon = C.m_at(x, y)) && (!mon.minvis || C.See_invisible)
@@ -323,7 +329,7 @@ export function rogue_vision(next, rmin, rmax)
         }
     }
 
-    in_door = C.levl[C.u.ux][C.u.uy].typ == C.DOOR;
+    in_door = terrainAt(C, C.u.ux, C.u.uy) == C.DOOR;
 
     /* Can always see adjacent. */
     ylo = C.max(C.u.uy - 1, 0);

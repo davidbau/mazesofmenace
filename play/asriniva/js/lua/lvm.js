@@ -19,8 +19,8 @@ class Environment {
 }
 const metamethods = { '+': '__add', '-': '__sub', '*': '__mul', '/': '__div', '//': '__idiv', '%': '__mod', '^': '__pow', '&': '__band', '|': '__bor', '~': '__bxor', '<<': '__shl', '>>': '__shr' };
 export class LuaVM {
-  constructor({ globals = {}, instructionLimit = 1000000, hook = null, warning = null, memoryTracker = null, memoryAllocator = null, memoryUserdata = null, memoryLayout = null, gcScheduler = true, memoryReady = true, debug = null } = {}) {
-    this.heap = new LuaHeap(this, { warning, memoryTracker, memoryAllocator, memoryUserdata, memoryLayout });
+  constructor({ globals = {}, instructionLimit = 1000000, hook = null, warning = null, memoryTracker = null, memoryAllocator = null, memoryUserdata = null, memoryLayout = null, nativeStringStorage = false, gcScheduler = true, memoryReady = true, debug = null } = {}) {
+    this.heap = new LuaHeap(this, { warning, memoryTracker, memoryAllocator, memoryUserdata, memoryLayout, nativeStringStorage });
     try {
     this.mainThread=this.heap.with(()=>new LuaThread(null,true));this.currentThread=this.mainThread;
     this.registry=this.heap.with(()=>new LuaTable([],{arraySize:2}));

@@ -1,4 +1,5 @@
-import { pline_The, verbalize } from './pline.js';
+import { pline_The, verbalize, Your, You_feel as You_feel_mc,
+    impossible as impossible_mcastu } from './pline.js';
 import { monstseesu, monstunseesu, cvt_adtyp_to_mseenres } from './mondata.js';
 export { cvt_adtyp_to_mseenres };
 import { pline_mon } from './pline.js';
@@ -81,65 +82,62 @@ const FIRE_RES = 1, COLD_RES = 2, ANTIMAGIC = 12, BLINDED = 15, DEAF = 16,
     HALLUC = 23, HALLUC_RES = 24, SEE_INVIS = 29, INVIS = 40, DISPLACED = 41, HALF_SPDAM = 55;
 
 // mcastu.h: magic and clerical spells share one enum + flags table.
-const MCAST_PSI_BOLT = 0, MCAST_OPEN_WOUNDS = 1, MCAST_LIGHTNING = 2,
-    MCAST_FIRE_PILLAR = 3, MCAST_GEYSER = 4, MCAST_DEATH_TOUCH = 5,
-    MCAST_CURE_SELF = 6, MCAST_HASTE_SELF = 7, MCAST_DISAPPEAR = 8,
-    MCAST_AGGRAVATION = 9, MCAST_STUN_YOU = 10, MCAST_WEAKEN_YOU = 11,
-    MCAST_CONFUSE_YOU = 12, MCAST_PARALYZE = 13, MCAST_BLIND_YOU = 14,
-    MCAST_DESTRY_ARMR = 15, MCAST_CURSE_ITEMS = 16, MCAST_INSECTS = 17,
-    MCAST_SUMMON_MONS = 18, MCAST_CLONE_WIZ = 19;
+const MCAST_PSI_BOLT = 0, MCAST_OPEN_WOUNDS = 1, MCAST_CURE_SELF = 2, MCAST_HASTE_SELF = 3;
+const MCAST_CONFUSE_YOU = 4, MCAST_STUN_YOU = 5, MCAST_DISAPPEAR = 6, MCAST_PARALYZE = 7;
+const MCAST_BLIND_YOU = 8, MCAST_WEAKEN_YOU = 9, MCAST_DESTRY_ARMR = 10, MCAST_INSECTS = 11;
+const MCAST_CURSE_ITEMS = 12, MCAST_LIGHTNING = 13, MCAST_FIRE_PILLAR = 14, MCAST_GEYSER = 15;
+const MCAST_AGGRAVATION = 16, MCAST_SUMMON_MONS = 17, MCAST_CLONE_WIZ = 18, MCAST_DEATH_TOUCH = 19;
 
 const MCF_INDIRECT = 0x0001, MCF_SIGHT = 0x0002, MCF_HOSTILE = 0x0004;
 
 // mcastu.h MONSPELL() flags table, same order as the enum above.
 const mcast_flags = [
-    MCF_HOSTILE | MCF_SIGHT,                  // PSI_BOLT
-    MCF_HOSTILE | MCF_SIGHT,                  // OPEN_WOUNDS
-    MCF_HOSTILE | MCF_SIGHT,                  // LIGHTNING
-    MCF_HOSTILE | MCF_SIGHT,                  // FIRE_PILLAR
-    MCF_HOSTILE | MCF_SIGHT,                  // GEYSER
-    MCF_HOSTILE | MCF_SIGHT,                  // DEATH_TOUCH
-    MCF_INDIRECT,                             // CURE_SELF
-    MCF_INDIRECT,                             // HASTE_SELF
-    MCF_INDIRECT,                             // DISAPPEAR
-    MCF_INDIRECT | MCF_HOSTILE | MCF_SIGHT,   // AGGRAVATION
-    MCF_HOSTILE | MCF_SIGHT,                  // STUN_YOU
-    MCF_HOSTILE | MCF_SIGHT,                  // WEAKEN_YOU
-    MCF_HOSTILE | MCF_SIGHT,                  // CONFUSE_YOU
-    MCF_HOSTILE | MCF_SIGHT,                  // PARALYZE
-    MCF_HOSTILE | MCF_SIGHT,                  // BLIND_YOU
-    MCF_HOSTILE | MCF_SIGHT,                  // DESTRY_ARMR
-    MCF_HOSTILE | MCF_SIGHT,                  // CURSE_ITEMS
-    MCF_HOSTILE | MCF_INDIRECT | MCF_SIGHT,   // INSECTS
-    MCF_HOSTILE | MCF_INDIRECT | MCF_SIGHT,   // SUMMON_MONS
-    MCF_HOSTILE | MCF_INDIRECT | MCF_SIGHT,   // CLONE_WIZ
+    MCF_HOSTILE | MCF_SIGHT, // PSI_BOLT
+    MCF_HOSTILE | MCF_SIGHT, // OPEN_WOUNDS
+    MCF_INDIRECT, // CURE_SELF
+    MCF_INDIRECT, // HASTE_SELF
+    MCF_HOSTILE | MCF_SIGHT, // CONFUSE_YOU
+    MCF_HOSTILE | MCF_SIGHT, // STUN_YOU
+    MCF_INDIRECT, // DISAPPEAR
+    MCF_HOSTILE | MCF_SIGHT, // PARALYZE
+    MCF_HOSTILE | MCF_SIGHT, // BLIND_YOU
+    MCF_HOSTILE | MCF_SIGHT, // WEAKEN_YOU
+    MCF_HOSTILE | MCF_SIGHT, // DESTRY_ARMR
+    MCF_HOSTILE | MCF_INDIRECT | MCF_SIGHT, // INSECTS
+    MCF_HOSTILE | MCF_SIGHT, // CURSE_ITEMS
+    MCF_HOSTILE | MCF_SIGHT, // LIGHTNING
+    MCF_HOSTILE | MCF_SIGHT, // FIRE_PILLAR
+    MCF_HOSTILE | MCF_SIGHT, // GEYSER
+    MCF_INDIRECT | MCF_HOSTILE | MCF_SIGHT, // AGGRAVATION
+    MCF_HOSTILE | MCF_INDIRECT | MCF_SIGHT, // SUMMON_MONS
+    MCF_HOSTILE | MCF_INDIRECT | MCF_SIGHT, // CLONE_WIZ
+    MCF_HOSTILE | MCF_SIGHT, // DEATH_TOUCH
 ];
 
 /* C ref: include/mcastu.h MONSPELL(def, lvl, flags) — the `lvl` column, in the
- * same order as mcast_flags above (i.e. this file's MCAST_ enum, not
- * mcastu.h's).  Read by choose_monster_spell(); 3.7 had no such table, which
+ * same enum order as mcast_flags above.  Read by choose_monster_spell(); 3.7 had no such table, which
  * is why it was absent. */
 const mcast_level = [
-    0,   // PSI_BOLT
-    0,   // OPEN_WOUNDS
-    11,  // LIGHTNING
-    12,  // FIRE_PILLAR
-    13,  // GEYSER
-    20,  // DEATH_TOUCH
-    1,   // CURE_SELF
-    2,   // HASTE_SELF
-    4,   // DISAPPEAR
-    13,  // AGGRAVATION
-    3,   // STUN_YOU
-    6,   // WEAKEN_YOU
-    2,   // CONFUSE_YOU
-    4,   // PARALYZE
-    6,   // BLIND_YOU
-    8,   // DESTRY_ARMR
-    10,  // CURSE_ITEMS
-    8,   // INSECTS
-    15,  // SUMMON_MONS
-    18,  // CLONE_WIZ
+    0, // PSI_BOLT
+    0, // OPEN_WOUNDS
+    1, // CURE_SELF
+    2, // HASTE_SELF
+    2, // CONFUSE_YOU
+    3, // STUN_YOU
+    4, // DISAPPEAR
+    4, // PARALYZE
+    6, // BLIND_YOU
+    6, // WEAKEN_YOU
+    8, // DESTRY_ARMR
+    8, // INSECTS
+    10, // CURSE_ITEMS
+    11, // LIGHTNING
+    12, // FIRE_PILLAR
+    13, // GEYSER
+    13, // AGGRAVATION
+    15, // SUMMON_MONS
+    18, // CLONE_WIZ
+    20, // DEATH_TOUCH
 ];
 
 function propOn(id) {
@@ -148,7 +146,9 @@ function propOn(id) {
 }
 function Antimagic() { return propOn(ANTIMAGIC); }
 // youprop.h:120 Hallucination = HHallucination && !Halluc_resistance
-function Hallucination() { return propOn(HALLUC) && !propOn(HALLUC_RES); }
+function Hallucination() {
+    return !!game.u?.uprops?.[HALLUC]?.intrinsic && !propOn(HALLUC_RES);
+}
 /* youprop.h:92 Blinded = (HBlinded && !BBlinded): the intrinsic/timed half only.
  * A worn blindfold sets EBlinded (youprop.h:87,98-103 Blindfolded), which makes the
  * hero Blind but NOT Blinded, so spell_would_be_useless(MCAST_BLIND_YOU) (mcastu.c:977)
@@ -366,15 +366,12 @@ export async function mcast_death_touch(mtmp) {
         await pline("Lucky for you, it didn't work!");
     }
 }
-/* C pline.c:386-399 You_feel(line) — "You feel " + line (the Unaware variant
- * prefixes "You dream that you feel "; js/dig.js:902 spells the same body). */
-function You_feel_mc(line) { return pline((Unaware() ? 'You dream that you feel ' : 'You feel ') + line); } /* pline.c:387-400 */
 const KILLED_BY_MC = 1;               /* hack.h killer.format */
-// other than MCAST_HASTE_SELF ever reaches mcast_spell in the 15 records).
+/* mcastu.c:411-417; clonewiz's body is inlined below. */
 export async function mcast_clone_wiz(mtmp) {
     const g = game, u = g.u || {};
     if (!mtmp?.iswiz || (g.context?.no_of_wizards | 0) !== 1) {
-        impossible_mcastu('bad wizard cloning?');
+        await impossible_mcastu('bad wizard cloning?');
         return;
     }
     await pline('Double Trouble...');
@@ -443,7 +440,7 @@ export async function mcast_destroy_armor() {
         monstseesu(M_SEEN_MAGR);
         await pline('A field of force surrounds you!');
     } else if (!(await destroy_arm())) {
-        await pline('Your skin itches.');
+        await Your('skin itches.');
     } else {
         /* C's own comment: monsters only realize you aren't magic-protected
            if armor is actually destroyed */
@@ -457,7 +454,7 @@ export async function mcast_weaken_you(mtmp, dmg) {
         monstseesu(M_SEEN_MAGR_MC);
         await You_feel_mc('momentarily weakened.');
     } else {
-        await pline('You suddenly feel weaker!');
+        await You('suddenly feel weaker!');
         dmg = (mtmp.m_lev | 0) - 6;
         if (dmg < 1) /* C's own comment: paranoia since only chosen when
                       * m_lev is high */
@@ -485,7 +482,7 @@ export async function mcast_disappear(mtmp) {
         if (cansee(mtmp.mx, mtmp.my) && !canspotmon(mtmp))
             map_invisible(mtmp.mx, mtmp.my);
     } else {
-        impossible_mcastu('no reason for monster to cast disappear spell?');
+        await impossible_mcastu('no reason for monster to cast disappear spell?');
     }
 }
 export async function mcast_stun_you(dmg) {
@@ -497,7 +494,7 @@ export async function mcast_stun_you(dmg) {
             await You_feel_mc('momentarily disoriented.');
         make_stunned_mc(1, false);
     } else {
-        await pline(Stunned_mc() ? 'You struggle to keep your balance.' : 'You reel...');
+        await You(Stunned_mc() ? 'struggle to keep your balance.' : 'reel...');
         dmg = d(acurr_mc(u, A_DEX_MC) < 12 ? 6 : 4, 4);
         if (HalfSpellDamage())
             dmg = Math.trunc((dmg + 1) / 2);
@@ -536,13 +533,13 @@ export async function mcast_psi_bolt(dmg) {
         monstunseesu(M_SEEN_MAGR_MC);
     }
     if (dmg <= 5)
-        await pline('You get a slight ' + body_part(HEAD_MC) + 'ache.');
+        await You('get a slight %sache.', body_part(HEAD_MC));
     else if (dmg <= 10)
-        await pline('Your brain is on fire!');
+        await Your('brain is on fire!');
     else if (dmg <= 20)
-        await pline('Your ' + body_part(HEAD_MC) + ' suddenly aches painfully!');
+        await Your('%s suddenly aches painfully!', body_part(HEAD_MC));
     else
-        await pline('Your ' + body_part(HEAD_MC) + ' suddenly aches very painfully!');
+        await Your('%s suddenly aches very painfully!', body_part(HEAD_MC));
     return dmg;
 }
 const HALF_PHDAM_MC = 56;             /* prop.h (js/const.js:2383) */
@@ -610,7 +607,7 @@ import { mkclass, set_malign } from './makemon.js';
 import { mksobj } from './mkobj.js';
 import { makemon } from './makemon.js';
 import { engr_at, wipe_engr_at } from './engrave.js';
-import { upstart } from './hacklib.js';
+import { upstart, sgn } from './hacklib.js';
 import { add_to_minv } from './dokick.js';
 import { monster_census } from './minion.js';
 import { enexto_out } from './teleport.js';
@@ -655,7 +652,7 @@ function Free_action_mc() {
 }
 /* C youprop.h:83-84 HConfusion = u.uprops[CONFUSION].intrinsic; Confusion = HConfusion. */
 function HConfusion_mc() { return (game.u?.uprops?.[CONFUSION_MC]?.intrinsic | 0); }
-function Confusion() { return propOn(CONFUSION_MC); }
+function Confusion() { return !!HConfusion_mc(); }
 /* C youprop.h:399 Unaware — gm.multi < 0 && (unconscious() || is_fainted()).
  * js/display.js:6532 _disp_Unaware is the same body; copied rather than
  * imported because it is module-private there, and the two leaves it needs
@@ -806,9 +803,9 @@ export async function mcast_blind_you() {
         make_blinded(HalfSpellDamage() ? 100 : 200, false);
         if (!Blind_mc()) /* youprop.h:103 Blind, not Blinded: mcastu.c:739 */
             /* C: Your1(vision_clears) — decl.c:48 "vision quickly clears." */
-            await pline('Your vision quickly clears.');
+            await Your('vision quickly clears.');
     } else {
-        impossible_mcastu('no reason for monster to cast blindness spell?');
+        await impossible_mcastu('no reason for monster to cast blindness spell?');
     }
 }
 
@@ -825,11 +822,11 @@ export async function mcast_paralyze(mtmp) {
         shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN_MAGR);
         if ((game.multi | 0) >= 0)
-            await pline('You stiffen briefly.');
+            await You('stiffen briefly.');
         dmg = 1; /* C's comment: to produce nomul(-1), not actual damage */
     } else {
         if ((game.multi | 0) >= 0)
-            await pline('You are frozen in place!');
+            await You('are frozen in place!');
         dmg = 4 + (mtmp.m_lev | 0);
         if (HalfSpellDamage())
             dmg = ((dmg + 1) / 2) | 0;
@@ -876,21 +873,15 @@ export async function mcast_open_wounds(dmg) {
         monstunseesu(M_SEEN_MAGR);
     }
     if (dmg <= 5)
-        await pline('Your skin itches badly for a moment.');
+        await Your('skin itches badly for a moment.');
     else if (dmg <= 10)
         await pline('Wounds appear on your body!');
     else if (dmg <= 20)
         await pline('Severe wounds appear on your body!');
     else
-        await pline('Your body is covered with painful wounds!');
+        await Your('body is covered with painful wounds!');
     return dmg;
 }
-
-
-// impossible() — C ref: pline.c debug-assertion logger; never alters game
-// state. No-op mirrors the established convention for this helper elsewhere
-// in the codebase (e.g. js/display.js's local impossible()).
-function impossible_mcastu(_msg, ..._args) { }
 
 
 export { Monnam };
@@ -907,8 +898,8 @@ function m_seenres(mtmp, mask) {
 
 /* C ref: mcastu.c:26-36 — the per-caster spell lists.  "the spells in the list
  * should be in ascending level order".  Written with THIS FILE's MCAST_ enum
- * (mcastu.h's X-macro order is different; only the ids matter here, never the
- * numeric value). */
+ * in mcastu.h's X-macro order.  The numeric values are also printed by
+ * castmu's debugpline, so preserve them exactly. */
 const mon_cleric_spells = [
     MCAST_OPEN_WOUNDS, MCAST_CURE_SELF, MCAST_CONFUSE_YOU, MCAST_PARALYZE,
     MCAST_BLIND_YOU, MCAST_INSECTS, MCAST_CURSE_ITEMS, MCAST_LIGHTNING,
@@ -1012,15 +1003,14 @@ function spell_would_be_useless(mtmp, spellnum) {
     return false;
 }
 
-// C ref: mcastu.c mcast_spell(). Only MCAST_HASTE_SELF's body (the sole
-// port; the sibling spell effects are genuinely unreached, stubbed per the
+// C ref: mcastu.c:801-897 mcast_spell().
 async function mcast_spell(mtmp, dmg, spellnum) {
     if (dmg < 0) {
-        impossible_mcastu('monster cast spell (%d) with negative dmg (%d)?', spellnum, dmg);
+        await impossible_mcastu('monster cast spell (%d) with negative dmg (%d)?', spellnum, dmg);
         return;
     }
     if (dmg === 0 && !is_undirected_spell(spellnum)) {
-        impossible_mcastu('cast directed wizard spell (%d) with dmg=0?', spellnum);
+        await impossible_mcastu('cast directed wizard spell (%d) with dmg=0?', spellnum);
         return;
     }
     switch (spellnum) {
@@ -1104,7 +1094,7 @@ async function mcast_spell(mtmp, dmg, spellnum) {
         dmg = await mcast_open_wounds(dmg);
         break;
     default:
-        impossible_mcastu('mcastu: invalid magic spell (%d)', spellnum);
+        await impossible_mcastu('mcastu: invalid magic spell (%d)', spellnum);
         dmg = 0;
         break;
     }
@@ -1136,7 +1126,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
                 if (!is_undirected_spell(spellnum)
                     || spell_would_be_useless(mtmp, spellnum)) {
                     if (foundyou)
-                        impossible_mcastu("spellcasting monster found you and doesn't know it?");
+                        await impossible_mcastu("spellcasting monster found you and doesn't know it?");
                     return M_ATTK_MISS;
                 }
                 break;
@@ -1202,7 +1192,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
     if (!foundyou) {
         dmg = 0;
         if (mattk.adtyp !== AD_SPEL && mattk.adtyp !== AD_CLRC) {
-            impossible_mcastu(
+            await impossible_mcastu(
                 '%s casting non-hand-to-hand version of hand-to-hand spell %d?',
                 Monnam(mtmp), mattk.adtyp);
             return M_ATTK_MISS;
@@ -1266,9 +1256,6 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
     return ret;
 }
 
-// ── helpers needed by buzzmu (ported elsewhere but imported inline) ──
-function sgn_mcastu(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
-
 // ── BZ_ macros from zap.h ──
 function BZ_VALID_ADTYP(adtyp) { return adtyp >= AD_MAGM && adtyp <= AD_SPC2_MC; } /* hack.h:1474 */
 const AD_SPC2_MC = 10; /* monattk.h:52 */
@@ -1297,7 +1284,7 @@ export async function buzzmu(mtmp, mattk) {
                   flash_str(BZ_OFS_AD(mattk.adtyp), false));
         game.gb.buzzer = mtmp;
         await buzz(BZ_M_SPELL(BZ_OFS_AD(mattk.adtyp)), mattk.damn | 0,
-                   mtmp.mx, mtmp.my, sgn_mcastu(game.gt.tbx), sgn_mcastu(game.gt.tby));
+                   mtmp.mx, mtmp.my, sgn(game.gt.tbx), sgn(game.gt.tby));
         game.gb.buzzer = 0;
         return M_ATTK_HIT;
     }

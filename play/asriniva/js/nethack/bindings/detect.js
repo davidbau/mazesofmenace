@@ -11,9 +11,16 @@ export function createDetectEnvironment(services,layout,namespace) {
     const {env,types,memory,type,decode,kinds}=CAdapter.createScalarAdapter(services,layout,schema,ptr,{profile:"signed-enum",errors:["Review DETECT scalar type ","Review DETECT cell type ","Review DETECT field "]});
     env.global=name=>{const g=schema.globals.find(g=>g.name===name);if(!g)throw Error('Review DETECT global '+name);return env.cell(env[name],g.canonical);};
     env.dummytrapBacking=ptr(services.global(schema.globals.length));
-    Object.assign(env,namespace.initialState(env));
-    env.level_detects=Object.freeze(env.level_detects.map(row=>Object.freeze(row)));
-    if(env.level_detects.length!==4)throw Error('Review DETECT level table');
+    env.dummytrap=env.dummytrapBacking;
+    let levelDetects;
+    Object.defineProperty(env,'level_detects',{get(){
+        if(!levelDetects){
+            const rows=namespace.level_detects(env);
+            if(rows.length!==4)throw Error('Review DETECT level table');
+            levelDetects=Object.freeze(rows.map(row=>Object.freeze(row)));
+        }
+        return levelDetects;
+    }});
     env.functionPointer=name=>{const fn=services.functionPointers[name];if(!fn)throw Error('Review DETECT function pointer '+name);return ptr(fn());};
     env.callProc=(fn,prototype,...args)=>{if(prototype==='int (int)')return services.callRng(fn,...args);if(prototype==='void (winid, boolean)')return services.callWindow(fn,...args);throw Error('Review DETECT callback prototype '+prototype);};
     env.variadic=(site,...args)=>{const entry=schema.variadics[site];if(!entry||entry.site!==site)throw Error('Review DETECT varargs site');return services['var'+site](...args);};

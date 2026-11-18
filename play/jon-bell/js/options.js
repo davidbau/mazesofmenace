@@ -257,33 +257,46 @@ export function hilite_status_config_error(op) {
              * must match a condition name or alias, else
              * config_error_add("Unknown condition '%s'") (parse_condition,
              * botl.c:3243-3256, only reached once the condition field exists). */
-            const cs = hsbuf[1] || '';
-            /* botl.c:3250-3254 "Missing condition(s)"; :3286-3289 each
-             * condition set needs a following how, else "Missing
-             * color+attribute". */
-            if (!cs)
+            if (!hsbuf[1])
                 return ["Missing condition(s)"];
-            if (!hsbuf[2])
-                return ["Missing color+attribute"];
-            if (cs) {
+            /* botl.c:3261-3346: validate every condition/how group and each
+             * group's color+attribute tokens; earlier accepted groups stay live. */
+            for (let k = 1; k < hsbuf.length; k += 2) {
+                const cs = hsbuf[k] || '';
+                if (!cs) break;
+                const accepted = k > 1 ? hsbuf.slice(0, k).join('/') : '';
+                const ret = (e) => { if (accepted) e.accepted = accepted; return e; };
                 for (const sub of cs.split(/[+&]/)) {
                     if (sub && !match_str2conditionbitmask(sub))
-                        return ["Unknown condition '%s'", sub];
+                        return ret(["Unknown condition '%s'", sub]);
+                }
+                const how = hsbuf[k + 1] || '';
+                if (!how)
+                    return ret(["Missing color+attribute"]);
+                for (const sf of how.split(/[+&]/)) {
+                    const nrm = x => x.replace(/[ \-_]/g, '');
+                    if (attrnames.some(a => a.name && nrm(a.name) === nrm(sf))) continue;
+                    const c = match_str2clr(sf, true);
+                    if (c >= 16)
+                        return ret(["Unknown color '%s'", sf, "bad color %d", c]);
                 }
             }
             return null;
         }
-        if (f === 'characteristics')
-            return null;
+        /* botl.c:2846-2857: "characteristics" recurses over BL_STR..BL_CH
+         * (all ANY_INT with idxmax -1, identical rules to strength). */
+        const cf = f === 'characteristics' ? 'strength' : f;
         /* botl.c:3036-3063 parse_status_hl2(): each rule's "how" is a
          * '+'/'&' list of attributes and at most one colour; match_str2clr()
          * complains (coloratt.c:367), then "bad color '%d %d'". */
-        for (let k = 2; k < hsbuf.length; k += 2) {
-            const e = check_behavior(f, hsbuf[k - 1], hsbuf[k] || '');
-            if (e) {
-                // C botl.c:3099: thresholds preceding an error stay installed.
-                e.accepted = hsbuf.slice(0, k - 1).join('/');
-                return e;
+        for (let k = hsbuf.length === 2 ? 1 : 2; k < hsbuf.length; k += 2) {
+            if (hsbuf.length > 2) {
+                const e = check_behavior(cf, hsbuf[k - 1], hsbuf[k] || '');
+                if (e) {
+                    // C botl.c:3099: thresholds preceding an error stay installed.
+                    e.accepted = hsbuf.slice(0, k - 1).join('/');
+                    return e;
+                }
             }
             const how = hsbuf[k] || '';
             if (!how) break;
@@ -292,9 +305,12 @@ export function hilite_status_config_error(op) {
                 const nrm = x => x.replace(/[ \-_]/g, '');
                 if (attrnames.some(a => a.name && nrm(a.name) === nrm(sf))) continue;
                 const c = match_str2clr(sf, true);
-                if (c >= 16 || coloridx !== -1)
-                    return c >= 16 ? ["Unknown color '%s'", sf, "bad color '%s'", `${c} ${coloridx}`]
+                if (c >= 16 || coloridx !== -1) {
+                    const e = c >= 16 ? ["Unknown color '%s'", sf, "bad color '%s'", `${c} ${coloridx}`]
                         : ["bad color '%s'", `${c} ${coloridx}`];
+                    if (hsbuf.length > 2) e.accepted = hsbuf.slice(0, k - 1).join('/');
+                    return e;
+                }
                 coloridx = c;
             }
         }
@@ -330,8 +346,16 @@ export function hilite_status_config_error(op) {
             return ["Field '%s' does not support numeric values", f];
         if (/^[<>]?=?[-+]?[0-9]+%?$/.test(t) || BL_STRFLDS.has(f))
             return null;
-        if (f === 'carrying-capacity' || f === 'hunger')
-            return null; /* enum words: not modelled, never rejected here */
+        if (f === 'carrying-capacity') {
+            if (['burdened', 'stressed', 'strained', 'overtaxed', 'overloaded'].includes(t))
+                return null;
+            return ["Unknown behavior '%s'", t];
+        }
+        if (f === 'hunger') {
+            if (['satiated', 'hungry', 'weak', 'fainting', 'fainted', 'starved'].includes(t))
+                return null;
+            return ["Unknown behavior '%s'", t];
+        }
         return [/^[<>=+\-0-9%]*$/.test(t)
             ? "Wrong format '%s', expected a threshold number or percent"
             : "Unknown behavior '%s'", t];
@@ -646,7 +670,8 @@ function optfn_autounlock(flags, op, negated) {
 function petname_optfn(flags, name, op, negated, eightBitInput) {
     if (!op && !negated) return;
     if (negated || op === 'none' || op === '(none)') op = '';
-    flags[name] = sanitize_name(op.split(/[\0,]/, 1)[0].slice(0, 62), !eightBitInput);
+    const bytes = new TextEncoder().encode(op.split(/[\0,]/, 1)[0]).slice(0, 62);
+    flags[name] = sanitize_name(String.fromCharCode(...bytes), !eightBitInput);
 }
 
 // C options.c:1170-1223 (BACKWARD_COMPAT). The startup and in-game setter
@@ -1071,6 +1096,12 @@ export function parseNethackrc(rc) {
         // parseoptions() handles the suffix recursively before the first
         // entry. Across RC lines, the ordinary file order is retained.
         for (const opt of optMatch[1].split(',').reverse()) {
+            // options.c:522-526 rejects the raw entry before stripping space,
+            // just as the interactive parseoptions() path below already does.
+            if (opt.length > 128) {
+                config_error_add('Option too long, max length is 128 characters');
+                continue;
+            }
             const trimmed = opt.trim();
             if (!trimmed)
                 continue;
@@ -1435,17 +1466,16 @@ export function parseNethackrc(rc) {
                 }
                 continue;
             }
-            if (menuname.length >= 9 && 'hilite_status'.startsWith(menuname)
-                && !menunegated && (menusep < 0 || !menuopts.slice(menusep + 1).trim())) {
-                config_error_add('Value is mandatory for hilite_status');
-                continue;
-            }
-            /* C options.c:1870-1880 optfn_hilite_status(do_set) ->
-             * botl.c:2593 parse_status_hl1(): only the config_error_add()
-             * rejections are modelled (the highlight rules themselves are
-             * not stored by this port). */
-            if (menuname.length >= 9 && 'hilite_status'.startsWith(menuname)
-                && !menunegated && menusep >= 0) {
+            if (menuname.length >= 9 && 'hilite_status'.startsWith(menuname)) {
+                if (menusep < 0 || (!menunegated && !menuopts.slice(menusep + 1).trim())) {
+                    config_error_add('Value is mandatory for hilite_status');
+                    continue;
+                }
+                if (menunegated) {
+                    result.status_field_hilites = [];
+                    if (game) game.status_field_hilites = [];
+                    continue;
+                }
                 const hlerr = hilite_status_config_error(menuopts.slice(menusep + 1));
                 if (hlerr?.accepted?.includes('/')) store_status_hilite(hlerr.accepted);
                 if (hlerr) {
@@ -1457,6 +1487,7 @@ export function parseNethackrc(rc) {
                 const hlop = menuopts.slice(menusep + 1).trim();
                 store_status_hilite(hlop);
                 if (!result.iflags.hilite_delta) result.iflags.hilite_delta = 3;
+                continue;
             }
             /* C options.c:620-628 checks duplicates and forbidden negation
              * before optfn_player_selection(:3446-3460) requires a value. */
@@ -1665,8 +1696,9 @@ export function parseNethackrc(rc) {
             }
             // determine_ambiguities(): "sup" uniquely identifies suppress_alert.
             if (menuname.length >= 3 && 'suppress_alert'.startsWith(menuname)) {
-                optfn_suppress_alert_set(result.flags,
+                const res = optfn_suppress_alert_set(result.flags,
                     menusep < 0 ? '' : menuopts.slice(menusep + 1).trim(), menunegated);
+                if (res.error) config_error_add('%s', res.error);
                 continue;
             }
             if (menuname.length >= 3 && 'packorder'.startsWith(menuname)) {
@@ -1852,8 +1884,12 @@ export function parseNethackrc(rc) {
                     result.symset = val;
                     if (val && gs.symset && gs.symset[0]) gs.symset[0].name = val;
                 }
+                /* C options.c:1725,1748-1752: mungspaces, nmcpy (31 bytes),
+                 * then sanitize_name, including during startup.  The rc file
+                 * contains UTF-8 bytes; sanitize_name operates on byte strings. */
                 else if (key === 'fruit') {
-                    const f = negated ? '' : val.replace(/\s+/g, ' ').trim().slice(0, 31);
+                    const bytes = new TextEncoder().encode(negated ? '' : mungspaces(val).split(/[\0,]/, 1)[0]).slice(0, 31);
+                    const f = sanitize_name(String.fromCharCode(...bytes), !result.iflags.wc_eight_bit_input);
                     if (negated || f) result.fruit = f;
                 }
                 else if (key === 'whatis_coord') {

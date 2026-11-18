@@ -4,7 +4,7 @@ let nextMark=1;
 const align=n=>Math.ceil(Math.max(n,1)/16)*16;
 export function createNativeStack(memory,{chunkBytes=65536}={}){
  if(!Number.isSafeInteger(chunkBytes)||chunkBytes<16)throw new RangeError('Invalid native stack chunk size');
- const chunks=[],tokens=[],chunkMarks=[],offsetMarks=[],reservationMarks=[],positions=new Map(),reservations=[];
+ const chunks=[],tokens=[],chunkMarks=[],offsetMarks=[],reservationMarks=[],reservations=[];
  let cursor=0,offset=0;
  function size(n){n=Number(n);if(!Number.isSafeInteger(n)||n<0||n>memory.maximumBytes)throw new RangeError('C stack allocation failed');return align(n);}
  function placement(n){
@@ -36,14 +36,23 @@ export function createNativeStack(memory,{chunkBytes=65536}={}){
  };
  function stackSave(){
   if(nextMark>Number.MAX_SAFE_INTEGER)throw new RangeError('Native stack mark space exhausted');
-  const token=nextMark++,index=tokens.length;positions.set(token,index);tokens.push(token);chunkMarks.push(cursor);offsetMarks.push(offset);reservationMarks.push(reservations.length);return token;
+  const token=nextMark++;
+  tokens.push(token);chunkMarks.push(cursor);offsetMarks.push(offset);reservationMarks.push(reservations.length);
+  return token;
  }
  function stackRestore(token){
-  const index=positions.get(token);if(index===undefined)throw new Error('Invalid C stack mark');
+  let index=tokens.length-1;
+  if(index<0||tokens[index]!==token){
+   if(!Number.isSafeInteger(token))throw new Error('Invalid C stack mark');
+   // Active marks are increasing. Only a rewind past nested marks searches.
+   let lo=0,hi=index;
+   while(lo<=hi){const mid=lo+((hi-lo)>>1);if(tokens[mid]<token)lo=mid+1;else hi=mid-1;}
+   index=lo;
+   if(tokens[index]!==token)throw new Error('Invalid C stack mark');
+  }
   while(reservations.length>reservationMarks[index])reservations.pop().active=false;
   cursor=chunkMarks[index];offset=offsetMarks[index];
-  while(tokens.length>index)positions.delete(tokens.pop());
-  chunkMarks.length=offsetMarks.length=reservationMarks.length=index;
+  tokens.length=chunkMarks.length=offsetMarks.length=reservationMarks.length=index;
  }
  return{stackSave,stackRestore,stackAlloc:alloc,stackPosition:()=>cursor+':'+offset+':'+reservations.length};
 }

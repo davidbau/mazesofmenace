@@ -1,6 +1,6 @@
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 // Live NHFILE/ABI/table views; original SFBASE control flow stays in sfbase.js.
-export function createSfbaseEnvironment(services,layout) {
+export function createSfbaseEnvironment(services,layout,{fixed=false}={}) {
     const widths={littleEndian:1,pointerSize:8,longSize:8,intSize:4,charSigned:1,config_SFCTOOL:0,config_VMS:0,config_legacy_Sfvalue:1,version_feature_set_size:8,any_int64:0};
     for(const [field,size]of Object.entries(widths))if(layout[field]!==size)throw new Error('Review changed sfbase ABI: '+field);
     const loads={"aligntyp":"Int8","boolean":"Int8","coordxy":"Int16","int":"Int32","int16":"Int16","int32":"Int32","int64":"BigInt64","long":"BigInt64","schar":"Int8","short":"Int16","size_t":"BigUint64","time_t":"BigInt64","uchar":"Uint8","uint16":"Uint16","uint32":"Uint32","uint64":"BigUint64","ulong":"BigUint64","unsigned":"Uint32","ushort":"Uint16","xint16":"Int16","xint8":"Int8","uint8":"Uint8","char":"Int8"};
@@ -9,17 +9,37 @@ export function createSfbaseEnvironment(services,layout) {
     for(const [name,expected]of Object.entries(signed))if(layout['signed_'+name]!==expected)throw new Error('Review changed sfbase signed scalar: '+name);
     const address=value=>Number(value?.address??value??0),raw=value=>BigInt(value?.address??value??0);
     const memory=()=>CAdapter.currentDataView(services),cache=new Map();
+    const fileFields=[['mode','Int32'],['fnidx','Int32'],['structlevel','Int8'],['eof','Int8'],['fplog','BigUint64'],['rcount','BigInt64'],['wcount','BigInt64'],['nhfpconvert','BigUint64']];
+    if(fixed)fileFields.push(['fd','Int32']);
     function nhfile(value){const at=address(value);if(!at)return 0;if(cache.has(at))return cache.get(at);const obj={address:at};cache.set(at,obj);
-        for(const [field,kind]of [['mode','Int32'],['fnidx','Int32'],['structlevel','Int8'],['eof','Int8'],['fplog','BigUint64'],['rcount','BigInt64'],['wcount','BigInt64'],['nhfpconvert','BigUint64']]){
+        for(const [field,kind]of fileFields){
             if(layout['nhf_'+field+'_size']!==Number(kind.match(/\d+/)[0])/8)throw new Error('Review changed sfbase NHFILE field: '+field);
             Object.defineProperty(obj,field,{get(){const result=memory()['get'+kind](at+layout['nhf_'+field],true);return field==='nhfpconvert'?nhfile(result):field==='fplog'?Number(result):result;},set(value){memory()['set'+kind](at+layout['nhf_'+field],kind.startsWith('Big')?raw(value):Number(value),true);}});
         }return obj;}
     const indexed=(get,set)=>new Proxy({}, {get(obj,key){return typeof key==='string'&&/^-?\d+$/.test(key)?get(Number(key)):Reflect.get(obj,key);},set(obj,key,value){if(typeof key==='string'&&/^-?\d+$/.test(key)){set(Number(key),value);return true;}return Reflect.set(obj,key,value);}});
     const procNames=["arti_info","nhrect","branch","bubble","cemetery","context_info","nhcoord","damage","dest_area","dgn_topology","dungeon","d_level","ebones","edog","egd","emin","engr","epri","eshk","fe","flag","fruit","gamelog_line","kinfo","levelflags","ls_t","linfo","mapseen_feat","mapseen_flags","mapseen_rooms","mkroom","monst","mvitals","obj","objclass","q_score","rm","spell","stairway","s_level","trap","you","any","aligntyp","boolean","coordxy","int","int16","int32","int64","long","schar","short","size_t","time_t","uchar","uint16","uint32","uint64","ulong","unsigned","ushort","xint16","xint8","bitfield","char","genericptr","version_info"];
-    function table(value,fieldlevel=false){const at=address(value),obj={address:at},functions={};
-        for(const name of procNames)Object.defineProperty(functions,'sf_'+name,{get(){const fn=memory().getBigUint64(at+layout[(fieldlevel?'fieldlevel':'structlevel')+'_fn']+layout['proc_'+name],true);
-            return (nhfp,data,myname,...extra)=>services.call(fn,nhfp,data,myname,extra.length?extra[0]:undefined);}});
-        obj[fieldlevel?'fn_x':'fn']=functions;return obj;}
+    const tableCaches=[new Map(),new Map()];
+    function table(value,fieldlevel=false){
+        const at=address(value),cache=tableCaches[Number(fieldlevel)];
+        if(fixed&&cache.has(at))return cache.get(at);
+        const obj={address:at},functions={};
+        const start=at+layout[(fieldlevel?'fieldlevel':'structlevel')+'_fn'];
+        for(const name of procNames){
+            const offset=start+layout['proc_'+name];
+            let previous,invoke;
+            Object.defineProperty(functions,'sf_'+name,{get(){
+                const token=memory().getBigUint64(offset,true);
+                if(fixed&&token===previous)return invoke;
+                const direct=fixed?services.boundSerializer(token):undefined;
+                invoke=direct??((nhfp,data,myname,count)=>services.call(token,nhfp,data,myname,count));
+                previous=token;
+                return invoke;
+            }});
+        }
+        obj[fieldlevel?'fn_x':'fn']=functions;
+        if(fixed)cache.set(at,obj);
+        return obj;
+    }
     const tables=['sfoprocs','sfiprocs','sfoflprocs','sfiflprocs'],env=Object.assign(Object.create(services),layout,{
         nhfile,address,sizes:{},bufferSizes:{},buffers:{},unsignedArray:n=>new Uint32Array(n),
         load:(name,at)=>memory()['get'+loads[name]](address(at),true),
@@ -39,27 +59,12 @@ export function createSfbaseEnvironment(services,layout) {
 
 // Production-only wrapper reuse. The public constructor above remains fresh.
 export function createOptimizedSfbaseEnvironment(services,layout) {
-    const env=createSfbaseEnvironment(services,layout);
-    const factories=[env.structlevel,env.fieldlevel],recent=[undefined,undefined];
-    const address=value=>Number(value?.address??value??0);
-    function table(value,fieldlevel=false){
-        const at=address(value),mode=fieldlevel?1:0,previous=recent[mode];
-        if(previous?.at===at)return previous.wrapper;
-        const wrapper=factories[mode](at);
-        recent[mode]={at,wrapper};
-        return wrapper;
-    }
-    env.structlevel=value=>table(value);
-    env.fieldlevel=value=>table(value,true);
-    for(const[index,name]of ['sfoprocs','sfiprocs','sfoflprocs','sfiflprocs'].entries()){
+    const env=createSfbaseEnvironment(services,layout,{fixed:true});
+    for(const name of ['sfoprocs','sfiprocs','sfoflprocs','sfiflprocs']){
         const original=env[name];
-        env[name]=new Proxy(original,{get(target,key){
-            if(typeof key==='string'&&/^-?\d+$/.test(key)){
-                const at=address(services.global(index))+Number(key)*layout[(index>=2?'fieldlevel':'structlevel')+'Size'];
-                return table(at,index>=2);
-            }
-            return Reflect.get(target,key);
-        }});
+        const slots=Object.create(null);
+        for(let index=0;index<layout.NUM_SAVEFORMATS;index++)slots[index]=original[index];
+        env[name]=new Proxy(original,{get:(table,index)=>Object.hasOwn(slots,index)?slots[index]:Reflect.get(table,index)});
     }
     return env;
 }

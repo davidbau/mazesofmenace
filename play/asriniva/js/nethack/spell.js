@@ -1,4 +1,5 @@
 import {recordNativeRngCaller} from './native/rng-output.js';
+import {nativeStateFor} from './native/state-bridge.js';
 // One unchanged cached SPELL context, including source startup spellbook initialization.
 import abi from './spell-abi.json' with{type:'json'};
 import * as source from '../ported/spell.js';
@@ -33,7 +34,19 @@ export function enableSpell(environment,layouts){
  const window=(name,sig,...args)=>functions.indirect(memory.view.getBigUint64(environment.requireGlobal('windowprocs')+ctypes.record('struct window_procs').fields[name].offset,true),sig,...args);
  Object.assign(local,{create_nhwindow:t=>window('win_create_nhwindow','ii',transport.int(t)),destroy_nhwindow:w=>window('win_destroy_nhwindow','vi',transport.int(w)),start_menu:(w,b)=>window('win_start_menu','vij',transport.int(w),transport.ulong(b)),end_menu:(w,p)=>window('win_end_menu','vip',transport.int(w),text(p)),clear_nhwindow:w=>window('win_clear_nhwindow','vi',transport.int(w)),display_nhwindow:(w,b)=>window('win_display_nhwindow','vii',transport.int(w),transport.char(b)),nh_delay_output:()=>window('win_delay_output','v')});
  function call(name,...args){if(typeof source[name]!=='function')throw new Error('Unknown SPELL source '+name);return callSpell(local,L,name,...args.map(v=>typeof v==='string'?services.literal(v):v?.address??v));}
- const initial=['spell_skilltype','initialspell','num_spells','skill_based_spellbook_id','age_spells'];if(initial.some(n=>environment.hasFunction(n)))throw new Error('SPELL must own initial spell context from construction');environment.register('initial-spells',Object.fromEntries(initial.map(n=>[n,(...args)=>call(n,...args)])));
+ const spellbook=environment.requireGlobal(abi.globals[8])+L.spl_book;
+ const spellAging={
+  id:index=>memory.view.getInt16(spellbook+index*L.spellSize+L.spell_sp_id,true),
+  knowledge:index=>memory.view.getInt32(spellbook+index*L.spellSize+L.spell_sp_know,true),
+  setKnowledge:(index,value)=>memory.view.setInt32(spellbook+index*L.spellSize+L.spell_sp_know,value,true),
+ };
+ const ageContext={MAXSPELL:L.MAXSPELL,NO_SPELL:L.NO_SPELL,spellAging};
+ const ageSpells=()=>source.age_spells(ageContext);
+ ageSpells.nativeDirect=true;
+ const native=nativeStateFor(environment);
+ ageSpells.nativeState=native;
+ native.functions.set('age_spells',ageSpells);
+ const initial=['spell_skilltype','initialspell','num_spells','skill_based_spellbook_id','age_spells'];if(initial.some(n=>environment.hasFunction(n)))throw new Error('SPELL must own initial spell context from construction');environment.register('initial-spells',Object.fromEntries(initial.map(n=>[n,n==='age_spells'?ageSpells:(...args)=>call(n,...args)])));
  const names=Object.keys(abi.public).filter(n=>!environment.hasFunction(n));environment.register('spell',Object.fromEntries(names.map(n=>[n,(...args)=>call(n,...args)])));
  const owner={call,services:local,callback,exports:[...initial,...names],limitation:'Original cached SPELL context/private save_tport and shared spellbook owned coherently from startup. Ordinary casting/study and Book-of-Dead invocation require separate source-C acceptance; missing foreign owners fail explicitly.'};owners.set(environment,owner);return owner;
 }

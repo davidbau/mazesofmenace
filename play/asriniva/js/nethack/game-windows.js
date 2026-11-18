@@ -12,6 +12,8 @@ export function enableGameWindows(environment,layouts){
  const local=new Proxy(Object.create(services),{get:(o,k,r)=>{const value=Reflect.get(o,k,r);if(Object.hasOwn(o,k)||typeof k!=='string')return value;if(typeof value!=='function'&&Reflect.has(o,k))return value;return(...args)=>{const selected=nativeOwner.functions.get(k),target=selected?.nativeValuesEntry??selected;if(nativeOwner.depth&&target?.nativeState===nativeOwner&&target.nativeDirect)return target(...args);return nativeOwner.boundary(typeof value==='function'?value:environment.resolve(k),...args.map(v=>v?.address??v));};}});
  const roots=['u','svl','svr','svc','svq','gu','gy','gi','ga','gc','gn','gm','flags','iflags','mons','objects','genders','svd','svm','gv','soundprocs','sysopt'];
  const procs=environment.allocateGlobal('soundprocs',layouts.sounds.soundSize),nosound=environment.allocateGlobal('sounds.nosound_procs',layouts.sounds.soundSize);
+ local.stackSave=environment.transport.stackSave;
+ local.stackRestore=environment.transport.stackRestore;
  Object.assign(local,{nativeSoundOwner:local,nativeOwner,nativeEnvironment:environment,nativeLayouts:layouts,moduleKey:environment,heap:()=>memory.HEAPU8,global:i=>environment.requireGlobal(roots[i]),storage:i=>{if(i!==0)throw new Error('Unknown sound storage');return nosound;}});
  const views=createRecordViews(environment),address=environment.address,field=(type,root,path)=>({type,at:environment.requireGlobal(root),path});
  const packed={hero:[field('struct you','u','uswallow'),field('struct you','u','uinwater'),field('struct you','u','uroleplay.deaf')],

@@ -1,17 +1,57 @@
 // C src/pline.c:impossible. Only qualified callers are migrated here; existing
 // caller-local diagnostic stubs are not silently enabled across the game.
 import { game } from './gstate.js';
-import { BUFSZ, DEVTEAM_EMAIL } from './const.js';
+import { BUFSZ, DEVTEAM_EMAIL, PLINE_NOREPEAT, DUMPLOG_MSG_COUNT } from './const.js';
 import { nh_sprintf } from './display.js';
 import { paniclog } from './files.js';
 import './cmd.js'; // relocate-fns
 import { Unaware, _You, _disp_Blind, _live_deaf, _pline_body, you_buf_message } from './display.js';
-import { msgtype_type } from './options.js'; // relocate-fns
+import './options.js'; // retain initialization order through the cmd/options cycle
 import { livelog_add } from './files.js'; // relocate-fns
 import { strNsubst } from './hacklib.js'; // relocate-fns
 import { ENV } from './hostenv.js'; // relocate-fns
 import { is_youmonst } from './mhitm.js'; // relocate-fns
 import { pushRngLogEntry } from './rng.js'; // relocate-fns
+import { raw_print } from './rawterm.js';
+
+// C pline.c:22-60: this ring is independent of the tty's joined history and
+// contains even messages later hidden by MSGTYPE or Norep.
+export function dumplogmsg(line) {
+    if (line.startsWith('Unknown command'))
+        return;
+    const lines = (game.saved_plines ||= Array(DUMPLOG_MSG_COUNT).fill(null));
+    const index = game.saved_pline_index || 0;
+    // JS strings do not expose C's reuse-versus-dupstr allocation distinction.
+    lines[index] = String(line);
+    game.saved_pline_index = (index + 1) % DUMPLOG_MSG_COUNT;
+}
+
+export function dumplogfreemessages() {
+    if (game.saved_plines)
+        game.saved_plines.fill(null);
+    game.saved_pline_index = 0;
+}
+
+// C pline.c:549-581. raw_printf and vraw_printf BOTH increment this counter;
+// preserve that double increment before beyond_savefile_load becomes true.
+export function raw_printf(line, ...args) {
+    vraw_printf(line, args);
+    if (!game.program_state?.beyond_savefile_load)
+        game.early_raw_messages = (game.early_raw_messages || 0) + 1;
+}
+
+export function vraw_printf(line, args) {
+    line = String(line).split('\0', 1)[0];
+    if (line.includes('%'))
+        line = nh_sprintf(line, args).split('\0', 1)[0];
+    // C truncates raw output outright, unlike vpline's "..." + last 3 chars.
+    line = line.slice(0, BUFSZ - 1);
+    raw_print(line);
+    // execplinehandler returns immediately in the scored sysconf: msghandler
+    // is unset and cannot be supplied by runSegment's player rc/moves.
+    if (!game.program_state?.beyond_savefile_load)
+        game.early_raw_messages = (game.early_raw_messages || 0) + 1;
+}
 
 export async function impossible(s, ...args) {
     const state = game.program_state;
@@ -129,10 +169,11 @@ export async function pline(msg, ...args) {
 }
 
 export async function Norep(msg, ...args) {
-    const text = (args.length > 0) ? nh_sprintf(msg, args) : String(msg);
-    if (msgtype_type(text, true) === 'norep' && game._prevmsg === text)
-        return;
-    await pline(text);
+    // The flag belongs to vpline, whose origin reset, prefix and truncation
+    // precede its no-repeat test. Do not suppress at this wrapper boundary.
+    const line = new String(msg);
+    line._plineFlags = PLINE_NOREPEAT;
+    await pline(line, ...args);
 }
 
 /* C pline.c:364-385,414-424: prefix the format before vpline formats it. */
@@ -157,7 +198,7 @@ export function pline_The(line, ...args) {
  * PLINE_VERBALIZE is consumed only by SoundSpeak (sndprocs.h:239-247);
  * this port has no sound backend.  Deafness is the caller's responsibility. */
 export function verbalize(line, ...args) {
-    return pline('"' + line + '"', ...args);
+    return pline(you_buf_message('"', line + '"'), ...args);
 }
 
 /* C pline.c:425-434: prefix before formatting, like You() and pline_The(). */
@@ -207,10 +248,9 @@ export function pline_xy(x, y, msg, ...args) {
 }
 
 export function free_youbuf() {
-    const gy = game.gy || {};
-    if (gy.you_buf)
-        gy.you_buf = null;
-    gy.you_buf_siz = 0;
+    // You_buf is represented by display.js's shared text/identity buffer.
+    // Clearing an unused gy.you_buf left that allocation live after cleanup.
+    game._youBuf = null;
 }
 
 /* `ordin` was a file-local `return "th"` stub captioned "unported helper for

@@ -624,6 +624,8 @@ export async function newgame() {
         // rnl(x) with x > 15 skipped C's `rn2(37 + abs(Luck))` Luck adjustment:
         // rnl(35)=19 where JS drew a bare rnl(35)=20 — the first RNG-value
         // divergence at leaf 2810.
+        // allmain.c:71: new-game preamble is now past savefile loading.
+        g.program_state.beyond_savefile_load = 1;
         await set_wear(null);
         const preambleMsgs = [];
         if (FF_FAITHFUL && !chargenIncomplete) {

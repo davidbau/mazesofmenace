@@ -12,10 +12,22 @@ const globalNames = Object.keys(schema.foreignGlobals);
 const functionNames = schema.functions.map(f => f.name);
 const address = v => Number(v?.address ?? v ?? 0);
 const integer = v => typeof v === 'bigint' ? v : BigInt(Math.trunc(v));
+const scalarMethods={i8:'Int8',u8:'Uint8',i16:'Int16',u16:'Uint16',i32:'Int32',u32:'Uint32',i64:'BigInt64',u64:'BigUint64',f32:'Float32',f64:'Float64'};
 
 export function createNhluaEnvironment(services, state) {
     const arena=services.nativeOwner?.nativeArena;
     const view = () => arena?.view ?? CAdapter.currentDataView(services);
+    const scalarReads=Object.create(null),scalarWrites=Object.create(null);
+    for(const [type,suffix]of Object.entries(scalarMethods)){
+        const get='get'+suffix,set='set'+suffix;
+        scalarReads[type]=at=>view()[get](address(at),true);
+        scalarWrites[type]=(at,value)=>{
+            at=address(at);
+            value=cast(type,value);
+            view()[set](at,value,true);
+            return value;
+        };
+    }
     const globalCache=new Map(),dataCache=new Map(),fieldCache=new Map();
     function cast(type, value) {
         if (typeof type === 'object') return address(value);
@@ -44,9 +56,9 @@ export function createNhluaEnvironment(services, state) {
             if (type.pointer) return arena ? arena.pointer(at) : Number(view().getBigUint64(at, true));
             return at;
         }
-        const method = ({i8:'getInt8',u8:'getUint8',i16:'getInt16',u16:'getUint16',i32:'getInt32',u32:'getUint32',i64:'getBigInt64',u64:'getBigUint64',f32:'getFloat32',f64:'getFloat64'})[type];
+        const method = scalarMethods[type];
         if (!method) throw new Error('Unreviewed NHLUA read ' + type);
-        return view()[method](at, true);
+        return view()['get'+method](at, true);
     }
     function write(at, type, value) {
         at = address(at); value = cast(type, value);
@@ -54,9 +66,9 @@ export function createNhluaEnvironment(services, state) {
             if (!type.pointer) throw new Error('NHLUA aggregate needs copy');
             if(arena)arena.storePointer(at,value);else view().setBigUint64(at, BigInt(value), true);
         } else {
-            const method = ({i8:'setInt8',u8:'setUint8',i16:'setInt16',u16:'setUint16',i32:'setInt32',u32:'setUint32',i64:'setBigInt64',u64:'setBigUint64',f32:'setFloat32',f64:'setFloat64'})[type];
+            const method = scalarMethods[type];
             if (!method) throw new Error('Unreviewed NHLUA write ' + type);
-            view()[method](at, value, true);
+            view()['set'+method](at, value, true);
         }
         return value;
     }
@@ -107,6 +119,11 @@ export function createNhluaEnvironment(services, state) {
     function initialize(at, type, value) {return Crt.initializeRecord(address,services,sizeof,write,fieldInfo,env,initialValue,at,type,value);}
     const env = {
         cast, read, write, binary, sizeof, initialize, data, global, functionPointer,
+        scalarReads, scalarWrites,
+        bindField(record,name){
+            const {offset}=fieldInfo(record,name);
+            return base=>address(base)+offset;
+        },
         truth:value => value !== 0 && value !== 0n && value !== null && value !== undefined && value !== false,
         unary(type,op,value) { return cast(type,op === '-' ? -value : op === '~' ? ~value : value); },
         constant:name => schema.constants[name], literal:services.literal,

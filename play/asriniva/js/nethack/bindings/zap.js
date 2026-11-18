@@ -187,7 +187,11 @@ export function callZap(services,L,name,...args){
     const previous=entry.slot.current;entry.slot.current=services;
     try{
         const saved=services.stackSave();
-        try{return name===null?undefined:withCEnvironment(entry.environment,()=>core[name](...args));}
+        try{
+            if(name===null)return;
+            if(name==='get_obj_location'||name==='exclam')return core[name](...args,entry.environment);
+            return withCEnvironment(entry.environment,()=>core[name](...args));
+        }
         finally{services.stackRestore(saved);}
     }finally{entry.slot.current=previous;}
 }
