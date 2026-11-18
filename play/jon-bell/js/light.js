@@ -671,7 +671,7 @@ export async function show_transient_light(obj, x, y) {
         }
     }
     if (obj)
-        place_object(obj, game.bhitpos.x, game.bhitpos.y);
+        await place_object(obj, game.bhitpos.x, game.bhitpos.y);
     else {
         ls.x = x;
         ls.y = y;

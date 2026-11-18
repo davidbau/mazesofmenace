@@ -95,6 +95,11 @@ function set_cursor(col, row) {
  * C ref: struct WinDesc's menu fields (mlist / nitems / npages / plist /
  * morestr / maxrow), which this class stands in for.
  */
+// C wintty.c menu byte loop: tabs and sign-extended high-bit bytes advance
+export function tty_menu_text(text) {
+    return String(text).replace(/[\t\x80-\xff]/g, '\x1b[1C');
+}
+
 export class TtyMenu {
     constructor({ overlay = false, statusClipCol, baseWindow = false } = {}) {
         this.overlay = overlay;
@@ -202,9 +207,10 @@ export class TtyMenu {
             if (curr.aInt && curr.selected)
                 text = text.slice(0, 2) + (curr.count === -1 ? '*' : '#') + text.slice(3);
             /* C's menu loop advances curx once per byte; nomux_putch ignores
-             * tabs (ch < 32). Encode that unpainted cell in the screen wire
+             * tabs and signed high-bit bytes (ch < 32, wintty.c's *cp).
+             * Encode that unpainted cell in the screen wire
              * format, leaving mlist.str intact for geometry and MENU_SEARCH. */
-            text = text.replace(/\t/g, '\x1b[1C');
+            text = tty_menu_text(text);
             // C wintty.c:1441-1489: leave the margin and selector unstyled.
             const attr_n = /^. [-+#*] /.test(curr.str) ? 4 : 0;
             const mc = curr.menuColor;

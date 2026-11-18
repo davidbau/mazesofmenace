@@ -679,14 +679,18 @@ async function getbones_load(f) {
                 restpriest(m, true);
         }
         renumber_objchn(f.snap.fobj, f.snap.fruits, f.snap.omoves, idmap);
-        renumber_objchn(f.snap.level?.buriedobjlist, f.snap.fruits, f.snap.omoves, idmap);
-        renumber_objchn(f.snap.billobjs, f.snap.fruits, f.snap.omoves, idmap);
 
         const ledger = ledger_no(u.uz);
         (game.levelStore || (game.levelStore = new Map())).set(ledger, f.snap);
         g._id_map = idmap; /* C restore.c:1068..1304 gi.id_map for lookup_id_mapping */
         const { getlev } = await import('./restore.js');
-        await getlev(ledger);
+        await getlev(ledger, async () => {
+            // buried/bill IDs follow it. Nested objects can consult shop tiles.
+            const { find_lev_obj_no_longer_held } = await import('./restore.js');
+            await find_lev_obj_no_longer_held(f.snap.fobj);
+            renumber_objchn(f.snap.level?.buriedobjlist, f.snap.fruits, f.snap.omoves, idmap);
+            renumber_objchn(f.snap.billobjs, f.snap.fruits, f.snap.omoves, idmap);
+        });
         /* C restore.c:1301,1510-1528 reset_oattached_mids(ghostly). */
         for (let otmp = g.fobj; otmp; otmp = otmp.nobj) {
             if (has_omonst(otmp)) {
@@ -854,7 +858,7 @@ async function give_to_nearby_mon(otmp, x, y) {
     if (selected && can_carry(selected, otmp))
         await add_to_minv_fp(selected, otmp);
     else
-        place_object(otmp, x, y);
+        await place_object(otmp, x, y);
 }
 
 function artifact_light_fp(obj) {
@@ -890,7 +894,7 @@ export async function drop_upon_death(mtmp, cont, x, y) {
         else if (!rn2_shk(8))
             await give_to_nearby_mon(otmp, x, y);
         else
-            place_object(otmp, x, y);
+            await place_object(otmp, x, y);
     }
     if (cont)
         cont.owt = weight(cont); // C bones.c:302: include the statue's contents.
@@ -928,16 +932,9 @@ export function can_make_bones() {
      * portal (the Wizard's Tower levels carry one); returns before the
      * depth rn2 below, so no draw is made. */
     if (!Is_branchlev(u.uz)) {
-        const traps = g.level?.traps;
-        if (traps) {
-            for (const t of traps)
-                if (t && t.ttyp === MAGIC_PORTAL)
-                    return false;
-        } else {
-            for (let t = g.ftrap; t; t = t.ntrap)
-                if (t.ttyp === MAGIC_PORTAL)
-                    return false;
-        }
+        for (let t = g.ftrap; t; t = t.ntrap)
+            if (t.ttyp === MAGIC_PORTAL)
+                return false;
     }
     const udepth = depth(u.uz);
     if (udepth <= 0)

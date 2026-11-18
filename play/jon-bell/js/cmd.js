@@ -207,7 +207,7 @@ import { is_safemon } from './display.js';
 import { resist, dozap, obj_resists, zapyourself, make_blinded, BlindedTimeout, HBlinded, set_HBlinded, incr_HBlinded, zappable, bhito, bhitpile, bhitm, _bhitm_wand_epilogue, zapsetup, zapwrapup, release_hold, boomhit } from './zap.js';
 import { findit } from './detect.js';
 import { explode } from './explode.js';
-import { wiz_rumor_check, wiz_mon_diff, wiz_panic } from './wizcmds.js';
+import { wiz_rumor_check, wiz_mon_diff, wiz_panic, wiz_display_macros } from './wizcmds.js';
 import { capture_flushed_cells, docorner_blank_utf8_captures } from './display.js';
 import { wiz_migrate_mons, wiz_level_change, wiz_wish, touch_artifact_youmonst, bane_applies_hero, wiz_genesis, wiz_kill, wiz_show_stats, wiz_flip_level, wiz_detect, wiz_show_seenv, wiz_show_vision, wiz_show_wmodes, wiz_makemap, wiz_objprobs, wiz_load_splua, wiz_load_lua, wiz_telekinesis } from './wizcmds.js';
 import { wiz_light_sources } from './light.js';
@@ -645,7 +645,9 @@ const Shk_Your = shk_Shk_Your;
  * game state and emit nothing — the C-shaped behaviour for everything up to
  * config_error_done(), which the port never reaches. */
 function config_error_add_cmd(fmt, ...args) {
-    const msg = _plineVFmt(fmt, args);
+    /* C cfgfiles.c:1888, 1549: vconfig_error_add truncates to BUFSZ-1 (255);
+     * config_erradd falls back to "Unknown error" on empty string. */
+    const msg = (_plineVFmt(fmt, args) || 'Unknown error').slice(0, 255);
     if (config_error_add_lua(msg)) return;
     if (!game._config_errors) game._config_errors = [];
     game._config_errors.push(msg);
@@ -3288,7 +3290,7 @@ async function flooreffects_fire_damage(obj, force, x, y) {
                 ncobj = otmp.nobj;
                 _objExtractSelf_useupf(otmp);
                 if (!await flooreffects(otmp, x, y, ''))
-                    place_object(otmp, x, y);
+                    await place_object(otmp, x, y);
             }
         }
         setnotworn(obj);
@@ -12413,15 +12415,6 @@ async function doborn_cmd() {
     return ECMD_OK;
 }
 
-/* C wizcmds.c:1705 wiz_display_macros(): the display macros are sane here, so
- * the loop never reports trouble. */
-async function wiz_display_macros_cmd() {
-    game._pending_message = '';
-    await display_text_window(['No display macro issues detected.']);
-    return ECMD_OK;
-}
-
-
 async function doperminv_cmd() {
     const g = game;
     if (!g.windowprocs || !(g.windowprocs.wincap & WC_PERM_INVENT)) {
@@ -13494,7 +13487,7 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         return true;
     case "wiz_level_change": {
         // C wizcmds.c:488 / cmd.c:3815: ECMD_OK clears multi after savelife.
-        outcome.value = await wiz_level_change();
+        outcome.value = _rhack_cmd_move(await wiz_level_change());
     }
         return true;
     case "done2": {
@@ -13503,65 +13496,27 @@ async function dispatch_command(command, outcome = {}, queued = false) {
     }
         return true;
     case "wiz_load_lua": {
-        g.context.move = 0; // wizcmds.c:371 returns ECMD_OK
-        await wiz_load_lua();
+        outcome.value = _rhack_cmd_move(await wiz_load_lua()); // wizcmds.c:371 returns ECMD_OK
     }
         return true;
     case "wiz_load_splua": {
-        g.context.move = 0; // wizcmds.c:394 returns ECMD_OK
-        await wiz_load_splua();
+        outcome.value = _rhack_cmd_move(await wiz_load_splua()); // wizcmds.c:394 returns ECMD_OK
     }
         return true;
     case "wiz_flip_level": {
-        g.context.move = 0; // wizcmds.c:441 returns ECMD_OK
-        await wiz_flip_level();
+        outcome.value = _rhack_cmd_move(await wiz_flip_level()); // wizcmds.c:441 returns ECMD_OK
     }
         return true;
     case "wiz_detect": {
         /* C ref: wizcmds.c:229 wiz_detect() -> findit(); ECMD_OK, no turn. */
-        g.context.move = 0;
-        await wiz_detect();
-        outcome.value = ECMD_OK; // wizcmds.c:229 ECMD_OK -> rhack reset_cmd_vars (cmd.c:3814) zeroes travel run=8
+        outcome.value = _rhack_cmd_move(await wiz_detect()); // wizcmds.c:229 ECMD_OK -> rhack reset_cmd_vars (cmd.c:3814) zeroes travel run=8
     }
         return true;
-    case "wiz_smell": {
-        /* C wizcmds.c:885-940: sniff repeatedly without spending a turn. */
-        const cc = { x: g.u.ux, y: g.u.uy };
-        outcome.value = ECMD_OK;
-        if (!olfaction(g.youmonst.data)) {
-            await pline('You are incapable of detecting odors in your present form.');
-            return true;
-        }
-        await pline('You can move the cursor to a monster that you want to smell.');
-        for (;;) {
-            await pline('Pick a monster to smell.');
-            const ans = await getpos(cc, true, 'a monster');
-            if (ans < 0 || cc.x < 0) {
-                outcome.value = ECMD_CANCEL;
-                return true;
-            }
-            const atHero = cc.x === g.u.ux && cc.y === g.u.uy;
-            const isYou = atHero && !g.u.usteed;
-            const mptr = atHero ? (g.u.usteed || g.youmonst).data
-                                : m_at(cc.x, cc.y)?.data;
-            const glyph = _glyph_at(cc.x, cc.y);
-            if (mptr) {
-                if (isYou) await pline('You surreptitiously sniff under your %s.', body_part(ARM));
-                if (!(await usmellmon(mptr)))
-                    await pline('%s to not give off any smell.', isYou ? 'You seem' : 'That monster seems');
-                if (glyph?.cls !== GLYPHCLS_MON) map_invisible(cc.x, cc.y);
-            } else {
-                await pline("You don't smell any monster there.");
-                if (glyph?.cls === GLYPHCLS_INVIS) unmap_invisible(cc.x, cc.y);
-            }
-        }
-    }
     case "wiz_kill": {
-        g.context.move = 0;
         /* C ref: wizcmds.c:243 wiz_kill().  The command consumes no game
          * time; its targeting loop owns the cursor prompts and xkilled tail.
          * ECMD_OK reaches rhack, whose reset_cmd_vars() clears forcefight (cmd.c:3815). */
-        outcome.value = await wiz_kill();
+        outcome.value = _rhack_cmd_move(await wiz_kill());
     }
         return true;
     case "wiz_smell":
@@ -13574,19 +13529,16 @@ async function dispatch_command(command, outcome = {}, queued = false) {
     }
         return true;
     case "wiz_custom": {
-        g.context.move = 0;
-        await wiz_custom();
+        outcome.value = _rhack_cmd_move(await wiz_custom());
     }
         return true;
     case "wiz_migrate_mons": {
         /* C ref: wizcmds.c:1873 — returns ECMD_OK, no time. */
-        g.context.move = 0;
-        await wiz_migrate_mons();
+        outcome.value = _rhack_cmd_move(await wiz_migrate_mons());
     }
         return true;
     case "wiz_where": {
-        g.context.move = 0;
-        outcome.value = await wiz_where(); // ECMD_OK → rhack reset_cmd_vars (cmd.c:3814) clears the stale travel run=8
+        outcome.value = _rhack_cmd_move(await wiz_where()); // ECMD_OK → rhack reset_cmd_vars (cmd.c:3814) clears the stale travel run=8
     }
         return true;
     case "dopray": {
@@ -13610,13 +13562,11 @@ async function dispatch_command(command, outcome = {}, queued = false) {
     case "wiz_panic":
         /* C cmd.c extcmdlist { '\0', "panic", ..., wiz_panic, ... } ->
          * wizcmds.c:534.  Returns ECMD_OK: no turn, no RNG. */
-        g.context.move = 0;
-        outcome.value = await wiz_panic();
+        outcome.value = _rhack_cmd_move(await wiz_panic());
         return true;
     case "wiz_rumor_check":
         /* C wizcmds.c:1102 — text window, ECMD_OK: no turn, no RNG. */
-        g.context.move = 0;
-        await wiz_rumor_check();
+        outcome.value = _rhack_cmd_move(await wiz_rumor_check());
         return true;
     case "wiz_show_nhuuid":
         g.context.move = 0;
@@ -13627,17 +13577,15 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         return true;
     case "wiz_mon_diff":
         /* C wizcmds.c:1790 — text window, ECMD_OK: no turn, no RNG. */
-        g.context.move = 0;
-        await wiz_mon_diff();
+        outcome.value = _rhack_cmd_move(await wiz_mon_diff());
         return true;
     case "wiz_show_seenv":
     case "wiz_show_vision":
     case "wiz_show_wmodes": {
         /* C wizcmds.c:576/621/657 — NHW_TEXT dumps returning ECMD_OK: no turn, no RNG. */
-        g.context.move = 0;
-        if (command.func === "wiz_show_seenv") await wiz_show_seenv();
-        else if (command.func === "wiz_show_vision") await wiz_show_vision();
-        else await wiz_show_wmodes();
+        if (command.func === "wiz_show_seenv") outcome.value = _rhack_cmd_move(await wiz_show_seenv());
+        else if (command.func === "wiz_show_vision") outcome.value = _rhack_cmd_move(await wiz_show_vision());
+        else outcome.value = _rhack_cmd_move(await wiz_show_wmodes());
     }
         return true;
     case "wiz_show_stats": {
@@ -13654,8 +13602,7 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         return true;
     case "wiz_objprobs": {
         /* C wizcmds.c:1832 wiz_objprobs() — NHW_TEXT, ECMD_OK, no turn. */
-        outcome.value = await wiz_objprobs();
-        g.context.move = 0;
+        outcome.value = _rhack_cmd_move(await wiz_objprobs());
     }
         return true;
     case "wiz_light_sources": {
@@ -13692,8 +13639,7 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         return true;
     case "wiz_display_macros": {
         /* C wizcmds.c:1705 wiz_display_macros() — #wizdispmacros. */
-        outcome.value = await wiz_display_macros_cmd();
-        g.context.move = 0;
+        outcome.value = _rhack_cmd_move(await wiz_display_macros());
     }
         return true;
     case "wiz_fuzzer": {
@@ -13912,12 +13858,7 @@ async function dispatch_command(command, outcome = {}, queued = false) {
     }
         return true;
     case "wiz_intrinsic": {
-        g.context.move = 0;
-        await wiz_intrinsic();
-        /* wizcmds.c:1095 returns ECMD_OK, so rhack's reset_cmd_vars()
-         * (cmd.c:3814-3815) zeroes a travel endpoint's lingering context.run = 8
-         * and the next turn's time_botl is no longer suppressed (allmain.c:262). */
-        outcome.value = ECMD_OK;
+        outcome.value = _rhack_cmd_move(await wiz_intrinsic());
     }
         return true;
     default:
@@ -18316,7 +18257,7 @@ async function _show_transient_light(obj, x, y) {
     const ls = light_sources_list().find((l) => l.type === 1 /* LS_OBJECT */
                                                && l.id?.a_obj === obj);
     if (!ls) return;
-    place_object(obj, x, y);
+    await place_object(obj, x, y);
     await vision_recalc(0);
     await flush_screen(0);
     const r2 = ls.range * ls.range;
@@ -18581,6 +18522,14 @@ export function recalc_mapseen_rooms() {
     if (!u || !u.uz)
         return;
     recalc_mapseen_reachability();
+    /* C dungeon.c:3240-3252: clone level.bonesinfo onto mapseen->final_resting_place once. */
+    const mptr = (g._mapseen_entries || []).find(entry => !entry.duplicate && on_level(entry, u.uz));
+    if (mptr && g.level?.bonesinfo && !mptr.final_resting_place) {
+        const clones = [];
+        for (let bp = g.level.bonesinfo; bp; bp = bp.next) clones.push({ ...bp, next: null });
+        for (let i = 0; i + 1 < clones.length; i++) clones[i].next = clones[i + 1];
+        mptr.final_resting_place = clones[0] || null;
+    }
     /* C dungeon.c:3043-3068,3122-3123 — recalc_mapseen()'s feature pass latches
      * flags.castle while the drawbridge is seen; it must run while the hero is
      * still on the level (do.c:1624), or #overview from another level never

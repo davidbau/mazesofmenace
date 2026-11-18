@@ -1679,7 +1679,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                                  100)) {
             const monwep = mtmp.mw;
             const from_your_blow = ' from the force of your blow!';
-            setmnotwielded(mtmp, monwep);
+            await setmnotwielded(mtmp, monwep);
             mtmp.weapon_check = 1; /* NEED_WEAPON */
             let buf;
             if (canseemon(mtmp))
@@ -6857,7 +6857,7 @@ export async function hmon_hitmon_weapon_melee(hmd, mon, obj, u, uwep) {
                                    50 + 15 * (Math.max(obj.oeroded | 0, obj.oeroded2 | 0)
                                               - Math.max(monwep.oeroded | 0, monwep.oeroded2 | 0)),
                                    100))) {
-        setmnotwielded(mon, monwep);
+        await setmnotwielded(mon, monwep);
         mon.weapon_check = NEED_WEAPON_HM;
         let buf;
         if (canseemon(mon))
@@ -6952,7 +6952,7 @@ async function _hmon_hitmon_misc_obj(hmd, mon, obj) {
             obj.oclass = GEM_CLASS;
             obj.oartifact = obj.spe = obj.known = obj.dknown = obj.bknown = 0;
             obj.owt = weight(obj);
-            place_object(obj, mon.mx, mon.my);
+            await place_object(obj, mon.mx, mon.my);
             return;
         }
         if ((cn | 0) === 11 /* PM_PYROLISK */) {

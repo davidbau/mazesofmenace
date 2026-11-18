@@ -14,7 +14,6 @@ import { nhlib_load_toplevel_rng } from './nhlib.js';
 import { registerStaticReset } from './statics.js';
 import { AIR, BLCORNER, BRCORNER, CLOUD, CORR, CROSSWALL, DBWALL, DOOR, FOUNTAIN, HWALL, ICE, INVALID_TYPE, IRONBARS, LAVAPOOL, LAVAWALL, MATCH_WALL, MAX_TYPE, MOAT, POOL, ROOM, SCORR, SDOOR, SINK, STONE, TDWALL, THRONE, TLCORNER, TLWALL, TRCORNER, TREE, TRWALL, TUWALL, VWALL, WATER } from './const.js'; // relocate-fns
 import { get_coord } from './sp_lev.js'; // relocate-fns
-import { impossible_cmd } from './cmd.js';
 import { freeinv, useupall } from './invent.js'; // relocate-fns
 import { LEVITATION } from './const.js'; // relocate-fns
 import { init_uhunger } from './eat.js'; // relocate-fns
@@ -291,7 +290,7 @@ export function get_table_int_opt(args, name, defval) {
 
 export function get_table_str_opt(args, name, defval) {
     const v = args.get(name);
-    if (v == null || v === '') return defval;
+    if (v == null) return defval;
     return String(v);
 }
 
@@ -306,7 +305,6 @@ export function get_table_mapchr_opt(args, name, defval) {
     const v = args.get(name);
     if (v == null || v === '') return defval;
     const s = String(v);
-    if (s.length === 0) return defval;
     const typ = check_mapchr(s);
     if (typ === INVALID_TYPE)
         throw new Error('Erroneous map char');
@@ -340,7 +338,7 @@ export function get_table_option(args, name, defval, opts) {
     for (let i = 0; opts[i] != null; i++) {
         if (s === opts[i]) return i;
     }
-    return 0; // default to first option if not found (C's luaL_checkoption behavior)
+    throw new Error(`bad option '${s}' for '${name}'`);
 }
 
 // C ref: nhlua.c:2391-2411 load_lua(): fresh state, run the file, nhl_done.
@@ -461,7 +459,7 @@ export async function nhl_gamestate(reststate = false) {
         g.spl_book = Array.from({ length: MAXSPELL + 1 }, () => ({ sp_id: 0, sp_lev: 0, sp_know: 0 }));
         gg.gmst_stored = true;
     } else {
-        impossible_cmd('nhl_gamestate: inconsistent state (%s vs %s)',
+        await impossible('nhl_gamestate: inconsistent state (%s vs %s)',
             reststate ? 'restore' : 'save', gg.gmst_stored ? 'already stored' : 'not stored');
     }
     update_inventory();

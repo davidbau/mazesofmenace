@@ -68,7 +68,7 @@ import { mnexto } from './mon.js';
 import { RLOC_MSG, has_edog, SHOPBASE } from './const.js';
 import { y_monnam, YMonnam, Adjmonnam, Amonnam } from './do_name.js';
 import { wakeup } from './mon.js';
-import { can_track, resist_conflict, can_blow, locomotion } from './mondata.js';
+import { can_track, resist_conflict, can_blow, locomotion, passes_bars } from './mondata.js';
 import { acurrstr } from './dokick.js';
 import { delobj } from './invent.js';
 import { losehp } from './hack.js';
@@ -567,30 +567,15 @@ export function _can_open_mv(mtmp) {
 
 const ALLOW_BARS_MV = 0x10000000;
 const AD_RUST_BARS_MV = 24, AD_CORR_BARS_MV = 42; /* attack.h AD_RUST/AD_CORR */
-const S_VORTEX_BARS_MV = 22; /* mondata.h mlet S_VORTEX (is_whirly) */
 
+/* C ref: mon.c:2078-2083 mon_allowflags(): ALLOW_BARS iff passes_bars(mdat)
+ * (mondata.c:554-562). */
 export function _passes_bars_mv(mtmp) {
     const mndx = (mtmp.data?.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
-    const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
-    const mlet = mrow ? (mrow[0] | 0) : -1;
-    const mf1 = mrow ? (mrow[6] >>> 0) : 0;
-    const msize = (mndx >= 0 && mndx < _MONS_MSIZE_MV.length) ? (_MONS_MSIZE_MV[mndx] | 0) : MZ_SMALL_MV;
-    const passes_walls = !!(mf1 & M1_WALLWALK_MV);
-    const amorphous = !!(mf1 & M1_AMORPHOUS_MV);
-    const unsolid = !!(mf1 & M1_UNSOLID_MV);
-    const is_whirly = (mlet === S_VORTEX_BARS_MV);
-    const verysmall = (msize < MZ_SMALL_MV);
-    /* dmgtype()/dmgtype_fromattack() (js/makemon.js) index by ptr.pmidx, not
-     * mlet/mflags1 — a minimal pmidx-only shim is all it reads. */
-    const mdatShim = { pmidx: mndx };
-    /* mondata.c:560-562: rock moles eat bars; small slithy things slip through */
-    const metallivorous = !!(mf1 & 0x80000000);
-    const slithy = !!(mf1 & 0x00080000);
-    const bigmonst = msize >= MZ_LARGE_MV;
-    const passes_bars = passes_walls || amorphous || unsolid || is_whirly || verysmall
-        || dmgtype(mdatShim, AD_RUST_BARS_MV) || dmgtype(mdatShim, AD_CORR_BARS_MV)
-        || metallivorous || (slithy && !bigmonst);
-    return passes_bars ? ALLOW_BARS_MV : 0;
+    const ptr = (mtmp.data && mtmp.data.mlet !== undefined && mtmp.data.pmidx !== undefined)
+        ? mtmp.data
+        : { pmidx: mndx };
+    return passes_bars(ptr) ? ALLOW_BARS_MV : 0;
 }
 
 

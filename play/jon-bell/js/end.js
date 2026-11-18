@@ -199,7 +199,7 @@ export async function done_object_cleanup() {
     for (const key of ['thrownobj', 'kickedobj']) {
         const obj = g[key];
         if (obj && (obj.where | 0) === OBJ_FREE) {
-            place_object(obj, ox, oy);
+            await place_object(obj, ox, oy);
             await stackobj(obj);
             g[key] = null;
             if (g.gt && g.gt[key]) g.gt[key] = null;

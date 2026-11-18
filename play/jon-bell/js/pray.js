@@ -1695,7 +1695,7 @@ async function _give_prayer_spell() {
         if (obj.otyp === SPE_BLANK_PAPER || !rn2(100)) makeknown(obj.otyp);
         await bless_obj(obj);
         await _at_your_feet(upstart(ansimpleoname(obj)));
-        place_object(obj, u.ux, u.uy);
+        await place_object(obj, u.ux, u.uy);
         newsym(u.ux, u.uy);
     }
 }

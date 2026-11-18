@@ -54,7 +54,7 @@ export async function l_obj_new_readobjnam(L, ...args) {
     } else throw new Error('l_obj_new_readobjname: Wrong args');
     return l_obj_push(L, obj);
 }
-export function l_obj_placeobj(...args) {
+export async function l_obj_placeobj(...args) {
     const lo = l_obj_check(args[0]);
     if (args.length !== 3) throw new Error('l_obj_placeobj: Wrong args');
     const coord = value => {
@@ -66,7 +66,7 @@ export function l_obj_placeobj(...args) {
         { xstart: game.gx?.xstart || 0, ystart: game.gy?.ystart || 0 });
     if (lo.obj && lo.obj.where !== OBJ_LUAFREE) {
         obj_extract_self(lo.obj);
-        place_object(lo.obj, x, y);
+        await place_object(lo.obj, x, y);
         newsym(x, y);
     }
 }

@@ -531,7 +531,7 @@ async function _mkcorpstat_corpse(corpsenm, x, y, corpstatflags, mtmp = null) {
     const otmp = await mksobj(CORPSE, true, false);
     /* C mkobj.c:2083: mksobj_at places the random corpse before the species
      * override and timer restart below, including its initial ice checks. */
-    place_object(otmp, x | 0, y | 0);
+    await place_object(otmp, x | 0, y | 0);
     /* C mkobj.c:2101 mkcorpstat — `otmp->spe = (corpstatflags & CORPSTAT_SPE_VAL)`.
      * RNG-free, but it is the corpse's recorded gender and make_corpse's caller
      * cannot set it any other way. */
@@ -1827,7 +1827,7 @@ async function meatbox_consume(mtmp, box) {
         if (engulf)
             await mpickobj(mtmp, obj);
         else if (!await flooreffects(obj, mtmp.mx, mtmp.my, ''))
-            place_object(obj, mtmp.mx | 0, mtmp.my | 0);
+            await place_object(obj, mtmp.mx | 0, mtmp.my | 0);
     }
 }
 
@@ -2562,7 +2562,7 @@ async function possibly_unwield_nc(mon, polyspot) {
         return;
     }
     if (!attacktype(mon.data, AT_WEAP_NC)) {
-        setmnotwielded(mon, mw_tmp);
+        await setmnotwielded(mon, mw_tmp);
         mon.weapon_check = NO_WEAPON_WANTED;
         /* if we're going to call distant_name(), do so before extract_self */
         if (cansee(mon.mx | 0, mon.my | 0)) {
@@ -2575,7 +2575,7 @@ async function possibly_unwield_nc(mon, polyspot) {
         if (!await flooreffects(obj, mon.mx | 0, mon.my | 0, "drop")) {
             if (polyspot)
                 bypass_obj(obj);
-            place_object(obj, mon.mx | 0, mon.my | 0);
+            await place_object(obj, mon.mx | 0, mon.my | 0);
             await stackobj(obj);
         }
         return;
@@ -2957,7 +2957,7 @@ export async function newcham(mtmp, mdat, ncflags) {
                 /* probably ought to give some "drop" message here */
                 if (await flooreffects(otmp, mtmp.mx | 0, mtmp.my | 0, ""))
                     continue;
-                place_object(otmp, mtmp.mx | 0, mtmp.my | 0);
+                await place_object(otmp, mtmp.mx | 0, mtmp.my | 0);
             }
         }
     }
@@ -5229,7 +5229,7 @@ export async function monstone(mtmp) {
         obj.nobj = null;
         if ((obj.otyp | 0) === BOULDER_OTYP || obj_resists(obj, 0, 0)) {
             if (!await flooreffects_dm(obj, x, y, 'fall'))
-                place_object(obj, x, y);
+                await place_object(obj, x, y);
         } else {
             if (obj.lamplit) end_burn(obj, true);
             kept.unshift(obj);
@@ -5306,7 +5306,6 @@ import { change_luck as change_luck_uh } from './attrib.js'; // relocate-fns
 import { _drop_doname, body_part } from './cmd.js'; // relocate-fns
 import { HALF_PHDAM, KILLED_BY_AN, LL_KILLEDPET, MGIVENNAME, OBJ_BURIED, STOMACH, TELEPAT as TELEPAT_PROP, XKILL_NOCONDUCT, XKILL_NOCORPSE } from './const.js'; // relocate-fns
 import { _topline_more_pending, flush_pending_messages, see_monsters } from './display.js'; // relocate-fns
-import { obj_no_longer_held } from './do.js'; // relocate-fns
 import { mon_nam, safe_oname } from './do_name.js'; // relocate-fns
 import { mon_explodes } from './explode.js'; // relocate-fns
 import { losehp, spoteffects } from './hack.js'; // relocate-fns
@@ -5879,8 +5878,7 @@ async function relobj_xkilled(mtmp) {
                 .includes(game.level?.locations?.[omx]?.[omy]?.roomno | 0))
             otmp.no_charge = 1;
         if (!await flooreffects(otmp, omx, omy, 'fall')) {
-            await obj_no_longer_held(otmp); /* C mkobj.c:2330 via place_object */
-            place_object(otmp, omx, omy);
+            await place_object(otmp, omx, omy);
             await stackobj_dm(otmp);
         }
     }
@@ -6220,7 +6218,7 @@ export async function xkilled(mtmp, xkflags) {
                         await _uh_dealloc_and_bump(otmp);
                 } else if (!await flooreffects(otmp, tx, ty, nomsg ? '' : 'fall')) {
                     /* C mon.c:3613-3614: place and merge the treasure drop. */
-                    place_object(otmp, tx, ty);
+                    await place_object(otmp, tx, ty);
                     await stackobj(otmp);
                 }
             }

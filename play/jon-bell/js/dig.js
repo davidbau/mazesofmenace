@@ -1194,7 +1194,7 @@ export async function dig() {
             await fracture_rock(sobj);
             if ((bobj = sobj_at(BOULDER, dpx, dpy))) {
                 obj_extract_self(bobj);
-                place_object(bobj, dpx, dpy);
+                await place_object(bobj, dpx, dpy);
             }
             digtxt = 'The boulder falls apart.';
         } else if (lev && (lev.typ === STONE || lev.typ === SCORR || IS_TREE(lev.typ))) {
@@ -1897,7 +1897,7 @@ export async function rot_corpse(arg, timeout) {
     } else if ((obj.where | 0) === OBJ_MINVENT) {
         /* C monst.h:208 MON_WEP(mon) == mon->mw */
         if (obj.owornmask && obj.ocarry && obj === obj.ocarry.mw)
-            setmnotwielded(obj.ocarry, obj); /* clears owornmask */
+            await setmnotwielded(obj.ocarry, obj); /* clears owornmask */
     } else if ((obj.where | 0) === OBJ_MIGRATING) {
         /* clear destination flag so that obfree()'s check for
            freeing a worn object doesn't get a false hit */
@@ -2250,7 +2250,7 @@ export async function unearth_objs(x, y) {
                 obj_extract_self(otmp);
                 if (otmp.timed)
                     stop_timer(ROT_ORGANIC, obj_to_any(otmp));
-                place_object(otmp, x, y);
+                await place_object(otmp, x, y);
                 await stackobj(otmp);
             }
         }
@@ -2288,7 +2288,7 @@ export async function buried_ball_to_freedom() {
     const ball = buried_ball(cc);
     if (!ball) return;
     obj_extract_self(ball);
-    place_object(ball, cc.x, cc.y);
+    await place_object(ball, cc.x, cc.y);
     await stackobj(ball);
     // C dig.c:1975: restore levitation/flight suppressed by the buried ball.
     await reset_utrap(true);

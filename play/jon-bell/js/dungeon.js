@@ -224,7 +224,10 @@ export function remdun_mapseen(dnum) {
     if (!dgn) return;
     const unreachable = (game._level_notreachable ||= {});
     for (const entry of (game._mapseen_entries || []))
-        if (entry.dnum === dnum) entry.notreachable = true;
+        if (entry.dnum === dnum) {
+            entry.notreachable = true;
+            entry.final_resting_place = null;
+        }
     const start = dgn.ledger_start | 0;
     const end = start + (dgn.num_dunlevs | 0);
     for (const key of Object.keys(game.level_info || {})) {

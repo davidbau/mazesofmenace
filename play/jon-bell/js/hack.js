@@ -135,7 +135,7 @@ import { maybe_adjust_hero_bubble, water_friction } from './mkmaze.js'; // reloc
 import { add_to_migration, obj_extract_self, obj_ice_effects } from './mkobj.js'; // relocate-fns
 import { inside_room, search_special } from './mkroom.js'; // relocate-fns
 import { curr_mon_load, hideunder, minliquid, seemimic, set_ustuck, wake_msg, wake_nearto } from './mon.js'; // relocate-fns
-import { Resists_Elem, attacktype, attacktype_fordmg, locomotion } from './mondata.js'; // relocate-fns
+import { Resists_Elem, attacktype, attacktype_fordmg, locomotion, passes_bars } from './mondata.js'; // relocate-fns
 import { accessible, can_fog, can_ooze, m_postmove_effect } from './monmove.js'; // relocate-fns
 import { NHCORE_GETPOS_TIP, l_nhcore_call } from './nhlua.js'; // relocate-fns
 import { The, Tobjnam, doname_with_price as _doname_with_price, Tobjnam as _objnam_Tobjnam, the as _the_objnam, bare_artifactname, makeplural as makeplural_objnam, otense, the } from './objnam.js'; // relocate-fns
@@ -2672,36 +2672,9 @@ async function domove_fight_empty(x, y, dx, dy) {
 
 const MON_EXPLODE_CMD = 20; /* const.js MON_EXPLODE (MAXOCLASSES + 2) */
 
-/* C ref: mondata.c:552-563 passes_bars(mptr), for gy.youmonst.data.
- *     passes_walls || amorphous || unsolid || is_whirly || verysmall
- *     || dmgtype(AD_RUST) || dmgtype(AD_CORR) || metallivorous
- *     || (slithy && !bigmonst)
- * Read only by test_move's IRONBARS arm.  monflag.h bit values are the ones
- * js/monmove.js already resolved for _passes_bars_mv; msize/mlet come off the
- * same permonst row.  The two dmgtype() terms need the attack table, which
- * makemon.js indexes by pmidx — the hero's permonst carries pmidx, so they are
- * evaluated exactly as C does rather than dropped. */
+/* C ref: mondata.c:552-563 passes_bars(mptr), for gy.youmonst.data. */
 function _passes_bars_hero() {
-    const ym = _hero_youmonst().data || {};
-    const mf1 = (ym.mflags1 | 0) >>> 0;
-    const M1_AMORPHOUS = 0x00000004, M1_WALLWALK = 0x00000008,
-          M1_SLITHY = 0x00080000, M1_UNSOLID = 0x00100000,
-          M1_METALLIVORE = 0x80000000;
-    const MZ_SMALL = 1, MZ_LARGE = 3;
-    const S_VORTEX = 22;             /* mondata.h mlet S_VORTEX → is_whirly */
-    const msize = ym.msize | 0;
-    if (mf1 & (M1_WALLWALK | M1_AMORPHOUS | M1_UNSOLID))
-        return true;
-    if ((ym.mlet | 0) === S_VORTEX)
-        return true;
-    if (msize < MZ_SMALL)
-        return true;
-    if (mf1 & M1_METALLIVORE)
-        return true;
-    if ((mf1 & M1_SLITHY) && msize < MZ_LARGE)
-        return true;
-    const shim = { pmidx: (ym.pmidx ?? (game.u?.umonnum | 0)) | 0 };
-    return !!(dmgtype(shim, 24) || dmgtype(shim, 42));
+    return passes_bars(_hero_youmonst().data);
 }
 
 function _sgn_travel(n) { return n < 0 ? -1 : (n > 0 ? 1 : 0); }
@@ -3612,7 +3585,7 @@ async function moverock_core(sx, sy, dx, dy) {
                 case LANDMINE_TTYP:
                     if (rn2(10)) {
                         obj_extract_self(otmp);
-                        place_object(otmp, rx, ry);
+                        await place_object(otmp, rx, ry);
                         newsym(sx, sy);
                         /* C hack.c:504-521 / trap.c:3171 blow_up_landmine. */
                         await pline(`${(!_hero_Deaf() || !_bldr_Blind()) ? 'KAABLAMM!!' : 'Gadzooks'}!  ${Tobjnam(otmp, 'trigger')} ${ttmp.madeby_u ? 'your' : 'a'} land mine.`);
@@ -3631,7 +3604,7 @@ async function moverock_core(sx, sy, dx, dy) {
                     if (!_bldr_Blind() && game.viz_array?.[ry])
                         game.viz_array[ry][rx] |= 0x2; /* IN_SIGHT */
                     if (!await flooreffects(otmp, rx, ry, "fall")) {
-                        place_object(otmp, rx, ry);
+                        await place_object(otmp, rx, ry);
                     }
                     if (mtmp && !_bldr_Blind())
                         newsym(rx, ry);
@@ -3712,7 +3685,7 @@ async function moverock_core(sx, sy, dx, dy) {
                when level is restored. */
             if (otmp !== game.fobj) {
                 remove_object(otmp);
-                place_object(otmp, otmp.ox, otmp.oy);
+                await place_object(otmp, otmp.ox, otmp.oy);
             }
             await dopush(sx, sy, rx, ry, otmp, costly);
         } else {

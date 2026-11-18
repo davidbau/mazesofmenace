@@ -933,11 +933,11 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
                     await You_hear('stone breaking.');
                 }
                 await fracture_rock(otmp);
-                place_object(otmp, sx, sy);
+                await place_object(otmp, sx, sy);
                 otmp = sobj_at(_KO_BOULDER_OTYP, sx, sy);
                 if (otmp) {
                     obj_extract_self_general(otmp);
-                    place_object(otmp, sx, sy);
+                    await place_object(otmp, sx, sy);
                 }
             } else {
                 const trap = t_at(sx, sy);
@@ -948,7 +948,7 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
                     await You_hear('stone crumbling.');
                 }
                 await break_statue(otmp);
-                place_object(otmp, sx, sy);
+                await place_object(otmp, sx, sy);
             }
             newsym(sx | 0, sy | 0);
             continue;
@@ -1057,7 +1057,7 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
                     await shk_addtobill(stmp.obj, false, false, true);
                     lostgoods = true;
                 }
-                place_object(stmp.obj, x, y);
+                await place_object(stmp.obj, x, y);
                 await stackobj(stmp.obj);
             }
         }

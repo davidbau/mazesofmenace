@@ -8,7 +8,7 @@ import { u_carried_gloves } from './invent.js';
 import { set_msg_xy as set_msg_xy_mu } from './pline.js';
 import { registerStaticReset } from './statics.js';
 import { getyear, yyyymmdd } from './calendar.js';
-import { attacktype_fordmg } from './mondata.js';
+import { attacktype_fordmg, noattacks } from './mondata.js';
 import { drain_item } from './zap.js';
 import { stagger } from './mondata.js';
 import { tele_restrict } from './teleport.js';
@@ -843,15 +843,11 @@ function mon_mattk(mndx, i) {
     return { aatyp: a[0] | 0, adtyp: a[1] | 0, damn: a[2] | 0, damd: a[3] | 0 };
 }
 
-/* C ref: mondata.c:61 noattacks — TRUE iff every attack is AT_NONE/AT_BOOM. */
+/* Index-based adapter for C mondata.c:61-75. Keep the attack scan in its
+ * canonical port so hero attacks and monster movement share the same rule. */
 export function noattacks_mndx(mndx) {
-    const row = mon_mattk_raw(mndx);
-    if (!row) return true;
-    for (const a of row) {
-        if (a[0] === AT_BOOM_) continue;
-        if (a[0]) return false;
-    }
-    return true;
+    const ptr = permonstTemplate(mndx);
+    return ptr ? noattacks(ptr) : true;
 }
 
 /* Raw mattk[] table accessor: returns the array of [aatyp,adtyp,damn,damd]

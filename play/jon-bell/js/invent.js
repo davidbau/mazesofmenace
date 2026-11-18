@@ -512,7 +512,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         const wasUpolyd = Upolyd(u);
         const crysknife = (obj.otyp | 0) === CRYSKNIFE;
         const oerodeproof = obj.oerodeproof;
-        place_object(obj, u.ux | 0, u.uy | 0);
+        await place_object(obj, u.ux | 0, u.uy | 0);
         // C invent.c:1227 / artifact.c:951: touching prints the blast before
         // hold/drop messages, even when the artifact accepts the hero.
         g._rt_blast_page_standing = true;

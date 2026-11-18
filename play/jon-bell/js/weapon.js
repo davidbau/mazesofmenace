@@ -4,11 +4,11 @@ import { menucolor_row } from './coloratt.js';
 import { is_ammo } from './cmd.js';
 import { build_window_screen, menu_search_case, menu_search_docorner } from './com_pager.js';
 import { ECMD_OK, OBJ_INVENT, OBJ_MINVENT, P_ATTACK_SPELL, P_BARE_HANDED_COMBAT, P_BASIC, P_CLERIC_SPELL, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL, P_ESCAPE_SPELL, P_EXPERT, P_FIRST_H_TO_H, P_FIRST_SPELL, P_FIRST_WEAPON, P_HEALING_SPELL, P_ISRESTRICTED, P_LAST_H_TO_H, P_LAST_SPELL, P_LAST_WEAPON, P_MATTER_SPELL, P_NONE, P_NUM_SKILLS, P_RIDING, P_SKILL_LIMIT, P_UNSKILLED } from './const.js';
-import { docorner_blank_utf8_captures, docrt, flush_screen, force_more, status_r1_menu_docrt } from './display.js';
+import { docorner_blank_utf8_captures, docrt, flush_screen, menu_entry_page, status_r1_menu_docrt } from './display.js';
 import { yn_function } from './cmd.js';
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { impossible as skill_impossible, pline, pline_mon, You_feel } from './pline.js';
+import { impossible as skill_impossible, pline, pline_mon, You, You_feel } from './pline.js';
 import { PM_PONY } from './pm.generated.js';
 import { P_NAME, P_SKILL, ROLE_CLERIC, ROLE_HEALER, ROLE_MONK, ROLE_WIZARD, SKILLS_FOR_ROLE, skillrow } from './skills.js';
 import { skill_based_spellbook_id } from './spell.js';
@@ -60,7 +60,7 @@ import { PM_BALROG, PM_SHADE } from './pm.generated.js'; // relocate-fns
 import { d, rnd } from './rnd.js'; // relocate-fns
 import { impossible } from './steed.js'; // relocate-fns
 import { begin_burn, end_burn } from './timeout.js'; // relocate-fns
-import { ARMOR_CLASS, GEM_CLASS, M1_WALLWALK_UH, MZ_LARGE, OCLASS_WEAPON_SH, SHADE_GLARE_SILVER_MAT, S_EEL_UH, S_SNAKE_UH, TOOL_CLASS, WEAPON_CLASS, WEAPON_WLDAM, WEAPON_WSDAM, W_WEP, You_feel_uh, _uh_martial_bonus, is_axe_dv, sh_oc_bimanual, sh_resists_ston, sr_MON_WEP, sr_is_animal, sr_mindless, sr_oc_material, sr_oc_skill, sr_touch_petrifies, thick_skinned } from './uhitm.js'; // relocate-fns
+import { ARMOR_CLASS, GEM_CLASS, M1_WALLWALK_UH, MZ_LARGE, OCLASS_WEAPON_SH, SHADE_GLARE_SILVER_MAT, S_EEL_UH, S_SNAKE_UH, TOOL_CLASS, WEAPON_CLASS, WEAPON_WLDAM, WEAPON_WSDAM, W_WEP, You_feel_uh, _uh_martial_bonus, is_axe_dv, sh_oc_bimanual, sh_resists_ston, sr_is_animal, sr_mindless, sr_oc_material, sr_oc_skill, sr_touch_petrifies, thick_skinned } from './uhitm.js'; // relocate-fns
 import { couldsee } from './vision.js'; // relocate-fns
 import { mwelded } from './wield.js'; // relocate-fns
 import { which_armor } from './worn.js'; // relocate-fns
@@ -109,11 +109,10 @@ async function skill_advance(skill) {
     u.skill_record[(u.skills_advanced | 0)] = skill;
     u.skills_advanced = (u.skills_advanced | 0) + 1;
     /* subtly change the advance message to indicate no more advancement */
-    const msg = `You are now ${P_SKILL(skill) >= P_MAX_SKILL(skill) ? 'most' : 'more'} skilled in ${P_NAME(skill)}.`;
-    await pline(msg);
+    await You('are now %s skilled in %s.',
+        P_SKILL(skill) >= P_MAX_SKILL(skill) ? 'most' : 'more', P_NAME(skill));
     if (skill >= P_FIRST_SPELL && skill <= P_LAST_SPELL)
         skill_based_spellbook_id();
-    return msg;
 }
 
 /* C ref: weapon.c:1425 unrestrict_weapon_skill(). */
@@ -470,19 +469,7 @@ export async function enhance_weapon_skill() {
     if (wizardMode() && (await y_n('Advance skills without practice?')) === 'y')
         speedy = true;
 
-    let pendingMore = null;
     do {
-        /* C ref: weapon.c:1357 create_nhwindow/start_menu -> the tty's
-         * tty_display_nhwindow, which flushes an unacknowledged topline first
-         * (`if (ttyDisplay->toplin == TOPLINE_NEED_MORE) tty_display_nhwindow(
-         * WIN_MESSAGE, TRUE)`).  That is where the "--More--" after each
-         * advance message comes from: it belongs to the NEXT menu's display,
-         * not to skill_advance, so a loop that ends instead of redisplaying
-         * leaves the message unpaged. */
-        if (pendingMore !== null) {
-            await force_more(pendingMore);
-            pendingMore = null;
-        }
         /* count advanceable skills */
         let to_advance = 0, eventually_advance = 0, maxxed_cnt = 0;
         for (let i = 0; i < P_NUM_SKILLS; i++) {
@@ -520,6 +507,8 @@ export async function enhance_weapon_skill() {
             const slots = u.weapon_slots | 0;
             prompt += `  (${slots} slot${plur(slots)} available)`;
         }
+        // C wintty.c:1923: page only an unacknowledged, visible topline.
+        await menu_entry_page();
         const picked = await enhance_menu(items, prompt, to_advance > 0);
         /* C ref: weapon.c:1390 destroy_nhwindow(win).  The #enhance menu is a
          * full-screen (offx == 0) tty window, so tearing it down repaints the
@@ -545,7 +534,7 @@ export async function enhance_weapon_skill() {
         }
         n = picked ? 1 : 0;
         if (n > 0) {
-            pendingMore = await skill_advance(picked - 1); /* get item selected */
+            await skill_advance(picked - 1); /* get item selected */
             /* check for more skills able to advance; if so, then... */
             n = 0;
             for (let i = 0; i < P_NUM_SKILLS; i++) {
@@ -631,7 +620,7 @@ export async function possibly_unwield(magr, polyspot) {
      * immediately; otherwise C leaves the old weapon in place until the next
      * weapon-selection pass. */
     if (!attacktype(magr.data, AT_WEAP)) {
-        setmnotwielded(magr, obj);
+        await setmnotwielded(magr, obj);
         magr.weapon_check = NO_WEAPON_WANTED$;
         if (cansee(magr.mx | 0, magr.my | 0)) {
             await pline_mon(magr, `${Monnam(magr)} drops ${(await distant_name(obj, doname))}.`);
@@ -641,11 +630,12 @@ export async function possibly_unwield(magr, polyspot) {
         else magr.minvent = cur.nobj;
         cur.nobj = null;
         cur.where = OBJ_FREE;
+        cur.ocarry = null; // C mkobj.c:2583-2586, obj_extract_self(OBJ_MINVENT)
         // C weapon.c:771-776: might be dropping object into water or lava
         if (!await flooreffects(cur, magr.mx | 0, magr.my | 0, "drop")) {
             if (polyspot)
                 bypass_obj(cur);
-            place_object(cur, magr.mx | 0, magr.my | 0);
+            await place_object(cur, magr.mx | 0, magr.my | 0);
             await stackobj(cur);
         }
         return;
@@ -687,7 +677,8 @@ export async function drain_weapon_skill(n) {
     }
     for (const skill of [...drained].sort((a, b) => a - b)) {
         const level = u.weapon_skills?.[skill]?.skill | 0;
-        await pline(`You forget ${level >= P_BASIC ? 'some of ' : ''}your training in ${P_NAME(skill)}.`);
+        await You('forget %syour training in %s.',
+            level >= P_BASIC ? 'some of ' : '', P_NAME(skill));
     }
 }
 
@@ -1295,12 +1286,6 @@ export function weapon_descr(obj) {
         "venoms",  /* 17 */
     ];
 
-    function is_ammo(o) {
-        const otyp = o.otyp | 0;
-        if (otyp < 0 || otyp >= MKOBJ_OC_SKILL.length) return false;
-        return (MKOBJ_OC_SKILL[otyp] | 0) < 0;
-    }
-
     function is_graystone(o) {
         const otyp = o.otyp | 0;
         return otyp === LUCKSTONE || otyp === LOADSTONE ||
@@ -1560,7 +1545,7 @@ export function dmgval(otmp, mon) {
     /* "very heavy iron ball"; weight increase is in increments (weapon.c:310-319).
      * oc_weight[HEAVY_IRON_BALL]=480, WT_IRON_BALL_INCR=160 (objects.h:1626, weight.h:18). */
     if (otyp === HEAVY_IRON_BALL && tmp > 0) {
-        const wt_base = (otmp?.owt | 0) > 480 ? ((otmp?.owt | 0) - 480) / 160 : 0;
+        const wt_base = (otmp?.owt | 0) > 480 ? Math.trunc(((otmp?.owt | 0) - 480) / 160) : 0;
         if (wt_base > 0) {
             tmp += rnd(4 * wt_base);
             if (tmp > 25)
@@ -1809,13 +1794,13 @@ async function give_may_advance_msg(skill) {
 
 /* setmnotwielded(mon, obj) — C ref: weapon.c:1808-1824.
  * Clear weapon-wielded status on an object, with artifact-light handling. */
-export function setmnotwielded(mon, obj) {
+export async function setmnotwielded(mon, obj) {
     if (!obj)
         return;
     if (artifact_light(obj) && obj.lamplit) {
         end_burn(obj, false);
         if (canseemon(mon))
-            pline("%s in %s %s %s shining.", The(xname(obj)),
+            await pline("%s in %s %s %s shining.", The(xname(obj)),
                   s_suffix(mon_nam(mon)), mbodypart(mon, HAND),
                   otense(obj, "stop"));
     }
@@ -1826,10 +1811,10 @@ export function setmnotwielded(mon, obj) {
 
 /* mwepgone(mon) — C ref: weapon.c
  * When a monster's weapon is gone, clear wielded state and set weapon_check. */
-export function mwepgone(mon) {
+export async function mwepgone(mon) {
     let mwep = mon.mw; /* C weapon.c:940: MON_WEP survives inventory extraction. */
     if (mwep) {
-        setmnotwielded(mon, mwep);
+        await setmnotwielded(mon, mwep);
         mon.weapon_check = 1;  /* NEED_WEAPON */
     }
 }
@@ -1950,7 +1935,7 @@ export async function select_rwep(mtmp) {
         if ((otmp = await oselect(mtmp, SR_BOULDER)) != null)
             return otmp;
 
-    const mwep = sr_MON_WEP(mtmp);
+    const mwep = mtmp.mw;
     /* NO_WEAPON_WANTED means we already tried to wield and failed */
     const mweponly = mwelded(mwep) && (mtmp.weapon_check | 0) === SR_NO_WEAPON_WANTED;
     if (dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 13
@@ -2029,7 +2014,7 @@ export async function select_rwep(mtmp) {
             case SR_P_CROSSBOW:
                 SR_propellor = await oselect(mtmp, SR_CROSSBOW);
             }
-            if ((otmp = sr_MON_WEP(mtmp)) && mwelded(otmp) && otmp !== SR_propellor
+            if ((otmp = mtmp.mw) && mwelded(otmp) && otmp !== SR_propellor
                 && (mtmp.weapon_check | 0) === SR_NO_WEAPON_WANTED)
                 SR_propellor = null;
         }
@@ -2040,7 +2025,7 @@ export async function select_rwep(mtmp) {
             if (SR_rwep[i] !== SR_LOADSTONE) {
                 /* Don't throw a cursed weapon-in-hand or an artifact */
                 if ((otmp = await oselect(mtmp, SR_rwep[i])) && !(otmp.oartifact | 0)
-                    && !(otmp === sr_MON_WEP(mtmp) && mwelded(otmp)))
+                    && !(otmp === mtmp.mw && mwelded(otmp)))
                     return otmp;
             } else {
                 for (otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
@@ -2152,7 +2137,7 @@ export async function mon_wield_item(mon) {
         return 0;
     }
     if (obj && obj !== SR_hands_obj) {
-        const mw_tmp = sr_MON_WEP(mon);
+        const mw_tmp = mon.mw;
 
         if (mw_tmp && (mw_tmp.otyp | 0) === (obj.otyp | 0)) {
             /* already wielding it */
@@ -2185,7 +2170,7 @@ export async function mon_wield_item(mon) {
             return 1;
         }
         mon.mw = obj; /* wield obj */
-        setmnotwielded(mon, mw_tmp);
+        await setmnotwielded(mon, mw_tmp);
         mon.weapon_check = SH_NEED_WEAPON;
         if (canseemon(mon)) {
             // C weapon.c:892-906: finish each message before naming the next

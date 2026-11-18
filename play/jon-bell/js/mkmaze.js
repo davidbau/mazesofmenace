@@ -335,15 +335,22 @@ async function populate_maze() {
 //     C rn2(3) @ mkmaze.c:1198 (corrmaze), JS rn2(1) @ rnd_rect, and 1,498
 // `sp` is C's own `s_level *sp = Is_special(&u.uz)`, passed in rather than
 // re-derived so this file needs no dungeon-chain import.
-// STILL out of scope, and still a throw: the dungeons[dnum].proto name-building
-// branch (mkmaze.c:1139-1153, Vlad's Tower) — makelevel guards that arm itself
-// and never reaches here with it — and the SPLEVTYPE wizard override.
 export async function js_makemaz(s, sp) {
     const g = game;
-    let protofile = s;
-    // C: if (sp && sp->rndlevs) Snprintf(protofile, "%s-%d", s, rnd(rndlevs));
-    if (sp && sp.rndlevs) {
-        protofile = `${protofile}-${rnd(sp.rndlevs)}`;
+    let protofile = '';
+    if (s) {
+        protofile = sp && sp.rndlevs ? `${s}-${rnd(sp.rndlevs)}` : s;
+    } else {
+        // C mkmaze.c:1139-1153: a dungeon prototype supplies the name when
+        // the caller passes "". Vlad's Tower uses tower1, tower2, tower3.
+        const uz = g.u.uz;
+        const proto = (g._dungeons_full?.[uz.dnum] ?? g.dungeons?.[uz.dnum])?.proto;
+        if (proto) {
+            protofile = dunlevs_in_dungeon(uz) > 1
+                ? `${proto}${uz.dlevel}` : proto;
+            if (sp && sp.rndlevs)
+                protofile = `${protofile}-${rnd(sp.rndlevs)}`;
+        }
     }
     // C: wizard-mode SPLEVTYPE env override (mkmaze.c:1157-1178) — never in
     // sp->rndlevs is set; tut-1/tut-2 have no rndlevs. Not ported.
@@ -395,8 +402,7 @@ export async function js_makemaz(s, sp) {
         /* C mkmaze.c:1214-1216 — the invocation level has no down stair;
          * reserve the vibrating square location for the Sanctum descent. */
         pick_vibrasquare_location();
-        await mktrap(VIBRATING_SQUARE, 0 /* no trap flags */, null,
-                     { x: game.svi.inv_pos.x, y: game.svi.inv_pos.y });
+        await maketrap(game.svi.inv_pos.x, game.svi.inv_pos.y, VIBRATING_SQUARE);
     }
 
     /* place branch stair or portal */
@@ -898,13 +904,13 @@ export async function bubbles_copy_snapshot(snapshot, level) {
     }
 }
 
-/* C mkmaze.c:1935-1946 set_wportal() — "there better be only one magic portal
+/* C mkmaze.c:1802-1809 set_wportal() — "there better be only one magic portal
  * on water level...".  No RNG. */
-function set_wportal() {
-    for (let t = game.level?.traps ?? null; t; t = t.ntrap) {
+async function set_wportal() {
+    for (let t = game.ftrap ?? null; t; t = t.ntrap) {
         if ((t.ttyp | 0) === MAGIC_PORTAL) { _wportal = t; return; }
     }
-    /* impossible("set_wportal(): no portal!") — C logs and leaves it null. */
+    await impossible("set_wportal(): no portal!");
     _wportal = null;
 }
 
@@ -1036,7 +1042,7 @@ async function mv_bubble(b, dx, dy, ini) {
                 let otmp;
                 for (let olist = cons.list; olist; olist = otmp) {
                     otmp = olist.nexthere;
-                    place_object(olist, cons.x, cons.y);
+                    await place_object(olist, cons.x, cons.y);
                     await stackobj(olist);
                 }
                 break;
@@ -1152,15 +1158,15 @@ export async function movebubbles() {
 
     /* set up the portal the first time bubbles are moved */
     if (!_wportal)
-        set_wportal();
+        await set_wportal();
 
     vision_recalc(2);
 
     _hero_bubble = null;
 
     if (Is_waterlevel(uz)) {
-        // C mkmaze.c:1562-1564: keep attached ball&chain out of bubble contents.
-        if (game.u?.uchain) bcpin = await unplacebc_and_covet_placebc();
+        // C mkmaze.c:1562-1564: keep attached ball&chain out of bubble contents (Punished = uball != 0).
+        if (game.u?.uball) bcpin = await unplacebc_and_covet_placebc();
         /* C mkmaze.c:1560-1646 — pick up everything inside of a bubble then
          * fill all bubble locations. */
         for (let b = _bubbles_up ? _bbubbles : _ebubbles; b;
@@ -1213,6 +1219,7 @@ export async function movebubbles() {
                         loc.waslit = false;
                         loc.roomno = 0;
                         loc.edge = false;
+                        loc.candig = false;
                         loc.remembered_glyph = water_memory_glyph();
                         block_point(x, y);
                     }
@@ -1239,6 +1246,7 @@ export async function movebubbles() {
                 loc.waslit = false;
                 loc.roomno = 0;
                 loc.edge = false;
+                loc.candig = false;
                 recalc_block_point(x, y);
                 /* "all air or all cloud around the perimeter of the Air level
                    tends to look strange; break up the pattern" */
@@ -1267,7 +1275,7 @@ export async function movebubbles() {
     }
 
     // C mkmaze.c:1681-1683: replace at the hero's final position.
-    if (Is_waterlevel(game.u?.uz) && game.u?.uchain)
+    if (Is_waterlevel(game.u?.uz) && game.u?.uball)
         await lift_covet_and_placebc(bcpin);
     game.vision_full_recalc = 1;
 }
@@ -1723,6 +1731,9 @@ function wall_cleanup(x1, y1, x2, y2) {
 }
 
 export function fix_wall_spines(x1, y1, x2, y2) {
+    // C mkmaze.c:249-250: sanity check on incoming variables.
+    if (x1 < 0 || x2 >= COLNO || x1 > x2 || y1 < 0 || y2 >= ROWNO || y1 > y2)
+        throw new Error(`wall_extends: bad bounds (${x1},${y1}) to (${x2},${y2})`);
     const spineArray = [VWALL, HWALL, HWALL, HWALL,
         VWALL, TRCORNER, TLCORNER, TDWALL,
         VWALL, BRCORNER, BLCORNER, TUWALL,

@@ -10,7 +10,7 @@ import { usmellmon } from './mon.js';
 import { body_part, cmdq_pop, doprev_message } from './cmd.js';
 import { ARM, ECMD_CANCEL, UTOTYPE_NONE, Is_stronghold, Is_botlevel, CMDQ_KEY } from './const.js';
 import { getdir } from './cmd.js';
-import { map_invisible, GLYPHCLS_MON, GLYPHCLS_INVIS, display_migrating_mons } from './display.js';
+import { map_invisible, glyph_at, glyph_is_monster, glyph_to_mon, glyph_is_object, glyph_to_obj, glyph_is_invisible_at, display_migrating_mons } from './display.js';
 import { game, wizard } from './gstate.js';
 import { reassign } from './invent.js';
 import { COLNO, NATTK } from './const.js';
@@ -21,7 +21,7 @@ import { vision_recalc } from './vision.js';
 import { oc_merge } from './oc_merge.generated.js';
 import { canspotmon, unmap_invisible } from './display.js';
 import { flash_mon } from './mon.js';
-import { pline, gamelog_add, livelog_printf } from './pline.js';
+import { pline, There, gamelog_add, livelog_printf } from './pline.js';
 import { topl_park_cursor, TOPL_LIMIT, _topl_more_pages, use_last_flush_snapshot, restore_occupation_topline, restore_command_topline } from './display.js';
 import { bot } from './botl.js';
 import { flush_screen, force_more, _topl_record_join, capture_painted_frame, capture_pre_movemon_botl,
@@ -80,7 +80,8 @@ import { m_at, mon_nam, XKILL_NOMSG } from './uhitm.js';
 import { xkilled } from './mon.js';
 import { x_monnam } from './do_name.js';
 import { nonliving } from './makemon.js';
-import { mondied } from './mon.js';
+import { monkilled } from './mon.js';
+import { AD_PHYS } from './dogmove.js';
 import { ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, SUPPRESS_IT,
          SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE, has_mgivenname } from './const.js';
 import { dmonsfree } from './mon.js';
@@ -96,7 +97,7 @@ import { bury_objs } from './dig.js';
 import { is_missile, ammo_and_launcher } from './hold_another_object.js';
 import { can_reach_floor } from './engrave.js';
 import { addinv_core0 } from './invent.js';
-import { obfree } from './shk.js';
+import { obfree, setpaid } from './shk.js';
 import { A_WIS, KILLED_BY, ANTIMAGIC, HALF_PHDAM, LOW_PM, ECMD_OK, MM_MINVIS,
          Is_airlevel, Is_waterlevel, IRONBARS, ICE, FUMBLING, COLD_RES, LS_OBJECT, LS_MONSTER,
          LL_CONDUCT, LL_WISH, LL_ARTIFACT, Upolyd } from './const.js';
@@ -492,15 +493,15 @@ export async function wiz_smell() {
         const atYou = cc.x === u.ux && cc.y === u.uy;
         const isYou = atYou && !u.usteed;
         const mptr = atYou ? (u.usteed || game.youmonst).data : m_at(cc.x, cc.y)?.data;
-        const glyph = game.level.at(cc.x, cc.y).disp_cls;
+        const glyph = glyph_at(cc.x, cc.y);
         if (mptr) {
             if (isYou) await pline('You surreptitiously sniff under your %s.', body_part(ARM));
             if (!(await usmellmon(mptr)))
                 await pline('%s to not give off any smell.', isYou ? 'You seem' : 'That monster seems');
-            if (glyph !== GLYPHCLS_MON) map_invisible(cc.x, cc.y);
+            if (!glyph_is_monster(glyph)) map_invisible(cc.x, cc.y);
         } else {
             await pline("You don't smell any monster there.");
-            if (glyph === GLYPHCLS_INVIS) unmap_invisible(cc.x, cc.y);
+            if (glyph_is_invisible_at(cc.x, cc.y)) unmap_invisible(cc.x, cc.y);
         }
     }
 }
@@ -512,6 +513,7 @@ export async function wiz_kill() {
     const g = game;
     const savedVerbose = g.flags?.verbose;
     const savedAutodescribe = g.iflags?.autodescribe;
+    const uarehere = { dnum: g.u?.uz?.dnum | 0, dlevel: g.u?.uz?.dlevel | 0 };
     const cc = { x: g.u?.ux | 0, y: g.u?.uy | 0 };
     let prompt = 'Pick first monster to slay';
     for (;;) {
@@ -571,12 +573,10 @@ export async function wiz_kill() {
             // C wizcmds.c:316-328; mon.c:3381-3403 monkilled(NULL, AD_PHYS).
             g.context.mon_moving = true;
             await pline(`${upstart(Mn)} is ${nonliving(mtmp.data) ? 'destroyed' : 'killed'}.`);
-            g.iflags.sad_feeling = !!mtmp.mtame;
-            (g.gd ||= {}).disintegested = false;
-            await mondied(mtmp);
+            await monkilled(mtmp, null, AD_PHYS);
             g.context.mon_moving = false;
         }
-        if (g.u?.utotype) break;
+        if (g.u?.utotype || !on_level(g.u?.uz, uarehere)) break;
     }
     await dmonsfree();
     return ECMD_OK;
@@ -604,27 +604,26 @@ export async function wiz_level_change() {
     const MAXULEV = 30;
 
     /* C wizcmds.c:452-458: getlin prompt + parse */
-    const buf = await getlin('To what experience level do you want to be set?');
+    const rawBuf = await getlin('To what experience level do you want to be set?');
+    const buf = mungspaces(rawBuf || '');
 
-    /* C wizcmds.c:455: buf[0]=='\033' || buf[0]=='\0' → ret=0 */
+    /* C wizcmds.c:454-456: mungspaces(buf); buf[0]=='\033' || buf[0]=='\0' → ret=0 */
     if (!buf || buf[0] === '\x1b' || buf[0] === '\0') {
         await pline('Never mind.');
-        g.context.move = 0;
         return ECMD_OK;
     }
 
     /* C wizcmds.c:458: ret = sscanf(buf, "%d%c", &newlevel, &dummy) */
-    /* mungspaces (trim + collapse) first; "%d%c" yields 2 when any char
-     * follows the number (e.g. "2.0"), so only a whole-string integer passes. */
-    const m = /^[+-]?\d+$/.exec(buf.replace(/\s+/g, ' ').trim());
-    const parsed = m ? parseInt(m[0], 10) : NaN;
-    if (isNaN(parsed)) {
+    const m = /^[+-]?\d+$/.exec(buf);
+    if (!m) {
         /* C wizcmds.c:460-463: ret != 1 → pline1(Never_mind) */
         await pline('Never mind.');
-        g.context.move = 0;
         return ECMD_OK;
     }
-    let newlevel = parsed | 0;
+    let parsed = BigInt(m[0]);
+    if (parsed > 0x7fffffffffffffffn) parsed = 0x7fffffffffffffffn;
+    else if (parsed < -0x8000000000000000n) parsed = -0x8000000000000000n;
+    let newlevel = Number(BigInt.asIntN(32, parsed));
 
     /* C wizcmds.c:464-484: level comparison + loop */
     if (newlevel === (u.ulevel | 0)) {
@@ -633,7 +632,6 @@ export async function wiz_level_change() {
         /* C wizcmds.c:466-474: going down */
         if ((u.ulevel | 0) === 1) {
             await pline('You are already as inexperienced as you can get.');
-            g.context.move = 0;
             return ECMD_OK;
         }
         if (newlevel < 1) newlevel = 1;
@@ -644,7 +642,6 @@ export async function wiz_level_change() {
         /* C wizcmds.c:475-484: going up */
         if ((u.ulevel | 0) >= MAXULEV) {
             await pline('You are already as experienced as you can get.');
-            g.context.move = 0;
             return ECMD_OK;
         }
         if (newlevel > MAXULEV) newlevel = MAXULEV;
@@ -657,7 +654,6 @@ export async function wiz_level_change() {
     /* C wizcmds.c:486: u.ulevelmax = u.ulevel */
     u.ulevelmax = u.ulevel;
 
-    g.context.move = 0;
     return ECMD_OK;
 }
 
@@ -848,10 +844,7 @@ export async function wiz_show_stats() {
         if (lev.duplicate) continue; // find_mapseen updates only the first entry.
         const custom = g._level_custom?.[`${lev.dnum}:${lev.dlevel}`];
         if (custom) { acount++; asize += new TextEncoder().encode(custom).length + 1; }
-        const ledger = g.dungeons[lev.dnum].ledger_start + lev.dlevel;
-        const remembered = lev.dnum === g.u.uz.dnum && lev.dlevel === g.u.uz.dlevel
-            ? level : g.levelStore?.get(ledger)?.level || g._mapseen_levels?.get(ledger);
-        for (let ce = remembered?.bonesinfo; ce; ce = ce.next) bcount++;
+        for (let ce = lev.final_resting_place; ce; ce = ce.next) bcount++;
     }
     if (bcount)
         lines.push(_stats_row(`cemetery, size ${STATS_CEMETERY_SIZE}`,
@@ -973,7 +966,7 @@ export async function wiz_wish() {
 export async function wiz_flip_level() {
     const choices = '0123';
     const prmpt = 'Flip 0=randomly, 1=vertically, 2=horizontally, 3=both:';
-    if (wizard) {
+    if (wizard()) {
         let c = await yn_function(prmpt, choices, '\0', true);
         if (c && c !== '\0' && choices.includes(c)) {
             c = c.charCodeAt(0) - 48;
@@ -1050,7 +1043,7 @@ import { cmd_from_func as _binding_cmd_from_func } from './cmd.js'; // relocate-
 import { build_window_screen, menu_search_case } from './com_pager.js'; // relocate-fns
 import { BLINDED, CONFUSION, DEAF, FIRE_RES, FLYING, GLIB, HALLUC, HALLUC_RES, In_endgame, In_sokoban, Is_earthlevel, Is_firelevel as Is_firelevel_cmd, Is_knox_level, LEVITATION, PICK_NONE, PROT_FROM_SHAPE_CHANGERS, RIGHT_HANDED, SICK, SICK_NONVOMITABLE, SICK_VOMITABLE, SLIMED, STONE, STONED, STUNNED, TIMEOUT, VOMITING, WARN_OF_MON, WWALKING, gs } from './const.js'; // relocate-fns
 import { capture_painted_frame_with_status, docorner_blank_utf8_captures, force_more_pages, map_engraving, map_trap, menu_entry_page } from './display.js';
-import { wizcustom_glyphids, glyphid_cache_status, fill_glyphid_cache, free_glyphid_cache } from './glyphs.js'; // relocate-fns
+import { glyph_to_cmap, wizcustom_glyphids, glyphid_cache_status, fill_glyphid_cache, free_glyphid_cache } from './glyphs.js'; // relocate-fns
 import { def_oc_syms_chars } from './drawing.js'; // relocate-fns
 import { Invocation_lev as Invocation_lev_dgn, at_dgn_entrance, on_level, print_branch } from './dungeon.js'; // relocate-fns
 import { may_dig } from './hack.js'; // relocate-fns
@@ -1394,6 +1387,59 @@ export async function wiz_mon_diff() {
     return ECMD_OK;
 }
 
+/* C wizcmds.c:1705 wiz_display_macros() — #wizdispmacros; NHW_TEXT, ECMD_OK. */
+export async function wiz_display_macros() {
+    const display_issues = "Display macro issues:";
+    const MAX_GLYPH = 9624;
+    const no_glyph = MAX_GLYPH;
+    const max_glyph = MAX_GLYPH;
+    const DEFSYM_SIZE = 105;
+    const NUMMONS = monsPack.mons.length;
+    const NUM_OBJECTS = MKOBJ_OC_CLASS.length;
+    const S_vbeam = 74;
+    const S_rslant = 77;
+    const glyph_is_cmap = (g) => g >= 3929 && g < 4093;
+    const glyph_is_cmap_zap = (g) => g >= 4051 && g < 4083;
+    const out = [];
+    let trouble = 0;
+
+    for (let glyph = 0; glyph < MAX_GLYPH; ++glyph) {
+        if (glyph_is_cmap(glyph)) {
+            const test = glyph_to_cmap(glyph);
+            if (test === no_glyph) {
+                if (!trouble++) out.push(display_issues);
+                out.push(`glyph_is_cmap() / glyph_to_cmap(glyph=${glyph}) sync failure, returned NO_GLYPH (${test})`);
+            }
+            if (glyph_is_cmap_zap(glyph) && !(test >= S_vbeam && test <= S_rslant)) {
+                if (!trouble++) out.push(display_issues);
+                out.push(`glyph_is_cmap_zap(glyph=${glyph}) returned non-zap cmap ${test}`);
+            }
+            if (test < 0 || test >= DEFSYM_SIZE) {
+                if (!trouble++) out.push(display_issues);
+                out.push(`glyph_to_cmap(glyph=${glyph}) returns ${test} exceeds defsyms[${DEFSYM_SIZE}] bounds (MAX_GLYPH = ${max_glyph})`);
+            }
+        }
+        if (glyph_is_monster(glyph)) {
+            const test = glyph_to_mon(glyph);
+            if (test < 0 || test >= NUMMONS) {
+                if (!trouble++) out.push(display_issues);
+                out.push(`glyph_to_mon(glyph=${glyph}) returns ${test} exceeds mons[${NUMMONS}] bounds`);
+            }
+        }
+        if (glyph_is_object(glyph)) {
+            const test = glyph_to_obj(glyph);
+            if (test < 0 || test > NUM_OBJECTS) {
+                if (!trouble++) out.push(display_issues);
+                out.push(`glyph_to_obj(glyph=${glyph}) returns ${test} exceeds objects[${NUM_OBJECTS}] bounds`);
+            }
+        }
+    }
+    if (!trouble)
+        out.push("No display macro issues detected.");
+    await display_text_window(out);
+    return ECMD_OK;
+}
+
 // C ref: wizcmds.c:1401-1441 you_sanity_check() — hero-state part of the
 // 'sanity_check' option's per-turn envelope (run first, wizcmds.c:1465).
 // The recovery arm's display_nhwindow(WIN_MESSAGE, TRUE) is a message-window
@@ -1633,9 +1679,11 @@ export async function wiz_identify() {
         const WIN_COL_W = Math.min(41, 78 - maxLenW);
         const endRowW = windowLines.length - 1;
         const endCursorColW = WIN_COL_W + 5 + 1; /* WIN_COL + len("(end)") + 1 */
-        /* C wintty.c set_item_state() — '-' unselected, '+' selected (a count
-         * would make it '#'; nothing in this menu attaches one). */
+        /* C wintty.c set_item_state(): counted selections display '#'.
+         * invent.c ignores the count when it identifies the selected item. */
         const selected = new Set();
+        const selectedCounts = new Map();
+        let counting = false, count = 0n, resetCount = true;
         /* C ref: win/tty/getline.c:213 — tty_getlin's closing
          * clear_nhwindow(WIN_MESSAGE) blanks the WHOLE of screen row 0,
          * including the window's own title text at column WIN_COL, and
@@ -1646,10 +1694,12 @@ export async function wiz_identify() {
             const rows = windowLines.slice();
             for (let i = 0; i < lineObj.length; i++) {
                 const o = lineObj[i];
-                if (o && selected.has(o))
+                if (o && selected.has(o)) {
+                    const mark = selectedCounts.has(o) ? '#' : '+';
                     rows[i] = wizGlyph.has(o)
-                        ? rows[i].replace(` ${wizGlyph.get(o)} `, ' + ')
-                        : rows[i].replace(' - ', ' + ');
+                        ? rows[i].replace(` ${wizGlyph.get(o)} `, ` ${mark} `)
+                        : rows[i].replace(' - ', ` ${mark} `);
+                }
             }
             if (titleErased) rows[0] = '';
             return build_window_screen(rows, WIN_COL_W, uacW).split('\n');
@@ -1670,11 +1720,41 @@ export async function wiz_identify() {
         for (let i = 0; i < lineObj.length; i++)
             if (lineObj[i]) mlist.push({ str: windowLines[i], payload: lineObj[i] });
         let cancelled = false;
+        const toggle = (o) => {
+            if (selected.has(o)) {
+                if (counting && count > 0n) selectedCounts.set(o, count);
+                else { selected.delete(o); selectedCounts.delete(o); }
+            } else if (counting && count > 0n) {
+                selected.add(o);
+                selectedCounts.set(o, count);
+            } else if (!counting) {
+                selected.add(o);
+                selectedCounts.delete(o);
+            }
+        };
         for (;;) {
+            if (resetCount) { counting = false; count = 0n; }
+            else resetCount = true;
             repaint();
             const raw = await nhgetch();
-            const k = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
-            if (k === 27) { g._ttyDismissMore = 1; cancelled = true; break; }  /* ESC — n = -1 */
+            const rawk = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
+            /* C wintty.c:1556-1560: explicit item/group accelerators win;
+             * other keys go through the configured menu command aliases. */
+            const explicit = accel.has(rawk)
+                || unid.some(o => def_oc_syms_chars[o.oclass]?.charCodeAt(0) === rawk);
+            const k = explicit ? rawk : map_menu_cmd(rawk);
+            if (k >= 48 && k <= 57) {
+                count = count * 10n + BigInt(k - 48);
+                if (count > 0x7fffffffffffffffn) { count = -1n; continue; }
+                if (count !== 0n) { counting = true; resetCount = false; }
+                continue;
+            }
+            if (k === 27) {
+                g._ttyDismissMore = 1;
+                if (counting) continue;
+                cancelled = true;
+                break;
+            }
             if (k === 32 || k === 10 || k === 13) break;      /* single page: done */
             /* C wintty.c:1650-1699: PAGE and ALL affect the same entries
              * in this single-page menu.  The fake all-items row carries
@@ -1688,36 +1768,41 @@ export async function wiz_identify() {
                     const mode = g.iflags.menuinvertmode ?? 1;
                     if (o === WIZID_ALL && (mode === 2
                         || (mode === 1 && !selected.has(o)))) continue;
-                    if (bulk === 'select') selected.add(o);
-                    else if (bulk === 'unselect' || selected.has(o)) selected.delete(o);
-                    else selected.add(o);
+                    if (bulk === 'select') {
+                        if (!selected.has(o)) selectedCounts.delete(o);
+                        selected.add(o);
+                    } else if (bulk === 'unselect' || selected.has(o)) {
+                        selected.delete(o);
+                        selectedCounts.delete(o);
+                    } else {
+                        selected.add(o);
+                        selectedCounts.delete(o);
+                    }
                 }
                 continue;
             }
             // invent.c:3321-3327; wintty.c:1739-1747: class keys invert the group.
             const group = unid.filter(o => def_oc_syms_chars[o.oclass]?.charCodeAt(0) === k);
             if (!accel.has(k) && group.length) {
-                for (const o of group) {
-                    if (selected.has(o)) selected.delete(o); else selected.add(o);
-                }
+                for (const o of group) toggle(o);
                 continue;
             }
             const payload = accel.get(k);
             if (payload) {
-                if (selected.has(payload)) selected.delete(payload);
-                else selected.add(payload);
+                toggle(payload);
                 continue;
             }
             if (k === 58 /* ':' MENU_SEARCH */) {
                 /* C ref: wintty.c:1700-1730.  PICK_ANY, so every match toggles
                  * and the menu stays up. */
                 await menu_search_case('ANY', mlist, frameRows, (curr) => {
-                    if (selected.has(curr.payload)) selected.delete(curr.payload);
-                    else selected.add(curr.payload);
+                    toggle(curr.payload);
                 });
                 titleErased = true;
                 continue;
             }
+            /* xwaitforspace ignores unacceptable keys without ending a count. */
+            if (k !== (g._ttyDismissMore | 0)) resetCount = false;
         }
         /* wintty.c:982: select_menu dismisses the corner before identification. */
         docorner_blank_utf8_captures(WIN_COL_W - 1, windowLines.length + 1);
@@ -1760,7 +1845,10 @@ export async function wiz_identify() {
     windowLines.push('(end)');
     const maxLen = windowLines.reduce((max, ln) =>
         Math.max(max, ln.replace(/\x1b\[[0-9;]*m/g, '').length), 0);
-    const WIN_COL = 80 - maxLen - 2;
+    /* C wintty.c:1925-1928 puts a non-overlay menu at column zero;
+     * process_menu_window adds one leading blank to each menu row. */
+    const WIN_COL = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0
+        ? 1 : 80 - maxLen - 2;
     const endRow = windowLines.length - 1;
     const endCursorCol = WIN_COL + 5 + 1; /* WIN_COL + len("(end)") + 1 */
     /* C ref: getline.c:213 — a MENU_SEARCH's tty_getlin ends with
@@ -1899,10 +1987,10 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
     };
 
     let curr_page = 0, need_draw = true;
-    let counting = false, count = 0, reset_count = true;
+    let counting = false, count = 0n, reset_count = true;
     let finished = false, cancelled = false;
     while (!finished) {
-        if (reset_count) { counting = false; count = 0; } else reset_count = true;
+        if (reset_count) { counting = false; count = 0n; } else reset_count = true;
         if (need_draw) {
             /* C: `if (!page_start)` — a page change repaints the whole screen
              * (term_clear_screen for a full-screen menu), so a title row a
@@ -1947,8 +2035,14 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
         const key = map_menu_cmd(rawRead);
         const ch = (key >= 0 && key < 128) ? String.fromCharCode(key) : '';
         if (ch >= '0' && ch <= '9') {
-            count = count * 10 + (key - 48);
-            if (count !== 0) { counting = true; reset_count = false; }
+            /* C wintty.c:1583-1602 uses AppendLongDigit, not floating point.
+             * An overflowing long discards the count on the next iteration. */
+            count = count * 10n + BigInt(key - 48);
+            if (count > 0x7fffffffffffffffn) {
+                count = -1n;
+                continue;
+            }
+            if (count !== 0n) { counting = true; reset_count = false; }
             continue;
         }
         switch (key) {
@@ -2098,12 +2192,11 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
 export async function wiz_intrinsic() {
     const g = game;
     g.context = g.context || {};
-    g.context.move = 0; /* ECMD_OK — the command costs no turn either way */
     if (!(g.flags && g.flags.debug)) {
         /* C cmd.c:157 unavailcmd = "Unavailable command '%s'.", filled from
          * ecname_from_fn(wiz_intrinsic) = ef_txt, which has NO leading '#'. */
         await pline("Unavailable command 'wizintrinsic'.");
-        return;
+        return ECMD_OK;
     }
     const u = g.u || (g.u = {});
     if (!u.uprops) u.uprops = {};
@@ -2165,7 +2258,9 @@ export async function wiz_intrinsic() {
         /* C has ONE HDeaf; here it can live in the flat u.HDeaf (menu builder above). */
         const oldtimeout = ((prop.intrinsic | 0) | (p === DEAF ? (u.HDeaf | 0) : 0)) & TIMEOUT;
         /* C: amt = (count == -1L) ? DEFAULT_TIMEOUT_INCR : count; if (amt <= 0) continue */
-        const amt = (pick.count === -1) ? DEFAULT_TIMEOUT_INCR : (pick.count | 0);
+        const amt = (pick.count === -1) ? DEFAULT_TIMEOUT_INCR
+            : typeof pick.count === 'bigint' ? Number(BigInt.asIntN(32, pick.count))
+            : (pick.count | 0);
         if (amt <= 0)
             continue;
         let newtimeout = oldtimeout + amt;
@@ -2339,8 +2434,9 @@ export async function wiz_intrinsic() {
         if (frozenPaint) g._paintedSnapshot = savedSnap || null;
     }
     if (!standing) g._pending_message = '';
-    /* C wizcmds.c:1092-1094: docrt() then return -- no flush_screen here;
+    /* C wizcmds.c:1092-1095: docrt() then return ECMD_OK — no flush_screen here;
      * the moveloop's own flush (after see_monsters) paints the frame. */
+    return ECMD_OK;
 }
 
 /* C ref: wizcmds.c:958 #define DEFAULT_TIMEOUT_INCR 30 */
@@ -2467,12 +2563,14 @@ function _pd_at_dgn_entrance(dname, branches, dungeonsFull, end1_dnum) {
 
 /* C ref: wizcmds.c:1934 wiz_custom() — #wizcustom. */
 export async function wiz_custom() {
-    if (!wizard()) return ECMD_OK;
+    if (!wizard()) {
+        await pline("Unavailable command 'wizcustom'.");
+        return ECMD_OK;
+    }
     const g = game;
     if (!glyphid_cache_status()) fill_glyphid_cache();
     const menu = new TtyMenu();
-    menu.add_menu_heading('    glyph  glyph identifier                        '
-                          + '     sym   clr customcolor unicode utf8');
+    menu.add_menu_heading('    glyph  glyph identifier                             sym   clr customcolor unicode utf8');
     /* wizcmds.c:1952-1962: symset name (or "default"), ", active" when the
      * primary set is current, ", handler=<known_handling>" when set. */
     const set = gs.symset[0] || {};
@@ -2733,7 +2831,7 @@ export async function wiz_levltyp_legend() {
 export async function wiz_fuzzer() {
     if (BigInt(game.flags.suppress_alert || 0) < get_feature_notice_ver('3.7.0')) {
         await pline('The fuzz tester will make NetHack execute random keypresses.');
-        await pline('There is no conventional way out of this mode.');
+        await There('is no conventional way out of this mode.');
     }
     if (await paranoid_query(true, 'Do you want to start fuzz testing?')) {
         game.iflags.debug_fuzzer =
@@ -2760,8 +2858,10 @@ async function makemap_unmakemon(mtmp, migratory) {
         mtmp.isgd = 0; /* fall through to mongone() */
     } else if ((mtmp.mhp | 0) < 1) {
         return; /* DEADMONSTER: already set to be discarded */
+    } else if (mtmp.isshk && mtmp.mextra?.eshk?.shoplevel
+               && on_level(g.u.uz, mtmp.mextra.eshk.shoplevel)) {
+        await setpaid(mtmp);
     }
-    /* wizcmds.c:91-93 setpaid() for a shk on this level: private to js/shk.js, RNG-free. */
     if (migratory) {
         mtmp.mstate = ((mtmp.mstate | 0) | 0x01 /* MON_OFFMAP */)
             & ~(0x04 | 0x08 | 0x40); /* ~(MIGRATING|LIMBO|ENDGAME_MIGR) */
@@ -2800,4 +2900,6 @@ export async function makemap_remove_mons() {
         }
     }
     await dmonsfree();
+    if (g.fmon)
+        await impossible("makemap_remove_mons: 'fmon' did not get emptied?");
 }

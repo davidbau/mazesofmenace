@@ -349,10 +349,10 @@ async function placebc_core() {
         u.bc_order = BCPOS_DIFFER;        // ball.c:129
     } else {
         await flooreffects(uball, u.ux, u.uy, ''); // ball.c:133
-        place_object(uball, u.ux, u.uy);
+        await place_object(uball, u.ux, u.uy);
         u.bc_order = BCPOS_CHAIN;
     }
-    place_object(uchain, u.ux, u.uy);     // ball.c:138
+    await place_object(uchain, u.ux, u.uy);     // ball.c:138
     // ball.c:141 — pick up glyph.  This is read back by move_bc's Blind half
     // (and is the ONLY initialiser of u.bglyph/u.cglyph on the goto_level
     // arrival path, where set_bc is not called).

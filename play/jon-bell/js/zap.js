@@ -8012,7 +8012,7 @@ export async function makewish() {
             observe_object(otmp); /* o_init.c:447 skips under Hallucination */
         /* C invent.c:1218-1231 */
         const wasUpolyd = Upolyd(g.u);
-        place_object(otmp, g.u.ux | 0, g.u.uy | 0);
+        await place_object(otmp, g.u.ux | 0, g.u.uy | 0);
         const canTouch = await touch_artifact_youmonst(otmp);
         /* C invent.c:1232-1238: a blast which ends polymorph also loses
          * the hero's grip; the artifact never enters inventory. */

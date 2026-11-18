@@ -2560,7 +2560,7 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
                   || (otmp.otyp | 0) === 224 /* TALLOW_CANDLE */
                   || (otmp.otyp | 0) === 225 /* WAX_CANDLE */
                   || (otmp.otyp | 0) === 321 /* POT_OIL */)) {
-        place_object(otmp, game.u?.ux | 0, game.u?.uy | 0);
+        await place_object(otmp, game.u?.ux | 0, game.u?.uy | 0);
         begin_burn(otmp, false);
         obj_extract_self_general(otmp);
     }

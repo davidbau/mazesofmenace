@@ -3146,7 +3146,7 @@ export async function use_misc(mtmp) {
             switch (where_to) {
             case 1:
                 await pline_mon(mtmp, `${Monnam(mtmp)} yanks ${the_weapon} from your ${hand_buf}!`);
-                place_object(obj, mtmp.mx, mtmp.my);
+                await place_object(obj, mtmp.mx, mtmp.my);
                 break;
             case 2:
                 await pline_mon(mtmp, `${Monnam(mtmp)} yanks ${the_weapon} to the ${surface(game.u.ux, game.u.uy)}!`);

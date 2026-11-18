@@ -1516,7 +1516,7 @@ async function really_kick_object(x, y, kickedobj) {
                 kickedobj.no_charge = 0;
         }
         if (!await flooreffects(kickedobj, u.ux | 0, u.uy | 0, 'fall')) {
-            place_object(kickedobj, u.ux | 0, u.uy | 0);
+            await place_object(kickedobj, u.ux | 0, u.uy | 0);
             impact_disturbs_zombies(kickedobj, true);
             await stackobj(kickedobj);
             newsym(u.ux | 0, u.uy | 0);
@@ -1744,7 +1744,7 @@ async function really_kick_object(x, y, kickedobj) {
             && (gtg = contained_gold(kickedobj, true)) > 0)
             await donate_gold(gtg, shkp, false);
     }
-    place_object(kickedobj, bx, by);
+    await place_object(kickedobj, bx, by);
     impact_disturbs_zombies(kickedobj, true);
     await stackobj(kickedobj);
     newsym(bx, by);
@@ -2515,7 +2515,7 @@ export async function obj_delivery(near_hero) {
         otmp.omigr_from_dlevel = 0;
 
         if (nx > 0) {
-            place_object(otmp, nx, ny);
+            await place_object(otmp, nx, ny);
             if (!nobreak && !IS_SOFT((game.level?.at(nx, ny)?.typ | 0))) {
                 if (where === MIGR_WITH_HERO) {
                     if (await breaks(otmp, nx, ny)) {

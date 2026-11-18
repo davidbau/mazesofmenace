@@ -20,7 +20,7 @@ import { checkfile_entries, checkfile_lookup, dbase_entry_lines } from './data_b
 import { is_lava, is_pool } from './dbridge.js'; // relocate-fns
 import { DEFSYM_EXPLANATION } from './defsym_data.js'; // relocate-fns
 import { HELP, HISTORY, KEYHELP, LICENSE, OPTIONFILE, OPTMENUHELP, SHELP, USAGEHELP, dlb_file_lines } from './dispfile.js'; // relocate-fns
-import { GLYPHCLS_CMAP, _threeStatusLines, _topline_more_pending, await_menu_key, await_topl_more_dismiss, canspotself, collectScreenDescriptionClasses, dec_mode, docorner_blank_utf8_captures, docrt, flush_screen, force_more, glyph_is_warning_at, pager_boulder_symbol, pager_glyph_prefix, pager_mixed_text, pager_showsyms, pager_text_glyph } from './display.js'; // relocate-fns
+import { GLYPHCLS_CMAP, _threeStatusLines, _topline_more_pending, await_menu_key, await_topl_more_dismiss, canspotself, collectScreenDescriptionClasses, dec_mode, docorner_blank_utf8_captures, docrt, flush_screen, force_more, glyph_is_warning_at, pager_boulder_symbol, pager_glyph_prefix, pager_mixed_text, pager_showsyms, pager_text_glyph, use_last_flush_snapshot } from './display.js'; // relocate-fns
 import { sticks } from './dog.js'; // relocate-fns
 import { getpos_refresh } from './getpos.js'; // relocate-fns
 import { wizard } from './gstate.js'; // relocate-fns
@@ -364,9 +364,7 @@ export async function dohelp() {
     const fullScreen = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
     const WIN_COL = fullScreen ? 1 : 80 - maxLen - 2;
     const uac = g.u?.uac ?? 0;
-    /* wintty.c:1927 — `!iflags.menu_overlay`: offx 0, cleared screen, content col 1. */
-    const helpFull = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
-    const helpBuild = (ls) => helpFull
+    const helpBuild = (ls) => fullScreen
         ? ls.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
         : build_window_screen(ls, WIN_COL, uac);
     const lastSelector = 0x61 + survivors.length - 1;  /* 'a' .. last added row */
@@ -383,7 +381,7 @@ export async function dohelp() {
         g._screen_output = helpBuild(lines);
         /* Cursor one past the last character of the "(end)" footer (C tty
          * select_menu convention; same as ask_do_tutorial / dowhatis). */
-        set_cursor((helpFull ? 1 : WIN_COL) + '(end)'.length + 1, helpLines.length - 1);
+        set_cursor(WIN_COL + '(end)'.length + 1, helpLines.length - 1);
         selKey = await nhgetch();
         /* C wintty.c:1597-1602 — '0'..'9' append to the pending count and the
          * loop re-waits on the same page; every add_menu here passes gselector
@@ -695,8 +693,7 @@ export async function self_lookat() {
     const _i = (i) => !!(_p(i).intrinsic | 0), _e = (i) => !!(_p(i).extrinsic | 0);
     const _blind = !!_vision_Blind();
     const _invis = (_i(INVIS) || _e(INVIS)) && !(_p(INVIS).blocked | 0);
-    const _senseself = _e(TELEPAT) || (_i(TELEPAT) && !_blind)
-        || _i(DETECT_MONSTERS) || _e(DETECT_MONSTERS);
+    const _senseself = _e(TELEPAT) || _i(DETECT_MONSTERS) || _e(DETECT_MONSTERS);
     let buf = `${_invis && (_senseself || !_blind) ? 'invisible ' : ''}`
         + `${_self_lookat_base()} called ${game.plname || ''}`;
     if (game.u?.usteed) buf += `, mounted on ${y_monnam(game.u.usteed)}`;
@@ -1557,20 +1554,34 @@ export async function dowhatis() {
                 g._pending_message = putmixedDesc.startsWith(' ')
                     ? putmixedDesc.replace(/^ +/, (m) => `\x1b[${m.length}C`)
                     : putmixedDesc;
-                await flush_screen(1);
+                /* C pager.c:1922-1923 putmixed(WIN_MESSAGE, 0, out_str) does
+                 * not flush_screen(1) or run bot() here, but update_topl ->
+                 * redotoplin (topl.c:139) calls more() immediately if the text
+                 * wraps past CO-1, before do_look returns to moveloop(). */
+                const wrapped = _topline_more_pending();
+                if (wrapped) {
+                    const release = use_last_flush_snapshot();
+                    try { await force_more(g._pending_message, true); }
+                    finally { release(); }
+                    g._pending_message = '';
+                }
                 /* C ref: pager.c:1936-1950 — found == 1, ans == 0, flags.help
                  * and !quick: checkfile(firstmatch, chkfilNone) asks "More info
                  * about ...?" for each data.base entry; the y_n pline pages the
-                 * description still on the topline. */
+                 * description still on the topline if putmixed didn't wrap. */
                 const g_help = !!(g.flags && (g.flags.help ?? true));
                 if (classes.matchCount === 1 && g_help && classes.firstmatch) {
                     const desc = g._pending_message;
+                    let needsMore = !wrapped;
                     let standing = null;
                     for (const entry of checkfile_entries(classes.firstmatch)) {
                         const question = `More info about "${entry.key}"?`;
                         /* tty_yn_function pages the standing description
                          * (topline NON_EMPTY) before the question goes up. */
-                        await force_more(desc, true);
+                        if (needsMore) {
+                            await force_more(desc, true);
+                            needsMore = false;
+                        }
                         standing = null;
                         if ((await yn_function(question, 'yn', 'n', true)) === 'y') {
                             const dbLines = entry.lines ?? dbase_entry_lines(entry.key);

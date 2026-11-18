@@ -421,7 +421,7 @@ async function thitm(tlev, mon, obj, d_override, nocorpse) {
     if (obj && (!strike || d_override)) {
         const place_object = _trapFns.place_object_fn;
         if (place_object) {
-            place_object(obj, _tx, _ty);
+            await place_object(obj, _tx, _ty);
             await stackobj(obj);
         }
     } else if (obj) {
@@ -1621,7 +1621,7 @@ export async function cnv_trap_obj(otyp, cnt, trap, buryIt) {
     obj.quan = cnt;
     obj.owt = weight(obj);
     if (otyp !== OTYP_DART) obj.opoisoned = 0;
-    place_object(obj, trap.tx, trap.ty);
+    await place_object(obj, trap.tx, trap.ty);
     if (buryIt) {
         await bury_an_obj(obj, null);
     } else {
@@ -1885,7 +1885,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
                             ? '  The rolling boulder triggers a land mine.' : ''}`);
                         deltrap(t);
                         del_engr_at(x, y);
-                        place_object(singleobj, x, y);
+                        await place_object(singleobj, x, y);
                         singleobj.otrapped = 0;
                         await fracture_rock(singleobj);
                         await scatter(x, y, 4,
@@ -1955,7 +1955,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
                 /* pass off the otrapped flag to the next boulder */
                 otmp2.otrapped = singleobj.otrapped;
                 singleobj.otrapped = 0;
-                place_object(singleobj, x, y);
+                await place_object(singleobj, x, y);
                 singleobj = otmp2;
                 otmp2 = null;
                 wake_nearto(x, y, 10 * 10);
@@ -2002,7 +2002,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
     launch_drop_spot(null, 0, 0);
     if (!used_up) {
         singleobj.otrapped = 0;
-        place_object(singleobj, x2, y2);
+        await place_object(singleobj, x2, y2);
         newsym(x2, y2);
         return 1;
     }
@@ -2888,7 +2888,7 @@ async function hero_missile_lands(otmp) {
     const place_object = _trapFns.place_object_fn;
     const ux = game.u.ux | 0, uy = game.u.uy | 0;
     otmp.ox = ux; otmp.oy = uy;
-    if (place_object) place_object(otmp, ux, uy);
+    if (place_object) await place_object(otmp, ux, uy);
     /* C trap.c:1218-1219 — dknown must be set before stackobj so the missile
      * merges with an observed pile (mergable compares dknown). */
     if (!Blind()) observe_object(otmp);
@@ -3901,7 +3901,7 @@ async function trapeffect_rocktrap(trap, trflags) {
         trap.once = 1;
         _feeltrap(trap);
         const otmp = await t_missile(OTYP_ROCK, trap);
-        place_object(otmp, u.ux | 0, u.uy | 0);
+        await place_object(otmp, u.ux | 0, u.uy | 0);
 
         await pline(`A trap door in ${the(ceiling(u.ux | 0, u.uy | 0))} opens and `
                     + `${an(xname(otmp))} falls on your ${body_part(HEAD_TR)}!`);
@@ -4352,7 +4352,7 @@ async function keep_saddle_with_steedcorpse(steed_mid, objchn, saddle) {
                 const x = { value: 0 }, y = { value: 0 };
                 if (get_obj_location(objchn, x, y, 0)) {
                     await obj_extract_self(saddle);
-                    place_object(saddle, x.value, y.value);
+                    await place_object(saddle, x.value, y.value);
                     await stackobj(saddle);
                 }
                 return true;
@@ -7523,7 +7523,7 @@ export async function mkroll_launch(ttmp, x, y, otyp, ocount) {
         const otmp = await mksobj(otyp, true, false);
         otmp.quan = ocount;
         otmp.owt = weight(otmp);
-        place_object(otmp, cc.x, cc.y);
+        await place_object(otmp, cc.x, cc.y);
         /* C: stackobj(otmp). The general stackobj is unported (js/sp_lev.js:3036);
          * it is RNG-free, and a boulder freshly made on its launch spot during
          * level generation has nothing on that square to merge with. */

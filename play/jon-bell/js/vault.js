@@ -237,7 +237,7 @@ export async function paygd(silently) {
             const nextcoins = coins.nobj;
             if ((coins.oclass | 0) === COIN_CLASS) {
                 freeinv(coins);
-                place_object(coins, gdx, gdy);
+                await place_object(coins, gdx, gdy);
                 await stackobj(coins);
             }
             coins = nextcoins;
@@ -1028,7 +1028,7 @@ async function move_gold(gold, vroom) {
     const room = game.level.rooms[vroom | 0];
     const nx = (room.lx | 0) + rn2(2);
     const ny = (room.ly | 0) + rn2(2);
-    place_object(gold, nx, ny);
+    await place_object(gold, nx, ny);
     await stackobj(gold);
     newsym(nx, ny);
 }

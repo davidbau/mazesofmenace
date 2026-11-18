@@ -685,7 +685,7 @@ async function relobj_dm(mtmp) {
             { set_msg_xy_dm(mtmp.mx, mtmp.my); await pline(`${Monnam_dm(mtmp)} drops ${objName}.`); } /* pline_mon, steal.c:836 */
         if (!await flooreffects_dm(otmp, omx, omy, 'fall')) {
             await obj_no_longer_held(otmp);
-            place_object(otmp, omx, omy);
+            await place_object(otmp, omx, omy);
             await stackobj_dm(otmp);
         }
     }
@@ -723,7 +723,7 @@ async function relobj_dead_dm(mtmp) {
             otmp.no_charge = 1;
         if (!await flooreffects_dm(otmp, omx, omy, "fall")) {
             await obj_no_longer_held(otmp); /* C mkobj.c:2330 via place_object */
-            place_object(otmp, omx, omy);
+            await place_object(otmp, omx, omy);
             await stackobj_dm(otmp);
         }
     }

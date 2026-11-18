@@ -1443,7 +1443,7 @@ export async function tamedog(mtmp, obj, givemsg) {
                          !big_corpse ? "." : ", or vice versa!");
             } else if (cansee(mtmp.mx, mtmp.my))
                 await pline("%s.", Tobjnam(obj, "stop"));
-            place_object(obj, mtmp.mx, mtmp.my);
+            await place_object(obj, mtmp.mx, mtmp.my);
             await dog_eat(mtmp, obj, mtmp.mx, mtmp.my, false);
             return true;
         } else
@@ -1486,7 +1486,7 @@ export async function tamedog(mtmp, obj, givemsg) {
     }
 
     if (obj) {
-        place_object(obj, mtmp.mx, mtmp.my);
+        await place_object(obj, mtmp.mx, mtmp.my);
         if ((await dog_eat(mtmp, obj, mtmp.mx, mtmp.my, true)) === 2)
             return true;
     }

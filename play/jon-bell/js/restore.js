@@ -42,7 +42,7 @@ import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
 import { change_luck } from './attrib.js';
-import { HALLUC, HALLUC_RES, COLNO, W_BALL, W_CHAIN, MAXNROFROOMS, STAIRS, MAGIC_PORTAL, BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL } from './const.js';
+import { HALLUC, HALLUC_RES, OBJ_FREE, COLNO, W_BALL, W_CHAIN, MAXNROFROOMS, STAIRS, MAGIC_PORTAL, BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL } from './const.js';
 import { set_residency } from './shk.js';
 import { setworn } from './worn.js';
 import { PM_MONK } from './pm.generated.js';
@@ -142,7 +142,7 @@ function rest_edog_times(fmon, shift) {
     }
 }
 
-export async function getlev(lev) {
+export async function getlev(lev, restoreFloor = null) {
     const g = game;
     const u = g.u || (g.u = {});
     const snap = stored_level(lev);
@@ -213,6 +213,11 @@ export async function getlev(lev) {
     /* C restore.c:1136 restmonchn -> restmon:354-356 */
     rest_edog_times(g.fmon, (g.moves | 0) - (snap.omoves | 0));
     g.fobj = snap.fobj;
+    // C has already installed this level's map when find_lev_obj runs.
+    if (restoreFloor)
+        await restoreFloor();
+    else if (!g.program_state?.reading_bonesfile)
+        await find_lev_obj_no_longer_held(g.fobj);
     g.billobjs = snap.billobjs ?? null;
     /* C restore.c:281-282 — every chain this read brings back (fobj :1166,
      * buriedobjlist :1172, billobjs :1173, each monster's minvent :421) has
@@ -548,11 +553,16 @@ async function first_getlev_place_monsters(chain) {
     }
 }
 
-async function find_lev_obj_no_longer_held(fobj) {
+export async function find_lev_obj_no_longer_held(fobj) {
     const chain = [];
     for (let o = fobj; o; o = o.nobj) chain.push(o);
-    for (let i = chain.length - 1; i >= 0; i--)
-        await obj_no_longer_held(chain[i]);
+    for (let i = chain.length - 1; i >= 0; i--) {
+        const obj = chain[i], where = obj.where;
+        // C restore.c:88: each object is free while place_object processes it.
+        obj.where = OBJ_FREE;
+        try { await obj_no_longer_held(obj); }
+        finally { obj.where = where; }
+    }
 }
 
 export async function dorecover(save) {

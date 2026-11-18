@@ -70,7 +70,7 @@ import { pick_lock } from './lock.js'; // relocate-fns
 import { humanoid as _th_humanoid, bagotricks, makeknown, makemon, mhe, mkclass, permonstTemplate, splitobj } from './makemon.js';
 import { attacktype_fordmg } from './mondata.js'; // relocate-fns
 import { emitMapstate } from './mapstate.js'; // relocate-fns
-import { hcolor, helpless, obj_pmname } from './mhitm.js'; // relocate-fns
+import { AT_WEAP, hcolor, helpless, obj_pmname } from './mhitm.js'; // relocate-fns
 import { gulp_blnd_check, mhis_mon } from './mhitu.js'; // relocate-fns
 import { in_rooms } from './mklev.js';
 import { revive_corpse } from './do.js'; // relocate-fns
@@ -79,7 +79,7 @@ import { MKOBJ_OC_COLOR } from './mkobj_data.js'; // relocate-fns
 import { MKOBJ_OC_MAGIC, MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js'; // relocate-fns
 import { mkundead } from './mkroom.js'; // relocate-fns
 import { killed, see_monster_closeup, set_ustuck, wake_nearto, wakeup } from './mon.js'; // relocate-fns
-import { can_blow as can_blow_real, poly_when_stoned } from './mondata.js'; // relocate-fns
+import { can_blow as can_blow_real, can_blnd, poly_when_stoned } from './mondata.js'; // relocate-fns
 import { accessible, closed_door, monflee } from './monmove.js'; // relocate-fns
 import { observe_object } from './o_init.js'; // relocate-fns
 import { The, Tobjnam, Yname2, Yobjnam2, xname as _fw_xname, cxname as _ia_cxname, simpleonames as _ia_simpleonames, Tobjnam as _objnam_Tobjnam, the as _the_objnam, an, ansimpleoname, aobjnam, cxname, doname, getObjDescr, gloves_simple_name, makeplural, makeplural as makeplural_objnam, otense, simple_typename, singular, the, thesimpleoname, vtense, yname } from './objnam.js'; // relocate-fns
@@ -436,11 +436,7 @@ async function use_cream_pie(obj) {
     else
         await pline(`You immerse your ${body_part(FACE)} in ${several ? 'one of ' : ''}${several ? makeplural_objnam(_the_objnam(_fw_xname(obj))) : _the_objnam(_fw_xname(obj))}.`);
 
-    /* C apply.c:3584 — can_blnd(NULL, &youmonst, AT_WEAP, obj).  For a CREAM_PIE
-     * the haseyes guard at mondata.c:316 precedes the AT_WEAP arm;
-     * against the hero, mondata.c:345 returns TRUE unless the hero is
-     * Blindfolded; nothing else on the AT_WEAP arm applies with magr == NULL. */
-    if (_use_cream_pie_can_blnd(obj)) {
+    if (can_blnd(null, _hero_youmonst(), AT_WEAP, obj)) {
         const blindinc = rnd(25);
         u.ucreamed = wascreamed + blindinc;
         make_blinded(_BlindedTimeout_apply() + blindinc, false);
@@ -456,17 +452,6 @@ async function use_cream_pie(obj) {
     _objExtractSelf_useupf(obj);
     await delobj(obj);
     return ECMD_OK;
-}
-
-function _use_cream_pie_can_blnd(obj) {
-    if (!_haseyes(_hero_youmonst().data)) return false; /* mondata.c:316 */
-    if ((obj.otyp | 0) !== _APPLY_CREAM_PIE_OTYP)
-        return false;
-    const ublindf = game.u?.ublindf;
-    const LENSES_APPLY = 232;
-    if (ublindf && (ublindf.otyp | 0) !== LENSES_APPLY)
-        return false; /* Blindfolded */
-    return true;
 }
 
 function _BlindedTimeout_apply() {
@@ -1957,11 +1942,11 @@ export async function use_whip(obj) {
             if (gotit) {
                 obj_extract_self(mwep);
                 await possibly_unwield(mtmp, false);
-                setmnotwielded(mtmp, mwep);
+                await setmnotwielded(mtmp, mwep);
                 const landing = rn2(proficient + 1);
                 if (landing === 2) {
                     await pline(`You yank ${yname(mwep)} to the ${surface(u.ux, u.uy)}!`);
-                    place_object(mwep, u.ux | 0, u.uy | 0);
+                    await place_object(mwep, u.ux | 0, u.uy | 0);
                     await stackobj(mwep);
                 } else if (landing === 3) {
                     await pline(`You snatch ${yname(mwep)}!`);
@@ -1971,7 +1956,7 @@ export async function use_whip(obj) {
                         && !(poly_when_stoned(_hero_youmonst().data) && await polymon(PM_STONE_GOLEM))) {
                         const kbuf = mwep.quan === 1 ? an(onambuf) : onambuf;
                         await pline(`Snatching ${kbuf} is a fatal mistake.`);
-                        place_object(mwep, u.ux, u.uy);
+                        await place_object(mwep, u.ux, u.uy);
                         await instapetrify(kbuf);
                         obj_extract_self(mwep);
                     }
@@ -1981,7 +1966,7 @@ export async function use_whip(obj) {
                      * appearance name "thonged club"), NOT the inventory namer. */
                     await pline(`You yank ${the(onambuf)} from ${s_suffix(mon_nam(mtmp))} ${mon_hand}!`);
                     await obj_no_longer_held(mwep);
-                    place_object(mwep, mtmp.mx | 0, mtmp.my | 0);
+                    await place_object(mwep, mtmp.mx | 0, mtmp.my | 0);
                     await stackobj(mwep);
                 }
             } else {

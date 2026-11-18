@@ -228,7 +228,9 @@ export function collectScreenDescriptionClasses(options = {}) {
     }
     // C pager.c:1512-1528 scans warning symbols even for an object glyph.
     for (let i = 1; i < def_warnsyms.length; i++) {
-        if (selected.dec || selected.ch !== def_warnsyms[i].ch) continue;
+        const wch = (looked && options.warnsyms?.[i])
+            ? String.fromCharCode(options.warnsyms[i]) : def_warnsyms[i].ch;
+        if (selected.dec || selected.ch !== wch) continue;
         add(def_warnsyms[i].desc, { plain: true });
         if (looked && options.boulderAt)
             classes[classes.length - 1] += ' co-located with a boulder';

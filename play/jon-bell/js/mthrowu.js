@@ -1048,7 +1048,7 @@ export async function drop_throw(obj, ohit, x, y) {
             let mtmp = uhitm_m_at(x, y);
             broken = !!await flooreffects_mu(obj, x, y, 'fall');
             if (!broken) {
-                place_object(obj, x, y);
+                await place_object(obj, x, y);
                 if (!mtmp && (x === (game.u?.ux | 0)) && (y === (game.u?.uy | 0)))
                     mtmp = _hero_monst_mu();
                 if (mtmp && ohit)
@@ -1398,7 +1398,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
      * OBJ_FREE, C's comment at mthrowu.c:605). */
     if (((obj.quan ?? 1) | 0) === 1) {
         if (MON_WEP(mon) === obj)
-            setmnotwielded(mon, obj);
+            await setmnotwielded(mon, obj);
         extract_from_minvent_dm(mon, obj);
         singleobj = obj;
         obj = null;
@@ -1759,7 +1759,7 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
                         newsym(x, y);
                     return;
                 }
-                place_object(otmp, x, y);
+                await place_object(otmp, x, y);
                 await stackobj(otmp);
             }
             /* C:948-956 sound effects when the item lands in water or lava */

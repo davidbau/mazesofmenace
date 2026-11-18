@@ -1187,7 +1187,7 @@ export async function extract_from_minvent(mon, obj, do_extrinsics, silently) {
     }
     await obj_no_longer_held(obj);
     if (unwornmask & W_WEP_TR) {
-        mwepgone(mon); /* unwields and sets weapon_check to NEED_WEAPON */
+        await mwepgone(mon); /* unwields and sets weapon_check to NEED_WEAPON */
     }
 }
 
@@ -1230,7 +1230,7 @@ export async function mon_break_armor(mon, polyspot) {
         // C pline.c:283-284 blocks before the equipment is removed.
         if (game._blockingPline) await game._blockingPline;
         await extract_from_minvent(mon, obj, true, false);
-        place_object(obj, mon.mx | 0, mon.my | 0);
+        await place_object(obj, mon.mx | 0, mon.my | 0);
         if (polyspot)
             bypass_obj(obj);
         newsym(mon.mx | 0, mon.my | 0);

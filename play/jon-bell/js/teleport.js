@@ -2124,7 +2124,7 @@ export async function rloco(obj) {
         newsym(otx, oty);
     }
 
-    place_object(obj, tx, ty);
+    await place_object(obj, tx, ty);
     newsym(tx, ty);
     return true;
 }

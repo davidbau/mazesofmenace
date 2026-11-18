@@ -3480,7 +3480,7 @@ async function litter_scatter(litter, x, y, shkp) {
                     otmp.no_charge = 0;
             }
             remove_object(otmp);
-            place_object(otmp, ix, iy);
+            await place_object(otmp, ix, iy);
             litter[i] |= LITTER_UPDATE;
         }
     }
@@ -3751,7 +3751,7 @@ export async function shkgone(mtmp) {
     }
 }
 /* C shk.c:400-434 setpaid — clear owned unpaid markers, dispose of bill objects, and zero the account. */
-async function setpaid(shkp) {
+export async function setpaid(shkp) {
     const g = game;
     await clear_unpaid_chain(shkp, g.invent);
     await clear_unpaid_chain(shkp, g.fobj);

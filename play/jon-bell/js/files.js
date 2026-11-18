@@ -72,25 +72,9 @@ export function free_convert_filenames() {
  * Return a file's name without its path and optionally trailing 'type'.
  *
  * Uses a static buffer (simulated as module-level) to store the stripped result.
- * Portable across Unix, Windows (both / and \\ paths), and VMS (stubbed).
+ * On UNIX/macOS (#ifndef VMS), VMS path syntax is not compiled.
  */
 let basebuf = '';
-
-function vms_basename(fname, keep_suffix) {
-    /* VMS paths use DEVICE:[DIR.SUBDIR]NAME.TYPE (and, in newer syntax,
-     * DEVICE:<DIR.SUBDIR>NAME.TYPE).  The basename is the component after
-     * the closing directory delimiter; treat a bare NAME.TYPE the same as
-     * Unix and preserve the caller's suffix policy. */
-    let name = String(fname ?? '');
-    const close = Math.max(name.lastIndexOf(']'), name.lastIndexOf('>'));
-    if (close >= 0)
-        name = name.slice(close + 1);
-    const dot = name.lastIndexOf('.');
-    if (dot >= 0 && !keep_suffix && dot < 80)
-        name = name.slice(0, dot);
-    basebuf = name;
-    return basebuf;
-}
 
 export function nh_basename(fname, keep_suffix) {
     // #ifndef VMS branch
@@ -222,7 +206,7 @@ export async function read_tribute(tribsection, tribtitle, tribpassage, nowin_bu
     const munge = (s) => s.replace(/\s+/g, ' ').replace(/^ /, '').replace(/ $/, '');
     if (nowin_buf)
         nowin_buf.value = '';
-    if (tribsection == null || tribtitle == null) {
+    if (!tribsection || !tribtitle) {
         if (!nowin_buf)
             await pline(`It's ${badtranslation} of "${tribtitle}"!`);
         return false;
@@ -348,6 +332,17 @@ export function debugcore(filename, wildcards) {
         && (end === debugfiles.length || debugfiles[end] === ' ');
 }
 
+/*
+ * C ref: sys/unix/unixmain.c:243 `if (*svp.plname && (nhfp =
+ * restore_saved_game()) != 0)`, i.e. files.c:1270 restore_saved_game() ->
+ * set_savefile_name() + open_savefile().
+ *
+ * The `*svp.plname` guard is not decoration.  C runs plnamesuffix() (and its
+ * askname() for an unnamed hero) BEFORE this point, so the name is always
+ * known here; js/jsmain.js now runs playChargen({ asknameOnly: true }) ahead
+ * of this call (and re-probes after confirm rename) so interactive-name saves
+ * restore as in C.
+ */
 export function restore_saved_game(plname) {
     if (!plname)
         return null;

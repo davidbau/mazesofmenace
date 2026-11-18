@@ -5,7 +5,7 @@ import { Breathless } from './cmd.js';
 import { ACID_RES, ANTIMAGIC, A_CHA, BLND_RES, COLD_RES, DISINT_RES, DRAIN_RES, FAINTED, FEMALE, FIRE_RES, LOW_PM, MALE, M_SEEN_ACID, M_SEEN_COLD, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_NOTHING, M_SEEN_POISON, M_SEEN_REFL, M_SEEN_SLEEP, NATTK, NEUTRAL, PRONOUN_HALLU, PRONOUN_NO_IT, W_AMUL, W_ARM, POISON_RES, REFLECTING, SHOCK_RES, SLEEP_RES, STONE_RES, STRANGLED, Upolyd, W_ACCESSORY, W_ARMC, W_ARMH, W_ARMOR, W_SWAPWEP, W_WEP } from './const.js';
 import { canspotmon, impossible_sync } from './display.js';
 import { game } from './gstate.js';
-import { dist2, lowc, strncmpi } from './hacklib.js';
+import { dist2, lowc, strncmpi, strstri } from './hacklib.js';
 import { humanoid, is_demon, monPmname, permonstTemplate } from './makemon.js';
 import { which_armor } from './worn.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
@@ -1534,8 +1534,11 @@ function strncmp(a, b, n) {
 
 
 function strstri_mondata(haystack, needle) {
+    // Preserve strstri's signed-byte frequency prefilter as well as its scan.
+    // The shared helper returns a boolean; this caller also needs the offset.
+    if (!strstri(haystack, needle)) return -1;
     const nlen = needle.length;
-    if (nlen === 0) return -1;
+    if (nlen === 0) return 0;
     for (let i = 0; i <= haystack.length - nlen; i++) {
         if (strncmpi(haystack.substring(i), needle, nlen) === 0)
             return i;
@@ -1845,9 +1848,10 @@ export function monstunseesu(seenres) {
 /* C ref: mondata.c:1617 mon_knows_traps — has mtmp seen this trap type? */
 export function mon_knows_traps(mtmp, ttyp) {
     if (ttyp === ALL_TRAPS)
-        return !!(mtmp.mtrapseen);
+        // C casts the long bitset to an 8-bit boolean before returning it.
+        return !!(mtmp.mtrapseen & 0xff);
     else if (ttyp === NO_TRAP)
-        return !(mtmp.mtrapseen);
+        return !(mtmp.mtrapseen & 0xff);
     else
         return (mtmp.mtrapseen & (1 << (ttyp - 1))) !== 0;
 }
@@ -1985,195 +1989,13 @@ function monMattk(mndx) {
     return MONS_MATTK[mndx];
 }
 
-function _altspl_pm(canonicalName, mletFilter) {
-    const hits = [];
-    for (let i = 0; i < MONS_PMNAMES.length; i++) {
-        const row = MONS_PMNAMES[i];
-        if (!row || !row.some((n) => n === canonicalName))
-            continue;
-        if (mletFilter != null && (MONS[i] ? MONS[i][0] : -1) !== mletFilter)
-            continue;
-        hits.push(i);
-    }
-    if (hits.length !== 1)
-        throw new Error(`alt_spl: "${canonicalName}" resolved to ${hits.length} mons rows (${hits.join(',')})`);
-    return hits[0];
-}
-
-/* [alternate spelling, mndx, genderhint] in C's order — the scan returns on the
- * FIRST prefix match, so the order is load-bearing and is C's verbatim. */
-let altSpl;
-
-function getAltSpl() {
-    return altSpl ??= [
-    /* Alternate spellings */
-    ['grey dragon', _altspl_pm('gray dragon'), NEUTRAL],
-    ['baby grey dragon', _altspl_pm('baby gray dragon'), NEUTRAL],
-    ['grey unicorn', _altspl_pm('gray unicorn'), NEUTRAL],
-    ['grey ooze', _altspl_pm('gray ooze'), NEUTRAL],
-    ['gray-elf', _altspl_pm('Grey-elf'), NEUTRAL],
-    ['mindflayer', _altspl_pm('mind flayer'), NEUTRAL],
-    ['master mindflayer', _altspl_pm('master mind flayer'), NEUTRAL],
-    /* More alternates; priest and priestess are separate monster types but
-       that isn't the case for {aligned,high} priests */
-    ['aligned priest', _altspl_pm('aligned cleric'), MALE],
-    ['aligned priestess', _altspl_pm('aligned cleric'), FEMALE],
-    ['high priest', _altspl_pm('high cleric'), MALE],
-    ['high priestess', _altspl_pm('high cleric'), FEMALE],
-    /* Inappropriate singularization by -ves check above */
-    ['master of thief', _altspl_pm('Master of Thieves'), NEUTRAL],
-    /* Potential misspellings where we want to avoid falling back to the rank
-       title prefix (input has been singularized) */
-    ['master thief', _altspl_pm('Master of Thieves'), NEUTRAL],
-    ['master of assassin', _altspl_pm('Master Assassin'), NEUTRAL],
-    ['master-lich', _altspl_pm('master lich'), NEUTRAL],   /* cf arch-lich */
-    ['masterlich', _altspl_pm('master lich'), NEUTRAL],    /* cf demilich */
-    /* Outdated names */
-    ['invisible stalker', _altspl_pm('stalker'), NEUTRAL],
-    ['high-elf', _altspl_pm('elven monarch'), NEUTRAL],    /* PM_HIGH_ELF obsolete */
-    /* other misspellings or incorrect words */
-    ['wood-elf', _altspl_pm('Woodland-elf'), NEUTRAL],
-    ['wood elf', _altspl_pm('Woodland-elf'), NEUTRAL],
-    ['woodland nymph', _altspl_pm('wood nymph'), NEUTRAL],
-    ['halfling', _altspl_pm('hobbit'), NEUTRAL],
-    ['genie', _altspl_pm('djinni'), NEUTRAL],
-    /* prefix used to workaround duplicate monster names for monsters with
-       alternate forms */
-    ['human wererat', _altspl_pm('wererat', S_HUMAN_MLET), NEUTRAL],
-    ['human werejackal', _altspl_pm('werejackal', S_HUMAN_MLET), NEUTRAL],
-    ['human werewolf', _altspl_pm('werewolf', S_HUMAN_MLET), NEUTRAL],
-    /* for completeness */
-    ['rat wererat', _altspl_pm('wererat', 18 /* S_RODENT */), NEUTRAL],
-    ['jackal werejackal', _altspl_pm('werejackal', 4 /* S_DOG */), NEUTRAL],
-    ['wolf werewolf', _altspl_pm('werewolf', 4 /* S_DOG */), NEUTRAL],
-    /* Hyphenated names */
-    ['ki rin', _altspl_pm('ki-rin'), NEUTRAL],
-    ['kirin', _altspl_pm('ki-rin'), NEUTRAL],
-    ['uruk hai', _altspl_pm('Uruk-hai'), NEUTRAL],
-    ['orc captain', _altspl_pm('orc-captain'), NEUTRAL],
-    ['woodland elf', _altspl_pm('Woodland-elf'), NEUTRAL],
-    ['green elf', _altspl_pm('Green-elf'), NEUTRAL],
-    ['grey elf', _altspl_pm('Grey-elf'), NEUTRAL],
-    ['gray elf', _altspl_pm('Grey-elf'), NEUTRAL],
-    ['elf lady', _altspl_pm('elf-noble'), FEMALE],
-    ['elf lord', _altspl_pm('elf-noble'), MALE],
-    ['elf noble', _altspl_pm('elf-noble'), NEUTRAL],
-    ['olog hai', _altspl_pm('Olog-hai'), NEUTRAL],
-    ['arch lich', _altspl_pm('arch-lich'), NEUTRAL],
-    ['archlich', _altspl_pm('arch-lich'), NEUTRAL],
-    /* Some irregular plurals */
-    ['incubi', _altspl_pm('amorous demon'), MALE],
-    ['succubi', _altspl_pm('amorous demon'), FEMALE],
-    ['violet fungi', _altspl_pm('violet fungus'), NEUTRAL],
-    ['homunculi', _altspl_pm('homunculus'), NEUTRAL],
-    ['baluchitheria', _altspl_pm('baluchitherium'), NEUTRAL],
-    ['lurkers above', _altspl_pm('lurker above'), NEUTRAL],
-    ['cavemen', _altspl_pm('cave dweller'), MALE],
-    ['cavewomen', _altspl_pm('cave dweller'), FEMALE],
-    ['watchmen', _altspl_pm('watchman'), NEUTRAL],
-    ['djinn', _altspl_pm('djinni'), NEUTRAL],
-    ['mumakil', _altspl_pm('mumak'), NEUTRAL],
-    ['erinyes', _altspl_pm('erinys'), NEUTRAL],
-];
-}
-
+/* C mondata.c:883-886: name_to_mon is a wrapper around name_to_monplus.
+ * The JS calling convention returns the monster index and gender together;
+ * name_to_monplus uses boxes for C's out-parameters. */
 export function name_to_mon(in_str, gender_name_var) {
-    const NON_PM = -1;
-    /* strncmpi(a, b, n): does b start with a's first n chars, case-insensitively? */
-    const startsWithCI = (needle, hay) =>
-        hay.slice(0, needle.length).toLowerCase() === needle.toLowerCase();
-    const eqCI = (a, b) => a.toLowerCase() === b.toLowerCase();
-
-    let str = String(in_str);
-    /* C mondata.c:923-928 — strip a leading article. */
-    if (str.slice(0, 2) === 'a ') str = str.slice(2);
-    else if (str.slice(0, 3) === 'an ') str = str.slice(3);
-    else if (str.slice(0, 4) === 'the ') str = str.slice(4);
-
-    /* C mondata.c:930-941 — irregular plurals precede the ALT_SPL scan. */
-    let slen = str.length;
-    const term = str;
-    const vi = str.toLowerCase().indexOf('vortices');
-    if (vi >= 0) {
-        str = str.slice(0, vi + 4) + 'ex';
-    } else if (slen > 3 && eqCI(term.slice(-3), 'ies')
-               && (slen < 7 || !eqCI(term.slice(-7), 'zombies'))) {
-        str = str.slice(0, -3) + 'y';
-    } else if (slen > 3 && eqCI(term.slice(-3), 'ves')) {
-        str = str.slice(0, -3) + 'f'; /* C Strcpy(term-3,"f") — "…ves" → "…f" */
-    }
-    slen = str.length; /* length possibly needs recomputing */
-
-    /* C mondata.c:946-1036 — the alt_spl alternate-spelling table.  It runs
-     * BEFORE the canonical scan below and RETURNS IMMEDIATELY on a hit, with
-     * the entry's genderhint written straight through to *gender_name_var (no
-     * "don't override with neuter" post-processing — that belongs to the
-     * canonical path only). */
-    for (const [altName, pmVal, genderHint] of getAltSpl()) {
-        const alen = altName.length;
-        if (!startsWithCI(altName, str))
-            continue;
-        /* C: force full word (which could conceivably be possessive) */
-        const next = str[alen];
-        if (next !== undefined && next !== ' ' && next !== "'")
-            continue;
-        return { mntmp: pmVal, gender: genderHint };
-    }
-
-    /* C mondata.c:1038-1072 — longest-canonical-name match over mons[].pmnames[]. */
-    let mntmp = NON_PM, len = 0, matchgend = -1, exact_match = false;
-    for (let i = LOW_PM; i < NUMMONS; i++) {
-        for (let mgend = MALE; mgend < NUM_MGENDERS; mgend++) {
-            const nm = MONS_PMNAMES[i] && MONS_PMNAMES[i][mgend];
-            if (!nm) continue;
-            const m_i_len = nm.length;
-            if (m_i_len > len && startsWithCI(nm, str)) {
-                if (m_i_len === slen) {
-                    mntmp = i; len = m_i_len; matchgend = mgend; exact_match = true;
-                    break; /* exact match */
-                }
-                const rest = str.slice(m_i_len);
-                if (slen > m_i_len
-                    && (rest[0] === ' '
-                        || eqCI(rest, 's')
-                        || startsWithCI('s ', rest)
-                        || eqCI(rest, "'")
-                        || startsWithCI("' ", rest)
-                        || eqCI(rest, "'s")
-                        || startsWithCI("'s ", rest)
-                        || eqCI(rest, 'es')
-                        || startsWithCI('es ', rest))) {
-                    mntmp = i; len = m_i_len; matchgend = mgend;
-                }
-            }
-        }
-        if (exact_match) break;
-    }
-    if (mntmp === NON_PM) {
-        const lenRef = { value: len };
-        mntmp = title_to_mon(str, null, lenRef);
-        len = lenRef.value;
-    }
-    /* C mondata.c:1078-1082 writes THROUGH the out-pointer:
-     *     if (gender_name_var && matchgend != -1) {
-     *         if (*gender_name_var == -1 || matchgend != NEUTRAL)
-     *             *gender_name_var = matchgend;
-     *     }
-     * JS models the in/out parameter by value: `gender_name_var` in,
-     * `gender_name_out` back out as the `gender` field of the result.
-     * NAMED `gender_name_out`, not `gender`, on purpose — a local `gender`
-     * here shadows this module's exported `gender(mtmp)` predicate
-     * (mondata.c:1180, defined below), which is a different thing entirely. */
-    let gender_name_out = NEUTRAL;
-    if (matchgend !== -1) {
-        if (gender_name_var == null || gender_name_var === -1 || matchgend !== NEUTRAL)
-            gender_name_out = matchgend;
-        else
-            gender_name_out = gender_name_var;
-    } else if (gender_name_var != null) {
-        gender_name_out = gender_name_var;
-    }
-    return { mntmp, gender: gender_name_out };
+    const gender_name = { value: gender_name_var ?? NEUTRAL };
+    const mntmp = name_to_monplus(String(in_str), null, gender_name);
+    return { mntmp, gender: gender_name.value };
 }
 
 export function name_to_monclass(in_str, mndx_p) {
@@ -2241,7 +2063,7 @@ export function name_to_monclass(in_str, mndx_p) {
     const len = str.length;
     for (let i = 1; i < MAXMCLASSES; i++) {
         const x = DEF_MONSYMS_EXPLAIN[i] || '';
-        const pi = x.toLowerCase().indexOf(lc);
+        const pi = strstri_mondata(x, str);
         if (pi >= 0 && (pi === 0 || x.charAt(pi - 1) === ' ')
             && (x.length - pi) >= len
             && (pi + len === x.length || x.charAt(pi + len) === ' '))
@@ -2261,7 +2083,7 @@ export function name_to_monclass(in_str, mndx_p) {
 /** C mondata.c:580. Hero identity is the object itself, not its monster ID;
  * the current form is mon->data, including after a form change. */
 export function can_chant(mtmp) {
-    const ptr = mtmp.data || permonstTemplate(mtmp.data_mndx ?? monsndx(mtmp));
+    const ptr = mtmp.data; /* C mondata.c:583-584 reads this permonst directly. */
     const msound = ptr.msound | 0;
     const strangled = mtmp === game.youmonst
         && !!(game.u && game.u.uprops && game.u.uprops[STRANGLED]
@@ -2288,28 +2110,29 @@ export function noattacks(ptr) {
 }
 
 /** C mondata.c attacktype_fordmg(ptr, atyp, dtyp) — first attack matching aatyp
- * (and adtyp, or AD_ANY wildcard); returns {aatyp,adtyp,damn,damd} or null.
- * mattk ≡ monMattk(ptr.pmidx); C returns &ptr->mattk[i] → its fields. */
+ * (and adtyp, or AD_ANY wildcard); returns the matching attack or null.
+ * C mondata.c:49 returns a pointer into ptr->mattk, preserving identity. */
 export function attacktype_fordmg(ptr, atyp, dtyp) {
     const a = ptr.mattk ?? monMattk(ptr.pmidx | 0);
     if (!a)
         return null;
     for (let i = 0; i < NATTK; i++) {
         if (a[i].aatyp === atyp && (dtyp === AD_ANY || a[i].adtyp === dtyp))
-            return { aatyp: a[i].aatyp, adtyp: a[i].adtyp, damn: a[i].damn, damd: a[i].damd };
+            return a[i];
     }
     return null;
 }
 
 /** C mondata.c dmgtype_fromattack(ptr, dtyp, atyp) — first attack matching adtyp
- * (and aatyp, or AT_ANY wildcard); returns {aatyp,adtyp,damn,damd} or null. */
+ * (and aatyp, or AT_ANY wildcard); returns the matching attack or null.
+ * C mondata.c:707 returns a pointer into ptr->mattk, preserving identity. */
 export function dmgtype_fromattack(ptr, dtyp, atyp) {
     const a = ptr.mattk ?? monMattk(ptr.pmidx | 0);
     if (!a)
         return null;
     for (let i = 0; i < NATTK; i++) {
         if (a[i].adtyp === dtyp && (atyp === AT_ANY || a[i].aatyp === atyp))
-            return { aatyp: a[i].aatyp, adtyp: a[i].adtyp, damn: a[i].damn, damd: a[i].damd };
+            return a[i];
     }
     return null;
 }
@@ -2335,9 +2158,11 @@ export function set_mon_data(mtmp, ptr) {
     if (cur) {
         const new_speed = ptr.mmove | 0;
         if (new_speed < old_speed) {
-            let v = cur * new_speed;
+            // movement_p points to a short: compound multiplication narrows
+            // before the subsequent division, including on overflow.
+            let v = (cur * new_speed) << 16 >> 16;
             if (old_speed > 0)
-                v = Math.trunc(v / old_speed);
+                v = Math.trunc(v / old_speed) << 16 >> 16;
             if (isHero) game.u.umovement = v; else mtmp.movement = v;
         }
     }

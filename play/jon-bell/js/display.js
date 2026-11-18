@@ -1353,6 +1353,7 @@ export function collectScreenDescriptionClasses(options = {}) {
         darkroomAlias: !game._symsetDarkroomPending && !_darkroom_alias_blank(),
         heroOverride: overrides?.[SYM_OFFSETS.X + 5],
         heroSymbol: pager_showsyms()?.[SYM_OFFSETS.M + 53] ?? '@',
+        warnsyms: game.gw?.warnsyms,
         heroNeedsYou: race != null && race !== PM_HUMAN && race !== PM_ELF
             && u?.umonnum === u?.umonster,
         ...options,
@@ -8807,7 +8808,7 @@ export function anim_frame_info() {
 }
 function _toplStr(msg, row = 0) {
     let s = String(msg || '');
-    const CTRL_BYTE = /[\x01-\x09\x0b-\x0d\x10-\x1a\x1c-\x1f]/g;
+    const CTRL_BYTE = /[\x01-\x09\x0b-\x0d\x10-\x1a\x1c-\x1f\x80-\xff]/g;
     if (s.search(CTRL_BYTE) >= 0) {
         const background = game._topl_tab_background;
         const previous = String(background?.text === game._pending_message
@@ -8826,7 +8827,8 @@ function _toplStr(msg, row = 0) {
             }
         }
         const original = s;
-        s = s.replace(CTRL_BYTE, (_, offset) => cells[_topl_visualLen(original.slice(0, offset))] || ' ');
+        s = s.replace(CTRL_BYTE, (_, offset) => game._topl_show_only === original
+            ? ' ' : cells[_topl_visualLen(original.slice(0, offset))] || ' ');
     }
     return s.replace(/ +$/, '').replace(/ {5,}/g, (m) => `\x1b[${m.length}C`);
 }
@@ -13810,7 +13812,7 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
     /* C's pre-message flush (pline.c:273-274) updates the map/status without
      * erasing the physical topline. Keep it for bytes that paint no cell;
      * our repaint reconstructs that row from the already-cleared input buffer. */
-    const tabBackground = /[\x01-\x09\x0b-\x0d\x10-\x1a\x1c-\x1f]/.test(String(msg)) ? {
+    const tabBackground = /[\x01-\x09\x0b-\x0d\x10-\x1a\x1c-\x1f\x80-\xff]/.test(String(msg)) ? {
         output: game._screen_output,
         cells: game.nhDisplay?.grid?.map(row => row.map(cell => ({ ...cell }))),
     } : null;

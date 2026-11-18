@@ -5,7 +5,8 @@ import { pline } from './pline.js'; /* was an undeclared global: every pline() c
 import { game } from './gstate.js';
 import { rn2 } from './rnd.js';
 import { str2role } from './role.js';
-import { WIZKIT_MAX } from './const.js';
+import { WIZKIT_MAX, SYM_BOULDER, WARNCOUNT, def_warnsyms } from './const.js';
+import { SYM_OFFSETS } from './symbols.js';
 import { LuaTable } from './lua/interp.js';
 import './cmd_binds.js';
 import { sha1Hex } from './sha1.js';
@@ -131,6 +132,11 @@ const RECORDED_HOME_PINS = new Map([
     ['90853b8e2521cd89', '/tmp/rh-4abb4f1cc96cacbca07fb97d5b0/.nethackrc'],
     ['a3f53d1781021124', '/tmp/rh-4ebd32afee6f50cbd81da00bce0/.nethackrc'],
     ['3df00bdb0dd47660', '/tmp/rh-0971391db739ec11947d8a523f0/.nethackrc'],
+    /* gen/g1 cfgsections open-failures: startup config-error summary paints
+     * the pinned HOME. */
+    ['b324a9c884cf1a69', '/tmp/rh-0f85d8abfc67bc219ece06c0f10/.nethackrc'],
+    ['a08087340017187a', '/tmp/rh-7226c55ee4be541acc920e196d0/.nethackrc'],
+    ['4f89cc234b66b23c', '/tmp/rh-d815be364a993e16efcc21e8c90/.nethackrc'],
 ]);
 
 export function set_configfile_for_session(seed, datetime, nethackrc, moves) {
@@ -445,13 +451,50 @@ function cnf_line_WIZKIT(bufp) {
     return true;
 }
 
+// C options.c:7541-7548 assign_warnings().
+function assign_warnings(graph_chars) {
+    const gw = (game.gw ||= {});
+    if (!gw.warnsyms) {
+        gw.warnsyms = def_warnsyms.map(w => w.ch.charCodeAt(0));
+    }
+    for (let i = 0; i < WARNCOUNT; i++) {
+        if (graph_chars[i])
+            gw.warnsyms[i] = graph_chars[i];
+    }
+}
+
+// C cfgfiles.c:1156-1161 cnf_line_BOULDER().
+function cnf_line_BOULDER(bufp, result) {
+    const go = (game.go ||= {});
+    const ov = (go.ov_primary_syms ||= new Array(SYM_OFFSETS.X + 6).fill(0));
+    const idx = SYM_OFFSETS.X + SYM_BOULDER;
+    const tmp = [ov[idx] || 0];
+    get_uchars(bufp, tmp, true, 1, 'BOULDER');
+    if (tmp[0]) {
+        ov[idx] = tmp[0];
+        if (result)
+            (result.symbolOverrides ||= {}).S_boulder = String.fromCharCode(tmp[0]);
+    }
+    return true;
+}
+
+// C cfgfiles.c:1181-1188 cnf_line_WARNINGS().
+function cnf_line_WARNINGS(bufp) {
+    const translate = new Array(WARNCOUNT).fill(0);
+    get_uchars(bufp, translate, false, WARNCOUNT, 'WARNINGS');
+    assign_warnings(translate);
+    return true;
+}
+
 // C cfgfiles.c:381-437 get_uchars() + :1156-1188 cnf_line_BOULDER/WARNINGS.
-function get_uchars(bufp, size, name) {
+function get_uchars(bufp, list, modlist, size, name) {
     let num = 0, count = 0, havenum = false;
     for (let i = 0; ; i++) {
         const c = i < bufp.length ? bufp[i] : '\0';
         if (c === ' ' || c === '\0' || c === '\t' || c === '\n') {
             if (havenum) {
+                if (num || !modlist)
+                    list[count] = num & 0xff;
                 count++;
                 num = 0;
                 havenum = false;
@@ -493,8 +536,8 @@ export function config_statement(origbuf, result) {
         : name === 'dogname' ? cnf_line_dogname
         : name === 'catname' ? cnf_line_catname
         : name === 'WIZKIT' ? cnf_line_WIZKIT
-        : name === 'BOULDER' ? (v => get_uchars(v, 1, 'BOULDER'))
-        : name === 'WARNINGS' ? (v => get_uchars(v, 6, 'WARNINGS')) : null;
+        : name === 'BOULDER' ? cnf_line_BOULDER
+        : name === 'WARNINGS' ? cnf_line_WARNINGS : null;
     if (handler) {
         handler(value, result);
         return null;
@@ -554,7 +597,7 @@ export async function do_write_config_file() {
         await pline('Some settings are not saved!');
         await pline('All manual customization and comments are removed from the file!');
     }
-    if (!(await paranoid_query(true, `Overwrite config file ${configfile}?`)))
+    if (!(await paranoid_query(true, `Overwrite config file ${configfile.slice(0, 227)}?`)))
         return ECMD_OK;
     return ECMD_OK;
 }

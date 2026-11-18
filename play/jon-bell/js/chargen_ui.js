@@ -1733,18 +1733,19 @@ export async function playChargen(ctx) {
             for (let i = 0; i < rc.roles.length; i++) rfilter.roles[i] = rc.roles[i];
         }
     }
-    const st = {
+    const st = ctx.asknameState ? { ...ctx.asknameState.st } : {
         role:   ctx.flags?.initrole  ?? ROLE_NONE,
         race:   ctx.flags?.initrace  ?? ROLE_NONE,
         gender: ctx.flags?.initgend  ?? ROLE_NONE,
         align:  ctx.flags?.initalign ?? ROLE_NONE,
     };
-    let plname = ctx.plname || '';
-    let asknameText = null;
-    let asknameRetried = false;   // the retry line stays painted on the base window
-    let renameallowed = ctx.renameallowed || false;
+    let plname = ctx.asknameState ? ctx.asknameState.plname : (ctx.plname || '');
+    let asknameText = ctx.asknameState ? ctx.asknameState.asknameText : null;
+    let asknameRetried = ctx.asknameState ? ctx.asknameState.asknameRetried : false;   // the retry line stays painted on the base window
+    let renameallowed = ctx.asknameState ? ctx.asknameState.renameallowed : (ctx.renameallowed || false);
+    let renamed = false;
     const result = () => ({ plname, role: st.role, race: st.race,
-                            gender: st.gender, align: st.align, quit: false });
+                            gender: st.gender, align: st.align, quit: false, renamed });
     const quit = (bail = null) => ({ plname, role: st.role, race: st.race,
                           gender: st.gender, align: st.align, quit: true, bail });
     const ASKNAME_BAIL = 'Giving up after 10 tries.';   // wintty.c:674
@@ -1783,16 +1784,21 @@ export async function playChargen(ctx) {
         }
     }
 
-    plname = plnamesuffix(plname, st);
-    while (!plname) {
-        asknameText = await doAskname((typed) => ctx.baseWindow
-            ? tty_base_window_prompt(ctx.baseWindow, 2, ASKNAME_TEXT + ' ' + typed, [13 + typed.length, 2, 1]) : ({
-            screen: buildCopyrightAskname(typed),
-            cursor: cursorForAskname(typed),
-        }), ctx.baseWindow);
-        if (asknameText === null) return quit(ASKNAME_BAIL);
-        plname = plnamesuffix(asknameText, st);
-        renameallowed = true;   // wintty.c:747 iflags.renameallowed = TRUE
+    if (!ctx.asknameState) {
+        plname = plnamesuffix(plname, st);
+        while (!plname) {
+            asknameText = await doAskname((typed) => ctx.baseWindow
+                ? tty_base_window_prompt(ctx.baseWindow, 2, ASKNAME_TEXT + ' ' + typed, [13 + typed.length, 2, 1]) : ({
+                screen: buildCopyrightAskname(typed),
+                cursor: cursorForAskname(typed),
+            }), ctx.baseWindow);
+            if (asknameText === null) return quit(ASKNAME_BAIL);
+            plname = plnamesuffix(asknameText, st);
+            renameallowed = true;   // wintty.c:747 iflags.renameallowed = TRUE
+        }
+    }
+    if (ctx.asknameOnly) {
+        return { plname, st, asknameText, asknameRetried, renameallowed, quit: false };
     }
 
     // ── genl_player_setup ────────────────────────────────────────────────
@@ -2378,6 +2384,7 @@ export async function playChargen(ctx) {
                     renameRow10 = ASKNAME_TEXT + (renameResidual ? ' ' + renameResidual : '');
                     plname = plnamesuffix(renameResidual, { ...st }); // role.c:2695-2699 restores facets
                 } while (!plname);
+                renamed = true;
                 continue confirm;   // getconfirmation is still True
             }
 

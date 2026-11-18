@@ -3484,7 +3484,7 @@ export async function drop_boulder_on_player(confused, helmet_protects, byu, ski
         dmg = 0;
     wake_nearto_er(u.ux, u.uy, 4 * 4);
     if (!(await flooreffects_er(otmp2, u.ux, u.uy, 'fall'))) {
-        place_object(otmp2, u.ux, u.uy);
+        await place_object(otmp2, u.ux, u.uy);
         await stackobj_er(otmp2);
         newsym(u.ux, u.uy);
     }
@@ -3537,7 +3537,7 @@ export async function drop_boulder_on_monster(x, y, confused, byu) {
         return true;
     }
     if (!(await flooreffects_er(otmp2, x, y, 'fall'))) {
-        place_object(otmp2, x, y);
+        await place_object(otmp2, x, y);
         await stackobj_er(otmp2);
         newsym(x, y);
     }

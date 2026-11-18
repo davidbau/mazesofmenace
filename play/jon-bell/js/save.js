@@ -257,6 +257,8 @@ export const NOT_SAVED = [
     // C decl.h gx.xlock (lock.c lock-pick state) is outside savegamestate();
     // the restoring process starts with it zeroed.
     'xlock',
+    // C pager.c:2661 dowhatdoes() `static boolean once = FALSE;` is process-local.
+    '_whatdoes_once',
 ];
 
 /* C ref: save.c:246 savegamestate() — everything between the current level and
@@ -467,6 +469,8 @@ export async function freedynamicdata() {
     freeroleoptvals(); // C save.c:1131, before wish_history_flush().
     const { free_menu_coloring } = await import('./coloratt.js');
     free_menu_coloring(); // C save.c:1084
+    const { free_tutorial } = await import('./nhlua.js');
+    await free_tutorial(); // C save.c:1135 (only needed if quitting while in tutorial)
     const { wish_history_flush } = await import('./zap.js');
     wish_history_flush();
 }

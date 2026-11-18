@@ -233,7 +233,6 @@ import { verbalize, display_text_window } from './cmd.js';
 import { um_dist } from './apply.js';
 /* mpickobj (steal.c:616) callees */
 import { carry_obj_effects, count_unpaid, mergable, freeinv } from './invent.js';
-import { obj_no_longer_held } from './do.js';
 import { merged } from './invent.js';
 import { oid_price_adjustment } from './shk.js';
 import { shkgone } from './shk.js';
@@ -1177,19 +1176,12 @@ async function makelevel_generate() {
         /* C took the Is_special arm; this proto just isn't admitted. */
     }
     else if (dgn && dgn.proto) {
-        /* C: makemaz("") — resolves the protofile from dungeons[dnum].proto
-         * plus dunlev()/rndlevs (mkmaze.c:1139-1150), a name-building branch
-         * js_makemaz does not port.  Vlad's Tower is the only user: its
-         * three dungeon levels resolve to tower1, tower2, and tower3. */
-        if (dgn.proto === 'tower') {
-            const dunlev = uz0?.dlevel | 0; // C dungeon.c:1325: dunlev is dlevel.
-            if (dunlev >= 1 && dunlev <= 3) {
-                await js_makemaz(`tower${dunlev}`, null);
-                return;
-            }
+        /* C mklev.c:1271-1272: makemaz resolves the dungeon prototype and
+         * level suffix itself (mkmaze.c:1139-1153). */
+        if (dgn.proto === 'tower' || FILL_READY.has(dgn.proto)) {
+            await js_makemaz('', spAny);
+            return;
         }
-        if (FILL_READY.has(dgn.proto))
-            throw new Error(`makelevel: dungeons[${uz0?.dnum}].proto="${dgn.proto}" admitted, but makemaz("")'s protofile-from-dunlev branch is not ported (mkmaze.c:1139-1150)`);
     }
     else if (dgn && dgn.fill_lvl) {
         if (FILL_READY.has(dgn.fill_lvl)) {
@@ -2376,7 +2368,7 @@ async function themeroom_fill_rng(aroom, difficulty) {
             if (_chestPos) {
                 _chest.ox = _chestPos.x | 0;
                 _chest.oy = _chestPos.y | 0;
-                place_object(_chest, _chest.ox, _chest.oy);
+                await place_object(_chest, _chest.ox, _chest.oy);
             }
             while (_chest.cobj) {
                 const _old = _chest.cobj;
@@ -2470,7 +2462,7 @@ async function themeroom_fill_rng(aroom, difficulty) {
                     //     Zombifiable are never PM_LIZARD/PM_LICHEN/S_TROLL/rider, so
                     //     always rnz(25) = rn2(1000)+rne(4)+rn2(2). gz.zombify=0 during mklev.
                     set_corpsenm(_corpse, zombifiable[0]);
-                    place_object(_corpse, corpsePos.x, corpsePos.y);
+                    await place_object(_corpse, corpsePos.x, corpsePos.y);
                     // 4. bury_an_obj:2007 obj_resists(corpse,0,0), then move it
                     obj_resists(_corpse, 0, 0);
                     obj_extract_self(_corpse);
@@ -4931,7 +4923,7 @@ async function mktrap_victim(trap) {
         default: break;
     }
     if (trap_item)
-        place_object(trap_item, x, y);
+        await place_object(trap_item, x, y);
     do {
         const cls = [WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, GEM_CLASS][rn2(4)];
         const otmp = await mkobj(cls, false);
@@ -4941,7 +4933,7 @@ async function mktrap_victim(trap) {
         if (kind === PIT && breaktest(otmp)) {
             await dealloc_obj(otmp);
         } else {
-            place_object(otmp, x, y);
+            await place_object(otmp, x, y);
         }
     } while (!rn2(5));
     /* C mklev.c:1890 — Place a corpse.  PM_* are the pm.generated.js
@@ -4972,7 +4964,7 @@ async function mktrap_victim(trap) {
                 otmp.quan = 1;
                 otmp.owt = weight(otmp);
                 curse(otmp);
-                place_object(otmp, x, y);
+                await place_object(otmp, x, y);
                 if (!game.level.at(x, y).lit)
                     begin_burn(otmp, false);
             }
@@ -5461,7 +5453,7 @@ export async function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_l
                         if (!rn2(3))
                             add_to_buried(otmp);
                         else
-                            place_object(otmp, x, y);
+                            await place_object(otmp, x, y);
                     }
                 }
                 if (rn2(1000) < gemprob) {
@@ -5477,7 +5469,7 @@ export async function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_l
                                 if (!rn2(3))
                                     add_to_buried(otmp);
                                 else
-                                    place_object(otmp, x, y);
+                                    await place_object(otmp, x, y);
                             }
                         }
                     }
@@ -6163,8 +6155,7 @@ export async function mdrop_obj_md(mon, obj, verbosely) {
      * as C's own comment at steal.c:834 says. */
     const _floorConsumed = await flooreffects(obj, omx, omy, "fall");
     if (!_floorConsumed) {
-        await obj_no_longer_held(obj); /* C mkobj.c:2330 via place_object */
-        place_object(obj, omx, omy);
+        await place_object(obj, omx, omy);
         await stackobj(obj);
     }
     if ((mon.mhp | 0) >= 1 && unwornmask)
@@ -6371,7 +6362,7 @@ export async function mselftouch_nc(mon, arg, byplayer) {
                         corpse_xname_rc(mwep, null, 4 /* CXN_PFX_THE */));
         await minstapetrify(mon, byplayer);
         if (mon.mhp > 0 && !which_armor(mon, W_ARMG) && !Resists_Elem(mon, STONE_RES))
-            mwepgone(mon);
+            await mwepgone(mon);
     }
 }
 

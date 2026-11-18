@@ -925,7 +925,7 @@ export async function breakchestlock(box, destroyit) {
             otmp.age = g.moves - otmp.age;
             start_corpse_timeout(otmp);
         }
-        place_object(otmp, u.ux | 0, u.uy | 0);
+        await place_object(otmp, u.ux | 0, u.uy | 0);
         await stackobj(otmp);
     }
     if (costly) {

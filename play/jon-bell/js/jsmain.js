@@ -3,7 +3,7 @@
 //
 // For browser play, see nethack.js.
 import { game, resetGame } from './gstate.js';
-import { init_symbols } from './symbols.js';
+import { init_symbols, get_othersym, SYM_OFFSETS } from './symbols.js';
 import { vfsDeleteFile, vfsReadFile } from './storage.js';
 import { savefile_name } from './save.js';
 import { initRng, enableRngLog, getRngLog, pushRngLogEntry } from './rng.js';
@@ -12,7 +12,7 @@ import { FF_FAITHFUL } from './fastforward.js';
 import { parseNethackrc, init_fruit_chain } from './options.js';
 import { reset_commands, update_rest_on_space } from './cmd.js';
 import { set_configfile_for_session } from './cfgfiles.js';
-import { gs, H_DEC, H_IBM, H_UNK, PRIMARYSET, INFRAVISION, RUN_LEAP, MAX_MSG_HISTORY } from './const.js';
+import { gs, H_DEC, H_IBM, H_UNK, PRIMARYSET, INFRAVISION, RUN_LEAP, MAX_MSG_HISTORY, SYM_BOULDER, def_warnsyms } from './const.js';
 import { apply_customizations, glyphrep_to_custom_map_entries, purge_all_custom_entries, clear_all_glyphmap_colors, glyphid_cache_status, fill_glyphid_cache, free_glyphid_cache } from './glyphs.js';
 import { free_all_glyphmap_u } from './utf8map.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
@@ -137,7 +137,13 @@ export class NethackGame {
         // C options.c:7154-7155 caches glyph IDs before parsing the rc.
         if (!glyphid_cache_status()) fill_glyphid_cache();
         init_symbols(); // C options.c initoptions_init, before reading the rc
+        /* C options.c:7201 initoptions_init — default warning symbols before rc. */
+        (g.gw ||= {}).warnsyms = def_warnsyms.map(w => w.ch.charCodeAt(0));
         const opts = parseNethackrc(this._nethackrc);
+        /* C options.c:7343-7346 initoptions_finish — sync boulder showsym after rc. */
+        const bouldersym = get_othersym(SYM_BOULDER, PRIMARYSET);
+        if (bouldersym && g.gs?.showsyms)
+            g.gs.showsyms[SYM_OFFSETS.X + SYM_BOULDER] = bouldersym;
         g.msgtypes = opts.msgtypes || [];
         g.apelist = opts.apelist || null;
         // C ref: options.c optfn_name — svp.plname[] is empty unless the rc
@@ -184,8 +190,10 @@ export class NethackGame {
             g.plname = 'wizard';
         // preamble can read NETHACK_FIXED_DATETIME for phase_of_the_moon().
         g.env = this._env;
-        /* C options.c:3609 optfn_role: nmcpy(svp.pl_character, op, PL_NSIZ) */
-        g.pl_character = opts.role ? String(opts.role).slice(0, 31) : '';
+        /* C options.c:3609 optfn_role: nmcpy(svp.pl_character, op, PL_NSIZ)
+         * (cfgfiles.c:768 cnf_line_ROLE sets flags.initrole only, not pl_character). */
+        g.pl_character = (opts.role && typeof opts.role !== 'number')
+            ? String(opts.role).slice(0, 31) : '';
         g.flags.initrole = roleOptionToIndex(opts.role);
         g.flags.initrace = raceOptionToIndex(opts.race);
         g.flags.initgend = genderOptionToIndex(opts.gender);
@@ -315,101 +323,118 @@ export class NethackGame {
             await nh_terminate(0);
         }
         if (selected?.plname) g.plname = selected.plname;
-        // ── attempt_restore (v5 cross-segment save channel) ───────────────
-        // C ref: sys/unix/unixmain.c:220 `attempt_restore:` — after
-        // initoptions()/plnamesuffix()/vision_init() and BEFORE
-        // player_selection()+newgame(), main() asks whether this hero has a
-        // save file; if so the whole new-game path is skipped and moveloop()
-        // runs with resuming=TRUE.  The save file travels through
-        // segment), which js/storage.js reads through game.mockStorage.
-        //
-        // A segment whose storage holds no save file falls straight through to
-        // the chargen+newgame path below, which is every single-segment
-        {
-            // set_playmode has already replaced the configured name in wizard
-            // mode. Look up the same effective name that dosave0 writes.
-            // C unixmain.c:198 plnamesuffix() has already cut svp.plname at
-            // its first '-' (role.c:1699-1700) and turned commas into spaces
-            // (role.c:1720) before attempt_restore names the save file; the
-            // suffix tokens themselves stay for playChargen's own pass.
-            const rcName = (this._rcName || g.flags.debug || selected?.plname) ? g.plname : '';
-            const save = restore_saved_game(rcName.split('-')[0].replace(/,/g, ' '));
-            if (save) {
-                /* C unixmain.c:261; dorecover() releases this at restgamestate(). */
-                game._base_topline = await tty_restore_base_topline(!selected);
-                await pline('Restoring save file...');
-                await dorecover(save);
-                /* C decl.h gl.luathemes is process state and is NOT in the save
-                 * file; the restoring process starts with it empty, so its first
-                 * makelevel() loads themerms.lua (nhlib.lua shuffle).  restgamestate()
-                 * here copies every own property of the save onto game. */
-                game._luathemes_loaded = {};
-                /* C cfgfiles.c configfile is process state, not saved; the
-                 * restoring process resolves its own rc name, so undo the
-                 * save's copy of the previous process's name. */
-                set_configfile_for_session(this._seed, this._datetime,
-                                           this._nethackrc, this._moves);
-                /* C restore.c:902-903 dorecover() — `if (!wizard && !discover)
-                 * (void) delete_savefile();`.  Wizard/explore restores keep it
-                 * until restore_preamble()'s "keep the save file?" prompt. */
-                if (!game.flags?.debug && !game.flags?.explore)
-                    vfsDeleteFile(savefile_name(game.plname));
-                this._resuming = true;
-                await restore_preamble();
+        // ── askname + attempt_restore (v5 cross-segment save channel) ─────
+        // C ref: sys/unix/unixmain.c:198 plnamesuffix() -> tty_askname(), then
+        // :220 `attempt_restore:` — main() resolves svp.plname (asking the
+        // player when rc gives none) BEFORE checking restore_saved_game(), so a
+        // saved game created with an interactive name restores on the next
+        // segment too.  If no save exists, player_selection()+newgame() runs,
+        // and renaming during confirm (`iflags.renameinprogress`) re-checks
+        // attempt_restore (unixmain.c:293-303).
+        const chargenRead = async (screen, cursor) => {
+            game._screen_output = screen;
+            const disp = game.nhDisplay;
+            if (disp) {
+                disp.cursorCol = cursor[0];
+                disp.cursorRow = cursor[1];
+            }
+            return await nhgetch();
+        };
+        const bailChargen = async (bail) => {
+            /* tty_askname's bail("Giving up after 10 tries.\n"): settty()
+             * puts() it, so the message row is followed by a blank one. */
+            exit_nhwindows(bail);
+            if (bail) {
+                raw_print('');
+                await g._preNhgetchHook?.();   // as for 'Until next time then...' above
+            }
+            await nh_terminate(0);
+        };
+        const tryRestore = async (probeName, bannerShown) => {
+            const save = restore_saved_game(probeName);
+            if (!save) return false;
+            /* C unixmain.c:261; dorecover() releases this at restgamestate(). */
+            game._base_topline = await tty_restore_base_topline(bannerShown);
+            await pline('Restoring save file...');
+            await dorecover(save);
+            /* C decl.h gl.luathemes is process state and is NOT in the save
+             * file; the restoring process starts with it empty, so its first
+             * makelevel() loads themerms.lua (nhlib.lua shuffle).  restgamestate()
+             * here copies every own property of the save onto game. */
+            game._luathemes_loaded = {};
+            /* C cfgfiles.c configfile is process state, not saved; the
+             * restoring process resolves its own rc name, so undo the
+             * save's copy of the previous process's name. */
+            set_configfile_for_session(this._seed, this._datetime,
+                                       this._nethackrc, this._moves);
+            /* C restore.c:902-903 dorecover() — `if (!wizard && !discover)
+             * (void) delete_savefile();`.  Wizard/explore restores keep it
+             * until restore_preamble()'s "keep the save file?" prompt. */
+            if (!game.flags?.debug && !game.flags?.explore)
+                vfsDeleteFile(savefile_name(game.plname));
+            this._resuming = true;
+            await restore_preamble();
+            return true;
+        };
+        let askState = null;
+        if (this._playChargen && !selected?.plname) {
+            // C ref: unixmain.c:193 set_playmode() runs BEFORE plnamesuffix(),
+            // so wizard mode's forced "wizard" name suppresses askname() just
+            // like an rc `name:` does.  ('Hero' is the JS replay-path
+            // placeholder and must not be mistaken for a real name here.)
+            const startName = (this._rcName || g.flags.debug) ? g.plname : '';
+            askState = await playChargen({
+                flags: g.flags,
+                plname: startName,
+                baseWindow: selected?.background,
+                rn2,
+                read: chargenRead,
+                asknameOnly: true,
+            });
+            if (askState.quit) {
+                await bailChargen(askState.bail);
                 return;
             }
+            if (askState.plname) g.plname = askState.plname;
         }
+        const probeName = selected?.plname
+            || (askState ? askState.plname
+                : ((this._rcName || g.flags.debug) ? g.plname : '').split('-')[0].replace(/,/g, ' '));
+        if (await tryRestore(probeName, !selected))
+            return;
         /* C unixmain.c:308-312: no save file; check_panic_save() (files.c:1312)
          * looks for "<savefile>.e" and ask_about_panic_save() (unixunix.c:263)
          * quits unless the answer is 'y'. */
-        {
-            const pname = ((this._rcName || g.flags.debug || selected?.plname) ? g.plname : '')
-                .split('-')[0].replace(/,/g, ' ');
-            if (vfsReadFile(savefile_name(pname) + '.e') !== null) {
-                game._base_topline = await tty_restore_base_topline(!selected);
-                await pline('There is no regular save file but there is a panic one.');
-                await pline('It might be recoverable with demi-divine intervention.');
-                const c = await game._base_topline.yn('Start a new game instead?', 'yn\x1bq', 'n');
-                if (c !== 'y') {
-                    exit_nhwindows(null);
-                    await nh_terminate(0);
-                }
+        if (vfsReadFile(savefile_name(probeName) + '.e') !== null) {
+            game._base_topline = await tty_restore_base_topline(!selected);
+            await pline('There is no regular save file but there is a panic one.');
+            await pline('It might be recoverable with demi-divine intervention.');
+            const c = await game._base_topline.yn('Start a new game instead?', 'yn\x1bq', 'n');
+            if (c !== 'y') {
+                exit_nhwindows(null);
+                await nh_terminate(0);
             }
         }
         // ── PLAYED chargen (v5 contract) ──────────────────────────────────
-        // C ref: sys/unix/unixmain.c:198 plnamesuffix() -> tty_askname(),
-        // then :289 player_selection() -> role.c:2206 genl_player_setup(),
-        // then :315 newgame().  Everything here happens AFTER the RNG is
-        // seeded and BEFORE newgame(), so the facet picks are the first
-        // entries in the stream — exactly where the recordings show them
-        // step 8's randomize_gem_colors from newgame).
+        // C ref: sys/unix/unixmain.c:289 player_selection() -> role.c:2206
+        // genl_player_setup(), then :315 newgame().  Everything here happens
+        // AFTER the RNG is seeded and BEFORE newgame(), so the facet picks are
+        // the first entries in the stream — exactly where the recordings show
+        // then step 8's randomize_gem_colors from newgame).
         //
         // (extractChargenPreInitRng + generateChargenFrames) and must keep
         // to that path.
         if (this._playChargen) {
-            // C ref: unixmain.c:193 set_playmode() runs BEFORE plnamesuffix(),
-            // so wizard mode's forced "wizard" name suppresses askname() just
-            // like an rc `name:` does.  Anything else means svp.plname[] is
-            // empty and the player is asked.  ('Hero' is the JS replay-path
-            // placeholder and must not be mistaken for a real name here.)
-            const startName = (this._rcName || g.flags.debug) ? g.plname : '';
+            const startName = askState ? askState.plname
+                : ((this._rcName || g.flags.debug) ? g.plname : '');
             const played = await playChargen({
                 flags: g.flags,
                 plname: startName,
                 needAskname: !startName,
                 baseWindow: selected?.background,
+                asknameState: askState,
                 rn2,
-                // before the key is delivered; nhgetch() fires the same
-                // _screens[] at the indices the recorded steps[] expect.
-                read: async (screen, cursor) => {
-                    game._screen_output = screen;
-                    const disp = game.nhDisplay;
-                    if (disp) {
-                        disp.cursorCol = cursor[0];
-                        disp.cursorRow = cursor[1];
-                    }
-                    return await nhgetch();
-                },
+                read: chargenRead,
             });
             g.plname = played.plname || g.plname;
             g.flags.initrole = played.role;
@@ -419,15 +444,11 @@ export class NethackGame {
             // C wintty.c:634-640 -> bail():344-350 exits the process;
             // returning here would let the caller enter moveloop without a hero.
             if (played.quit) {
-                /* tty_askname's bail("Giving up after 10 tries.\n"): settty()
-                 * puts() it, so the message row is followed by a blank one. */
-                exit_nhwindows(played.bail);
-                if (played.bail) {
-                    raw_print('');
-                    await g._preNhgetchHook?.();   // as for 'Until next time then...' above
-                }
-                await nh_terminate(0);
+                await bailChargen(played.bail);
+                return;
             }
+            if (played.renamed && await tryRestore(g.plname, false))
+                return;
             game._screen_output = '';
         }
         // Run game startup
@@ -911,10 +932,11 @@ export async function gameFromSession(sessionData) {
 // replay (extractChargenPreInitRng), the role pin read out of the welcome-screen
 // therefore unavailable here BY CONSTRUCTION.  This adapter takes none of it.
 //
-if (typeof process !== 'undefined' && typeof process.on === 'function'
+const _hostProcess = globalThis.process;
+if (_hostProcess && typeof _hostProcess.on === 'function'
     && !globalThis.__nhInputDryGuard) {
     globalThis.__nhInputDryGuard = true;
-    process.on('unhandledRejection', (e) => {
+    _hostProcess.on('unhandledRejection', (e) => {
         if (String(e?.message || '').includes('Input queue empty')) return;
         throw e;
     });

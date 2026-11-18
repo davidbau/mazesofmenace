@@ -32,7 +32,7 @@ import { glyphid_cache_status, fill_glyphid_cache, free_glyphid_cache, glyphrep_
 import { sym_val_real, apply_pending_s_utf8, SYM_OFFSETS, LOADSYMS } from './symbols.js';
 import { config_line_error, config_statement, choose_random_part, config_error_nextline, config_error_secure, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
 import { menucolor_row, menucolor_text, add_menu_coloring, add_menu_coloring_parsed, free_one_menu_coloring, count_menucolors, match_str2clr, match_str2attr, attr2attrname, attrnames, color_attr_parse_str, check_enhanced_colors, wc_color_name } from './coloratt.js';
-import { TtyMenu, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
+import { TtyMenu, tty_menu_text, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
 import { getlin, menuitem_invert_test, choose_windows } from './windows.js';
 import { mungspaces, fuzzymatch } from './hacklib.js';
 import { nh_sprintf, docorner_status_rows, _threeStatusLines } from './display.js';
@@ -2799,13 +2799,13 @@ function entryLine(entry, acc) {
      * blanks is unobservable (painted cells are glyphs only). */
     // C fmtstr_tab_doset_simple uses an unpadded name and a literal tab.
     if (game.iflags?.menu_tab_sep)
-        return ' ' + label.slice(0, 4)
-            + menucolor_text(`${entry.name}\t${tail}`).replace(/\t/g, '\x1b[1C');
+        return tty_menu_text(' ' + label.slice(0, 4)
+            + menucolor_text(`${entry.name}\t${tail}`));
     const gap = VALUE_COL - prefixLen;
     const fill = gap <= 0 ? '' : gap > 4 ? `\x1b[${gap}C` : ' '.repeat(gap);
-    return ' ' + label.slice(0, 4)
+    return tty_menu_text(' ' + label.slice(0, 4)
         + menucolor_text(entry.name + fill + tail,
-                         entry.name + ' '.repeat(Math.max(0, gap)) + tail);
+                         entry.name + ' '.repeat(Math.max(0, gap)) + tail));
 }
 
 /* C options.c:8566-8639 with gs.simple_options_help set: the flat menu line list

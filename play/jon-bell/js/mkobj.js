@@ -650,7 +650,7 @@ export async function shrinking_glob_gone(obj) {
     if (where === OBJ_MIGRATING)
         obj.owornmask = 0;
     else if (where === OBJ_MINVENT && obj.owornmask && obj.ocarry?.mw === obj)
-        setmnotwielded(obj.ocarry, obj);
+        await setmnotwielded(obj.ocarry, obj);
     obj_extract_self_general(obj);
     if (where === OBJ_FLOOR)
         maybe_unhide_at(obj.ox | 0, obj.oy | 0);
@@ -780,7 +780,17 @@ const COSTLY_ALTERATION_VERBS = [
     'degrade', 'dilute', 'erase', 'burn', 'neutralize', 'destroy', 'splatter',
     'bite', 'open', 'break the lock on', 'rust', 'rot', 'tarnish', 'crack',
 ];
-export async function costly_alteration(obj, alter_type) {
+export function costly_alteration(obj, alter_type) {
+    // C mkobj.c:767-774: owned carried/free objects need no billing.
+    // Preserve a synchronous result so place_object can finish immediately
+    // for generated objects and ordinary inventory drops.
+    if (alter_type >= 0 && alter_type < COSTLY_ALTERATION_VERBS.length
+        && (obj.where === _OBJ_INVENT_CA || obj.where === OBJ_FREE) && !obj.unpaid)
+        return;
+    return costly_alteration_core(obj, alter_type);
+}
+
+async function costly_alteration_core(obj, alter_type) {
     const u = game.u || {};
 
     if (alter_type < 0 || alter_type >= COSTLY_ALTERATION_VERBS.length) {
@@ -2100,7 +2110,7 @@ export async function mksobj_at(otyp, x, y, init, artif) {
     if (typeof process !== 'undefined' && ENV?.FF_MKOBJ_TRACE === '2')
         pushRngLogEntry(`^mksobj_at[otyp=${otyp | 0} xy=${x | 0},${y | 0}]`);
     const otmp = await mksobj(otyp, init, artif);
-    place_object(otmp, x, y);
+    await place_object(otmp, x, y);
     return otmp;
 }
 
@@ -2155,7 +2165,7 @@ export async function mkobj(oclass, artif) {
 /* C mkobj.c:228-235 — mkobj_at: make random-class object then place it */
 export async function mkobj_at(oclass, x, y, artif) {
     const otmp = await mkobj(oclass, artif);
-    place_object(otmp, x, y);
+    await place_object(otmp, x, y);
     return otmp;
 }
 
@@ -2237,6 +2247,14 @@ export function place_object(otmp, x, y) {
     const yi = y | 0;
     // C mkobj.c:2328 — otmp2 = svl.level.objects[x][y]
     let otmp2 = (game.level?.levelObjects?.[xi]?.[yi]) ?? null;
+    // C mkobj.c:2330, after reading the pile and before linking the object.
+    const pending = obj_no_longer_held(otmp);
+    if (pending)
+        return pending.then(() => place_object_core(otmp, xi, yi, otmp2));
+    return place_object_core(otmp, xi, yi, otmp2);
+}
+
+function place_object_core(otmp, xi, yi, otmp2) {
     // C mkobj.c:2338-2349 — insert into per-tile nexthere chain.
     // Non-boulder objects go under boulders so that display shows boulder on top
     // without needing to traverse the pile chain.

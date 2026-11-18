@@ -549,11 +549,8 @@ export async function dropz(obj, with_impact) {
         if (await flooreffects(obj, u.ux | 0, u.uy | 0, 'drop'))
             return;
         obj.where = OBJ_FREE;
-        /* C mkobj.c:2330 place_object() opens with obj_no_longer_held(); this
-         * port's place_object is synchronous, so the crysknife reversion
-         * (rn2(10) for an erodeproof one) is run here at the drop site. */
-        await obj_no_longer_held(obj);
-        place_object(obj, u.ux | 0, u.uy | 0);
+        /* C mkobj.c:2330: place_object handles crysknife reversion. */
+        await place_object(obj, u.ux | 0, u.uy | 0);
         if (with_impact)
             await container_impact_dmg(obj, u.ux | 0, u.uy | 0);
         await impact_disturbs_zombies(obj, with_impact);
@@ -3828,22 +3825,32 @@ const CRYSKNIFE = 43, WORM_TOOTH = 42; /* objects.h otyps (js/mklev.js:541) */
 /* C ref: do.c obj_no_longer_held(struct obj *obj) — things that must change when not held.
  * Called for both player and monsters. Recurses into containers.
  * C do.c:897-901 visits each contained object before the container. */
-export async function obj_no_longer_held(obj) {
-    if (!obj) {
+export function obj_no_longer_held(obj) {
+    if (!obj)
         return;
-    }
-    for (let contents = obj.cobj; contents; contents = contents.nobj)
-        await obj_no_longer_held(contents);
-    switch (obj.otyp) {
-    case CRYSKNIFE:
-        if (!obj.oerodeproof || !rn2(10)) {
-            if (!game.context.mon_moving && !game.program_state.gameover)
-                await costly_alteration(obj, COST_DEGRD);
-            obj.otyp = WORM_TOOTH;
-            obj.oerodeproof = 0;
+    // Keep the usual path synchronous; billing can wait for a shopkeeper's
+    // message. Contents still finish before their parent (C do.c:897-901).
+    const finish = () => {
+        if (obj.otyp === CRYSKNIFE && (!obj.oerodeproof || !rn2(10))) {
+            const revert = () => {
+                obj.otyp = WORM_TOOTH;
+                obj.oerodeproof = 0;
+            };
+            if (!game.context.mon_moving && !game.program_state.gameover) {
+                const pending = costly_alteration(obj, COST_DEGRD);
+                if (pending) return pending.then(revert);
+            }
+            revert();
         }
-        break;
-    }
+    };
+    const contents = (child) => {
+        for (; child; child = child.nobj) {
+            const pending = obj_no_longer_held(child);
+            if (pending) return pending.then(() => contents(child.nobj));
+        }
+    };
+    const pending = contents(obj.cobj);
+    return pending ? pending.then(finish) : finish();
 }
 
 export function legs_in_no_shape(for_what, by_steed) {

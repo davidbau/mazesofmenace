@@ -452,7 +452,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
         if (u.dz > 0)
             await pline(`The gold hits the ${surface(_bx, _by)}.`);
         _landedObj.where = 0;
-        place_object(_landedObj, _bx, _by);
+        await place_object(_landedObj, _bx, _by);
         if (u.ushops && u.ushops.length)
             await sellobj(_landedObj, _bx, _by);
         await stackobj(_landedObj);
@@ -909,7 +909,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
     if (_coinWholeThrow) {
         if (!_objGone && (_hitMon || !_throwAnim || !(await ship_object(_landedObj, _lx, _ly, false)))
             && !(await flooreffects(_landedObj, _lx, _ly, 'fall'))) {
-            place_object(_landedObj, _lx, _ly);
+            await place_object(_landedObj, _lx, _ly);
             if (u.ushops?.length) await sellobj(_landedObj, _lx, _ly);
             await stackobj(_landedObj);
             newsym(_lx, _ly);
@@ -1061,8 +1061,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
         /* C ref: dothrow.c:1825-1843 place_object + stackobj + newsym.  C does
          * NOT skip a rest position equal to the hero's own tile. */
         game.thrownobj = null; // C dothrow.c:1823: after shopkeeper/ship handling.
-        await obj_no_longer_held(_landedObj); // C mkobj.c:2333 place_object
-        place_object(_landedObj, _lx, _ly);
+        await place_object(_landedObj, _lx, _ly);
         /* C dothrow.c:1826-1832 — container contents might break; <x,y> is
          * the spot where the throw was initiated (u.ux,u.uy), not bhitpos. */
         if (!_isSoftRest)
