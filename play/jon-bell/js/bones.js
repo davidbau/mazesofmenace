@@ -69,6 +69,7 @@ import { LEAVESTATUE, CORPSTAT_NONE, NO_MINVENT, INTRINSIC, ismnum, MON_FLOOR } 
 import { roles, races } from './roles.js';
 import { dismount_steed } from './steed.js';
 import { update_mlstmv } from './dog.js';
+import { restpriest } from './priest.js';
 import { DISMOUNT_BONES } from './const.js';
 import { clear_bypasses } from './worn.js';
 import { yyyymmddhhmmss } from './calendar.js';
@@ -672,6 +673,10 @@ async function getbones_load(f) {
             if (!await propagate(m.cham === NON_PM ? m.mnum : m.cham, true, true))
                 m.mhpmax = DEFUNCT_MONSTER;
             renumber_objchn(m.minvent, f.snap.fruits, f.snap.omoves, idmap);
+            // C restore.c:448-449: a bones priest's temple belongs to the
+            // receiving game's level, whose depth can differ from the old one.
+            if (m.ispriest)
+                restpriest(m, true);
         }
         renumber_objchn(f.snap.fobj, f.snap.fruits, f.snap.omoves, idmap);
         renumber_objchn(f.snap.level?.buriedobjlist, f.snap.fruits, f.snap.omoves, idmap);

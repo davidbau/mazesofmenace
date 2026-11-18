@@ -27,6 +27,7 @@ import { menu_search_getlin, build_window_screen, tty_window_offx,
          _overlay_status_line } from './com_pager.js';
 import { pmatchi } from './strutil.js';
 import { NO_COLOR } from './terminal.js';
+import { add_menu_str as core_add_menu_str } from './windows.js';
 
 /* C ref: include/wintty.h — the tty is 24x80 (LI x CO). */
 const LI = 24;
@@ -36,21 +37,30 @@ const CO = 80;
 export const ATR_NONE = 0;
 export const ATR_INVERSE = 3;
 
+/* Convert a NetHack {color, attr} pair (tty SGR attr number + CLR_* color)
+ * into SGR parameters matching termcap.c:1010-1033. */
+function colorAttrSgr(color, attr) {
+    const codes = [];
+    if (attr) codes.push(attr);
+    /* termcap.c:1010 hilites[CLR_GRAY] = nilstring: gray emits no SGR. */
+    /* termcap.c:1013-1033: black uses bright black with darkgray enabled,
+     * otherwise blue; it never uses the invisible ANSI black foreground. */
+    if (color === 0) {
+        // NOMUX serializes foreground zero as default (patch-006:237-245).
+        if (game.iflags?.wc2_darkgray !== false) codes.push(90);
+    }
+    else if (color > 0 && color < 7) codes.push(30 + color);
+    else if (color > NO_COLOR && color < 16) codes.push(90 + color - NO_COLOR); /* 8 is NO_COLOR */
+    return codes;
+}
+
 /* C ref: wintty.c toggle_menu_attr for iflags.menu_headings (default
  * {NO_COLOR, ATR_INVERSE}, options.c:2197; the option parser stores
  * {color, attr} in tty SGR numbering).  Returns the SGR parameter list. */
 export function menu_heading_sgr() {
     const mh = game.iflags?.menu_headings;
     if (!mh) return [7];
-    const codes = [];
-    if (mh.attr) codes.push(mh.attr);
-    /* termcap.c:1010 hilites[CLR_GRAY] = nilstring: gray emits no SGR. */
-    /* termcap.c:1013-1033: black uses bright black with darkgray enabled,
-     * otherwise blue; it never uses the invisible ANSI black foreground. */
-    if (mh.color === 0) codes.push((game.iflags?.wc2_darkgray ?? true) ? 90 : 34);
-    else if (mh.color > 0 && mh.color < 7) codes.push(30 + mh.color);
-    else if (mh.color > 8 && mh.color < 16) codes.push(90 + mh.color - 8); /* 8 is NO_COLOR */
-    return codes;
+    return colorAttrSgr(mh.color, mh.attr);
 }
 /* putstr(win, iflags.menu_headings.attr, str) — attribute only, no colour
  * (o_init.c:824-843 disco headers). */
@@ -102,7 +112,7 @@ export class TtyMenu {
 
     /* C ref: src/windows.c add_menu_str — a non-selectable text line. */
     add_menu_str(str) {
-        this.add_menu(0, 0, ATR_NONE, str);
+        core_add_menu_str(this, str);
     }
 
     add_menu_heading(str) {
@@ -120,11 +130,11 @@ export class TtyMenu {
      * selectable, and process_menu_window's gacc collection (wintty.c:1352-1379)
      * filters it later — a key in gacc picks the row through the group_accel
      * arm (wintty.c:1739-1748) and finishes a PICK_ONE menu. */
-    add_menu(aInt, ch, attr, str, skipinvert = false, preselected = false, gch = 0) {
+    add_menu(aInt, ch, attr, str, skipinvert = false, preselected = false, gch = 0, skipMenuColors = false) {
         if (str === null || str === undefined) return;   /* C: str == 0 -> return */
         let s = String(str);
         // C windows.c:1803-1806: match before tty adds the selector prefix.
-        const menuColor = game.iflags.use_menu_color
+        const menuColor = !skipMenuColors && game.iflags.use_menu_color
             ? game.menu_colorings?.find(mc => mc.match.test(s)) : null;
         if (aInt) s = `${ch ? ch : '?'} - ${s}`;
         this.mlist.push({ aInt, selector: ch || 0, attr: attr | 0, str: s, menuColor,
@@ -198,8 +208,7 @@ export class TtyMenu {
             // C wintty.c:1441-1489: leave the margin and selector unstyled.
             const attr_n = /^. [-+#*] /.test(curr.str) ? 4 : 0;
             const mc = curr.menuColor;
-            const sgr = mc ? [mc.attr || '', (mc.color === NO_COLOR || mc.color === 7) ? ''
-                : mc.color < 8 ? 30 + mc.color : 90 + mc.color - 8].filter(Boolean)
+            const sgr = mc ? colorAttrSgr(mc.color, mc.attr)
                 : curr.attr === ATR_INVERSE ? (curr.heading ? menu_heading_sgr() : [7])
                 : curr.sgr || [];
             /* A run of more than four spaces inside reverse video reaches the
@@ -227,8 +236,7 @@ export class TtyMenu {
         /* C wintty.c:1186-1193: the indicator is drawn with the item's own
          * attr/color (a menucolor match applies to it too). */
         const mc = curr.menuColor;
-        const sgr = mc ? [mc.attr || '', (mc.color === NO_COLOR || mc.color === 7) ? ''
-            : mc.color < 8 ? 30 + mc.color : 90 + mc.color - 8].filter(Boolean)
+        const sgr = mc ? colorAttrSgr(mc.color, mc.attr)
             : curr.attr === ATR_INVERSE ? [7] : curr.sgr || [];
         const cell = sgr.length ? `\x1b[${sgr.join(';')}m${ch}${ESC_RESET}` : ch;
         /* C overwrites one terminal cell, not one byte. A previous update

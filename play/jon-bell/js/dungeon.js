@@ -1,9 +1,9 @@
 // dungeon.js — port of nethack-c/src/dungeon.c (scaffold: functions are added here
 
 import { game } from './gstate.js';
-import { In_quest, In_endgame, Is_knox_level, SHOPBASE, VISITED } from './const.js';
+import { In_quest, In_endgame, In_V_tower, Is_knox_level, SHOPBASE, VISITED } from './const.js';
 import './hacklib.js';
-import { strsubst } from './hacklib.js';
+import { strsubst, trimspaces } from './hacklib.js';
 import { rnd } from './rnd.js';
 import { goto_level } from './do.js';
 import { _earth_sense } from './cmd.js';
@@ -55,8 +55,6 @@ import { _Is_sanctum } from './cmd.js'; // relocate-fns
 export { describe_level } from './botl.js'; // relocate-fns
 export { describe_level_impl }; // relocate-fns
 
-let sve = { exclusion_zones: null };
-
 // C dungeon.c:1391-1396 — last dungeon's final bookkeeping level.
 export function maxledgerno() {
     const dungeons = game.dungeons;
@@ -64,9 +62,9 @@ export function maxledgerno() {
     return last.ledger_start + last.num_dunlevs;
 }
 
-// C dungeon.c:1956-1963 — find_hell() always chooses dungeon level 1.
 export async function goto_hell(at_stairs, falling) {
-    const lev = { dnum: game.valley_level.dnum, dlevel: 1 };
+    const lev = {};
+    find_hell(lev);
     await goto_level(lev, at_stairs, falling, false);
 }
 
@@ -74,7 +72,7 @@ export async function goto_hell(at_stairs, falling) {
 export function assign_rnd_level(dest, src, range) {
     dest.dnum = src.dnum;
     dest.dlevel = src.dlevel + (range > 0 ? rnd(range) : -rnd(-range));
-    const bottom = game.dungeons[dest.dnum].num_dunlevs;
+    const bottom = dunlevs_in_dungeon(dest);
     if (dest.dlevel > bottom)
         dest.dlevel = bottom;
     else if (dest.dlevel < 1)
@@ -340,77 +338,11 @@ function describe_level_impl(dflgs, uz) {
     return { buf, ret };
 }
 
-export function free_exclusions() {
-    let ez = sve.exclusion_zones;
-    while (ez) {
-        let nxtez = ez.next;
-        ez = nxtez;
-    }
-    sve.exclusion_zones = null;
-}
-
-// update_file(nhfp) macro (hack.h): (nhfp)->mode & (COUNTING | WRITING).
-const COUNTING = 0x01;
-const WRITING = 0x02;
-function update_file(nhfp) {
-    return nhfp.mode & (COUNTING | WRITING);
-}
-
-// Sfo_int/Sfo_xint16/Sfo_coordxy (savefile.h) — libc-level save-file field
-// writers; no JS save-file byte model exists, so these are faithful no-op
-// stubs (calls_macro_or_libc), same pattern as js/cfgfiles.js's fclose.
-function Sfo_int(nhfp, val, name) { /* no-op stub */ }
-function Sfo_xint16(nhfp, val, name) { /* no-op stub */ }
-function Sfo_coordxy(nhfp, val, name) { /* no-op stub */ }
-
-export function save_exclusions(nhfp) {
-    let ez;
-    let nez;
-
-    for (nez = 0, ez = sve.exclusion_zones; ez; ez = ez.next, ++nez)
-        ;
-
-    if (update_file(nhfp)) {
-        Sfo_int(nhfp, nez, "exclusion_count");
-        for (ez = sve.exclusion_zones; ez; ez = ez.next) {
-            Sfo_xint16(nhfp, ez.zonetype, "exclusion-zonetype");
-            Sfo_coordxy(nhfp, ez.lx, "exclusion-lx");
-            Sfo_coordxy(nhfp, ez.ly, "exclusion-ly");
-            Sfo_coordxy(nhfp, ez.hx, "exclusion-hx");
-            Sfo_coordxy(nhfp, ez.hy, "exclusion-hy");
-        }
-    }
-}
-
-// Sfi_int/Sfi_xint16/Sfi_coordxy (savefile.h) — libc-level save-file field
-// readers; no JS save-file byte model exists, so these are faithful no-op
-// stubs (calls_macro_or_libc), same pattern as this file's Sfo_* (save side).
-function Sfi_int(nhfp, val, name) { return val; }
-function Sfi_xint16(nhfp, val, name) { return val; }
-function Sfi_coordxy(nhfp, val, name) { return val; }
-
-// alloc(size) (alloc.c) — struct allocator; JS has no sizeof/malloc model,
-// so a fresh field-less object stands in for the C allocation, same pattern
-// as js/shk.js and js/makemon.js's local alloc(_size) stub.
-function alloc_dungeon(_size) { return {}; }
-
-export function load_exclusions(nhfp) {
-    let ez;
-    let nez = 0;
-
-    nez = Sfi_int(nhfp, nez, "exclusion_count");
-
-    while (nez-- > 0) {
-        ez = alloc_dungeon(0);
-        ez.zonetype = Sfi_xint16(nhfp, ez.zonetype, "exclusion-zonetype");
-        ez.lx = Sfi_coordxy(nhfp, ez.lx, "exclusion-lx");
-        ez.ly = Sfi_coordxy(nhfp, ez.ly, "exclusion-ly");
-        ez.hx = Sfi_coordxy(nhfp, ez.hx, "exclusion-hx");
-        ez.hy = Sfi_coordxy(nhfp, ez.hy, "exclusion-hy");
-        ez.next = sve.exclusion_zones;
-        sve.exclusion_zones = ez;
-    }
-}
+// C dungeon.c:2582-2639: exclusion zones use game.exclusion_zones.
+// clear_level_structures (mklev.js) frees them; savelev/getlev (save.js /
+// restore.js) save the array and restore it in reverse order, as C's load
+// prepends each node. The unused private-list/no-op serializer copies here
+// did not participate in that lifecycle.
 
 export function In_hell(uz) {
     const lev = uz ?? game.u?.uz;
@@ -446,23 +378,19 @@ export async function u_on_newpos(x, y) {
         game.u.usteed.mx = x;
         game.u.usteed.my = y;
     }
-    /* C dungeon.c:1588 — on a level transition, remember the arrival square
-     * in ux0/uy0 before rebuilding nearby visibility. */
+    /* C dungeon.c:1588-1600 — on a level transition, remember the arrival
+     * square in ux0/uy0, refresh lastseentyp at the arrival square before
+     * spoteffects(), and force switch_terrain() once; otherwise observe
+     * nearby objects so dknown order matches C. */
     const uz = game.u.uz, uz0 = game.u.uz0;
-    if (uz && uz0
-        && ((uz.dnum | 0) !== (uz0.dnum | 0)
-            || (uz.dlevel | 0) !== (uz0.dlevel | 0))) {
+    if (uz && uz0 && !on_level(uz, uz0)) {
         game.u.ux0 = x;
         game.u.uy0 = y;
-        /* C dungeon.c:1590-1593 — refresh lastseentyp at the arrival square
-         * before spoteffects() and force switch_terrain() once. */
         map_location(x, y, false);
         invalidateTerrainStatus();
-    }
-    if (!(uz && uz0 && (uz.dnum !== uz0.dnum || uz.dlevel !== uz0.dlevel)) && !_Blind_mk()
-        && !_Hallucination_mk()
-        && !(game.u.uswallow | 0))
+    } else if (!_Blind_mk() && !_Hallucination_mk() && !(game.u.uswallow | 0)) {
         see_nearby_objects();
+    }
     await _earth_sense();
 }
 
@@ -476,11 +404,7 @@ export async function u_on_rndspot(upflag) {
         /* C dungeon.c:1614-1622 — when leaving the Wizard's Tower, keep the
          * hero inside its exclusion rectangle if the destination is another
          * tower level.  Both directions use dndest's exclusion region. */
-        const uz = game.u?.uz;
-        const tower = [game.wiz1_level, game.wiz2_level, game.wiz3_level]
-            .some(lv => lv && (lv.dnum | 0) === (uz?.dnum | 0)
-                        && (lv.dlevel | 0) === (uz?.dlevel | 0));
-        if (tower) {
+        if (On_W_tower_level(game.u?.uz)) {
             const d = game.dndest || {};
             await place_lregion(d.nlx || 0, d.nly || 0, d.nhx || 0, d.nhy || 0,
                           0, 0, 0, 0, LR_DOWNTELE, null);
@@ -731,7 +655,6 @@ export function shop_string(rtype) {
 // None of the four is admitted today.  When re-trying, do ONE proto per
 // tower1 monster-inventory divergence (C next_ident @mkobj.c:521 at leaf 52757)
 // is closed — every one of these levels is currently built off a stream that is
-const LOADER_READY = new Set(['tut-1', 'tut-2', 'Arc-strt', 'Hea-strt', 'Tou-strt', 'Tou-loca', 'Tou-goal', 'Sam-strt', 'Bar-strt', 'Val-strt', 'Kni-strt', 'Kni-goal', 'Pri-strt', 'Pri-loca', 'Pri-goal', 'Bar-loca', 'knox', 'fire', 'air', 'oracle', 'valley', 'bigrm', 'castle', 'sanctum', 'asmodeus', 'juiblex', 'baalz', 'fakewiz1', 'fakewiz2', 'wizard1', 'wizard3', 'wizard2', 'orcus', 'minetn', 'minend', 'soko1', 'soko2', 'soko3', 'soko4', 'tower1', 'tower2', 'tower3', 'medusa', 'Wiz-strt', 'Wiz-loca', 'Arc-loca', 'Arc-goal', 'Bar-goal', 'Wiz-goal', 'Cav-goal', 'Cav-loca', 'Cav-strt', 'Hea-goal', 'Hea-loca', 'Kni-loca', 'Mon-goal', 'Mon-loca', 'Mon-strt', 'Ran-goal', 'Ran-loca', 'Ran-strt', 'Rog-goal', 'Rog-loca', 'Rog-strt', 'Sam-goal', 'Sam-loca', 'Val-loca', 'Val-goal', 'astral', 'earth', 'water']);
 
 export function Is_special(uz) {
     return sp_levchn_lookup(uz);
@@ -837,11 +760,12 @@ export function Invocation_lev(lev) {
 /* schedule_goto: LOCAL EMPTY STUB DELETED — see import above. */
 /* C dungeon.c:1943 — valley_level is initialized by dungeon generation and
  * mirrored on game for level-teleport callers. */
+// C dungeon.c:1956-1963 — always chooses dungeon level 1 of Gehennom.
 export function find_hell(lvl) {
-    const v = game.valley_level || { dnum: 1, dlevel: 1 };
+    const v = game.valley_level || { dnum: 1 };
     if (lvl) {
         lvl.dnum = v.dnum | 0;
-        lvl.dlevel = v.dlevel | 0;
+        lvl.dlevel = 1;
     }
     return lvl;
 }
@@ -887,26 +811,8 @@ export async function ledger_to_dlev(ledgerno) {
     return ledgerno - (game.dungeons?.[await ledger_to_dnum(ledgerno)]?.ledger_start | 0);
 }
 
-function induced_align_slevel() {
-    const uz = game.u?.uz;
-    if (!uz) return null;
-    const chn = game._sp_levchn || [];
-    for (let i = 0; i < chn.length; i++) {
-        const sl = chn[i];
-        if (sl.dlevel.dnum === uz.dnum && sl.dlevel.dlevel === uz.dlevel)
-            return sl;
-    }
-    return null;
-}
-
-/* Exported because C's `sp_amask_to_amask(AM_SPLEV_RANDOM)` is reached from
- * TWO places in this port: create_monster/create_altar below, and the
- * themeroom-fill stand-ins in js/nhlib.js (wired through js/mklev.js).  A
- * `des.monster{}` written by a themerms.lua fill takes exactly this path in C
- * — sp_lev.c:1943 calls sp_amask_to_amask unconditionally — so the fill must
- * consume this draw, not a hand-rolled rn2(3). */
 export function induced_align(pct) {
-    const lev = induced_align_slevel();
+    const lev = Is_special(game.u?.uz);
     if (lev && lev.flags && lev.flags.align)
         if (rn2(100) < pct)
             /* C returns lev->flags.align RAW (dungeon.c:2006) — it is already
@@ -990,7 +896,7 @@ async function query_annotation(lev) {
         // C dungeon.c:2527-2544: describe a selected remote level.
         const here = !lev || on_level(u.uz, lev);
         const label = here ? 'this dungeon level'
-            : describe_level_buf(tgt.dnum === u.uz.dnum ? 0 : 2, tgt).replace('Dlvl:', 'level ').trim();
+            : trimspaces(describe_level_buf(tgt.dnum === u.uz.dnum ? 0 : 2, tgt).replace('Dlvl:', 'level '));
         nbuf = await getlin(`What do you want to call ${label}?`);
     }
     /* empty input or ESC means don't add or change annotation;
@@ -1086,9 +992,9 @@ export function lev_by_name(nam) {
         nam = nam.replace(/^the /, '');
         if (nam.endsWith(' level') && nam.indexOf(' level') === nam.length - 6) nam = nam.slice(0, -6);
         if (nam === 'gehennom' || nam === 'hell')
-            nam = uz.dnum === g.tower_dnum ? " to Vlad's tower".toLowerCase() : 'valley';
+            nam = In_V_tower(uz) ? " to Vlad's tower".toLowerCase() : 'valley';
         else if (nam === 'delphi') nam = 'oracle';
-        dlev = (g._sp_levchn || []).find(lev => lev.proto.toLowerCase() === nam)?.dlevel;
+        dlev = find_level(nam)?.dlevel;
     }
     if (dlev) return inBranch(dlev) && (wizard() || visited(dlev)) ? depth(dlev) : 0;
     const findBranch = name => (g._dungeon_branches || []).find(br => {
@@ -1276,6 +1182,22 @@ export async function show_overview(why, reason) {
         const valleyLevel = !!g._level_valley?.[levelKey];
         const msanctumLevel = !!g._level_msanctum?.[levelKey];
         const vibratingSquareLevel = !!g._level_vibrating_square?.[levelKey];
+        const questing = !lev.duplicate && on_level(lev, g.qstart_level)
+            && !!g.quest_status?.got_quest;
+        /* C dungeon.c:3240-3259 (recalc_mapseen) — past deaths become known
+         * once the hero has seen the map location where each one died.  The
+         * mapseen clone of a left level's bonesinfo is read from the savelev
+         * snapshot (game.levelStore); bonesknown is tracked in a local set so
+         * the level's own chain is not mutated. */
+        const bmap = lev.duplicate ? null : on_this ? g.level
+            : _mapseen_level((g.dungeons?.[lev.dnum]?.ledger_start | 0) + lev.dlevel);
+        const known = new Set();
+        for (let bp = bmap?.bonesinfo; bp; bp = bp.next)
+            if (bmap.at(bp.frpx, bp.frpy)?.lastseentyp || bp.bonesknown)
+                known.add(bp);
+        const bones = [];
+        for (let bp = bmap?.bonesinfo; bp; bp = bp.next)
+            if (known.has(bp) || wizard() || why > 0) bones.push(bp);
         const _inTutorial = (dnum) => (g.tutorial_dnum != null
                                        && (dnum | 0) === (g.tutorial_dnum | 0));
         if (why === 0 && !on_this) {
@@ -1290,6 +1212,7 @@ export async function show_overview(why, reason) {
                 _keep = In_endgame(lev);
             } else {
                 _keep = !!(_of_interest(feat)
+                           || feat.oracle
                            || bigroomLevel
                            || rogueLevel
                            || feat.castle
@@ -1297,7 +1220,9 @@ export async function show_overview(why, reason) {
                            || msanctumLevel
                            || vibratingSquareLevel
                            || questSummons
+                           || questing
                            || (sokoLevel && (In_sokoban(uz) || !sokoSolved))
+                           || bones.length > 0
                            || custom
                            /* C dungeon.c:2918 `|| mptr->br` — a level with a
                             * recorded branch connection is of interest. */
@@ -1443,21 +1368,6 @@ export async function show_overview(why, reason) {
          * no bones on the level kncnt is 1 exactly when the hero died here, so
          * the block prints only for the death level. */
         const died_here = why === 2 && on_this;
-        /* C dungeon.c:3240-3259 (recalc_mapseen) — past deaths become known
-         * once the hero has seen the map location where each one died.  Only
-         * the current level's bonesinfo is modelled here. */
-        /* The mapseen clone of a left level's bonesinfo is read from the
-         * savelev snapshot (game.levelStore), as _mapseen_feat does; bonesknown
-         * is tracked in a local set so the level's own chain is not mutated. */
-        const bmap = lev.duplicate ? null : on_this ? g.level
-            : _mapseen_level((g.dungeons?.[lev.dnum]?.ledger_start | 0) + lev.dlevel);
-        const known = new Set();
-        for (let bp = bmap?.bonesinfo; bp; bp = bp.next)
-            if (bmap.at(bp.frpx, bp.frpy)?.lastseentyp || bp.bonesknown)
-                known.add(bp);
-        const bones = [];
-        for (let bp = bmap?.bonesinfo; bp; bp = bp.next)
-            if (known.has(bp) || wizard() || why > 0) bones.push(bp);
         let kncnt = (died_here ? 1 : 0) + bones.length;
         if (kncnt) {
             lines.push(`${PREFIX}Final resting place for`);
@@ -1481,11 +1391,17 @@ export async function show_overview(why, reason) {
         const menu = new TtyMenu({ overlay: lines.length + 1 < 24 && !ovNoOverlay });
         for (let i = 0; i < lines.length; ++i) {
             if (headingRows.has(i)) menu.add_menu_heading(headingRows.get(i));
-            else menu.add_menu(levelRows.has(i) ? i + 1 : 0, 0, 0, lines[i]);
+            else menu.add_menu(levelRows.has(i) ? ledger_no(levelRows.get(i)) + 1 : 0, 0, 0, lines[i]);
         }
         menu.end_menu(null);
         const { count, picks } = await menu.select_menu(PICK_ONE);
-        if (count > 0) await query_annotation(levelRows.get(picks[0] - 1));
+        if (count > 0) {
+            const lno = picks[0] - 1;
+            await query_annotation({
+                dnum: await ledger_to_dnum(lno),
+                dlevel: await ledger_to_dlev(lno),
+            });
+        }
         return;
     }
     /* C dungeon.c:3328-3338 / wintty.c process_menu_window: a PICK_NONE overview
@@ -1506,16 +1422,12 @@ export async function show_overview(why, reason) {
     for (let i = 0; i < lines.length; ++i)
         if (!headingRows.has(i)) lines[i] = menucolor_text(lines[i]);
     lines.push('(end)');
-    /* C win/tty/wintty.c:1926-1932: a menu whose maxrow reaches the
-     * terminal height is full-screen.  `lines` includes the `(end)` row,
-     * exactly matching tty_end_menu's maxrow = nitems + 1. */
-    /* wintty.c:1925-1928: `!iflags.menu_overlay` also forces offx 0 + clear. */
-    const ovFull = lines.length >= 24 || g.iflags?.menu_overlay === false
-        || g.iflags?.menu_overlay === 0;
-    const WIN_COL = ovFull ? 1 : tty_window_offx(lines, 'end');
+    /* C win/tty/wintty.c:1926-1932: lines.length < 24 and menu_overlay is
+     * enabled (larger or unoverlaid overviews took the TtyMenu path above). */
+    const WIN_COL = tty_window_offx(lines, 'end');
     const showOverviewMenu = async () => {
         g._screen_output = build_window_screen(lines, WIN_COL, u.uac ?? 0,
-                                               undefined, undefined, ovFull || WIN_COL === 1);
+                                               undefined, undefined, WIN_COL === 1);
         set_cursor(WIN_COL + '(end)'.length + 1, lines.length - 1);
     };
     await showOverviewMenu();
@@ -1524,7 +1436,7 @@ export async function show_overview(why, reason) {
     await await_menu_key(showOverviewMenu, '', '', PICK_NONE);
     /* C wintty.c:966-983 erase_menu_or_text(): offx == 0 uses docrt()
      * and flush_screen(1); a corner overlay uses docorner(). */
-    if (ovFull || WIN_COL === 1) {
+    if (WIN_COL === 1) {
         await docrt();
         /* docrt's seen-stone row-20 blanks precede the botlx bot() that
          * rewrites status row 1, so they do not wipe it (same ordering as

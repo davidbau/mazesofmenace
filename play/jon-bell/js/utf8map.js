@@ -1,6 +1,6 @@
 // utf8map.js — C ref: utf8map.c.
 import { game } from './gstate.js'; // relocate-fns
-import { apply_pending_s_utf8 } from './symbols.js'; // relocate-fns
+import { glyphmap, apply_customizations } from './glyphs.js';
 
 /* C utf8map.c: set_map_u — copy the UTF-32 and UTF-8 replacement fields. */
 export function set_map_u(gm, utf32ch, utf8str) {
@@ -16,5 +16,14 @@ export function set_map_u(gm, utf32ch, utf8str) {
  * when resolving them instead of allocating per-glyph u entries. */
 export function reset_customsymbols() {
     game._gm_customsymbols = game.iflags.customsymbols !== false;
-    if (game._gm_customsymbols) apply_pending_s_utf8();
+    free_all_glyphmap_u();
+    apply_customizations(game.gc?.currentgraphics ?? 0, 2);
+}
+
+/* C utf8map.c:53-77 also clears the cached glyphinfo pointers. */
+export function free_all_glyphmap_u() {
+    for (const gm of glyphmap) gm.u = null;
+    for (const row of game.gg?.gbuf ?? [])
+        for (const cell of row ?? [])
+            if (cell?.glyphinfo?.gm) cell.glyphinfo.gm.u = null;
 }

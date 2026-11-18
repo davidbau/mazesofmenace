@@ -728,7 +728,6 @@ export function match_sym(buf)
     let i;
     let len = C.strlen(buf);
     let p = C.strchr(buf, (':').charCodeAt(0)), q = C.strchr(buf, ('=').charCodeAt(0));
-    let sp = C.loadsyms;
 
     /* G_ lines will never match here */
     if ((C.loadChar(buf + (0)) == ('G').charCodeAt(0) || C.loadChar(buf + (0)) == ('g').charCodeAt(0)) && C.loadChar(buf + (1)) == ('_').charCodeAt(0))
@@ -743,6 +742,17 @@ export function match_sym(buf)
             p--;
         len = C.int(p - buf);
     }
+    if (Object.hasOwn(C, "symbolNameAt")) {
+        const name = C.symbolNameAt(buf, len);
+        const entry = C.findSymbolName(name);
+        if (entry)
+            return entry;
+        for (const alternate of alternates)
+            if (name === alternate.altnm.toLowerCase())
+                return C.findSymbolName(alternate.nm.toLowerCase());
+        return 0;
+    }
+    let sp = C.loadsyms;
     while (sp.range) {
         if ((len >= C.strlen(sp.name)) && !C.strncmpi(buf, sp.name, len))
             return sp;

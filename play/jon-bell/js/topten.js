@@ -137,11 +137,11 @@ function classmon(plrole) {
     return _TT_PM_HUMAN_MUMMY;
 }
 
-import { KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX } from './const.js';
+import { KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, NHW_TEXT, PANICKED } from './const.js';
 import { game, wizard, discover } from './gstate.js';
 import { raw_print } from './rawterm.js';
 import { fopen_datafile, unlock_file } from './files.js'; // relocate-fns
-import { copynchars } from './hacklib.js'; // relocate-fns
+import { copynchars, onlyspace, ordin } from './hacklib.js'; // relocate-fns
 export { copynchars } from './hacklib.js'; // relocate-fns
 /**
  * void formatkiller(char *buf, unsigned siz, int how, boolean incl_helpless)
@@ -220,7 +220,8 @@ export function formatkiller(buf, siz, how, incl_helpless) {
      * the prefix step above rather than a plain decrementing loop, so
      * both wraps are reproduced. */
     const kBudget = (sizAfterPrefix - 1) >>> 0;
-    for (let i = 0, copied = 0; i < kname.length && copied < kBudget; i++, copied++) {
+    let copied = 0;
+    for (let i = 0; i < kname.length && copied < kBudget; i++, copied++) {
         let c = kname[i];
         if (c === ',') {
             c = ';';
@@ -236,13 +237,14 @@ export function formatkiller(buf, siz, how, incl_helpless) {
     /* gm.multi / gm.multi_reason live flat on game in this port (g.gm is not populated) */
     const multi = gs.gm?.multi ?? gs.multi;
     if (incl_helpless && multi < 0) {
+        /* topten.c:133-161: C decrements `siz` on every copied byte AND once
+         * more on the NUL terminator before `break` (or exits when `--siz == 0`),
+         * so remaining `siz` is `(sizAfterPrefix - copied - 1) >>> 0`. */
+        const remainingSiz = (sizAfterPrefix - copied - 1) >>> 0;
         const multi_reason = gs.gm?.multi_reason ?? gs.multi_reason;
-        const suffix = ", while " + (multi_reason || "helpless");
-        const suffix_bytes = suffix.length + 1; /* +1 for null terminator */
-
-        if (result.length + suffix_bytes <= siz) {
-            result += suffix;
-        } else if (", while helpless".length + 1 <= siz) {
+        if (multi_reason && (", while ".length + multi_reason.length + 1) <= remainingSiz) {
+            result += ", while " + multi_reason;
+        } else if (", while helpless".length + 1 <= remainingSiz) {
             result += ", while helpless";
         }
         /* else: doesn't fit, leave it out */
@@ -467,10 +469,10 @@ export function readentry(rfile, tt) {
     tt.birthdate = +nums[12];
     tt.uid = +nums[13];
 
-    /* C topten.c:252 fgets(inbuf, ...) — the remainder of the line.  SCANBUFSZ
-     * is 4*(ROLESZ+1) + (NAMSZ+1) + (DTHSZ+1) + 1 == 129, an implicit length
-     * limit on every string field extracted from it. */
-    const inbuf = line.slice(nums[0].length).slice(0, _TT_SCANBUFSZ - 1);
+    /* C topten.c:251-257 fgets(inbuf, ...) — reads up to SCANBUFSZ - 1 (128)
+     * chars; if '\n' is not present, C overwrites inbuf[SCANBUFSZ - 2] (127)
+     * with "\n", leaving at most SCANBUFSZ - 2 (127) content chars. */
+    const inbuf = line.slice(nums[0].length).slice(0, _TT_SCANBUFSZ - 2);
 
     if (tt.ver_major < 3 || (tt.ver_major === 3 && tt.ver_minor < 3)) {
         tt.points = 0n;
@@ -535,17 +537,8 @@ export function writeentry(rfile, tt) {
         + ` ${tt.maxlvl | 0} ${tt.hp | 0} ${tt.maxhp | 0} ${tt.deaths | 0}`
         + ` ${tt.deathdate | 0} ${tt.birthdate | 0} ${tt.uid | 0} `;
     out += `${tt.plrole} ${tt.plrace} ${tt.plgend} ${tt.plalign} `;
-    out += `${onlyspace_topten(tt.name) ? '_' : tt.name},${tt.death}\n`;
+    out += `${onlyspace(tt.name) ? '_' : tt.name},${tt.death}\n`;
     rfile.out += out;
-}
-
-/* C hacklib.c:419 onlyspace(s) — TRUE for the empty string too. */
-function onlyspace_topten(s) {
-    const str = String(s ?? '');
-    for (let i = 0; i < str.length; i++)
-        if (str[i] !== ' ' && str[i] !== '\t')
-            return false;
-    return true;
 }
 
 /* ---- local helpers needed by topten ---- */
@@ -612,11 +605,6 @@ function fclose(file) {
     if (file && file.write)
         vfsWriteFile(file.name, file.out);
 }
-function ordin_topten(n) {
-    let nn = Math.abs(n) % 100;
-    if (Math.trunc(nn / 10) === 1) return "th";
-    switch (nn % 10) { case 1: return "st"; case 2: return "nd"; case 3: return "rd"; default: return "th"; }
-}
 
 /**
  * void topten(int how, time_t when)
@@ -639,7 +627,7 @@ export async function topten(how, when) {
 
     if (gs.iflags && gs.iflags.toptenwin) {
         gs.gt ||= {}; /* C gt.toptenwin lives in the gt struct (decl.c) */
-        gs.gt.toptenwin = create_nhwindow(4);
+        gs.gt.toptenwin = create_nhwindow(NHW_TEXT);
     }
 
     t0_used = false;
@@ -683,17 +671,19 @@ export async function topten(how, when) {
         t0.plalign = copynchars(t0.plalign, acode ? acode.filecode : "", 3);
     }
     t0.name = copynchars(t0.name, gs.svp?.plname ?? gs.plname ?? "", 10);
-    t0.death = formatkiller('', 100, how, true);
+    t0.death = formatkiller('', _TT_DTHSZ + 1, how, true);
     t0.birthdate = yyyymmdd(gs.ubirthday || 0);
     t0.deathdate = yyyymmdd(when);
     t0.tt_next = null;
 
-    if ((wizard() || discover()) && how !== 11) {
-        let pbuf;
-        topten_print("");
-        pbuf = "Since you were in " + (wizard() ? "wizard" : "discover") +
-               " mode, the score list will not be checked.";
-        topten_print(pbuf);
+    if (wizard() || discover()) {
+        if (how !== PANICKED) {
+            let pbuf;
+            topten_print("");
+            pbuf = "Since you were in " + (wizard() ? "wizard" : "discover") +
+                   " mode, the score list will not be checked.";
+            topten_print(pbuf);
+        }
         if (gs.program_state && !gs.program_state.stopprint) {
             if (gs.iflags && gs.iflags.toptenwin) {
                 await display_nhwindow(gs.gt.toptenwin, true);
@@ -808,7 +798,7 @@ export async function topten(how, when) {
                     topten_print("You made the top ten list!");
                 } else {
                     let pbuf;
-                    pbuf = "You reached the " + rank0 + ordin_topten(rank0) +
+                    pbuf = "You reached the " + rank0 + ordin(rank0) +
                            " place on the top " +
                            (gs.sysopt ? gs.sysopt.entrymax : 100) + " list.";
                     topten_print(pbuf);

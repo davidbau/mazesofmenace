@@ -1050,7 +1050,7 @@ import { cmd_from_func as _binding_cmd_from_func } from './cmd.js'; // relocate-
 import { build_window_screen, menu_search_case } from './com_pager.js'; // relocate-fns
 import { BLINDED, CONFUSION, DEAF, FIRE_RES, FLYING, GLIB, HALLUC, HALLUC_RES, In_endgame, In_sokoban, Is_earthlevel, Is_firelevel as Is_firelevel_cmd, Is_knox_level, LEVITATION, PICK_NONE, PROT_FROM_SHAPE_CHANGERS, RIGHT_HANDED, SICK, SICK_NONVOMITABLE, SICK_VOMITABLE, SLIMED, STONE, STONED, STUNNED, TIMEOUT, VOMITING, WARN_OF_MON, WWALKING, gs } from './const.js'; // relocate-fns
 import { capture_painted_frame_with_status, docorner_blank_utf8_captures, force_more_pages, map_engraving, map_trap, menu_entry_page } from './display.js';
-import { wizcustom_glyphids } from './glyphs.js'; // relocate-fns
+import { wizcustom_glyphids, glyphid_cache_status, fill_glyphid_cache, free_glyphid_cache } from './glyphs.js'; // relocate-fns
 import { def_oc_syms_chars } from './drawing.js'; // relocate-fns
 import { Invocation_lev as Invocation_lev_dgn, at_dgn_entrance, on_level, print_branch } from './dungeon.js'; // relocate-fns
 import { may_dig } from './hack.js'; // relocate-fns
@@ -2469,6 +2469,7 @@ function _pd_at_dgn_entrance(dname, branches, dungeonsFull, end1_dnum) {
 export async function wiz_custom() {
     if (!wizard()) return ECMD_OK;
     const g = game;
+    if (!glyphid_cache_status()) fill_glyphid_cache();
     const menu = new TtyMenu();
     menu.add_menu_heading('    glyph  glyph identifier                        '
                           + '     sym   clr customcolor unicode utf8');
@@ -2477,10 +2478,11 @@ export async function wiz_custom() {
     const set = gs.symset[0] || {};
     wizcustom_glyphids(menu);
     let bufa = `#wizcustom: colorcount=${(g.iflags.colorcount ?? 256) | 0} ${set.name ? set.name : 'default'}`;
-    if (set.name) bufa += ', active';
+    if ((g.gc?.currentgraphics ?? 0) === 0 && set.name) bufa += ', active';
     if (set.handling) bufa += ', handler=' + ['UNKNOWN', 'IBM', 'DEC', 'CURS', 'MAC', 'UTF8'][set.handling];
     menu.end_menu(bufa);
     await menu.select_menu(PICK_NONE);
+    if (glyphid_cache_status()) free_glyphid_cache();
     await docrt(); /* wizcmds.c:1980 */
     return ECMD_OK;
 }

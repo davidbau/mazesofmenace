@@ -41,7 +41,7 @@ import { feature_notice_version } from './feature_alert.js';
 import { BURDENTYPE, cond_enabled_count } from './options.js';
 import { count_status_hilites } from './botl.js';
 import { EXTCMDLIST } from './cmd_extcmd_data.js';
-import { clr2colorname, attr2attrname } from './coloratt.js';
+import { clr2colorname, attr2attrname, color_attr_to_str, count_menucolors } from './coloratt.js';
 import { _threeStatusLines } from './display.js';
 import { count_bind_keys } from './cmd.js'; // relocate-fns
 
@@ -218,7 +218,7 @@ export const DOSET_COMPOUNDS = [
     /* C: options.c:2209 color_attr_to_str(iflags.menu_headings) with strNsubst " "->"-" */
     { name: "menu_headings", sel: true, hasHandler: true, val: () => {
         const mh = game.iflags?.menu_headings || { color: 8, attr: 7 };
-        return `${clr2colorname(mh.color)}&${attr2attrname(mh.attr)}`.replace(/ /g, "-");
+        return color_attr_to_str(mh).replace(/ /g, "-");
     } },
     /* C: options.c:2279 objsymvals[iflags.menuobjsyms].nam */
     { name: "menu_objsyms", sel: true, hasHandler: true, val: () => ["none", "headers", "entries", "both", "conditional", "one-or-other"][game.iflags?.menuobjsyms ?? 4] },
@@ -314,7 +314,7 @@ export const DOSET_OTHERS = [
     /* C: options.c optfn_o_bind_keys get_val */
     { name: "bind keys", sel: true, val: () => `(${count_bind_keys()} currently set)` },
     /* C: options.c optfn_o_menu_colors get_val */
-    { name: "menu colors", sel: true, val: () => `(${(game.menu_colorings || []).length} currently set)` },
+    { name: "menu colors", sel: true, val: () => `(${count_menucolors()} currently set)` },
     /* C: options.c optfn_o_message_types get_val */
     { name: "message types", sel: true, val: () => `(${(game.msgtypes || []).length} currently set)` },
     /* C: options.c:8430 optfn_o_status_cond get_val -> options.c:9179 count_cond() */

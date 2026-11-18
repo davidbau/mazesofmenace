@@ -27,6 +27,7 @@ export function createRestoreEnvironment(services,layout){
     });
     for(const [name,sch]of Object.entries(schemas))for(const f of sch.fields)if(!f.bit&&width(f.d)!==layout['width_'+name+'_'+f.name])throw Error('Review changed RESTORE field width: '+name+'.'+f.name);
     if(Object.hasOwn(services,'restoreMapLocations'))env.restoreMapLocations=services.restoreMapLocations;
+    if(Object.hasOwn(services,'restoreLastSeenTerrain'))env.restoreLastSeenTerrain=services.restoreLastSeenTerrain;
     for(const k of ['W_BALL','W_CHAIN','W_WEP'])env[k]=BigInt(layout[k]);
     // Arrays carry their actual descriptor, including primitive multidimensional strides.
     env.arrayAddress=(o,...ix)=>{let d=o.descriptor,at=o.address;for(const i of ix){const child=d.a.length===1?d.e:{a:d.a.slice(1),e:d.e};at+=i*width(child);d=child;}return at;};

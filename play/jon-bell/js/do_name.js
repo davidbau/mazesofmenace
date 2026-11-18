@@ -11,7 +11,7 @@ import { Upolyd } from './const.js';
 import { is_youmonst } from './mhitm.js';
 import { ismnum, NEUTRAL, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM } from './const.js';
 import { impossible } from './steed.js';
-import { _c_obj_colors, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HAND, INV_ORDER, MS_ANIMAL, OCLASS_FOOD, OCLASS_NAME, OCLASS_POTION, OCLASS_WEAPON, SPE_NOVEL_OTYP as SPE_NOVEL, SetVoice, _ach_rank_of, _cmd_Hallucination, _disco_append_price_quote, _disco_typename, _fl_pmidx, _glyph_at as glyph_at, _hidesUnder_useupf, _interesting_to_discover, _plineVFmt, _restrict_name, _um_beautiful, _um_mhis, _uprop_active, body_part, cmdq_clear, cmdq_pop, flooreffects_is_plural, getObjFromGetobj, set_cursor, type_is_pname, verbalize } from './cmd.js';
+import { _c_obj_colors, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HAND, INV_ORDER, MS_ANIMAL, OCLASS_FOOD, OCLASS_NAME, OCLASS_POTION, OCLASS_WEAPON, SPE_NOVEL_OTYP as SPE_NOVEL, SetVoice, _cmd_Hallucination, _disco_append_price_quote, _disco_typename, _fl_pmidx, _glyph_at as glyph_at, _hidesUnder_useupf, _interesting_to_discover, _plineVFmt, _restrict_name, _um_beautiful, _um_mhis, _uprop_active, body_part, cmdq_clear, cmdq_pop, flooreffects_is_plural, getObjFromGetobj, set_cursor, type_is_pname, verbalize } from './cmd.js';
 import { getpos } from './getpos.js';
 import { carrying } from './invent.js';
 import { donamelevel } from './dungeon.js';
@@ -22,7 +22,7 @@ import { GLYPHCLS_OBJ, GLYPHCLS_SWALLOW, await_menu_key, canspotmon, docorner_bl
 import { You, xname } from './do_wear.js'; // relocate-fns
 import { shkname as dokick_shkname } from './dokick.js'; // relocate-fns
 import { newobj } from './game.js'; // relocate-fns
-import { mungspaces, upstart } from './hacklib.js'; // relocate-fns
+import { fuzzymatch, mungspaces, strncmpi, strstri, upstart } from './hacklib.js'; // relocate-fns
 import { update_inventory } from './invent.js'; // relocate-fns
 import { mhe } from './makemon.js'; // relocate-fns
 import { helpless } from './mhitm.js'; // relocate-fns
@@ -89,7 +89,7 @@ function ONAME(o) {
     return o.oextra.oname;
 }
 function has_oname(o) {
-    return Boolean(o.oextra && ONAME(o));
+    return Boolean(o.oextra && ONAME(o) != null);
 }
 
 /* safe_oname — C ref: nethack-c/src/do_name.c:94-100
@@ -241,7 +241,7 @@ export function noveltitle(novidx) {
  * case-insensitively, with or without the leading article, and a handful of
  * established American/variant spellings map to the canonical title. */
 export function lookup_novel(lookname, idx) {
-    const fold = (s) => String(s ?? '').toLowerCase();
+    const fold = (s) => lcase(String(s ?? ''));
     let name = String(lookname ?? '');
     if (fold(The(name)) === 'the color of magic')
         name = sir_Terry_novels[NVL_COLOUR_OF_MAGIC];
@@ -421,7 +421,7 @@ async function namefloorobj() {
         && !((u.uprops[HALLUC_RES]?.intrinsic | 0) || (u.uprops[HALLUC_RES]?.extrinsic | 0))) {
         const unames = [(Upolyd(u) ? u.mfemale : g.flags.female) && g.urole.name.f
             ? g.urole.name.f : g.urole.name.m];
-        unames[1] = _ach_rank_of(rn2_on_display_rng(30) + 1, g.flags.female);
+        unames[1] = rank_of(rn2_on_display_rng(30) + 1, g.urole.mnum, g.flags.female);
         unames[2] = unames[3] = bogusmon().name;
         unames[4] = roguename();
         unames[5] = 'Wibbly Wobbly';
@@ -539,21 +539,22 @@ export function christen_monst(mtmp, name) {
 
 /* C do_name.c:157-195: reject attempts to erase or nearly match a fixed name. */
 async function _alreadynamed(mtmp, monnambuf, usrbuf) {
-    const norm = (t) => t.toLowerCase().replace(/[ \-_]/g, '');
     const rider = [PM_DEATH, PM_FAMINE, PM_PESTILENCE].includes(_fl_pmidx(mtmp));
     if (!usrbuf) {
         const name_not_title = has_mgivenname(mtmp) || type_is_pname(mtmp.data) || mtmp.isshk;
         await pline('%s would rather keep %s existing %s.', upstart(monnambuf), rider ? 'its' : _um_mhis(mtmp), name_not_title ? 'name' : 'title');
         return true;
     }
-    const inv = monnambuf.toLowerCase().indexOf('invisible '), of = monnambuf.toLowerCase().indexOf(' of ');
-    if (norm(usrbuf) === norm(monnambuf) || (/^the /i.test(monnambuf) && norm(usrbuf) === norm(monnambuf.slice(4)))
-        || (inv >= 0 && norm(usrbuf) === norm(monnambuf.slice(inv + 10))) || (of >= 0 && norm(usrbuf) === norm(monnambuf.slice(of + 4)))) {
+    const inv = xm_strstri(monnambuf, 'invisible '), of = xm_strstri(monnambuf, ' of ');
+    if (fuzzymatch(usrbuf, monnambuf, ' -_', true)
+        || (!strncmpi(monnambuf, 'the ', 4) && fuzzymatch(usrbuf, monnambuf.slice(4), ' -_', true))
+        || (inv >= 0 && fuzzymatch(usrbuf, monnambuf.slice(inv + 10), ' -_', true))
+        || (of >= 0 && fuzzymatch(usrbuf, monnambuf.slice(of + 4), ' -_', true))) {
         if (rider) await pline('%s is already called that.', upstart(monnambuf));
         else await pline('%s is already called %s.', upstart(mhe(mtmp)), monnambuf);
         return true;
     }
-    if (_fl_pmidx(mtmp) === PM_JUIBLEX && /Juiblex/i.test(monnambuf) && /^Jubilex$/i.test(usrbuf)) {
+    if (_fl_pmidx(mtmp) === PM_JUIBLEX && strstri(monnambuf, 'Juiblex') && !strncmpi(usrbuf, 'Jubilex', -1)) {
         await pline("%s doesn't like being called %s.", upstart(monnambuf), usrbuf);
         return true;
     }
@@ -586,7 +587,7 @@ async function do_oname(obj) {
                       || exist_artifact(obj.otyp, candidate.name))) {
         const canonical = candidate.name;   /* C:333 Strcpy(buf, aname) */
         /* for "the Foo of Bar", only scuff the "Foo of Bar" part */
-        const pre = /^the /i.test(canonical) ? canonical.slice(0, 4) : '';
+        const pre = !strncmpi(canonical, 'the ', 4) ? canonical.slice(0, 4) : '';
         const rest = canonical.slice(pre.length);
         let slipped = canonical;
         while (slipped === canonical)
@@ -794,14 +795,13 @@ function minimal_monnam_body(mon, ckloc) {
     const mndx = mon.data.pmidx | 0;
     if (mndx < 0) return `[Invalid mon->data ${mndx} < 0]`;
     if (mndx >= NUMMONS) return `[Invalid mon->data ${mndx} >= ${NUMMONS}]`;
-    const gender = mon.female ? 1 : 0; /* monst.h:268 Mgender */
     if (ckloc && mndx === PM_LONG_WORM && mon.mx
         && monster_at(mon.mx, mon.my) !== mon)
-        return `${monPmname(PM_LONG_WORM_TAIL, gender)} <${mon.mx | 0},${mon.my | 0}>`;
+        return `${pmname(permonstTemplate(PM_LONG_WORM_TAIL), Mgender(mon))} <${mon.mx | 0},${mon.my | 0}>`;
     const prefix = (mon.mtame | 0) ? 'tame ' : ((mon.mpeaceful | 0) ? 'peaceful ' : '');
-    let name = `${prefix}${monPmname(mndx, gender)} <${mon.mx | 0},${mon.my | 0}>`;
+    let name = `${prefix}${mon_pmname(mon)} <${mon.mx | 0},${mon.my | 0}>`;
     if (mon.cham != null && mon.cham !== NON_PM)
-        name += `{${monPmname(mon.cham | 0, gender)}}`;
+        name += `{${pmname(permonstTemplate(mon.cham | 0), Mgender(mon))}}`;
     return name;
 }
 
@@ -909,12 +909,11 @@ export async function oname(obj, name, oflgs) {
     if ((obj.oartifact | 0) || (lth && exist_artifact(obj.otyp, nm)))
         return obj;
 
+    new_oname(obj, lth); /* C do_name.c:395: removes the previous name. */
     if (lth) {
-        if (!obj.oextra)
-            obj.oextra = {};           /* C new_oname:67-68 newoextra() */
-        obj.oextra.oname = nm;         /* C new_oname:70-71 + oname:396-397 Strcpy */
-    } else if (has_oname(obj)) {
-        free_oname(obj);               /* C new_oname:72-75 zero length: drop the old name */
+        obj.oextra.oname = nm; /* C:397 Strcpy(ONAME(obj), name) */
+        if ('oextra_present' in obj)
+            obj.oname = nm;
     }
 
     if (lth)
@@ -1030,13 +1029,6 @@ function xm_is_mplayer(mdat) {
     return i >= PM_ARCHEOLOGIST && i <= PM_WIZARD;
 }
 
-/* C ref: nethack-c/src/do_name.c:1289-1300 Mgender(mtmp).  The
- * `mtmp == &gy.youmonst` arm is unreachable from x_monnam (which returns "you"
- * before ever asking for a gender), so this is the plain monster arm. */
-function xm_Mgender(mtmp) {
-    return mtmp.female ? FEMALE : MALE;
-}
-
 function xm_MGIVENNAME(mtmp) {
     if ('mextra' in mtmp && mtmp.mextra && mtmp.mextra.mgivenname != null)
         return mtmp.mextra.mgivenname;
@@ -1046,8 +1038,10 @@ function xm_MGIVENNAME(mtmp) {
 /* C ref: nethack-c/src/hacklib.c:804 strstri() — case-insensitive strstr.
  * Returns the index of the match, or -1 (C returns a pointer or NULL). */
 function xm_strstri(str, sub) {
-    if (!sub) return 0;
-    return String(str).toLowerCase().indexOf(String(sub).toLowerCase());
+    /* The shared helper preserves C's signed-byte frequency prefilter;
+     * this caller also needs the matching offset, rather than a predicate. */
+    if (!strstri(str, sub)) return -1;
+    return lcase(str).indexOf(lcase(sub));
 }
 
 /*
@@ -1130,9 +1124,9 @@ function x_monnam_body(mtmp, article, adjective, suppress, called) {
 
     /* C do_name.c:906-912 — 'pm_name' is the base part of most names. */
     if (do_mappear) {
-        pm_name = monPmname(mtmp.mappearance | 0, xm_Mgender(mtmp));
+        pm_name = pmname(permonstTemplate(mtmp.mappearance | 0), Mgender(mtmp));
     } else {
-        pm_name = monPmname(mdat.pmidx | 0, xm_Mgender(mtmp));
+        pm_name = mon_pmname(mtmp);
     }
 
     /* C do_name.c:914-936 — shopkeepers use the shopkeeper name. */
@@ -1428,6 +1422,18 @@ export function monverbself(mon, monnamtext, verb, othertext) {
  * ---------------------------------------------------------------------------
  */
 export function new_oname(obj, lth) {
+    if (!('oextra_present' in obj)) {
+        if (lth) {
+            if (!obj.oextra)
+                obj.oextra = newoextra();
+            else
+                free_oname(obj);
+            obj.oextra.oname = alloc_mhitm(lth);
+        } else if (has_oname(obj)) {
+            free_oname(obj);
+        }
+        return;
+    }
     if (lth) {
         if (!obj.oextra_present && !obj.oextra) {
             const oe = newoextra();
@@ -1451,8 +1457,7 @@ export function new_oname(obj, lth) {
 }
 
 function alloc_mhitm(size) {
-    /* C: char *alloc(unsigned n) — raw buffer allocation; the (unported)
-     * do_oname() caller copies the actual name text in afterward. */
+    /* C: char *alloc(unsigned n) — the caller copies the name afterward. */
     return '';
 }
 

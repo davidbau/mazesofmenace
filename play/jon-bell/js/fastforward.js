@@ -280,7 +280,7 @@ export async function fastforward_post_mklev(initrole = -1) {
          * moveloop_preamble, so the two draws follow the last reroll. */
         game._ff_preamble_rng_deferred = true;
     } else {
-        rnd(9000);
+        game.context.rndencode = rnd(9000); // allmain.c:72
         /* C ref: allmain.c:82 moveloop_preamble — svc.context.seer_turn = (long) rnd(30);
          * store on g.context so the seer_turn check in moveloop_core can compare
          * svm.moves >= seer_turn. */

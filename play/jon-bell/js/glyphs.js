@@ -9,11 +9,8 @@ import { LOADSYMS, customize_s_glyph_utf8, apply_pending_s_utf8 } from './symbol
 import { rgbstr_to_int32 } from './coloratt.js';
 import { set_map_u } from './utf8map.js'; // relocate-fns
 import { PRIMARYSET } from './const.js'; // relocate-fns
-import { dat_content } from './dat_source.js'; // relocate-fns
-import { _darkroom_alias_blank } from './display.js'; // relocate-fns
-import { MKOBJ_OC_CLASS } from './mkobj_data.js'; // relocate-fns
-import { SYM_OFFSETS, primary_showsym, symbol_name } from './symbols.js'; // relocate-fns
-import { CLR_WHITE, NO_COLOR } from './terminal.js'; // relocate-fns
+import { primary_showsym } from './symbols.js'; // relocate-fns
+import { NO_COLOR } from './terminal.js'; // relocate-fns
 import { set_map_customcolor } from './coloratt.js'; // relocate-fns
 
 /* C ref: display.h MAX_GLYPH — total glyph count; glyphs.c keeps
@@ -132,12 +129,8 @@ export function glyph_to_cmap(glyph) {
 }
 
 /* C ref: display.h enum graphics_sets — NUM_GRAPHICS is the count of
- * graphics sets (PRIMARY, MINES, GEHENNOM, KNOX, SOKOBAN, ROGUESYMS). */
-const NUM_GRAPHICS = 6;
-
-/* graphics context (gc) — C global struct graphics_context.
- * The replay engine manages gc.currentgraphics. */
-const gc = { currentgraphics: 0 };
+ * graphics sets (PRIMARYSET, ROGUESET; sym.h:125-129). */
+const NUM_GRAPHICS = 2;
 
 /* C ref: nethack-c/src/glyphs.c:750-759 — purge_all_custom_entries()
  * void
@@ -241,11 +234,9 @@ function init_glyph_cache() {
         glyphnum: 0, id: null,
     }));
 }
-/* C glyphs.c:354 — release the cache and clear the active search cursor. */
+/* C glyphs.c:354-369 releases the cache; search structs are untouched. */
 export function free_glyphid_cache() {
     glyphid_cache = null;
-    glyphcache_find = undefined;
-    to_custom_symbol_find = undefined;
 }
 /* C glyphs.c:437-451: rotate a uint32, folding ASCII case before hashing. */
 function glyph_hash(id) {
@@ -484,10 +475,7 @@ export function apply_customizations(which_set, docustomize) {
                     if (sc.custtype === custom_nhcolor) {
                         const gmap = glyphmap[details.content.ccolor.glyphidx];
                         set_map_customcolor(gmap, details.content.ccolor.nhcolor);
-                        /* the colour now in glyphmap[]; an entry added later
-                         * (in-game glyph option) stays unapplied until the
-                         * next reset_customcolors() */
-                        details.content.ccolor.applied = details.content.ccolor.nhcolor;
+
                     }
                 }
                 details = details.next;
@@ -501,7 +489,7 @@ export function apply_customizations(which_set, docustomize) {
 /* C ref: glyphs.c reset_customcolors() */
 export function reset_customcolors() {
     clear_all_glyphmap_colors();
-    apply_customizations(gc.currentgraphics, do_custom_colors);
+    apply_customizations(game.gc?.currentgraphics ?? PRIMARYSET, do_custom_colors);
 }
 
 /* ── maybe_shuffle_customizations ─────────────────────────────── */
@@ -539,14 +527,14 @@ function shuffle_customizations() {
                 };
             } else {
                 value = glyphmap[offset + idx] || {};
-                duplicate[idx] = i;
                 tmp[i] = {
                     customcolor: value.customcolor | 0,
                     color256idx: value.color256idx | 0,
                     u: value.u ? { ...value.u } : null,
                 };
                 /* C clears the source slot while transferring ownership. */
-                if (glyphmap[offset + idx]) {
+                if (value.u || value.customcolor) {
+                    duplicate[idx] = i;
                     glyphmap[offset + idx].customcolor = 0;
                     glyphmap[offset + idx].color256idx = 0;
                     glyphmap[offset + idx].u = null;
@@ -604,17 +592,30 @@ function add_custom_glyph_entry(name, glyphidx, which_set, custtype, value) {
     if (!gdc.details)
         Object.assign(gdc, { customization_name: name, custtype, details: null, details_end: null });
     const field = custtype === custom_nhcolor ? 'ccolor' : 'urep';
-    if (gdc.custtype === custtype && gdc.customization_name && gdc.customization_name === name)
-        for (let d = gdc.details; d; d = d.next)
+    const matching = find_matching_customization(name, custtype, which_set);
+    if (matching)
+        for (let d = matching; d; d = d.next)
             if (d.content[field].glyphidx === glyphidx) {
                 Object.assign(d.content[field], value);
-                return;
+                return 1;
             }
     const detail = { content: { [field]: { glyphidx, ...value } }, next: null };
     if (!gdc.details) gdc.details = detail;
     else gdc.details_end.next = detail;
     gdc.details_end = detail;
     ++gdc.count;
+    return 1;
+}
+
+/* C glyphs.c:483-528 and 735-747. */
+export function add_custom_nhcolor_entry(name, glyphidx, nhcolor, which_set) {
+    return add_custom_glyph_entry(name, glyphidx, which_set, custom_nhcolor, { nhcolor });
+}
+
+export function find_matching_customization(name, custtype, which_set) {
+    const gdc = gs.sym_customizations?.[which_set]?.[custtype];
+    return gdc?.custtype === custtype && gdc.customization_name
+        && name === gdc.customization_name ? gdc.details : null;
 }
 /* C glyphs.c:53-105; ENHANCED_SYMBOLS is enabled in v5 config.h:368. */
 let colornag = 0, glyphnag = 0;
@@ -638,90 +639,52 @@ function to_custom_symset_entry_callback(glyph, findwhat) {
     if (findwhat.color) {
         const sym = Array.isArray(gs.symset) ? gs.symset[idx] : null;
         if (sym && sym.name) {
-            add_custom_glyph_entry(sym.name, glyph, idx, custom_nhcolor, { nhcolor: findwhat.color });
+            add_custom_nhcolor_entry(sym.name, glyph, findwhat.color, idx);
         } else if (!colornag++) {
             config_error_add('Unimplemented customization feature,'
                              + ' ignoring for now');
         }
     }
+    /* C glyphs.c:86,99 stores both post-increments in 32-bit ints. */
+    glyphnag |= 0;
+    colornag |= 0;
 }
 
 export function glyphrep_to_custom_map_entries(op, glyphptr) {
     to_custom_symbol_find = { ...zero_find };
     let reslt = 0;
     let rgb = 0;
-    let slash = false, colon = false;
 
     if (!glyphid_cache)
         reslt = 1; /* for debugger use only; no cache available */
     /* nhUse(reslt) — no-op */
 
-    let buf = op; /* Snprintf(buf, sizeof buf, "%s", op) */
-    let c_glyphid = buf;
-    let c_unicode = null;
-    let c_colorval = null;
-
-    /* Parse buf for ':' and '/' delimiters */
-    let colonIdx = buf.indexOf(':');
-    let slashIdx = buf.indexOf('/');
-
-    let firstDelim = -1;
-    let firstIsColon = false;
-    if (colonIdx !== -1 && (slashIdx === -1 || colonIdx < slashIdx)) {
-        firstDelim = colonIdx;
-        firstIsColon = true;
-    } else if (slashIdx !== -1) {
-        firstDelim = slashIdx;
-        firstIsColon = false;
+    /* C glyphs.c:127-148 scans every delimiter, NUL-terminating each
+     * field.  The last ':' and '/' select their respective fields even
+     * when delimiters alternate or repeat.  A non-null empty color field
+     * is still passed to rgbstr_to_int32. */
+    const buf = new TextDecoder().decode(new TextEncoder()
+        .encode(String(op).split('\0', 1)[0]).subarray(0, 255));
+    const fields = buf.split(/[:/]/);
+    let c_glyphid = fields[0], c_unicode = null, c_colorval = null;
+    let field = 1;
+    for (const ch of buf) {
+        if (ch === ':') c_unicode = fields[field++];
+        else if (ch === '/') c_colorval = fields[field++];
     }
 
-    if (firstDelim !== -1) {
-        c_glyphid = buf.substring(0, firstDelim);
-        let rest = buf.substring(firstDelim + 1);
-        if (firstIsColon) {
-            let secondSlash = rest.indexOf('/');
-            if (secondSlash !== -1) {
-                c_unicode = rest.substring(0, secondSlash);
-                /* C glyphs.c:131-148: the text after the LAST '/' */
-                c_colorval = rest.slice(rest.lastIndexOf('/') + 1);
-            } else {
-                c_unicode = rest;
-                c_colorval = null;
-            }
-        } else {
-            let secondColon = rest.indexOf(':');
-            if (secondColon !== -1) {
-                c_colorval = rest.substring(0, secondColon);
-                c_unicode = rest.substring(secondColon + 1);
-            } else {
-                c_colorval = rest.slice(rest.lastIndexOf('/') + 1);
-                c_unicode = null;
-            }
-        }
-    } else {
-        c_glyphid = buf;
+    if (c_glyphid.startsWith(' ')) c_glyphid = c_glyphid.slice(1);
+    if (c_colorval?.startsWith(' ')) c_colorval = c_colorval.slice(1);
+    if (c_unicode !== null) {
+        c_unicode = c_unicode.replace(/^ +/, '');
+        if (!c_unicode) c_unicode = null;
     }
-
-    /* some sanity checks */
-    if (c_glyphid && c_glyphid.startsWith(' '))
-        c_glyphid = c_glyphid.substring(1);
-    if (c_colorval && c_colorval.startsWith(' '))
-        c_colorval = c_colorval.substring(1);
-    if (c_unicode && c_unicode.startsWith(' ')) {
-        while (c_unicode.startsWith(' ')) {
-            c_unicode = c_unicode.substring(1);
-        }
+    if ((c_colorval !== null && (rgb = rgbstr_to_int32(c_colorval)) !== -1)
+        || c_colorval === null) {
+        to_custom_symbol_find.color = (rgb === -1 || c_colorval === null) ? 0
+            : rgb === 0 ? nonzero_black : rgb;
     }
-    if (c_unicode && c_unicode === '')
-        c_unicode = null;
-
-    if ((c_colorval && (rgb = rgbstr_to_int32(c_colorval)) !== -1)
-        || !c_colorval) {
-        to_custom_symbol_find.color = (rgb === -1 || !c_colorval) ? 0
-                                      : (rgb === 0) ? nonzero_black
-                                                    : rgb;
-    }
-    if (c_unicode)
+    if (c_unicode !== null)
         to_custom_symbol_find.unicode_val = c_unicode;
     to_custom_symbol_find.extraval = glyphptr;
     to_custom_symbol_find.callback = to_custom_symset_entry_callback;
@@ -730,94 +693,45 @@ export function glyphrep_to_custom_map_entries(op, glyphptr) {
 }
 
 export function wizcustom_glyphids(menu) {
-    const glyphs = glyphid_table();
+    if (!glyphid_cache) return;
+    for (let glyphnum = 0; glyphnum < MAX_GLYPH; ++glyphnum) {
+        const id = find_glyphid_in_cache_by_glyphnum(glyphnum);
+        if (id !== null) wizcustom_callback(menu, glyphnum, id);
+    }
+}
 
-    /* symbols.c parse_sym_line -> glyphs.c glyphrep_to_custom_map_entries:
-     * S_ lines match a glyph family; G_ lines override a single glyph.
-     * Read the bundled symset, just as the symbol loader does. */
-    const byId = new Map(glyphs.map(g => [g.id?.toLowerCase(), g]));
-    const bySymbol = new Map();
-    for (const gm of glyphs) {
-        if (gm.customidx === null) continue;
-        const key = symbol_name(gm.customidx)?.toLowerCase();
-        if (!bySymbol.has(key)) bySymbol.set(key, []);
-        bySymbol.get(key).push(gm);
+/* C glyphs.c:418-432 scans buckets in table order, including the glyph-zero
+ * empty buckets whose null IDs must be skipped. */
+function find_glyphid_in_cache_by_glyphnum(glyphnum) {
+    if (!glyphid_cache) return null;
+    for (const entry of glyphid_cache)
+        if (entry.glyphnum === glyphnum && entry.id !== null) return entry.id;
+    return null;
+}
+
+/* C glyphs.c:796-803.  The writable object models FILE* for the caller. */
+export function dump_all_glyphids(fp) {
+    const find = { ...zero_find, findtype: find_nothing,
+        reserved: fp, restype: res_dump_glyphids };
+    parse_id(null, find);
+}
+
+/* C wizcmds.c:1987-2030: this diagnostic observes the actual glyphmap,
+ * including customizations moved by shuffle_customizations. */
+function wizcustom_callback(menu, glyphnum, id) {
+    if (!menu || !id) return;
+    const gm = glyphmap[glyphnum];
+    if (!gm.u && !gm.customcolor) return;
+    const bufa = `[${String(glyphnum).padStart(4, '0')}] ${id.padEnd(44)}`;
+    const symidx = gm.sym?.symidx ?? 0;
+    const sym = (game.gs?.showsyms ?? gs.showsyms)?.[symidx] ?? primary_showsym(symidx);
+    const bufb = `'\\${String(sym).padStart(3, '0')}' ${String(gm.sym?.color ?? NO_COLOR).padStart(2, '0')}`;
+    const bufc = (gm.customcolor >>> 0).toString(16).padStart(11, '0');
+    let bufu = '';
+    if (gm.u?.utf8str) {
+        const bytes = new TextEncoder().encode(gm.u.utf8str);
+        bufu = 'U+' + gm.u.utf32ch.toString(16).padStart(4, '0')
+            + [...bytes].map(b => ` <${b}>`).join('');
     }
-    const set = gs.symset[PRIMARYSET] || {};
-    let active = false;
-    for (const raw of (dat_content('symbols') || '').split('\n')) {
-        const line = raw.replace(/\s+#.*$/, '').trim();
-        const start = /^(?:start|begin)\s*:\s*(.*)$/i.exec(line);
-        if (start) { active = start[1].toLowerCase() === set.name?.toLowerCase(); continue; }
-        if (/^finish\b/i.test(line)) { active = false; continue; }
-        const match = active && /^([GS]_\w+)\s*[:=]\s*([^/]*)\/?(.*)$/i.exec(line);
-        if (!match) continue;
-        const key = match[1].toLowerCase();
-        const targets = key.startsWith('g_') ? [byId.get(key)].filter(Boolean)
-            : set.handling === 5 ? (bySymbol.get(key) || []) : [];
-        const u = /^U\+([0-9a-f]+)/i.exec(match[2].trim());
-        const color = match[3].trim() && rgbstr_to_int32(match[3].trim());
-        for (const gm of targets) {
-            if (u && set.handling === 5) gm.u = parseInt(u[1], 16);
-            if (color !== '' && color !== -1) gm.customcolor = color || 0x1000000;
-        }
-    }
-    /* OPTIONS=glyph:G_name/r-g-b entries filed by glyphrep_to_custom_map_entries.
-     * Only apply_customizations (glyphs.c:562-567, from initoptions_finish or
-     * reset_customcolors) copies them into glyphmap[]; optfn_glyph
-     * (options.c:1836) only files them, so an in-game glyph:S_x/r-g-b shows
-     * the colour last applied, not the filed one. */
-    for (let d = gs.sym_customizations?.[PRIMARYSET]?.[2]?.details; d && set.handling === 5; d = d.next) {
-        const urep = d.content?.urep, gm = urep && glyphs[urep.glyphidx];
-        if (gm && urep.u?.utf32ch) gm.u = urep.u.utf32ch;
-    }
-    for (let d = gs.sym_customizations?.[PRIMARYSET]?.[3]?.details; d; d = d.next) {
-        const cc = d.content?.ccolor, gm = cc && glyphs[cc.glyphidx];
-        if (gm && cc.applied !== undefined) gm.customcolor = cc.applied;
-    }
-    /* glyphs.c:645-731 shuffle_customizations (run from moveloop once the
-     * customizations above are pending): each object glyph takes the
-     * customization filed under its oc_descr_idx, so a gem whose description
-     * randomize_gem_colors copied (fluorite -> diamond's "white") shares it. */
-    const descrIdx = game._objDescrIdx || {};
-    for (const off of glyphs.objOffsets) {
-        const no = MKOBJ_OC_CLASS.length, tmp = [], duplicate = [];
-        for (let i = 0; i < no; i++) {
-            const idx = Number.isInteger(descrIdx[i]) ? descrIdx[i] : i;
-            const src = glyphs[off + idx];
-            if (duplicate[idx] !== undefined) {
-                tmp[i] = { ...tmp[duplicate[idx]] };
-            } else {
-                tmp[i] = { u: src.u, customcolor: src.customcolor };
-                if (src.u || src.customcolor) {
-                    duplicate[idx] = i;
-                    src.u = 0;
-                    src.customcolor = 0;
-                }
-            }
-        }
-        for (let i = 0; i < no; i++) Object.assign(glyphs[off + i], tmp[i]);
-    }
-    const unicode = (game._gm_customsymbols ?? game.iflags.customsymbols) !== false;
-    const colors = game.iflags.customcolors !== false;
-    const useColor = (game._gm_use_color ?? game.iflags.use_color) !== false;
-    for (let glyphnum = 0; glyphnum < glyphs.length; glyphnum++) {
-        const gm = glyphs[glyphnum];
-        const u = unicode ? gm.u : 0, color = colors ? gm.customcolor : 0;
-        if (!gm.id || (!u && !color)) continue;
-        let sym = primary_showsym(gm.symidx);
-        if (gm.symidx === 20 && !game._symsetDarkroomPending)
-            sym = primary_showsym(_darkroom_alias_blank() ? SYM_OFFSETS.X : 19);
-        let clr = useColor ? gm.color : NO_COLOR;
-        if (gm.symidx === 23 && sym === primary_showsym(22) && useColor) clr = CLR_WHITE;
-        const bufa = `[${String(glyphnum).padStart(4, '0')}] ${gm.id.padEnd(44)}`;
-        const bufb = `'\\${String(sym).padStart(3, '0')}' ${String(clr).padStart(2, '0')}`;
-        const bufc = color.toString(16).padStart(11, '0');
-        let bufu = '';
-        if (u) {
-            const bytes = new TextEncoder().encode(String.fromCodePoint(u));
-            bufu = 'U+' + u.toString(16).padStart(4, '0') + [...bytes].map(b => ` <${b}>`).join('');
-        }
-        menu.add_menu(glyphnum + 1, 0, 0, `${bufa} ${bufb} ${bufc} ${bufu}`);
-    }
+    menu.add_menu(glyphnum + 1, 0, 0, `${bufa} ${bufb} ${bufc} ${bufu}`.slice(0, 255));
 }

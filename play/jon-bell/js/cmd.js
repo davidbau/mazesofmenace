@@ -123,7 +123,7 @@ import { drag_ball, move_bc, placebc, unplacebc, drop_ball, ballfall, ballreleas
 import { OC_CHARGED, OC_COST } from './oc_cost_data.js';
 import { SPBOOK_META, SHUFFLED_RANGES } from './o_init_data.js';
 import { WEB, ROCKTRAP, BEAR_TRAP, LANDMINE, SQKY_BOARD, DART_TRAP, ARROW_TRAP, VIASITTING, W_NONDIGGABLE } from './const.js';
-import { P_RIDING, STONE, DOOR, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, D_ISOPEN, D_TRAPPED, WM_MASK, IS_WALL, A_WIS, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, M_AP_NOTHING, M_AP_MONSTER, M_AP_F_DKNOWN, MCORPSENM, COLNO, ROWNO, Is_rogue_level, isok, IS_STWALL, ACCESSIBLE, SDOOR, SCORR, THRONE, SINK, GRAVE, FOUNTAIN, ALTAR, IS_ALTAR, IS_FOUNTAIN, IS_THRONE, IS_SINK, IS_GRAVE, AM_MASK, AM_CHAOTIC, AM_SHRINE, AM_SANCTUM, Amask2align, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, WEAK, HUNGRY, STAIRS, LFILE_EXISTS, VISITED, CQ_REPEAT, CQ_CANNED, CMDQ_EXTCMD, CMDQ_KEY, W_NONPASSWALL, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR, MV_ANY, MV_WALK, MV_RUN, MV_RUSH, N_MOVEMODES, ACH_RNK1, ACH_RNK2, ACH_RNK3, ACH_RNK4, ACH_RNK5, ACH_RNK6, ACH_RNK7, ACH_RNK8, N_ACH, ACH_BLND, ACH_NUDE, ACH_MINE, ACH_TOWN, ACH_SHOP, ACH_ORCL, ACH_NOVL, ACH_SOKO, ACH_BGRM, ACH_MEDU, ACH_TUNE, ACH_INVK, ACH_ENDG, ACH_ASTR, ACH_UWIN, SICK_VOMITABLE, SICK_NONVOMITABLE, NON_PM, BRK_FROM_INV, BRK_KNOWN_OUTCOME, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, LR_DOWNTELE, LR_UPTELE, ROOMOFFSET, OROOM, SHOPBASE, ZOO, SWAMP, COURT, LEPREHALL, MORGUE, BEEHIVE, COCKNEST, ANTHOLE, BARRACKS, DELPHI, TEMPLE, VAULT, In_mines, TRAPPED_CHEST, TRAPPED_DOOR, STATUE_TRAP, HALLUC, u_at, Is_waterlevel, Is_astralevel, Is_airlevel, Is_juiblex_level, Upolyd, PLNMSG_BACK_ON_GROUND, DISMOUNT_FELL, DISMOUNT_GENERIC, DISMOUNT_BYCHOICE, DISMOUNT_THROWN, DISMOUNT_KNOCKED, DISMOUNT_POLY, DISMOUNT_ENGULFED, DISMOUNT_BONES, POOL, MOAT, WATER, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, TREE, IRONBARS, NHW_MENU, WIN_ERR, A_DEX, WOUNDED_LEGS, ROOM, DB_UNDER, DB_FLOOR, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, IS_WATERWALL, KILLED_BY, LAVAPOOL, LAVAWALL, DB_LAVA, HMON_THROWN, NO_KILLER_PREFIX, ER_DESTROYED, is_pit, is_hole, HOLE, TRAPDOOR, DOMOVE_WALK, DOMOVE_RUSH, LEVITATION, FLYING, FROMOUTSIDE, STUNNED, CONFUSION, DEAF, SICK, STONED, STRANGLED, VOMITING, SLIMED, HALLUC_RES, TIMEOUT, A_STR, BOLT_LIM, Has_contents, CORR, IS_TREE, JUMPING, INTRINSIC, TELEDS_NO_FLAGS, TELEDS_ALLOW_DRAG, TELEDS_TELEPORT, DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP, TRAVP_TRAVEL, TRAVP_GUESS, TRAVP_VALID, PIT, DIGCHECK_FAILED, DIGCHECK_FAIL_BOULDER, IS_AIR } from './const.js';
+import { P_RIDING, STONE, DOOR, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, D_ISOPEN, D_TRAPPED, WM_MASK, IS_WALL, A_WIS, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, M_AP_NOTHING, M_AP_MONSTER, M_AP_F_DKNOWN, MCORPSENM, COLNO, ROWNO, Is_rogue_level, isok, IS_STWALL, ACCESSIBLE, SDOOR, SCORR, THRONE, SINK, GRAVE, FOUNTAIN, ALTAR, IS_ALTAR, IS_FOUNTAIN, IS_THRONE, IS_SINK, IS_GRAVE, AM_MASK, AM_CHAOTIC, AM_SHRINE, AM_SANCTUM, Amask2align, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, WEAK, HUNGRY, STAIRS, LFILE_EXISTS, VISITED, CQ_REPEAT, CQ_CANNED, CMDQ_EXTCMD, CMDQ_KEY, W_NONPASSWALL, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR, MV_ANY, MV_WALK, MV_RUN, MV_RUSH, N_MOVEMODES, ACH_RNK1, ACH_RNK2, ACH_RNK3, ACH_RNK4, ACH_RNK5, ACH_RNK6, ACH_RNK7, ACH_RNK8, N_ACH, ACH_BLND, ACH_NUDE, ACH_MINE, ACH_TOWN, ACH_SHOP, ACH_ORCL, ACH_NOVL, ACH_SOKO, ACH_BGRM, ACH_MEDU, ACH_TUNE, ACH_INVK, ACH_ENDG, ACH_ASTR, ACH_UWIN, SICK_VOMITABLE, SICK_NONVOMITABLE, NON_PM, BRK_FROM_INV, BRK_KNOWN_OUTCOME, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, LR_DOWNTELE, LR_UPTELE, ROOMOFFSET, OROOM, SHOPBASE, ZOO, SWAMP, COURT, LEPREHALL, MORGUE, BEEHIVE, COCKNEST, ANTHOLE, BARRACKS, DELPHI, TEMPLE, VAULT, In_mines, TRAPPED_CHEST, TRAPPED_DOOR, STATUE_TRAP, HALLUC, u_at, Is_waterlevel, Is_astralevel, Is_airlevel, Is_juiblex_level, Upolyd, PLNMSG_BACK_ON_GROUND, DISMOUNT_FELL, DISMOUNT_GENERIC, DISMOUNT_BYCHOICE, DISMOUNT_THROWN, DISMOUNT_KNOCKED, DISMOUNT_POLY, DISMOUNT_ENGULFED, DISMOUNT_BONES, POOL, MOAT, WATER, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, TREE, IRONBARS, NHW_MENU, WIN_ERR, A_DEX, WOUNDED_LEGS, ROOM, DB_UNDER, DB_FLOOR, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, IS_WATERWALL, KILLED_BY, LAVAPOOL, LAVAWALL, DB_LAVA, HMON_THROWN, NO_KILLER_PREFIX, ER_DESTROYED, is_pit, is_hole, HOLE, TRAPDOOR, DOMOVE_WALK, DOMOVE_RUSH, LEVITATION, FLYING, FROMOUTSIDE, STUNNED, CONFUSION, DEAF, SICK, STONED, STRANGLED, VOMITING, SLIMED, HALLUC_RES, TIMEOUT, A_STR, BOLT_LIM, Has_contents, CORR, IS_TREE, JUMPING, INTRINSIC, TELEDS_NO_FLAGS, TELEDS_ALLOW_DRAG, TELEDS_TELEPORT, DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP, TRAVP_TRAVEL, TRAVP_GUESS, TRAVP_VALID, PIT, DIGCHECK_FAILED, DIGCHECK_FAIL_BOULDER, IS_AIR, SVALL } from './const.js';
 import { CLR_BLACK, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { monster_detect } from './detect.js';
 import { def_char_to_monclass, MAXMCLASSES } from './drawing.js';
@@ -213,7 +213,7 @@ import { wiz_migrate_mons, wiz_level_change, wiz_wish, touch_artifact_youmonst, 
 import { wiz_light_sources } from './light.js';
 import { wiz_timeout_queue } from './timeout.js';
 import { wiz_debug_cmd_bury } from './dig.js';
-import { getlin } from './windows.js';
+import { getlin, genl_can_suspend_yes } from './windows.js';
 import { usmellmon } from './mon.js';
 import { docast, dovspell, dowizcast, known_spell, force_learn_spell, num_spells, spelleffects, book_disappears, spell_skilltype } from './spell.js';
 import { isqrt } from './hacklib.js';
@@ -4253,6 +4253,7 @@ export async function doprev_message(liveTopline) {
      * cycles through. */
     const _ring = Math.min(Math.max((g.iflags?.msg_history ?? 20) | 0, 20), MAX_MSG_HISTORY);
     if (_pmw === 's' || (_pmw === 'c' && !_comboWindow)) {
+        g._ttyDismissMore = 16; // topl.c:45,54,103; held over the whole walk
         let _blankFirst = false;
         if (!history.length) return ECMD_OK;
         if (_pmw === 'c') {
@@ -4336,6 +4337,14 @@ export async function doprev_message(liveTopline) {
              * visual == .length and nothing changes. */
             if (text.includes('\n') || _topl_visualLen(text) > 79) {
                 morc = await force_more(text, 16); // ^P may acknowledge and continue
+                // force_more's optional dismissal argument has message_menu's
+                // reset semantics. redotoplin instead holds ^P until the
+                // entire tty_doprev_message call has finished (topl.c:78/116).
+                g._ttyDismissMore = morc === 27 ? 1 : 16;
+                // topl.c:230: more() leaves TOPLINE_EMPTY even when ^P was
+                // the dismissing key. The combination walk may now open a
+                // window, whose display must not page this same line again.
+                g._topl_unacknowledged = false;
                 paged = true;
             } else {
                 await flush_screen(1);
@@ -4356,7 +4365,6 @@ export async function doprev_message(liveTopline) {
         /* topl.c:78 (combination) / :116 (single): ttyDisplay->dismiss_more = 0
          * after the walk, whether or not a recalled line paged; an ESC read at
          * one of its pages (getline.c:245-247) is undone here too. */
-        g._ttyDismissMore = 0;
         /* C topl.c:42-74: combination's do { ... } while (morc == C('p')) re-runs
          * the whole maxcol chain, so ^P at this --More-- recalls the NEXT older
          * line (or opens the window), not the same line again. */
@@ -4424,6 +4432,7 @@ export async function doprev_message(liveTopline) {
     // C wintty.c:1924-1931 forces offx to zero for tall windows and when
     // menu_overlay is disabled; process_text_window (:1779) pages both cases.
     if (_fitLines.length >= 24) {
+        let historyDismissal = 0;
         for (let offset = 0; offset < _fitLines.length; offset += 23) {
             const page = _fitLines.slice(offset, offset + 23);
             const screenRows = build_text_window_screen(page).split('\n');
@@ -4434,7 +4443,9 @@ export async function doprev_message(liveTopline) {
                 g._screen_output = screenRows.join('\n');
                 set_cursor(9, page.length);
                 key = await nhgetch();
-            } while (![32, 10, 13, 27].includes(key));
+            } while (![32, 10, 13, 27].includes(key)
+                     && !(key && key === g._ttyDismissMore));
+            historyDismissal = key;
             if (key === 27) break; /* WIN_CANCELLED */
         }
         /* C win/tty/topl.c:78,100: combination/reversed history clears the
@@ -4449,6 +4460,8 @@ export async function doprev_message(liveTopline) {
         if (g.disp) g.disp.botlx = 1;
         await bot();
         await flush_screen(1);
+        if (_pmw === 'c' && historyDismissal === 16)
+            return doprev_message(liveTopline);
         return ECMD_OK;
     }
     /* C wintty.c:2401-2407: putstr sets maxcol to the widest line + 1.
@@ -4489,7 +4502,7 @@ export async function doprev_message(liveTopline) {
         set_cursor(WIN_COL + _moreLead.length + '--More--'.length, endRow);
     };
     await _show();
-    await await_more_dismiss(_show);
+    const historyDismissal = await await_more_dismiss(_show);
     /* C win/tty/topl.c:78,100: ESC in the history window must not leave
      * getline.c:246's dismiss_more=1 active for later message pages. */
     /* topl.c:78 (combination) / :100 (reversed): ttyDisplay->dismiss_more = 0
@@ -4510,6 +4523,11 @@ export async function doprev_message(liveTopline) {
         await bot();
     }
     await flush_screen(1);
+    // topl.c:42-77: a window reached within a combination recall still has
+    // dismiss_more == ^P. That key closes the window and resumes the same
+    // do/while at maxcol == maxrow, recalling the live topline next.
+    if (_pmw === 'c' && historyDismissal === 16)
+        return doprev_message(liveTopline);
     /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
     return ECMD_OK;
 }
@@ -9434,6 +9452,13 @@ function _mapseen_level(ledger) {
 }
 function _mapseen_feat(dnum, dlevel) {
     const g = game;
+    const featureKey = `${dnum | 0}:${dlevel | 0}`;
+    const current = on_level({ dnum, dlevel }, g.u.uz);
+    // C dungeon.c:3096-3199 recalculates only the current mapseen record.
+    // Inactive levels retain their counts and alignment; altarmask_at must
+    // never inspect the current level's monsters on behalf of a left level.
+    if (!current && g._mapseen_features?.[featureKey])
+        return { ...g._mapseen_features[featureKey] };
     const feat = { nfount: 0, nsink: 0, nthrone: 0, naltar: 0,
                    ngrave: 0, ntree: 0, nshop: 0, ntemple: 0, msalign: 0,
                    shoptype: 0, oracle: 0 };
@@ -9477,8 +9502,7 @@ function _mapseen_feat(dnum, dlevel) {
     }
     if (!map || typeof map.at !== 'function')
         return feat;
-    if (map === g.level && !(g.u?.uprops?.[LEVITATION]?.intrinsic
-                             || g.u?.uprops?.[LEVITATION]?.extrinsic))
+    if (map === g.level && !_Levitation())
         update_lastseentyp(g.u.ux, g.u.uy);
     /* C: `if (count <= 3) feat.n… = count` — the counts saturate at 3, which is
      * what makes seen_string's 0/1/2/many table total. */
@@ -9495,8 +9519,13 @@ function _mapseen_feat(dnum, dlevel) {
             case SINK:     bump('nsink'); break;
             case GRAVE:    bump('ngrave'); break;
             case ALTAR: {
-                const am = ((loc.altarmask ?? loc.flags) | 0) & AM_MASK;
-                const atmp = (am === 4) ? 3 : am;
+                /* C dungeon.c:3011-3023 — altarmask_at(x, y), Astral
+                 * non-fully-seen guard, then Amask2msa(). */
+                const am = altarmask_at(x, y) & AM_MASK;
+                const atmp = (Is_astralevel({ dnum: dnum | 0, dlevel: dlevel | 0 })
+                              && ((loc.seenv | 0) & SVALL) !== SVALL)
+                    ? 0
+                    : (am === 4) ? 3 : am;
                 if (!feat.naltar)
                     feat.msalign = atmp;
                 else if (feat.msalign !== atmp)
@@ -9543,17 +9572,12 @@ function _mapseen_feat(dnum, dlevel) {
          * he stood on it (dungeon.c:3066); recompute from its lastseentyp. */
         (g._level_castle ||= {})[ckey] = 1;
     }
-    else if (castleSeen) {
-        /* A level left earlier: C's recalc_mapseen() ran when the hero left it
-         * (do.c:1624), so the snapshot's own lastseentyp plane is what that
-         * recalc would have read. */
-        (g._level_castletune ||= {})[ckey] = 1;
-        (g._level_castle ||= {})[ckey] = 1;
-    }
     feat.castle = (g._level_castle || {})[ckey] ? 1 : 0;
     feat.castletune = (g._level_castletune || {})[ckey] ? 1 : 0;
     /* C recalc_mapseen retains flags.ludios once the entrance is recognized. */
     feat.ludios = (g._level_ludios || {})[ckey] ? 1 : 0;
+    if (current)
+        (g._mapseen_features ||= {})[featureKey] = { ...feat };
     return feat;
 }
 /* C botl.c rank_of(xlev, Role_switch, female).  This file's other rank_of()
@@ -12614,6 +12638,14 @@ async function dispatch_command(command, outcome = {}, queued = false) {
     }
     const g = game;
     switch (command.func) {
+    case "dosuspend_core": {
+        // cmd.c:5662-5677 -> sys/share/ioctl.c:161-169. The scored sysconf
+        // leaves sysopt.shellers NULL (sys.c:57); no rc option changes it.
+        if (genl_can_suspend_yes())
+            await _Norep('Suspend command not available.');
+        outcome.value = _rhack_cmd_move(ECMD_OK);
+    }
+        return true;
     case "donull": {
         outcome.value = _rhack_cmd_move(await donull());
     }

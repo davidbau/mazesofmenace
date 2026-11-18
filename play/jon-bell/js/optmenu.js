@@ -12,7 +12,6 @@
 // content (labels + ordering) is fixed (it is the static set_in_game projection
 // of allopt[]); only the [value] fields are state-dependent.  Rendered
 import { ATR_NONE } from './terminal.js';
-import { load_primary_symset_from_file, assign_graphics } from './symbols.js';
 import { game } from './gstate.js';
 import { regcomp } from './posixregex.js';
 import { dlb_file_lines, OPTMENUHELP } from './dispfile.js';
@@ -43,7 +42,7 @@ import { display_text_window } from './com_pager.js';
 import { TtyMenu, PICK_NONE, menu_heading_text, menu_heading_sgr } from './tty_menu.js';
 import { menutype } from './menustyle.js';
 import { MENU_TRADITIONAL, MENU_COMBINATION } from './const.js';
-import { colornames, attrnames, attr2attrname, clr2colorname, match_str2clr } from './coloratt.js';
+import { colornames, attrnames, attr2attrname, clr2colorname, match_str2clr, query_attr } from './coloratt.js';
 import { choose_disco_sort } from './o_init.js';
 import { ROLE_RANKS, role_index_by_name } from './rank_data.js';
 /* C ref: wintty.c process_menu_window's overlay composition — the shared
@@ -57,7 +56,8 @@ import { def_char_to_objclass, def_oc_syms_chars } from './drawing.js';
 import { oc_to_str } from './options.js';
 export { HL_ATTRBITS }; // relocate-fns
 export { doset, doset_simple } from './options.js'; // relocate-fns
-export { drainTopline, query_attr_one, set_cursor }; // relocate-fns
+export { drainTopline, set_cursor }; // relocate-fns
+export { query_attr as query_attr_one }; // relocate-fns
 
 
 
@@ -130,36 +130,7 @@ async function drainTopline() {
 
 
 
-/* C coloratt.c:380 query_attr (PICK_ONE case); returns -1 on ESC. */
-async function query_attr_one(prompt, dflt_attr, preserveStatus) {
-    const allow_many = /^Choose/i.test(prompt || ''); // C coloratt.c:387
-    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
-    for (let i = 0; i < attrnames.length; i++) {
-        if (!attrnames[i].name) break;
-        m.add_menu(i + 1, 0, ATR_NONE, attrnames[i].name, false,
-                   attrnames[i].attr === dflt_attr);
-        /* tty term_start_attr: C ATR_BOLD/ULINE/INVERSE only (this port's
-         * ATR_* numbering differs from C's, so carry the SGR code itself). */
-        const sgr = { 1: 1, 4: 4, 7: 7 }[attrnames[i].attr];
-        if (sgr) m.mlist[m.mlist.length - 1].sgr = [sgr];
-    }
-    m.end_menu(prompt || 'Pick an attribute');
-    const { count, picks } = await m.select_menu(allow_many ? PICK_ANY : PICK_ONE);
-    if (allow_many) {
-        if (count <= 0) return -1;
-        return picks.reduce((bits, pick) => bits | (attrnames[pick - 1].attr === 0
-            ? (count === 1 ? 1 : 0)
-            : HL_ATTRBITS.find(b => b[0] === attrnames[pick - 1].attr)[1]), 0);
-    }
-    if (count > 0) {
-        let j = picks[0] - 1;
-        if (count === 2 && attrnames[j].attr === dflt_attr) j = picks[1] - 1;
-        return attrnames[j].attr;
-    } else if (count === 0) {
-        return dflt_attr;
-    }
-    return -1;
-}
+/* C coloratt.c:396 query_attr lives in js/coloratt.js (re-exported above as query_attr_one). */
 
 
 

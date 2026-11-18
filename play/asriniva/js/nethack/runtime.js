@@ -33,7 +33,7 @@ export class CPanic extends Error {
 export function createJsRuntime(options = {}) {
     const memory = new CMemory(options);
     const libc = createCStdlib(memory,options.libc);
-    const clock = createCTime({ now: options.now, native: true });
+    const clock = createCTime({ now: options.now, native: true, timeZone: options.timeZone });
     const filesystem = new CVFS(options.filesystem);
     const environment = new Map();
     const expressions = new Map();

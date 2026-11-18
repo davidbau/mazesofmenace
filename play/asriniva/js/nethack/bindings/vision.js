@@ -60,7 +60,12 @@ export function createVisionEnvironment(services,layout){
     const env=Object.assign(Object.create(services),layout,{sizes:Object.fromEntries(names.map(n=>[n,layout[n+'Size']])),view,nativeState,
         boolean:v=>Number(v)<<24>>24,samePointer:(a,b)=>addr(a)===addr(b),reference:(get,set)=>({get value(){return get();},set value(v){set(v);}}),
         element:(a,i)=>({address:addr(a)+i*width(a.descriptor.e),descriptor:a.descriptor.e,get value(){return a[i];},set value(v){a[i]=v;}}),
-        advance:(v,n)=>{return Crt.advanceDescriptor(view,addr,layout,array,width,read,write,v,n);},
+        advance:(v,n)=>{
+            const records=nativeState.nativeRecords;
+            // Shared map cells exist before any VISION-specific descriptor is installed.
+            if(records?.kindOf(v)==='rm')return records.advance(v,n);
+            return Crt.advanceDescriptor(view,addr,layout,array,width,read,write,v,n);
+        },
 
     });
     for(const [name,sch]of Object.entries(schemas))for(const f of sch.fields)if(!f.bit&&width(f.d)!==layout['width_'+name+'_'+f.name])throw Error('Review changed RESTORE field width: '+name+'.'+f.name);

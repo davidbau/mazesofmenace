@@ -1,25 +1,139 @@
 // windows.js — C ref: windows.c.
-import { putstr } from './cmd.js'; // relocate-fns
-import { cmdq_pop, doprev_message, pgetchar, tty_getlin_combo_wrapped_window } from './cmd.js'; // relocate-fns
-import { CMDQ_KEY, COLNO, MAX_MSG_HISTORY } from './const.js'; // relocate-fns
-import { _topl_joins_snapshot, _topl_more_pages, flush_screen, force_more, restore_command_topline, restore_occupation_topline, tty_getlin_echo, tty_getlin_history, tty_getlin_recall, use_last_flush_snapshot } from './display.js'; // relocate-fns
+import { cmdq_pop, doprev_message, pgetchar } from './cmd.js'; // relocate-fns
+import { CMDQ_KEY, COLNO, MAX_MSG_HISTORY, MENU_ITEMFLAGS_SKIPINVERT } from './const.js'; // relocate-fns
+import { _topl_joins_snapshot, _topl_more_pages, flush_screen, force_more, restore_command_topline, restore_occupation_topline, topl_park_cursor, tty_getlin_echo, tty_getlin_history, tty_getlin_recall, use_last_flush_snapshot } from './display.js'; // relocate-fns
 import { game } from './gstate.js'; // relocate-fns
 import { nhgetch } from './input.js'; // relocate-fns
 import { pline } from './pline.js'; // relocate-fns
 import { vision_recalc } from './vision.js'; // relocate-fns
+import { map_glyphinfo } from './display.js';
+import { NO_COLOR } from './terminal.js';
+import { MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPMENUCOLORS } from './const.js';
+import { config_error_add } from './cfgfiles.js';
 
-export function add_menu(win, glyph, any, a, b, c, d, e, f) {}
-
-export function select_menu(win, how, picksRef) {
-    // Return values that simulate the user picking "blink" (ATR_BLINK=5)
-    // with preselected "none" (ATR_NONE=0)
-    if (picksRef && picksRef.val !== undefined) {
-        picksRef.val = [{ item: { a_int: 1 } }, { item: { a_int: 6 } }];
-    }
-    return 2;
+// windows.c:267-337. The scored binary's only compiled window choice is tty;
+// its callbacks are the JS tty/display adapters. Invalid rc choices keep the
+// already selected interface and report through the normal configuration path.
+export function choose_windows(name) {
+    if (name.toLowerCase() === 'tty') return;
+    const shown = name.length >= 50 ? name.slice(0, 49) : name;
+    config_error_add('Window type %s not recognized.  The only choice is: %s', shown, 'tty');
 }
 
-export function add_menu_str(win, buf) { putstr(win, 0, buf); }
+// windows.c:199-202: the compiled tty port advertises suspend capability.
+// Platform permission is checked separately by sys/share/ioctl.c:dosuspend.
+export function genl_can_suspend_yes() {
+    return true;
+}
+
+// C windows.c:1428-1435. The encoder's cookie is refreshed by moveloop_preamble.
+export function encglyph(glyph) {
+    const hex = n => (n >>> 0).toString(16).toUpperCase().padStart(4, '0');
+    return '\\G' + hex(game.context.rndencode) + hex(glyph);
+}
+
+// C windows.c:1439-1461. Even a partial hex field can succeed; in particular,
+// do not require eight hex digits when the accumulated cookie already matches.
+export function decode_glyph(str, glyphRef) {
+    let i = 0, cookie = 0, count = 0;
+    const hex = ch => ch !== undefined && /^[0-9a-f]$/i.test(ch);
+    for (; i < 4 && hex(str[i]); i++, count++)
+        cookie = cookie * 16 + parseInt(str[i], 16);
+    if (cookie !== (game.context.rndencode || 0)) return 0;
+    glyphRef.val = 0;
+    for (let n = 0; n < 4 && hex(str[i]); n++, i++, count++)
+        glyphRef.val = glyphRef.val * 16 + parseInt(str[i], 16);
+    return count;
+}
+
+// C windows.c:1466-1513. A failed glyph authentication leaves the whole escape
+// intact; other escaped characters lose their backslash, except at end of text.
+export function decode_mixed(str) {
+    if (str == null) return '';
+    let out = '';
+    for (let i = 0; i < str.length;) {
+        if (str[i] === '\\') {
+            if (str[i + 1] === 'G') {
+                const glyph = { val: 0 };
+                const count = decode_glyph(str.slice(i + 2), glyph);
+                if (count) {
+                    const info = {};
+                    map_glyphinfo(0, 0, glyph.val, 0, info);
+                    // map_glyphinfo's ttychar is showsyms[gm.sym.symidx]
+                    // (display.c:2653); the JS symbol table is composed there.
+                    const ch = info.ttychar;
+                    out += typeof ch === 'number' ? String.fromCharCode(ch) : ch;
+                    i += count + 2;
+                    continue;
+                }
+            } else if (i + 1 < str.length) {
+                i++;
+            }
+        }
+        out += str[i++];
+    }
+    return out;
+}
+
+// C windows.c:1562-1589. The caller supplies the current selection state;
+// mode does not affect C's decision, including for bulk select/deselect.
+export function menuitem_invert_test(mode, itemflags, is_selected) {
+    if (!(itemflags & MENU_ITEMFLAGS_SKIPINVERT)) return true;
+    if (game.iflags.menuinvertmode === 2) return false;
+    if (game.iflags.menuinvertmode === 1) return !!is_selected;
+    return true;
+}
+
+// TtyMenu objects are the JS window handles for these core menu wrappers.
+// C windows.c:1785-1811: color the original text before tty_add_menu adds
+// its accelerator, then consume the core-only SKIPMENUCOLORS flag.
+export function add_menu(win, glyph, identifier, ch, gch, attr, color, str, itemflags) {
+    if (str == null) return;
+    const colorRef = { val: color }, attrRef = { val: attr };
+    if (game.iflags.use_menu_color && !(itemflags & MENU_ITEMFLAGS_SKIPMENUCOLORS))
+        get_menu_coloring(str, colorRef, attrRef);
+    itemflags &= ~MENU_ITEMFLAGS_SKIPMENUCOLORS;
+    attr = attrRef.val;
+    win.add_menu(identifier?.a_int || 0, ch, attr === 7 ? 3 : attr === 3 ? 0 : attr,
+                 str, !!(itemflags & MENU_ITEMFLAGS_SKIPINVERT),
+                 !!(itemflags & MENU_ITEMFLAGS_SELECTED), gch, true);
+    const row = win.mlist[win.mlist.length - 1];
+    // tty's recorded terminal supplies bold, underline and reverse sequences.
+    const sgr = { 1: 1, 4: 4, 7: 7 }[attr];
+    if (sgr) row.sgr = [sgr];
+    if (colorRef.val !== NO_COLOR)
+        row.menuColor = { color: colorRef.val, attr: sgr || 0 };
+}
+
+export function get_menu_coloring(str, colorRef, attrRef) {
+    // C windows.c:1841-1852: first matching rule in list order wins.
+    if (game.iflags.use_menu_color)
+        for (const rule of game.menu_colorings || [])
+            if (rule.match.test(str)) {
+                colorRef.val = rule.color;
+                attrRef.val = rule.attr;
+                return true;
+            }
+    return false;
+}
+
+export async function select_menu(win, how, picksRef) {
+    // windows.c:1856-1864 holds bot_disabled across the whole window call.
+    const old = game._bot_disabled;
+    game._bot_disabled = true;
+    try {
+        const { count, picks } = await win.select_menu(how);
+        picksRef.val = count > 0 ? picks.map(id => ({ item: { a_int: id },
+            count: win.mlist.find(row => row.aInt === id).count })) : null;
+        return count;
+    } finally {
+        game._bot_disabled = old;
+    }
+}
+
+export function add_menu_str(win, buf) {
+    add_menu(win, null, { a_int: 0 }, 0, 0, 0, NO_COLOR, buf, 0);
+}
 
 /* C win/tty/getline.c:210-212 — hooked_tty_getlin ends with
  *     clear_nhwindow(WIN_MESSAGE);   -- "clean up after ourselves"
@@ -30,7 +144,8 @@ export function add_menu_str(win, buf) { putstr(win, 0, buf); }
  * must not still show the prompt. */
 function _getlin_clear_message_window(g) {
     const s = g._screen_output;
-    if (typeof s !== 'string' || !s) return;
+    // Both calls follow the prompt flush. Like C's WIN_MESSAGE, the screen
+    // and display exist throughout getlin; there is no uninitialized arm.
     const rows = s.split('\n');
     rows[0] = '';
     g._screen_output = rows.join('\n');
@@ -53,16 +168,22 @@ export async function getlin(prompt) {
         await pline('%s %s', prompt, buf);
         return buf;
     }
+    // windows.c:1897-1901 wraps the ENTIRE window-port call, including
+    // getline.c:52-54's initial more(), not just the key-reading loop.
+    const oldBotDisabled = g._bot_disabled;
+    g.program_state.in_getlin = 1;
+    g._bot_disabled = true;
+    try {
     /* C has one gt.toplines: an eat occupation's committed flavor line is still
      * on it when cpostfx's polyself asks for a form (eat.c:1244-1263). */
     restore_occupation_topline();
     const renderPrompt = () => {
-        g._pending_message = buf ? (prompt + ' ' + buf) : prompt;
+        // getline.c:80 rebuilds "query answer" even when the answer is empty.
+        g._pending_message = prompt + ' ' + buf;
         g._topl_prompt_written = prompt + ' ' + buf;
     };
     const placeCursor = () => {
-        const d = g.nhDisplay;
-        if (d) tty_getlin_echo(d, prompt, buf);
+        tty_getlin_echo(g.nhDisplay, prompt, buf);
     };
     if (g._topl_unacknowledged && g._resultMessage && !g._pending_message
         && !g._topl_win_stop && !g._topl_win_stop_armed) {
@@ -139,10 +260,6 @@ export async function getlin(prompt) {
      * history; only the final "query answer" line is stored (see below). */
     const _saved_suppress = g._topl_suppress_history;
     g._topl_suppress_history = true;
-    /* C windows.c:1898-1900 getlin() holds gb.bot_disabled over the window
-     * port's getlin, so bot() paints nothing while the query is up. */
-    const _saved_bot_disabled = g._bot_disabled;
-    g._bot_disabled = true;
     try {
     /* C getline.c:67 -> pline.c:266-272: the initial custompline refreshes
      * dirty vision before flushing the prompt; subsequent echoes do not. */
@@ -160,14 +277,37 @@ export async function getlin(prompt) {
          * initially" call), later ones walk the history ring backwards. */
         if (keyCode === 16) {
             const pw = (g.iflags?.prevmsg_window || 's')[0];
-            /* topl.c:42-75 combination at cw->maxrow == 0: the second of the
-             * two initial calls opens the history window (cmd.js helper). */
-            if (pw === 'c' && !doprev
-                && await tty_getlin_combo_wrapped_window(prompt + ' ' + buf)) {
-                doprev = true;
-                continue;
-            }
-            if (pw === 's' || (pw === 'c' && !doprev)) {
+            if (pw === 'c') {
+                // combination walk can enter the history window INSIDE either
+                // initial call when ^P acknowledges a wrapped recalled line
+                // (topl.c:42-77). A single-mode index walk cannot model that.
+                const live = prompt + ' ' + buf;
+                const echo = g._topl_prompt_echo, written = g._topl_prompt_written;
+                g._getlin_echo_state = null;
+                g._topl_prompt_echo = false; // getline.c:107 inread = 0
+                g._topl_prompt_written = undefined;
+                g._getlin_toplines = live;
+                try {
+                    if (!doprev) {
+                        await doprev_message(live);
+                        await doprev_message(live);
+                        if (g.nhDisplay)
+                            topl_park_cursor(g.nhDisplay, g._topl_history_recall || '');
+                        doprev = true;
+                        continue;
+                    }
+                    await doprev_message(live);
+                } finally {
+                    g._getlin_toplines = null;
+                    g._topl_prompt_echo = echo;
+                    g._topl_prompt_written = written;
+                }
+                g._prevmsg_combo = 0; // getline.c:126 maxcol = maxrow
+                g._getlin_echo_state = null;
+                renderPrompt();
+                await flush_screen(1);
+                placeCursor();
+            } else if (pw === 's') {
                 const hist = Array.isArray(g._msg_history) ? g._msg_history : [];
                 const _ring = Math.min(Math.max((g.iflags?.msg_history ?? 20) | 0, 20), MAX_MSG_HISTORY);
                 const _floor = Math.max(0, hist.length - _ring + 1);
@@ -180,28 +320,21 @@ export async function getlin(prompt) {
                 const start = g._prevmsg_history_length === hist.length
                     && g._prevmsg_next != null ? g._prevmsg_next : -1;
                 let morc = !doprev ? await _recall(start) : 0;
-                if (hist.length) {
-                    prevIdx = doprev ? _step(prevIdx) : _step(start);
-                    while (morc === 16) {
-                        morc = await _recall(prevIdx);
-                        prevIdx = _step(prevIdx);
-                    }
-                    doprev = true;
-                    while (await _recall(prevIdx) === 16)
-                        prevIdx = _step(prevIdx);
-                    g._prevmsg_history_length = hist.length;
-                    g._prevmsg_next = _step(prevIdx);
-                    g._prevmsg_cycleEmpty = true; /* live query is outside hist */
-                    /* getline.c:108-111's two tty_doprev_message() calls also
-                     * advance the combination walk (topl.c:62-64): >=2 remembered
-                     * lines leave maxcol at maxrow-2, else it resets to maxrow. */
-                    if (pw === 'c') {
-                        g._prevmsg_history_length = hist.length;
-                        g._prevmsg_next = 0;
-                        g._prevmsg_combo = hist.length >= 2 ? 2 : 0;
-                    }
-                    continue;
+                // getline.c:108-117 makes both initial calls even when the
+                // ring is empty. topl.c:110-114 then resets to the live query;
+                // a wrapped query therefore needs two --More-- dismissals.
+                prevIdx = doprev ? _step(prevIdx) : _step(start);
+                while (morc === 16) {
+                    morc = await _recall(prevIdx);
+                    prevIdx = _step(prevIdx);
                 }
+                doprev = true;
+                while (await _recall(prevIdx) === 16)
+                    prevIdx = _step(prevIdx);
+                g._prevmsg_history_length = hist.length;
+                g._prevmsg_next = _step(prevIdx);
+                g._prevmsg_cycleEmpty = true; /* live query is outside hist */
+                continue;
             } else {
                 // getline.c:121-137: full/reversed history includes the live
                 // query, then restores the query and the existing input buffer.
@@ -215,11 +348,14 @@ export async function getlin(prompt) {
         }
         /* getline.c:85-95 breaks on ESC with empty input BEFORE the
          * doprev redraw/reset at :132-140. Other keys restart at the query. */
-        if (doprev && !(keyCode === 27 && buf.length === 0)) g._prevmsg_next = null;
+        if (doprev && keyCode !== -1 && !(keyCode === 27 && buf.length === 0)) g._prevmsg_next = null;
         doprev = false;
         /* ^C is not special here: it falls to the tty_nhbell() arm (getline.c:185). */
-        if (keyCode === 27 /* ESC */) {
-            if (buf.length > 0) {
+        if (keyCode === 27 /* ESC */ || keyCode === -1 /* signed char EOF */) {
+            // getline.c:85-95: EOF cancels even with text already entered.
+            // pgetchar returns char, so the byte 0xff reaches this same arm.
+            if (keyCode === -1) g.iflags.term_gone = 1;
+            if (keyCode === 27 && buf.length > 0) {
                 buf = '';
                 g._getlin_echo_state = null; /* getline.c:88 clear_nhwindow */
                 renderPrompt();
@@ -231,13 +367,11 @@ export async function getlin(prompt) {
             _getlin_clear_message_window(g);
             /* getline.c:80 rebuilt gt.toplines as "query " before this ESC read and
              * the cancel break leaves it there, so the ring gets the bare prompt. */
-            if (!_saved_suppress) {
-                const line = prompt + ' ';
-                tty_getlin_history(line);
-                /* getline.c:81 gt.toplines ("query ") enters the ring verbatim,
-                 * never update_topl-wrapped: recall hard-wraps it (topl.c:121-142). */
-                (g._getlin_hist ||= new Set()).add(line);
-            }
+            const line = prompt + ' ';
+            tty_getlin_history(line);
+            /* getline.c:81 gt.toplines ("query ") enters the ring verbatim,
+             * never update_topl-wrapped: recall hard-wraps it (topl.c:121-142). */
+            (g._getlin_hist ||= new Set()).add(line);
             return '\x1b'; /* ESC sentinel — C sets buf[0]='\033' */
         }
         if (keyCode === 13 /* CR */ || keyCode === 10 /* LF */) {
@@ -245,10 +379,10 @@ export async function getlin(prompt) {
         }
         if (keyCode === 8 /* BS */ || keyCode === 127 /* DEL */) {
             if (buf.length > 0) buf = buf.slice(0, -1);
-        } else if (keyCode >= 32 && keyCode < 127 && buf.length < COLNO) {
+        } else if ((keyCode & 0xff) >= 32 && keyCode !== 127 && buf.length < COLNO) {
             /* getline.c:165-167 — bufp - obufp < BUFSZ - 1 && bufp - obufp < COLNO;
              * a longer line is refused (tty_nhbell) and the frame is unchanged. */
-            buf += String.fromCharCode(keyCode);
+            buf += String.fromCharCode(keyCode & 0xff);
         } else if (keyCode === 21 /* kill_char = VKILL = ^U */) {
             /* C getline.c:196-202 `else if (c == kill_char || c == '\177')`:
              * putsyms("\b \b") back to the start of the input, emptying the
@@ -258,28 +392,33 @@ export async function getlin(prompt) {
             buf = '';
         }
         renderPrompt();
-        await flush_screen(1);
+        // getline.c:143-207 echoes edits with putsyms; it does not flush
+        // map/status windows between input bytes. The incremental painter
+        // also retains the rows erased while backing up across a wrap.
         placeCursor();
     }
     g._pending_message = '';
     _getlin_clear_message_window(g);
     /* C getline.c:97 leaves "query answer" in gt.toplines; the history ring
      * receives that single line (tty_getlin is not suppress_history here). */
-    if (!_saved_suppress) {
-        const line = prompt + ' ' + buf;
-        tty_getlin_history(line);
-        (g._getlin_hist ||= new Set()).add(line); /* unwrapped gt.toplines: ^P hard-wraps it */
-    }
+    // tty_getlin sets its own suppress_history FALSE (getline.c:36), so
+    // unlike the extended-command reader it always remembers this line.
+    const line = prompt + ' ' + buf;
+    tty_getlin_history(line);
+    (g._getlin_hist ||= new Set()).add(line); /* unwrapped gt.toplines: ^P hard-wraps it */
     return buf;
     } finally {
         g._getlin_echo_state = null;
         g._topl_suppress_history = _saved_suppress;
-        g._bot_disabled = _saved_bot_disabled;
         /* C getline.c:319 — the read loop is over; the topline stops being a
          * TOPLINE_SPECIAL_PROMPT.  Restored rather than cleared, because
          * js/cmd.js's '#' prompt calls getlin-shaped code with the flag
          * already set and owns its own clear. */
         g._topl_prompt_echo = _saved_prompt_echo;
         g._topl_prompt_written = savedWritten;
+    }
+    } finally {
+        g._bot_disabled = oldBotDisabled;
+        g.program_state.in_getlin = 0;
     }
 }

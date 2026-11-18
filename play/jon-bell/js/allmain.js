@@ -239,7 +239,10 @@ export async function report_config_errors() {
             const ctx = g._config_error_ctx?.[i] ?? { line_num: 0, origline: '' };
             if (ctx.line_num !== shown_line) {
                 raw_print('');
-                raw_print(ctx.origline);
+                /* C cfgfiles.c:1578-1581 prints the rc's UTF-8 bytes to
+                 * tty; the recording stores each output byte as a cell. */
+                raw_print(String.fromCharCode(...new TextEncoder()
+                    .encode(ctx.origline).subarray(0, 1023)));
                 shown_line = ctx.line_num;
             }
             raw_print(` * ${ctx.line_num > 0 ? `Line ${ctx.line_num}: ` : ''}${msg}${punct}`);
@@ -822,7 +825,7 @@ export async function newgame() {
         }
         g._preambleAfterLook = null;
         g._ff_preamble_rng_deferred = false;
-        rnd(9000);
+        g.context.rndencode = rnd(9000); // allmain.c:72
         g.context.seer_turn = rnd(30);
     } else if (!chargenIncomplete) {
         /* C ref: allmain.c:846-847 newgame() — the non-glyph_updates arm:

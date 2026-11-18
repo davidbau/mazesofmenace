@@ -3,6 +3,12 @@ import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import * as symbols from '../../ported/symbols.js';
 import {withCEnvironment} from '../../c-runtime/context.js';
 const modules=new WeakMap();
+const symbolNames=new Map();
+for(const [index,row]of symbols.loadsyms.entries()){
+ const name=row.name?.toLowerCase();
+ if(name&&!symbolNames.has(name))symbolNames.set(name,index);
+}
+
 export function createSymbolsEnvironment(services,layout){
  const address=x=>Number(x?.address??x??0),view=()=>CAdapter.currentDataView(services),global=i=>address(services.global(i));
  const pointer=at=>CAdapter.readPointerNumber(view,at);
@@ -30,6 +36,26 @@ export function createSymbolsEnvironment(services,layout){
   Is_rogue_level:level=>services.on_level(level,services.rogueLevel()),
  });
  Object.defineProperties(env,{loadsyms:{get(){return symparse(services.storage(0));}},saved_symbols:{get(){return saved(pointer(address(services.storage(3))));},set(v){view().setBigUint64(address(services.storage(3)),BigInt(address(v)),true);}},decgraphics_mode_callback:{get(){return services.callback(0);}},utf8graphics_mode_callback:{get(){return services.callback(1);}},SYMBOLS:{get(){return services.fileName();}}});
+ if(Object.hasOwn(services,'nativeSymbolNames')){
+  const table=address(services.storage(0));
+  const cached=new Map();
+  env.symbolNameAt=(at,length)=>{
+   const heap=services.heap();
+   let name='';
+   for(let i=0;i<length;i++){
+    const byte=heap[at+i];
+    name+=String.fromCharCode(byte>=65&&byte<=90?byte+32:byte);
+   }
+   return name;
+  };
+  env.findSymbolName=name=>{
+   const index=symbolNames.get(name);
+   if(index===undefined)return 0;
+   let row=cached.get(index);
+   if(!row){row=symparse(table+index*layout.symparseSize);cached.set(index,row);}
+   return row;
+  };
+ }
  return env;
 }
 export function initializeSymbols(services,layout){

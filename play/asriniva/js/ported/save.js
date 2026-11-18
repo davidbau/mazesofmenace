@@ -473,9 +473,11 @@ export function savelev_core(nhfp, lev)
         break skip_lots;
 
     savelevl(nhfp);
-    for (c = 0; c < C.COLNO; ++c) {
-        for (r = 0; r < C.ROWNO; ++r) {
-            C.Sfo_schar(nhfp, C.arrayAddress(C.svl.lastseentyp, c, r), "lastseentyp");
+    if (!Object.hasOwn(C, "saveLastSeenTerrain") || !C.saveLastSeenTerrain(nhfp)) {
+        for (c = 0; c < C.COLNO; ++c) {
+            for (r = 0; r < C.ROWNO; ++r) {
+                C.Sfo_schar(nhfp, C.arrayAddress(C.svl.lastseentyp, c, r), "lastseentyp");
+            }
         }
     }
     /* svm.moves will actually be read back into svo.omoves on restore */

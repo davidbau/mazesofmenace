@@ -1,4 +1,5 @@
 import { hcolor } from './do_name.js';
+import { decode_mixed } from './windows.js';
 import { PLINE_NOREPEAT } from './const.js';
 // @ts-nocheck
 // display.js — Map rendering and terminal output.
@@ -92,9 +93,10 @@ import { cansee, couldsee, vision_recalc, Blind, unblock_point } from './vision.
 import { rloc } from './teleport.js';
 import { RLOC_NOMSG, IN_SIGHT, COULD_SEE, SYM_BOULDER } from './const.js';
 import { NH_BASIC_COLOR } from './const.js';
-import { NON_PM, MIGR_EXACT_XY, MALE, FEMALE, NEUTRAL, has_mgivenname, MGIVENNAME } from './const.js';
+import { NON_PM, MIGR_EXACT_XY, has_mgivenname, MGIVENNAME } from './const.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
+import { minimal_monnam } from './do_name.js';
 import monAcPack from './makemon_ac.json' with { type: 'json' };
 import monMattkPack from './makemon_mattk.json' with { type: 'json' };
 import { observe_object } from './o_init.js';
@@ -1103,8 +1105,10 @@ function symset_remap_cell(loc, ch, color, cls, objectType, trapType, cmap = nul
     } else if (cls === GLYPHCLS_WARNING) {
         idx = SYM_OFFSETS.W + Number(ch);
     } else if (cls === GLYPHCLS_OBJ) {
-        if (objectType === STATUE) {
-            /* C display.c:2782-2787,2825-2833: statue glyphs use their species. */
+        if (objectType === STATUE && objectCorpsenm != null) {
+            /* C display.c:2782-2787,2825-2833: statue glyphs use their species.
+             * A hallucinated ordinary object glyph can also name STATUE;
+             * that uses its object class at display.c:2968-2985 instead. */
             idx = SYM_OFFSETS.M + MON_MLET[objectCorpsenm | 0];
         } else if (objectType === BOULDER_OTYP) {
             const b = primary_showsym(SYM_OFFSETS.X + SYM_BOULDER);
@@ -1138,7 +1142,7 @@ function symset_remap_cell(loc, ch, color, cls, objectType, trapType, cmap = nul
      * primary_showsym reads the unaliased primary_syms table. */
     const symidx = idx === 20 && !game._symsetDarkroomPending
         ? (_darkroom_alias_blank() ? SYM_OFFSETS.X : 19) : idx;
-    const sym = warningLevel !== null && rogue_graphics()
+    const sym = rogue_graphics()
         ? rogue_showsyms()[symidx] : primary_showsym(symidx);
     if (!sym) return null;
     /* glyphs.c:258-261 glyph_find_core() find_oc compares glyph_to_obj(glyph)
@@ -1148,7 +1152,7 @@ function symset_remap_cell(loc, ch, color, cls, objectType, trapType, cmap = nul
      * whole class. */
     const ocUtf8 = cls !== GLYPHCLS_OBJ
         || (objectType != null && objectType === idx - SYM_OFFSETS.O - 1);
-    const out = { ...symset_cell(sym), ttychar: sym,
+    const out = { ...symset_cell(sym, rogue_graphics() ? 1 : 0), ttychar: sym,
                   utf8: customsymbols && ((ocUtf8 && !!primary_unicode_symbol(idx))
                       || (cls === GLYPHCLS_OBJ && _obj_glyph_has_utf8(objectType))) };
     /* display.c:2938-2941: S_litcorr is CLR_WHITE only when it shares the dark
@@ -1192,8 +1196,8 @@ function _gold_label_now() {
     /* RogueEpyx S_coin is \x0f; check_gold_symbol() has not run after a restore
      * (only do.c:1668 / options.c call it), so invis_goldsym is still FALSE and
      * botl.c:131 emits the raw control byte, which the tty leaves blank. */
-    if (rogue_ibm_color())
-        return ' ';
+    if (rogue_graphics())
+        return symset_cell(rogue_showsyms()[SYM_OFFSETS.O + COIN_CLASS_DISP], 1).ch;
     /* botl.c:131 encglyph(objnum_to_glyph(GOLD_PIECE)) -> showsyms[S_coin] */
     if (generic_symset())
         return symset_cell(primary_showsym(SYM_OFFSETS.O + COIN_CLASS_DISP)).ch;
@@ -1201,11 +1205,9 @@ function _gold_label_now() {
 }
 export function oclass_sym(oc) {
     if (blank_symbols() && oc > 0 && oc < OCLASS_CHAR.length) return ' ';
-    if (rogue_graphics()) {
-        const r = ROGUE_OCLASS_CHAR[oc | 0];
-        if (r)
-            return r;
-    }
+    if (rogue_graphics())
+        return symset_cell(rogue_showsyms()[SYM_OFFSETS.O + (oc | 0)], 1).ch;
+
     /* C symbols.c:236-239 showsyms[SYM_OFF_O + oc] = ov_primary_syms ?: primary;
      * SYMBOLS=S_venom:? etc. override the object-class letter. */
     const ov = !generic_symset() && game.go?.ov_primary_syms?.[SYM_OFFSETS.O + (oc | 0)];
@@ -1218,11 +1220,15 @@ export function oclass_sym(oc) {
  * symbols.c:132-150 get_othersym defaults the boulder slot to ROCK_CLASS. */
 function _object_sym(otyp, oc) {
     if (otyp === BOULDER_OTYP) {
-        /* symbols.c:136-150 get_othersym: ov_primary_syms ?: primary_syms (the symset's
-         * own S_boulder, e.g. Blank's \032) before the ROCK_CLASS default. */
+        /* symbols.c:136-150 get_othersym: the selected set's override and
+         * base slot both precede ROCK_CLASS. Reinitializing defaults retains
+         * an existing nonzero miscellaneous slot, including Rogue Blank's
+         * space after selecting Default Symbols. */
+        const rogue = rogue_graphics();
+        const base = rogue ? game.gr?.rogue_syms : game.gp?.primary_syms;
         const sym = _boulder_override_sym()
-            || (rogue_graphics() ? 0 : (game.gp?.primary_syms?.[SYM_OFFSETS.X + SYM_BOULDER] | 0));
-        return sym ? symset_cell(sym).ch : oclass_sym(oc);
+            || (base?.[SYM_OFFSETS.X + SYM_BOULDER] | 0);
+        return sym ? symset_cell(sym, rogue ? 1 : 0).ch : oclass_sym(oc);
     }
     return oclass_sym(oc);
 }
@@ -1333,7 +1339,7 @@ export function pager_obj_glyph_utf8(glyph) {
  * text, before combining it with symbols already decoded by pager_text_glyph;
  * a backslash supplied by a glyph must not be interpreted a second time. */
 export function pager_mixed_text(text) {
-    return text.replace(/\\([\s\S])/g, (pair, next) => next === 'G' ? pair : next);
+    return decode_mixed(text);
 }
 /* C pager.c:1350-1354,1539-1576: even a typed hero override retries the
  * class scans using the active human symbol, retaining earlier matches. */
@@ -1509,8 +1515,7 @@ export function pager_glyph_prefix(ch, dec, x, y) {
  * stairs \xf0), high bit stripped by the terminal; but has_rogue_color is false,
  * so the map stays uncoloured. */
 function rogue_ibm_terrain() {
-    return rogue_graphics() && gs.symset?.[1]?.handling === 1
-        && (gs.symset[1].name === 'RogueEpyx' || gs.symset[1].name === 'RogueIBM');
+    return rogue_graphics() && gs.symset?.[1]?.handling === 1;
 }
 export function rogue_ibm_color() {
     return rogue_graphics() && gs.symset?.[1]?.name === 'RogueEpyx'
@@ -1567,8 +1572,10 @@ export function terrain_glyph(loc, x, y, assumeVisible = false) {
     }
     const ovName = game.symbolOverrides && _terrain_cmap_name(loc, g);
     const ov = ovName && _sym_override(ovName);
-    if (ov)
-        return { ...g, ch: ov, dec: false };
+    if (ov) {
+        const cell = symset_cell(ov.charCodeAt(0));
+        return { ...g, ch: cell.ctl ? ROGUE_HERO_CH : cell.ch, dec: cell.dec };
+    }
     if (blank_symbols() && !g.wallSymbol
         && !((loc.typ === POOL || loc.typ === MOAT) && _sym_override('S_pool')))
         return { ...g, ch: ' ', dec: false };
@@ -2284,7 +2291,9 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
         && game.go?.ov_primary_syms?.[cmap ?? _default_cmap_at(loc, ch, loc.disp_glyph_color)];
     /* C display.c:2653,2864: stomach cells use showsyms for every set,
      * including the hand-modelled IBM/DEC sets and SYMBOLS overrides. */
-    if (isWarning || cmapOverride || ((generic_symset() || (!rogue_graphics()
+    const rogueOverride = rogue_graphics() && (gs.symset?.[1]?.name
+        || game.go?.ov_rogue_syms?.some(sym => sym !== 0));
+    if (isWarning || cmapOverride || rogueOverride || ((generic_symset() || (!rogue_graphics()
         && (cls === GLYPHCLS_SWALLOW || cls === GLYPHCLS_UNEXPLORED
             || cls === GLYPHCLS_NOTHING))) && !decgfx)) {
         /* C display.c:2925-2930 selects the cmap symbol before :3082 clears
@@ -2974,7 +2983,8 @@ function menu_glyph_text(glyph) {
     const color = game.iflags?.use_color === false ? NO_COLOR : glyph.color;
     let sgr;
     if (color === CLR_BLACK)
-        sgr = (game.iflags?.wc2_darkgray ?? true) ? 90 : 34;
+        // NOMUX's zero foreground serializes as default when !use_darkgray.
+        sgr = game.iflags?.wc2_darkgray !== false ? 90 : undefined;
     else if (color >= CLR_RED && color <= CLR_CYAN)
         sgr = 30 + color;
     else if (color >= CLR_ORANGE && color <= CLR_WHITE)
@@ -3419,6 +3429,8 @@ function _render_monster_glyph(x, y, mon, loc, tg, map_memory, worm_tail, detect
     if (rogue_ibm_color())
         mcol = ((mon.mtame && !_hallu) || detectedOnly || mon.female)
             ? NO_COLOR : CLR_YELLOW;
+    mcol = _monster_customcolor(mndx, !!mon.female,
+        mon.mtame && !_hallu ? 'pet' : detectedOnly ? 'detected' : 'normal', mcol);
     const _pa = (game.iflags?.wc2_petattr | 0) || 7 /* ATR_INVERSE */;
     /* wc2_petattr holds C's ATR_* numbering (wintype.h); terminal.js's differ. */
     const petAttr = (mon.mtame && !_hallu && game.iflags?.wc_hilite_pet)
@@ -3486,6 +3498,19 @@ export function show_detected_monster_glyph(x, y, mndx, mon, detected) {
     }
 }
 
+/* C wintty.c:3899-3910 applies a monster glyph's stored customization
+ * after its normal map color has been resolved. */
+function _monster_customcolor(mndx, female, kind, color) {
+    if (game.iflags?.use_color === false) return color;
+    const offset = kind === 'pet' ? (female ? GLYPH_PET_FEM_OFF : GLYPH_PET_MALE_OFF)
+        : kind === 'detected' ? (female ? GLYPH_DETECT_FEM_OFF : GLYPH_DETECT_MALE_OFF)
+        : kind === 'ridden' ? (female ? GLYPH_RIDDEN_FEM_OFF : GLYPH_RIDDEN_MALE_OFF)
+        : female ? GLYPH_MON_FEM_OFF : GLYPH_MON_MALE_OFF;
+    const cc = glyphmap[offset + mndx]?.customcolor;
+    if (cc & NH_BASIC_COLOR) return cc & 0xff;
+    return cc && (game.iflags?.colorcount ?? 256) >= 256 ? NO_COLOR : color;
+}
+
 /* C ref: display.c:1180-1189 display_self(void) — paint the hero's own square
  * with hero_glyph, bypassing the canspotself() test the caller already made. */
 /* C wintty.c:3930-3935 — (special & MG_FEMALE) && wizard && iflags.wizmgender,
@@ -3536,7 +3561,9 @@ export function display_self() {
     const female = !!(u.usteed && mon_visible(u.usteed) ? u.usteed.female
         : (u.umonnum | 0) !== (u.umonster | 0) ? u.mfemale : game.flags?.female);
     const hg = _maybe_display_usteed();
-    show_glyph_cell(u.ux | 0, u.uy | 0, hg.ch, hg.color, false,
+    const kind = u.usteed && mon_visible(u.usteed) ? 'ridden' : 'normal';
+    show_glyph_cell(u.ux | 0, u.uy | 0, hg.ch,
+                    _monster_customcolor(hg.mndx, female, kind, hg.color), false,
                     _wizmgender_attr(female), GLYPHCLS_MON);
     /* dat/symbols RogueEpyx S_human = \x01 (a control byte, painted as a blank);
      * map_glyphinfo makes the unpolymorphed hero CLR_YELLOW under
@@ -3547,7 +3574,8 @@ export function display_self() {
          * (u.umonnum, female), so under has_rogue_color a female glyph has
          * NO_COLOR and a male one CLR_YELLOW, not the monster's own colour. */
         show_glyph_cell(u.ux | 0, u.uy | 0, hg.ch === '@' ? ROGUE_HERO_CH : hg.ch,
-                        polyd && female ? NO_COLOR : CLR_YELLOW,
+                        _monster_customcolor(hg.mndx, female, kind,
+                            polyd && female ? NO_COLOR : CLR_YELLOW),
                         false, 0, GLYPHCLS_MON);
     }
     // Retain hero_glyph's identity after either ordinary or Rogue rendering.
@@ -4883,6 +4911,9 @@ export function level_transition_capture_old_paint() {
         dlevel: g.u?.uz?.dlevel | 0,
         dnum: g.u?.uz?.dnum | 0,
         level: g.level,
+        // do.c:1666-1668 changes showsyms before docrt's more() can
+        // dismiss the old screen. BL_GOLD still holds its last paint.
+        goldLabel: g._lastPaintedBotl?.goldLabel,
         epoch: _flush_epoch,
     };
 }
@@ -5142,6 +5173,9 @@ export async function level_transition_arrival_more(msg, oldPaint) {
              * flush before the hold left it, not the half-arrived hero. */
             botl: _heldBotl ?? _frame.botl
                 ?? (g._rndspotHeldBotl || null),
+            goldLabel: _heldBotl?.goldLabel ?? _frame.botl?.goldLabel
+                ?? g._rndspotHeldBotl?.goldLabel
+                ?? g._lastPaintedBotl?.goldLabel ?? _frame.goldLabel,
             /* Row-1 whole-rewrite latch at the page frame's own instant
              * (oldPaint deliberately un-pinned, same reasoning as botl). */
             r1whole: _frame.r1whole,
@@ -6189,7 +6223,7 @@ function _statusLine2Parts() {
     /* RogueEpyx S_coin = \x0f <= ' ': check_gold_symbol() sets invis_goldsym
      * (botl.c:42-44) and the field is labelled "$" (botl.c:131). */
     const _goldch = ((game._inMovemonMore || _frozenPaint) && _bs?.goldLabel != null)
-        ? _bs.goldLabel : gold_status_char(gold);
+        ? _bs.goldLabel : _snap2?.goldLabel ?? gold_status_char(gold);
     /* botl.c:1053-1054: BL_GOLD keeps the raw amount but displays min(money, 999999L). */
     let s = `${_goldch}:${Math.min(gold, 999999)} HP:${_hp}(${_hpmax}) Pw:${_pw}(${_pwmax}) AC:${_uac}`;
     let _timeStr = '';
@@ -8333,8 +8367,13 @@ export function tty_getlin_prompt(query) {
                 painted.set(++y, ''); // cl_end() on the newly entered row
                 if (ch === '\n') continue;
             }
-            const row = (painted.get(y) || '').padEnd(x, ' ');
-            painted.set(y, row.slice(0, x) + ch + row.slice(x + 1));
+            // topl_putsym(char) passes a signed char to nomux_putch(int).
+            // High-bit bytes advance curx but fail nomux_putch's ch < 32
+            // guard, leaving the physical cell unchanged (termcap.c:755).
+            if (ch.charCodeAt(0) < 128) {
+                const row = (painted.get(y) || '').padEnd(x, ' ');
+                painted.set(y, row.slice(0, x) + ch + row.slice(x + 1));
+            }
             x++;
         }
     };
@@ -16249,20 +16288,7 @@ export async function display_migrating_mons(choice, nextlevel) {
         : `Monster${selected.length === 1 ? '' : 's'} migrating to ${destination}:`;
     const lines = [heading, ''];
     for (const mon of selected) {
-        // C do_name.c:1254 minimal_monnam(mon, FALSE), including shapechangers.
-        let name;
-        if (!mon.data) {
-            name = '[Null mon->data]';
-        } else {
-            const gender = mon.female ? FEMALE : MALE;
-            const names = mon.data.pmnames || monPmnamesPack.pmnames[mon.data.pmidx];
-            name = (mon.mtame ? 'tame ' : mon.mpeaceful ? 'peaceful ' : '')
-                + (names[gender] || names[NEUTRAL]) + ` <${mon.mx},${mon.my}>`;
-            if ((mon.cham ?? NON_PM) !== NON_PM) {
-                const forms = monPmnamesPack.pmnames[mon.cham];
-                name += `{${forms[gender] || forms[NEUTRAL]}}`;
-            }
-        }
+        const name = minimal_monnam(mon, false); /* C wizcmds.c:1587 */
         let line = `  ${name}`.replace(' <0,0>', '');
         if (has_mgivenname(mon)) line += ` named ${MGIVENNAME(mon)}`;
         if (choice === 'o' || choice === 'a') line += ` to ${mon.mux}:${mon.muy}`;

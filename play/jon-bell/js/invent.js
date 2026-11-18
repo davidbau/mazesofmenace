@@ -14,7 +14,7 @@ import { splitobj } from './makemon.js';
 import { dealloc_obj, place_object, remove_object, start_glob_timeout } from './mkobj.js';
 import { pudding_merge_message } from './mkobj.js';
 import { observe_object } from './o_init.js';
-import { oname } from './do_name.js';
+import { oname, safe_oname } from './do_name.js';
 import { reset_justpicked, u_safe_from_fatal_corpse } from './pickup.js';
 import { There, impossible, pline } from './pline.js';
 import { globby_bill_fixup, obfree } from './shk.js';
@@ -3426,8 +3426,8 @@ export async function mergable(otmp, obj) {
 
     /* C 4467-4477: if they have names, make sure they're the same.  C compares
        strlen(safe_oname()) — safe_oname yields "" for an unnamed object. */
-    const objname = obj.oextra?.oname ?? '';
-    const otmpname = otmp.oextra?.oname ?? '';
+    const objname = safe_oname(obj);
+    const otmpname = safe_oname(otmp);
     if (((objname.length !== otmpname.length)
          && ((objname.length && otmpname.length) || ot === _MG_CORPSE))
         || (objname.length && otmpname.length && objname !== otmpname))

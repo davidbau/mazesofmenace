@@ -50,6 +50,7 @@ import { build_window_screen, tty_window_offx, menu_search_getlin, display_text_
 import { pmatchi } from './strutil.js';
 import { menu_heading_text, ATR_NONE } from './tty_menu.js';
 import { menucolor_row, menucolor_text } from './coloratt.js';
+import { menuitem_invert_test } from './windows.js';
 import { nhgetch } from './input.js';
 import { map_menu_cmd } from './options.js';
 import { weight } from './weight.js';
@@ -396,10 +397,9 @@ function _Upstart(str) {
 const _MENU_SELECT_ALL = 0x2e /* '.' */, _MENU_UNSELECT_ALL = 0x2d /* '-' */,
       _MENU_INVERT_ALL = 0x40 /* '@' */, _MENU_SELECT_PAGE = 0x2c /* ',' */,
       _MENU_UNSELECT_PAGE = 0x5c /* '\\' */, _MENU_INVERT_PAGE = 0x7e /* '~' */;
+/* C windows.c:1562-1589: all configured modes apply to container menus too. */
 function _invert_test(mode, skipinvert, is_selected) {
-    if (!skipinvert)
-        return true;
-    return is_selected ? true : false;
+    return menuitem_invert_test(mode, skipinvert ? 2 /* SKIPINVERT */ : 0, is_selected);
 }
 /* Geometry of the pick-any menu most recently dismissed by query_category, so
  * the take-out/put-in menu opened right after it can reproduce the

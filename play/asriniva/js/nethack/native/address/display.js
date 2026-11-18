@@ -2493,11 +2493,14 @@ function reset_glyphmap(trigger)
         }
     }
     const colorMask = Object.hasOwn(C, "displayColorMask") ? C.displayColorMask() : null;
+    const colorOption = colorMask === null ? null : C.display_read_instance_flags_wc_color(C.iflags);
+    const levelFlags = colorMask === null ? null : C.display_read_instance_globals_g_glyphmap_perlevel_flags(C.gg);
+    const accessibility = colorMask === null ? null : C.display_read_sysopt_s_accessibility(C.sysopt);
     const glyphMap = C.staticAddress("glyphmap");
     const glyphSize = C.sizes["struct glyph_map_entry"];
     for (glyph = 0; glyph < C.MAX_GLYPH; glyph++) {
         const gmap = glyphMap + glyph * glyphSize;
-        (W37(gmap,0));
+        let glyphFlags = 0;
         /*
          *  Map the glyph to a character and color.
          *
@@ -2507,26 +2510,26 @@ function reset_glyphmap(trigger)
         if(Number(((offset=(C.i32((glyph-C.GLYPH_NOTHING_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.SYM_NOTHING+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6)))))));
             (color=8);
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32(1024))));
+            (glyphFlags=C.u32(glyphFlags|C.u32(1024)));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_UNEXPLORED_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.SYM_UNEXPLORED+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6)))))));
             (color=8);
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32(2048))));
+            (glyphFlags=C.u32(glyphFlags|C.u32(2048)));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_STATUE_FEM_PILETOP_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_permonst_mlet(C.mons+Number(offset)*C.sizes["struct permonst"]))+(C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))))));
             if(has_rogue_color) (color=1);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_objclass_oc_color(C.objects+Number(C.STATUE)*C.sizes["struct objclass"])):8));
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32((C.i32((C.i32((64|8192))|128)))))));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_objclass_oc_color(C.objects+Number(C.STATUE)*C.sizes["struct objclass"])):8));
+            (glyphFlags=C.u32(glyphFlags|C.u32((C.i32((C.i32((64|8192))|128))))));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_STATUE_MALE_PILETOP_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_permonst_mlet(C.mons+Number(offset)*C.sizes["struct permonst"]))+(C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))))));
             if(has_rogue_color) (color=1);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_objclass_oc_color(C.objects+Number(C.STATUE)*C.sizes["struct objclass"])):8));
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32((C.i32((C.i32((64|4096))|128)))))));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_objclass_oc_color(C.objects+Number(C.STATUE)*C.sizes["struct objclass"])):8));
+            (glyphFlags=C.u32(glyphFlags|C.u32((C.i32((C.i32((64|4096))|128))))));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_BODY_PILETOP_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_objclass_oc_class(C.objects+Number(C.CORPSE)*C.sizes["struct objclass"]))+(C.i32(((0)+C.MAXPCHARS)))))));
             if(has_rogue_color) (color=1);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32((C.i32((2|128)))))));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
+            (glyphFlags=C.u32(glyphFlags|C.u32((C.i32((2|128))))));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_OBJ_PILETOP_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_objclass_oc_class(C.objects+Number(offset)*C.sizes["struct objclass"]))+(C.i32(((0)+C.MAXPCHARS)))))));
             if(Number(offset==C.BOULDER)) (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.SYM_BOULDER+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6)))))));
@@ -2542,64 +2545,64 @@ function reset_glyphmap(trigger)
                         (color=12);
                     break;
                 }
-            } else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_objclass_oc_color(C.objects+Number(offset)*C.sizes["struct objclass"])):8));
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32(128))));
+            } else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_objclass_oc_color(C.objects+Number(offset)*C.sizes["struct objclass"])):8));
+            (glyphFlags=C.u32(glyphFlags|C.u32(128)));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_STATUE_FEM_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_permonst_mlet(C.mons+Number(offset)*C.sizes["struct permonst"]))+(C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))))));
             if(has_rogue_color) (color=1);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_objclass_oc_color(C.objects+Number(C.STATUE)*C.sizes["struct objclass"])):8));
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32((C.i32((64|8192)))))));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_objclass_oc_color(C.objects+Number(C.STATUE)*C.sizes["struct objclass"])):8));
+            (glyphFlags=C.u32(glyphFlags|C.u32((C.i32((64|8192))))));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_STATUE_MALE_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_permonst_mlet(C.mons+Number(offset)*C.sizes["struct permonst"]))+(C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))))));
             if(has_rogue_color) (color=1);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_objclass_oc_color(C.objects+Number(C.STATUE)*C.sizes["struct objclass"])):8));
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32((C.i32((64|4096)))))));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_objclass_oc_color(C.objects+Number(C.STATUE)*C.sizes["struct objclass"])):8));
+            (glyphFlags=C.u32(glyphFlags|C.u32((C.i32((64|4096))))));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_WARNING_OFF)))))>=0)) {
             /* warn flash */
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((offset+(C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))))));
             if(has_rogue_color) (color=8);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_symdef_color(C.def_warnsyms+Number(offset)*C.sizes["struct symdef"])):8));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_symdef_color(C.def_warnsyms+Number(offset)*C.sizes["struct symdef"])):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_EXPLODE_FROSTY_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_expl_tl+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_frosty)*4)):8));
+            (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_frosty)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_EXPLODE_FIERY_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_expl_tl+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_fiery)*4)):8));
+            (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_fiery)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_EXPLODE_MAGICAL_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_expl_tl+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_magical)*4)):8));
+            (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_magical)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_EXPLODE_WET_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_expl_tl+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_wet)*4)):8));
+            (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_wet)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_EXPLODE_MUDDY_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_expl_tl+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_muddy)*4)):8));
+            (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_muddy)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_EXPLODE_NOXIOUS_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_expl_tl+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_noxious)*4)):8));
+            (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_noxious)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_EXPLODE_DARK_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_expl_tl+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_dark)*4)):8));
+            (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.readInt32At((C.staticAddress("explodecolors")+Number(C.expl_dark)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_SWALLOW_OFF)))))>=0)) {
             /* see swallow_to_glyph() in display.c */
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32(((C.i32((C.S_sw_tl+(C.i32((offset&7))))))+(0)))));
             if(has_rogue_color) (color=8);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(C.i32((offset>>3)))*C.sizes["struct permonst"])):8));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(C.i32((offset>>3)))*C.sizes["struct permonst"])):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_C_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_digbeam+offset))+(0)))));
             if(has_rogue_color) (color=cmap_to_roguecolor(C.i32((C.S_digbeam+offset))));
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_symdef_color(C.defsyms+Number(C.i32((C.S_digbeam+offset)))*C.sizes["struct symdef"])):8));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_symdef_color(C.defsyms+Number(C.i32((C.S_digbeam+offset)))*C.sizes["struct symdef"])):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_ZAP_OFF)))))>=0)) {
             /* see zapdir_to_glyph() in display.c */
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32(((C.i32((C.S_vbeam+(C.i32((offset&3))))))+(0)))));
             if(has_rogue_color) (color=8);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("zapcolors")+Number((C.i32((offset>>2))))*4)):8));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.readInt32At((C.staticAddress("zapcolors")+Number((C.i32((offset>>2))))*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_B_OFF)))))>=0)) {
             let cmap=C.i32((C.S_grave+offset));
             let sym=C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((cmap+(0))))*1)));
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((cmap+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_symdef_color(C.defsyms+Number(cmap)*C.sizes["struct symdef"])):8));
-            if(Number(!(C.display_read_instance_flags_wc_color(C.iflags)))) {
+            (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_symdef_color(C.defsyms+Number(cmap)*C.sizes["struct symdef"])):8));
+            if(Number(!((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags))))) {
                 let spec_cmap=C.u32(0);
                 /* try to provide a visible difference between water and lava
                    if they use the same symbol and color is disabled;
@@ -2617,7 +2620,7 @@ function reset_glyphmap(trigger)
                         if(Number(sym==C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_fountain+(0))))*1))))) (spec_cmap=C.u32(512));
                     break;
                 }
-                (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|spec_cmap)));
+                (glyphFlags=C.u32(glyphFlags|spec_cmap));
             } else if(has_rogue_color) {
                 (color=cmap_to_roguecolor(cmap));
             }
@@ -2625,11 +2628,11 @@ function reset_glyphmap(trigger)
             /* unaligned, chaotic, neutral, lawful, other altar */
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.S_altar+(0)))));
             if(has_rogue_color) (color=cmap_to_roguecolor(C.S_altar));
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("altarcolors")+Number(offset)*4)):8));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.readInt32At((C.staticAddress("altarcolors")+Number(offset)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_A_OFF)))))>=0)) {
             let sym; let cmap=C.i32((C.S_ndoor+offset));
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((cmap+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_symdef_color(C.defsyms+Number(cmap)*C.sizes["struct symdef"])):8));
+            (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_symdef_color(C.defsyms+Number(cmap)*C.sizes["struct symdef"])):8));
             (sym=C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.display_read_classic_representation_symidx(C.display_address_glyph_map_entry_sym(gmap)))*1))));
             /*
              *   Some specialty color mappings not hardcoded in data init
@@ -2642,27 +2645,27 @@ function reset_glyphmap(trigger)
                 (color=15);
                 /* likewise for corridor and engraving-in-corridor */
             } else if(Number(!!(Number(cmap==C.S_engrcorr)&&(Number(!!(Number(sym==C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_corr+(0))))*1))))||Number(sym==C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(C.i32((C.S_litcorr+(0))))*1)))))))))) {
-                (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32(512))));
+                (glyphFlags=C.u32(glyphFlags|C.u32(512)));
             }
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_SOKO_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_vwall+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.sokoban_walls)*4)):8));
+            (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.sokoban_walls)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_KNOX_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_vwall+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.knox_walls)*4)):8));
+            (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.knox_walls)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_GEH_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_vwall+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.gehennom_walls)*4)):8));
+            (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.gehennom_walls)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_MINES_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_vwall+offset))+(0)))));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.mines_walls)*4)):8));
+            (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.mines_walls)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_MAIN_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32((C.S_vwall+offset))+(0)))));
             if(has_rogue_color) (color=cmap_to_roguecolor(C.i32((C.S_vwall+offset))));
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.main_walls)*4)):8));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.readInt32At((C.staticAddress("wallcolors")+Number(C.main_walls)*4)):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_CMAP_STONE_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),0));
-            (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_symdef_color(C.defsyms+Number(C.S_stone)*C.sizes["struct symdef"])):8));
+            (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_symdef_color(C.defsyms+Number(C.S_stone)*C.sizes["struct symdef"])):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_OBJ_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_objclass_oc_class(C.objects+Number(offset)*C.sizes["struct objclass"]))+(C.i32(((0)+C.MAXPCHARS)))))));
             if(Number(offset==C.BOULDER)) (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.SYM_BOULDER+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6)))))));
@@ -2678,83 +2681,84 @@ function reset_glyphmap(trigger)
                         (color=12);
                     break;
                 }
-            } else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_objclass_oc_color(C.objects+Number(offset)*C.sizes["struct objclass"])):8));
+            } else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_objclass_oc_color(C.objects+Number(offset)*C.sizes["struct objclass"])):8));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_RIDDEN_FEM_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_permonst_mlet(C.mons+Number(offset)*C.sizes["struct permonst"]))+(C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))))));
             if(has_rogue_color) (color=8);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
             /* This currently implies that the hero is here -- monsters */
             /* don't ride (yet...).  Should we set it to yellow like in */
             /* the monster case below?  There is no equivalent in rogue.
                  */
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32((C.i32((32|8192)))))));
+            (glyphFlags=C.u32(glyphFlags|C.u32((C.i32((32|8192))))));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_RIDDEN_MALE_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_permonst_mlet(C.mons+Number(offset)*C.sizes["struct permonst"]))+(C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))))));
             if(has_rogue_color) (color=8);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32((C.i32((32|4096)))))));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
+            (glyphFlags=C.u32(glyphFlags|C.u32((C.i32((32|4096))))));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_BODY_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_objclass_oc_class(C.objects+Number(C.CORPSE)*C.sizes["struct objclass"]))+(C.i32(((0)+C.MAXPCHARS)))))));
             if(has_rogue_color) (color=1);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32(2))));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
+            (glyphFlags=C.u32(glyphFlags|C.u32(2)));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_DETECT_FEM_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_permonst_mlet(C.mons+Number(offset)*C.sizes["struct permonst"]))+(C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))))));
             if(has_rogue_color) (color=8);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
             /* Disabled for now; anyone want to get reverse video to work? */
             /* is_reverse = TRUE; */
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32((C.i32((8|8192)))))));
+            (glyphFlags=C.u32(glyphFlags|C.u32((C.i32((8|8192))))));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_DETECT_MALE_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_permonst_mlet(C.mons+Number(offset)*C.sizes["struct permonst"]))+(C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))))));
             if(has_rogue_color) (color=8);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
             /* Disabled for now; anyone want to get reverse video to work? */
             /* is_reverse = TRUE; */
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32((C.i32((8|4096)))))));
+            (glyphFlags=C.u32(glyphFlags|C.u32((C.i32((8|4096))))));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_INVIS_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.SYM_INVISIBLE+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6)))))));
             if(has_rogue_color) (color=8);
  else (color=8);
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32(4))));
+            (glyphFlags=C.u32(glyphFlags|C.u32(4)));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_PET_FEM_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_permonst_mlet(C.mons+Number(offset)*C.sizes["struct permonst"]))+(C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))))));
             if(has_rogue_color) (color=8);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32((C.i32((16|8192)))))));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
+            (glyphFlags=C.u32(glyphFlags|C.u32((C.i32((16|8192))))));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_PET_MALE_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_permonst_mlet(C.mons+Number(offset)*C.sizes["struct permonst"]))+(C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))))));
             if(has_rogue_color) (color=8);
- else (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32((C.i32((16|4096)))))));
+ else (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
+            (glyphFlags=C.u32(glyphFlags|C.u32((C.i32((16|4096))))));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_MON_FEM_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_permonst_mlet(C.mons+Number(offset)*C.sizes["struct permonst"]))+(C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))))));
             if(has_rogue_color) {
                 (color=8);
             } else {
-                (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
+                (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
             }
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32(8192))));
+            (glyphFlags=C.u32(glyphFlags|C.u32(8192)));
         } else if(Number(((offset=(C.i32((glyph-C.GLYPH_MON_MALE_OFF)))))>=0)) {
             (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.i32(C.display_read_permonst_mlet(C.mons+Number(offset)*C.sizes["struct permonst"]))+(C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))))));
             if(has_rogue_color) {
                 (color=11);
             } else {
-                (color=(C.i32(C.display_read_instance_flags_wc_color(C.iflags))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
+                (color=(C.i32((colorOption ?? C.display_read_instance_flags_wc_color(C.iflags)))?C.i32(C.display_read_permonst_mcolor(C.mons+Number(offset)*C.sizes["struct permonst"])):8));
             }
-            (W37(gmap,C.u32(C.display_read_glyph_map_entry_glyphflags(gmap)|C.u32(4096))));
+            (glyphFlags=C.u32(glyphFlags|C.u32(4096)));
         }
+        W37(gmap,glyphFlags);
         /* This was requested by a blind player to enhance screen reader use
          */
-        if(Number(!!(Number(C.display_read_sysopt_s_accessibility(C.sysopt)==1)&&Number((C.u32((C.display_read_glyph_map_entry_glyphflags(gmap)&C.u32(16))))!=C.u32(0))))) {
-            let pet_override=(((C.i64((C.display_read_instance_globals_g_glyphmap_perlevel_flags(C.gg)&C.i64(2))))?C.i32(C.readUint8At((C.display_address_instance_globals_o_ov_rogue_syms(C.go)+Number(C.i32((C.SYM_PET_OVERRIDE+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1))):C.i32(C.readUint8At((C.display_address_instance_globals_o_ov_primary_syms(C.go)+Number(C.i32((C.SYM_PET_OVERRIDE+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1)))));
+        if(Number(!!(Number((accessibility ?? C.display_read_sysopt_s_accessibility(C.sysopt))==1)&&Number((C.u32((glyphFlags&C.u32(16))))!=C.u32(0))))) {
+            let pet_override=(((C.i64(((levelFlags ?? C.display_read_instance_globals_g_glyphmap_perlevel_flags(C.gg))&C.i64(2))))?C.i32(C.readUint8At((C.display_address_instance_globals_o_ov_rogue_syms(C.go)+Number(C.i32((C.SYM_PET_OVERRIDE+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1))):C.i32(C.readUint8At((C.display_address_instance_globals_o_ov_primary_syms(C.go)+Number(C.i32((C.SYM_PET_OVERRIDE+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6))))))*1)))));
             if(Number(C.i32(C.readUint8At((C.display_address_instance_globals_s_showsyms(C.gs)+Number(pet_override)*1)))!=32)) (W7(C.display_address_glyph_map_entry_sym(gmap),C.i32((C.SYM_PET_OVERRIDE+(C.i32(((C.i32(((C.i32(((C.i32(((0)+C.MAXPCHARS)))+C.MAXOCLASSES)))+C.MAXMCLASSES)))+6)))))));
         }
         /* Turn off color if no color defined, or rogue level w/o PC graphics.
          */
         const colorSupported = colorMask === null ? C.has_color(color) : color >= 0 && color < 16 && (colorMask & (1 << color));
-        if (!colorSupported || ((C.display_read_instance_globals_g_glyphmap_perlevel_flags(C.gg) & 2n) && !has_rogue_color)
-            || !C.display_read_instance_flags_wc_color(C.iflags)) color = 8;
+        if (!colorSupported || (((levelFlags ?? C.display_read_instance_globals_g_glyphmap_perlevel_flags(C.gg)) & 2n) && !has_rogue_color)
+            || !(colorOption ?? C.display_read_instance_flags_wc_color(C.iflags))) color = 8;
         (W6(C.display_address_glyph_map_entry_sym(gmap),color));
     }
     (W56(C.gg,C.display_read_instance_globals_saved_m_moves(C.svm)));

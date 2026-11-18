@@ -61,6 +61,7 @@ export function enableSaveLifecycle(environment,layouts){
  const context=createSaveEnvironment(local,L);
  const owner=nativeStateFor(environment);
  if(owner.saveMapLocations)context.saveMapLocations=owner.saveMapLocations;
+ if(owner.saveLastSeenTerrain)context.saveLastSeenTerrain=owner.saveLastSeenTerrain;
  if(owner.chronicle){
   context.chronicle=owner.chronicle;
   context.chronicleBuffer=()=>{

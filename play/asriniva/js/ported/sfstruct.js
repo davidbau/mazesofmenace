@@ -883,6 +883,13 @@ export function historical_sfi_schar(nhfp, d_schar, myname)
         nhfp.eof = 1;
 }
 
+export function historical_last_seen_terrain(nhfp, base, count, reading)
+{
+    const transfer = reading ? historical_sfi_schar : historical_sfo_schar;
+    for (let i = 0; i < count; i++)
+        transfer(nhfp, base + i, "lastseentyp");
+}
+
 export function historical_sfo_short(nhfp, d_short, myname)
 {
     bwrite(nhfp.fd, d_short, C.type_short_size);

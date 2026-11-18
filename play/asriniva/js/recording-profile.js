@@ -4,6 +4,7 @@ export const PUBLIC_RECORDING_PROFILE = Object.freeze({
     home: '/Users/davidbau/git/mazesofmenace/teleport/maud/test/comparison/c-harness/results',
     // Inferred: recordings allow debug play and omit a named wizard contact list.
     // This is a supported NetHack sysconf value, not a text-output filter.
+    timeZone: 'America/New_York',
     wizards: '*',
     support: '',
 });
@@ -11,6 +12,7 @@ export const PUBLIC_RECORDING_PROFILE = Object.freeze({
 export function recordingProfile() {
     const env = typeof process !== 'undefined' ? process.env || {} : {};
     const profile = {
+        timeZone: PUBLIC_RECORDING_PROFILE.timeZone,
         home: env.TELEPORT_RECORDING_HOME ?? PUBLIC_RECORDING_PROFILE.home,
         wizards: env.TELEPORT_RECORDING_WIZARDS ?? PUBLIC_RECORDING_PROFILE.wizards,
         support: env.TELEPORT_RECORDING_SUPPORT ?? PUBLIC_RECORDING_PROFILE.support,

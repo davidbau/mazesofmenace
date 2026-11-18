@@ -1,9 +1,6 @@
 // @ts-nocheck
 // vision.js — C ref: vision.c Algorithm C shadow-casting
-// underwater, or rogue-level handling.  Blindness (vision.c:547-582) and the
-// pit arm (vision.c:608-623) have since been ported below, and so has the
-// light-source hook: vision.c:702 `do_light_sources(next_array)` plus the two
-// TEMP_LIT tests it feeds (vision.c:756 and vision.c:772).
+// Visibility, incremental blocking, sensing, and area callbacks from vision.c.
 import { game } from './gstate.js';
 import { Is_airlevel } from './const.js';
 import { is_pool } from './look.js';
@@ -11,6 +8,7 @@ import { is_moat } from './dbridge.js';
 import { Is_waterlevel, Is_rogue_level, ROOMOFFSET, COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, CLOUD, D_CLOSED, D_LOCKED, D_TRAPPED, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL, IS_WALL, isok, BLINDED, SEE_INVIS, DETECT_MONSTERS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON } from './const.js';
 import { newsym, canseemon, mon_visible, see_with_infrared, tp_sensemon, MATCH_WARN_OF_MON } from './display.js';
 import { worm_known } from './worm.js';
+import { m_at } from './uhitm.js';
 import { do_light_sources } from './light.js';
 import { pushRngLogEntry } from './rng.js';
 /* C vision.c:195 does_block()'s last clause reads region.c's
@@ -111,7 +109,7 @@ const right_ptrs = Array.from({ length: ROWNO }, () => new Int16Array(COLNO));
 // Double-buffered COULD_SEE bitmap
 const cs_buf0 = Array.from({ length: ROWNO }, () => new Uint8Array(COLNO));
 const cs_buf1 = Array.from({ length: ROWNO }, () => new Uint8Array(COLNO));
-const cs_rmin0 = new Int16Array(ROWNO).fill(COLNO);
+const cs_rmin0 = new Int16Array(ROWNO);
 
 /* C ref: vision.c:104-111 get_viz_clear() — "expose viz_clear[][] for sanity
  * checking".  NOTE the C returns TRUE when the cell is NOT clear (the name
@@ -121,10 +119,10 @@ export function get_viz_clear(x, y) {
         return true;
     return false;
 }
-const cs_rmax0 = new Int16Array(ROWNO).fill(0);
-const cs_rmin1 = new Int16Array(ROWNO).fill(COLNO);
-const cs_rmax1 = new Int16Array(ROWNO).fill(0);
-function mark_visible_range(row, left, right) {
+const cs_rmax0 = new Int16Array(ROWNO);
+const cs_rmin1 = new Int16Array(ROWNO);
+const cs_rmax1 = new Int16Array(ROWNO);
+function mark_visible_range(row, left, right, markMin = true, markMax = true) {
     if (left > right)
         return;
     // C ref: vision.c right_side/left_side/view_from — when vis_func is set
@@ -142,37 +140,39 @@ function mark_visible_range(row, left, right) {
         return;
     for (let i = left; i <= right; i++)
         rowp[i] = COULD_SEE;
-    if (game.cs_left[row] > left)
+    if (markMin && game.cs_left[row] > left)
         game.cs_left[row] = left;
-    if (game.cs_right[row] < right)
+    if (markMax && game.cs_right[row] < right)
         game.cs_right[row] = right;
 }
-// Simplified blockage check: walls, closed doors, stone
+// C vision.c:153-200 does_block: terrain, objects, mimics, then regions.
 function _blocks(level, x, y) {
     const loc = level.at(x, y);
     if (!loc)
-        return true;
+        return 1;
     const typ = loc.typ ?? 0;
     if (typ < POOL)
-        return true; // STONE, walls, SDOOR, SCORR
+        return 1; // STONE, walls, SDOOR, SCORR
     if (typ === DOOR) {
         const mask = loc.doormask ?? 0;
         if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED))
-            return true;
+            return 1;
     }
     if (typ === CLOUD || typ === WATER || typ === LAVAWALL
         || (game.u?.uinwater && is_moat(x, y)))
-        return true;
+        return 1;
     const _objs = game.level?.levelObjects?.[x]?.[y] ?? null;
     for (let o = _objs; o; o = o.nexthere)
         if ((o.otyp | 0) === BOULDER_OTYP_VIS)
-            return true;
-    const mon = _m_at_vis(x, y);
+            return 1;
+    // C rm.h:534 includes long-worm segments and monsters still in the
+    // grid during mondead(); use the shared grid lookup.
+    const mon = m_at(x, y);
     if (mon && (!mon.minvis || _see_invisible()) && is_lightblocker_mappear(mon))
-        return true;
+        return 1;
     if (visible_region_at(x, y))
-        return true;
-    return false;
+        return 2;
+    return 0;
 }
 
 /* C vision.c:153 does_block(x, y, lev) — exported so js/region.js can run the
@@ -188,20 +188,6 @@ function _blocks(level, x, y) {
  * runs. */
 export function does_block(x, y) {
     return _blocks(game.level, x, y);
-}
-/* C rm.h:534 m_at(x,y).  js/uhitm.js exports the canonical body, but importing
- * it here would close a vision.js -> uhitm.js -> ... -> vision.js cycle, so the
- * same statement is repeated: the fmon chain, live monsters only, and a mounted
- * steed (which C keeps off the monster grid) is not AT anywhere. */
-function _m_at_vis(x, y) {
-    const steed = game.u ? game.u.usteed : null;
-    for (let m = game.fmon; m; m = m.nmon) {
-        if (m === steed || m._mapRemoved)
-            continue;
-        if ((m.mhp | 0) > 0 && m.mx === x && m.my === y)
-            return m;
-    }
-    return null;
 }
 /* C youprop.h:152 `#define See_invisible (HSee_invisible || ESee_invisible)`.
  * Unlike Blind (youprop.h:103) there is NO `&& !B...` clause: the property's
@@ -271,7 +257,7 @@ function _vision_rebuild_grid() {
  * row they touch instead of the whole 21x80 grid. */
 function _vision_rebuild_row(level, y, isblocked = (x) => _blocks(level, x, y)) {
     {
-        const cur = Array.from(viz_clear[y], (_v, x) => x >= 1 && isblocked(x));
+        const cur = Array.from(viz_clear[y], (_v, x) => x >= 1 && !!isblocked(x));
         viz_clear[y].fill(0);
         let dig_left = 0;
         let block = true;
@@ -472,7 +458,8 @@ function right_side(row, left, right_mark, limitsIdx) {
             if (left > lim_max)
                 return;
             if (left === lim_max) {
-                mark_visible_range(row, lim_max, lim_max);
+                // C vision.c:1773-1774: this boundary arm updates only rmax.
+                mark_visible_range(row, lim_max, lim_max, false, true);
                 return;
             }
             if (left >= right_edge) {
@@ -543,7 +530,8 @@ function left_side(row, left_mark, right, limitsIdx) {
             if (right < lim_min)
                 return;
             if (right === lim_min) {
-                mark_visible_range(row, lim_min, lim_min);
+                // C vision.c:1933-1934: this boundary arm updates only rmin.
+                mark_visible_range(row, lim_min, lim_min, true, false);
                 return;
             }
             if (right <= left_edge) {
@@ -767,8 +755,8 @@ export function vision_recalc(control = 0) {
     const next_rmax = game.active_buf === 0 ? cs_rmax1 : cs_rmax0;
     for (let y = 0; y < ROWNO; y++) {
         next[y].fill(0);
-        next_rmin[y] = COLNO;
-        next_rmax[y] = 0;
+        next_rmin[y] = COLNO - 1;
+        next_rmax[y] = 1;
     }
     // ── C ref: vision.c:548-582, the `else if (Blind)` arm of vision_recalc ──
     // This file's header still says it is a "stripped-down port … no blindness

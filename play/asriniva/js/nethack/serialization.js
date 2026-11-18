@@ -47,7 +47,7 @@ export function enableSerialization(environment,layouts) {
     }));
     environment.register('sfbase',baseEntries,baseEnv);
     const restore=environment.allocateGlobal('restoreinfo',S.restoreSize),structServices=Object.create(services);
-    const mapTokens=[];
+    const historicalTokens={rm:[],schar:[]};
     let structPolicy;
     Object.assign(structServices,{
         restore:()=>restore,program:()=>environment.requireGlobal('program_state'),
@@ -57,7 +57,7 @@ export function enableSerialization(environment,layouts) {
             const offset=S['proc_'+(field==='genericptr'?'genericptr_t':field)];
             if(offset===undefined)throw new Error('Missing measured serialization callback field');
             memory.view.setBigUint64(tables[8+input]+offset,BigInt(p),true);
-            if(field==='rm')mapTokens[input]=BigInt(p);
+            if(Object.hasOwn(historicalTokens,field))historicalTokens[field][input]=BigInt(p);
         },
         callback:(input,index)=>{
             const table=input?sfstruct.historical_sfi_procs:sfstruct.historical_sfo_procs,fn=Object.values(table.fn)[index];
@@ -77,7 +77,7 @@ export function enableSerialization(environment,layouts) {
     });
     const {env:structEnv}=initializeSfstruct(structServices,S);
     structPolicy=createNativeSfstruct(structEnv);
-    const {historical_map_locations,...structExports}=structPolicy;
+    const {historical_map_locations,historical_last_seen_terrain,...structExports}=structPolicy;
     const structEntries=Object.fromEntries(Object.entries(structExports).filter(([,fn])=>typeof fn==='function').map(([name,fn])=>[
         name,nativeEntry(name.startsWith('historical_')?(file,value,tag,count)=>fn(baseEnv.nhfile(file),value,tag,count):fn),
     ]));
@@ -89,23 +89,33 @@ export function enableSerialization(environment,layouts) {
     }
     environment.call('sfbase','sf_init');
     const {COLNO,ROWNO}=layouts.save;
+    const matchingDimensions=layouts.restore.COLNO===COLNO && layouts.restore.ROWNO===ROWNO;
     const mapField=environment.ctypes.record('dlevel_t').fields.locations;
-    const mapAt=levelAt+mapField.offset;
-    const canTransferMap=mapField.ctype===`struct rm[${COLNO}][${ROWNO}] locations`
-        && environment.ctypes.size('struct rm')===S.type_rm_size
-        && layouts.restore.COLNO===COLNO && layouts.restore.ROWNO===ROWNO;
-    const transferMap=(nhfp,reading)=>{
-        const file=baseEnv.nhfile(nhfp);
-        if(!canTransferMap || !file.structlevel || file.fplog || (reading && (file.mode & (L.CONVERTING|L.UNCONVERTING))))return false;
-        const slot=file.fnidx;
-        if(slot<0 || slot>=L.NUM_SAVEFORMATS)return false;
-        const input=Number(reading);
-        const tokenAt=tables[input]+slot*L.structlevelSize+L.structlevel_fn+L.proc_rm;
-        if(memory.view.getBigUint64(tokenAt,true)!==mapTokens[input])return false;
-        historical_map_locations(file,mapAt,COLNO*ROWNO,reading);
-        return true;
-    };
+    const terrainField=environment.ctypes.record('struct instance_globals_saved_l').fields.lastseentyp;
+    function bindLevelArray(field, at, type, elementSize, serializer, transfer) {
+        if(!matchingDimensions || !field || field.ctype!==type || elementSize!==S['type_'+serializer+'_size'])
+            return () => false;
+        const base=at+field.offset;
+        const offset=L.structlevel_fn+L['proc_'+serializer],tokens=historicalTokens[serializer];
+        return (nhfp,reading)=>{
+            const file=baseEnv.nhfile(nhfp);
+            if(!file.structlevel || file.fplog || (reading && (file.mode & (L.CONVERTING|L.UNCONVERTING))))return false;
+            const slot=file.fnidx;
+            if(slot<0 || slot>=L.NUM_SAVEFORMATS)return false;
+            const input=Number(reading);
+            const tokenAt=tables[input]+slot*L.structlevelSize+offset;
+            if(memory.view.getBigUint64(tokenAt,true)!==tokens[input])return false;
+            transfer(file,base,COLNO*ROWNO,reading);
+            return true;
+        };
+    }
+    const transferMap=bindLevelArray(mapField,levelAt,`struct rm[${COLNO}][${ROWNO}] locations`,
+        environment.ctypes.size('struct rm'),'rm',historical_map_locations);
+    const transferTerrain=bindLevelArray(terrainField,environment.requireGlobal('svl'),
+        `schar[${COLNO}][${ROWNO}] lastseentyp`,1,'schar',historical_last_seen_terrain);
     owner.saveMapLocations=nhfp=>transferMap(nhfp,false);
     owner.restoreMapLocations=nhfp=>transferMap(nhfp,true);
+    owner.saveLastSeenTerrain=nhfp=>transferTerrain(nhfp,false);
+    owner.restoreLastSeenTerrain=nhfp=>transferTerrain(nhfp,true);
     return{base:baseEnv,struct:structEnv,tables,buffers,restore};
 }

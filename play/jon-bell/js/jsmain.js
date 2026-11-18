@@ -3,7 +3,7 @@
 //
 // For browser play, see nethack.js.
 import { game, resetGame } from './gstate.js';
-import { load_primary_symset_from_file, set_primary_symbol_override, init_ov_primary_symbols } from './symbols.js';
+import { init_symbols } from './symbols.js';
 import { vfsDeleteFile, vfsReadFile } from './storage.js';
 import { savefile_name } from './save.js';
 import { initRng, enableRngLog, getRngLog, pushRngLogEntry } from './rng.js';
@@ -13,7 +13,8 @@ import { parseNethackrc, init_fruit_chain } from './options.js';
 import { reset_commands, update_rest_on_space } from './cmd.js';
 import { set_configfile_for_session } from './cfgfiles.js';
 import { gs, H_DEC, H_IBM, H_UNK, PRIMARYSET, INFRAVISION, RUN_LEAP, MAX_MSG_HISTORY } from './const.js';
-import { apply_customizations, glyphrep_to_custom_map_entries, purge_all_custom_entries, clear_all_glyphmap_colors } from './glyphs.js';
+import { apply_customizations, glyphrep_to_custom_map_entries, purge_all_custom_entries, clear_all_glyphmap_colors, glyphid_cache_status, fill_glyphid_cache, free_glyphid_cache } from './glyphs.js';
+import { free_all_glyphmap_u } from './utf8map.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { roleOptionToIndex, raceOptionToIndex, genderOptionToIndex, alignOptionToIndex, genlPlayerSetupRandomPicksForY, sessionNeedsRandomPlayerPicks, extractChargenPreInitRng, replayChargenPreInitRng, detectInteractiveChargenFromSession, } from './roles.js';
 import { GameDisplay } from './game_display.js';
@@ -132,6 +133,10 @@ export class NethackGame {
         // statics are BSS); this module state outlives one game.
         purge_all_custom_entries();
         clear_all_glyphmap_colors();
+        free_all_glyphmap_u();
+        // C options.c:7154-7155 caches glyph IDs before parsing the rc.
+        if (!glyphid_cache_status()) fill_glyphid_cache();
+        init_symbols(); // C options.c initoptions_init, before reading the rc
         const opts = parseNethackrc(this._nethackrc);
         g.msgtypes = opts.msgtypes || [];
         g.apelist = opts.apelist || null;
@@ -218,32 +223,9 @@ export class NethackGame {
             g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set)
             g.tutorial_set_in_config = true;
-        // Apply symset option → gs.symset[PRIMARYSET].handling.
-        // C ref: options.c optfn_DECgraphics / handler_symset — sets gs.symset[PRIMARYSET].handling.
-        // Default (no symset option) keeps H_UNK → ASCII PCHAR glyphs from defsym.h.
-        // "DECgraphics" → H_DEC → DEC line-drawing characters.
-        gs.symset[PRIMARYSET].handling = (opts.symset === 'DECgraphics') ? H_DEC
-            : (opts.symset === 'IBMgraphics') ? H_IBM : H_UNK;
-        // C ref: options.c optfn_symset — the chosen set's NAME is stored too, and
-        // gc.currentgraphics is switched to PRIMARYSET.  optfn_symset's get_val
-        // (options.c:4180) renders "<name>, active, handler=<H>" from exactly
-        // these two fields, which is what the 'O' menu's symset row shows; with
-        // no name recorded it reports "default" for a set that is plainly active.
-        /* C options.c optfn_symset -> symbols.c load_symset(PRIMARYSET):
-         * the set's symbols and Handling come from dat/symbols; SYMBOLS=
-         * pairs then land in ov_primary_syms (symbols.c parsesymbols). */
-        g._symsetLoaded = null;
-        init_ov_primary_symbols();
-        if (opts.symset) load_primary_symset_from_file(opts.symset);
-        // C symbols.c:236-239: overrides also apply to the default symbol set.
-        for (const [k, v] of Object.entries(opts.symbolOverrides || {}))
-            set_primary_symbol_override(k, v);
-        for (const [k, v] of opts.symbolPairs || [])
-            set_primary_symbol_override(k, v);
-        /* C options.c:663-666: an OPTIONS=S_xxx line re-evaluates the gold symbol. */
-        if (opts.symbolFromOptions) check_gold_symbol();
-        if (opts.symset) {
-            gs.symset[PRIMARYSET].name = opts.symset;
+        // The rc parser has already applied the symbol tables in file order.
+        g._symsetLoaded = gs.symset[PRIMARYSET].name;
+        if (opts.symbolSetChanged || opts.symset) {
             /* C options.c:4198 optfn_symset sets these and nothing clears them
              * until the first reset_needed_visuals()/doset, so a later bound
              * toggle() redraws (docrt -> --More-- on a pending topline). */
@@ -255,17 +237,12 @@ export class NethackGame {
             g.go = g.go || {};
             g.go.opt_need_redraw = true; // options.c:5024 pfxfn_cond_ (rc cond_*)
         }
-        /* C symbols.c:829-837 parsesymbols(): a S_<sym>:U+xxxx value (or any
-         * value under a UTF8 symset) is a glyph customization via
-         * glyphrep_to_custom_map_entries(), applied below. */
-        for (const [k, v] of opts.symbolPairs || [])
-            if (/^u\+/i.test(String(v).trim()))
-                glyphrep_to_custom_map_entries(`${k}:${String(v).trim()}`, { value: 0 });
         // C options.c:7347 initoptions_finish fixes the active S_darkroom
         // alias after reading the RC, before a bound toggle can change flags.
         reglyph_darkroom();
         // C options.c:7378-7380 initoptions_finish applies the rc's glyph
         // customizations (do_custom_symbols | do_custom_colors) to glyphmap[].
+        if (glyphid_cache_status()) free_glyphid_cache();
         apply_customizations(PRIMARYSET, 3);
         // Initialize hero struct.  C's `struct u_event` is embedded in `you`
         // and is BSS-zeroed by decl_globals_init(); keep the same explicit

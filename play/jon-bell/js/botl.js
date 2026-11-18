@@ -7,7 +7,7 @@ import { game } from './gstate.js';
 import { humanoid } from './makemon.js';
 import { sticks } from './mondata.js';
 import { helm_simple_name } from './objnam.js';
-import { SYM_OFFSETS, primary_showsym } from './symbols.js';
+import { SYM_OFFSETS, primary_showsym, rogue_showsyms } from './symbols.js';
 import { weapon_descr, weapon_type } from './weapon.js';
 import { near_capacity } from './hack.js';
 import { attrnames, clr2colorname, match_str2clr } from './coloratt.js'; // relocate-fns
@@ -15,8 +15,8 @@ import { display_text_window } from './com_pager.js'; // relocate-fns
 import { status_held_rows, gather_condition_hilite_lines, _condbitmask2str, status_xp_percent_changing } from './display.js'; // relocate-fns
 import { trimspaces } from './hacklib.js'; // relocate-fns
 import { status_fieldname } from './options.js'; // relocate-fns
-import { HL_ATTRBITS, drainTopline, query_attr_one } from './optmenu.js';
-import { query_color } from './coloratt.js'; // relocate-fns
+import { HL_ATTRBITS, drainTopline } from './optmenu.js';
+import { query_attr, query_color } from './coloratt.js'; // relocate-fns
 import { pline } from './pline.js'; // relocate-fns
 import { ROLE_RANKS, role_index_by_name } from './rank_data.js'; // relocate-fns
 import { ATR_NONE, PICK_ANY, PICK_ONE, TtyMenu } from './tty_menu.js'; // relocate-fns
@@ -475,7 +475,9 @@ export function check_gold_symbol(level = game.u?.uz) {
          * level's primary symset. drawing.c:79 defaults Rogue gold to '*'. */
         const idx = SYM_OFFSETS.O + COIN_CLASS_DISP;
         const set = gs.symset?.[1];
-        goldch = g.go?.ov_rogue_syms?.[idx] || g.gr?.rogue_syms?.[idx]
+        // C symbols.c:629-635 loads the selected set over the defaults;
+        // check_gold_symbol reads that loaded symbol (botl.c:42-44).
+        goldch = rogue_showsyms()[idx] || g.gr?.rogue_syms?.[idx]
             || (String(set?.name ?? '').toLowerCase() === 'blank' ? 32
                 : set?.name === 'RogueEpyx' ? 15 : '*'.charCodeAt(0));
     } else if (primary_showsym(SYM_OFFSETS.O + COIN_CLASS_DISP)) {
@@ -793,7 +795,7 @@ async function status_hilite_add_title_textmatch(fld, preserveStatus, retryBox) 
         for (;;) {
             const clr = await query_color(`Choose a color for when ${name} is '${textmatch}':`, 8, preserveStatus);
             if (clr === -1) break;
-            const atr = await query_attr_one(`Choose attribute for when ${name} is '${textmatch}':`, 0, preserveStatus);
+            const atr = await query_attr(`Choose attribute for when ${name} is '${textmatch}':`, 0, preserveStatus);
             if (atr === -1) continue;
             const attrs = atr === 1 ? 'normal' : HL_ATTRBITS.filter(b => atr & b[1]).map(b => b[2]).join('+');
             const clrname = clr2colorname(clr).replace(/ /g, '-');
@@ -951,7 +953,7 @@ export async function status_hilite_menu(preserveStatus = false) {
                     color = await query_color(beh === 106 ? '' : beh === 105 ? `Choose a color to always hilite ${name}:`
                         : `Choose a color for when ${name} ${when}:`, 8, flushed);
                     if (color < 0) break;
-                    attr = await query_attr_one(beh === 106 ? '' : beh === 105 ? `Choose attribute to always hilite ${name}:`
+                    attr = await query_attr(beh === 106 ? '' : beh === 105 ? `Choose attribute to always hilite ${name}:`
                         : `Choose attribute for when ${name} ${when}:`, 0, flushed);
                 } while (attr < 0);
                 if (color < 0) {
@@ -999,12 +1001,12 @@ export async function status_hilite_menu(preserveStatus = false) {
                     const cname = _condbitmask2str(cond);
                     let clr = await query_color(`Choose a color for conditions ${cname}:`, 8, true);
                     if (clr === -1) continue;
-                    let atr = await query_attr_one(`Choose attribute for conditions ${cname}:`, 0, true);
+                    let atr = await query_attr(`Choose attribute for conditions ${cname}:`, 0, true);
                     while (atr === -1) {
                         const c2 = await query_color(`Choose a color for conditions ${cname}:`, 8, true);
                         if (c2 === -1) break;
                         clr = c2; /* botl.c:4233 choose_color reassigns clr */
-                        atr = await query_attr_one(`Choose attribute for conditions ${cname}:`, 0, true);
+                        atr = await query_attr(`Choose attribute for conditions ${cname}:`, 0, true);
                     }
                     if (atr === -1) continue;
                     const attrs = atr === 1 ? 'normal' : HL_ATTRBITS.filter(b => atr & b[1]).map(b => b[2]).join('+');
@@ -1052,7 +1054,7 @@ export async function status_hilite_menu(preserveStatus = false) {
                 do {
                     clr = await query_color(`Choose a color for when ${name} is '${text}':`, 8, true);
                     if (clr === -1) break;
-                    atr = await query_attr_one(`Choose attribute for when ${name} is '${text}':`, 0, true);
+                    atr = await query_attr(`Choose attribute for when ${name} is '${text}':`, 0, true);
                 } while (atr === -1);
                 if (clr === -1) continue;
                 const attrs = atr === 1 ? 'normal' : HL_ATTRBITS.filter(b => atr & b[1]).map(b => b[2]).join('+');
@@ -1145,7 +1147,7 @@ export async function status_hilite_menu(preserveStatus = false) {
                 for (;;) { /* choose_color */
                     clr = await query_color(`Choose a color for when ${name} is ${rel}${numstart}${tail}:`, 8, true);
                     if (clr === -1) break;
-                    const atr = await query_attr_one(`Choose attribute for when ${name} is ${rel}${numstart}${tail}:`, 0, true);
+                    const atr = await query_attr(`Choose attribute for when ${name} is ${rel}${numstart}${tail}:`, 0, true);
                     if (atr === -1) continue;
                     const attrs = atr === 1 ? 'normal' : HL_ATTRBITS.filter(b => atr & b[1]).map(b => b[2]).join('+');
                     const behave = `${['=', '<', '<=', '>=', '>'][lt]}${val}${percent ? '%' : ''}`;

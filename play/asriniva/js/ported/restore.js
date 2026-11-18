@@ -985,9 +985,11 @@ export function getlev(nhfp, pid, lev)
     restcemetery(nhfp, C.fieldPointer(C.svl.level,"bonesinfo"));
     rest_levl(nhfp);
 
-    for (c = 0; c < C.COLNO; ++c) {
-        for (r = 0; r < C.ROWNO; ++r) {
-            C.Sfi_schar(nhfp, C.arrayAddress(C.svl.lastseentyp, c, r), "lastseentyp");
+    if (!Object.hasOwn(C, "restoreLastSeenTerrain") || !C.restoreLastSeenTerrain(nhfp)) {
+        for (c = 0; c < C.COLNO; ++c) {
+            for (r = 0; r < C.ROWNO; ++r) {
+                C.Sfi_schar(nhfp, C.arrayAddress(C.svl.lastseentyp, c, r), "lastseentyp");
+            }
         }
     }
     C.Sfi_long(nhfp, C.addressOf(C.svo, "omoves"), "lev-timestmp");

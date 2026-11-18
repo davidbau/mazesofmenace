@@ -219,6 +219,9 @@ export const NOT_SAVED = [
     // C decl.h gp.primary_syms / glyphs' UTF-8 table are process-local too: a restored
     // process keeps the Unicode map its own rc built, not the saving process's.
     'gp',
+    // C save.c:265-333 omits symbol tables and symset metadata.
+    // Keep symbols.c:85-215/options.c:7199-7213 state built by this rc.
+    'gs',
     'mockStorage', 'currentSeed', 'tutorial_set_in_config',
     '_pending_message', '_prevmsg', '_resultMessage', '_resultMessageJoins',
     // C save.c:265-333 omits the physical tty frame held by more()
@@ -462,6 +465,8 @@ export function saved_state_for(body) {
 export async function freedynamicdata() {
     const { freeroleoptvals } = await import('./options.js');
     freeroleoptvals(); // C save.c:1131, before wish_history_flush().
+    const { free_menu_coloring } = await import('./coloratt.js');
+    free_menu_coloring(); // C save.c:1084
     const { wish_history_flush } = await import('./zap.js');
     wish_history_flush();
 }

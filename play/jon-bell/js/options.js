@@ -28,12 +28,12 @@ import { config_error_add } from './cfgfiles.js';
 import { gr as roleGlobals } from './roles.js';
 import { str2role, str2race, str2gend, str2align, setrolefilter, rolefilterstring } from './role.js';
 import { RSF_ROLE, RSF_RACE, RSF_GENDER, RSF_ALGNMNT } from './chargen_ui.js';
-import { glyphrep_to_custom_map_entries } from './glyphs.js';
-import { sym_val_real, apply_pending_s_utf8, symset_defined_in_file, SYM_OFFSETS } from './symbols.js';
+import { glyphid_cache_status, fill_glyphid_cache, free_glyphid_cache, glyphrep_to_custom_map_entries } from './glyphs.js';
+import { sym_val_real, apply_pending_s_utf8, SYM_OFFSETS, LOADSYMS } from './symbols.js';
 import { config_line_error, config_statement, choose_random_part, config_error_nextline, config_error_secure, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
-import { menucolor_row, menucolor_text, add_menu_coloring, match_str2clr, attr2attrname, attrnames } from './coloratt.js';
+import { menucolor_row, menucolor_text, add_menu_coloring, add_menu_coloring_parsed, free_one_menu_coloring, count_menucolors, match_str2clr, match_str2attr, attr2attrname, attrnames, color_attr_parse_str, check_enhanced_colors, wc_color_name } from './coloratt.js';
 import { TtyMenu, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
-import { getlin } from './windows.js';
+import { getlin, menuitem_invert_test, choose_windows } from './windows.js';
 import { mungspaces, fuzzymatch } from './hacklib.js';
 import { nh_sprintf, docorner_status_rows, _threeStatusLines } from './display.js';
 import { pline } from './pline.js';
@@ -453,69 +453,6 @@ export function parse_paranoid_confirmation(existing, val, negated) {
 }
 
 
-/* C symbols.c:403-428 loadsyms[] (PCHAR/OBJCLASS/MONSYM names, the SYM_OTH
- * tail and the SYM_CONTROL words) and the match_sym() alternates
- * (symbols.c:854-866); names compare case-insensitively (strncmpi). */
-const LOADSYMS_NAMES = new Set(["S_stone","S_vwall","S_hwall","S_tlcorn","S_trcorn","S_blcorn","S_brcorn","S_crwall","S_tuwall","S_tdwall","S_tlwall","S_trwall","S_ndoor","S_vodoor","S_hodoor","S_vcdoor","S_hcdoor","S_bars","S_tree","S_room","S_darkroom","S_engroom","S_corr","S_litcorr","S_engrcorr","S_upstair","S_dnstair","S_upladder","S_dnladder","S_brupstair","S_brdnstair","S_brupladder","S_brdnladder","S_altar","S_grave","S_throne","S_sink","S_fountain","S_pool","S_ice","S_lava","S_lavawall","S_vodbridge","S_hodbridge","S_vcdbridge","S_hcdbridge","S_air","S_cloud","S_water","S_arrow_trap","S_dart_trap","S_falling_rock_trap","S_squeaky_board","S_bear_trap","S_land_mine","S_rolling_boulder_trap","S_sleeping_gas_trap","S_rust_trap","S_fire_trap","S_pit","S_spiked_pit","S_hole","S_trap_door","S_teleportation_trap","S_level_teleporter","S_magic_portal","S_web","S_statue_trap","S_magic_trap","S_anti_magic_trap","S_polymorph_trap","S_vibrating_square","S_trapped_door","S_trapped_chest","S_vbeam","S_hbeam","S_lslant","S_rslant","S_digbeam","S_flashbeam","S_boomleft","S_boomright","S_ss1","S_ss2","S_ss3","S_ss4","S_poisoncloud","S_goodpos","S_sw_tl","S_sw_tc","S_sw_tr","S_sw_ml","S_sw_mr","S_sw_bl","S_sw_bc","S_sw_br","S_expl_tl","S_expl_tc","S_expl_tr","S_expl_ml","S_expl_mc","S_expl_mr","S_expl_bl","S_expl_bc","S_expl_br","S_strange_obj","S_weapon","S_armor","S_ring","S_amulet","S_tool","S_food","S_potion","S_scroll","S_book","S_wand","S_coin","S_gem","S_rock","S_ball","S_chain","S_venom","S_ANT","S_BLOB","S_COCKATRICE","S_DOG","S_EYE","S_FELINE","S_GREMLIN","S_HUMANOID","S_IMP","S_JELLY","S_KOBOLD","S_LEPRECHAUN","S_MIMIC","S_NYMPH","S_ORC","S_PIERCER","S_QUADRUPED","S_RODENT","S_SPIDER","S_TRAPPER","S_UNICORN","S_VORTEX","S_WORM","S_XAN","S_LIGHT","S_ZRUTY","S_ANGEL","S_BAT","S_CENTAUR","S_DRAGON","S_ELEMENTAL","S_FUNGUS","S_GNOME","S_GIANT","S_invisible","S_JABBERWOCK","S_KOP","S_LICH","S_MUMMY","S_NAGA","S_OGRE","S_PUDDING","S_QUANTMECH","S_RUSTMONST","S_SNAKE","S_TROLL","S_UMBER","S_VAMPIRE","S_WRAITH","S_XORN","S_YETI","S_ZOMBIE","S_HUMAN","S_GHOST","S_GOLEM","S_DEMON","S_EEL","S_LIZARD","S_WORM_TAIL","S_MIMIC_DEF","S_nothing","S_unexplored","S_boulder","S_pet_override","S_hero_override","start","begin","finish","handling","description","color","colour","restrictions"].map(n => n.toLowerCase()));
-const MATCH_SYM_ALTERNATES = { s_armour: 's_armor', s_explode1: 's_expl_tl',
-    s_explode2: 's_expl_tc', s_explode3: 's_expl_tr', s_explode4: 's_expl_ml',
-    s_explode5: 's_expl_mc', s_explode6: 's_expl_mr', s_explode7: 's_expl_bl',
-    s_explode8: 's_expl_bc', s_explode9: 's_expl_br' };
-
-/* C symbols.c:782-807 parsesymbols(): the entry list is split at the first
- * UNQUOTED comma (not one after a backslash, nor one between quotes), and the
- * remainder is applied first.  So `S_upstair:\\,S_dnstair:x` is ONE entry. */
-function parsesymbols_entries(opts) {
-    for (let i = 1; i < opts.length; ++i) {
-        const post = opts[i + 1], pre = opts[i - 1];
-        if (post === undefined)
-            break;
-        if (opts[i] !== ',' || (pre === "'" && post === "'") || pre === '\\')
-            continue;
-        return [...parsesymbols_entries(opts.slice(i + 1)), opts.slice(0, i)];
-    }
-    return [opts];
-}
-
-/* C symbols.c:773-849 parsesymbols(): success is decided by the name lookup
- * alone (the value only feeds the symset overrides); G_ names need
- * match_glyph(), which this port does not model, so they count as unmatched. */
-let parsesymbols_cut = -1;
-function parsesymbols_ok(opts) {
-    let comma = -1, colon = -1;
-    for (let i = 1; i < opts.length; ++i) {
-        const post = opts[i + 1], pre = opts[i - 1];
-        if (post === undefined)
-            break;
-        if (opts[i] === ',' && ((pre === "'" && post === "'") || pre === '\\'))
-            continue;
-        if (opts[i] === ':' && pre === "'" && post === "'")
-            continue;
-        if (opts[i] === ',' && comma < 0) comma = i;
-        if (opts[i] === ':' && colon < 0) colon = i;
-    }
-    if (comma >= 0) {
-        /* C NULs the comma before recursing, so a failure there leaves bufp
-         * (as later printed) cut at the comma. */
-        parsesymbols_cut = comma;
-        if (!parsesymbols_ok(opts.slice(comma + 1))) {
-            /* the inner call's cut is relative to its own text; C's bufp is
-             * already NULed at this comma, so it stays the outer cut */
-            parsesymbols_cut = comma;
-            return false;
-        }
-        opts = opts.slice(0, comma);
-        if (colon > comma) colon = -1;
-    }
-    let sep = colon;
-    if (sep < 0) sep = opts.indexOf('=');
-    if (sep < 0)
-        return false;
-    parsesymbols_cut = sep; /* C: *strval++ = '\0' */
-    const symname = opts.slice(0, sep).trim().replace(/\s+/g, ' ').toLowerCase();
-    return LOADSYMS_NAMES.has(symname) || (symname in MATCH_SYM_ALTERNATES);
-}
-
 /* C ref: cfgfiles.c:1691-1815 parse_conf_buf() with is_config_section()
  * (:523) / handle_config_section() (:552) / choose_random_part() (:464):
  * joins backslash-continued lines, drops lines outside the CHOOSE-d section,
@@ -699,12 +636,12 @@ function set_boulder_symbol(target, opts, op, negated, report) {
     (target.symbolOverrides ||= {}).S_boulder = sym;
     /* options.c:1213-1214 sets ov_rogue_syms too */
     target.symbolOverrides.S_boulder_rogue = sym;
-    if (target === game) {
-        const idx = SYM_OFFSETS.X + SYM_BOULDER;
-        game.go ||= {};
-        (game.go.ov_primary_syms ||= [])[idx] = sym.charCodeAt(0);
-        (game.go.ov_rogue_syms ||= [])[idx] = sym.charCodeAt(0);
-    }
+    // C options.c:1213-1214 writes both canonical override tables during
+    // rc parsing too; target holds the parser's other option results.
+    const idx = SYM_OFFSETS.X + SYM_BOULDER;
+    game.go ||= {};
+    (game.go.ov_primary_syms ||= [])[idx] = sym.charCodeAt(0);
+    (game.go.ov_rogue_syms ||= [])[idx] = sym.charCodeAt(0);
     return true;
 }
 
@@ -868,14 +805,25 @@ function wc_set_window_colors(op) {
         if (!s.length) return false;
         const slash = s.indexOf('/');
         if (slash < 0) return false; /* no background separator */
-        s = s.slice(slash + 1); /* tfg = s[0..slash), the skipped foreground */
+        const tfg = s.slice(0, slash);
+        s = s.slice(slash + 1);
         if (s[0] === ' ') s = s.slice(1);
         if (!s.length) return false;
         sp = s.indexOf(' ');
-        s = sp < 0 ? '' : s.slice(sp + 1); /* tbg = the skipped background */
+        const tbg = sp < 0 ? s : s.slice(0, sp);
+        s = sp < 0 ? '' : s.slice(sp + 1);
         const lower = wn.toLowerCase();
         const j = wcn.findIndex((n, i) => n === lower || wcs[i] === lower);
         if (j >= 0) {
+            const wcolors = (game.iflags ||= {}).wcolors ||= Array.from({ length: 4 }, () => ({ fg: null, bg: null }));
+            if (!tfg.includes(' ')) {
+                const clr = check_enhanced_colors(tfg);
+                wcolors[j].fg = clr >= 0 ? wc_color_name(clr) : tfg;
+            }
+            if (!tbg.includes(' ')) {
+                const clr = check_enhanced_colors(tbg);
+                wcolors[j].bg = clr >= 0 ? wc_color_name(clr) : tbg;
+            }
             if (game.wcolors_opt[j] !== 0)
                 config_error_add("windowcolors for %s windows specified multiple times", wcn[j]);
             game.wcolors_opt[j]++;
@@ -917,7 +865,7 @@ export function parseNethackrc(rc) {
         // C optlist.h:687-688, options.c:7164-7167: sortpack defaults to On.
         flags: { autounlock: 2, sortpack: true, vanq_sortmode: 0, inv_order: [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16] }, // options.c:118,1076,3967
         // C options.c:7181 initoptions_init: tty message history defaults to single.
-        iflags: { hilite_delta: 0, prevmsg_window: 's',
+        iflags: { hilite_delta: 0, prevmsg_window: 's', menuinvertmode: 1, // options.c:7279
             // C options.c:7188-7189: default headings are inverse, no color.
             menu_headings: { attr: 7, color: 8 } },
         uroleplay: {blind: false, deaf: false, nudist: false, pauper: false},
@@ -951,92 +899,30 @@ export function parseNethackrc(rc) {
             continue;
         }
 
-        /* C cfgfiles.c:1191-1199 cnf_line_ROGUESYMBOLS (CNFL_N(ROGUESYMBOLS, 4)):
-         * a definition parsesymbols() rejects is reported, in file order. */
-        const rogueMatch = line.match(/^(ROGU[A-Z]*)\s*=\s*(.*)$/i);
-        if (rogueMatch && 'ROGUESYMBOLS'.startsWith(rogueMatch[1].toUpperCase())) {
-            parsesymbols_cut = -1;
-            if (!parsesymbols_ok(rogueMatch[2])) {
-                /* bufp is printed after parsesymbols() NULed its separators */
-                const bufp = parsesymbols_cut < 0 ? rogueMatch[2] : rogueMatch[2].slice(0, parsesymbols_cut);
-                config_error_add("Error in ROGUESYMBOLS definition '%s'", bufp);
-            } else {
-                /* symbols.c:830-837 parsesymbols(): a U+ value goes through
-                 * glyphrep_to_custom_map_entries(); with no symset name yet,
-                 * glyphs.c:80-89 nags once ("Unimplemented customization"). */
-                for (const entry of parsesymbols_entries(rogueMatch[2])) {
-                    const pm = entry.match(/^\s*(S_[^:=\s]+)\s*[:=]\s*(.*?)\s*$/i);
-                    if (pm && /^u\+/i.test(pm[2]))
-                        glyphrep_to_custom_map_entries(`${pm[1]}:${pm[2]}`, { value: 0 });
+        /* C cfgfiles.c:1191-1199,1250-1261: the directive parser applies
+         * successful recursive tails even when an earlier entry then fails. */
+        const symbolDirective = line.match(/^(ROGUESYMBOLS|ROGUESYMBOL|ROGUESYMBO|ROGUESYMB|ROGUESYM|ROGUESY|ROGUES|ROGUE|ROGU|SYMBOLS)\s*=\s*(.*)$/i);
+        if (symbolDirective) {
+            const rogue = /^ROGU/i.test(symbolDirective[1]);
+            const buffer = { value: symbolDirective[2] };
+            const pairs = [];
+            const ok = parsesymbols(buffer, rogue ? 1 : 0, (sp, name, val) => {
+                if (sp && sp.range !== 1) pairs.push([sp, name, val]);
+            });
+            if (ok) {
+                switch_symbols(true);
+                for (const [sp, name, val] of pairs) {
+                    if (!rogue) (result.symbolPairs ||= []).push([name, val]);
+                    const value = sym_val_real(val);
+                    if (value && !/^u\+/i.test(val)) {
+                        const key = 'S_' + sp.name.slice(2).toLowerCase();
+                        if (!rogue) (result.symbolOverrides ||= {})[key] = String.fromCharCode(value);
+                        else if (key === 'S_boulder')
+                            (result.symbolOverrides ||= {}).S_boulder_rogue = String.fromCharCode(value);
+                    }
                 }
-            }
-            continue;
-        }
-
-        /* C cfgfiles.c's SYMBOLS directive is separate from OPTIONS=.  The
-         * renderer presently has a narrow consumer for S_pool, so retain that
-         * direct one-character override rather than dropping the whole line.
-         * A full symbols.c parser remains outside this rc parser's scope. */
-        const symbolsMatch = line.match(/^SYMBOLS=(.+)/i);
-        if (symbolsMatch) {
-            /* C cfgfiles.c cnf_line_SYMBOLS: a definition parsesymbols() rejects
-             * is reported, in file order.  G_ glyph references are matched by
-             * glyphs.c, not modeled by parsesymbols_ok, so they are skipped. */
-            if (!/(^|,)\s*G_/i.test(symbolsMatch[1])) {
-                parsesymbols_cut = -1;
-                if (!parsesymbols_ok(symbolsMatch[1])) {
-                    const bufp = parsesymbols_cut < 0 ? symbolsMatch[1] : symbolsMatch[1].slice(0, parsesymbols_cut);
-                    config_error_add("Error in SYMBOLS definition '%s'", bufp);
-                }
-            }
-            for (const entry of parsesymbols_entries(symbolsMatch[1])) {
-                /* symbols.c parsesymbols(): a G_ glyph reference goes through
-                 * glyphrep_to_custom_map_entries() (glyphs.c:111) */
-                if (/^\s*G_/.test(entry))
-                    // C symbols.c:821-833 passes symname after terminating it at ':' or '='.
-                    glyphrep_to_custom_map_entries(entry.split(/[:=]/, 1)[0].trim(), { value: 0 });
-                /* C symbols.c:811-844: every S_<name>:<val> pair, monster
-                 * classes included, lands in ov_primary_syms. */
-                const pairMatch = entry.match(/^\s*(S_[^:=\s]+)\s*[:=]\s*(.*?)\s*$/i);
-                if (pairMatch)
-                    (result.symbolPairs ||= []).push([pairMatch[1], pairMatch[2]]);
-                /* symbols.c:830-837: a U+ value goes to
-                 * glyphrep_to_custom_map_entries, not ov_primary_syms. */
-                if (pairMatch && /^u\+/i.test(pairMatch[2])) {
-                    /* glyphs.c:80-89: with no symset named yet the customization
-                     * is refused with a (once-only) config error, raised here
-                     * so it carries this line's context. */
-                    if (!result.symset)
-                        glyphrep_to_custom_map_entries(`${pairMatch[1]}:${pairMatch[2]}`, { value: 0 });
-                    continue;
-                }
-                const symMatch = entry.match(/^\s*(S_(?:pool|boulder|vodoor|hodoor|room|corr|litcorr|stone|vwall|hwall|tlcorn|trcorn|blcorn|brcorn|crwall|tuwall|tdwall|tlwall|trwall))\s*:\s*(.)/i);
-                if (symMatch)
-                    (result.symbolOverrides ||= {})['S_' + symMatch[1].slice(2).toLowerCase()] = symMatch[2];
-                /* symbols.c:239: trap cmap overrides (S_arrow_trap..S_trapped_chest),
-                 * consumed by display.js trap_table_entry. */
-                const trapMatch = entry.match(/^\s*(S_(?:arrow_trap|dart_trap|falling_rock_trap|squeaky_board|bear_trap|land_mine|rolling_boulder_trap|sleeping_gas_trap|rust_trap|fire_trap|pit|spiked_pit|hole|trap_door|teleportation_trap|level_teleporter|magic_portal|web|statue_trap|magic_trap|anti_magic_trap|polymorph_trap|vibrating_square|trapped_door|trapped_chest))\s*[:=]\s*(?:'([^'])'|([^'\s]))\s*$/i);
-                if (trapMatch)
-                    (result.symbolOverrides ||= {})['S_' + trapMatch[1].slice(2).toLowerCase()] = trapMatch[2] ?? trapMatch[3];
-                // C symbols.c:820-844: other-symbol overrides use sym_val too.
-                const otherMatch = entry.match(/^\s*(S_(?:nothing|unexplored|pet_override|hero_override))\s*[:=]\s*(.*?)\s*$/i);
-                if (otherMatch)
-                    (result.symbolOverrides ||= {})['S_' + otherMatch[1].slice(2).toLowerCase()] = otherMatch[2];
-                const terrMatch = entry.match(/^\s*(S_(?:room|corr|litcorr|ndoor|vodoor|hodoor|vcdoor|hcdoor|fountain|altar|water|lava|lavawall|ice|tree))\s*:\s*(?:'([^'])'|([^'\s]))\s*$/i);
-                if (terrMatch)
-                    (result.symbolOverrides ||= {})['S_' + terrMatch[1].slice(2).toLowerCase()] = terrMatch[2] ?? terrMatch[3];
-                /* C symbols.c:839/options.c:9385: direct display consumers
-                 * need the same decoded byte as ov_primary_syms, including
-                 * quoted escapes (a bare backslash-number is decimal). */
-                const overrideName = pairMatch && 'S_' + pairMatch[1].slice(2).toLowerCase();
-                if (overrideName && result.symbolOverrides?.[overrideName] !== undefined) {
-                    const value = sym_val_real(pairMatch[2]);
-                    if (value)
-                        result.symbolOverrides[overrideName] = String.fromCharCode(value);
-                    else
-                        delete result.symbolOverrides[overrideName];
-                }
-            }
+            } else config_error_add("Error in %s definition '%s'",
+                rogue ? 'ROGUESYMBOLS' : 'SYMBOLS', buffer.value);
             continue;
         }
 
@@ -1098,7 +984,7 @@ export function parseNethackrc(rc) {
         for (const opt of optMatch[1].split(',').reverse()) {
             // options.c:522-526 rejects the raw entry before stripping space,
             // just as the interactive parseoptions() path below already does.
-            if (opt.length > 128) {
+            if (new TextEncoder().encode(opt).length > 128) {
                 config_error_add('Option too long, max length is 128 characters');
                 continue;
             }
@@ -1144,6 +1030,26 @@ export function parseNethackrc(rc) {
             const compound = option_state().allopt.find(r => ['symset', 'pettype', 'petattr', 'versinfo', 'runmode', 'pickup_types', 'menustyle', 'sortloot', 'sortvanquished', 'msg_window', 'menu_headings', 'perminv_mode'].includes(r.name)
                 && ((menuname.length >= r.minmatch && r.name.startsWith(menuname)) || menuname === r.alias));
             if (compound) compoundDuplicate(compound.name, menuname === compound.alias ? compound.alias : '');
+            const windowtype = option_state().allopt.find(r => r.name === 'windowtype');
+            if (menuname.length >= windowtype.minmatch && windowtype.name.startsWith(menuname)) {
+                compoundDuplicate('windowtype');
+                if (menunegated)
+                    config_error_add('The windowtype option may not both have a value and be negated.');
+                else if (!menuval)
+                    config_error_add("Missing parameter for '%s'", menuopts);
+                else
+                    choose_windows(menuval.slice(0, 15)); // options.c:4972 nmcpy; WINTYPELEN
+                continue;
+            }
+            const symbolOption = option_state().allopt.find(r =>
+                (r.name === 'symset' || r.name === 'roguesymset')
+                && menuname.length >= r.minmatch && r.name.startsWith(menuname));
+            if (symbolOption && menunegated) {
+                if (!compound) compoundDuplicate(symbolOption.name);
+                // C options.c:625-628 passes TRUE even without a parameter.
+                config_error_add('The %s option may not both have a value and be negated.', symbolOption.name);
+                continue;
+            }
             // C options.c:3971-3990,4912: no-value forms still run the handler.
             if (menuname === 'sortvanquished' && !menuval) {
                 config_error_add("Missing parameter for '%s'", menuopts);
@@ -1232,14 +1138,17 @@ export function parseNethackrc(rc) {
                             if (i === 1) symName = 'RogueIBM';
                             const set = (gs.symset[i] ||= {});
                             set.name = symName;
-                            set.handling = 1; // dat/symbols: Handling: IBM
-                            // C symbols.c:214: RogueIBM keeps the no-color default.
-                            set.nocolor = i === 1 ? 1 : 0;
+                            if (!read_symbol_file(i)) {
+                                clear_symsetentry(i, true);
+                                badflag = true;
+                                break;
+                            }
                             if (i === 0) result.symset = symName;
                         }
                     }
                     if (badflag)
                         config_error_add('Failure to load symbol set %s.', symName);
+                    else switch_symbols(true);
                 }
                 continue;
             }
@@ -1252,29 +1161,13 @@ export function parseNethackrc(rc) {
                     else {
                         result.symset = 'DECgraphics';
                         if (gs.symset?.[0]) gs.symset[0].name = result.symset;
+                        read_symbol_file(0);
+                        switch_symbols(true);
                     }
                 }
                 continue;
             }
-            /* C options.c:1906 optfn_IBMgraphics (BACKWARD_COMPAT): loads "IBMGraphics"
-             * into the primary set and "RogueIBM" into the rogue set; a set that
-             * already has a name is a load failure. */
-            if (menuname.length >= 3 && 'ibmgraphics'.startsWith(menuname)) {
-                compoundDuplicate('IBMgraphics');
-                if (!menunegated) {
-                    if (result.symset || gs.symset?.[0]?.name || gs.symset?.[1]?.name)
-                        config_error_add('Failure to load symbol set %s.', 'IBMgraphics');
-                    else {
-                        result.symset = 'IBMgraphics';
-                        if (gs.symset?.[0]) gs.symset[0].name = result.symset;
-                        if (gs.symset?.[1]) {
-                            gs.symset[1].name = 'RogueIBM';
-                            gs.symset[1].handling = 1;
-                        }
-                    }
-                }
-                continue;
-            }
+
             if (menuname.length >= 7 && 'statushilites'.startsWith(menuname)) {
                 optfn_statushilites_set(result.iflags,
                     menusep < 0 ? '' : menuopts.slice(menusep + 1).trim(), menunegated);
@@ -1366,19 +1259,15 @@ export function parseNethackrc(rc) {
             /* C options.c:688-695 parseoptions(): an unmatched S_ name falls to
              * parsesymbols(opts, PRIMARYSET) and is accepted when it names a symbol. */
             if (menuname.startsWith('s_')) {
-                parsesymbols_cut = -1;
-                if (parsesymbols_ok(menuopts)) {
-                    const pm = menuopts.match(/^\s*(S_[^:=\s]+)\s*[:=]\s*(.*?)\s*$/i);
-                    if (pm) (result.symbolPairs ||= []).push([pm[1], pm[2]]);
-                    /* options.c:663-666: only this OPTIONS=S_xxx path runs check_gold_symbol();
-                     * cfgfiles.c cnf_line_SYMBOLS (SYMBOLS=) calls switch_symbols() alone. */
-                    result.symbolFromOptions = true;
+                const buffer = { value: menuopts };
+                if (parsesymbols(buffer, PRIMARYSET)) {
+                    switch_symbols(true);
+                    check_gold_symbol();
+                    result.iflags.invis_goldsym = game.iflags.invis_goldsym;
                     continue;
                 }
-                /* C symbols.c:817-828 NULs the separator and mungspaces()
-                 * the name even on failure; options.c:689 prints that buffer. */
-                if (parsesymbols_cut >= 0)
-                    menuopts = menuopts.slice(0, parsesymbols_cut).trim().replace(/\s+/g, ' ');
+                menuopts = buffer.value;
+
             }
             if (menuname && !ALLOPT.some(r => r[0].toLowerCase().startsWith(menuname)) && menuname !== 'permadeaf') {
                 config_error_add("Unknown option '%s'", menuopts);
@@ -1621,35 +1510,14 @@ export function parseNethackrc(rc) {
              * color_attr_parse_str: "color&attr" (either order) or one of them. */
             if (menuname.length >= 6 && 'menu_headings'.startsWith(menuname)) {
                 const op = menusep < 0 ? '' : menuopts.slice(menusep + 1).trim();
-                const ATTRS = { none: 0, bold: 1, dim: 2, italic: 3, underline: 4, blink: 5, inverse: 7, normal: 0, uline: 4, reverse: 7 };
-                const attrOf = (t, cmp = false) => {
-                    const a = ATTRS[t.trim().toLowerCase().replace(/[ \-_]/g, '')] ?? -1;
-                    if (a === -1 && cmp) config_error_add("Unknown text attribute '%s'", t.trim());
-                    return a;
-                };
-                const clrOf = (t, sup = false) => {
-                    const c = match_str2clr(t, true);
-                    if (c >= 16 && !sup) config_error_add("Unknown color '%s'", t.trim());
-                    return c;
-                };
                 if (!op) {
                     result.iflags.menu_headings = { color: 8 /* NO_COLOR */, attr: menunegated ? 0 : 7 };
                 } else if (menunegated) {
                     config_error_add('The %s option may not both have a value and be negated.', 'menu_headings');
                 } else {
-                    let c = 8, a = 0, ok = true;
-                    const amp = op.indexOf('&');
-                    if (amp >= 0) {
-                        const l = op.slice(0, amp), r = op.slice(amp + 1);
-                        c = clrOf(l, false); a = attrOf(r, true);
-                        if (c >= 16 && a === -1) { c = clrOf(r, false); a = attrOf(l, true); }
-                        ok = !(c >= 16 || a === -1);
-                    } else {
-                        const t = attrOf(op, false);
-                        if (t === -1) { c = clrOf(op, false); ok = c < 16; }
-                        else a = t;
-                    }
-                    if (ok) result.iflags.menu_headings = { color: c, attr: a };
+                    const ca = { color: 8, attr: 0 };
+                    if (color_attr_parse_str(ca, op))
+                        result.iflags.menu_headings = ca;
                 }
                 continue;
             }
@@ -1825,64 +1693,31 @@ export function parseNethackrc(rc) {
                     default: config_error_add("Unrecognized pet type '%s'.", val); break;
                     }
                 }
-                /* C options.c optfn_roguesymset -> load_symset(ROGUESET): the Rogue
-                 * IBM sets (dat/symbols "Handling: IBM", "Color: Yes") are the only
-                 * ones HAS_ROGUE_IBM_GRAPHICS (display.c:2582) accepts. */
-                else if (key === 'roguesymset') {
-                    /* options.c:3558-3563 optfn_roguesymset: read_sym_file(ROGUESET)
-                     * fails for a name dat/symbols does not define — unless it is
-                     * "Default symbols" (fuzzymatch " -_") or "default", which
-                     * files.c:2653-2657 clears and reports as success. */
-                    const entry = symset_in_file(val);
-                    const defsyms = fuzzymatch(String(val), 'Default symbols', ' -_', true)
-                        || String(val).toLowerCase() === 'default';
-                    if (val && !entry && !defsyms) {
-                        config_error_add('Unable to load symbol set "%s" from "%s"', val, 'symbols');
-                        continue;
-                    }
-                    if (val && gs.symset && gs.symset[1]) {
-                        /* files.c:2657 clear_symsetentry(ROGUESET, TRUE) nulls the
-                         * accepted default-ish name instead of recording it. */
-                        gs.symset[1].name = (!entry && defsyms) ? null : val;
-                        gs.symset[1].handling = entry ? entry[1] : 0;
-                    }
-                    /* options.c:3565-3566: an accepted roguesymset leaves
-                     * go.opt_need_redraw set until a later toggle() docrt()s. */
-                    if (val) result.opt_need_redraw = true;
-                }
-                /* C options.c:1815-1838 optfn_glyph do_set: mungspaces, then
-                 * glyphrep_to_custom_map_entries files the G_ customization. */
+                /* C options.c:1815-1838 optfn_glyph(do_set): file the
+                 * customization while the rc's current symbol set is live.
+                 * A later symset load may purge it, just as in C. */
                 else if (key === 'glyph') {
                     if (!negated && val)
-                        glyphrep_to_custom_map_entries(val.replace(/\s+/g, ' ').trim(), { value: 0 });
+                        glyphrep_to_custom_map_entries(mungspaces(val), { value: 0 });
                 }
-                else if (key === 'symset') {
-                    /* C options.c:4181-4190 optfn_symset: the line names the set as
-                     * soon as it is parsed (so a later SYMBOLS=G_x:...color finds a
-                     * named symset, glyphs.c:to_custom_symset_entry_callback), then
-                     * read_sym_file() validates it.  A name dat/symbols does not
-                     * define — and that is not "Default symbols" (fuzzymatch " -_")
-                     * or "default" (files.c:2653-2657) — fails the load and is a
-                     * config error. */
-                    if (val
-                        && !SYMSET_LIST.some(e => e[0].toLowerCase() === val.toLowerCase())
-                        && !symset_defined_in_file(String(val))
-                        /* dat/symbols also defines MACgraphics (H_MAC); only the
-                         * do_symset() pick-list (SYMSET_LIST) hides it off-Mac. */
-                        /* dat/symbols:778 defines MACgraphics (Handling: MAC); only
-                         * the 'O' picker skips it (symbols.c:942), read_sym_file loads it. */
-                        && val.toLowerCase() !== 'macgraphics'
-                        && !symset_in_file(val)
-                        /* dat/symbols defines MACgraphics (Handling: MAC); only the
-                         * do_symset() pick-list hides it off-Mac (symbols.c:943). */
-                        && String(val).toLowerCase() !== 'macgraphics'
-                        && !fuzzymatch(String(val), 'Default symbols', ' -_', true)
-                        && String(val).toLowerCase() !== 'default') {
-                        config_error_add('Unable to load symbol set "%s" from "%s"', val, 'symbols');
-                        continue;
+                /* C options.c:3545-3570,4169-4202 reads immediately. The
+                 * parser's current set controls later glyph directives. */
+                else if (key === 'roguesymset' || key === 'symset') {
+                    if (val) {
+                        const which = key === 'roguesymset' ? 1 : 0;
+                        gs.symset[which].name = val;
+                        if (!read_symbol_file(which)) {
+                            clear_symsetentry(which, true);
+                            config_error_add('Unable to load symbol set "%s" from "%s"', val, 'symbols');
+                            continue;
+                        }
+                        if (!which) {
+                            switch_symbols(gs.symset[0].name != null);
+                            result.symset = gs.symset[0].name;
+                        }
+                        result.opt_need_redraw = true;
+                        result.symbolSetChanged = true;
                     }
-                    result.symset = val;
-                    if (val && gs.symset && gs.symset[0]) gs.symset[0].name = val;
                 }
                 /* C options.c:1725,1748-1752: mungspaces, nmcpy (31 bytes),
                  * then sanitize_name, including during startup.  The rc file
@@ -2018,11 +1853,7 @@ export function parseNethackrc(rc) {
                     }
                 }
                 else if (key.length >= 4 && 'petattr'.startsWith(key)) {
-                    const PETATTRS = { none: 0, normal: 0, bold: 1, dim: 2, italic: 3,
-                                       underline: 4, uline: 4, blink: 5, inverse: 7, reverse: 7 };
-                    const lv = (val || '').toLowerCase().replace(/[ _-]/g, ''); // C coloratt.c:374-382 fuzzymatch
-                    const itmp = negated ? 0
-                        : Object.hasOwn(PETATTRS, lv) ? PETATTRS[lv] : -1;
+                    const itmp = negated ? 0 : match_str2attr(val || '', false);
                     if (itmp === -1) config_error_add("Unknown %s parameter '%s'", 'petattr', stripped);
                     if (itmp !== -1) {
                         result.iflags.wc2_petattr = itmp;
@@ -2112,6 +1943,17 @@ export function parseNethackrc(rc) {
                 (game.flags ||= {}).rest_on_space = result.flags.rest_on_space;
         }
     }
+    const byteOverrides = {};
+    const primaryOverrides = game.go?.ov_primary_syms || [];
+    for (const sp of LOADSYMS) {
+        const value = primaryOverrides[sp.idx];
+        if (sp.range !== 1 && value && gs.showsyms?.[sp.idx] === value)
+            byteOverrides['S_' + sp.name.slice(2).toLowerCase()] = String.fromCharCode(value);
+    }
+    const rogueBoulder = game.go?.ov_rogue_syms?.[SYM_OFFSETS.X + 2];
+    if (rogueBoulder) byteOverrides.S_boulder_rogue = String.fromCharCode(rogueBoulder);
+    result.symbolOverrides = byteOverrides;
+
     return result;
 }
 
@@ -2249,11 +2091,11 @@ import { update_inventory } from './invent.js'; // relocate-fns
 import { menutype } from './menustyle.js'; // relocate-fns
 import { choose_disco_sort } from './o_init.js'; // relocate-fns
 import './options_runtime.js'; // relocate-fns
-import { drainTopline, query_attr_one, set_cursor } from './optmenu.js';
-import { query_color } from './coloratt.js';
+import { drainTopline, set_cursor } from './optmenu.js';
+import { query_attr, query_color, query_color_attr } from './coloratt.js';
 import { handler_change_autocompletions, handler_rebind_keys } from './cmd.js';
 import { status_hilite_menu } from './botl.js'; // relocate-fns
-import { assign_graphics, load_primary_symset_from_file, clear_symsetentry } from './symbols.js'; // relocate-fns
+import { assign_graphics, clear_symsetentry, do_symset, read_symbol_file } from './symbols.js'; // relocate-fns
 import { classifyTerrain } from './terrain-status.js'; // relocate-fns
 import { menu_heading_sgr, menu_heading_text } from './tty_menu.js'; // relocate-fns
 import { vision_recalc } from './vision.js'; // relocate-fns
@@ -3406,30 +3248,43 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false, prompted = fal
              * stored fifteen symbols where C stores none — the two are the same
              * autopickup behaviour but a different menu and a different
              * "[all]" vs "[$\"…]" value on the parent Options page. */
-            allPicked = !allPicked;
-            marks.set('A', allPicked ? '\x01+' : '\x01-');
+            allPicked = counting && count > 0 ? true : !allPicked;
+            marks.set('A', allPicked ? (counting && count > 0 ? '\x01#' : '\x01+') : '\x01-');
             continue;
         }
-        if (ch === '.' || ch === '-' || ch === '@') {
+        if ('.-,\\@~'.includes(ch)) {
+            // windows.c:1562-1589; wintty.c:1650-1698. This picker has one
+            // page, so the page and whole-menu operations affect the same rows.
+            const mode = ch === '.' || ch === ',' ? 1
+                : ch === '-' || ch === '\\' ? 2 : 0;
             for (const c of classes) {
-                const selected = ch === '.' || (ch === '@' && !cur.has(c.sym));
+                const selected = mode === 1 || (mode === 0 && !cur.has(c.sym));
                 if (selected === cur.has(c.sym)) continue;
                 if (selected) cur.add(c.sym); else cur.delete(c.sym);
                 marks.set(c.sym, selected ? '\x01+' : '\x01-');
+            }
+            const selected = mode === 1 || (mode === 0 && !allPicked);
+            if (selected !== allPicked
+                && menuitem_invert_test(mode, 2 /* SKIPINVERT */, allPicked)) {
+                allPicked = selected;
+                marks.set('A', selected ? '\x01+' : '\x01-');
             }
             continue;
         }
         if (symByAcc.has(ch)) {
             const sym = symByAcc.get(ch);
-            if (cur.has(sym)) cur.delete(sym); else cur.add(sym);
+            // wintty.c:1749-1765: an explicit count sets the selected
+            // entry's count without deselecting it, and paints '#'.
+            if (counting && count > 0) cur.add(sym);
+            else if (cur.has(sym)) cur.delete(sym); else cur.add(sym);
             /* set_item_state, not the initial paint: always '+', never '*'. */
-            marks.set(sym, cur.has(sym) ? '\x01+' : '\x01-');
+            marks.set(sym, cur.has(sym) ? (counting && count > 0 ? '\x01#' : '\x01+') : '\x01-');
             continue;
         }
         if (symSet.has(ch)) {
             // typed the class symbol directly
             if (cur.has(ch)) cur.delete(ch); else cur.add(ch);
-            marks.set(ch, cur.has(ch) ? '\x01+' : '\x01-');
+            marks.set(ch, cur.has(ch) ? (counting && count > 0 ? '\x01#' : '\x01+') : '\x01-');
             continue;
         }
         // ignore any other key (menu stays displayed)
@@ -3931,13 +3786,7 @@ export async function handler_menu_objsyms(preserveStatus = false) {
 /* C options.c:5779 handler_menu_headings + coloratt.c:304 query_color_attr. */
 export async function handler_menu_headings(preserveStatus = false) {
     const mh = game.iflags.menu_headings ||= { color: 8, attr: 7 };
-    const prompt = 'How to highlight menu headings:';
-    const c = await query_color(prompt, mh.color, preserveStatus);
-    if (c === -1) return;
-    const a = await query_attr_one(prompt, mh.attr, true);
-    if (a === -1) return;
-    mh.color = c;
-    mh.attr = a;
+    await query_color_attr(mh, 'How to highlight menu headings:', preserveStatus);
 }
 
 /* C botl.c:781-815 conditions[].ranking and botl.c:817-848 condtests[]
@@ -4028,7 +3877,7 @@ export async function handler_msgtype(preserveStatus = false) {
  * remove arms (opt_idx 1, 2) need the menucolor list menus and are not. */
 export async function handler_menu_colors(preserveStatus = false) {
     for (;;) {
-        const nmc = (game.menu_colorings || []).length;
+        const nmc = count_menucolors();
         const opt_idx = await handle_add_list_remove('menucolor', nmc, preserveStatus);
         if (opt_idx === 3) break;
         if (opt_idx !== 0) {
@@ -4046,7 +3895,7 @@ export async function handler_menu_colors(preserveStatus = false) {
             m.end_menu(opt_idx === 1 ? 'List of menu colors' : 'Remove which menu colors');
             const { count, picks } = await m.select_menu(opt_idx === 1 ? PICK_NONE : PICK_ANY);
             if (count > 0) {
-                for (let k = 0; k < count; k++) game.menu_colorings.splice(picks[k] - 1 - k, 1);
+                for (let k = 0; k < count; k++) free_one_menu_coloring(picks[k] - 1 - k);
             }
             if (count < 0) return optn_ok;
             continue;
@@ -4067,11 +3916,9 @@ export async function handler_menu_colors(preserveStatus = false) {
         }
         const mcclr = await query_color(null, 8, true);
         if (mcclr === -1) continue;
-        const mcattr = await query_attr_one(null, 0, true);
+        const mcattr = await query_attr(null, 0, true);
         if (mcattr === -1) continue;
-        /* coloratt.c:543 add_menu_coloring_parsed prepends */
-        (game.menu_colorings ||= []).unshift({ match: re, color: mcclr, attr: mcattr, origstr: mcbuf });
-        game.iflags.use_menu_color = true;
+        add_menu_coloring_parsed(mcbuf, mcclr, mcattr);
     }
     /* C options.c:6417-6424 */
     if (game.iflags?.use_menu_color && game.iflags?.perm_invent) update_inventory();
@@ -4209,7 +4056,7 @@ export async function handler_paranoid_confirmation(preserveStatus = false) {
  * leaves the attribute alone. */
 export async function handler_petattr(preserveStatus = false) {
     const iflags = (game.iflags ||= {});
-    const tmp = await query_attr_one('Select pet highlight attribute',
+    const tmp = await query_attr('Select pet highlight attribute',
         iflags.wc2_petattr ?? 7 /* ATR_INVERSE */, preserveStatus);
     if (tmp !== -1) {
         iflags.wc2_petattr = tmp;
@@ -4353,94 +4200,13 @@ function autounlockStr() {
     return unlocktypes.filter((_, i) => f & (1 << i)).map(t => t[0]).join(' + ');
 }
 
-/* C dat/symbols headers: [name, handling, description, restriction].
- * read_sym_file() accepts every named set; do_symset() separately filters
- * MACgraphics (H_MAC) from the picker on non-Mac builds (symbols.c:943-945).
- * Rogue* sets carry the "rogue" restriction. */
-const SYMSET_LIST = [
-    ['plain', 0, "same as default symbols, except '+' for corner walls", ''],
-    ['Blank', 0, 'completely blank symbols', ''],
-    ['IBMgraphics', 1, 'special line-drawing characters used for walls', ''],
-    ['IBMGraphics_1', 1, '', ''],
-    ['IBMGraphics_2', 1, '', ''],
-    ['RogueIBM', 1, '', 'rogue'],
-    ['RogueEpyx', 1, 'rogue level color symbol set like Epyx Rogue', 'rogue'],
-    ['RogueWindows', 1, '', 'rogue'],
-    ['curses', 2, 'approximation of IBMgraphics using DECgraphics', 'primary'],
-    ['DECgraphics', 2, 'special line-drawing characters used for walls', 'primary'],
-    ['MACgraphics', 4, '', ''],
-    ['MACgraphics', 4, '(pre-OSX: obsolete?)', 'primary'],
-    ['Enhanced1', 5, 'Enhanced with Unicode glyphs and 24-bit color', 'primary'],
-    ['Enhanced2', 5, 'Enhanced with more Unicode glyphs and 24-bit color', 'primary'],
-    ['MACgraphics', 4, '', ''],
-    ['AmigaFont', 0, 'Amiga hack.font line-drawing and effect characters', ''],
-];
-
-/* read_sym_file() finds every dat/symbols set, including MACgraphics (H_MAC),
- * which only the do_symset() pick-list skips (symbols.c:942, no MAC_GRAPHICS_ENV). */
-function symset_in_file(name) {
-    const n = String(name).toLowerCase();
-    return SYMSET_LIST.find(e => e[0].toLowerCase() === n)
-        ?? (n === 'macgraphics' ? ['MACgraphics', 4, '', 'primary'] : undefined);
-}
-
 /* C symbols.c:909 do_symset(): both pickers share the restriction filter. */
 export async function handler_symset(preserveStatus = false, rogueflag = false) {
-    const cur = gs.symset[rogueflag ? 1 : 0];
-    const symset_name = cur.name;
-    /* symbols.c:942-945: H_MAC is valid in config, but the picker omits it
-     * when MAC_GRAPHICS_ENV is not compiled (as in the tty build). */
-    const sets = SYMSET_LIST.filter((s) => s[1] !== 4
-        && s[3] !== (rogueflag ? 'primary' : 'rogue'));
-    let biggest = 'Default Symbols'.length;
-    for (const s of sets) biggest = Math.max(biggest, s[0].length);
-    let defindx = 0;
-    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
-    if (!symset_name) defindx = 1;
-    m.add_menu(1, 0, ATR_NONE, 'Default Symbols', false, defindx === 1);
-    sets.forEach((s, i) => {
-        const id = i + 2;
-        if (symset_name && s[0].toLowerCase() === symset_name.toLowerCase()) defindx = id;
-        m.add_menu(id, 0, ATR_NONE, s[0].padEnd(biggest + 2) + ' ' + s[2], false, id === defindx);
-    });
-    m.end_menu(`Select ${rogueflag ? 'rogue level ' : ''}symbol set:`);
-    const { count, picks } = await m.select_menu(PICK_ONE);
-    let chosen = -2;
-    if (count > 0) {
-        chosen = picks[0];
-        if (count === 2 && chosen === defindx) chosen = picks[1];
-        chosen -= 2;
-    } else if (count === 0 && defindx > 0) {
-        chosen = defindx - 2;
-    }
-    if (chosen > -1) {
-        const sl = sets[chosen];
-        if (!sl) return true;
-        const wasDec = dec_mode();
-        clear_symsetentry(rogueflag ? 1 : 0, true); // C symbols.c:1028
-        cur.name = sl[0];
-        cur.handling = sl[1];
-        /* rows still physically drawn under the old DEC shift until a window
-         * is dismissed over them (see com_pager render_map_row_clipped) */
-        if (wasDec && !dec_mode()) game._decStaleFrom = 0;
-        /* C symbols.c:909-1090 do_symset — init_primary_symbols() resets every
-         * showsym to its defsym default before read_sym_file loads the set, so
-         * S_darkroom paints '.' until reglyph_darkroom() restores the alias to
-         * S_room (display.c:1860-1897) at the doset tail's
-         * reset_needed_visuals.  display.js re-derives glyphs from this flag
-         * (see _remap_remembered_ibm / _terrain_glyph_base ROOM). */
-        game._symsetDarkroomPending = true;
-    } else if (chosen === -1) {
-        clear_symsetentry(rogueflag ? 1 : 0, true); // C symbols.c:1037
-    }
-    /* C symbols.c:1065-1098 do_symset: reload the chosen primary table,
-     * including defaults, then make it the active showsyms table. */
-    if (!rogueflag && chosen >= -1) {
-        load_primary_symset_from_file(cur.name);
-        game._symsetDarkroomPending = true;
-        if (!Is_rogue_level(game.u?.uz)) assign_graphics(0);
-    }
-    return true;
+    // C options.c:4222-4230 wraps only the primary handler in a glyph cache.
+    if (!rogueflag && !glyphid_cache_status()) fill_glyphid_cache();
+    const result = await do_symset(rogueflag, preserveStatus);
+    if (!rogueflag && glyphid_cache_status()) free_glyphid_cache();
+    return result;
 }
 
 /* C options.c:5624 handler_autounlock. */
@@ -5083,7 +4849,7 @@ export async function parseoptions(opts, tinitial, tfrom_file) {
         opts = opts.slice(0, comma);
         if (!await parseoptions(rest, go.opt_initial, go.opt_from_file)) retval = false;
     }
-    if (opts.length > 128) {
+    if (new TextEncoder().encode(opts).length > 128) {
         await option_error('Option too long, max length is 128 characters');
         return false;
     }
