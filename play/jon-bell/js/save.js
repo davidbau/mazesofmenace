@@ -73,6 +73,10 @@ export async function savelev(lev, freeing = false) {
     const t = g._track;
     levelStore().set(lev, {
         omoves: g.moves | 0,
+        // C save.c:673-684,924-934 writes same-dungeon destinations relative
+        // to u.uz. Keep that origin alongside our absolute graph pointers so
+        // restore.c can rebase bones loaded at a different special-level depth.
+        saved_uz: { ...g.u.uz },
         level: g.level,
         stairs: g.stairs,
         fmon: g.fmon,
@@ -532,4 +536,6 @@ export async function freedynamicdata() {
     release_runtime_info(); // C save.c:1167
     const { wish_history_flush } = await import('./zap.js');
     wish_history_flush();
+    const { sysopt_release } = await import('./sys.js');
+    sysopt_release(); // C save.c:1188
 }

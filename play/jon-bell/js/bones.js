@@ -441,11 +441,9 @@ export async function savebones(how, when, corpse) {
         mtmp.msleeping = 1;
         save_ebones(mtmp);
     } else if (u.ugrave_arise === LEAVESTATUE) {
-        const { mkcorpstat } = await import('./mklev.js');
-        let statue = await mkcorpstat(476 /* STATUE */, null, u.umonnum,
-                                    u.ux | 0, u.uy | 0, CORPSTAT_NONE);
-        if (statue)
-            statue = await oname(statue, String(g.plname ?? u.plname ?? ''), 0);
+        const { mk_named_object } = await import('./mkobj.js');
+        const statue = await mk_named_object(476 /* STATUE */, u.umonnum,
+                                    u.ux | 0, u.uy | 0, String(g.plname ?? u.plname ?? ''));
         await drop_upon_death(null, statue, u.ux | 0, u.uy | 0);
         if (!statue)
             return; /* C bones.c:486-487 */

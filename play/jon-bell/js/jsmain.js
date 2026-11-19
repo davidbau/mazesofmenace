@@ -43,6 +43,7 @@ import { restore_saved_game } from './files.js';
 import { ENV } from './hostenv.js';
 import { anim_frames_reset, anim_frames_take } from './animframes.js';
 import { runtime_info_init, release_runtime_info } from './mdlib.js';
+import { sys_early_init } from './sys.js';
 function extractRoleInitRng(sessionData) {
     const calls = [];
     let capturing = false;
@@ -113,8 +114,10 @@ export class NethackGame {
          * starts with no wish history even when the previous segment ended
          * without reaching freedynamicdata() (save.c:1136). */
         wish_history_flush();
-        /* C allmain.c:44 early_init() calls runtime_info_init(); reset first in
-         * case a prior segment ended at EOF without freedynamicdata(). */
+        /* C allmain.c:43-44 early_init() calls sys_early_init() and
+         * runtime_info_init(); reset runtime_info first in case a prior
+         * segment ended at EOF without freedynamicdata(). */
+        sys_early_init();
         release_runtime_info();
         runtime_info_init();
         set_configfile_for_session(this._seed, this._datetime,
@@ -179,16 +182,7 @@ export class NethackGame {
                     /* C options.c:7176 default; OPTIONS=runmode overrides it. */
                     runmode: RUN_LEAP,
                     ...opts.flags };
-        /* C sys.c:66-69 sys_early_init(), with config.h:333-346's compiled-in
-         * values: persmax = max(PERSMAX,1) = 3, entrymax = max(ENTRYMAX,10) =
-         * 100, pointsmin = max(POINTSMIN,1) = 1, pers_is_uid = PERS_IS_UID,
-         * which is 1 on every build that is not MICRO/MACOS9/WIN32.  All four
-         * were guesses (10/10/1/false) and all four were unobservable while the
-         * record file was permanently empty; they become load-bearing the
-         * moment topten() reads a list back, because persmax caps how many
-         * entries one uid+role may keep and entrymax caps the list length. */
-        g.sysopt = { entrymax: 100, pointsmin: 1, persmax: 3, pers_is_uid: 1,
-                     tt_oname_maxrank: 10, ...(g.sysopt || {}) };
+        /* g.sysopt is initialized by sys_early_init() in start() (allmain.c:43, sys.c:21). */
         // C ref: options.c set_playmode() line 10179 — when playmode:debug (wizard mode)
         // is set, C overrides svp.plname with "wizard" unconditionally (after
         // recordings).  The rc name (e.g. "Gronk") is discarded; the welcome message
@@ -363,8 +357,11 @@ export class NethackGame {
             if (!save) return false;
             /* C unixmain.c:261; dorecover() releases this at restgamestate(). */
             game._base_topline = await tty_restore_base_topline(bannerShown);
-            await pline('Restoring save file...');
-            await dorecover(save);
+            if (game.early_raw_messages)
+                game._base_topline.rawPrint('Restoring save file...');
+            else
+                await pline('Restoring save file...');
+            if (!await dorecover(save)) return false;
             /* C decl.h gl.luathemes is process state and is NOT in the save
              * file; the restoring process starts with it empty, so its first
              * makelevel() loads themerms.lua (nhlib.lua shuffle).  restgamestate()

@@ -7,8 +7,9 @@
 import { CORPSE, CANDELABRUM_OF_INVOCATION, SCR_SCARE_MONSTER, SPBOOK_FIRST_OTYP } from './const.js';
 import { ARMOR_CLASS, FOOD_CLASS, GEM_CLASS, HEAVY_IRON_BALL, POTION_CLASS, POT_EXTRA_HEALING, POT_GAIN_ENERGY, POT_HEALING, POT_SPEED, RING_CLASS, SCROLL_CLASS, SCR_CONFUSE_MONSTER, SCR_ENCHANT_ARMOR, SCR_ENCHANT_WEAPON, SPBOOK_CLASS, SPE_HEALING, TALLOW_CANDLE, WAN_DIGGING, WEAPON_CLASS } from "./const.js"; // shared class/otyp constants
 import { rn2 } from './rnd.js';
+import { newsym } from './display.js';
 import { assign_candy_wrapper } from './read.js';
-import { costly_spot, billable, stolen_value } from './shk.js';
+import { costly_spot, costly_adjacent, find_objowner, billable, stolen_value, globby_bill_fixup } from './shk.js';
 import { SHOPBASE } from './const.js';
 import { in_rooms } from './hack.js';
 import './mklev.js';
@@ -18,7 +19,7 @@ import './mklev.js';
 import { attach_fig_transform_timeout } from './timeout.js';
 import { copy_mextra, dead_species } from './mon.js';
 import { impossible } from './pline.js';
-import { OBJ_CONTAINED } from './const.js'; // C: obj.h OBJ_CONTAINED
+import { OBJ_CONTAINED, isok } from './const.js'; // C: obj.h OBJ_CONTAINED
 import { permonstTemplate } from './makemon.js';
 import { forget_temple_entry } from './priest.js';
 import { _cwt } from './weight.js';
@@ -33,8 +34,7 @@ import { game } from './gstate.js';
 import { weight as weight_w } from './weight.js';
 import { newobj } from './game.js';
 import { obj_split_timers } from './timeout.js';
-import { obj_split_light_source } from './light.js';
-import { artifact_light } from './artifact.js';
+import { obj_split_light_source, obj_sheds_light } from './light.js';
 import { oid_price_adjustment, splitbill } from './shk.js';
 import './mklev.js';
 import { OBJ_FREE, OBJ_LUAFREE, OBJ_INVENT as _OBJ_INVENT_CA, CONTAINED_TOO, COST_UNCURS, COST_UNBLSS, FIG_TRANSFORM } from './const.js';
@@ -223,7 +223,7 @@ export function is_treefruit(obj) {
 
 import { MAX_OIL_IN_FLASK } from './const.js';
 import { _HOP_FOOD_CLASS, _HOP_HORN_OF_PLENTY, _HOP_POTION_CLASS, _IA_TALLOW_CANDLE_OTYP, _IA_WAX_CANDLE_OTYP, _doaltarobj_Doname2, _levlAt, nothing_happens } from './cmd.js';
-import { consume_obj_charge } from './invent.js'; // relocate-fns
+import { consume_obj_charge, g_at } from './invent.js'; // relocate-fns
 import { ICE, IRONBARS, IS_ALTAR, Is_airlevel, Is_waterlevel, OBJ_DELETED } from './const.js'; // relocate-fns
 import { doaltarobj, dropy } from './do.js'; // relocate-fns
 import { encumber_msg } from './do_wear.js'; // relocate-fns
@@ -249,11 +249,11 @@ import { In_hell, depth as depth_of_level, level_difficulty } from './dungeon.js
 import { mons_cnutrit } from './food_props.js'; // relocate-fns
 import { freed_obj_chunks } from './game.js'; // relocate-fns
 import { ENV } from './hostenv.js'; // relocate-fns
-import { merged } from './invent.js'; // relocate-fns
+import { merged, mergable, sobj_at, nxtobj } from './invent.js'; // relocate-fns
 import { del_light_source } from './light.js'; // relocate-fns
 import { maybe_reset_pick } from './lock.js'; // relocate-fns
 import { BOULDER, NON_PM, TIN, levelDifficulty } from './makemon.js'; // relocate-fns
-import { AMULET_OF_STRANGULATION, A_NONE, BAG_OF_HOLDING, BELL_OF_OPENING, BRASS_LANTERN, CHEST, EGG, FIGURINE, GLOB_OF_BLACK_PUDDING, GLOB_OF_GREEN_SLIME, GOLD_PIECE, G_NOCORPSE, ICE_BOX, KELP_FROND, LARGE_BOX, LEASH, M2_FEMALE, M2_MALE, M2_NEUTER, MAGIC_LAMP, MONS_ROWS, OC_MERGE, OC_USES_KNOWN, OIL_LAMP, ONAME_NO_FLAGS, PM_DEATH, PM_HUMAN, PM_LICHEN, PM_LIZARD, POT_WATER, RANDOM_CLASS, ROCK, ROCK_CLASS, SLIME_MOLD, SPE_NOVEL, STATUE, S_TROLL, UNICORN_HORN, WAN_LIGHT, WAX_CANDLE, WOOD, WORM_TOOTH, _gm_migrating, is_corrodeable, is_crackable, is_damageable, is_rider_pm, is_rustprone, mons_is_human, mvitals_mvflags, obj_oc_material, obj_sheds_light_mp, special_corpse, uroleMnum } from './mklev.js';
+import { AMULET_OF_STRANGULATION, A_NONE, BAG_OF_HOLDING, BELL_OF_OPENING, BRASS_LANTERN, CHEST, EGG, FIGURINE, GLOB_OF_BLACK_PUDDING, GLOB_OF_GREEN_SLIME, GOLD_PIECE, G_NOCORPSE, ICE_BOX, KELP_FROND, LARGE_BOX, LEASH, M2_FEMALE, M2_MALE, M2_NEUTER, MAGIC_LAMP, MONS_ROWS, OC_MERGE, OC_USES_KNOWN, OIL_LAMP, ONAME_NO_FLAGS, PM_DEATH, PM_HUMAN, PM_LICHEN, PM_LIZARD, POT_WATER, RANDOM_CLASS, ROCK, ROCK_CLASS, SLIME_MOLD, SPE_NOVEL, STATUE, S_TROLL, UNICORN_HORN, WAN_LIGHT, WAX_CANDLE, WOOD, WORM_TOOTH, _gm_migrating, is_corrodeable, is_crackable, is_damageable, is_rider_pm, is_rustprone, mons_is_human, mvitals_mvflags, obj_oc_material, special_corpse, uroleMnum } from './mklev.js';
 import { erosion_matters } from './objnam.js'; // relocate-fns
 import { MKOBJ_OCLASS_PROB_TOTALS, MKOBJ_OC_CLASS, MKOBJ_OC_PROB, MKOBJ_SVB_BASES } from './mkobj_data.js'; // relocate-fns
 import { MKOBJ_OC_OPROP, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js'; // relocate-fns
@@ -685,54 +685,6 @@ export function nextoid(oldobj, newobj) {
     return oid;
 }
 
-// C ref: light.c:761-766 obj_sheds_light(obj) → obj_is_burning(obj) =
-// obj->lamplit && (ignitable(obj) || artifact_light(obj)).
-// The truthy-lamplit branch used to throw on the grounds that ignitable/
-// artifact_light "aren't ported"; artifact_light IS ported now (js/light.js,
-// landed with begin_burn), and ignitable is obj.h's otyp macro, so the whole
-// predicate is answerable.  otyps from js/oc_name_data.js OC_NAME:
-// 224 tallow candle, 225 wax candle, 226 brass lantern, 227 oil lamp,
-// 228 magic lamp, 262 Candelabrum of Invocation, 321 oil (POT_OIL).
-const _SL_TALLOW_CANDLE = 224, _SL_WAX_CANDLE = 225, _SL_BRASS_LANTERN = 226,
-      _SL_OIL_LAMP = 227, _SL_MAGIC_LAMP = 228, _SL_CANDELABRUM = 262,
-      _SL_POT_OIL = 321;
-/* C obj.h:429-433 ignitable(otmp). */
-function _splitobj_ignitable(obj) {
-    const t = obj.otyp | 0;
-    return t === _SL_BRASS_LANTERN || t === _SL_OIL_LAMP
-        || (t === _SL_MAGIC_LAMP && (obj.spe | 0) > 0)
-        || t === _SL_CANDELABRUM || t === _SL_TALLOW_CANDLE
-        || t === _SL_WAX_CANDLE || t === _SL_POT_OIL;
-}
-function _splitobj_shedsLight(obj) {
-    if (!obj.lamplit)
-        return false;
-    return _splitobj_ignitable(obj) || artifact_light(obj);
-}
-
-// game.fobj/game.invent (same o_id, different JS instance), so match chain
-// nodes by o_id as a fallback to reference equality — same convention as
-// js/mklev.js remove_object's extract_nobj matched-node splice.
-function _splitobj_linkRealChain(obj, otmp) {
-    const where = obj.where | 0;
-    let head = null;
-    if (where === OBJ_FLOOR)
-        head = game.fobj;
-    else if (where === OBJ_INVENT)
-        head = game.invent;
-    else
-        return;
-    for (let o = head; o; o = o.nobj) {
-        if (o === obj)
-            return;
-        if (o.o_id === obj.o_id) {
-            otmp.nobj = o.nobj;
-            o.nobj = otmp;
-            return;
-        }
-    }
-}
-
 // C ref: mkobj.c:458-503 splitobj(obj, num) — split `num` off obj into a
 // fresh object inserted just after it in whatever chain obj is on.
 export async function splitobj(obj, num) {
@@ -755,7 +707,6 @@ export async function splitobj(obj, num) {
     game.context = game.context || {};
     game.context.objsplit = { parent_oid: obj.o_id, child_oid: otmp.o_id };
     obj.nobj = otmp;
-    _splitobj_linkRealChain(obj, otmp);
     if ((obj.where | 0) === OBJ_FLOOR)
         obj.nexthere = otmp;
     /* lua isn't tracking the split off portion even if it happens to be
@@ -768,7 +719,7 @@ export async function splitobj(obj, num) {
     if (otmp.oextra?.omid) free_omid(otmp);
     if (obj.timed)
         obj_split_timers(obj, otmp);
-    if (_splitobj_shedsLight(obj))
+    if (obj_sheds_light(obj))
         obj_split_light_source(obj, otmp);
     return otmp;
 }
@@ -2171,6 +2122,7 @@ export async function mkobj_at(oclass, x, y, artif) {
 
 /* C mkobj.c:2004-2021 — mkgold: place or merge a gold pile at (x,y). */
 export async function mkgold(amount, x, y) {
+    let gold = g_at(x, y); // C mkobj.c:2005, before rolling an unspecified amount.
     const goldTrace = typeof process !== 'undefined' && ENV?.FF_MKGOLD_TRACE === '1';
     if (goldTrace)
         pushRngLogEntry(`^mkgold_enter[amount=${amount | 0} xy=${x | 0},${y | 0}]`);
@@ -2180,16 +2132,6 @@ export async function mkgold(amount, x, y) {
         const mul = rnd(Math.trunc(30 / Math.max(12 - depthVal, 2)));
         amount = 1 + rnd(level_difficulty() + 2) * mul;
     }
-    // C invent.c:1612-1623 g_at(x,y) — walk the per-tile nexthere chain
-    // (svl.level.objects[x][y]) for the first COIN_CLASS object. Was a
-    // private _goldObjs Map keyed off mkgold's own prior calls in the same
-    // is reconstructed from state_before, not from mkgold call history), so
-    // the merge branch could never trigger under replay even when C's fobj
-    // chain already had a gold pile there — walk the real levelObjects
-    // chain instead, exactly like the existing sobj_at() helper.
-    let gold = (game.level?.levelObjects?.[x]?.[y]) ?? null;
-    while (gold && (gold.oclass | 0) !== COIN_CLASS)
-        gold = gold.nexthere ?? null;
     if (goldTrace)
         pushRngLogEntry(`^mkgold_existing[xy=${x | 0},${y | 0} yes=${gold ? 1 : 0}]`);
     if (gold) {
@@ -2276,6 +2218,11 @@ function place_object_core(otmp, xi, yi, otmp2) {
     otmp.ox = xi;
     otmp.oy = yi;
     otmp.where = OBJ_FLOOR;
+    // C mkobj.c:2356-2359: no_charge only applies in or beside a shop.
+    // Owner lookup is async in the port; finish the ordinary placement below
+    // synchronously, then let callers await the shop bookkeeping when needed.
+    const noChargeCheck = otmp.no_charge && !costly_spot(xi, yi)
+        ? clear_no_charge_outside_shop(otmp, xi, yi) : null;
     otmp.nobj = game.fobj;
     game.fobj = otmp;
     if ((otmp.otyp | 0) === BOULDER && (!otmp2 || (otmp2.otyp | 0) !== BOULDER))
@@ -2283,48 +2230,37 @@ function place_object_core(otmp, xi, yi, otmp2) {
     // C mkobj.c:2364-2365: placing a timed corpse on ice changes its decay rate.
     if (otmp.timed)
         obj_timer_checks(otmp, xi, yi, 0);
+    return noChargeCheck;
+}
+
+async function clear_no_charge_outside_shop(obj, x, y) {
+    if (!costly_adjacent(await find_objowner(obj, x, y), x, y))
+        obj.no_charge = 0;
+}
+
+// C mkobj.c:2372-2390: reverse twice, preserving pile order except that
+// place_object puts all consecutive boulders above the other objects.
+export async function recreate_pile_at(x, y) {
+    let reversed = null;
+    for (let obj = game.level.levelObjects[x][y], next; obj; obj = next) {
+        next = obj.nexthere;
+        remove_object(obj);
+        obj.nobj = reversed;
+        reversed = obj;
+    }
+    for (let obj = reversed, next; obj; obj = next) {
+        next = obj.nobj;
+        obj.nobj = null;
+        await place_object(obj, x, y);
+    }
 }
 
 export function remove_object(otmp) {
-    const x = otmp.ox | 0;
-    const y = otmp.oy | 0;
-
+    const x = otmp.ox | 0, y = otmp.oy | 0;
     if ((otmp.where | 0) !== OBJ_FLOOR)
         throw new Error(`remove_object: obj where=${otmp.where}, not on floor`);
-    // C mkobj.c:2627-2645 extract_nexthere(otmp, &svl.level.objects[x][y]).
-    // so the real chain's topology (built from the "objects" side-channel)
-    // stays intact when otmp is a same-o_id-but-different-instance match.
-    {
-        const cell = game.level?.levelObjects?.[x];
-        const head = cell ? cell[y] : null;
-        let match = null, prev = null;
-        for (let o = head; o; prev = o, o = o.nexthere) {
-            if (o === otmp || o.o_id === otmp.o_id) { match = o; break; }
-        }
-        if (!match)
-            throw new Error('extract_nexthere: object lost');
-        if (prev)
-            prev.nexthere = match.nexthere;
-        else if (cell)
-            cell[y] = match.nexthere;
-        otmp.nexthere = null;
-    }
-    // C mkobj.c:2600-2619 extract_nobj(otmp, &fobj) — same matched-node splice.
-    {
-        const head = game.fobj;
-        let match = null, prev = null;
-        for (let o = head; o; prev = o, o = o.nobj) {
-            if (o === otmp || o.o_id === otmp.o_id) { match = o; break; }
-        }
-        if (!match)
-            throw new Error('extract_nobj: object lost');
-        if (prev)
-            prev.nobj = match.nobj;
-        else
-            game.fobj = match.nobj;
-        otmp.where = OBJ_FREE;
-        otmp.nobj = null;
-    }
+    extract_nexthere(otmp, game.level.levelObjects[x], y);
+    extract_nobj(otmp, game, 'fobj');
     if ((otmp.otyp | 0) === BOULDER)
         recalc_block_point(x, y);
     if (otmp.timed)
@@ -2352,7 +2288,7 @@ export async function dealloc_obj(obj) {
     }
     if (obj.timed)
         obj_stop_timers(obj);
-    if (obj_sheds_light_mp(obj)) {
+    if (obj_sheds_light(obj)) {
         del_light_source(LS_OBJECT, { a_obj: obj });
         obj.lamplit = 0;
     }
@@ -2552,6 +2488,42 @@ export function newoextra() {
     };
 }
 
+// C cg.zeroobj: a struct copy clears all object fields, including extras.
+function zero_object(obj) {
+    for (const key of Object.keys(obj))
+        delete obj[key];
+    Object.assign(obj, {
+        nobj: null, nexthere: null, ocontainer: null, ocarry: null,
+        cobj: null, oextra: null,
+    });
+    for (const key of (`o_id ox oy otyp owt quan spe oclass invlet
+        oartifact where timed cursed blessed unpaid no_charge recharged
+        lamplit known dknown bknown rknown cknown lknown tknown nomerge
+        oeroded oeroded2 oerodeproof olocked obroken otrapped globby
+        greased in_use bypass pickup_prev ghostly how_lost named_how
+        corpsenm usecount oeaten age owornmask lua_ref_cnt
+        omigr_from_dnum omigr_from_dlevel`).split(/\s+/))
+        obj[key] = 0;
+}
+
+// C mkobj.c:3353-3377: a stack-local dummy, without allocating an ID,
+// drawing random numbers, or running mksobj's object initialization.
+export function init_dummyobj(obj, otyp, oquan) {
+    if (obj) {
+        zero_object(obj);
+        obj.otyp = otyp;
+        obj.oclass = MKOBJ_OC_CLASS[otyp];
+        obj.known = obj.oclass === AMULET_CLASS ? 0 : +!OC_USES_KNOWN[otyp];
+        obj.quan = oquan || 1;
+        obj.corpsenm = NON_PM;
+        if (otyp === LEASH || otyp === BOULDER)
+            obj.corpsenm = 0;
+        if (otyp === SLIME_MOLD)
+            obj.spe = game.svc.context.current_fruit;
+    }
+    return obj;
+}
+
 export function newomid(otmp) {
     otmp.oextra ||= newoextra(); /* C mkobj.c:145-146: if (!otmp->oextra) otmp->oextra = newoextra() */
     otmp.oextra.omid = 0;
@@ -2646,8 +2618,7 @@ export function obj_extract_self(obj) {
         obj.ocontainer = null;
         break;
     case OBJ_INVENT:
-        freeinv(obj);
-        break;
+        return freeinv(obj);
     case OBJ_MINVENT:
         extract_nobj(obj, obj.ocarry, 'minvent');
         obj.ocarry = null;
@@ -2685,6 +2656,62 @@ export function extract_nobj(obj, owner, key) {
     obj.nobj = null;
 }
 
+/* C mkobj.c:641-679: splice the replacement into the same ownership
+ * chains. Extraction here deliberately bypasses timer/weight updates. */
+export function replace_object(obj, otmp) {
+    otmp.where = obj.where;
+    switch (obj.where) {
+    case OBJ_FREE:
+        break;
+    case OBJ_INVENT:
+        otmp.nobj = obj.nobj;
+        obj.nobj = otmp;
+        extract_nobj(obj, game, 'invent');
+        break;
+    case OBJ_CONTAINED:
+        otmp.nobj = obj.nobj;
+        otmp.ocontainer = obj.ocontainer;
+        obj.nobj = otmp;
+        extract_nobj(obj, obj.ocontainer, 'cobj');
+        break;
+    case OBJ_MINVENT:
+        otmp.nobj = obj.nobj;
+        otmp.ocarry = obj.ocarry;
+        obj.nobj = otmp;
+        extract_nobj(obj, obj.ocarry, 'minvent');
+        break;
+    case OBJ_FLOOR:
+        otmp.nobj = obj.nobj;
+        otmp.nexthere = obj.nexthere;
+        otmp.ox = obj.ox;
+        otmp.oy = obj.oy;
+        obj.nobj = otmp;
+        obj.nexthere = otmp;
+        extract_nobj(obj, game, 'fobj');
+        extract_nexthere(obj, game.level.levelObjects[obj.ox], obj.oy);
+        break;
+    default:
+        throw new Error('panic: replace_object: obj position');
+    }
+}
+
+/* C mkobj.c:2623-2645. Unlike extract_nobj, this leaves where alone. */
+export function extract_nexthere(obj, owner, key) {
+    let curr = owner[key], prev = null;
+    for (; curr; prev = curr, curr = curr.nexthere) {
+        if (curr === obj) {
+            if (prev)
+                prev.nexthere = curr.nexthere;
+            else
+                owner[key] = curr.nexthere;
+            break;
+        }
+    }
+    if (!curr)
+        throw new Error('panic: extract_nexthere: object lost');
+    obj.nexthere = null;
+}
+
 /* C mkobj.c:2733-2738. Recompute each enclosing container after extraction. */
 export function container_weight(object) {
     object.owt = weight(object);
@@ -2692,10 +2719,12 @@ export function container_weight(object) {
         container_weight(object.ocontainer);
 }
 
-/* C mkobj.c:2834 dealloc_obj_real — JavaScript GC owns the final release. */
-function dealloc_obj_real(otmp) {
-    /* The object has already been unlinked and marked OBJ_DELETED by obfree. */
-    return;
+/* C mkobj.c:2818-2831: free extras, then clear stale contents before free().
+ * Keep the object identity for the allocator's existing freed-chunk model. */
+function dealloc_obj_real(obj) {
+    if (obj.oextra)
+        dealloc_oextra(obj);
+    zero_object(obj);
 }
 
 /* C ref: mkobj.c:2527-2540 — discard_minvent */
@@ -2722,6 +2751,140 @@ export async function add_to_minv(mon, obj) {
     obj.nobj = mon.minvent;
     mon.minvent = obj;
     return 0;
+}
+
+/* C mkobj.c:1264-1299: mimic appearances eligible for stone-to-flesh.
+ * S_* values are the display symbols in include/defsym.h, not terrain. */
+export function stone_object_type(mappearance) {
+    return mappearance === BOULDER || mappearance === STATUE || mappearance === FIGURINE;
+}
+export function stone_furniture_type(mappearance) {
+    switch (mappearance) {
+    case 25: // S_upstair
+    case 26: // S_dnstair
+    case 29: // S_brupstair
+    case 30: // S_brdnstair
+    case 33: // S_altar
+    case 35: // S_throne
+    case 36: // S_sink
+        return true;
+    default:
+        return mappearance >= 1 && mappearance <= 11; // S_vwall..S_trwall
+    }
+}
+
+/* C mkobj.c:2129-2143: get_mtraits also repairs the stored data pointer. */
+export function corpse_revive_type(obj) {
+    let type = obj.corpsenm;
+    if (obj.oextra?.omonst) {
+        const mon = get_mtraits(obj, false);
+        if (mon)
+            type = mon.mnum;
+    }
+    return type;
+}
+
+/* C mkobj.c:3643-3653: callers in mon.c guard the pointer first. */
+export async function obj_nexto(obj) {
+    if (!obj) {
+        await lifecycle_impossible("obj_nexto: wasn't given an object to check");
+        return null;
+    }
+    return obj_nexto_xy(obj, obj.ox, obj.oy, true);
+}
+
+/* C mkobj.c:3661-3697: check this pile, then eight neighboring squares
+ * in the two randomly selected directions. */
+export async function obj_nexto_xy(obj, x, y, recurs) {
+    const type = obj.otyp;
+    for (let other = sobj_at(type, x, y); other; other = nxtobj(other, type, true))
+        if (other !== obj && await mergable(other, obj))
+            return other;
+    if (!recurs)
+        return null;
+    const dx = rn2(2) ? -1 : 1, dy = rn2(2) ? -1 : 1;
+    const ex = x - dx, ey = y - dy;
+    for (let fx = ex; Math.abs(fx - ex) < 3; fx += dx)
+        for (let fy = ey; Math.abs(fy - ey) < 3; fy += dy)
+            if (isok(fx, fy) && (fx !== x || fy !== y)) {
+                const found = await obj_nexto_xy(obj, fx, fy, false);
+                if (found)
+                    return found;
+            }
+    return null;
+}
+
+export async function obj_meld(obj1, obj2) {
+    let result = null;
+    if (obj1 && obj2) {
+        const first = obj1.o, second = obj2.o;
+        if (first && second && first !== second) {
+            let x = 0, y = 0;
+            if (!(second.where === OBJ_FLOOR && first.where === OBJ_FREE)
+                && (first.owt > second.owt || (first.owt === second.owt && rn2(2)))) {
+                if (second.where === OBJ_FLOOR)
+                    x = second.ox, y = second.oy;
+                result = await obj_absorb(obj1, obj2);
+            } else {
+                if (first.where === OBJ_FLOOR)
+                    x = first.ox, y = first.oy;
+                result = await obj_absorb(obj2, obj1);
+            }
+            if (x) {
+                if (cansee(x, y))
+                    newsym(x, y);
+                maybe_unhide_at(x, y);
+            }
+        }
+    } else {
+        await lifecycle_impossible('obj_meld: not called with two actual objects');
+    }
+    return result;
+}
+
+/* C mkobj.c:3702-3758: absorb mass, knowledge, billing and timers.
+ * obj1/obj2 use {o} to represent C's pointers to object pointers. */
+export async function obj_absorb(obj1, obj2) {
+    if (obj1 && obj2) {
+        const first = obj1.o, second = obj2.o;
+        if (first && second && first !== second) {
+            await globby_bill_fixup(first, second);
+            for (const flag of ['bknown', 'rknown', 'greased'])
+                if ((first[flag] | 0) !== (second[flag] | 0))
+                    first[flag] = second[flag] = 0;
+            if (first.orotten || second.orotten)
+                first.orotten = second.orotten = 1;
+            const w1 = first.oeaten || first.owt;
+            const w2 = second.oeaten || second.owt;
+            const relativeAge = Math.trunc(((game.moves - first.age) * w1
+                                          + (game.moves - second.age) * w2) / (w1 + w2));
+            first.age = game.moves - relativeAge;
+            first.owt += w2;
+            if (first.oeaten || second.oeaten)
+                first.oeaten = w1 + w2;
+            first.quan = 1;
+            if (first.globby && second.globby) {
+                const tm1 = stop_timer(SHRINK_GLOB, { a_obj: first, a_long: null });
+                const tm2 = stop_timer(SHRINK_GLOB, { a_obj: second, a_long: null });
+                start_glob_timeout(first, Math.trunc(((tm1 || 25) + (tm2 || 25) + 1) / 2));
+            }
+            await obj_extract_self(second);
+            await dealloc_obj(second);
+            obj2.o = null;
+            return first;
+        }
+    }
+    await lifecycle_impossible('obj_absorb: not called with two actual objects');
+    return null;
+}
+
+/* C mkobj.c:2253-2267: init corpses but not statues, then name them. */
+export async function mk_named_object(objtype, ptr, x, y, nm) {
+    let obj = await mkcorpstat(objtype, null, ptr, x, y,
+                              objtype !== STATUE ? CORPSTAT_INIT : 0);
+    if (nm != null)
+        obj = await oname(obj, nm, ONAME_NO_FLAGS);
+    return obj;
 }
 
 /* C ref: mkobj.c:1865 set_bknown(struct obj *obj, unsigned int onoff) —

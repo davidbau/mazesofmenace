@@ -8,6 +8,12 @@ import {address} from './memory.js';
 import {CMemory} from './heap.js';
 import {scanFormatted} from './scanf.js';
 const sdkUtf8Decoder=new TextDecoder();
+const filePathDecoder=new TextDecoder('utf-8',{ignoreBOM:true});
+export function readFilePath(memory,p) {
+    if(typeof p==='string')return p;
+    p=address(p);
+    return p?filePathDecoder.decode(memory.readBytes(p,memory.strlen(p))):'';
+}
 // Pinned SDK libstrings.js TEXTDECODER=1/default-assertions UTF8ToString.
 // CMemory's byte-string operations deliberately keep their Latin1 contract.
 export function readSdkUtf8(memory,p){
@@ -25,7 +31,7 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),readS
     if(readStdin!==undefined&&typeof readStdin!=='function')throw new TypeError('Expected synchronous readStdin callback');
     const files=new Map(),output=[[],[]],closedStandard=new Set(),standardFlags=[0,O_WRONLY|O_CREAT,O_WRONLY|O_CREAT];let inputOffset=0,temporarySequence=0;
     const text=v=>typeof v==='string'?v:memory.readString(address(v));
-    const pathText=v=>readSdkUtf8(memory,v);
+    const pathText=v=>readFilePath(memory,v);
     const fail=(error,value)=>{if(!(error instanceof VFSError))throw error;libc.errno=error.errno;return value;};
     const capture=(operation,value)=>{try{return operation();}catch(error){return fail(error,value);}};
     const modeFlags=mode=>(mode.includes('+')?O_RDWR:mode[0]==='r'?0:O_WRONLY)|(mode.includes('x')?O_EXCL:0)|(mode.includes('e')?O_CLOEXEC:0)|(mode[0]!=='r'?O_CREAT:0)|(mode[0]==='w'?O_TRUNC:0)|(mode[0]==='a'?O_APPEND:0);
@@ -202,7 +208,7 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),readS
         }
         return address(p);
     },0);
-    api.fscanf=(file,format,...outputs)=>operation(file,f=>{flush(f);if(!f.readable){f.error=true;return -1;}return scanFormatted(memory,libc,{get:()=>api.fgetc(file),unget:c=>api.ungetc(c,file)},text(format).split('\0')[0],outputs);},-1);
+    api.fscanf=(file,format,...outputs)=>operation(file,f=>{flush(f);if(!f.readable){f.error=true;return -1;}return scanFormatted(memory,libc,{get:()=>api.fgetc(file),unget:c=>api.ungetc(c,file)},text(format).split('\0')[0],outputs,{darwin:true});},-1);
     api.getc=api.fgetc;api.putc=api.fputc;api.getchar=()=>api.fgetc(api.stdin);api.putchar=c=>api.fputc(c,api.stdout);
     api.creat=(path,mode)=>api.open(path,O_WRONLY|O_CREAT|O_TRUNC,mode);
     api.rewind=p=>{api.fseek(p,0,0);api.clearerr(p);};

@@ -17,6 +17,13 @@ export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
         if (byte > 255) throw new TypeError('C byte strings require explicit UTF-8 encoding');
         return byte;
     }
+    // Bounded callers have already checked the destination and measured the
+    // source through its first NUL or the specified limit.
+    function copyStringBytes(destination, source, length) {
+        if (typeof source !== 'string') return memory.memcpy(destination, source, length);
+        const bytes = memory.HEAPU8;
+        for (let i = 0; i < length; i++) bytes[destination + i] = source.charCodeAt(i);
+    }
     const api = {
         errno: 0,
         malloc: n => memory.malloc(n), calloc: (n, size) => memory.calloc(n, size),
@@ -32,10 +39,10 @@ export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
         },
         strlen: p => memory.strlen(p),
         strnlen(p, n) {
+            const isText = typeof p === 'string';
             let length = 0;
             while (length < n) {
-                memory.bounds(p + length);
-                if (!memory.HEAPU8[p + length]) break;
+                if (!stringByte(p, isText, length)) break;
                 length++;
             }
             return length;
@@ -47,7 +54,7 @@ export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
             n = Number(n);
             memory.bounds(destination, n);
             const count = api.strnlen(source, n);
-            memory.memcpy(destination, source, count);
+            copyStringBytes(destination, source, count);
             if (count < n) memory.memset(destination + count, 0, n - count);
             return destination;
         },
@@ -58,7 +65,7 @@ export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
             const end = destination + memory.strlen(destination);
             const length = api.strnlen(source, n);
             memory.bounds(end, length + 1);
-            memory.memcpy(end, source, length); memory.HEAPU8[end + length] = 0;
+            copyStringBytes(end, source, length); memory.HEAPU8[end + length] = 0;
             return destination;
         },
         strcmp: (a, b) => api.strncmp(a, b, Number.MAX_SAFE_INTEGER),

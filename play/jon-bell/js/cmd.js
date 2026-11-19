@@ -63,7 +63,7 @@ import { IS_ROOM } from './const.js';
 import { GameMap, newobj, copy_you } from './game.js';
 import { MAXSPELL } from './spell.js';
 import { BY_ORACLE, ROCK_CLASS } from './mklev.js';
-import { extract_nobj, add_to_minv } from './mkobj.js';
+import { extract_nobj, add_to_minv, pudding_merge_message, obj_meld, obj_nexto_xy } from './mkobj.js';
 import { getrumor, outrumor, outoracle } from './rumors.js';
 import { single_level_branch } from './dungeon.js';
 import { wake_nearby } from './mon.js'; /* C mon.c:4367 */
@@ -3336,91 +3336,13 @@ async function flooreffects_fire_damage(obj, force, x, y) {
 
 
 
+/* C mkobj.c:3768 and :3661; these callers pass objects directly. */
 export async function flooreffects_obj_meld(obj1, obj2) {
-    if (!obj1 || !obj2 || obj1 === obj2)
-        return null;
-    let survivor, victim;
-    let ox = 0, oy = 0; /* coordinates for the glob that goes away */
-    if (!((obj2.where | 0) === 1 && (obj1.where | 0) === 0)
-        && ((obj1.owt | 0) > (obj2.owt | 0)
-            || ((obj1.owt | 0) === (obj2.owt | 0) && rn2(2)))) {
-        if ((obj2.where | 0) === 1)
-            ox = obj2.ox, oy = obj2.oy;
-        survivor = obj1;
-        victim = obj2;
-    } else {
-        if ((obj1.where | 0) === 1)
-            ox = obj1.ox, oy = obj1.oy;
-        survivor = obj2;
-        victim = obj1;
-    }
-    /* C obj_absorb(&survivor, &victim) nulls *victim's pointer; obj_meld's
-     * else arm absorbs obj1 INTO obj2, so the caller's globbyobj becomes NULL
-     * (mkobj.c:3734-3735, 3788-3796) and do.c:307's loop ends. */
-    const ok = await merged({ o: survivor }, { o: victim }, true);
-    /* C mkobj.c:3801-3808: redraw the square the absorbed glob left */
-    if (ox) {
-        if (cansee(ox, oy))
-            newsym(ox, oy);
-        maybe_unhide_at(ox, oy);
-    }
-    /* obj_meld returns obj_absorb's survivor (mkobj.c:3752-3756), so
-     * mon.c:727's `obj = obj_meld(&obj, &otmp)` keeps looping on it even when
-     * the dropped glob was the one absorbed. */
-    return ok ? survivor : null;
+    return obj_meld({ o: obj1 }, { o: obj2 });
 }
-/* C mkobj.c:3665-3699 obj_nexto_xy().  The dropped glob is still OBJ_FREE;
- * search the destination pile first, then the eight adjacent squares in C's
- * randomized sign/order, returning only a mergable same-type object. */
-export async function flooreffects_obj_nexto_xy(obj, x, y, recurs) {
-    if (!obj) return null;
-    const otyp = obj.otyp | 0;
-    let otmp = sobj_at(otyp, x, y);
-    while (otmp) {
-        if (otmp !== obj && (await mergable(otmp, obj)))
-            return otmp;
-        otmp = nxtobj(otmp, otyp, true);
-    }
-    if (!recurs)
-        return null;
-    const dx = rn2(2) ? -1 : 1;
-    const dy = rn2(2) ? -1 : 1;
-    const ex = x - dx, ey = y - dy;
-    for (let fx = ex; Math.abs(fx - ex) < 3; fx += dx) {
-        for (let fy = ey; Math.abs(fy - ey) < 3; fy += dy) {
-            if (isok(fx, fy) && (fx !== x || fy !== y)) {
-                const found = await flooreffects_obj_nexto_xy(obj, fx, fy, false);
-                if (found)
-                    return found;
-            }
-        }
-    }
-    return null;
-}
-export async function flooreffects_pudding_merge_message(obj, obj2) {
-    const u = game.u || {};
-    const visible = cansee(obj.ox | 0, obj.oy | 0)
-        || cansee(obj2.ox | 0, obj2.oy | 0);
-    const onfloor = (obj.where | 0) === 1 || (obj2.where | 0) === 1;
-    const inpack = (obj.where | 0) === 3 || (obj2.where | 0) === 3;
-    if ((!_uprop_active('BLINDED') && visible) || inpack) {
-        if (_uprop_active('HALLUC')) {
-            if (onfloor)
-                await You_see('parts of the floor melting!');
-            else if (inpack)
-                await Your("pack reaches out and grabs something!");
-        } else if (onfloor || inpack) {
-            const adjacent = (obj.ox | 0) !== (u.ux | 0) || (obj.oy | 0) !== (u.uy | 0);
-            const adjacent2 = (obj2.ox | 0) !== (u.ux | 0) || (obj2.oy | 0) !== (u.uy | 0);
-            const prefix = onfloor && adjacent && adjacent2 ? 'adjacent ' : '';
-            const suffix = inpack ? ' inside your pack' : '';
-            await pline('The %s%s coalesce%s.', prefix,
-                  makeplural_objnam(obj_typename(obj.otyp | 0)), suffix);
-        }
-    } else {
-        await flooreffects_You_hear('a faint sloshing sound.');
-    }
-}
+export const flooreffects_obj_nexto_xy = obj_nexto_xy;
+/* C mkobj.c:3818-3850: share the blindness/hallucination-aware message. */
+export const flooreffects_pudding_merge_message = pudding_merge_message;
 
 
 /* C ref: do.c:361-388 doaltarobj(struct obj *obj) — obj is an object dropped

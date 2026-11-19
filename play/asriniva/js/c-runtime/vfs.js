@@ -120,10 +120,10 @@ export class CVFS {
     let node = this.root;
     for (let i = 0; i < parts.length; ++i) {
       const part = parts[i];
-      if (part === '.') continue;
-      if (part === '..') { node = node.parent; continue; }
       if (node.type !== 'dir') fail('ENOTDIR');
       this._permissions(node, 'x');
+      if (part === '.') continue;
+      if (part === '..') { node = node.parent; continue; }
       const next = node.children.get(part);
       if (!next) {
         if (missingLast && i === parts.length - 1) return null;
@@ -133,7 +133,11 @@ export class CVFS {
     }
     return node;
   }
-  _lookup(path) { return this._walk(this._parts(path)); }
+  _lookup(path) {
+    const node = this._walk(this._parts(path));
+    if (node.type !== 'dir' && path.endsWith('/')) fail('ENOTDIR', path);
+    return node;
+  }
   _parent(path) {
     const parts = this._parts(path), name = parts.pop();
     if (!name) fail('EBUSY', path);
@@ -279,6 +283,7 @@ export class CVFS {
     if (!integer(flags) || flags < 0 || flags > 0x7fffffff || flags & ~supported) fail('ENOTSUP');
     if ((flags & 3) === 3) fail('EINVAL');
     let node = this._walk(this._parts(path), true), created = false;
+    if (node && node.type !== 'dir' && path.endsWith('/')) fail('ENOTDIR', path);
     if (flags & O_CREAT) {
       if (node && flags & O_EXCL) fail('EEXIST', path);
       if (!node) {

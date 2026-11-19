@@ -59,6 +59,8 @@ let light_base = null;
 function mon_is_local_light(mon) { return (mon?.mx | 0) > 0; }
 
 function ls_obj_is_local(obj) {
+    while (obj.freed_chunk && obj.occupant)
+        obj = obj.occupant;
     return (obj.where | 0) === OBJ_DELETED ? false : obj_is_local(obj);
 }
 

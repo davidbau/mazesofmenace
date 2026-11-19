@@ -1,122 +1,62 @@
-// game_display.js — NetHack-specific display wrapper around Terminal.
-// Edit freely; the contest only freezes isaac64.js and terminal.js.
+// js/game_display.js: the browser display for interactive play. Hand-written glue.
 //
-// Adds game state properties (topMessage, toplines, toplin) and
-// message window handling. Delegates all terminal operations to
-// the wrapped Terminal instance.
-//
-// Usage:
-//   const terminal = new Terminal('game-container');
-//   const display = new GameDisplay(terminal);
-//   // display.setCell, display.readKey etc. all delegate to terminal
-//   // display.topMessage, display.putstr_message are NetHack-specific
+// A Terminal (frozen js/terminal.js: grid, DOM, keyboard queue) that shows the
+// screens the transpiled game produces. The patched tty port emits, at every
+// input boundary and animation frame, its whole 24x80 screen as text with SGR
+// colors and DEC line-drawing shifts (the OSC 7777 marker payload, the same
+// bytes the recordings are made of); showScreen draws one of them.
+// Usage (index.html, frozen/playability_runner.mjs): new GameDisplay('game-container')
+// or new GameDisplay(null) for a headless display.
+import { Terminal, DEC_TO_UNICODE, NO_COLOR } from './terminal.js';
 
-import { Terminal, CLR_GRAY } from './terminal.js';
+export class GameDisplay extends Terminal {
+    constructor(containerId = null) {
+        super(containerId ?? null, { rows: 24, cols: 80 });
+        this.terminal = this;
+    }
 
-const TOPLINE_EMPTY = 0;
-const TOPLINE_NEED_MORE = 1;
-
-export class GameDisplay {
-    constructor(terminalOrContainerId) {
-        // Accept either a Terminal instance or a container ID (backward compat)
-        if (terminalOrContainerId instanceof Terminal) {
-            this.terminal = terminalOrContainerId;
-        } else {
-            this.terminal = new Terminal(
-                terminalOrContainerId != null ? terminalOrContainerId : null,
-                { rows: 24, cols: 80 }
-            );
+    /** Draw a marker payload (lines of text, SGR, SO/SI) and put the cursor at (cx, cy). */
+    showScreen(payload, cx, cy) {
+        const lines = payload.split('\n');
+        for (let row = 0; row < this.rows; row++) {
+            const s = lines[row] || '';
+            let col = 0, fg = NO_COLOR, attr = 0, dec = false;
+            for (let i = 0; i < s.length; i++) {
+                const c = s[i];
+                if (c === '\x0e') { dec = true; continue; }
+                if (c === '\x0f') { dec = false; continue; }
+                if (c === '\x1b' && s[i + 1] === '[') {
+                    let j = i + 2;
+                    while (j < s.length && /[0-9;?]/.test(s[j])) j++;
+                    const params = s.slice(i + 2, j);
+                    if (s[j] === 'C') {
+                        const n = parseInt(params, 10) || 1;
+                        for (let k = 0; k < n && col < this.cols; k++) this.setCell(col++, row, ' ', NO_COLOR, 0);
+                    } else if (s[j] === 'm') ({ fg, attr } = sgr(params, fg, attr));
+                    i = j;
+                    continue;
+                }
+                if (col < this.cols) this.setCell(col++, row, dec ? (DEC_TO_UNICODE[c] ?? c) : c, fg, attr);
+            }
+            while (col < this.cols) this.setCell(col++, row, ' ', NO_COLOR, 0);
         }
-
-        // NetHack-specific message state
-        this.topMessage = null;
-        this.toplines = '';
-        this.messages = [];
-        this.toplin = TOPLINE_EMPTY;
-        this.messageWinFlags = 0;
+        this.setCursor(cx, cy);
     }
+}
 
-    // --- Delegate all Terminal properties and methods ---
-
-    get rows() { return this.terminal.rows; }
-    get cols() { return this.terminal.cols; }
-    get grid() { return this.terminal.grid; }
-    get cursorCol() { return this.terminal.cursorCol; }
-    set cursorCol(v) { this.terminal.cursorCol = v; }
-    get cursorRow() { return this.terminal.cursorRow; }
-    set cursorRow(v) { this.terminal.cursorRow = v; }
-    get cursorVisible() { return this.terminal.cursorVisible; }
-    set cursorVisible(v) { this.terminal.cursorVisible = v; }
-    get spans() { return this.terminal.spans; }
-    get container() { return this.terminal.container; }
-    get flags() { return this.terminal.flags; }
-    set flags(v) { this.terminal.flags = v; }
-
-    // Display methods
-    setCell(col, row, ch, color, attr) { return this.terminal.setCell(col, row, ch, color, attr); }
-    putstr(col, row, str, color, attr) { return this.terminal.putstr(col, row, str, color, attr); }
-    setCursor(col, row) { return this.terminal.setCursor(col, row); }
-    clearScreen() { return this.terminal.clearScreen(); }
-    clearRow(row) { return this.terminal.clearRow(row); }
-    scrollUp() { return this.terminal.scrollUp(); }
-    moveCursor(x, y) { return this.terminal.moveCursor(x, y); }
-    putChar(x, y, ch, attr) { return this.terminal.putChar(x, y, ch, attr); }
-    getChar(x, y) { return this.terminal.getChar(x, y); }
-    putString(str) { return this.terminal.putString(str); }
-    putCharAtCursor(ch) { return this.terminal.putCharAtCursor(ch); }
-    clearToEol() { return this.terminal.clearToEol(); }
-    cursSet(visibility) { return this.terminal.cursSet(visibility); }
-    flush() { return this.terminal.flush?.(); }
-    getPreElement() { return this.terminal.getPreElement(); }
-    getCanvas() { return this.terminal.getCanvas?.(); }
-    colorToCss(color) { return this.terminal.colorToCss(color); }
-    captureForShell() { return this.terminal.captureForShell(); }
-
-    // Input methods — delegate to terminal with NetHack-specific defaults
-    pushKey(code) { return this.terminal.pushKey(code); }
-    clearInputQueue() { return this.terminal.clearInputQueue(); }
-    get isWaitingForInput() { return this.terminal.isWaitingForInput; }
-    get inputQueueLength() { return this.terminal.inputQueueLength; }
-    get waitEpoch() { return this.terminal.waitEpoch; }
-
-    /**
-     * Read a key with NetHack-specific options bundled.
-     * Apps set keyMapper, onInterrupt, onEmptyQueue on GameDisplay;
-     * these are passed through to terminal.readKey on every call.
-     */
-    readKey(extraOptions) {
-        return this.terminal.readKey({
-            keyMapper: this.keyMapper,
-            onInterrupt: this.onInterrupt,
-            onEmptyQueue: this.onEmptyQueue,
-            ...extraOptions,
-        });
+function sgr(params, fg, attr) {
+    for (const tok of (params === '' ? '0' : params).split(';')) {
+        const n = parseInt(tok || '0', 10);
+        if (n === 0) { fg = NO_COLOR; attr = 0; }
+        else if (n === 1) attr |= 2;
+        else if (n === 4) attr |= 4;
+        else if (n === 7) attr |= 1;
+        else if (n === 22) attr &= ~2;
+        else if (n === 24) attr &= ~4;
+        else if (n === 27) attr &= ~1;
+        else if (n === 39) fg = NO_COLOR;
+        else if (n >= 30 && n <= 37) fg = n - 30;
+        else if (n >= 90 && n <= 97) fg = n - 90 + 8;
     }
-
-    /** NetHack key mapper — converts browser keys to game codes. */
-    keyMapper = null;
-    /** Ctrl-C handler. */
-    onInterrupt = null;
-    /** Called when input queue is empty (headless replay). */
-    onEmptyQueue = null;
-
-    // --- NetHack-specific methods ---
-
-    putstr_message(msg) {
-        this.clearRow(0);
-        this.putstr(0, 0, msg, CLR_GRAY);
-        this.topMessage = msg.trimEnd();
-        this.toplines = this.topMessage;
-        this.toplin = this.topMessage ? TOPLINE_NEED_MORE : TOPLINE_EMPTY;
-        this.messages.push(this.topMessage);
-        if (this.messages.length > 20) this.messages.shift();
-    }
-
-    renderStatus(_player) {
-        // TODO: full status line rendering from player stats
-    }
-
-    moveCursorTo(col, row = 0) {
-        this.setCursor(col, row);
-    }
+    return { fg, attr };
 }

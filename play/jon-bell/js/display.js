@@ -1279,25 +1279,26 @@ export function gold_status_char(gold) {
      * invalidate the cached field, so the old label stays until such an update. */
     if (gold === undefined)
         return _gold_label_now();
-    const symKey = `${rogue_ibm_color()}|${generic_symset()
-        ? primary_showsym(SYM_OFFSETS.O + COIN_CLASS_DISP) : oclass_sym(COIN_CLASS_DISP)}`;
+    // C botl.c:1564-1568 reads the active showsyms even while the map
+    // still holds the departing level's pixels (do.c:1666-1699).
+    const symKey = _gold_status_symbol().symbol;
     const c = game._goldLabelCache;
     if (!c || c.gold !== gold || c.symKey !== symKey)
         game._goldLabelCache = { gold, symKey, label: _gold_label_now() };
     return game._goldLabelCache.label;
 }
+function _gold_status_symbol() {
+    const which = game.gc?.currentgraphics ?? (Is_rogue_level(game.u?.uz) ? 1 : 0);
+    const idx = SYM_OFFSETS.O + COIN_CLASS_DISP;
+    return { which, symbol: (which === 1 ? rogue_showsyms()[idx] : primary_showsym(idx)) ?? 36 };
+}
 function _gold_label_now() {
     if (game.iflags?.invis_goldsym || game.iflags?.in_dumplog)
         return '$';
-    /* RogueEpyx S_coin is \x0f; check_gold_symbol() has not run after a restore
-     * (only do.c:1668 / options.c call it), so invis_goldsym is still FALSE and
-     * botl.c:131 emits the raw control byte, which the tty leaves blank. */
-    if (rogue_graphics())
-        return symset_cell(rogue_showsyms()[SYM_OFFSETS.O + COIN_CLASS_DISP], 1).ch;
-    /* botl.c:131 encglyph(objnum_to_glyph(GOLD_PIECE)) -> showsyms[S_coin] */
-    if (generic_symset())
-        return symset_cell(primary_showsym(SYM_OFFSETS.O + COIN_CLASS_DISP)).ch;
-    return oclass_sym(COIN_CLASS_DISP) ?? '$';
+    // C botl.c:131 uses the current symbol set. Frozen status frames carry
+    // their own goldLabel; a fresh bot() during getbones uses the new set.
+    const { which, symbol } = _gold_status_symbol();
+    return symset_cell(symbol, which).ch;
 }
 export function oclass_sym(oc) {
     if (blank_symbols() && oc > 0 && oc < OCLASS_CHAR.length) return ' ';
@@ -2630,14 +2631,8 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
             game._mentionMapPending = pending;
         }
     }
-    /* #wizloaddes: C's gbuf survives clear_level_structures() and every
-     * newsym()/show_glyph() the loader's makemon/mksobj calls make updates it
-     * (makemon.c:1473), so the frozen pre-load frame must absorb those cells
-     * (wizcmds.js wiz_load_splua sets liveGbuf).  C's show_glyph() returns
-     * early under _suppress_map_output() (display.c:703-708, in_mklev) so
-     * premap_detect's map_background() writes nothing to gbuf there. */
     const frz = game._levelgenPaintFreeze;
-    if (frz && frz.liveGbuf && frz.cells && !suppress_map_output()) {
+    if (frz && frz.cells && !suppress_map_output()) {
         /* C flush_screen() returns at once while in_mklev (display.c:2220), so
          * a gbuf update made before the loader raised in_mklev (the
          * makemap_remove_mons newsym()s) reaches the physical screen only at
@@ -2657,7 +2652,10 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
 }
 /* Apply the gbuf updates staged by show_glyph_cell once a flush can run. */
 function _levelgen_freeze_flush(frz) {
-    if (!frz || !frz.pending || suppress_map_output()) return;
+    // C display.c:2223-2226: delay_flushing returns before printing gnew,
+    // just as the save/restore guard does. goto_level holds that delay after
+    // loading the level (do.c:1720-1841); bones cleanup runs before it.
+    if (!frz || !frz.pending || suppress_map_output() || game._botlPaintHeld) return;
     for (const [k, c] of frz.pending) {
         if (c === null) frz.cells.delete(k); else frz.cells.set(k, c);
     }
@@ -4456,7 +4454,10 @@ async function _docrt_body(pageTopl, physicalScreen) {
      * ... toplin = TOPLINE_EMPTY }`).  A getpos() autodescribe line left
      * physically on screen (msg_given FALSE, getpos.c:1156) is gone once the
      * swallowed hero's teleds() docrt()s (teleport.c:503). */
-    if (pageTopl && !game._pending_message)
+    /* C display.c:2196-2198: cls() clears the physical screen even when
+     * WIN_MESSAGE needs no acknowledgement. An answered bones prompt must
+     * disappear when familiar_level_msg() chooses its silent arm too. */
+    if (!game._pending_message)
         game._topl_sticky = null;
     /* cls() erases physical text even when WIN_MESSAGE is already EMPTY. */
     if (game._topl_sticky === game._topl_empty_sticky)
@@ -8475,14 +8476,39 @@ export async function tty_restore_base_topline(bannerShown) {
         [COPYRIGHT_BANNER_A, COPYRIGHT_BANNER_B,
          `         Version 5.0.0 ${PORT_ID}, built May  2 2026 12:00:00.`, COPYRIGHT_BANNER_D]
             .forEach((line, i) => { background[4 + i] = line; });
-    return tty_base_window_messages(background, async (screen, cursor) => {
+    const read = async (screen, cursor) => {
         game._screen_output = screen;
         if (game.nhDisplay) {
             game.nhDisplay.cursorCol = cursor[0];
             game.nhDisplay.cursorRow = cursor[1];
         }
         return await nhgetch();
-    });
+    };
+    const topline = tty_base_window_messages(background, read);
+    return {
+        ...topline,
+        // unixmain.c:258-259: raw output retains nomux's raw row counter
+        // across init_nhwindows(), which has painted the copyright banner.
+        rawPrint(message) {
+            const raw = game._rawterm ||= { rows: null, row: 0 };
+            raw.rows = Array.from({ length: 24 }, (_, i) => background[i] || '');
+            const row = raw.row;
+            raw_print(message);
+            if (row >= 0 && row < 24) background[row] = message;
+        },
+        // wintty.c:3624-3632: a pending raw print makes wait_synch call
+        // are initialized now, so xwaitforspace(" ") uses cbreak's usual
+        // space/Escape/Return dismissal, preserving the physical window.
+        async waitSynch() {
+            for (;;) {
+                const key = await read(background.join('\n'),
+                    game._rawCursorFrozen || [0, game._rawterm?.row || 0, 1]);
+                if (key === 10 || key === 13 || key === 27 || key === 32
+                    || key === undefined || key < 0)
+                    break;
+            }
+        },
+    };
 }
 
 /* A getlin over a menu writes incrementally; rebuilding its single topline

@@ -1,7 +1,7 @@
 // Narrow scanf conversions over a byte reader; no seeking or whole-stream copy.
-// Integer consumption and failure rules follow the pinned musl vfscanf/intscan.
+// The Darwin profile follows native C at signed limits and incomplete fields.
 import abi from './libc-profile.json' with {type:'json'};
-export function scanFormatted(memory,libc,reader,format,outputs,{signedSaturation=false}={}){
+export function scanFormatted(memory,libc,reader,format,outputs,{darwin=false}={}){
  if(abi.longBytes!==8||abi.pointerBytes!==8||abi.EOF!==-1)throw new Error('Review scanf target ABI');
  let position=0,assigned=0,out=0;
  const space=c=>c===32||(c>=9&&c<=13),get=()=>{const c=reader.get();if(c>=0)position++;return c;},unget=c=>{if(c>=0){reader.unget(c);position--;}};
@@ -36,20 +36,29 @@ export function scanFormatted(memory,libc,reader,format,outputs,{signedSaturatio
     if(format[i++]!==']')throw new Error('Unterminated scanf scanset');accepts=c=>c>=0&&(set.has(c)!==invert);
    }
    let n=0,c;while(accepts(c=take())){if(!suppress){memory.bounds(destination+n,1);memory.HEAPU8[destination+n]=c;}n++;}back(c);
-   if(!n||(kind==='c'&&n!==limit))return assigned;
+   if(!n||(!darwin&&kind==='c'&&n!==limit))return assigned;
    if(!suppress){if(kind!=='c'){memory.bounds(destination+n,1);memory.HEAPU8[destination+n]=0;}assigned++;}continue;
   }
   let c=take(),negative=false,base=kind==='o'?8:'xX'.includes(kind)?16:kind==='i'?0:10,value=0n,digits=0;
   if(c===43||c===45){negative=c===45;c=take();}
   if((base===0||base===16)&&c===48){
-   digits=1;c=take();if(c===120||c===88){c=take();if(!((c>=48&&c<=57)||(c>=65&&c<=70)||(c>=97&&c<=102))){back(c);return assigned;}base=16;digits=0;}
+   digits=1;c=take();if(c===120||c===88){
+    const prefix=c;
+    c=take();
+    if(!((c>=48&&c<=57)||(c>=65&&c<=70)||(c>=97&&c<=102))){
+     back(c);
+     if(!darwin)return assigned;
+     // Native C accepts the leading zero and leaves the incomplete prefix unread.
+     back(prefix);c=-1;
+    }else{base=16;digits=0;}
+   }
    else if(base===0)base=8;
   }else if(!base)base=10;
   const digit=c=>c>=48&&c<=57?c-48:c>=65&&c<=90?c-55:c>=97&&c<=122?c-87:255;
   const max=(1n<<64n)-1n;let overflow=false;
   while(c>=0&&digit(c)<base){if(!overflow){value=value*BigInt(base)+BigInt(digit(c));if(value>max)overflow=true;}digits++;c=take();}back(c);
-  if(!digits){libc.errno=abi.EINVAL;return assigned;}
-  if(signedSaturation&&'di'.includes(kind)){const limit=negative?1n<<63n:(1n<<63n)-1n;if(overflow||value>limit){value=limit;overflow=false;libc.errno=abi.ERANGE;}}
+  if(!digits){if(!darwin)libc.errno=abi.EINVAL;return assigned;}
+  if(darwin&&'di'.includes(kind)){const limit=negative?1n<<63n:(1n<<63n)-1n;if(overflow||value>limit){value=limit;overflow=false;libc.errno=abi.ERANGE;}}
   if(overflow){value=max;negative=false;libc.errno=abi.ERANGE;}if(negative)value=-value;
   if(!suppress){store(destination,length,value);assigned++;}
  }

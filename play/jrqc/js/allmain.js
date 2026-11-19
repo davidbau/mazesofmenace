@@ -1,122 +1,101 @@
-// allmain.js — Main game loop.
-// C ref: allmain.c — newgame, moveloop, moveloop_core.
+// js/allmain.js: interactive play over the transpiled build. Hand-written glue.
 //
-// Uses fastforward.js for pre/post-mklev RNG parity on seed8000.
-// Real mklev.js handles level generation for screen parity.
-
+// The contract of index.html and frozen/playability_runner.mjs:
+//   const g = new NethackGame({ seed, nethackrc, datetime?, storage? });
+//   g._pendingDisplay = display;   (and/or game.nhDisplay = display)
+//   await g.start();                         // boot to the first key wait
+//   for (;;) { await moveloop_core(); if (game.program_state?.gameover) break; }
+//
+// The game is one process (js/nhprocess.js) running as a coroutine: whenever
+// it reads a key it hands control back to the driver. moveloop_core() lets it
+// take exactly one key and run until it waits for the next one (or exits), so
+// each call is one input step. Keys come from the display's queue
+// (Terminal.readKey: keyboard or pushKey); when the queue is empty,
+// moveloop_core consults display.onEmptyQueue before resuming the game, so a
+// replay driver can stop there. The screen is drawn from the tty port's
+// input-boundary and animation markers (GameDisplay.showScreen), encoded as the
+// recordings are.
+import { bootProcess, encodeScreen } from './nhprocess.js';
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
-import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
-import { rhack } from './cmd.js';
-import { docrt, cls, bot, flush_screen, pline } from './display.js';
-import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
-import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize } from './fastforward.js';
+import { GameDisplay } from './game_display.js';
+import { KEY_BINDINGS } from './terminal.js';
+import { iflags } from './nh/decl.js';
 
-// C ref: allmain.c newgame()
-export async function newgame() {
-    const g = game;
+// Arrow keys for browser play (the terminal's default is xterm's ESC [ A..D, which
+// the tty port reads as three commands). Chosen at every key read from the game's
+// number_pad option (iflags.num_pad): off, the vi keys (Shift+arrow runs); on, the
+// digits (Shift+arrow moves one step too: number_pad has no shifted run key).
+const NUMPAD_ARROWS = {
+    ArrowUp: '8', ArrowDown: '2', ArrowLeft: '4', ArrowRight: '6',
+    'Shift+ArrowUp': '8', 'Shift+ArrowDown': '2', 'Shift+ArrowLeft': '4', 'Shift+ArrowRight': '6',
+};
+const arrowBindings = () => (iflags.num_pad ? NUMPAD_ARROWS : KEY_BINDINGS.VI_KEYS);
 
-    // Fast-forward through pre-mklev startup RNG calls.
-    // Covers: o_init (shuffles), dungeon init, u_init_misc.
-    fastforward_pre_mklev();
+let current = null;
 
-    // C ref: allmain.c l_nhcore_init() — shuffle align[] for Lua
-    // Consumes rn2(3), rn2(2) matching session indices 309-310
-    l_nhcore_init();
-
-    // Set up game state needed by mklev
-    g.dungeons = [{ dname: 'The Dungeons of Doom', depth_start: 1, num_dunlevs: 30 }];
-    g.u = g.u || {};
-    g.u.uz = { dnum: 0, dlevel: 1 };
-    g.flags = g.flags || {};
-    // Branch: Mines entrance on level 1 (for seed 8000)
-    g.branches = [
-        { end1: { dnum: 0, dlevel: 1 }, end2: { dnum: 2, dlevel: 1 }, end1_up: true },
-    ];
-
-    // Real mklev generates the level with correct room positions
-    // Structural phase consumes RNG for rooms/corridors/doors/stairs
-    await mklev();
-
-    // Fill rooms + mineralize: replayed by fastforward
-    // These create objects/monsters that don't affect terrain display
-    fastforward_fill_mineralize();
-
-    // Fast-forward through post-mklev startup RNG calls.
-    // Covers: u_init_role, ini_inv, attributes, moveloop_preamble.
-    fastforward_post_mklev();
-
-    // Hardcoded player state for seed8000 Tourist.
-    // Contestants: port u_init to compute these from game PRNG.
-    g._goldCount = 757;
-    g.u.ulevel = 1;
-    g.u.uhp = 10; g.u.uhpmax = 10;
-    g.u.uen = 2; g.u.uenmax = 2;
-    g.u.uac = 10; g.u.uexp = 0;
-    g.u.ualign = { type: 0, record: 0 };
-    g.u.acurr = { a: [9, 14, 12, 11, 16, 16] };
-    g.u.amax = { a: [9, 14, 12, 11, 16, 16] };
-    g.moves = 1;
-    g.urole = { name: { m: 'Tourist', f: 'Tourist' }, rank: { m: 'Rambler', f: 'Rambler' } };
-    g.urace = { adj: 'human' };
-    g.flags.female = true;
-    g.plname = g.plname || 'Contestant';
-
-    // C ref: allmain.c newgame() → u_on_upstairs()
-    // Places hero on upstair, or special stair, or random room position.
-    u_on_upstairs();
-
-    // Initial display
-    init_vision_globals();
-    vision_reset();
-    vision_recalc(0);
-    await cls();
-    await docrt();
-    await flush_screen(1);
-    await bot();
-
-    // Welcome message
-    const alignName = 'neutral';
-    const genderAdj = g.flags?.female ? 'female' : 'male';
-    await pline(`Aloha ${g.plname}, welcome to NetHack!  You are a ${alignName} ${genderAdj} human ${g.urole.name.m}.`);
+/** Local time as YYYYMMDDHHMMSS (the browser plays at the real date: moon phase, Friday 13th). */
+function nowStamp() {
+    const d = new Date(), p = (n, w = 2) => String(n).padStart(w, '0');
+    return `${p(d.getFullYear(), 4)}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
 
-// C ref: allmain.c moveloop_core()
+export class NethackGame {
+    constructor({ seed = 0, nethackrc = '', datetime = null, storage = null } = {}) {
+        this.seed = seed; this.nethackrc = nethackrc; this.datetime = datetime || nowStamp();
+        this._storage = storage; this._pendingStorage = null; this._pendingDisplay = null;
+        this.display = null;
+        this.exited = false; this.exitStatus = null; this.error = null;
+        this._grant = null;      // resolves the game's pending key request
+        this._parked = null;     // resolves the driver when the game waits for a key or exits
+    }
+
+    /** Resolves when the game next waits for a key or exits. */
+    _untilParked() { return new Promise((res) => { this._parked = res; }); }
+    _park() { const r = this._parked; this._parked = null; if (r) r(); }
+
+    async start() {
+        this.display = this._pendingDisplay || game.nhDisplay || new GameDisplay(null);
+        game.nhDisplay = this.display;
+        game.program_state = { gameover: false };
+        current = this;
+        const storage = this._pendingStorage || this._storage || null;
+        const parked = this._untilParked();
+        const p = bootProcess({
+            seed: this.seed, datetime: this.datetime, nethackrc: this.nethackrc, storage,
+            // drawn as recorded (encodeScreen: blank runs become cursor moves, as the judge sees them)
+            onMarker: (m) => { if (m.kind === 'input' || m.kind === 'anim') this.display.showScreen(encodeScreen(m.payload), m.cx, m.cy); },
+            onRng: null,
+            readKey: async () => {
+                // an input boundary: give control back, wait for moveloop_core's go-ahead
+                const go = new Promise((res) => { this._grant = res; });
+                this._park();
+                await go;
+                const k = await this.display.readKey({ bindings: arrowBindings() });
+                return k === 13 ? 10 : k;   // the recorder's tty (ICRNL)
+            },
+        });
+        p.done.then((r) => {
+            this.exited = true;
+            if (r.error) { this.error = r.error; console.error(r.error); } else this.exitStatus = r.status;
+            game.program_state.gameover = true;
+            this._park();
+        });
+        await parked;
+    }
+}
+
+/** One input step of the current game: one key in, run to the next key wait or the end. */
 export async function moveloop_core() {
-    const g = game;
-
-    // Fast-forward per-step RNG (monster movement, regen, sounds, hunger)
-    const stepNum = (g.moves || 1) - 1;
-    fastforward_step(stepNum);
-
-    // Vision + display
-    if (g.vision_full_recalc) {
-        vision_recalc(0);
-        g.vision_full_recalc = 0;
+    const g = current;
+    if (!g || g.exited) { game.program_state = { ...(game.program_state || {}), gameover: true }; return; }
+    const d = g.display;
+    if (d.inputQueueLength === 0 && typeof d.onEmptyQueue === 'function') {
+        const k = d.onEmptyQueue();   // may throw (end of a replay)
+        if (k !== undefined && k !== null) d.pushKey(k);
     }
-    await bot();
-    await flush_screen(1);
-
-    // Read and execute one command
-    await rhack(0);
-
-    // Clear message after command is processed
-    g._pending_message = '';
-
-    // Advance turn
-    if (g.context?.move) {
-        g.moves = (g.moves || 1) + 1;
-    }
-}
-
-// C ref: allmain.c moveloop()
-export async function moveloop(resuming) {
-    vision_recalc(0);
-    await docrt();
-    await flush_screen(1);
-
-    for (;;) {
-        await moveloop_core();
-        if (game.program_state?.gameover) break;
-    }
+    const parked = g._untilParked();
+    const grant = g._grant;
+    g._grant = null;
+    if (grant) grant();
+    await parked;
 }

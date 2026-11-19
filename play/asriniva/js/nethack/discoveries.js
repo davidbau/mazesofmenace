@@ -19,7 +19,7 @@ export function enableDiscoveries(environment,layouts){
  local.Sprintf=(out,fmt,...a)=>S.sprintf(text(out),text(fmt),...a.map(v=>typeof v==='string'?text(v):v?.address??v));
  local.assert=condition=>{if(!condition){const a=abi.assertion;resolve('__assert_fail')(text(a.condition),text(a.file),a.line,text(a.function));}};
  const comparator=environment.functionPointer('o_init::discovered_cmp','ipp',(a,b)=>transport.scoped(()=>withCEnvironment(context,()=>source.discovered_cmp(address(a),address(b)))));
- local.comparatorPointer=()=>comparator;local.qsort=(base,count,size)=>resolve('qsort')(address(base),transport.ulong(count),transport.ulong(size),comparator);
+ local.comparatorPointer=()=>comparator;local.qsort=(base,count,size)=>resolve('nh_deterministic_qsort')(address(base),transport.ulong(count),transport.ulong(size),comparator);
  const names=Object.keys(abi.public).filter(n=>!environment.hasFunction(n));
  environment.extend('object-state',Object.fromEntries(names.map(n=>[n,(...args)=>{const row=prototype(abi.public[n]);return transport.scoped(()=>{const result=withCEnvironment(context,()=>source[n](...args.map((v,i)=>scalar(row.args[i],v))));return scalar(row.ret,result?.address??result);});}])));
  const owner={context,services:local,exports:names,comparator,limitations:'Same initialized source adapter/private discovery data. Only separately C-compared public/UI paths accepted.'};owners.set(environment,owner);return owner;

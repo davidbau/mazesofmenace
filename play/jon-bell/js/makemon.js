@@ -1288,11 +1288,8 @@ export function rndmonnumAdj(minadj, maxadj) {
         return p;
     const excl = G_UNIQ | G_NOGEN | (Inhell() ? G_NOHELL : G_HELL);
     let i;
-    let guard = 10000;
     do {
         i = rn1(SPECIAL_PM - LOW_PM, LOW_PM);
-        if (--guard <= 0)
-            return LOW_PM;
     } while ((MONS[i][3] & excl) !== 0);
     return i;
 }

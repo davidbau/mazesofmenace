@@ -12,12 +12,12 @@ import './inventory_refresh.js';
 import { obj_merge_light_sources } from './light.js';
 import { splitobj } from './makemon.js';
 import { dealloc_obj, place_object, remove_object, start_glob_timeout } from './mkobj.js';
-import { pudding_merge_message } from './mkobj.js';
+import { pudding_merge_message, obj_absorb } from './mkobj.js';
 import { observe_object } from './o_init.js';
 import { oname, safe_oname } from './do_name.js';
 import { reset_justpicked, u_safe_from_fatal_corpse } from './pickup.js';
 import { There, impossible, pline } from './pline.js';
-import { globby_bill_fixup, obfree } from './shk.js';
+import { obfree } from './shk.js';
 import { obj_stop_timers, stop_timer } from './timeout.js';
 import { Blind } from './vision.js';
 import { encumber_msg_sync, weight } from './weight.js';
@@ -201,7 +201,6 @@ export async function merged(potmp, pobj, nomsg = false) {
     // absorption below must see the original bknown/rknown disagreement.
     if (!nomsg && !(await mergable(otmp, obj)))
         return false;
-    if (nomsg && obj.globby) await globby_bill_fixup(otmp, obj); // mkobj.c:3714, before extraction
 
     /* C:831-833 — weighted-average age, weighted by quantity.  C's arithmetic is
      * integer division on longs; Math.trunc matches (both operands are
@@ -297,35 +296,8 @@ export async function merged(potmp, pobj, nomsg = false) {
         /* obj_meld() reaches obj_absorb directly (mkobj.c:3789,3794) with no message; only invent.c merged() prints */
         if (!nomsg)
             await pudding_merge_message(otmp, obj); /* invent.c:929 */
-        if (!nomsg) await globby_bill_fixup(otmp, obj);
-        const w1 = (otmp.oeaten | 0) || (otmp.owt | 0);
-        const w2 = (obj.oeaten | 0) || (obj.owt | 0);
-        const total = w1 + w2;
-        if (total)
-            otmp.age = (game.moves | 0) - Math.trunc((((game.moves | 0) - (otmp.age | 0)) * w1
-                + ((game.moves | 0) - (obj.age | 0)) * w2) / total);
-        otmp.owt = (otmp.owt | 0) + w2;
-        if (otmp.oeaten || obj.oeaten)
-            otmp.oeaten = w1 + w2;
-        otmp.quan = 1;
-        /* C mkobj.c:3715-3721 — absorption loses a knowledge/grease
-         * property only when the two globs disagree; matching values remain
-         * intact on both objects before the absorbed node is freed. */
-        if ((otmp.bknown | 0) !== (obj.bknown | 0))
-            otmp.bknown = obj.bknown = 0;
-        if ((otmp.rknown | 0) !== (obj.rknown | 0))
-            otmp.rknown = obj.rknown = 0;
-        if ((otmp.greased | 0) !== (obj.greased | 0))
-            otmp.greased = obj.greased = 0;
-        if (otmp.orotten || obj.orotten)
-            otmp.orotten = obj.orotten = 1;
-        /* a_long must be null to match the timer's own obj_to_any() key */
-        const tm1 = stop_timer(SHRINK_GLOB, { a_obj: otmp, a_long: null });
-        const tm2 = stop_timer(SHRINK_GLOB, { a_obj: obj, a_long: null });
-        const tm = Math.trunc(((tm1 || 25) + (tm2 || 25) + 1) / 2);
-        start_glob_timeout(otmp, tm); /* mkobj.c:3742 */
-        obj_extract_self_general(obj); /* mkobj.c:3745, after absorption */
-        await dealloc_obj(obj); pobj.o = null; potmp.o = otmp; return true; /* mkobj.c:3746-3749 */
+        await obj_absorb(potmp, pobj);
+        return true;
     }
 
     /* C:935-942 — and C's own reason for the how_lost exclusion: monsters

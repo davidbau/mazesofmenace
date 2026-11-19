@@ -74,7 +74,7 @@ import { AT_WEAP, hcolor, helpless, obj_pmname } from './mhitm.js'; // relocate-
 import { gulp_blnd_check, mhis_mon } from './mhitu.js'; // relocate-fns
 import { in_rooms } from './mklev.js';
 import { revive_corpse } from './do.js'; // relocate-fns
-import { obj_extract_self as _objExtractSelf_useupf, bill_dummy_object, costly_alteration, get_mtraits, hornoplenty, mksobj, place_object, set_bknown, unbless, unsplitobj } from './mkobj.js'; // relocate-fns
+import { obj_extract_self as _objExtractSelf_useupf, bill_dummy_object, costly_alteration, get_mtraits, hornoplenty, init_dummyobj, mksobj, place_object, set_bknown, unbless, unsplitobj } from './mkobj.js'; // relocate-fns
 import { MKOBJ_OC_COLOR } from './mkobj_data.js'; // relocate-fns
 import { MKOBJ_OC_MAGIC, MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js'; // relocate-fns
 import { mkundead } from './mkroom.js'; // relocate-fns
@@ -675,14 +675,15 @@ async function use_stethoscope(obj) {
             const appear = mtmp.mappearance | 0;
             switch (M_AP_TYPE(mtmp)) {
             case M_AP_OBJECT:
-                /* C apply.c:417-424: the dummy fruit keeps the mimic's type.
-                 * set_mimic_sym stores its mcorpsenm on the live monster. */
-                const fruit = MCORPSENM(mtmp) !== NON_PM ? MCORPSENM(mtmp)
-                    : (mtmp.mcorpsenm ?? NON_PM);
-                what = appear === _OTYP_SLIME_MOLD && fruit !== NON_PM
-                    ? _ia_simpleonames({ otyp: appear, oclass: OCLASS_FOOD,
-                                        quan: 1, corpsenm: NON_PM, spe: fruit })
-                    : simple_typename(appear);
+                // C apply.c:414-424: initialize the same dummy used by the
+                // object classifiers and by the mimic's named-fruit branch.
+                const dummy = init_dummyobj({}, appear, 1);
+                if (dummy.otyp === _OTYP_SLIME_MOLD && MCORPSENM(mtmp) !== NON_PM) {
+                    dummy.spe = MCORPSENM(mtmp);
+                    what = _ia_simpleonames(dummy);
+                } else {
+                    what = simple_typename(dummy.otyp);
+                }
                 use_plural = _steth_appear_is_plural(appear);
                 break;
             case M_AP_MONSTER: /* C ignores Hallucination here */

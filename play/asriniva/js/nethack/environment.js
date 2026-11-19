@@ -281,7 +281,7 @@ export function createStandaloneEnvironment(options={}) {
     }
     function enableCommandGeometry(){register('cmd-geometry',{isok:nativeGeometryFor(environment).isok});}
     function enableDependencies() {
-        const runtime=createLibraryBindings({regex:true,regexDialect:'sdk'});
+        const runtime=createLibraryBindings({regex:true,regexDialect:'native'});
         for(const name of ['tgetent','tgetflag','tgetnum','tgetstr','tparm','tgoto','tputs','regcomp','regexec','regerror','regfree','compressFile'])services[name]=(...args)=>runtime[name](services,...args);
         services.nativeTgoto=(format,column,row)=>runtime.tgotoNative(services,format,column,row);
         services.nativeTputs=(text,lines,emit)=>runtime.tputsNative(services,text,lines,emit);

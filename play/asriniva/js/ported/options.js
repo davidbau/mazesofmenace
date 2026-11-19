@@ -5332,17 +5332,18 @@ export function determine_ambiguities()
             index,
             needed: 1,
         }));
-        // A name's longest common prefix occurs with one of its sorted neighbors.
-        names.sort((a, b) => a.name < b.name ? -1 : Number(a.name > b.name));
-        for (let i = 1; i < names.length; i++) {
-            const previous = names[i - 1];
-            const current = names[i];
-            let shared = 0;
-            while (shared < previous.name.length && shared < current.name.length
-                   && previous.name.charCodeAt(shared) === current.name.charCodeAt(shared))
-                shared++;
-            previous.needed = Math.max(previous.needed, shared + 1);
-            current.needed = Math.max(current.needed, shared + 1);
+        // C updates both names after comparing a pair. Visit each pair once.
+        for (let i = 0; i < names.length; i++) {
+            const first = names[i];
+            for (let j = i + 1; j < names.length; j++) {
+                const second = names[j];
+                let shared = 0;
+                while (shared < first.name.length && shared < second.name.length
+                       && first.name.charCodeAt(shared) === second.name.charCodeAt(shared))
+                    shared++;
+                first.needed = Math.max(first.needed, shared + 1);
+                second.needed = Math.max(second.needed, shared + 1);
+            }
         }
         for (const {name, index, needed} of names)
             C.writeOptionMinmatch(index, needed < 3 ? 3 : Math.min(needed, name.length));

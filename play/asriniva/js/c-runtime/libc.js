@@ -10,7 +10,7 @@ export function createStandaloneLibc(memory,libc,transport,functions) {
     const text=v=>typeof v==='string'?v:memory.readString(address(v));
     function sscanf(input,format,...outputs) {
         input=text(input).split('\0')[0];let at=0;
-        return scanFormatted(memory,libc,{get:()=>at<input.length?input.charCodeAt(at++):-1,unget:()=>{at--;}},text(format).split('\0')[0],outputs);
+        return scanFormatted(memory,libc,{get:()=>at<input.length?input.charCodeAt(at++):-1,unget:()=>{at--;}},text(format).split('\0')[0],outputs,{darwin:true});
     }
     function strncasecmp(a,b,n){
         const count=Number(transport.ulong(n));if(!count)return 0;
@@ -19,7 +19,7 @@ export function createStandaloneLibc(memory,libc,transport,functions) {
         for(let i=0;i<count;i++){const left=fold(byte(a,i)),right=fold(byte(b,i));if(left!==right||!left)return left-right;}return 0;
     }
     return {
-        ...createErrnoStrings(memory),
+        ...createErrnoStrings(memory,{darwin:true}),
         // Pinned musl difftime subtracts signed time_t before converting to double.
         difftime:(end,start)=>Number(BigInt.asIntN(64,transport.long(end)-transport.long(start))),
         __errno_location:()=>errnoAt,

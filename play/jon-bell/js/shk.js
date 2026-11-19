@@ -36,7 +36,7 @@ import { next_ident, mksobj } from './mkobj.js';
 import { makemon } from './makemon.js';
 import { del_engr_at } from './engrave.js';
 import { mpickobj } from './steal.js';
-import { highc } from './hacklib.js';
+import { highc, strncmpi } from './hacklib.js';
 import { angry_guards, mongone, Soundeffect } from './mon.js';
 import { is_demon } from './makemon.js';
 import { poly_gender } from './polyself.js';
@@ -2484,19 +2484,20 @@ export async function after_shk_move(shkp) {
     }
 }
 
+/* C shk.c:290-305: restore a bill pointer and re-home bones shopkeepers. */
 export function restshk(shkp, ghostly) {
     const u = game.u || {};
     if (!(u.uz && u.uz.dlevel))
         return;
-    /* TODO: real body —
-     *   const eshkp = ESHK(shkp);
-     *   if (eshkp.bill_p !== -1000) eshkp.bill_p = 0;
-     *   if (ghostly) {
-     *       eshkp.shoplevel = { dlevel: u.uz.dlevel, dnum: u.uz.dnum };
-     *       if (!(shkp.mpeaceful|0) && strncmpi(eshkp.customer, plname, PL_NSIZ))
-     *           pacify_shk(shkp, true);
-     *   }
-     */
+    const eshkp = ESHK(shkp);
+    if (eshkp.bill_p !== -1000)
+        eshkp.bill_p = eshkp.bill;
+    if (ghostly) {
+        eshkp.shoplevel = { ...u.uz };
+        if (!shkp.mpeaceful
+            && strncmpi(eshkp.customer || '', game.plname || '', 32 /* PL_NSIZ */))
+            pacify_shk(shkp, true);
+    }
 }
 
 /* C hack.h *u.ushops — first shop room the hero occupies, 0 if none.  The JS

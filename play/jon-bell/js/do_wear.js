@@ -53,7 +53,7 @@ import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { discover_object, observe_object } from './o_init.js';
 import { exercise, change_luck, acurr, getAbase, C_ATTR_TO_DISP, adjalign } from './attrib.js';
 import { STR19, PROTECTION, INTRINSIC, Is_astralevel, A_CURRENT, A_ORIGINAL } from './const.js';
-import { PM_ARCHEOLOGIST, PM_HOBBIT, PM_MARILITH, PM_WINGED_GARGOYLE, PM_INCUBUS } from './pm.generated.js';
+import { PM_ARCHEOLOGIST, PM_MARILITH, PM_WINGED_GARGOYLE, PM_INCUBUS } from './pm.generated.js';
 import { obj_pmname, is_youmonst } from './mhitm.js';
 import { y_monnam, x_monnam } from './do_name.js';
 import { float_vs_flight, body_part } from './polyself.js';
@@ -71,7 +71,7 @@ import { HALLUC, HALLUC_RES } from './const.js';
  * both halves are imported rather than re-derived here. */
 import { sliparm, permonstTemplate, summon_furies } from './makemon.js';
 import { trapname } from './trap.js';
-import { which_armor } from './worn.js';
+import { which_armor, racial_exception } from './worn.js';
 import { canletgo } from './do.js';
 import { touch_petrifies as corpse_touch_petrifies, mon_nam, m_at } from './uhitm.js';
 import { weapon_descr } from './weapon.js';
@@ -2061,16 +2061,10 @@ function WrappingAllowed_dw(ptr) {
         && (ptr.pmidx | 0) !== PM_WINGED_GARGOYLE
         && (ptr.pmidx | 0) !== PM_MARILITH;
 }
-/* C ref: worn.c:1352 racial_exception(mon, obj) — 1 for a hobbit in elven
- * armor, 0 otherwise (the "unacceptable exceptions" arm is commented out in C).
- * raceptr(&youmonst) is &mons[gu.urace.mnum] while !Upolyd and youmonst.data
- * once polymorphed (mondata.h raceptr); no PLAYER race is PM_HOBBIT, so the
- * exception can only fire for a hero poly'd into a hobbit. */
+/* C do_wear.c:2053 uses worn.c:1360, which obtains the race through
+ * mondata.c:1359 raceptr(). Keep the same call path for hero armor too. */
 function racial_exception_dw(otmp) {
-    const ptr = _hero_data_dw();
-    if ((ptr.pmidx | 0) === PM_HOBBIT && is_elven_armor(otmp))
-        return 1;
-    return 0;
+    return racial_exception(game.youmonst, otmp);
 }
 /* C ref: wield.c:1044 welded(obj) —
  *   if (obj && obj == uwep && will_weld(obj)) { set_bknown(obj, 1); return 1; }

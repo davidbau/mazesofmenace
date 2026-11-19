@@ -33,6 +33,7 @@ export function enableStatus(environment,layouts){
   address:(kind,p,index)=>{const e=field(kind,index);return ctypes.locate(e.type,environment.address(p),e.f.name).at;},
   callbackPointer:i=>{const name=['cond_cmp','menualpha_cmp'][i];if(!name)throw new Error('Unknown status callback');return environment.functionPointer('botl::'+name,'ipp',(...args)=>callBotl(local,L,name,...args));},
   alloc:n=>environment.alloc('alloc',Number(n)),free:p=>services.free(environment.address(p)),memset:(p,v,n)=>services.memset(environment.address(p),v,n),
+  qsort:(base,count,size,compare)=>environment.resolve('nh_deterministic_qsort')(environment.address(base),transport.ulong(count),transport.ulong(size),compare),
   Sprintf:(out,format,...args)=>services.sprintf(cptr(out),cptr(format),...args.filter(v=>v?.varargSite===undefined).map(v=>v?.address??v)),
  });
  for(const name of ['on_level','In_quest','depth'])local[name]=(...args)=>environment.resolve(name)(...args.map(v=>v?.address??v));

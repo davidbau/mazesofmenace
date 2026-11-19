@@ -1,11 +1,11 @@
 import { encumber_msg } from './pickup.js';
 import { msgtype_type } from './options.js';
 import { object_runtime_rest_snapshot } from './o_init.js';
-import { bubbles_rest_snapshot, bubbles_copy_snapshot, mazexy } from './mkmaze.js';
+import { bubbles_rest_snapshot, bubbles_copy_snapshot } from './mkmaze.js';
 import { lights_rest_snapshot } from './light.js';
 import { worms_rest_snapshot } from './worm.js';
 import { role_init } from './role.js';
-import { peaceMinded, set_malign } from './makemon.js';
+import { peaceMinded, set_malign, permonstTemplate } from './makemon.js';
 import { olfaction } from './mondata.js';
 // restore.js — C ref: nethack-c/src/restore.c
 //
@@ -26,7 +26,6 @@ import { obj_no_longer_held } from './do.js';
 import { _gm_migrating } from './mklev.js';
 import { rest_engravings } from './engrave.js';
 import { In_hell, Is_branchlev, on_level, assign_level, ledger_no } from './dungeon.js';
-import { stairway_add } from './stairs.js';
 import { deltrap } from './trap.js';
 import { restore_cham, hide_monst, hideunder } from './mon.js';
 import { restore_luadata, l_nhcore_call, NHCORE_RESTORE_OLD_GAME } from './nhlua.js';
@@ -35,15 +34,16 @@ import { restore_timer_order, restore_timers_level, run_timers } from './timeout
 import { mon_catchup_elapsed_time } from './dog.js';
 import { stored_level, saved_state_for, savefile_name, NOT_SAVED } from './save.js';
 import { vfsReadFile, vfsDeleteFile } from './storage.js';
-import { docrt, cls, see_monsters, _topline_more_pending, flush_screen, clear_glyph_buffer, reglyph_darkroom } from './display.js';
-import { bot } from './botl.js';
-import { pline } from './pline.js';
+import { docrt, cls, see_monsters, _topline_more_pending, flush_screen, clear_glyph_buffer, reglyph_darkroom, reset_glyphmap } from './display.js';
+import { bot, max_rank_sz } from './botl.js';
+import { assign_graphics } from './symbols.js';
+import { pline, You } from './pline.js';
 import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
 import { change_luck } from './attrib.js';
-import { HALLUC, HALLUC_RES, OBJ_FREE, COLNO, W_BALL, W_CHAIN, MAXNROFROOMS, STAIRS, MAGIC_PORTAL, BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL } from './const.js';
-import { set_residency } from './shk.js';
+import { HALLUC, HALLUC_RES, OBJ_FREE, COLNO, W_BALL, W_CHAIN, MAXNROFROOMS, MAGIC_PORTAL, BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL, Is_rogue_level } from './const.js';
+import { set_residency, restshk } from './shk.js';
 import { setworn } from './worn.js';
 import { PM_MONK } from './pm.generated.js';
 import { ugenocided, udeadinside, set_uasmon } from './polyself.js';
@@ -73,6 +73,7 @@ function find_lev_obj_clear_no_charge(level) {
 
 function restobjchn_clear_bypass(ochain) {
     for (let otmp = ochain; otmp; otmp = otmp.nobj) {
+        otmp.lua_ref_cnt = 0; // C restore.c:190: Lua handles belong to the old read.
         if (otmp.bypass)
             otmp.bypass = 0;
         if (otmp.cobj)
@@ -142,6 +143,41 @@ function rest_edog_times(fmon, shift) {
     }
 }
 
+// C restore.c:358-359,405-406: pointers in a save belong to the old
+// process. Rebuild data from this process's mons[] and validate pet apport.
+function restmonchn_data(fmon) {
+    for (let mon = fmon; mon; mon = mon.nmon) {
+        mon.data = permonstTemplate(mon.mnum);
+        const edog = mon.mextra?.edog;
+        if (edog && edog.apport <= 0) edog.apport = 1;
+    }
+}
+
+// C restore.c:113-125: consume objects interrupted by a hangup save.
+export async function inven_inuse(quietly) {
+    const { xname } = await import('./objnam.js');
+    const { useup } = await import('./invent.js');
+    for (let obj = game.invent, next; obj; obj = next) {
+        next = obj.nobj;
+        if (obj.in_use) {
+            if (!quietly) await pline('Finishing off %s...', xname(obj));
+            await useup(obj);
+        }
+    }
+}
+
+// C restore.c:468-483: savefruitchn writes head to tail; loading prepends.
+function loadfruitchn(head) {
+    let restored = null;
+    while (head) {
+        const next = head.nextf;
+        head.nextf = restored;
+        restored = head;
+        head = next;
+    }
+    return restored;
+}
+
 export async function getlev(lev, restoreFloor = null) {
     const g = game;
     const u = g.u || (g.u = {});
@@ -149,6 +185,8 @@ export async function getlev(lev, restoreFloor = null) {
     if (!snap) {
         throw new Error(`getlev: no stored level ${lev}`);
     }
+    // C restore.c:1064,1305: suppress vision and map updates throughout the read.
+    (g.program_state ||= {}).in_getlev = 1;
 
     /* restore.c:1073 rest_levl + 1076-1080 lastseentyp + 1088 rest_stairs +
      * 1090-1091 updest/dndest + 1092 level flags + 1100-1109 doors +
@@ -157,6 +195,21 @@ export async function getlev(lev, restoreFloor = null) {
      * rest_track.  All of it is the departing level's own containers, which
      * clear_level_structures() replaced rather than mutated. */
     g.level = snap.level;
+    // C save.c:673-684,924-934 stores local stairs/traps relative to the
+    // old u.uz; restore.c:973-976,1153-1156 makes them absolute at the new
+    // u.uz. Bones of a randomized special level can move to another depth.
+    if (g.program_state.reading_bonesfile && snap.saved_uz) {
+        const origin = snap.saved_uz;
+        const restoreDestination = (dest) => {
+            if (dest.dnum === origin.dnum) dest.dlevel -= origin.dlevel;
+            if (dest.dnum === u.uz.dnum) dest.dlevel += u.uz.dlevel;
+        };
+        for (let stway = snap.stairs; stway; stway = stway.next)
+            restoreDestination(stway.tolev);
+        for (let trap = snap.ftrap; trap; trap = trap.ntrap)
+            restoreDestination(trap.dst);
+        snap.saved_uz = { ...u.uz };
+    }
     /* C restore.c:1117,1314-1318 rest_adjust_levelflags(): restore stasis_until
      * from its relative offset stored by save_adjust_levelflags(). */
     if (g.level?.flags)
@@ -214,6 +267,9 @@ export async function getlev(lev, restoreFloor = null) {
         snap.stairs = prev;
     }
     g.fmon = snap.fmon;
+    restmonchn_data(g.fmon);
+    for (let mon = g.fmon; mon; mon = mon.nmon)
+        if (mon.isshk) restshk(mon, !!g.program_state.reading_bonesfile);
     /* C restore.c:1136 restmonchn -> restmon:354-356 */
     rest_edog_times(g.fmon, (g.moves | 0) - (snap.omoves | 0));
     g.fobj = snap.fobj;
@@ -329,24 +385,11 @@ export async function getlev(lev, restoreFloor = null) {
     /* C restore.c:1230-1291 — a bones level's stairs and portals are the dead
      * hero's; re-aim them at this game's dungeon. */
     if (ghostly) {
-        let stway = g.stairs;
-        while (stway) {
-            if (!stway.isladder && !stway.up
-                && stway.tolev.dnum === u.uz.dnum)
-                break;
-            stway = stway.next;
-        }
-
-        const medusa = g.medusa_level, stronghold = g.stronghold_level;
-        if (medusa && stronghold && lev > ledger_no(medusa)
-            && lev < ledger_no(stronghold) && !stway) {
-            const cc = {};
-            const dest = { dnum: u.uz.dnum, dlevel: u.uz.dlevel + 1 };
-            mazexy(cc);
-            stairway_add(cc.x, cc.y, false, false, dest);
-            g.level.at(cc.x, cc.y).typ = STAIRS;
-        }
-
+        // C restore.c:1231-1254 scans for a missing down stair, but its
+        // repair is dead: the only bones caller passes lev=0 (bones.c:707),
+        // which cannot exceed medusa's positive ledger number (:1243).
+        // Our lev argument indexes the snapshot and is not that native lev.
+        let stway;
         const br = Is_branchlev(u.uz);
         if (br && u.uz.dlevel === 1) {
             const ltmp = on_level(u.uz, br.end1) ? { ...br.end2 } : { ...br.end1 };
@@ -385,6 +428,7 @@ export async function getlev(lev, restoreFloor = null) {
             }
         }
     }
+    g.program_state.in_getlev = 0;
 }
 
 /* const.js FULL_MOON / NEW_MOON — same spelling as js/allmain.js:51-52, which
@@ -405,6 +449,8 @@ const NEW_MOON_PHASE = 0;
  * first in early_init()/main(), and the restore overwrites what it owns.
  */
 async function restgamestate(state) {
+    const startupFlags = game.flags;
+    const startupContext = game.context;
     // C restore.c:570,589-591: startup debug mode overrides saved playmode.
     const startupDebug = !!game.flags?.debug;
     const startupExplore = !!game.flags?.explore;
@@ -420,6 +466,23 @@ async function restgamestate(state) {
         (game.iflags ||= {}).deferred_X = false;
     }
     role_init();
+    // C restore.c:631-647: reject a hangup save made with a dead hero.
+    // Stage this before restoring inventory and the rest of the saved graph,
+    // which C has not read yet when it takes this return.
+    const savedU = state.u;
+    if (savedU.uhp <= 0
+        && (savedU.umonnum === savedU.umonster || savedU.mh <= 0)) {
+        game.u = savedU;
+        savedU.ux = savedU.uy = 0;
+        await You('were not healthy enough to survive restoration.');
+        if (game.wiz1_level) game.wiz1_level.dlevel = 0;
+        savedU.uz = { dnum: 0, dlevel: 1 };
+        game.iflags.deferred_X = false;
+        game.flags = startupFlags;
+        game.context = startupContext;
+        game.youmonst = {};
+        return false;
+    }
     for (const k of Object.keys(state)) {
         if (['flags', '__engravings', '__regions', '__worms', '__lights', '__objectRuntime', '__bubbles', '__luadata', '__ubirthday'].includes(k) || NOT_SAVED.includes(k))
             continue;
@@ -476,8 +539,11 @@ async function restgamestate(state) {
         set_uasmon();
         slots.forEach((k, i) => { game.u[k] = saved[i]; });
     }
+    // C restore.c:649: a hangup can save in the middle of changing levels.
+    assign_level(game.u.uz0 ||= {}, game.u.uz);
     // C restore.c:671 restores one migrating chain; rebind both JS spellings.
     _gm_migrating();
+    restmonchn_data(game.migrating_mons);
     /* C decl.h:536 marks `int lastinvnr` "(never saved&restored)": the restoring
      * process keeps decl.c:458's initial 51 (u_init.c:1375 re-sets it only for a
      * NEW game), so assigninvlet() (invent.c:721) scans from 'a' again instead of
@@ -512,6 +578,7 @@ async function restgamestate(state) {
     worms_rest_snapshot(state.__worms);
     lights_rest_snapshot(state.__lights);
     object_runtime_rest_snapshot(state.__objectRuntime);
+    game.ffruit = loadfruitchn(game.ffruit);
     // Legacy JS saves contain no Lua data; the empty chunk leaves the fresh
     // nhcore.lua variables intact. New saves restore the actual serialized table.
     await restore_luadata(state.__luadata ?? '');
@@ -545,6 +612,7 @@ async function restgamestate(state) {
  * too and steed.c:922-928 reports any monster already on that grid slot.
  * u.uz is still the fresh process's (describe_level). */
 async function first_getlev_place_monsters(chain) {
+    restmonchn_data(chain);
     const grid = new Map();
     for (let mtmp = chain; mtmp; mtmp = mtmp.nmon) {
         const key = (mtmp.mx | 0) * 256 + (mtmp.my | 0);
@@ -557,7 +625,7 @@ async function first_getlev_place_monsters(chain) {
     }
 }
 
-export async function find_lev_obj_no_longer_held(fobj) {
+export async function find_lev_obj_no_longer_held(fobj, restoreWorn = true) {
     const chain = [];
     for (let o = fobj; o; o = o.nobj) chain.push(o);
     for (let i = chain.length - 1; i >= 0; i--) {
@@ -566,6 +634,9 @@ export async function find_lev_obj_no_longer_held(fobj) {
         obj.where = OBJ_FREE;
         try { await obj_no_longer_held(obj); }
         finally { obj.where = where; }
+        // while reading the hero's current level.
+        if (restoreWorn && game.u.uz?.dlevel && (obj.owornmask & (W_BALL | W_CHAIN)))
+            await setworn(obj, obj.owornmask);
     }
 }
 
@@ -576,12 +647,25 @@ export async function dorecover(save) {
      * ("affects bot() so clear before docrt()"). */
     g.program_state.restoring = 1;
     // C first reads the current level before restoring the saved globals.
-    await first_getlev_place_monsters(save.state.fmon);
-    await find_lev_obj_no_longer_held(save.state.fobj);
+    // restore.c:811 allocates a first copy; :893-898 rewinds and reads the
+    // original save again. Effects of that first read (for example a fixed
+    // crysknife reverting in find_lev_obj) must not alter the final read.
+    const firstLevel = saved_state_for(save.body);
+    g.program_state.in_getlev = 1;
+    await first_getlev_place_monsters(firstLevel.fmon);
+    await find_lev_obj_no_longer_held(firstLevel.fobj);
     const baseTopline = g._base_topline; /* restgamestate copies saved keys over game */
     delete g._base_topline;
-    await bubbles_copy_snapshot(save.state.__bubbles, save.state.level);
-    await restgamestate(save.state);
+    await bubbles_copy_snapshot(firstLevel.__bubbles, firstLevel.level);
+    g.program_state.in_getlev = 0;
+    if (!await restgamestate(save.state)) {
+        // C restore.c:813-822: discard this save and let main start a new game.
+        await baseTopline?.flush();
+        vfsDeleteFile(savefile_name(g.plname));
+        g.u.usteed_mid = g.u.ustuck_mid = 0;
+        g.program_state.restoring = 0;
+        return 0;
+    }
     /* C restore.c:281-282 on dorecover's reads: restgamestate() brings back
      * invent (:657), the loose ball & chain (:660) and migrating_objs (:671)
      * through restobjchn, and the current level's chains come back through
@@ -596,6 +680,8 @@ export async function dorecover(save) {
      * each migrating monster's minvent through restobjchn (:421) as well. */
     for (let mtmp = g.migrating_mons; mtmp; mtmp = mtmp.nmon)
         restobjchn_clear_bypass(mtmp.minvent);
+    for (let mon = g.migrating_mons; mon; mon = mon.nmon)
+        if (mon.isshk) restshk(mon, false);
     restore_timer_order(); /* C restore.c:811,813,898 insert_timer order */
     /* restore_msghistory -> topl.c:701-702: a standing TOPLINE_NEED_MORE becomes
      * NON_EMPTY, so docrt's cls() does not page it; it is only remembered. */
@@ -610,9 +696,9 @@ export async function dorecover(save) {
     // level structures, including init_rect() (mklev.c:916). The final
     // getlev() reloads the map but leaves this fresh allocator in place.
     init_rect();
+    g.program_state.in_getlev = 1;
     restdamage_reverse(g.level);
     find_lev_obj_clear_no_charge(g.level);
-    await find_lev_obj_no_longer_held(g.fobj);
     // C restore.c:811,898 reads the original saved current level twice;
     // each rest_stairs (:955-984) prepends records in save_stairs order.
     // The final chain is therefore the reverse of the saved chain.
@@ -650,6 +736,9 @@ export async function dorecover(save) {
                                       snap.level?.buriedobjlist, snap.billobjs);
         /* the same read's restmon() re-bases each pet's edog times */
         rest_edog_times(snap.fmon, aged);
+        restmonchn_data(snap.fmon);
+        for (let mon = snap.fmon; mon; mon = mon.nmon)
+            if (mon.isshk) restshk(mon, false);
         snap.omoves = g.moves | 0;
         /* that getlev() also re-prepends the stairway and trap chains
          * (restore.c:978, 1159-1160) before restlevelfile() writes them back */
@@ -667,10 +756,11 @@ export async function dorecover(save) {
         if (snap.timers) restore_timer_order(snap.timers);
         restdamage_reverse(snap.level);
         find_lev_obj_clear_no_charge(snap.level);
-        await find_lev_obj_no_longer_held(snap.fobj);
+        await find_lev_obj_no_longer_held(snap.fobj, false); /* C restore.c:873 -> 1168 -> 93-97 */
         if (!snap.bubbles) continue;
         snap.bubbles = await bubbles_copy_snapshot(snap.bubbles, snap.level);
     }
+    await find_lev_obj_no_longer_held(g.fobj);
     // The final current-level read rebuilds its worm occupancy as getlev does.
     // Worm chain roots survive serialization; the module's derived grid does not.
     // C restore.c:1196-1217 — that read (REST_CURRENT_LEVEL, so the
@@ -683,7 +773,9 @@ export async function dorecover(save) {
     // monster displaced from its slot before the save (steed.c:930 overwrite)
     // is back on the map after it; a later one on the same square wins.
     const grid = new Map();
+    restmonchn_data(g.fmon);
     for (let mon = g.fmon; mon; mon = mon.nmon) {
+        if (mon.isshk) restshk(mon, false);
         if (mon === g.u?.usteed) continue;
         const key = (mon.mx | 0) * 256 + (mon.my | 0);
         const othermon = grid.get(key);
@@ -703,7 +795,12 @@ export async function dorecover(save) {
         await restore_cham(mon);
     }
     await bubbles_rest_snapshot(save.state.__bubbles);
+    g.program_state.in_getlev = 0;
     g.program_state.something_worth_saving = 1;
+    // C restore.c:905-908: initialize this process's graphics and rank width.
+    if (Is_rogue_level(g.u.uz)) assign_graphics(1 /* ROGUESET */);
+    reset_glyphmap(2 /* gm_levelchange */);
+    max_rank_sz();
     /* C restore.c:920-922 — set up the vision internals after the level data
      * is loaded but before docrt().  The saved viz arrays travel with the
      * level (they describe the same level the hero is standing on), so this is
@@ -714,12 +811,20 @@ export async function dorecover(save) {
         await setworn(null, W_CHAIN);
         await setworn(null, W_BALL);
     }
+    await inven_inuse(false); // C restore.c:922: billing and current level are ready.
     // C restore.c:926: normalize remembered dark-room glyphs before repainting.
     reglyph_darkroom();
     vision_reset();
     g.vision_full_recalc = 1;
     await run_timers();
     g.program_state.restoring = 0;
+    // C restore.c:933-939: preserve startup diagnostics until the player
+    // acknowledges the pending raw output, before docrt clears the screen.
+    if (g.early_raw_messages && !g.program_state.beyond_savefile_load) {
+        g.early_raw_messages = 0;
+        await baseTopline?.waitSynch();
+    }
+    g.u.usteed_mid = g.u.ustuck_mid = 0; // C restore.c:941
     g.program_state.beyond_savefile_load = 1;
     /* C restore.c:932 docrt() — repaint the whole screen from the restored
      * level's remembered glyphs, monsters and hero. */
@@ -744,6 +849,7 @@ export async function dorecover(save) {
      * those follows it.  restore_preamble() below owns the whole queue, the
      * same way js/allmain.js#newgame owns it for a new game. */
     /* Both calls run in restore_preamble(), in C's order. */
+    return 1;
 }
 
 /*

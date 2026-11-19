@@ -1,6 +1,6 @@
 // Pinned Emscripten/musl boundary behavior; no host filesystem or Wasm.
 import abi from './sdk-boundary-abi.json' with {type:'json'};
-import {readSdkUtf8} from '../c-runtime/stdio.js';
+import {readFilePath,readSdkUtf8} from '../c-runtime/stdio.js';
 import {VFSError} from '../c-runtime/vfs.js';
 const owners=new WeakMap();
 export class SdkAbortError extends Error{constructor(message){super(message);this.name='RuntimeError';}}
@@ -10,7 +10,7 @@ export function enableSdkBoundary(environment,{monotonicNow=()=>performance.now(
  const failure=code=>{libc.errno=abi.constants[code];return -1;},capture=fn=>{try{return fn();}catch(e){if(!(e instanceof VFSError))throw e;libc.errno=e.errno;return -1;}};
  filesystem.installNullDevice();
  const state={aborted:false,abortMessage:null},api={
-  access:(path,mode)=>capture(()=>{path=text(path);if(!path)throw new VFSError('ENOENT');mode=transport.int(mode);if(mode&~7)return failure('EINVAL');const node=filesystem._lookup(path);filesystem._permissions(node,(mode&4?'r':'')+(mode&2?'w':'')+(mode&1?'x':''));return 0;}),
+  access:(path,mode)=>capture(()=>{path=readFilePath(memory,path);if(!path)throw new VFSError('ENOENT');mode=transport.int(mode);if(mode&~7)return failure('EINVAL');const node=filesystem._lookup(path);filesystem._permissions(node,(mode&4?'r':'')+(mode&2?'w':'')+(mode&1?'x':''));return 0;}),
   getcwd:(p,size)=>{p=address(p);size=p?transport.ulong(size):BigInt(abi.constants.PATH_MAX);if(!size){failure('EINVAL');return 0;}const cwd=filesystem.cwd(),bytes=new TextEncoder().encode(cwd);if(BigInt(bytes.length+1)>size){failure('ERANGE');return 0;}if(!cwd.startsWith('/')){failure('ENOENT');return 0;}if(!p){p=memory.malloc(bytes.length+1);if(!p){failure('ENOMEM');return 0;}}memory.writeString(p,bytes);return p;},
   setuid:id=>{transport.uint(id);return failure('EPERM');},setgid:id=>{transport.uint(id);return failure('EPERM');},
   wait:status=>{void status;return failure('ENOSYS');},

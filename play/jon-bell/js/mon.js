@@ -1,3 +1,4 @@
+import { obj_nexto } from './mkobj.js';
 // mon.js — C ref: mon.c.
 import { obj_resists } from './zap.js';
 import { adjalign } from './attrib.js';
@@ -690,7 +691,7 @@ export async function make_corpse(mtmp, x, y, corpseflags) {
     if (mndx >= PM_GRAY_OOZE_MK && mndx <= PM_GRAY_OOZE_MK + 3) {
         let gobj = await mksobj_at(GLOB_OF_BLACK_PUDDING - (PM_GRAY_OOZE_MK + 3 - mndx), x, y, true, false);
         let gother;
-        while (gobj && (gother = await flooreffects_obj_nexto_xy(gobj, gobj.ox | 0, gobj.oy | 0, true)) != null) {
+        while (gobj && (gother = await obj_nexto(gobj)) != null) {
             await flooreffects_pudding_merge_message(gobj, gother);
             gobj = await flooreffects_obj_meld(gobj, gother);
         }

@@ -93,7 +93,7 @@ import { money_cnt } from './hack.js';
  * oname (mkobj.c:2253), and make_grave is engrave.c:1686.  Both bodies already
  * existed; only this caller was missing. */
 import { STATUE } from './mklev.js';
-import { mkcorpstat, place_object, mksobj } from './mkobj.js';
+import { mkcorpstat, mk_named_object, place_object, mksobj } from './mkobj.js';
 import { make_grave } from './engrave.js';
 import { stackobj } from './invent.js';
 import { accessible } from './monmove.js';
@@ -2237,10 +2237,7 @@ async function really_done(how) {
             if (bones_ok && ((u.ugrave_arise ?? NON_PM) === NON_PM) && !_mvflags) {
                 const was_already_grave = IS_GRAVE(g.level?.at(u.ux | 0, u.uy | 0)?.typ | 0);
                 const plname = String(g.plname ?? g.u?.plname ?? '');
-                _corpse = (await mkcorpstat(CORPSE_END, null, mnum, u.ux | 0, u.uy | 0,
-                                     CORPSTAT_INIT));
-                if (_corpse && plname)
-                    _corpse = await oname(_corpse, plname, 0 /* ONAME_NO_FLAGS */);
+                _corpse = await mk_named_object(CORPSE_END, mnum, u.ux | 0, u.uy | 0, plname);
                 let pbuf = `${plname}, `;
                 pbuf += formatkiller('', 0, how, true);
                 make_grave(u.ux | 0, u.uy | 0, pbuf);

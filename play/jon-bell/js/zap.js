@@ -1,7 +1,7 @@
 import { dealloc_mextra } from './mon.js';
 import { msgtype_type } from './options.js';
 import { nh_delay_output } from './animframes.js';
-import { fixup_oil, get_mtraits, free_omid } from './mkobj.js';
+import { fixup_oil, get_mtraits, free_omid, recreate_pile_at, replace_object, stone_object_type, stone_furniture_type, corpse_revive_type } from './mkobj.js';
 import { POT_OIL } from './const.js';
 import { sp_levchn_lookup, pline_mon } from './mklev.js';
 import { add_to_minv, set_corpsenm } from './mkobj.js';
@@ -3995,61 +3995,6 @@ function _zp_extract_floor(obj) {
     obj.nexthere = null;
     obj.nobj = null;
 }
-function _zp_replace_object(obj, otmp) {
-    otmp.where = obj.where;
-    if ((obj.where | 0) === ZP_OBJ_INVENT) {
-        otmp.nobj = obj.nobj;
-        obj.nobj = otmp;
-        {
-            const g = game;
-            let prev = null;
-            for (let o = g.invent; o; prev = o, o = o.nobj) {
-                if (o === obj) {
-                    if (prev) prev.nobj = o.nobj; else g.invent = o.nobj;
-                    break;
-                }
-            }
-        }
-        obj.where = ZP_OBJ_FREE;
-        obj.nobj = null;
-        return;
-    }
-    if ((obj.where | 0) === ZP_OBJ_MINVENT) {
-        /* C mkobj.c:662-666 replace_object OBJ_MINVENT arm:
-         *     otmp->nobj = obj->nobj; otmp->ocarry = obj->ocarry;
-         *     obj->nobj = otmp; extract_nobj(obj, &obj->ocarry->minvent);
-         * Reached from trapeffect_poly_trap's iron-shoes arm (trap.c:2496-2510). */
-        const mon = obj.ocarry;
-        otmp.nobj = obj.nobj;
-        otmp.ocarry = mon;
-        obj.nobj = otmp;
-        let prev = null;
-        for (let o = mon.minvent; o; prev = o, o = o.nobj) {
-            if (o === obj) {
-                if (prev) prev.nobj = o.nobj; else mon.minvent = o.nobj;
-                break;
-            }
-        }
-        obj.where = ZP_OBJ_FREE;
-        obj.nobj = null;
-        return;
-    }
-    if ((obj.where | 0) !== ZP_OBJ_FLOOR) {
-        return;
-    }
-    otmp.nobj = obj.nobj;
-    otmp.nexthere = obj.nexthere;
-    otmp.ox = obj.ox;
-    otmp.oy = obj.oy;
-    obj.nobj = otmp;
-    obj.nexthere = otmp;
-    _zp_extract_floor(obj);
-    /* C mkobj.c:2612 extract_nobj(): obj->where = OBJ_FREE, so poly_obj's
-     * trailing delobj() (zap.c:1985) has update_map FALSE (invent.c:1453) and
-     * draws no newsym; only bhito's own newsym (zap.c:2223) repaints. */
-    obj.where = ZP_OBJ_FREE;
-}
-
 /* C zap.c:1640-1655 do_osshock(struct obj *obj) — the "shudders" destruction. */
 async function do_osshock(obj) {
     /* C zap.c:1641-1644: MAIL_STRUCTURES */
@@ -4249,7 +4194,7 @@ export async function poly_obj(obj, id) {
     get_obj_location(obj, xp, yp, BURIED_TOO | CONTAINED_TOO);
     const ox = xp.value | 0, oy = yp.value | 0;
     const old_wornmask = obj.owornmask & ~(W_ART | W_ARTI);
-    _zp_replace_object(obj, otmp);
+    replace_object(obj, otmp);
     if (obj_location === ZP_OBJ_INVENT) {
         await freeinv_core(obj);
         await addinv_core1(otmp);
@@ -4381,29 +4326,6 @@ async function _zp_boxlock_invent(obj) {
         update_inventory();
 }
 
-function _zp_place_on_floor(obj, x, y) {
-    const g = game;
-    const xi = x | 0, yi = y | 0;
-    let otmp2 = (g.level?.levelObjects?.[xi]?.[yi]) ?? null;
-    if (otmp2 && (otmp2.otyp | 0) === ZP_BOULDER && (obj.otyp | 0) !== ZP_BOULDER) {
-        while (otmp2.nexthere && (otmp2.nexthere.otyp | 0) === ZP_BOULDER)
-            otmp2 = otmp2.nexthere;
-        obj.nexthere = otmp2.nexthere;
-        otmp2.nexthere = obj;
-    } else {
-        obj.nexthere = otmp2;
-        if (g.level?.levelObjects?.[xi])
-            g.level.levelObjects[xi][yi] = obj;
-    }
-    obj.ox = xi;
-    obj.oy = yi;
-    obj.where = ZP_OBJ_FLOOR;
-    obj.nobj = g.fobj;
-    g.fobj = obj;
-    if ((obj.otyp | 0) === ZP_BOULDER && (!otmp2 || (otmp2.otyp | 0) !== ZP_BOULDER))
-        block_point(xi, yi);
-}
-
 /* C zap.c:5537-5578 fracture_rock(struct obj *obj) /* no texts here! *\/ —
  * fractured by pick-axe or wand of striking or by vault guard or shopkeeper. */
 export async function fracture_rock(obj) {
@@ -4437,8 +4359,8 @@ export async function fracture_rock(obj) {
 
     if ((obj.where | 0) === ZP_OBJ_FLOOR) {
         const ox = obj.ox | 0, oy = obj.oy | 0;
-        _zp_extract_floor(obj);        /* obj_extract_self — move rocks back on top */
-        _zp_place_on_floor(obj, ox, oy);
+        obj_extract_self_general(obj);
+        await place_object(obj, ox, oy);
         if (!does_block(ox, oy)) {
             unblock_point(ox, oy);
             /* need immediate update in case this is a striking/force bolt
@@ -4460,10 +4382,8 @@ export async function break_statue(obj) {
     }
     while (obj.cobj) {
         const item = obj.cobj;
-        obj.cobj = item.nobj ?? null;
-        item.nobj = null;
-        item.ocontainer = null;
-        _zp_place_on_floor(item, x, y);
+        obj_extract_self_general(item);
+        await place_object(item, x, y);
     }
     /* C zap.c:5598-5603: a historic statue shames an Archeologist; spe is
        cleared before fracture_rock so the rocks merge with other rocks. */
@@ -4564,7 +4484,7 @@ async function stone_to_flesh_obj(obj) {
                 while ((item = obj.cobj) != null) {
                     bypass_obj(item); /* make stone-to-flesh miss it */
                     obj_extract_self_general(item);
-                    _zp_place_on_floor(item, oox, ooy);
+                    await place_object(item, oox, ooy);
                 }
                 obj = (await poly_obj(obj, CORPSE));
             }
@@ -4794,7 +4714,7 @@ export async function bhito(obj, otmp) {
             revive_egg(obj);
         } else if (obj.otyp === CORPSE) {
             const by_u = !g.context?.mon_moving;
-            const corpsenm = obj.oextra?.omonst?.mnum ?? obj.corpsenm;
+            const corpsenm = corpse_revive_type(obj);
             let corpsname = cxname_singular_bh(obj);
             const xp = { value: 0 }, yp = { value: 0 };
             if (!get_obj_location(obj, xp, yp, 0)) {
@@ -4957,25 +4877,6 @@ async function create_polymon(obj, okind) {
     }
 }
 
-/* C mkobj.c recreate_pile_at(x, y) — empty the pile into a reversed list and
- * place_object() each back, so boulders end up on top. */
-function _zp_recreate_pile_at(x, y) {
-    let reversed = null;
-    for (let otmp = game.level?.levelObjects?.[x]?.[y] || null, next_obj; otmp;
-         otmp = next_obj) {
-        next_obj = otmp.nexthere;
-        _zp_extract_floor(otmp);
-        otmp.nobj = reversed;
-        reversed = otmp;
-    }
-    for (let otmp = reversed, next_obj; otmp; otmp = next_obj) {
-        next_obj = otmp.nobj;
-        otmp.nobj = null;
-        otmp.where = ZP_OBJ_FREE;
-        _zp_place_on_floor(otmp, x, y);
-    }
-}
-
 export async function bhitpile(obj, fhito, tx, ty, zz) {
     const g = game;
     const cell = g.level?.levelObjects?.[tx];
@@ -5034,7 +4935,7 @@ export async function bhitpile(obj, fhito, tx, ty, zz) {
         for (let otmp = g.level?.levelObjects?.[tx]?.[ty] || null; otmp;
              otmp = otmp.nexthere) {
             if ((otmp.otyp | 0) === ZP_BOULDER && prevotyp !== ZP_BOULDER) {
-                _zp_recreate_pile_at(tx, ty);
+                await recreate_pile_at(tx, ty);
                 break;
             }
             prevotyp = otmp.otyp | 0;
@@ -6093,9 +5994,8 @@ async function _bhitm_wand(mtmp, obj) {
             else if (mtmp.data.pmidx === PM_FLESH_GOLEM) mesg = 'seems fleshier...';
             if (canseemon(mtmp)) await pline(`${name} ${mesg}`);
         } else if (mtmp.data.mlet === 13 /* mkobj.c:1264-1297 stone_*_type */
-                   && ((M_AP_TYPE(mtmp) === M_AP_FURNITURE && ((mtmp.mappearance >= 1 && mtmp.mappearance <= 11)
-                            || [25, 26, 29, 30, 33, 35, 36].includes(mtmp.mappearance)))
-                       || (M_AP_TYPE(mtmp) === M_AP_OBJECT && [STF_BOULDER, STF_STATUE, STF_FIGURINE].includes(mtmp.mappearance)))) {
+                   && ((M_AP_TYPE(mtmp) === M_AP_FURNITURE && stone_furniture_type(mtmp.mappearance))
+                       || (M_AP_TYPE(mtmp) === M_AP_OBJECT && stone_object_type(mtmp.mappearance)))) {
             if (cansee(mtmp.mx, mtmp.my)) {
                 set_msg_xy(mtmp.mx, mtmp.my);
                 await that_is_a_mimic(mtmp, 3 /* MIM_REVEAL | MIM_OMIT_WAIT */);
