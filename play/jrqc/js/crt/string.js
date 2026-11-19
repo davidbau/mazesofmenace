@@ -11,7 +11,7 @@ import { CTrap, i32, u64, i64, norm } from './int.js';
 import { BytePtr, Ptr, FieldRef, cstrlen, recArray } from './mem.js';
 import { RawBlock, asArr } from './alloc.js';
 import { isspace, isdigit, isalpha, tolower } from './ctype.js';
-import { deserialize } from './serial.js';
+import { deserialize, memImage, memStore } from './serial.js';
 
 // bytes compare as unsigned char (Darwin); char buffers are Int8Array, so mask
 const at = (p, i) => p.get(i) & 0xff;
@@ -111,7 +111,7 @@ function recRun(r, n, what) {
     const sz = r.constructor.$size;
     if (sz === undefined || n === sz) return [r];
     if (n > sz && r.__tail && n <= sz + r.__tail.length) return [r];   // struct + trailing area (struct engr)
-    if (n < sz || n % sz !== 0) throw new CTrap(`${what} of ${n} bytes over records of ${sz}`);
+    if (n < sz || n % sz !== 0) return null;   // part of a record: the caller uses the bytes (memImage)
     const k = n / sz;
     if (!r.__arr || r.__idx + k > r.__arr.length) throw new CTrap(`${what} of ${k} records past the end of the array`);
     return r.__arr.slice(r.__idx, r.__idx + k);
@@ -133,16 +133,22 @@ function copyVal(a, b) {
     else if (Array.isArray(a)) { for (let i = 0; i < a.length; i++) { if (isAgg(a[i])) copyVal(a[i], b[i]); else a[i] = b[i]; } }
     else a.$copyFrom(b);
 }
+const SZ8 = { i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, i64: 8, u64: 8, f32: 4, f64: 8, ptr: 8 };
 const isRec = (x) => x !== null && typeof x === 'object' && typeof x.$copyFrom === 'function';
 function asBytes(p) {
     if (p instanceof RawBlock) return p.obj !== null ? p.obj : asArr(p, Uint8Array);
     return p;
 }
+/** Fallback for byte operations on data the object model holds as values: through its bytes. */
+function memsetBytes(D, c, n) { memStore(D, new Uint8Array(n).fill(c)); }
 export function memset(d, c, n) {
     n = Number(n); c &= 0xff;
+    if (n === 0) return d;
     const D = asBytes(d);
+    const run = isRec(D) ? recRun(D, n, 'memset') : null;
+    if (isRec(D) && run === null) { memsetBytes(D, c, n); return d; }
     if (isRec(D)) {
-        for (const r of recRun(D, n, 'memset')) {
+        for (const r of run) {
             if (c === 0) r.$copyFrom(new r.constructor());
             // every byte c: each field decodes the pattern (bones.c savebones: ' ' over struct
             // cemetery); a pointer field becomes a non-null pointer that traps when used
@@ -152,25 +158,24 @@ export function memset(d, c, n) {
         return d;
     }
     if (D instanceof FieldRef) {   // &scalar_or_pointer_field: one element
-        if (c !== 0) throw new CTrap('memset of a field with a nonzero byte');
+        if (c !== 0 || (D.kind !== null && typeof D.kind === 'string' && n !== SZ8[D.kind])) { memsetBytes(D, c, n); return d; }
         const cur = D.get(0);
         D.set(0, cur === null || typeof cur === 'object' || typeof cur === 'function' ? null : 0);
         return d;
     }
     if (D instanceof Ptr && !ArrayBuffer.isView(D.buf) && isAgg(D.buf[D.off])) {   // array of arrays/records
-        if (c !== 0) throw new CTrap('memset of nested arrays with a nonzero byte');
-        let left = n;
-        for (let i = D.off; left > 0; i++) {
+        let left = n, whole = c === 0;
+        for (let i = D.off; whole && left > 0; i++) {
             if (i >= D.buf.length) throw new CTrap('memset past the end of an array');
-            const v = D.buf[i];
-            left -= sizeOfVal(v);
-            zeroVal(v);
+            left -= sizeOfVal(D.buf[i]);
         }
-        if (left !== 0) throw new CTrap('memset of part of an array element');
+        if (!whole || left !== 0) { memsetBytes(D, c, n); return d; }   // a nonzero byte, or part of an element
+        left = n;
+        for (let i = D.off; left > 0; i++) { const v = D.buf[i]; left -= sizeOfVal(v); zeroVal(v); }
         return d;
     }
     if (D instanceof Ptr && !ArrayBuffer.isView(D.buf)) {   // array of pointers / 64-bit values: only 0 is meaningful
-        if (c !== 0 || n % 8 !== 0) throw new CTrap('memset of a pointer array with a nonzero byte');
+        if (c !== 0 || n % 8 !== 0) { memsetBytes(D, c, n); return d; }
         const z = D.buf.$kind === 'i64' || typeof D.buf[D.off] === 'number' ? 0 : null;
         for (let i = 0; i < n / 8; i++) D.set(i, z);
         return d;
@@ -189,13 +194,14 @@ const isPtrArray = (p) => p instanceof Ptr && Array.isArray(p.buf) && p.buf.$blo
 function shadowOf(S, n) {
     if (isRec(S)) {
         const runs = recRun(S, n, 'memcpy');
+        if (runs === null) return null;
         const a = recArray(S.constructor, runs.length);
         runs.forEach((r, i) => a[i].$copyFrom(r));
         return a[0];
     }
     if (S instanceof Ptr && ArrayBuffer.isView(S.buf)) {
         const View = S.buf.constructor;
-        if (n % View.BYTES_PER_ELEMENT) throw new CTrap('memcpy of part of an array element');
+        if (n % View.BYTES_PER_ELEMENT) return null;
         const v = new Ptr(new View(n / View.BYTES_PER_ELEMENT), 0);
         bytesView(v, n).set(bytesView(S, n));
         return v;
@@ -204,7 +210,7 @@ function shadowOf(S, n) {
         const out = [];
         let left = n;
         for (let i = 0; left > 0; i++) { const v = S.buf[S.off + i]; left -= sizeOfVal(v); out.push(cloneVal(v)); }
-        if (left !== 0) throw new CTrap('memcpy of part of an array element');
+        if (left !== 0) return null;
         return new Ptr(out, 0);
     }
     return null;
@@ -214,8 +220,10 @@ function cloneVal(v) {
     if (Array.isArray(v)) return v.map((x) => (isAgg(x) ? cloneVal(x) : x));
     return v.$clone();
 }
+function copyBytes(D, S, n) { memStore(D, memImage(S, n)); }   // through a temporary: memmove
 export function memmove(d, s, n) {
     n = Number(n);
+    if (n === 0) return d;
     const D = asBytes(d), Sx = asBytes(s);
     if (isPtrArray(Sx) && Sx.buf.$eff) return memmove(D, Sx.buf.$eff, n);
     if (isPtrArray(D) && n <= D.buf.$block.size && n > D.buf.$block.size - 8 && !isPtrArray(Sx)
@@ -224,23 +232,25 @@ export function memmove(d, s, n) {
         if (sh !== null) { D.buf.$eff = sh; return d; }
     }
     if (isRec(D) || isRec(Sx)) {
-        if (!(isRec(D) && isRec(Sx) && D.constructor === Sx.constructor)) throw new CTrap('memcpy between a record and other data');
-        const ds = recRun(D, n, 'memcpy'), ss = recRun(Sx, n, 'memcpy');
+        const ds = isRec(D) ? recRun(D, n, 'memcpy') : null, ss = isRec(Sx) ? recRun(Sx, n, 'memcpy') : null;
+        // a record and other data, records of another type, or part of a record: its bytes
+        if (!(ds && ss && D.constructor === Sx.constructor)) { copyBytes(D, Sx, n); return d; }
         if (D.__arr && D.__arr === Sx.__arr && D.__idx > Sx.__idx) for (let i = ds.length - 1; i >= 0; i--) ds[i].$copyFrom(ss[i]);
         else for (let i = 0; i < ds.length; i++) ds[i].$copyFrom(ss[i]);
         return d;
     }
-    if (D instanceof FieldRef || Sx instanceof FieldRef) { D.set(0, Sx.get(0)); return d; }   // one scalar or pointer
+    if (D instanceof FieldRef && Sx instanceof FieldRef && D.kind === Sx.kind && (typeof D.kind !== 'string' || n === SZ8[D.kind])) { D.set(0, Sx.get(0)); return d; }   // one scalar or pointer
+    if (D instanceof FieldRef || Sx instanceof FieldRef) { copyBytes(D, Sx, n); return d; }
     if (D instanceof Ptr && Sx instanceof Ptr && !ArrayBuffer.isView(D.buf) && isAgg(D.buf[D.off])) {   // arrays of arrays/records
         let left = n, i = 0;
         const pairs = [];
-        while (left > 0) { const v = D.buf[D.off + i]; left -= sizeOfVal(v); pairs.push([v, Sx.buf[Sx.off + i]]); i++; }
-        if (left !== 0) throw new CTrap('memcpy of part of an array element');
+        while (left > 0) { const v = D.buf[D.off + i]; if (v === undefined) throw new CTrap('memcpy past the end of an array'); left -= sizeOfVal(v); pairs.push([v, Sx.buf[Sx.off + i]]); i++; }
+        if (left !== 0 || pairs.some(([a, b]) => !isAgg(b) || sizeOfVal(a) !== sizeOfVal(b))) { copyBytes(D, Sx, n); return d; }   // part of an element, or other shapes
         for (const [a, b] of pairs) copyVal(a, b);
         return d;
     }
     if (!ArrayBuffer.isView(D.buf) || !ArrayBuffer.isView(Sx.buf)) {   // pointer arrays: element-wise (8 bytes each)
-        if (n % 8 !== 0) throw new CTrap('partial copy of a pointer array');
+        if (n % 8 !== 0 || ArrayBuffer.isView(D.buf) !== ArrayBuffer.isView(Sx.buf)) { copyBytes(D, Sx, n); return d; }   // part of an element, or pointers and bytes
         const k = n / 8;
         if (D.buf === Sx.buf && D.off > Sx.off) for (let i = k - 1; i >= 0; i--) D.set(i, Sx.get(i));
         else for (let i = 0; i < k; i++) D.set(i, Sx.get(i));
@@ -264,9 +274,10 @@ export function bytesView(p, n) {
 }
 export function memcmp(a, b, n) {
     n = Number(n);
+    if (n === 0) return 0;
     const A = asBytes(a), B = asBytes(b);
-    if (!ArrayBuffer.isView(A.buf) || !ArrayBuffer.isView(B.buf)) throw new CTrap('memcmp of non-byte data');
-    const x = bytesView(A, n), y = bytesView(B, n);
+    const bytes = (P) => (P instanceof Ptr && ArrayBuffer.isView(P.buf) ? bytesView(P, n) : memImage(P, n));   // records, fields, pointer arrays: their bytes
+    const x = bytes(A), y = bytes(B);
     for (let i = 0; i < n; i++) if (x[i] !== y[i]) return x[i] - y[i];
     return 0;
 }

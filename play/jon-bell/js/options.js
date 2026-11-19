@@ -25,6 +25,7 @@ import { optfn_suppress_alert_set } from './feature_alert.js';
 import { optfn_number_pad_set, set_misc_menu_command } from './cmd_config.js';
 import { parseautocomplete } from './cmd.js';
 import { config_error_add } from './cfgfiles.js';
+import { nh_basename } from './files.js';
 import { gr as roleGlobals } from './roles.js';
 import { str2role, str2race, str2gend, str2align, setrolefilter, rolefilterstring } from './role.js';
 import { RSF_ROLE, RSF_RACE, RSF_GENDER, RSF_ALGNMNT } from './chargen_ui.js';
@@ -34,7 +35,7 @@ import { config_line_error, config_statement, choose_random_part, config_error_n
 import { menucolor_row, menucolor_text, add_menu_coloring, add_menu_coloring_parsed, free_one_menu_coloring, count_menucolors, match_str2clr, match_str2attr, attr2attrname, attrnames, color_attr_parse_str, check_enhanced_colors, wc_color_name } from './coloratt.js';
 import { TtyMenu, tty_menu_text, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
 import { getlin, menuitem_invert_test, choose_windows } from './windows.js';
-import { mungspaces, fuzzymatch } from './hacklib.js';
+import { c_eos, mungspaces, fuzzymatch, str_end_is } from './hacklib.js';
 import { nh_sprintf, docorner_status_rows, docorner_blank_utf8_captures, _threeStatusLines } from './display.js';
 import { pline } from './pline.js';
 import { optfn_sortdiscoveries_set, get_sortdisco } from './o_init.js';
@@ -266,19 +267,28 @@ export function hilite_status_config_error(op) {
                 if (!cs) break;
                 const accepted = k > 1 ? hsbuf.slice(0, k).join('/') : '';
                 const ret = (e) => { if (accepted) e.accepted = accepted; return e; };
-                for (const sub of cs.split(/[+&]/)) {
-                    if (sub && !match_str2conditionbitmask(sub))
+                /* botl.c:2688-2726, 3215-3218 splitsubfields(): >= 16 '+'/'&'
+                 * subfields returns -1; str2conditionbitmask returns 0 silently. */
+                const csubs = splitsubfields(cs);
+                if (!csubs)
+                    return ret({ silent: true });
+                for (const sub of csubs) {
+                    if (!match_str2conditionbitmask(sub))
                         return ret(["Unknown condition '%s'", sub]);
                 }
                 const how = hsbuf[k + 1] || '';
                 if (!how)
                     return ret(["Missing color+attribute"]);
-                for (const sf of how.split(/[+&]/)) {
-                    const nrm = x => x.replace(/[ \-_]/g, '');
-                    if (attrnames.some(a => a.name && nrm(a.name) === nrm(sf))) continue;
-                    const c = match_str2clr(sf, true);
-                    if (c >= 16)
-                        return ret(["Unknown color '%s'", sf, "bad color %d", c]);
+                const hsubs = splitsubfields(how);
+                /* botl.c:3292 parse_condition(): splitsubfields() < 0 skips loop */
+                if (hsubs) {
+                    for (const sf of hsubs) {
+                        const nrm = x => x.replace(/[ \-_]/g, '');
+                        if (attrnames.some(a => a.name && nrm(a.name) === nrm(sf))) continue;
+                        const c = match_str2clr(sf, true);
+                        if (c >= 16)
+                            return ret(["Unknown color '%s'", sf, "bad color %d", c]);
+                    }
                 }
             }
             return null;
@@ -286,35 +296,45 @@ export function hilite_status_config_error(op) {
         /* botl.c:2846-2857: "characteristics" recurses over BL_STR..BL_CH
          * (all ANY_INT with idxmax -1, identical rules to strength). */
         const cf = f === 'characteristics' ? 'strength' : f;
-        /* botl.c:3036-3063 parse_status_hl2(): each rule's "how" is a
-         * '+'/'&' list of attributes and at most one colour; match_str2clr()
-         * complains (coloratt.c:367), then "bad color '%d %d'". */
-        for (let k = hsbuf.length === 2 ? 1 : 2; k < hsbuf.length; k += 2) {
-            if (hsbuf.length > 2) {
-                const e = check_behavior(cf, hsbuf[k - 1], hsbuf[k] || '');
+        /* botl.c:2866-3105 parse_status_hl2(): iterate thresholds+how; when
+         * *s[sidx+1] == '\0' (even hsbuf length), s[sidx] is an 'always' color
+         * (botl.c:2885-2889). On error after >=1 pair, accepted retains prefix. */
+        let successes = 0;
+        for (let i = 1; i < hsbuf.length && hsbuf[i]; ) {
+            const hasPair = i + 1 < hsbuf.length && hsbuf[i + 1] !== '';
+            if (hasPair) {
+                const e = check_behavior(cf, hsbuf[i], hsbuf[i + 1]);
                 if (e) {
-                    // C botl.c:3099: thresholds preceding an error stay installed.
-                    e.accepted = hsbuf.slice(0, k - 1).join('/');
+                    if (successes > 0) e.accepted = hsbuf.slice(0, i).join('/');
                     return e;
                 }
             }
-            const how = hsbuf[k] || '';
-            if (!how) break;
+            const how = hasPair ? hsbuf[i + 1] : hsbuf[i];
+            const hsubs = splitsubfields(how);
+            /* botl.c:2688-2726, 3034-3037 splitsubfields(): >= 16 subfields
+             * returns -1 and parse_status_hl2() returns FALSE without error. */
+            if (!hsubs) {
+                const e = { silent: true };
+                if (successes > 0) e.accepted = hsbuf.slice(0, i).join('/');
+                return e;
+            }
             let coloridx = -1;
-            for (const sf of how.split(/[+&]/)) {
+            for (const sf of hsubs) {
                 const nrm = x => x.replace(/[ \-_]/g, '');
                 if (attrnames.some(a => a.name && nrm(a.name) === nrm(sf))) continue;
                 const c = match_str2clr(sf, true);
                 if (c >= 16 || coloridx !== -1) {
                     const e = c >= 16 ? ["Unknown color '%s'", sf, "bad color '%s'", `${c} ${coloridx}`]
                         : ["bad color '%s'", `${c} ${coloridx}`];
-                    if (hsbuf.length > 2) e.accepted = hsbuf.slice(0, k - 1).join('/');
+                    if (successes > 0) e.accepted = hsbuf.slice(0, i).join('/');
                     return e;
                 }
                 coloridx = c;
             }
+            successes++;
+            i += hasPair ? 2 : 1;
         }
-        return null;
+        return successes > 0 ? null : { silent: true };
     };
     const check_behavior = (f, t, next) => {
         if (!next || t === 'always' || t === 'up' || t === 'down' || t === 'changed'
@@ -330,8 +350,9 @@ export function hilite_status_config_error(op) {
             const grt = t[0] === '>' && t[1] !== '=', gte = t[0] === '>' && t[1] === '=';
             const lt = t[0] === '<' && t[1] !== '=', le = t[0] === '<' && t[1] === '=';
             const num = parseInt(t.replace(/[%<>=+]/g, ''), 10);
+            const isLong = !percent && (f === 'score' || f === 'gold' || f === 'time' || f === 'experience');
             if (num < (f === 'armor-class' ? -128 : grt ? -1 : lt ? 1 : 0)
-                || num > (percent ? (lt ? 101 : 100) : 2147483647))
+                || (!isLong && num > (percent ? (lt ? 101 : 100) : 32767)))
                 return ["hilite_status threshold '%s' is out of range",
                     (grt ? '>' : gte ? '>=' : lt ? '<' : le ? '<=' : '=') + num + (percent ? '%' : '')];
             /* C botl.c:3004-3023 compares the VALUE to GT_VALUE (4) and
@@ -650,9 +671,10 @@ export async function optfn_boulder_set(op) {
     const changed = set_boulder_symbol(game, 'boulder:' + op, op, false,
         (...args) => errors.push(args));
     for (const args of errors) {
-        const message = nh_sprintf(args[0], args.slice(1));
+        const message = nh_sprintf(args[0], args.slice(1)) || 'Unknown error';
+        const last = message[c_eos(message) - 1];
         await pline('%s%s%s', game.iflags.window_inited ? '' : 'config_error_add: ',
-            message, /[.!?]$/.test(message) ? '' : '.');
+            message, '.!?'.includes(last) ? '' : '.');
     }
     if (changed) (game.go ||= {}).opt_need_redraw = true;
     return changed;
@@ -955,10 +977,12 @@ export function parseNethackrc(rc) {
             const hlop = hlMatch[2].trim();
             const hlerr = hilite_status_config_error(hlop);
             if (hlerr?.accepted?.includes('/')) store_status_hilite(hlerr.accepted);
-            if (hlerr)
-                { config_error_add(hlerr[0], hlerr[1]); if (hlerr[2]) config_error_add(hlerr[2], hlerr[3]); }
-            else
-                store_status_hilite(hlop); /* botl.c:2593 parse_status_hl1 lowercases (2606) */
+            if (hlerr) {
+                if (!hlerr.silent)
+                    { config_error_add(hlerr[0], hlerr[1]); if (hlerr[2]) config_error_add(hlerr[2], hlerr[3]); }
+                continue;
+            }
+            store_status_hilite(hlop); /* botl.c:2593 parse_status_hl1 lowercases (2606) */
             // C botl.c:2643-2645: accepting a rule enables highlighting.
             if (!hlerr && !result.iflags.hilite_delta) result.iflags.hilite_delta = 3;
             continue;
@@ -989,8 +1013,10 @@ export function parseNethackrc(rc) {
                 continue;
             }
             const trimmed = opt.trim();
-            if (!trimmed)
+            if (!trimmed) {
+                config_error_add('Empty statement');
                 continue;
+            }
             // C parseoptions strips any sequence of ! / no / no- prefixes,
             // and compound values accept ':' or '='. Keep this option's
             // routing separate until the other option handlers are migrated.
@@ -1368,7 +1394,8 @@ export function parseNethackrc(rc) {
                 const hlerr = hilite_status_config_error(menuopts.slice(menusep + 1));
                 if (hlerr?.accepted?.includes('/')) store_status_hilite(hlerr.accepted);
                 if (hlerr) {
-                    { config_error_add(hlerr[0], hlerr[1]); if (hlerr[2]) config_error_add(hlerr[2], hlerr[3]); }
+                    if (!hlerr.silent)
+                        { config_error_add(hlerr[0], hlerr[1]); if (hlerr[2]) config_error_add(hlerr[2], hlerr[3]); }
                     continue;
                 }
                 /* C botl.c:2637 -> parse_status_hl2(): store each accepted
@@ -2109,7 +2136,7 @@ import { parsesymbols, switch_symbols } from './symbols.js'; // relocate-fns
 import { classifyTerrain as classify_terrain } from './terrain-status.js'; // relocate-fns
 import { bind_key, bind_mousebtn, bind_specialkey } from './cmd.js'; // relocate-fns
 import { default_menu_cmd_info, trimspaces } from './cmd_config.js'; // relocate-fns
-import { cond_menu, count_status_hilites, match_str2conditionbitmask, parse_cond_option } from './botl.js'; // relocate-fns
+import { cond_menu, count_status_hilites, match_str2conditionbitmask, parse_cond_option, splitsubfields } from './botl.js'; // relocate-fns
 import { menu_search_getlin, tty_window_offx } from './com_pager.js'; // relocate-fns
 import { pmatchi } from './strutil.js'; // relocate-fns
 import { sanitize_name } from './bones.js'; // relocate-fns
@@ -2375,8 +2402,6 @@ function _fruit_name_rewrite(nameIn, initial = false) {
             numeric = true;
     }
     /* C options.c:8220-8236 — the case-sensitive item-attribute checks. */
-    const _endsWith = (str, tail) => str.length >= tail.length
-        && str.slice(str.length - tail.length) === tail;
     if (found || numeric
         || plf.startsWith('cursed ')
         || plf.startsWith('uncursed ')
@@ -2388,7 +2413,7 @@ function _fruit_name_rewrite(nameIn, initial = false) {
         || plf === 'empty tin'
         || (plf === 'glob'
             || (globpfx > 0 && plf.slice(globpfx) === 'glob'))
-        || ((_endsWith(plf, ' corpse') || _endsWith(plf, ' egg'))
+        || ((str_end_is(plf, ' corpse') || str_end_is(plf, ' egg'))
             && ismnum(name_to_mon(plf, null).mntmp))) {
         /* C options.c:8237-8239 — Strcpy(buf, pl_fruit); "candied " + buf. */
         plf = 'candied ' + plf.slice(0, PL_FSIZ - 9); /* nmcpy(pl_fruit + 8, buf, PL_FSIZ - 8) */
@@ -2533,15 +2558,14 @@ function store_status_hilite(op) {
 /* C botl.c:2846-2856 parse_status_hl2(): "characteristics" is parsed again
  * once per field from BL_STR through BL_CH, each with its own rule chain. */
 function push_status_field_hilite(op) {
-    const parts = op.split('/');
-    /* C botl.c:2905-2910 parse_status_hl2(): "field/color" (an empty next
-     * token) is "field/always/color" and is stored as an always rule. */
-    if (parts.length === 2 && parts[1] !== '' && status_fieldname(parts[0]) !== 'characteristics') {
-        (game.status_field_hilites ||= []).push(`${parts[0]}/always/${parts[1]}`);
-        return;
+    let parts = op.split('/');
+    /* C botl.c:2885-2889 parse_status_hl2(): when *s[sidx+1] == '\0' (even
+     * non-empty token count), that trailing token is an 'always' color rule. */
+    if (parts.length >= 2 && parts.length % 2 === 0 && parts[parts.length - 1] !== '') {
+        parts = [...parts.slice(0, -1), 'always', parts[parts.length - 1]];
     }
     if (status_fieldname(parts[0]) !== 'characteristics') {
-        (game.status_field_hilites ||= []).push(op);
+        (game.status_field_hilites ||= []).push(parts.join('/'));
         return;
     }
     for (const f of ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'])
@@ -2556,7 +2580,14 @@ export function optfn_hilite_status_set(op) {
     if (!op) return "Value is mandatory for hilite_status";
     const hlerr = hilite_status_config_error(op);
     if (hlerr?.accepted?.includes('/')) store_status_hilite(hlerr.accepted);
-    if (hlerr) return hlerr[0].replace('%s', hlerr[1]);
+    if (hlerr) {
+        if (hlerr.silent) {
+            if (hlerr.accepted?.includes('/') && !game.iflags.hilite_delta)
+                game.iflags.hilite_delta = 3;
+            return null;
+        }
+        return hlerr[0].replace('%s', hlerr[1]);
+    }
     /* botl.c:2593-2640 parse_status_hl1(): parse_status_hl2() (which stores a
      * rule) only runs for a token with at least one '/'; "1" stores nothing. */
     if (!op.includes('/')) {
@@ -4818,7 +4849,9 @@ export async function string_for_opt(opts, val_optional) {
 async function option_error(message) {
     if (game.program_state.config_error_ready)
         throw new Error('Unported option dependency: config_erradd with active config frame');
-    const punct = /[.!?]$/.test(message) ? '' : '.';
+    if (!message) message = 'Unknown error';
+    const last = message[c_eos(message) - 1];
+    const punct = '.!?'.includes(last) ? '' : '.';
     await pline(`${game.iflags.window_inited ? '' : 'config_error_add: '}${message}${punct}`);
     // tty_wait_synch is fflush(stdout), without a game/input effect.
 }
@@ -5317,8 +5350,11 @@ export async function ask_do_tutorial() {
     /* C tty_display_nhwindow's NHW_MENU arm clears WIN_MESSAGE before
      * drawing an overlay (wintty.c:1939-1940), including after WIN_STOP. */
     g._pending_message = '';
-    // C ref: options.c:463-465 — Snprintf buf with rc basename.
-    const configHint = 'Put "OPTIONS=!tutorial" in .nethackrc to skip this query.';
+    // C ref: options.c:443-447 — Snprintf buf with rc basename.
+    const cfg = get_configfile();
+    const rc = nh_basename(cfg, true);
+    const norc = cfg === '/dev/null';
+    const configHint = `Put "OPTIONS=!tutorial" in ${(rc && !norc) ? rc : 'your configuration file'} to skip this query.`;
     // This is a select_menu()/tty_end_menu() picklist ending in "(end)", so it
     // takes the `min(41, 78 - maxcol)` branch of tty_window_offx() — one column
     // LEFT of the "--More--" branch that com_pager_legacy() uses.  The config

@@ -4179,7 +4179,6 @@ export async function mongets(mtmp, otyp, mksobjFn) {
             otmp.lamplit = 0;
             otmp.blessed = otmp.cursed = false;
         } else if (otmp.otyp === BELL_OF_OPENING) {
-            otmp.spe = 0;
             otmp.blessed = otmp.cursed = false;
         } else if (otmp.otyp === SPE_BOOK_OF_THE_DEAD) {
             otmp.blessed = otmp.cursed = false;

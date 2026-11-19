@@ -123,6 +123,7 @@ export function bootProcess(opts) {
     // existing one is kept). Storage is fresh per session, as the recorder's first
     // segment clears them (clearStaleState).
     for (const f of ['record', 'logfile', 'xlogfile']) if (vfsReadFile(`${HACKDIR}/${f}`) === null) vfsWriteFile(`${HACKDIR}/${f}`, '');
+    $c.resetHandles();
     $c.resetStdio();
     $c.resetFs();
     $c.mountData(HACKDIR, dataFiles);

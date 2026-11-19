@@ -13,9 +13,12 @@
 //   - '-' overrides '0'; an integer precision cancels '0'
 // Arguments come from a VaList, already in their C promoted types; integer
 // conversions reinterpret them as the length modifier says (%u of an int).
-// Unsupported: %n, %a/%A, wide (%lc, %ls); they throw.
+//   - %a/%A: FreeBSD __hdtoa (subnormals normalized; its rounding rule; 0x1.f...f rounded up prints as 0x2)
+//   - %n stores the count; L (long double) formats as double; %lc/%ls of a wide character
+//     outside Latin-1 (EILSEQ in the C locale, printf returns -1) traps.
 import { CTrap, i8, u8, i16, u16, i32, u32, i64, u64 } from './int.js';
-import { BytePtr } from './mem.js';
+import { BytePtr, ptrToInt } from './mem.js';
+import { RawBlock, asArr } from './alloc.js';
 import { VaList } from './va.js';
 
 const NULLSTR = [0x28, 0x6e, 0x75, 0x6c, 0x6c, 0x29];   // "(null)"
@@ -95,11 +98,14 @@ function formatFloat(x, conv, prec, alt) {
 }
 
 // ---------- pointers for %p ----------
+// a pointer of the object world has no C address: its handle (mem.js ptrToInt), so equal
+// pointers print alike (the digits differ from C's, which are addresses of one run)
 let pointerAddress = (v) => {
     if (v === null || v === 0) return 0n;
     if (typeof v === 'number' || typeof v === 'bigint') return BigInt(v);
-    throw new CTrap('%p of a pointer without an address');
+    return BigInt(ptrToInt(v));
 };
+export const objectAddress = (v) => BigInt(ptrToInt(v));
 /** The heap/handle layer installs how pointers print as addresses. */
 export function setPointerAddress(f) { pointerAddress = f; }
 
@@ -140,7 +146,7 @@ export function cformat(fmt, va) {
         let len = '';
         for (;;) {
             const ch = String.fromCharCode(buf[i]);
-            if ('hlLjzt'.includes(ch)) { len += ch; i++; } else break;
+            if ('hlLjztq'.includes(ch)) { len += ch; i++; } else break;
         }
         const conv = String.fromCharCode(buf[i]);
         if (buf[i] === 0 || buf[i] === undefined) throw new CTrap('incomplete conversion at end of format');
@@ -172,9 +178,25 @@ export function cformat(fmt, va) {
             body = ds;
             break;
         }
-        case 'c': bodyBytes = [u8(i32(va.next()))]; break;
-        case 's': {
+        case 'c':
+            if (len === 'l') bodyBytes = [wideByte(va.next())];
+            else bodyBytes = [u8(i32(va.next()))];
+            break;
+        case 'n': {   // the count so far, through the pointer the length modifier types
             const p = va.next();
+            if (p !== null) p.set(0, len === 'll' || len === 'l' || len === 'j' || len === 'z' || len === 't' || len === 'q' ? out.length : len === 'hh' ? i8(out.length) : len === 'h' ? i16(out.length) : out.length | 0);
+            continue;
+        }
+        case 's': {
+            let p = va.next();
+            if (len === 'l') {   // wchar_t *: wcrtomb in the C locale, precision in bytes
+                const bytes = [];
+                if (p === null) for (const b of NULLSTR) { if (prec >= 0 && bytes.length >= prec) break; bytes.push(b); }
+                else for (let j = 0; ; j++) { const w = p.get(j); if (w === 0 || (prec >= 0 && bytes.length >= prec)) break; bytes.push(wideByte(w)); }
+                bodyBytes = bytes;
+                break;
+            }
+            if (p instanceof RawBlock) p = asArr(p, Int8Array);   // a malloc'd buffer not yet typed
             const bytes = [];
             if (p === null) { for (const b of NULLSTR) { if (prec >= 0 && bytes.length >= prec) break; bytes.push(b); } }
             else {
@@ -195,6 +217,16 @@ export function cformat(fmt, va) {
             prefix = '0x';
             body = a.toString(16);
             if (prec >= 0) { zeroOk = false; body = body.padStart(prec, '0'); }
+            break;
+        }
+        case 'a': case 'A': {
+            const x = Number(va.next());
+            const neg = x < 0 || Object.is(x, -0);
+            if (Number.isNaN(x)) { body = conv === 'A' ? 'NAN' : 'nan'; zeroOk = false; break; }
+            prefix = neg ? '-' : plus ? '+' : space ? ' ' : '';
+            if (!Number.isFinite(x)) { body = conv === 'A' ? 'INF' : 'inf'; zeroOk = false; break; }
+            prefix += conv === 'A' ? '0X' : '0x';
+            body = hexFloat(Math.abs(x), prec, alt, conv === 'A');
             break;
         }
         case 'f': case 'F': case 'e': case 'E': case 'g': case 'G': {
@@ -219,6 +251,44 @@ export function cformat(fmt, va) {
     }
 }
 
+/** A wide character as one byte in the C locale (Latin-1); others are EILSEQ there (printf fails). */
+function wideByte(w) {
+    w = Number(w);
+    if (w >= 0 && w < 256) return w;
+    throw new CTrap(`%lc/%ls of wide character ${w}: EILSEQ in the C locale (printf returning -1 is not modeled)`);
+}
+/** %a digits after "0x": [h].hhhp±d, FreeBSD __hdtoa (round half to even). */
+function hexFloat(x, prec, alt, upper) {
+    let mant, exp;   // x = mant * 2^(exp - 52), mant an integer with bit 52 set (or 0)
+    if (x === 0) { mant = 0n; exp = 0; }
+    else {
+        const dv = new DataView(new ArrayBuffer(8));
+        dv.setFloat64(0, x);
+        const bits = dv.getBigUint64(0);
+        let e = Number((bits >> 52n) & 0x7ffn);
+        let m = bits & ((1n << 52n) - 1n);
+        if (e === 0) { e = 1; while (!(m & (1n << 52n))) { m <<= 1n; e--; } }   // subnormal: normalize
+        else m |= 1n << 52n;
+        mant = m; exp = e - 1023;
+    }
+    let lead, frac;   // lead digit and 13 fraction hex digits
+    const ndig = 13;
+    if (prec >= 0 && prec < ndig) {
+        // gdtoa/FreeBSD/_hdtoa.c dorounding (FLT_ROUNDS 1): up when the next digit is > 8,
+        // or is 8 and the digit after it is odd (not ties-to-even on the kept digit)
+        const dig = (i) => (i > ndig ? 0 : Number((mant >> BigInt(4 * (ndig - i))) & 0xfn));   // digit i: 0 is the lead
+        const nx = dig(prec + 1), after = dig(prec + 2);
+        const drop = BigInt(4 * (ndig - prec));
+        mant = (mant >> drop) << drop;
+        if (nx > 8 || (nx === 8 && (after & 1))) mant += 1n << drop;
+    }
+    lead = mant >> 52n;   // 1, or 2 after rounding up, or 0 for zero
+    frac = (mant & ((1n << 52n) - 1n)).toString(16).padStart(ndig, '0');
+    if (prec < 0) frac = frac.replace(/0+$/, '');
+    else frac = frac.slice(0, prec).padEnd(prec, '0');
+    let s = lead.toString(16) + (frac.length || alt ? '.' : '') + frac + 'p' + (exp < 0 ? '-' : '+') + Math.abs(exp);
+    return upper ? s.toUpperCase() : s;
+}
 function store(dst, bytes, n) {
     for (let j = 0; j < n; j++) dst.set(j, bytes[j]);
     dst.set(n, 0);

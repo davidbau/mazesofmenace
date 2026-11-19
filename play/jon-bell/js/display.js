@@ -204,7 +204,7 @@ import { paniclog, livelog_add } from './files.js';
 import { BUFSZ, ECMD_OK } from './const.js';
 import { D_TRAPPED } from './const.js';
 import { pline, pline_xy, urgent_pline, raw_printf, dumplogmsg, impossible } from './pline.js'; // relocate-fns
-import { armor_status, bot, timebot, weapon_status, status_time_only_row } from './botl.js'; // relocate-fns
+import { armor_status, bot, splitsubfields, timebot, weapon_status, status_time_only_row } from './botl.js'; // relocate-fns
 import { IS_STWALL, WM_W_BOTTOM, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP } from './const.js'; // relocate-fns
 import { update_lastseentyp } from './dungeon.js'; // relocate-fns
 import { init_rumors, others_check } from './rumors.js'; // relocate-fns
@@ -6559,9 +6559,11 @@ function _equipView() {
  * is also forced when neither name nor branch survives (version.c:128-132). */
 function status_version_text() {
     const vi = game.flags?.versinfo ?? 1;
-    const showname = !!(vi & 2);
+    let showname = !!(vi & 2);
+    const name = showname ? nh_basename(game.hname || 'nethack', false) : '';
+    if (!name) showname = false;
     const shownum = !!(vi & 1) || !showname;
-    return [showname ? 'nethack' : '', shownum ? '5.0.0' : ''].filter(Boolean).join(' ');
+    return [showname ? name : '', shownum ? '5.0.0' : ''].filter(Boolean).join(' ');
 }
 /* C botl.c:1251-1259 optional weapon/armor fields, appended after
  * BL_CONDITION in twolineorder (wintty.c:4284). */
@@ -6601,7 +6603,7 @@ const _HL_ATTR_NAMES = ['none', 'bold', 'dim', 'italic', 'underline', 'blink', '
     'normal', 'uline', 'reverse'];
 function _hl_how(how) {
     let color = -1, attr = 0;
-    for (const raw of how.trim().split(/[&+]/)) {
+    for (const raw of (splitsubfields(how.trim()) || [])) {
         const sf = raw.trim().toLowerCase();
         if (_HL_ATTR_NAMES.includes(sf)) {
             attr = (sf === 'none' || sf === 'normal') ? 0 : attr | (_HL_ATTR[sf] ?? 0);
@@ -6921,7 +6923,7 @@ function _status_field_hilites(row) {
      * 3-line layouts; wintty.c:5213-5234 paints each field's text after its
      * leading blank. */
     const { dlm, desc, extras } = _locate_extra_tfields(row);
-    if (dlm) {
+    if (dlm && !_threeStatusLines()) {
         tfields.push({ field: 'dungeon-level', key: 'dungeon-level text', text: dlm[1], start: 0,
             len: dlm[1].length, txtstr: dlm[1] });
     } else if (_threeStatusLines() && desc && extras !== undefined) {
@@ -7112,12 +7114,18 @@ export function status_xp_bot_eval() {
         status_fieldname(spec.split('/')[0].trim()) === 'experience-level')) return;
     const hist = (game._blTemp ||= {});
     const val = u.ulevel | 0, pc = _exp_percentage(val, u.uexp || 0);
-    const h = hist['experience-level'];
+    let h = hist['experience-level'];
     if (!h || h.xpc == null) {
-        /* first paint after init/reassess: update_all => chg 0 (botl.c:1575) */
-        hist['experience-level'] = { ...(h || { rule: null, time: 0 }), val, xpc: pc,
-            selectedRule: _status_xp_rule(val, pc)?.key ?? null };
-        return;
+        if (!game._statusEverPainted || game._statusUpdateAll || game._statusHilitesResetNow) {
+            /* first paint after init/reassess: update_all => chg 0 (botl.c:1575) */
+            hist['experience-level'] = { ...(h || { rule: null, time: 0 }), val, xpc: pc,
+                selectedRule: _status_xp_rule(val, pc)?.key ?? null };
+            return;
+        }
+        /* botl.c:1523-1541: rule added mid-game before reset_status_hilites();
+         * prev->percent_value was 0, so a nonzero pc forces chg and re-sends BL_XP. */
+        h = hist['experience-level'] = { ...(h || { rule: null, time: 0 }), val, xpc: 0,
+            selectedRule: null };
     }
     const cmp = val < h.val ? -1 : val > h.val ? 1 : 0;
     let chg = cmp;
@@ -7202,7 +7210,10 @@ function _status_bot_percent(fname, m) {
     const pc = Math.trunc((100 * value) / max);
     return pc === 0 && value !== 0 ? 1 : pc;
 }
-const _STATUS_BOT_FIELD_NAMES = new Set(_STATUS_BOT_FIELDS.map((f) => f[0]));
+function _gold_status_re() {
+    return new RegExp('(?:^| )' + gold_status_char().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':(\\d+)');
+}
+const _STATUS_BOT_FIELD_NAMES = new Set([..._STATUS_BOT_FIELDS.map((f) => f[0]), 'gold']);
 /* C botl.c:1514-1614 eval_notify_windowport_field() for the fields above:
  * chg = compare_blstats(prev, curr) at the bot() that paints the change; a
  * changed Pw percentage overrides the direction (percent_matters,
@@ -7289,6 +7300,10 @@ function _status_temp_bot_eval() {
     if (encReset) delete hist.gold;
     let hpChgNow = false;
     game._blRndencodeNew = false;
+    let gm = null;
+    const goldRe = _gold_status_re();
+    for (const row of rows) if ((gm = goldRe.exec(row))) break;
+    if (gm) _eval_temp_bot_field(hist, 'gold', _status_raw_value('gold', gm[1]), 0, encReset);
     for (const [fname, re, , valOf] of _STATUS_BOT_FIELDS) {
         let m = null;
         for (const row of rows) if ((m = re.exec(row))) break;
@@ -7384,7 +7399,7 @@ function _status_temp_hilites(row, cells) {
         /* botl.c:131,1051: the gold field is labelled with the live gold symbol
          * (blank under symset:Blank); tty skips the leading blanks of a field
          * before starting colour/attr (wintty.c:5218-5221). */
-        ['gold', new RegExp('(?:^| )' + gold_status_char().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':(\\d+)'),
+        ['gold', _gold_status_re(),
             (m) => { const t = m[0].replace(/^ /, '').trimStart(); return [m.index + m[0].length - t.length, t.length]; }],
         ['experience', /Xp:\d+\/(\d+)/, (m) => [m.index + m[0].length - m[1].length, m[1].length]],
         /* BL_XP (experience-level): plain value direction (botl.c:1592-1595) */
@@ -7868,13 +7883,31 @@ export function _statusRows3(pinnedRow) {
     }
     return [row1, row2, status_row_finish(`${front}${p.conds}`)];
 }
+function _shrinkConds(s, level) {
+    for (const names of _COND_SPELL)
+        s = s.replace(new RegExp(` ${names[0]}(?= |$)`), ` ${names[level]}`);
+    return s;
+}
 function _statusRow3(p, row1, row2, extras) {
     const seq = game._botlPaintSeq | 0;
     const st = game._st3 ||= { fields: {}, row: '', seq: -1 };
     const reset = st.seq !== seq && !!game.disp?.botlx;
-    const fields = [['desc', p.desc], ['time', p.time], ['conditions', p.conds],
-        ...extras];
-    if (game.flags?.showvers) fields.push(['version', ` ${status_version_text()}`]);
+    /* wintty.c:4584-4638 make_things_fit() measures row 3 (`desc`..`vers`) and
+     * shrinks condition spellings (1..2) then Dlvl->Dl when > 79 columns. */
+    let desc = p.desc, conds = p.conds;
+    const vers = game.flags?.showvers ? [['version', ` ${status_version_text()}`]] : [];
+    const fitLen = (d, c) => d.length + p.time.length + c.length
+        + extras.reduce((a, [, t]) => a + t.length, 0) + (vers.length ? vers[0][1].length : 0);
+    if (fitLen(desc, conds) > 79) {
+        for (let level = 1; level <= 2; level++) {
+            conds = _shrinkConds(p.conds, level);
+            if (fitLen(desc, conds) <= 79) break;
+        }
+        if (fitLen(desc, conds) > 79)
+            desc = desc.replace(/^(?:Dlvl|Tutorial):/, 'Dl:');
+    }
+    const fields = [['desc', desc], ['time', p.time], ['conditions', conds],
+        ...extras, ...vers];
     const signature = JSON.stringify([row1, row2, fields]);
     if (signature === st.signature && !reset) { st.seq = seq; return st.row; }
     const force = reset || !st.signature;
@@ -7952,23 +7985,42 @@ function _live_flying() {
 }
 function _busy_condition() {
     if (!game.flags?.cond_busy || (game.multi | 0) >= 0) return false;
-    const reason = game.multi_reason || '';
-    const unconsc = !!game.flags?.cond_unconscious && !!game.nomovemsg
-        && !game.u?.usleep && unconscious();
-    const parlyz = !!game.flags?.cond_paralyzed
-        && (reason.startsWith('paralyzed') || reason.startsWith('frozen'));
-    const asleep = !!game.flags?.cond_sleep && !!game.u?.usleep;
-    return !unconsc && !parlyz && !asleep;
+    return !_multi_cond(false);
 }
 /* C botl.c:1210-1234: the else-if chain's first three arms (unconscious,
- * paralyzed/frozen, sleeping); returns which one fired, '' if none. */
-function _multi_cond() {
-    if ((game.multi | 0) >= 0) return '';
-    const reason = game.multi_reason || '';
-    if (game.flags?.cond_unconscious && game.nomovemsg
-        && !game.u?.usleep && unconscious()) return 'unconsc';
+ * paralyzed/frozen, sleeping); when updateCache is true (bot() paint),
+ * maintains C's cache_avail[0..1] across multi < 0 until multi >= 0. */
+function _multi_cond(updateCache = false) {
+    if ((game.multi | 0) >= 0) {
+        if (updateCache) {
+            game._botlCacheUnconscAvail = false;
+            game._botlCacheUnconsc = false;
+            game._botlCacheParlyzAvail = false;
+            game._botlCacheParlyz = false;
+        }
+        return '';
+    }
+    const unconscNow = () => !!(game.nomovemsg && !game.u?.usleep && unconscious());
+    const parlyzNow = () => {
+        const r = game.multi_reason || '';
+        return r.startsWith('paralyzed') || r.startsWith('frozen');
+    };
+    if (updateCache) {
+        if (game.flags?.cond_unconscious && game.nomovemsg && !game._botlCacheUnconscAvail) {
+            game._botlCacheUnconscAvail = true;
+            game._botlCacheUnconsc = unconscNow();
+        }
+        if (game.flags?.cond_paralyzed && game.multi_reason && !game._botlCacheParlyzAvail) {
+            game._botlCacheParlyzAvail = true;
+            game._botlCacheParlyz = parlyzNow();
+        }
+    }
+    if (game.flags?.cond_unconscious
+        && (game._botlCacheUnconscAvail ? game._botlCacheUnconsc : unconscNow()))
+        return 'unconsc';
     if (game.flags?.cond_paralyzed
-        && (reason.startsWith('paralyzed') || reason.startsWith('frozen'))) return 'parlyz';
+        && (game._botlCacheParlyzAvail ? game._botlCacheParlyz : parlyzNow()))
+        return 'parlyz';
     if (game.flags?.cond_sleep && game.u?.usleep) return 'sleep';
     return '';
 }
@@ -8333,12 +8385,7 @@ function _fit_status_line_width(s, width) {
     const original = s;
     let last = s;
     for (let level = 1; level <= 2; level++) {
-        let candidate = original;
-        for (const names of conditions) {
-            const long = names[0];
-            const spelling = names[level];
-            candidate = candidate.replace(new RegExp(` ${long}(?= |$)`), ` ${spelling}`);
-        }
+        const candidate = _shrinkConds(original, level);
         if (candidate.length <= width)
             return candidate;
         last = candidate;
@@ -10390,7 +10437,7 @@ function _capture_botl(paint = false) {
          * clears temporary rules (botl.c:1564-1577). */
         /* wintty.c:5248: Dlvl/AC temp rules ride the page too (status_reassess / rndencode drop them before dismissal) */
         attrHilites: Object.fromEntries(['strength', 'dexterity', 'constitution', 'dungeon-level', 'armor-class',
-            'intelligence', 'wisdom', 'charisma', 'power', 'time', 'title',
+            'intelligence', 'wisdom', 'charisma', 'power', 'time', 'title', 'gold',
             'weapon', 'armor', 'terrain', 'version', 'alignment']
             /* string fields: a page painted after set_uasmon's update_all (polyself.c:123)
              * delivered NO rule; the slot is gone from _blTemp then, so record
@@ -10490,12 +10537,13 @@ function _capture_botl(paint = false) {
             const sp = u.uprops && u.uprops[STUNNED];
             return !!sp && (sp.intrinsic | 0) !== 0;
         })(),
+        /* botl.c:1210-1234 evaluates helplessness at bot(), not when a
+         * delayed message page is rendered after unmul() cleared multi;
+         * evaluate multiCond (updating cache_avail) before busy reads it. */
+        multiCond: hpPaint ? hpPaint.multiCond : _multi_cond(true),
         /* C botl.c:1229 condtests[bl_busy] — latched with the other conditions so a
          * frozen --More-- keeps the Busy the hero had at the pline (see _busy_condition). */
         busy: hpPaint?.busy ?? _busy_condition(),
-        /* botl.c:1210-1234 evaluates helplessness at bot(), not when a
-         * delayed message page is rendered after unmul() cleared multi. */
-        multiCond: hpPaint?.multiCond ?? _multi_cond(),
         /* botl.c:1164-1188 bl_grab, painted-time like the rest: the eel's
          * AD_WRAP sets u.ustuck mid-attack-chain, after earlier plines flushed. */
         grabbed: !!(u.ustuck && !u.uswallow
@@ -13636,8 +13684,9 @@ export function putmsghistory(msg, _restoring) {
 export function nh_sprintf(fmt, args) {
     let i = 0;
     return String(fmt).replace(
-        /%([-+#0]*)([0-9]*)(?:\.([0-9]+))?(hh|h|ll|l|L|z|j|t)?([diouxXeEfgGaAcs%])/g,
+        /%([-+#0]*)([0-9]*)(?:\.([0-9]+))?(hh|h|ll|l|L|z|j|t)?([diouxXeEfgGaAcs%]|$)/g,
         (spec, flags, width, prec, len, conv) => {
+            if (conv === '') return '';
             if (conv === '%') return '%';
             const a = args[i++];
             let s;

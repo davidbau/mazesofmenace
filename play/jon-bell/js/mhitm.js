@@ -680,13 +680,13 @@ const WAND_CLASS_UH = 11;     /* C objclass.h WAND_CLASS */
 
 const M1_TPORT_UH = 0x02000000; /* C monflag.h M1_TPORT */
 
-export function xdrainenergym(mon, givemsg) {
+export async function xdrainenergym(mon, givemsg) {
     if ((mon.mspec_used | 0) < 20 /* limit draining */
         && (attacktype(mon.data, AT_MAGC_UH)
             || attacktype(mon.data, AT_BREA_UH))) {
         mon.mspec_used = (mon.mspec_used | 0) + d(2, 2);
         if (givemsg)
-            pline_mon(mon, '%s seems lethargic.', Monnam(mon));
+            await pline_mon(mon, '%s seems lethargic.', Monnam(mon));
     }
 }
 
@@ -1209,7 +1209,7 @@ export async function mattackm(magr, mdef) {
             if (mwep)
                 tmp -= hitval_dm(mwep, mdef);
             if (strike) {
-                if (unsolid_dm(mdef.data) && failed_grab(magr, mdef, mattk)) {
+                if (unsolid_dm(mdef.data) && await failed_grab(magr, mdef, mattk)) {
                     strike = 0;
                     break;
                 }
@@ -1242,7 +1242,7 @@ export async function mattackm(magr, mdef) {
             strike = (i >= 2 && res[i - 1] === M_ATTK_HIT
                       && res[i - 2] === M_ATTK_HIT) ? 1 : 0;
             if (strike) {
-                if (failed_grab(magr, mdef, mattk))
+                if (await failed_grab(magr, mdef, mattk))
                     strike = 0;
                 else
                     res[i] = await hitmm(magr, mdef, mattk, null, 0);
@@ -1283,7 +1283,7 @@ export async function mattackm(magr, mdef) {
             if (engulfing_u_dm(magr)) {
                 strike = 0;
             } else if ((strike = (tmp > rnd(20 + i)) ? 1 : 0) !== 0) {
-                if (failed_grab(magr, mdef, mattk))
+                if (await failed_grab(magr, mdef, mattk))
                     strike = 0;
                 else
                     res[i] = await gulpmm(magr, mdef, mattk);
@@ -1526,7 +1526,7 @@ async function explmm(magr, mdef, mattk) {
     return result;
 }
 
-export function failed_grab(magr, mdef, mattk) {
+export async function failed_grab(magr, mdef, mattk) {
     const notonhead = !!game.gn?.notonhead;
     const unsolid = unsolid_dm(mdef?.data);
     const grab = (mattk?.aatyp | 0) === AT_HUGS
@@ -1544,7 +1544,7 @@ export function failed_grab(magr, mdef, mattk) {
         const verb = (mattk?.adtyp | 0) === AD_DGST ? 'gulp'
             : (mattk?.adtyp | 0) === AD_STCK ? 'adhere' : 'grab';
         /* C mhitm.c:634 limits each formatted monster name to 99 bytes. */
-        pline(`${magrnam.slice(0, 99)} ${verb} attempt ${notonhead ? 'fails to hold' : 'passes right through'} ${target.slice(0, 99)}!`);
+        await pline(`${magrnam.slice(0, 99)} ${verb} attempt ${notonhead ? 'fails to hold' : 'passes right through'} ${target.slice(0, 99)}!`);
     }
     return true;
 }
@@ -1723,7 +1723,7 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
      * mon_nam_too ≈ mon_nam for a non-self attack.  buf is "<Monnam> <verb>"
      * per the mattk->aatyp switch (mhitm.c:674-701). */
     /* C mhitm.c:660-661: shade_miss() calls dmgval() (RNG) for zero/not-zero */
-    if (!compat && shade_miss_hm(magr, mdef, mwep, false, !!game.v?.vis))
+    if (!compat && await shade_miss_hm(magr, mdef, mwep, false, !!game.v?.vis))
         return M_ATTK_MISS; /* bypass mdamagem() */
     if (game.v?.vis && compat) {
         await pline(Monnam_dm(magr) + ' ' + ((mdef.mcansee | 0) ? 'smiles at' : 'talks to')
@@ -1767,7 +1767,7 @@ async function missmm(magr, mdef, mattk) {
         await pline(Monnam_dm(magr) + ' '
               + (((magr.mcan | 0) || !could_seduce(magr, mdef, mattk))
                  ? 'misses' : 'pretends to be friendly to')
-              + ' ' + mon_nam_dm(mdef) + '.');
+              + ' ' + mon_nam_too(mdef, magr) + '.');
         if (_topline_more_pending() && _more_never_dismissed())
             await flush_pending_messages();
     } else

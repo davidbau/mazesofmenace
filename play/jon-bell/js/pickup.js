@@ -95,7 +95,7 @@ import { revive_corpse } from './do.js';
 import { remove_object, obj_extract_self, set_bknown } from './mkobj.js';
 import { engr_at } from './engrave.js';
 import { On_stairs } from './stairs.js';
-import { upstart } from './hacklib.js';
+import { strncmpi, upstart } from './hacklib.js';
 import { weight } from './weight.js';
 import { max_capacity, calc_capacity, near_capacity } from './hack.js';
 import { ansimpleoname, thesimpleoname, simpleonames, an, doname, doname_with_price, makesingular, getObjDescr, xname, the, The, otense } from './objnam.js';
@@ -1291,14 +1291,7 @@ function _pu_loot_xname(obj) {
     return loot_xname(obj);
 }
 function _pu_strcmpi(a, b) {
-    const x = String(a).toLowerCase(), y = String(b).toLowerCase();
-    if (x === y) return 0;
-    const n = Math.min(x.length, y.length);
-    for (let i = 0; i < n; i++) {
-        const d = x.charCodeAt(i) - y.charCodeAt(i);
-        if (d) return d;
-    }
-    return x.length - y.length;
+    return strncmpi(String(a), String(b), -1);
 }
 function _pu_loot_classify(obj) {
     if (!Blind()) observe_object(obj); /* invent.c:170-171 */

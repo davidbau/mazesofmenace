@@ -1377,32 +1377,35 @@ async function nhl_getmeminuse(L) {   // nhlua.c:2254
     return (Math.imul(await lua_gc(L, 3), 1024) + await lua_gc(L, 4) | 0) >>> 0;
 }
 export async function nhl_pcall(L, nargs, nresults, name) {   // nhlua.c:2263
-    let nud = [null], rv = 0, ic = 0;
-    await lua_pushcclosure(L, traceback_handler, 0);
-    lua_rotate(L, 1, 1);
-    lua_getallocf(L, new $c.Ptr(nud, 0));
-    if (nud[0] && name) {
-        nud[0].name = name;
-    }
-    if (nud[0] && (nud[0].steps || nud[0].perpcall)) {
-        if (nud[0].perpcall) {
-            nud[0].steps = nud[0].perpcall;
-            nud[0].statctr = 0;
+    let nud = [null], rv = 0, ic = 0, $t1;
+    try {
+        await lua_pushcclosure(L, traceback_handler, 0);
+        lua_rotate(L, 1, 1);
+        lua_getallocf(L, new $c.Ptr(nud, 0));
+        if (nud[0] && name) {
+            nud[0].name = name;
         }
-        if ($c.setjmp(new $c.Ptr(nud[0].jb, 0))) {
-            await panic($c.lit("Lua time exceeded %d:%s"), nud[0].sid, nud[0].name ? nud[0].name : $c.lit("(unknown)"));
+        if (nud[0] && (nud[0].steps || nud[0].perpcall)) {
+            if (nud[0].perpcall) {
+                nud[0].steps = nud[0].perpcall;
+                nud[0].statctr = 0;
+            }
+            $t1 = new $c.Ptr(nud[0].jb, 0), $c.setjmp($t1);   // setjmp: armed; a longjmp here runs the handler at the end of the function
         }
+        rv = await lua_pcallk(L, nargs, nresults, 1, 0, null);
+        lua_rotate(L, 1, -1), await lua_settop(L, -2);
+        if (nud[0] && nud[0].perpcall && gl.loglua) {
+            ic = Math.imul(nud[0].statctr, 1000) >>> 0;
+            await livelog_printf(32768, $c.lit("LUASTATS PCAL %d:%s %ld"), nud[0].sid, nud[0].name, ic);
+        }
+        if (nud[0] && nud[0].memlimit && gl.loglua) {
+            await livelog_printf(32768, $c.lit("LUASTATS PMEM %d:%s %lu"), nud[0].sid, nud[0].name, await nhl_getmeminuse(L));
+        }
+        return rv;
+    } catch ($e) {
+        if (!$c.isLongJmpTo($e, $t1)) throw $e;
+        await panic($c.lit("Lua time exceeded %d:%s"), nud[0].sid, nud[0].name ? nud[0].name : $c.lit("(unknown)"));
     }
-    rv = await lua_pcallk(L, nargs, nresults, 1, 0, null);
-    lua_rotate(L, 1, -1), await lua_settop(L, -2);
-    if (nud[0] && nud[0].perpcall && gl.loglua) {
-        ic = Math.imul(nud[0].statctr, 1000) >>> 0;
-        await livelog_printf(32768, $c.lit("LUASTATS PCAL %d:%s %ld"), nud[0].sid, nud[0].name, ic);
-    }
-    if (nud[0] && nud[0].memlimit && gl.loglua) {
-        await livelog_printf(32768, $c.lit("LUASTATS PMEM %d:%s %lu"), nud[0].sid, nud[0].name, await nhl_getmeminuse(L));
-    }
-    return rv;
 }
 export async function nhl_pcall_handle(L, nargs, nresults, name, npa) {   // nhlua.c:2309
     let rv = 0, nud = [null];

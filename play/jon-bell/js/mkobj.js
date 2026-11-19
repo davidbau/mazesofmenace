@@ -1575,7 +1575,7 @@ async function mkbox_cnts(box) {
             break;
         case SACK:
         case OILSKIN_SACK:
-            if ((((game.moves) | 0) <= 1) && !game.in_mklev) {
+            if (game.moves <= 1 && !game.in_mklev) {
                 n = 0;
                 break;
             }
@@ -1665,7 +1665,7 @@ export function is_rottable(otmp) {
 }
 
 function may_generate_eroded(otmp) {
-    const moves = (game.moves) | 0;
+    const moves = game.moves;
     if (moves <= 1 && !game.in_mklev)
         return false;
     if (otmp.oerodeproof || !erosion_matters(otmp) || !is_damageable(otmp))
@@ -1721,8 +1721,8 @@ export function start_corpse_timeout(body) {
         return;
     let action = ROT_CORPSE;
     const rot_adjust = game.in_mklev ? 25 : 10;
-    const moves = Math.max((game.moves) | 0, 1);
-    let ageTurns = moves - (body.age | 0);
+    const moves = Math.max(game.moves, 1);
+    let ageTurns = moves - body.age;
     let when;
     if (ageTurns > ROT_AGE)
         when = rot_adjust;
@@ -1760,9 +1760,9 @@ export function start_glob_timeout(obj, when) {
                                     obj.otyp, simpleonames(obj));
     if (obj.timed)
         stop_timer(SHRINK_GLOB, obj_to_any(obj));
-    if ((when | 0) < 1)
+    if (when < 1)
         when = 25 + rn2(5) - 2;
-    start_timer(when | 0, TIMER_OBJECT, SHRINK_GLOB, obj_to_any(obj));
+    start_timer(when, TIMER_OBJECT, SHRINK_GLOB, obj_to_any(obj));
 }
 
 const NOT_ON_ICE = 0, SET_ON_ICE = 1, BURIED_UNDER_ICE = 2;
@@ -1926,7 +1926,7 @@ export async function mksobj(otyp, init, artif) {
                 + ` class=${oclass} init=${init ? 1 : 0} artif=${artif ? 1 : 0}`
                 + ` moves=${game.moves | 0}]`);
     }
-    const mv = Math.max((game.moves) | 0, 1);
+    const mv = Math.max(game.moves, 1);
     /* `let`, not `const`: C's `struct obj *otmp` is REASSIGNED twice in this
        function's tail — mkobj.c:1248 `otmp = oname(otmp, noveltitle(...), ...)`
        and mkobj.c:1255 `otmp = mk_artifact(...)`.  The mk_artifact line below
@@ -2253,7 +2253,7 @@ async function mksobj_init(otmp, otyp, artif) {
          * player-role list shifted +7.  Fixed above; the index compare here is
          * still correct and is left alone.) */
         if (ROLE_IF_SAMURAI() && otyp === SPLINT_MAIL
-            && (((game.moves | 0) <= 1) || In_quest(game.u?.uz))) {
+            && (game.moves <= 1 || In_quest(game.u?.uz))) {
             otmp.oerodeproof = otmp.rknown = 1;
         }
         mksobj_init_finish(otmp);
@@ -3022,7 +3022,7 @@ export function obj_timer_checks(otmp, x, y, force) {
     let restart_timer = false;
     const on_floor = (otmp.where | 0) === OBJ_FLOOR;
     const buried = (otmp.where | 0) === OBJ_BURIED;
-    const moves = (game.moves) | 0;
+    const moves = game.moves;
 
     /* Check for corpses just placed on or in ice */
     if ((otmp.otyp | 0) === CORPSE && (on_floor || buried) && is_ice(x, y)) {
@@ -3035,7 +3035,7 @@ export function obj_timer_checks(otmp, x, y, force) {
             otmp.on_ice = 1;
             tleft *= _OTC_ROT_ICE_ADJUSTMENT;
             restart_timer = true;
-            const age = moves - (otmp.age | 0);
+            const age = moves - otmp.age;
             otmp.age = moves - (age * _OTC_ROT_ICE_ADJUSTMENT);
         }
     /* Check for corpses coming off ice */
@@ -3050,8 +3050,8 @@ export function obj_timer_checks(otmp, x, y, force) {
             otmp.on_ice = 0;
             tleft = Math.trunc(tleft / _OTC_ROT_ICE_ADJUSTMENT);
             restart_timer = true;
-            const age = moves - (otmp.age | 0);
-            otmp.age = (otmp.age | 0) + Math.trunc(age * (_OTC_ROT_ICE_ADJUSTMENT - 1) / _OTC_ROT_ICE_ADJUSTMENT);
+            const age = moves - otmp.age;
+            otmp.age += Math.trunc(age * (_OTC_ROT_ICE_ADJUSTMENT - 1) / _OTC_ROT_ICE_ADJUSTMENT);
         }
     }
 

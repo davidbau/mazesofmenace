@@ -1106,8 +1106,10 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
             const prior_apport = edog.apport | 0;
             const dropdist = (edog.dropdist | 0);
             const droptime = edog.droptime;
-            edog.apport = (edog.apport | 0)
-                + Math.trunc(200 / (dropdist + moves - droptime));
+            // C dogmove.c:318-320: compound assignment stores an int before
+            // the overflow diagnostic reads apport, not just before its test.
+            edog.apport = ((edog.apport | 0)
+                + Math.trunc(200 / (dropdist + moves - droptime))) | 0;
             if ((edog.apport | 0) <= 0) {
                 await polystone_impossible('dog_eat: pet apport <= 0 (%d, %d, %ld, %ld, %d, %u, %u)',
                     edog.apport, dropdist, droptime, moves, prior_apport, mtmp.m_id, edog.parentmid);
@@ -2631,12 +2633,9 @@ export async function dog_move(mtmp, after) {
                     if (rn2(4)
                         && mtmp2.mlstmv !== game.moves
                         && !onscary(mtmp.mx | 0, mtmp.my | 0, mtmp2)
-                        /* C mon.c monnear(mon,x,y): dist2 < 3, with dist2 == 2
-                         * (a diagonal) rejected for a grid bug (NODIAG). */
-                        && (monnear(mtmp2, mtmp.mx | 0, mtmp.my | 0)
-                            && !(((mtmp2.mnum ?? mtmp2.mndx ?? -1) | 0) === PM_GRID_BUG_DG
-                                 && dist2(mtmp2.mx | 0, mtmp2.my | 0,
-                                          mtmp.mx | 0, mtmp.my | 0) === 2))) {
+                        // C dogmove.c:1162: monnear already excludes grid-bug
+                        // diagonals (mon.c:2476-2483); use that shared predicate.
+                        && monnear(mtmp2, mtmp.mx | 0, mtmp.my | 0)) {
                         /* C dogmove.c:1216-1218 */
                         game.gb.bhitpos = { x: mtmp.mx | 0, y: mtmp.my | 0 };
                         game.gn.notonhead = false;

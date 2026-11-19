@@ -34,15 +34,15 @@ import { restore_timer_order, restore_timers_level, run_timers } from './timeout
 import { mon_catchup_elapsed_time } from './dog.js';
 import { stored_level, saved_state_for, savefile_name, NOT_SAVED } from './save.js';
 import { vfsReadFile, vfsDeleteFile } from './storage.js';
-import { docrt, cls, see_monsters, _topline_more_pending, flush_screen, clear_glyph_buffer, reglyph_darkroom, reset_glyphmap } from './display.js';
-import { bot, max_rank_sz } from './botl.js';
+import { docrt, cls, see_monsters, _topline_more_pending, flush_screen, reglyph_darkroom, reset_glyphmap } from './display.js';
+import { max_rank_sz } from './botl.js';
 import { assign_graphics } from './symbols.js';
 import { pline, You } from './pline.js';
 import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
 import { change_luck } from './attrib.js';
-import { HALLUC, HALLUC_RES, OBJ_FREE, W_BALL, W_CHAIN, MAXNROFROOMS, MAGIC_PORTAL, BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL, Is_rogue_level } from './const.js';
+import { HALLUC, HALLUC_RES, OBJ_FREE, W_BALL, W_CHAIN, MAXNROFROOMS, MAGIC_PORTAL, BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL, Is_rogue_level, REST_GSTATE, REST_LEVELS, REST_CURRENT_LEVEL } from './const.js';
 import { set_residency, restshk } from './shk.js';
 import { setworn } from './worn.js';
 import { PM_MONK } from './pm.generated.js';
@@ -658,10 +658,11 @@ export async function find_lev_obj_no_longer_held(fobj, restoreWorn = true) {
 
 export async function dorecover(save) {
     const g = game;
-    g.program_state = g.program_state || {};
+    // C restore.c:797 writes the process-global struct initialized by
+    // decl_globals_init(); resetGame() likewise already initialized it.
     /* C restore.c:797 REST_GSTATE ... :925 `program_state.restoring = 0;`
      * ("affects bot() so clear before docrt()"). */
-    g.program_state.restoring = 1;
+    g.program_state.restoring = REST_GSTATE;
     // C first reads the current level before restoring the saved globals.
     // restore.c:811 allocates a first copy; :893-898 rewinds and reads the
     // original save again. Effects of that first read (for example a fixed
@@ -707,8 +708,6 @@ export async function dorecover(save) {
      * the second getlev()'s impossible() pages over it too. */
     if (baseTopline) g._base_topline = baseTopline;
     g._screen_output = '';
-    /* C's new process has an empty gbuf; saved levl glyphs are memory only. */
-    clear_glyph_buffer();
     // C restore.c:831 restlevelfile() -> savelev() (save.c:561) clears
     // level structures, including init_rect() (mklev.c:916). The final
     // getlev() reloads the map but leaves this fresh allocator in place.
@@ -735,6 +734,7 @@ export async function dorecover(save) {
     // Inactive level records are read/written in ledger order; C then rereads
     // the original current level. Bubble initial movement belongs to each read.
     const current = (g.dungeons?.[g.u.uz.dnum]?.ledger_start | 0) + g.u.uz.dlevel;
+    g.program_state.restoring = REST_LEVELS; // C restore.c:835
     for (const [lev, snap] of [...(g.levelStore ?? [])].sort((a, b) => a[0] - b[0])) {
         if (lev === current) continue;
         /* C restore.c:873-875 — each inactive level goes through getlev()
@@ -779,6 +779,7 @@ export async function dorecover(save) {
         if (!snap.bubbles) continue;
         snap.bubbles = await bubbles_copy_snapshot(snap.bubbles, snap.level);
     }
+    g.program_state.restoring = REST_CURRENT_LEVEL; // C restore.c:896
     await find_lev_obj_no_longer_held(g.fobj);
     // The final current-level read rebuilds its worm occupancy as getlev does.
     // Worm chain roots survive serialization; the module's derived grid does not.
@@ -862,7 +863,6 @@ export async function dorecover(save) {
     /* C restore.c:932-933: finish docrt's notice pages before clearing them. */
     if (_topline_more_pending())
         await flush_screen(1, false);
-    bot();
     /* C restore.c:933 clear_nhwindow(WIN_MESSAGE) — see the note above. */
     g._pending_message = '';
     /* C restore.c:948 welcome(FALSE) / :949 check_special_room(FALSE).  The

@@ -1,4 +1,4 @@
-import { tabexpand } from './hacklib.js'; // relocate-fns
+import { strip_newline, tabexpand } from './hacklib.js'; // relocate-fns
 import { do_runtime_info } from './mdlib.js'; // relocate-fns
 import { get_lua_version, nhl_lua_copyright, nhl_lua_ver } from './nhlua.js'; // relocate-fns
 import { PORT_ID } from './platform_identity.js'; // relocate-fns
@@ -152,7 +152,7 @@ export function doextversion() {
         } else {
             break;
         }
-        buf = buf.replace(/[\r\n]+$/, '');            /* strip_newline() */
+        buf = strip_newline(buf);                       /* strip_newline() */
         if (buf.includes('\t'))
             buf = tabexpand(buf);
 

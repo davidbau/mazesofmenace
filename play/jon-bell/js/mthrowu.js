@@ -1460,7 +1460,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         let mtmp = uhitm_m_at(bx, by);
         /* C mthrowu.c:680-683 — a shade lets the missile pass harmlessly
          * through; the flight then continues as if the square were empty. */
-        if (mtmp && shade_miss_mu(mon, mtmp, singleobj, true, true))
+        if (mtmp && await shade_miss_mu(mon, mtmp, singleobj, true, true))
             mtmp = null;
         if (mtmp) {
             /* C mthrowu.c:684-686 */

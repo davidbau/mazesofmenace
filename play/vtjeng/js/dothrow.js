@@ -411,7 +411,9 @@ import {
 } from './do_name.js';
 import { genders } from './roles.js';
 import { encumber_msg } from './pickup.js';
-import { impossible_printer, verbalize, youFeel } from './pline.js';
+import {
+    impossible_printer, verbalize, with_impossibles, youFeel,
+} from './pline.js';
 import { finish_steps } from './source_steps.js';
 import { body_part, polymon } from './polyself.js';
 import { makeplural } from './fruit.js';
@@ -1108,8 +1110,9 @@ export async function hitfloor(obj, verbosely = true, state = game, rawEnv = {})
                 break;
             }
         }
+        const name = await with_impossibles(() => Doname2(obj, state), state);
         await (rawEnv.message ?? ttyPline)(
-            `${Doname2(obj, state)} ${otense(obj, verb, state)} the ${landingSurface}.`,
+            `${name} ${otense(obj, verb, state)} the ${landingSurface}.`,
             state,
             rawEnv,
         );
@@ -2572,7 +2575,6 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
     }
 
     setThrownObject(state, obj);
-    state.gb ??= {};
     obj.how_lost = LOST_THROWN;
     state.iflags ??= {};
     state.iflags.returning_missile = autoReturns(obj, wep_mask, state)

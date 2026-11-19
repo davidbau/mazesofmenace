@@ -17,7 +17,8 @@
 //   { arr: kind, n, es }                    array of n elements of es bytes
 //   { bits, unit, bo, signed }              bit-field in a unit of `unit` bytes at bit offset bo
 //   { raw: n }                              bytes the port does not model (written as zeros)
-import { Ptr, FieldRef } from './mem.js';
+import { Ptr, FieldRef, ptrToInt, ptrConst } from './mem.js';
+import { RawBlock, asArr } from './alloc.js';
 import { CTrap, i64, u64 } from './int.js';
 import { cellBytes } from './ucell.js';
 
@@ -30,6 +31,25 @@ export const STALE = new Proxy(Object.freeze({ $stale: true }), {
 });
 
 const fieldsOf = (C) => (C.$fieldTable || (C.$fieldTable = C.$fields()));
+
+// Pointers in bytes. In a save file (serialize/deserialize) a pointer is a 0/1 flag and
+// comes back STALE. In a memory image (memImage/memStore: memcpy, memset, memcmp of data
+// the object model holds as values) it is its handle (mem.js ptrToInt), which converts
+// back to the same pointer (ptrConst), so bytes copied through memory keep pointers.
+let MEMORY = false;
+const STALE_BITS = 8n;   // a STALE pointer in a memory image (a handle is never 8)
+function ptrBits(v) {
+    if (v === null || v === undefined || v === 0) return 0n;
+    if (!MEMORY) return 1n;
+    if (v === STALE) return STALE_BITS;
+    return BigInt.asUintN(64, BigInt(ptrToInt(v)));
+}
+function ptrOf(b) {
+    if (b === 0n) return null;
+    if (!MEMORY) return STALE;
+    if (b === STALE_BITS) return STALE;
+    return ptrConst(b <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(b) : b);
+}
 const SZ = { i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, i64: 8, u64: 8, f32: 4, f64: 8, ptr: 8 };
 
 // ---------- write ----------
@@ -41,7 +61,7 @@ function wScalar(dv, off, k, v) {
     case 'i64': case 'u64': dv.setBigUint64(off, BigInt.asUintN(64, BigInt(v)), true); return;
     case 'f32': dv.setFloat32(off, v, true); return;
     case 'f64': dv.setFloat64(off, v, true); return;
-    case 'ptr': dv.setBigUint64(off, v === null || v === undefined || v === 0 ? 0n : 1n, true); return;
+    case 'ptr': dv.setBigUint64(off, ptrBits(v), true); return;
     default: throw new CTrap(`serialize: kind ${k}`);
     }
 }
@@ -87,7 +107,7 @@ function rScalar(dv, off, k) {
     case 'u64': return u64(dv.getBigUint64(off, true));
     case 'f32': return dv.getFloat32(off, true);
     case 'f64': return dv.getFloat64(off, true);
-    case 'ptr': return dv.getBigUint64(off, true) === 0n ? null : STALE;
+    case 'ptr': return ptrOf(dv.getBigUint64(off, true));
     default: throw new CTrap(`deserialize: kind ${k}`);
     }
 }
@@ -109,10 +129,11 @@ function rKind(dv, off, k, cur) {
 function rRec(dv, off, o) {
     const C = o.constructor;
     if (!C.$fields) throw new CTrap('deserialize: not a record');
-    if (C.$cell) { cellBytes(o).set(new Uint8Array(dv.buffer, dv.byteOffset + off, C.$size)); o.$p = new Map(); return; }   // pointers come back as ptrConst values
+    if (C.$cell) { cellBytes(o).set(new Uint8Array(dv.buffer, dv.byteOffset + off, C.$size)); o.$p = new Map(); o.$fromSave = !MEMORY; return; }   // pointers come back as ptrConst values
     if (C.$union) {
         o.$v = new Uint8Array(dv.buffer, dv.byteOffset + off, C.$size).slice();
         o.$k = '$raw';
+        o.$rawMem = MEMORY;   // how its pointer bytes decode (unraw)
         return;
     }
     for (const [js, fo, k] of fieldsOf(C)) {
@@ -134,10 +155,14 @@ export function unraw(u, js) {
     const raw = u.$v;
     const dv = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
     const k = f[2];
-    if (typeof k === 'string') return rScalar(dv, f[1], k);
-    // an aggregate member: decode into a fresh value, which then becomes the stored member
-    const v = k.rec ? new k.rec() : k.arr ? freshArr(k) : null;
-    rKind(dv, f[1], k, v);
+    const was = MEMORY;
+    MEMORY = u.$rawMem === true;
+    try {
+        if (typeof k === 'string') return rScalar(dv, f[1], k);
+        // an aggregate member: decode into a fresh value, which then becomes the stored member
+        var v = k.rec ? new k.rec() : k.arr ? freshArr(k) : null;
+        rKind(dv, f[1], k, v);
+    } finally { MEMORY = was; }
     u.$v = v; u.$k = js;
     return v;
 }
@@ -150,44 +175,110 @@ function freshArr(k) {
 }
 
 // ---------- whole buffers (bwrite / mread through write, read, fwrite, fread) ----------
-/** What the n bytes at pointer p hold: { write(dv), read(dv) } over a DataView of n bytes. */
+// A region is { size, write(dv), read(dv) } over a DataView of `size` bytes: the C object
+// representation of `size` bytes at a pointer. Regions concatenate (runs of array
+// elements) and truncate (the first n bytes of an element: write the whole element and
+// keep n bytes; read by writing the whole, overlaying n bytes, reading it back), so any
+// byte range inside one C object has an image.
+const isRecObj = (v) => v !== null && typeof v === 'object' && typeof v.constructor === 'function' && v.constructor.$fields !== undefined;
+const TYPED_KIND = (b) => (b instanceof Int8Array ? 'i8' : b instanceof Uint8Array ? 'u8' : null);
+function bytesRegion(b, off, n) {   // a typed array view: its bytes in place
+    const bpe = b.BYTES_PER_ELEMENT, start = b.byteOffset + off * bpe;
+    if (off < 0 || off * bpe + n > b.buffer.byteLength - b.byteOffset) throw new CTrap(`memory access out of bounds (${off * bpe}+${n} of ${b.buffer.byteLength - b.byteOffset} bytes)`);
+    const view = () => new Uint8Array(b.buffer, start, n);
+    return { size: n, write: (dv) => new Uint8Array(dv.buffer, dv.byteOffset, n).set(view()), read: (dv) => view().set(new Uint8Array(dv.buffer, dv.byteOffset, n)) };
+}
+function truncate(r, n) {
+    if (n === r.size) return r;
+    if (n > r.size) throw new CTrap(`serialize: ${n} bytes of a ${r.size}-byte object`);
+    return {
+        size: n,
+        write: (dv) => { const t = new Uint8Array(r.size); r.write(new DataView(t.buffer)); new Uint8Array(dv.buffer, dv.byteOffset, n).set(t.subarray(0, n)); },
+        read: (dv) => { const t = new Uint8Array(r.size); const tv = new DataView(t.buffer); r.write(tv); t.set(new Uint8Array(dv.buffer, dv.byteOffset, n)); r.read(tv); },
+    };
+}
+function concat(parts, n) {   // the first n bytes of consecutive parts (a lazy list: parts(i) or null)
+    const list = [];
+    let left = n;
+    for (let i = 0; left > 0; i++) {
+        const r = parts(i);
+        if (r === null) throw new CTrap('serialize: past the end of the array');
+        const t = truncate(r, Math.min(r.size, left));
+        list.push(t); left -= t.size;
+    }
+    let at = 0;
+    const offs = list.map((r) => { const o = at; at += r.size; return o; });
+    const sub = (dv, o, m) => new DataView(dv.buffer, dv.byteOffset + o, m);
+    return {
+        size: n,
+        write: (dv) => list.forEach((r, i) => r.write(sub(dv, offs[i], r.size))),
+        read: (dv) => list.forEach((r, i) => r.read(sub(dv, offs[i], r.size))),
+    };
+}
+/** The whole of aggregate v (a record, a typed array, an array of arrays or records) as a region. */
+function aggRegion(v) {
+    if (ArrayBuffer.isView(v)) return bytesRegion(v, 0, v.byteLength);
+    if (isRecObj(v)) {
+        const size = v.constructor.$size;
+        const rec = { size, write: (dv) => wRec(dv, 0, v), read: (dv) => rRec(dv, 0, v) };
+        if (!v.__tail) return rec;
+        const tail = bytesRegion(v.__tail, 0, v.__tail.length);
+        return concat((i) => (i === 0 ? rec : i === 1 ? tail : null), size + v.__tail.length);
+    }
+    if (Array.isArray(v)) return arrayRegion(v, 0, sizeOfAgg(v));
+    throw new CTrap('serialize: not an aggregate');
+}
+function sizeOfAgg(v) {
+    if (ArrayBuffer.isView(v)) return v.byteLength;
+    if (isRecObj(v)) return v.constructor.$size + (v.__tail ? v.__tail.length : 0);
+    if (Array.isArray(v)) { const k = elemKind(v); return k === 'agg' ? v.reduce((a, x) => a + sizeOfAgg(x), 0) : 8 * v.length; }
+    throw new CTrap('sizeof of an unknown value');
+}
+/** What the elements of plain array a are: 'agg' (records, rows), 'ptr' or 'i64'. */
+function elemKind(a) {
+    if (a.$kind === 'ptr' || a.$kind === 'i64' || a.$kind === 'u64') return a.$kind === 'ptr' ? 'ptr' : a.$kind;
+    for (const v of a) {
+        if (v === null || v === undefined || v === STALE) continue;
+        if (typeof v === 'number' || typeof v === 'bigint') return 'i64';
+        if (ArrayBuffer.isView(v) || Array.isArray(v)) return 'agg';
+        if (isRecObj(v) && v.__arr === a) return 'agg';   // an element of this record array (recArray), not a pointer to a record
+        return 'ptr';
+    }
+    return 'ptr';
+}
+/** n bytes of plain array a from element i0. */
+function arrayRegion(a, i0, n) {
+    const k = elemKind(a);
+    if (k === 'agg') return concat((i) => (i0 + i < a.length ? aggRegion(a[i0 + i]) : null), n);
+    return concat((i) => {
+        const j = i0 + i;
+        if (j >= a.length) return null;
+        return { size: 8, write: (dv) => wScalar(dv, 0, k, a[j]), read: (dv) => { a[j] = rScalar(dv, 0, k); } };
+    }, n);
+}
+/** The n bytes at pointer p. */
 function region(p, n) {
     if (p instanceof FieldRef) {
-        const k = p.kind || (typeof p.get(0) === 'number' || typeof p.get(0) === 'bigint' ? ({ 1: 'i8', 2: 'i16', 4: 'i32', 8: 'i64' })[n] : 'ptr');
-        if (!k || SZ[k] !== n) throw new CTrap(`serialize: ${n} bytes at field ${p.key}`);
-        return { write: (dv) => wScalar(dv, 0, k, p.get(0)), read: (dv) => p.set(0, rScalar(dv, 0, k)) };
-    }
-    if (p instanceof Ptr && Array.isArray(p.buf)) {
-        // a plain array: 64-bit integers or pointers ($kind), or boxes, or aggregates
-        const a = p.buf;
-        const first = a[p.off];
-        if (first !== null && typeof first === 'object' && !(first === STALE)) {
-            if (first.constructor && first.constructor.$fields) return recs(a, p.off, n, first.constructor.$size);
-            throw new CTrap('serialize: an array of aggregates through a pointer');
+        const cur = p.get(0);
+        const k = p.kind || (typeof cur === 'number' || typeof cur === 'bigint' ? ({ 1: 'i8', 2: 'i16', 4: 'i32', 8: 'i64' })[n] || 'i64' : 'ptr');
+        if (typeof k !== 'string') {   // an aggregate field (record or array kind): the value itself
+            return truncate(aggRegion(cur), n);
         }
-        const k = a.$kind === 'ptr' || (a.$kind === undefined && (first === null || first === STALE)) ? 'ptr' : 'i64';
-        if (n % 8) throw new CTrap(`serialize: ${n} bytes of 8-byte elements`);
-        return {
-            write: (dv) => { for (let i = 0; i < n / 8; i++) wScalar(dv, 8 * i, k, a[p.off + i]); },
-            read: (dv) => { for (let i = 0; i < n / 8; i++) a[p.off + i] = rScalar(dv, 8 * i, k === 'i64' ? 'i64' : 'ptr'); },
-        };
+        return truncate({ size: SZ[k], write: (dv) => wScalar(dv, 0, k, p.get(0)), read: (dv) => p.set(0, rScalar(dv, 0, k)) }, n);
     }
-    if (p !== null && typeof p === 'object' && p.constructor && p.constructor.$fields) {
-        const size = p.constructor.$size;
-        if (p.__arr !== undefined) return recs(p.__arr, p.__idx, n, size);
-        if (n !== size) throw new CTrap(`serialize: ${n} bytes of a ${size}-byte record`);
-        return { write: (dv) => wRec(dv, 0, p), read: (dv) => rRec(dv, 0, p) };
+    if (p instanceof Ptr && ArrayBuffer.isView(p.buf)) return bytesRegion(p.buf, p.off, n);
+    if (p instanceof Ptr && Array.isArray(p.buf)) return arrayRegion(p.buf, p.off, n);
+    if (isRecObj(p)) {
+        if (p.__arr !== undefined && n > p.constructor.$size) return arrayRegion(p.__arr, p.__idx, n);
+        return truncate(aggRegion(p), n);
     }
-    throw new CTrap('serialize: a buffer that is not bytes, a scalar, a record or a scalar array');
-}
-function recs(a, i0, n, size) {
-    if (n % size) throw new CTrap(`serialize: ${n} bytes of ${size}-byte records`);
-    const m = n / size;
-    if (i0 + m > a.length) throw new CTrap('serialize: past the end of a record array');
-    return {
-        write: (dv) => { for (let i = 0; i < m; i++) wRec(dv, i * size, a[i0 + i]); },
-        read: (dv) => { for (let i = 0; i < m; i++) rRec(dv, i * size, a[i0 + i]); },
-    };
+    if (p instanceof RawBlock) {   // malloc'd bytes: as what they became, else as bytes
+        if (p.obj !== null) return region(p.obj, n);
+        const typed = p.views === null ? undefined : [...p.views.values()].find((v) => ArrayBuffer.isView(v.buf));
+        if (typed === undefined && p.views !== null && p.views.size) return region(p.views.values().next().value, n);
+        return region(typed || asArr(p, Uint8Array), n);
+    }
+    throw new CTrap('serialize: a buffer that is not bytes, a scalar, a record or an array');
 }
 /** The save-file bytes of the n bytes at p (a record, scalar field or scalar array). */
 export function serialize(p, n) {
@@ -199,4 +290,17 @@ export function serialize(p, n) {
 export function deserialize(p, b) {
     const c = b.slice();
     region(p, c.length).read(new DataView(c.buffer));
+}
+/** The C object representation of the n bytes at p, pointers as handles (memcpy, memcmp). */
+export function memImage(p, n) {
+    const r = region(p, n), b = new Uint8Array(n);
+    MEMORY = true;
+    try { r.write(new DataView(b.buffer)); } finally { MEMORY = false; }
+    return b;
+}
+/** Store a memory image b into the n = b.length bytes at p. */
+export function memStore(p, b) {
+    const r = region(p, b.length), c = b.slice();
+    MEMORY = true;
+    try { r.read(new DataView(c.buffer)); } finally { MEMORY = false; }
 }

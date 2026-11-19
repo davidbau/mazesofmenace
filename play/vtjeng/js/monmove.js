@@ -188,7 +188,7 @@ import {
 } from './do_name.js';
 import { dogfood } from './dogfood.js';
 import { is_digging, mdig_tunnel, watch_dig } from './dig.js';
-import { could_reach_item, finish_meating } from './dogmove.js';
+import { could_reach_item, cursed_object_at, finish_meating } from './dogmove.js';
 import { Is_special, on_level, u_on_newpos } from './dungeon.js';
 import {
     bad_rock,
@@ -505,8 +505,6 @@ function movementEnv(env = {}) {
     if (typeof random.rn2 !== 'function')
         throw new TypeError('monster movement random injection requires rn2');
     const couldSee = env.couldSee ?? ((x, y) => couldsee(x, y, state));
-    if (typeof couldSee !== 'function')
-        throw new TypeError('monster movement couldSee must be a function');
     return {
         ...env,
         state,
@@ -649,13 +647,8 @@ export function undesirable_disp(monster, x, y, env = {}) {
     const isPet = monster.mtame && !monster.isminion;
     if (isPet) {
         if (trap?.tseen && random.rn2(40)) return true;
-        const cursedObjectAt = env.cursedObjectAt;
-        if (typeof cursedObjectAt !== 'function') {
-            throw new TypeError(
-                'undesirable_disp requires cursedObjectAt for a pet',
-            );
-        }
-        if (cursedObjectAt(x, y, state)) return true;
+        if ((env.cursedObjectAt ?? cursed_object_at)(x, y, state))
+            return true;
     } else if (trap && random.rn2(40)
         && mon_knows_traps(monster, trap.ttyp)) {
         return true;
@@ -3724,7 +3717,6 @@ export async function m_move(monster, rawEnv = {}) {
             ? m_at(targetX, targetY, state) : null;
         if (intruder && intruder !== monster
             && dist2(monster.mx, monster.my, targetX, targetY) <= 2) {
-            state.gb ??= {};
             state.gb.bhitpos.x = targetX;
             state.gb.bhitpos.y = targetY;
             state.gn ??= {};
@@ -4188,7 +4180,6 @@ export async function m_move_aggress(mtmp, x, y, env = {}) {
 
     const mtmp2 = m_at(x, y, state);
     if (mtmp2) {
-        state.gb ??= {};
         state.gb.bhitpos.x = x;
         state.gb.bhitpos.y = y;
         state.gn ??= {};
@@ -4205,7 +4196,6 @@ export async function m_move_aggress(mtmp, x, y, env = {}) {
             mtmp2.movement -= NORMAL_SPEED;
         else
             mtmp2.movement = 0;
-        state.gb ??= {};
         state.gb.bhitpos.x = mtmp.mx;
         state.gb.bhitpos.y = mtmp.my;
         state.gn ??= {};

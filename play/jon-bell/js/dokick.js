@@ -1650,7 +1650,7 @@ async function really_kick_object(x, y, kickedobj) {
         /* C zap.c:3984-3992 bhit(): a kicked object passes a shade it misses
          * or a mimic posing as an object (unless the hero's map shows a
          * monster / warning / remembered-invisible glyph there). */
-        if (mon && (shade_miss(g.youmonst, mon, kickedobj, true, true)
+        if (mon && (await shade_miss(g.youmonst, mon, kickedobj, true, true)
                     || (M_AP_TYPE(mon) === _KM_M_AP_OBJECT
                         && bloc.disp_cls !== 'mon'
                         && !glyph_is_warning_at(bx, by)

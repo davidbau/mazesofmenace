@@ -16,8 +16,16 @@ export { NethackGame } from './allmain.js';   // interactive play (index.html, f
 
 class SegmentGame {
     constructor() { this.screens = []; this.cursors = []; this.anim = []; this.rng = []; this.rngDebug = []; this.error = null; this.exitStatus = null; }
-    getScreens() { return this.screens; }
-    getCursors() { return this.cursors; }
+    // The judge (frozen/ps_test_runner.mjs runSession) keeps a recorded step's screen
+    // and cursor only `if (step.screen)`: a fully blank terminal encodes as "" and is
+    // not compared. Ours are left out by the same rule so later screens stay aligned
+    // with the recording (a blank screen mid-session, e.g. after the end-of-game
+    // conduct prompt, shifted every later screen by one).
+    getScreens() { return this.screens.filter((s) => s); }
+    getCursors() { return this.cursors.filter((_, i) => this.screens[i]); }
+    // per input boundary, blank screens included (tools index these by step)
+    getStepScreens() { return this.screens; }
+    getStepCursors() { return this.cursors; }
     getRngLog() { return this.rng; }
     getRngDebugLog() { return this.rngDebug; }
     getAnimationFramesByStep() { return this.anim; }

@@ -3059,16 +3059,7 @@ function badman(basestr, to_plural) {
 // from position idx, case-matching the existing chars (and propagating the last
 // existing char's case once base is exhausted). Returns the resulting string.
 function strcasecpy_at(base, idx, src) {
-    const out = base.split('');
-    let dst = idx;
-    let exhausted = false;
-    for (let k = 0; k < src.length; k++) {
-        if (!exhausted && dst >= base.length) exhausted = true;
-        const oc = exhausted ? (out[dst - 1] !== undefined ? out[dst - 1] : '')
-                             : (out[dst] !== undefined ? out[dst] : '');
-        out[dst++] = chrcasecpy(oc, src[k]);
-    }
-    return out.slice(0, dst).join('');
+    return base.slice(0, idx) + strcasecpy(base.slice(idx), src, idx > 0 ? base[idx - 1] : 0);
 }
 
 // ── Helper: singplur_lookup (C objnam.c:2706-2777) ──────────────────────────
@@ -5133,7 +5124,7 @@ import { W_ARM as W_ARM_D, W_ARMC as W_ARMC_D, W_ARMH as W_ARMH_D,
          W_WEP as W_WEP_D, W_SWAPWEP as W_SWAPWEP_D, W_QUIVER as W_QUIVER_D,
          W_BALL as W_BALL_D, W_CHAIN as W_CHAIN_D, WARN_OF_MON as WARN_OF_MON_D } from './const.js';
 import { artifact_exists, artifact_name, artiname, exist_artifact, nartifact_exist, permapoisoned } from './artifact.js'; // relocate-fns
-import { chrcasecpy, fuzzymatch, strncmpi } from './hacklib.js'; // relocate-fns
+import { chrcasecpy, fuzzymatch, strcasecpy, strncmpi } from './hacklib.js'; // relocate-fns
 import './do_wear.js'; // relocate-fns
 import { shk_your as ownership_prefix } from './shk.js'; // relocate-fns
 import { is_quest_artifact } from './questpgr.js'; // relocate-fns

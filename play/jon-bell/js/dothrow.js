@@ -790,7 +790,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
             }
             /* C zap.c:3983-3992: test the single missile after skipping;
              * throw_obj's remaining inventory stack is not the flying obj. */
-            if (_m && (shade_miss(game.youmonst, _m, _landedObj, true, true)
+            if (_m && (await shade_miss(game.youmonst, _m, _landedObj, true, true)
                        || (M_AP_TYPE(_m) === M_AP_OBJECT
                            && !(_glyph_at(_nx, _ny)?.cls === GLYPHCLS_MON)
                            && !glyph_is_warning_at(_nx, _ny)

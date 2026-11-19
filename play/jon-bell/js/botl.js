@@ -13,7 +13,7 @@ import { near_capacity } from './hack.js';
 import { attrnames, clr2colorname, match_str2clr } from './coloratt.js'; // relocate-fns
 import { display_text_window } from './com_pager.js'; // relocate-fns
 import { status_held_rows, gather_condition_hilite_lines, _condbitmask2str, status_xp_percent_changing } from './display.js'; // relocate-fns
-import { trimspaces } from './hacklib.js'; // relocate-fns
+import { strNsubst, stripchars, strkitten, strncmpi, trimspaces, upstart } from './hacklib.js'; // relocate-fns
 import { status_fieldname } from './options.js'; // relocate-fns
 import { HL_ATTRBITS, drainTopline } from './optmenu.js';
 import { query_attr, query_color } from './coloratt.js'; // relocate-fns
@@ -160,7 +160,9 @@ export function weapon_status() {
         && bimanual(uwep) && res[0] !== '2' && res.slice(0, 3).toLowerCase() !== 'two')
         out += '2H-';
     out += res[0].toUpperCase() + res.slice(1);
-    return out.replace(/ /g, '-');
+    const outbuf = { value: out };
+    strNsubst(outbuf, ' ', '-', 0);
+    return outbuf.value;
 }
 
 /* C botl.c:556-610 armor_status(). */
@@ -187,8 +189,8 @@ export function armor_status() {
         || (u.uarmc && (u.uarmc.otyp | 0) === 146 /* CLOAK_OF_PROTECTION */)
         || (u.uarmh && (u.uarmh.oartifact | 0) === 27 /* ART_MITRE_OF_HOLINESS */)
         || (u.uwep && (u.uwep.oartifact | 0) === 30 /* ART_TSURUGI_OF_MURAMASA */))
-        b += '+';
-    return b[0].toUpperCase() + b.slice(1);
+        b = strkitten(b, 0x2b /* '+' */);
+    return upstart(b);
 }
 
 /* C botl.c:2321-2334: rule edits request a redraw; they resend all field
@@ -224,6 +226,7 @@ export async function bot() {
     }
     if (game._statusHilitesReset) { /* reset_status_hilites() */
         game._statusHilitesReset = false;
+        game._statusHilitesResetNow = true;
         game._statusHiliteHeld = false;
         delete game._statusHeldUhs; delete game._statusHeldRow;
         delete game._blTemp;
@@ -423,14 +426,10 @@ export async function bot() {
         game._getobj_menu_win = null; // the clipped status rows were repainted
         game._carryStatusClip = null;
         game._statusUpdateAll = false; // botl.c:1679, after the enabled paint
+        game._statusHilitesResetNow = false;
     }
     // C ref: botl.c:277 — bot() resets disp flags after rendering
     if (game && game.disp) {
-        /* Count the bot() calls that had a pending botl/botlx to discharge:
-         * C moveloop_core runs `bot(); curs_on_u();` (a flush_screen) for
-         * exactly those (allmain.c:474-478); doapply's wield turn reads it. */
-        if (game.disp.botl || game.disp.botlx)
-            game._botlDischarges = ((game._botlDischarges | 0) + 1) | 0;
         /* goto_level sets botlx (do.c), so bot() rewrites the whole status row
          * for the new level, undoing blanks the previous level's map row 20
          * printed over it (wintty.c render_status). */
@@ -662,6 +661,18 @@ async function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok, preser
     return count > 0 ? picks[0] - 10 : -1;
 }
 
+// C ref: botl.c:2688-2727 splitsubfields — split str on '+'/'&', dropping a
+// trailing delimiter (c == st) and returning null when >= maxsf subfields exist.
+export function splitsubfields(str, maxsf = 16) {
+    if (str == null) return [];
+    const limit = (maxsf === 0) ? 16 : Math.min(maxsf, 16);
+    if (!str.includes('+') && !str.includes('&')) return [str];
+    const parts = str.split(/[+&]/);
+    if (parts.length - 1 >= limit - 1) return null;
+    if (str.endsWith('+') || str.endsWith('&')) parts.pop();
+    return parts;
+}
+
 function status_hilite2str_rules(spec) {
     const out = [], fz = s => s.replace(/[ \-_]/g, '').toLowerCase();
     /* store_status_hilite already separates entries as parse_status_hl1 does
@@ -684,7 +695,7 @@ function status_hilite2str_rules(spec) {
             else if (fldname === 'hitpoints' && t === 'criticalhp') beh = 'criticalhp';
             else if (/^[<>]?=?[-+]?[0-9]+%?$/.test(t) && at !== 'S') {
                 const op = /^(<=|>=|<|>)/.exec(t)?.[1] || '=';
-                beh = `${op}${parseInt(t.replace(/[%<>=+]/g, ''), 10)}${t.includes('%') ? '%' : ''}`;
+                beh = `${op}${parseInt(stripchars(null, '%<>=+', t), 10)}${t.includes('%') ? '%' : ''}`;
             } else {
                 const arr = fldname === 'carrying-capacity'
                     ? ['Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded']
@@ -693,21 +704,28 @@ function status_hilite2str_rules(spec) {
                     : null;
                 const k = arr ? arr.find(a => a.toLowerCase() === t) : null;
                 if (k) beh = k;
-                else if (at === 'S') beh = os[i].trim(); /* botl.c:3093 textmatch keeps case */
+                else if (at === 'S') {
+                    /* C botl.c:3096 (void) trimspaces(hilite.textmatch): leading spaces
+                     * remain in buffer; trailing spaces strip only after a non-space char. */
+                    const rawTxt = os[i];
+                    beh = /^[ \t]+$/.test(rawTxt) ? rawTxt : rawTxt.replace(/[ \t]+$/, '');
+                }
                 else break; /* config_error: rule rejected */
             }
             let clr = null, attr = 0;
-            for (const sf of (s[i + 1] || '').split(/[&+]/)) {
+            for (const sf of (splitsubfields(s[i + 1] || '') || [])) {
                 const a = attrnames.find(x => x.name && fz(x.name) === fz(sf));
                 if (a && a.attr === 0) attr = 1;
                 else if (a) attr |= HL_ATTRBITS.find(b => b[0] === a.attr)[1];
                 else clr = match_str2clr(sf, true);
             }
-            let clrbuf = (clr2colorname(clr ?? 8 /* NO_COLOR */) || '').replace(/ /g, '-');
+            const clrBuf = { value: clr2colorname(clr ?? 8 /* NO_COLOR */) || '' };
+            strNsubst(clrBuf, ' ', '-', 0);
+            let clrbuf = clrBuf.value;
             if (attr === 1) clrbuf += '&normal';
             else if (attr) clrbuf += '&' + HL_ATTRBITS.filter(b => attr & b[1]).map(b => b[2]).join('+');
             const str = `${INITBLSTATS[fld][0]}/${beh}/${clrbuf}`;
-            out.push({ fld, str: fld === 0 ? str : str.replace(/ /g, '') });
+            out.push({ fld, str: fld === 0 ? str : stripchars(null, ' ', str) });
         }
     }
     return out;
@@ -1222,7 +1240,7 @@ export function count_status_hilites() {
     return status_hilite_linestr_gather().length;
 }
 
-const strcmpi = (a, b) => { a = a.toLowerCase(); b = b.toLowerCase(); return a < b ? -1 : a > b ? 1 : 0; };
+const strcmpi = (a, b) => strncmpi(a, b, -1);
 
 /* C botl.c:1376 cond_menu: toggle status conditions; returns true iff changed. */
 export async function cond_menu() {

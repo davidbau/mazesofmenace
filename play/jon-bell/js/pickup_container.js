@@ -37,6 +37,7 @@ import { paranoid_ynq } from './cmd.js';
 import { Ysimple_name2 } from './objnam.js';
 
 const COIN_CLASS = 12; /* objclass.h COIN_CLASS — gold */
+import { strncmpi } from './hacklib.js';
 import { game } from './gstate.js';
 import { update_inventory } from './invent.js';
 import { chest_trap } from './trap.js';
@@ -376,14 +377,7 @@ function _sortloot(list, byInvlet = false, filterfunc = null, mode = 0) {
 /* C ref: hacklib.c strcmpi() — case-insensitive strcmp; returns the sign of the
  * first differing BYTE, so it must NOT be localeCompare (which collates). */
 function _strcmpi(a, b) {
-    const x = String(a).toLowerCase(), y = String(b).toLowerCase();
-    if (x === y) return 0;
-    const n = Math.min(x.length, y.length);
-    for (let i = 0; i < n; i++) {
-        const d = x.charCodeAt(i) - y.charCodeAt(i);
-        if (d) return d;
-    }
-    return x.length - y.length;
+    return strncmpi(String(a), String(b), -1);
 }
 
 

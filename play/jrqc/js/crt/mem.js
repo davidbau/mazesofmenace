@@ -40,13 +40,22 @@ export function retype(p, View) {
     return new Ptr(new View(b.buffer, b.byteOffset, b.byteLength / View.BYTES_PER_ELEMENT), p.off * scale);
 }
 
-/** &obj.field for a scalar or pointer field: deref only (arithmetic beyond +0 traps). */
+/**
+ * &obj.field for a scalar or pointer field. The field is an array of one (C11 6.5.6p7):
+ * &f + 1 is its one-past-the-end pointer (d = 1), which compares but cannot be
+ * dereferenced; any other offset is undefined in C and traps.
+ */
 export class FieldRef {
     // kind: the field's serializer kind (serial.js), so bytes read into it keep its type
-    constructor(obj, key, kind = null) { this.obj = obj; this.key = key; this.kind = kind; }
-    add(n) { if (Number(n) !== 0) throw new CTrap(`arithmetic on the address of field ${this.key}`); return this; }
-    get(i = 0) { if (i !== 0) throw new CTrap(`index ${i} from field ${this.key}`); return this.obj[this.key]; }
-    set(i, v) { if (i !== 0) throw new CTrap(`index ${i} from field ${this.key}`); this.obj[this.key] = v; return v; }
+    constructor(obj, key, kind = null, d = 0) { this.obj = obj; this.key = key; this.kind = kind; this.d = d; }
+    add(n) {
+        const d = this.d + Number(n);
+        if (d === this.d) return this;
+        if (d !== 0 && d !== 1) throw new CTrap(`arithmetic on the address of field ${this.key} beyond one past it`);
+        return new FieldRef(this.obj, this.key, this.kind, d);
+    }
+    get(i = 0) { if (this.d + i !== 0) throw new CTrap(`index ${this.d + i} from field ${this.key}`); return this.obj[this.key]; }
+    set(i, v) { if (this.d + i !== 0) throw new CTrap(`index ${this.d + i} from field ${this.key}`); this.obj[this.key] = v; return v; }
 }
 
 /**
@@ -55,7 +64,7 @@ export class FieldRef {
  * outside the array (one past the end, or before the start while iterating) is
  * an ElemPtr, which can be compared and moved but not dereferenced.
  */
-const ELEM_OK = new Set(['__arr', '__idx', 'then', 'constructor', 'toJSON', '$const']);
+const ELEM_OK = new Set(['__arr', '__idx', 'then', 'constructor', 'toJSON', '$const', '$stale']);
 const ELEM_TRAP = {
     get(t, k) {
         if (typeof k === 'symbol' || ELEM_OK.has(k)) return t[k];
@@ -103,20 +112,39 @@ function flatPos(p) {
     while (a.__outer !== undefined) { i += a.__oidx * a.length; a = a.__outer; }
     return [a, i];
 }
-/** (char *) (p + 1) for a record with a trailing area (annotation types[].tail): its bytes. */
+/**
+ * (char *) (p + 1) for a record with a trailing area (annotation types[].tail): its bytes.
+ * Without one it is the record's one-past-the-end byte pointer: an empty buffer (the same
+ * one for each record, so it compares equal to itself), which traps when dereferenced.
+ */
+const PAST = new WeakMap();
 export function recTail(p) {
-    if (!p.__tail) throw new CTrap('(char *) (p + 1): the record has no trailing area');
-    return new Ptr(p.__tail, 0);
+    if (p.__tail) return new Ptr(p.__tail, 0);
+    let b = PAST.get(p);
+    if (b === undefined) { b = new Int8Array(0); PAST.set(p, b); }
+    return new Ptr(b, 0);
 }
+// A record that is not an array element behaves as an array of one (C11 6.5.6p7): p + 1
+// is its one-past-the-end pointer, which compares (unequal to every object) but cannot
+// be dereferenced (mhitu.c hitmsg: mattk == gh.hitmsg_prev + 1, where getmattk() may
+// return a pointer to one local struct attack).
+const SOLO = new WeakMap();
+function soloOf(p) { let s = SOLO.get(p); if (s === undefined) { s = [p]; SOLO.set(p, s); } return s; }
 /** p + n for a record pointer. */
 export function radd(p, n) {
     if (n === 0) return p;
     const a = p.__arr;
-    if (a === undefined) throw new CTrap('arithmetic on a pointer to a record that is not an array element');
+    if (a === undefined) {
+        if (Number(n) !== 1) throw new CTrap('arithmetic on a pointer to a record that is not an array element');
+        return new ElemPtr(soloOf(p), 1);
+    }
     return relem(a, p.__idx + Number(n));
 }
 /** p - q for record pointers into the same array (element count). */
 export function rdiff(p, q) {
+    // a lone record against its one-past pointer (soloOf)
+    if (p.__arr === undefined && q.__arr !== undefined && SOLO.get(p) === q.__arr) return -q.__idx;
+    if (q.__arr === undefined && p.__arr !== undefined && SOLO.get(q) === p.__arr) return p.__idx;
     if (p.__arr === undefined || q.__arr === undefined || p.__arr !== q.__arr) {
         if (p === q) return 0;
         if (p.__arr !== undefined && q.__arr !== undefined) {
@@ -129,8 +157,18 @@ export function rdiff(p, q) {
 }
 /** p - q for Ptr values (element count). */
 export function pdiff(p, q) {
-    if (p.buf !== q.buf) throw new CTrap('difference of pointers to different buffers');
-    return p.off - q.off;
+    if (p instanceof FieldRef && q instanceof FieldRef && p.obj === q.obj && p.key === q.key) return p.d - q.d;
+    if (p.buf === q.buf) return p.off - q.off;
+    // views of one object (rows of a contiguous matrix, retype() views of a block): byte distance
+    const a = p.buf, b = q.buf;
+    if (ArrayBuffer.isView(a) && ArrayBuffer.isView(b) && a.buffer === b.buffer) {
+        const bytes = (a.byteOffset + p.off * a.BYTES_PER_ELEMENT) - (b.byteOffset + q.off * b.BYTES_PER_ELEMENT);
+        return bytes / a.BYTES_PER_ELEMENT;
+    }
+    // rows of an array of arrays (arrayOf): positions in the outermost array
+    if (Array.isArray(a) && Array.isArray(b) && a.__outer !== undefined && a.__outer === b.__outer && a.length === b.length)
+        return (a.__oidx - b.__oidx) * a.length + p.off - q.off;
+    throw new CTrap('difference of pointers to different buffers');
 }
 /**
  * Pointer equality for data pointers of any kind (== in C). null equals only null.
@@ -140,8 +178,12 @@ export function pdiff(p, q) {
 export function peq(a, b) {
     if (a === b) return true;
     if (a === null || b === null) return false;
+    // a pointer read back from a save file (serial.js STALE) holds an address of the
+    // process that saved: unequal to every live object (save.c savemonchn compares
+    // each monster with the restored u.ustuck before the restore resolves it by m_id)
+    if (a.$stale === true || b.$stale === true) return false;
     if (a instanceof Ptr) return b instanceof Ptr && a.buf === b.buf && a.off === b.off;
-    if (a instanceof FieldRef) return b instanceof FieldRef && a.obj === b.obj && a.key === b.key;
+    if (a instanceof FieldRef) return b instanceof FieldRef && a.obj === b.obj && a.key === b.key && a.d === b.d;
     if (a.__arr !== undefined) return a.__arr === b.__arr && a.__idx === b.__idx;
     return false;
 }
@@ -274,6 +316,16 @@ const CONSTS = new Map();
 export function ptrConst(n) {
     if (n == 0) return null;
     const k = String(n);
+    // an integer made from a pointer (ptrToInt) converts back to that pointer
+    // ((T *) (intptr_t) p == p in clang's flat address model)
+    const back = BACK.get(k);
+    if (back !== undefined) return back;
+    return ptrConstStale(n);
+}
+/** An address read from a save file: a non-dereferenceable value even if it names a live object (freed in C). */
+export function ptrConstStale(n) {
+    if (n == 0) return null;
+    const k = String(n);
     let p = CONSTS.get(k);
     if (p === undefined) { p = Object.freeze({ $const: k }); CONSTS.set(k, p); }
     return p;
@@ -284,21 +336,28 @@ export function ptrConst(n) {
 let nextHandle = 2 ** 40;
 const HANDLES = new WeakMap();      // object -> handle
 const AT = new WeakMap();           // buffer / object / array -> Map(position -> handle)
-function handleAt(base, pos) {
+const BACK = new Map();             // String(handle) -> the pointer it was made from
+function handleAt(base, pos, p) {
     let m = AT.get(base);
     if (m === undefined) AT.set(base, (m = new Map()));
     let h = m.get(pos);
-    if (h === undefined) { h = nextHandle; nextHandle += 16; m.set(pos, h); }
+    if (h === undefined) { h = nextHandle; nextHandle += 16; m.set(pos, h); BACK.set(String(h), p); }
     return h;
 }
+/**
+ * A new C process (one segment): integers made from pointers by an earlier process (in a
+ * save or bones file) no longer convert back to the objects (stale addresses in C). Handle
+ * numbers keep increasing, so an old one never names a new object.
+ */
+export function resetHandles() { BACK.clear(); }
 export function ptrToInt(p) {
     if (p === null || p === undefined) return 0;
     if (p.$const !== undefined) return Number(p.$const);
-    if (p instanceof Ptr) return handleAt(p.buf, p.off);
-    if (p instanceof FieldRef) return handleAt(p.obj, p.key);
-    if (typeof p === 'object' && p.__arr !== undefined) return handleAt(p.__arr, p.__idx);
+    if (p instanceof Ptr) return handleAt(p.buf, p.off, p);
+    if (p instanceof FieldRef) return handleAt(p.obj, `${p.key}#${p.d}`, p);
+    if (typeof p === 'object' && p.__arr !== undefined) return handleAt(p.__arr, p.__idx, p);
     let h = HANDLES.get(p);
-    if (h === undefined) { h = nextHandle; nextHandle += 16; HANDLES.set(p, h); }
+    if (h === undefined) { h = nextHandle; nextHandle += 16; HANDLES.set(p, h); BACK.set(String(h), p); }
     return h;
 }
 export function unreachable() { throw new CTrap('__builtin_unreachable reached'); }

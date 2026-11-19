@@ -218,7 +218,7 @@ import { tended_shop, dopay, delete_contents, costly_spot } from './shk.js';
 import { in_rooms } from './hack.js';
 import { shkgone, obfree } from "./shk.js";
 import { couldsee, cansee } from './vision.js';
-import { dist2, s_suffix } from './hacklib.js';
+import { dist2, s_suffix, strstri, strNsubst } from './hacklib.js';
 import { drain_en, monkilled_trap, mintrap, t_at, acid_damage, fill_pit } from './trap.js';
 import { m_carrying, m_useup, m_useupall } from './mthrowu.js';
 import { mon_adjust_speed } from './worn.js';
@@ -1786,7 +1786,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
         if (hmd.dmg < 1) {
             hmd.dmg = !_noDmgBonus && mtmp.data?.pmidx !== PM_SHADE ? 1 : 0;
             if (mtmp.data?.pmidx === PM_SHADE && !artiHittxt)
-                artiHittxt = !!shade_miss(game.youmonst, mtmp, uwep || null, false, true);
+                artiHittxt = !!(await shade_miss(game.youmonst, mtmp, uwep || null, false, true));
         }
         hmd.jousting = jousting;
         hmd.hittxt = artiHittxt;
@@ -2438,7 +2438,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                                 golemeffects(mtmp, AD_FIRE, dam);
                             } else dam = 0;
                         } else if (adtyp === 16 /* AD_DREN */) {
-                            if (!rn2(4)) xdrainenergym(mtmp, true); /* C uhitm.c:5174-5176 */
+                            if (!rn2(4)) await xdrainenergym(mtmp, true); /* C uhitm.c:5174-5176 */
                             dam = 0;
                         }
                         end_engulf(); /* C uhitm.c:5111 — unconditional before the damage */
@@ -4404,7 +4404,7 @@ async function mhitm_ad_dren(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
         /* uhitm */
         if (!negated && !rn2(4))
-            xdrainenergym(mdef, true);
+            await xdrainenergym(mdef, true);
         mhm.damage = 0;
     } else if (mdef === game.youmonst) {
         /* mhitu */
@@ -4415,7 +4415,7 @@ async function mhitm_ad_dren(magr, mattk, mdef, mhm) {
     } else {
         /* mhitm */
         if (!negated && !rn2(4))
-            xdrainenergym(mdef, !!(game.v?.vis && canspotmon(mdef)
+            await xdrainenergym(mdef, !!(game.v?.vis && canspotmon(mdef)
                                     && mattk.aatyp !== AT_ENGL));
         mhm.damage = 0;
     }
@@ -5349,7 +5349,7 @@ async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
         if (mattk.aatyp !== AT_WEAP && mattk.aatyp !== AT_CLAW)
             mwep = null;
 
-        if (shade_miss(magr, mdef, mwep, false, vis)) {
+        if (await shade_miss(magr, mdef, mwep, false, vis)) {
             mhm.damage = 0;
         } else if (mattk.aatyp === AT_KICK && thick_skinned(pd)) {
             /* [no 'kicking boots' check needed; monsters with kick attacks
@@ -5689,19 +5689,26 @@ function amorphous(ptr) { return !!ptr && !!((ptr.mflags1 | 0) & M1_AMORPHOUS); 
 // C uhitm.c:1662-1698: saved_oname predates destruction and poison removal.
 export async function hmon_hitmon_msg_silver(hmd, mon) {
     let whom = mon_nam(mon);
-    let prefix;
+    let fmt;
     const spotted = canspotmon(mon);
     if (spotted) {
-        if (hmd.barehand_silver_rings === 1) prefix = 'Your silver ring sears';
-        else if (hmd.barehand_silver_rings === 2) prefix = 'Your silver rings sear';
+        if (hmd.barehand_silver_rings === 1) fmt = 'Your silver ring sears %s!';
+        else if (hmd.barehand_silver_rings === 2) fmt = 'Your silver rings sear %s!';
         else if (hmd.silverobj && hmd.saved_oname) {
             const name = hmd.saved_oname;
-            prefix = `Your ${/silver/i.test(name) ? '' : 'silver '}${name} ${vtense(name, 'sear')}`;
-        } else prefix = 'The silver sears';
-    } else whom = whom.charAt(0).toUpperCase() + whom.slice(1);
+            const buf = {
+                value: `Your ${strstri(name, 'silver') ? '' : 'silver '}${name} ${vtense(name, 'sear')}`.slice(0, 255),
+            };
+            strNsubst(buf, '%', '%%', 0);
+            fmt = buf.value + ' %s!'.slice(0, Math.max(0, 255 - buf.value.length));
+        } else fmt = 'The silver sears %s!';
+    } else {
+        whom = upstart(whom);
+        fmt = '%s is seared!';
+    }
     if (!noncorporeal(hmd.mdat) && !amorphous(hmd.mdat))
         whom = s_suffix(whom) + ' flesh';
-    await pline(spotted ? `${prefix} ${whom}!` : `${whom} is seared!`);
+    await pline(fmt, whom);
 }
 
 /* C uhitm.c:918-930 backstabbable — can monster be stabbed in the back? */
@@ -6576,7 +6583,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
     return (malive | mhit);
 }
 
-export function shade_miss(magr, mdef, obj, thrown, verbose) {
+export async function shade_miss(magr, mdef, obj, thrown, verbose) {
     const youagr = is_youmonst(magr);
     const youdef = is_youmonst(mdef);
 
@@ -6605,12 +6612,12 @@ export function shade_miss(magr, mdef, obj, thrown, verbose) {
             /* C uhitm.c:2039-2040: pline("%s %s %s%s%s.", whose, what,
              *   vtense(what, "pass"), harmlessly_thru, target); */
             const whose = youagr ? "Your" : s_suffix(Monnam(magr));
-            pline(`${whose} ${what} ${vtense(what, "pass")}${harmlessly_thru}${target}.`);
+            await pline(`${whose} ${what} ${vtense(what, "pass")}${harmlessly_thru}${target}.`);
         } else {
             /* C uhitm.c:2042-2043: pline("%s %s%s%s.", The(what),
              *   vtense(what, "pass"), harmlessly_thru, target);
              * note: The(), not pline_The() */
-            pline(`${The(what)} ${vtense(what, "pass")}${harmlessly_thru}${target}.`);
+            await pline(`${The(what)} ${vtense(what, "pass")}${harmlessly_thru}${target}.`);
         }
         if (!youdef && !canspotmon(mdef))
             map_invisible(mdef.mx, mdef.my);
@@ -6708,7 +6715,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
         const mon_is_shade = (mon.data && (mon.data.pmidx | 0) === PM_SHADE);
         hmd.dmg = (hmd.get_dmg_bonus && !mon_is_shade) ? 1 : 0;
         if (mon_is_shade && !hmd.hittxt && thrown !== HMON_THROWN && thrown !== HMON_KICKED)
-            hmd.hittxt = shade_miss(game.youmonst, mon, obj, false, true);
+            hmd.hittxt = await shade_miss(game.youmonst, mon, obj, false, true);
     }
 
     await hmon_hitmon_special(hmd, mon, obj);

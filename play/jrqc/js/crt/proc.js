@@ -5,7 +5,7 @@
 // stdin and stdout were pipes, so isatty() is 0 and terminal ioctls fail with
 // ENOTTY, exactly as NetHack saw them under the recorder.
 import { CTrap } from './int.js';
-import { Ptr, lit, cstrToJs } from './mem.js';
+import { Ptr, lit, cstrToJs, peq } from './mem.js';
 import { $libc } from './stdio.js';
 
 /** Thrown by exit(): unwinds the program; the glue catches it. */
@@ -110,12 +110,18 @@ export const backtrace_symbols = () => null;
 export const CC_MD4_Init = () => 1, CC_MD4_Update = () => 1, CC_MD4_Final = () => 1;
 
 // ---------- setjmp / longjmp in the object world ----------
-// NetHack's one use (nhlua.c nhl_pcall / nhl_hookfn): setjmp(nud->jb) arms a
-// handler, and the Lua count hook longjmps there only when a pcall exceeds its
-// instruction budget, to panic("Lua time exceeded"). The transpiled VM runs the
-// same instructions as C, so it exceeds the budget exactly when C does; that
-// path is not modeled (a trap), and setjmp's direct return is 0.
+// NetHack's one use (nhlua.c nhl_pcall / nhl_hookfn): setjmp(nud->jb) arms a handler
+// (panic "Lua time exceeded"), and the Lua count hook longjmps there when a pcall
+// exceeds its instruction budget. The emitter (tu.mjs objectSetjmp) wraps the
+// function that calls setjmp in a try whose catch is the handler; longjmp throws an
+// ObjLongJmp, which unwinds the JS frames between (heap-world frames restore the
+// heap stack pointer in their finally blocks) as C unwinds the stack.
+export class ObjLongJmp extends Error {
+    constructor(buf, val) { super('longjmp'); this.buf = buf; this.val = val; }
+}
 export function setjmp(_buf) { return 0; }
 export const _setjmp = setjmp;
-export function longjmp(_buf, _v) { throw new CTrap('longjmp in the object world: Lua instruction budget exceeded (panic "Lua time exceeded" not modeled)'); }
+export function longjmp(buf, v) { throw new ObjLongJmp(buf, v === 0 ? 1 : v); }
+/** Is e a longjmp to buffer jb (armed by this frame's setjmp)? */
+export function isLongJmpTo(e, jb) { return e instanceof ObjLongJmp && jb !== null && jb !== 0 && peq(e.buf, jb); }
 export const _longjmp = longjmp;

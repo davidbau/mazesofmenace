@@ -18,7 +18,7 @@
 // class prototype (so $clone/$copyFrom/instanceof work) with accessors over the
 // cell's bytes at the member's offset. Accessors are built once per class from
 // the generated static $fields() tables.
-import { ptrConst, ptrToInt } from './mem.js';
+import { ptrConst, ptrConstStale, ptrToInt } from './mem.js';
 import { CTrap, i64, u64 } from './int.js';
 
 const TYPED = { i8: Int8Array, u8: Uint8Array, i16: Int16Array, u16: Uint16Array, i32: Int32Array, u32: Uint32Array, f32: Float32Array, f64: Float64Array };
@@ -41,7 +41,7 @@ function rd(cell, off, k) {
         if (n === 0) return null;
         const o = cell.$p.get(off);
         if (o !== undefined && ptrToInt(o) === n) return o;
-        return ptrConst(n);
+        return cell.$fromSave ? ptrConstStale(n) : ptrConst(n);   // save-file bytes hold stale addresses
     }
     default: throw new CTrap(`union cell: member kind ${JSON.stringify(k)}`);
     }
@@ -121,6 +121,7 @@ export function cellCopy(dst, src) {
     if (src.$dv) {
         new Uint8Array(dst.$dv.buffer).set(new Uint8Array(src.$dv.buffer, src.$dv.byteOffset, dst.$dv.byteLength));
         dst.$p = new Map(src.$p);
+        dst.$fromSave = src.$fromSave;
     } else {
         // an object of the same class shape (never expected): copy member by member
         throw new CTrap('union cell: copy from a value that is not a cell');

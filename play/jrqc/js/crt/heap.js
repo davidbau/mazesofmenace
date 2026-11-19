@@ -13,7 +13,7 @@
 // heap are cleared, static data is re-initialized by the modules' $init.
 import { CTrap, i64, u64 } from './int.js';
 import { Ptr } from './mem.js';
-import { setPointerAddress } from './printf.js';
+import { setPointerAddress, objectAddress } from './printf.js';
 
 const INITIAL = 64 << 20, MAX = 1 << 30, STACK = 4 << 20;
 const buf = new ArrayBuffer(INITIAL, { maxByteLength: MAX });
@@ -219,7 +219,7 @@ setPointerAddress((v) => {
     if (v === null || v === 0) return 0n;
     if (typeof v === 'number' || typeof v === 'bigint') return BigInt(v);
     if (v instanceof Ptr && v.buf.buffer === buf) return BigInt(v.off * v.buf.BYTES_PER_ELEMENT);
-    throw new CTrap('%p of a pointer without an address');
+    return objectAddress(v);   // an object-world pointer: its handle
 });
 
 /** Copy a NUL-terminated heap string to a JS byte string. */

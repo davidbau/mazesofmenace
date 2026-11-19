@@ -17,9 +17,11 @@
 //   1987-2006  first Sunday of April .. last Sunday of October
 //   2007-      second Sunday of March .. first Sunday of November
 // Transitions at 02:00 local (standard time at the start, daylight time at the end).
-// Earlier dates throw (not modeled).
+// Before the 1955 rules: Darwin's tz database as a table (tz-ny-early.js, generated:
+// LMT until 1883-11-18, the 1918-1954 rules, war time EWT/EPT).
 import { CTrap } from './int.js';
 import { cstrLiteral } from './mem.js';
+import { NY_EARLY } from './tz-ny-early.js';
 
 /** time() in the recorder: 2026-05-02 12:00:00 UTC (US daylight time). */
 export const REAL_NOW = 1777723200;
@@ -52,7 +54,7 @@ const lastSunday = (y, m) => { const dl = daysFromCivil(y, m + 1, 1) - 1; return
 
 /** [start, end) of daylight time in year y, as UTC seconds. */
 function dstRange(y) {
-    if (y < 1955) throw new CTrap(`local time before 1955 is not modeled (year ${y})`);
+    if (y < 1955) throw new CTrap(`dstRange(${y}): the 1955 rules asked about an earlier year (zoneAt uses the tz table there)`);
     let s, e;
     if (y >= 2007) { s = nthSunday(y, 3, 2); e = nthSunday(y, 11, 1); }
     else if (y >= 1987) { s = nthSunday(y, 4, 1); e = lastSunday(y, 10); }
@@ -61,12 +63,24 @@ function dstRange(y) {
     else { s = lastSunday(y, 4); e = lastSunday(y, 10); }
     return [s * 86400 + 7200 - EST, e * 86400 + 7200 - EDT];
 }
-/** Is UTC time t in daylight time? */
-export function isDst(t) {
+const RULES_FROM = dstRange(1955)[0];   // the first transition the rules cover
+const ZONES = new Map();
+const zoneName = (a) => { let z = ZONES.get(a); if (z === undefined) { z = cstrLiteral(a); ZONES.set(a, z); } return z; };
+/** The local time type at UTC time t: { off, dst, abbr }. */
+function zoneAt(t) {
+    if (t < RULES_FROM) {
+        let lo = 0, hi = NY_EARLY.length - 1;   // the last row starting at or before t
+        while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (NY_EARLY[mid][0] <= t) lo = mid; else hi = mid - 1; }
+        const [, off, dst, abbr] = NY_EARLY[lo];
+        return { off, dst: dst === 1, abbr };
+    }
     const y = civilFromDays(Math.floor((t + EST) / 86400)).y;
     const [s, e] = dstRange(y);
-    return t >= s && t < e;
+    const dst = t >= s && t < e;
+    return { off: dst ? EDT : EST, dst, abbr: dst ? 'EDT' : 'EST' };
 }
+/** Is UTC time t in daylight time? */
+export function isDst(t) { return zoneAt(t).dst; }
 
 /** struct tm (the fields NetHack and Lua use, plus Darwin's tm_gmtoff/tm_zone). */
 export class Tm {
@@ -79,8 +93,7 @@ export class Tm {
 
 /** Fill tm with the local (New York) time of UTC time t. */
 export function localtimeInto(t, tm) {
-    const dst = isDst(t);
-    const off = dst ? EDT : EST;
+    const { off, dst, abbr } = zoneAt(t);
     const local = t + off;
     const days = Math.floor(local / 86400);
     const secs = local - days * 86400;
@@ -88,7 +101,7 @@ export function localtimeInto(t, tm) {
     tm.tm_sec = secs % 60; tm.tm_min = Math.floor(secs / 60) % 60; tm.tm_hour = Math.floor(secs / 3600);
     tm.tm_mday = d; tm.tm_mon = m - 1; tm.tm_year = y - 1900;
     tm.tm_wday = weekday(days); tm.tm_yday = days - daysFromCivil(y, 1, 1);
-    tm.tm_isdst = dst ? 1 : 0; tm.tm_gmtoff = off; tm.tm_zone = dst ? ZONE_EDT : ZONE_EST;
+    tm.tm_isdst = dst ? 1 : 0; tm.tm_gmtoff = off; tm.tm_zone = abbr === 'EST' ? ZONE_EST : abbr === 'EDT' ? ZONE_EDT : zoneName(abbr);
     return tm;
 }
 
@@ -113,15 +126,7 @@ function probe(tb) {   // localsub for a BigInt time: fields, or null when out o
     const days0 = Math.floor((t + EST) / 86400);
     const y0 = civilFromDays(days0).y;
     if (y0 - 1900 > 2147483647 || y0 - 1900 < -2147483648) return null;
-    const tm = new Tm();
-    if (y0 < 1955) {   // only the year matters this far from any modeled target
-        const days = Math.floor((t + EST) / 86400), secs = t + EST - days * 86400;
-        const { y, m, d } = civilFromDays(days);
-        Object.assign(tm, { tm_year: y - 1900, tm_mon: m - 1, tm_mday: d, tm_hour: Math.floor(secs / 3600),
-            tm_min: Math.floor(secs / 60) % 60, tm_sec: secs % 60, tm_isdst: 0 });
-        return tm;
-    }
-    return localtimeInto(t, tm);
+    return localtimeInto(t, new Tm());
 }
 function tmcomp(a, b) {
     if (a.tm_year !== b.tm_year) return a.tm_year > b.tm_year ? 1 : -1;

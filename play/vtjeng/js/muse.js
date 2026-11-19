@@ -179,7 +179,7 @@ import { an, ansimpleoname, distant_name, donameFresh, is_plural,
     simpleonames, singular, the, vtense, xnameFresh } from './objnam.js';
 import { discover_object, objdescr_is, observe_object } from './o_init.js';
 import { accessible, closed_door, monflee, mon_would_take_item, monnear, onscary, youHear } from './monmove.js';
-import { lined_up, linedup_callback, m_useup } from './mthrowu.js';
+import { lined_up, linedup_callback, m_throw, m_useup } from './mthrowu.js';
 import { removed_from_icebox } from './pickup.js';
 import { in_your_sanctuary } from './priest.js';
 import { coreRandom, d, rn1, rn2, rn2_on_display_rng, rnd } from './rng.js';
@@ -2398,7 +2398,6 @@ async function fhito_loc(obj, tx, ty, fhito, state, rawEnv = {}) {
 async function mbhit(mon, range, fhitm, fhito_fn, obj, state, rawEnv = {}) {
     const otyp = obj.otyp;
 
-    state.gb ??= {};
     state.gb.bhitpos.x = mon.mx;
     state.gb.bhitpos.y = mon.my;
     const ddx = sgn(mon.mux - mon.mx);
@@ -2685,7 +2684,6 @@ export async function use_offensive(mtmp, rawEnv = {}) {
             discover_object(otmp.otyp, true, true, true, state, env);
         state.m_using = true;
         state.current_wand = otmp;
-        state.gb ??= {};
         state.gb.buzzer = mtmp;
         const buzzFunction = mtmp.mwandexp ? buzz : buzz_force_miss;
         await buzzFunction(
@@ -2709,7 +2707,6 @@ export async function use_offensive(mtmp, rawEnv = {}) {
     case MUSE_FROST_HORN: {
         await mplayhorn(mtmp, otmp, false, state, env);
         state.m_using = true;
-        state.gb ??= {};
         state.gb.buzzer = mtmp;
         state.current_wand = otmp;
         const buzzFunction = mtmp.mwandexp ? buzz : buzz_force_miss;
@@ -2774,14 +2771,12 @@ export async function use_offensive(mtmp, rawEnv = {}) {
          * are not objects.  Also set dknown in mthrowu.c.
          */
         if (cansee(mtmp.mx, mtmp.my, state)) {
-            const message = env.message;
-            const monsterName = env.monsterName;
-            if (typeof message !== 'function'
-                || typeof monsterName !== 'function') {
-                throw new TypeError(
-                    'use_offensive requires message and monsterName owners',
-                );
-            }
+            // C's pline_mon() with Monnam(); a caller may replace either.
+            const message = env.message ?? ttyPline;
+            const monsterName = env.monsterName
+                ?? ((monster) => capitalizedMonsterName(monster, state, {
+                    displayRandom: env.displayRandom,
+                }));
             observe_object(otmp, state);
             // pline_mon() sets the message location to the thrower's square,
             // which messageAt() prefixes under the accessiblemsg option.
@@ -2796,10 +2791,8 @@ export async function use_offensive(mtmp, rawEnv = {}) {
                 state,
             );
         }
-        const throwMissile = env.throwMissile;
-        if (typeof throwMissile !== 'function')
-            throw new TypeError('use_offensive requires throwMissile');
-        await throwMissile(
+        // C calls mthrowu.c m_throw(); a caller may replace it.
+        await (env.throwMissile ?? m_throw)(
             mtmp,
             mtmp.mx,
             mtmp.my,
@@ -2818,7 +2811,6 @@ export async function use_offensive(mtmp, rawEnv = {}) {
         state.gz.zap_oseen = oseen;
         await mzapwand(mtmp, otmp, false, state, env);
         state.m_using = true;
-        state.gb ??= {};
         state.gb.buzzer = mtmp;
         await mbhit(
             mtmp,

@@ -781,7 +781,7 @@ function stimer() {
  * is the shape a handful of files reach for first, so both spellings are read
  * here rather than picking one and being silently zero on the other path. */
 function curmoves() {
-    return (game.moves ?? 0) | 0;
+    return game.moves ?? 0;
 }
 
 // alloc(size) (alloc.c) — struct allocator; JS has no sizeof/malloc model, so
@@ -960,7 +960,7 @@ export function start_timer(when, kind, func_index, arg) {
     gnu = alloc_timeout(/* sizeof(timer_element) */);
     gnu.next = null;
     gnu.tid = svt.timer_id++;
-    gnu.timeout = curmoves() + (when | 0);
+    gnu.timeout = curmoves() + when; // C timeout.c:2275: both operands are long.
     gnu.kind = kind;
     gnu.needs_fixup = 0;
     gnu.func_index = func_index;

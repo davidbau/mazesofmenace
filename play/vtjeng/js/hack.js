@@ -247,6 +247,7 @@ import {
     depth,
     get_level,
     Invocation_lev,
+    mapseen_room,
     on_level,
     surface,
     u_on_newpos,
@@ -2015,7 +2016,6 @@ export async function dosinkfall(state = game) {
 // Strength and moving the rock. decl.c:224-225 starts both at 0.
 async function dopush(sx, sy, rx, ry, otmp, state, env) {
     env ??= {};
-    state.gb ??= {};
     const moves = Math.trunc(state.moves ?? 0);
     /* give boulder pushing feedback if this is a different
        boulder than the last one pushed or if it's been at
@@ -4066,7 +4066,6 @@ async function domove_core(state = game) {
     const oldy = u.uy;
     u.ux0 = oldx;
     u.uy0 = oldy;
-    state.gb ??= {};
     state.gb.bhitpos.x = newx;
     state.gb.bhitpos.y = newy;
     const targetGlyph = glyph_at(newx, newy, state);
@@ -5421,7 +5420,7 @@ export function monstinroom(mdat, roomno, state = game) {
 // C ref: hack.c furniture_present() (3482-3497). The inclusive bounds and
 // inside_room() test both matter for edge furniture and irregular rooms.
 export function furniture_present(furniture, roomno, state = game) {
-    const sroom = state.level?.rooms?.[roomno];
+    const sroom = mapseen_room(roomno, state);
     if (!sroom) return false;
     for (let y = sroom.ly; y <= sroom.hy; ++y) {
         for (let x = sroom.lx; x <= sroom.hx; ++x) {

@@ -1,9 +1,9 @@
 // detect.js — detection redraw helpers and clairvoyance map scan.
 // C ref: nethack-c-v5/upstream/src/detect.c.
 import { game } from './gstate.js';
-import { COLNO, ROWNO, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
+import { COLNO, ROWNO,
          TER_DETECT, TER_MAP, TER_TRP, TER_OBJ, TER_MON, I_SPECIAL, IN_SIGHT,
-         CLAIRVOYANT, CONFUSION, DETECT_MONSTERS, SVALL, COULD_SEE } from './const.js';
+         CLAIRVOYANT, CONFUSION, DETECT_MONSTERS, SVALL, COULD_SEE, NO_PART } from './const.js';
 import { force_more, flush_screen, docrt, map_invisible, map_object, see_monsters, canspotmon, newsym, GLYPHCLS_MON, GLYPHCLS_INVIS, GLYPHCLS_CMAP, GLYPHCLS_TRAP, GLYPHCLS_ENGR } from './display.js';
 import { pline } from './pline.js';
 import { Blind } from './vision.js';
@@ -12,7 +12,7 @@ import './cmd.js';
 import { observe_object } from './o_init.js';
 import { m_at } from './uhitm.js';
 import { PM_LONG_WORM_TAIL } from './pm.generated.js';
-import { is_moat } from './dbridge.js';
+import { POOL, MOAT, WATER, LAVAPOOL, LAVAWALL } from './const.js';
 import { _glyph_ident } from './cmd.js';
 import { pushRngLogEntry } from './rng.js';
 import { ENV } from './hostenv.js';
@@ -40,7 +40,7 @@ import { CMD_CHEST, CMD_LARGE_BOX, CRYSTAL_BALL_OTYP, Is_box, SPFX_SEARCH_ART, T
 import { getpos } from './getpos.js';
 import { consume_obj_charge, useup } from './invent.js';
 import { set_msg_xy } from './pline.js'; // relocate-fns
-import { A_INT, A_STR, A_WIS, DRAWBRIDGE_UP, D_BROKEN, D_ISOPEN, ECMD_OK, ECMD_TIME, HALLUC, IS_DOOR, IS_FURNITURE, IS_WALL, KILLED_BY_AN, M_AP_FURNITURE, M_AP_TYPE, ROOM, STUNNED, SYM_BOULDER, TIMEOUT, TREE } from './const.js'; // relocate-fns
+import { A_INT, A_WIS, DRAWBRIDGE_UP, D_BROKEN, D_ISOPEN, ECMD_OK, ECMD_TIME, HALLUC, IS_DOOR, IS_FURNITURE, IS_WALL, KILLED_BY_AN, M_AP_FURNITURE, M_AP_TYPE, ROOM, STUNNED, SYM_BOULDER, TIMEOUT, TREE } from './const.js'; // relocate-fns
 import { find_drawbridge, is_pool } from './dbridge.js'; // relocate-fns
 import { open_drawbridge } from './dbridge.js'; // relocate-fns
 import { GLYPHCLS_OBJ, GLYPHCLS_SWALLOW, GLYPHCLS_UNEXPLORED, GLYPHCLS_WARNING, cls as display_cls, display_self, feel_location, feel_newsym, glyph_cmap_at, glyph_is_gascloud, glyph_is_this_trap, objpile_attr, pager_boulder_symbol, pager_showsyms, region_glyph, sensemon, show_glyph_cell, terrain_glyph, topl_force_break_now, trap_glyph_entry, use_last_flush_snapshot, warning_of as warning_of_real, xy_set_wall_state } from './display.js'; // relocate-fns
@@ -48,7 +48,7 @@ import { cmd_safety_prevention } from './do.js'; // relocate-fns
 import { Monnam } from './do_name.js'; // relocate-fns
 import { xname } from './do_wear.js'; // relocate-fns
 import { MAXMCLASSES, MAXOCLASSES, def_char_is_furniture, def_char_to_monclass, def_char_to_objclass } from './drawing.js'; // relocate-fns
-import { depth, level_difficulty } from './dungeon.js'; // relocate-fns
+import { depth } from './dungeon.js'; // relocate-fns
 import { losehp } from './hack.js'; // relocate-fns
 import { makeknown } from './makemon.js';
 import { trapname as makemon_trapname } from './trap.js';
@@ -57,18 +57,18 @@ import { hcolor } from './mhitm.js';
 import { y_monnam } from './do_name.js'; // relocate-fns
 import { expels_gu } from './mhitu.js'; // relocate-fns
 import { ROCK_CLASS } from './mklev.js'; // relocate-fns
-import { wake_nearby, wake_nearto } from './mon.js'; // relocate-fns
+import { wake_nearto } from './mon.js'; // relocate-fns
 import { resists_blnd } from './mondata.js'; // relocate-fns
 import { Tobjnam as _objnam_Tobjnam, an, the } from './objnam.js';
 import { is_quest_artifact } from './questpgr.js'; // relocate-fns
 import { You, You_feel, You_see, Norep as _Norep } from './pline.js'; // relocate-fns
-import { make_confused, make_hallucinated, make_stunned } from './potion.js'; // relocate-fns
+import { make_confused, make_hallucinated } from './potion.js'; // relocate-fns
 import './read.js'; // relocate-fns
 import { visible_region_at } from './region.js'; // relocate-fns
 import { rn2, rnd, rnl } from './rnd.js'; // relocate-fns
 import { SYM_OFFSETS } from './symbols.js'; // relocate-fns
 import { CLR_BLACK, CLR_WHITE } from './terminal.js'; // relocate-fns
-import { activate_statue_trap, openfallingtrap, openholdingtrap } from './trap.js'; // relocate-fns
+import { activate_statue_trap, b_trapped, openfallingtrap, openholdingtrap } from './trap.js'; // relocate-fns
 import { cansee, do_clear_area_async } from './vision.js'; // relocate-fns
 import { BlindedTimeout, make_blinded } from './zap.js'; // relocate-fns
 import { MCORPSENM, M_AP_OBJECT, NON_PM } from './const.js'; // relocate-fns
@@ -104,8 +104,7 @@ const _isInvisibleGlyph = (loc) => loc?.disp_cls === GLYPHCLS_INVIS;
  * here (the shared cmd.js _glyph_ident additionally canonicalizes cmap IDs). */
 const _coversObjects = (loc, u, x, y) => {
     const typ = loc?.typ | 0;
-    const pool = typ === POOL || typ === MOAT || typ === WATER || is_moat(x, y);
-    return (pool && !u.uinwater) || typ === LAVAPOOL || typ === LAVAWALL;
+    return (is_pool(x, y) && !u.uinwater) || typ === LAVAPOOL || typ === LAVAWALL;
 };
 const _topObject = (g, x, y) => g.level?.levelObjects?.[x]?.[y] || null;
 
@@ -169,12 +168,12 @@ export async function do_vicinity_map(sobj) {
     u.uprops = u.uprops || {};
     const detectProp = u.uprops[DETECT_MONSTERS]
         || (u.uprops[DETECT_MONSTERS] = { intrinsic: 0, extrinsic: 0, blocked: 0 });
-    const savedDetect = detectProp?.extrinsic | 0;
+    const savedDetect = detectProp.extrinsic | 0;
     const saved = _unconstrainMap(u);
     let mdetected = false, odetected = false, refresh = false;
     if (saved.uswallow && g.viz_array?.[u.uy])
         g.viz_array[u.uy][u.ux] = (savedViz | 0) | IN_SIGHT;
-    if (detectProp) detectProp.extrinsic = savedDetect | I_SPECIAL;
+    detectProp.extrinsic = savedDetect | I_SPECIAL;
     try {
         for (let x = loX; x <= hiX; x++) for (let y = loY; y <= hiY; y++) {
             const loc = g.level?.at(x, y);
@@ -210,7 +209,7 @@ export async function do_vicinity_map(sobj) {
         }
     } finally {
         _reconstrainMap(u, saved);
-        if (detectProp) detectProp.extrinsic = savedDetect;
+        detectProp.extrinsic = savedDetect;
         if (g.viz_array?.[u.uy]) g.viz_array[u.uy][u.ux] = savedViz;
     }
     /* docrt() -> cls() pages the standing "Done." of browse_map's getpos
@@ -629,8 +628,6 @@ function reveal_terrain_getglyph(x, y, which_subset, swallowed = false) {
             /* C's glyph_at() is the full glyph number: keep the object identity
              * so a repaint (and lookat() on it) still knows the otyp. */
             otyp: loc.disp_obj_otyp, corpsenm: loc.disp_obj_corpsenm,
-            objpile: loc.disp_obj_pile,
-            otyp: loc.disp_obj_otyp, corpsenm: loc.disp_obj_corpsenm,
             objpile: !!loc.disp_obj_pile, ttyp: loc.disp_trap_type,
             /* glyph_is_gascloud() needs the cmap identity (S_cloud) of a
              * displayed cloud cell whose producer left disp_cmap unset. */
@@ -827,15 +824,6 @@ export async function reveal_terrain(which_subset) {
                  * unmapped STONE square is cmap S_stone here, never
                  * GLYPH_UNEXPLORED; lookat() (pager.c:779-783) says "unexplored". */
                 if (full && _loc) _loc.disp_unmapped = false;
-                /* C detect.c:2196-2200 'full': back_to_glyph() yields a real
-                 * cmap S_stone glyph (not GLYPH_UNEXPLORED), so pager.c:780-782
-                 * lookat() answers "unexplored" (no "area") from !seenv. */
-                if (full && _loc)
-                /* A cmap S_stone glyph here (detect.c:2238 default_glyph) is a
-                 * real glyph, not GLYPH_UNEXPLORED: lookat() answers pager.c:781
-                 * "unexplored" (no "area") for it while !seenv. */
-                if (gl.cls === GLYPHCLS_CMAP && gl.cmap === 0 && _loc)
-                    _loc.disp_unmapped = false;
             } else if (!full && !swallowed && _loc && _loc.disp_cls === GLYPHCLS_CMAP
                        && _loc.disp_ch === ' ') {
                 /* C detect.c:2204 glyph_at() returns the displayed blank S_stone
@@ -843,10 +831,6 @@ export async function reveal_terrain(which_subset) {
                  * so nothing is repainted over the status row's map-row-20 overlap. */
             } else
                 show_glyph_cell(x, y, ' ', NO_COLOR, false, 0, GLYPHCLS_UNEXPLORED);
-            /* detect.c:2238 paints default_glyph (cmap S_stone), not
-             * GLYPH_UNEXPLORED, so pager.c:779-781 lookat() reads it as
-             * "unexplored" (!seenv), never "unexplored area". */
-            if (gl && _loc && gl.cmap === 0)
             /* A real cmap S_stone (detect.c:2194-2195 full view, or default_glyph) is
              * not GLYPH_UNEXPLORED: pager.c:781 lookat() answers "unexplored", not
              * "unexplored area", for it when !seenv. */
@@ -922,19 +906,6 @@ export async function openit() {
     return numRef.value;
 }
 
-/* C trap.c:b_trapped — opening a trapped door detonates it.  The same
- * helper is used by door-opening callers elsewhere, so keep the RNG and
- * physical side effects in one small local body. */
-async function _openone_b_trapped_door(x, y) {
-    const lvl = level_difficulty() | 0;
-    const dmg = rnd(5 + (lvl < 5 ? lvl : 2 + Math.trunc(lvl / 2)));
-    await pline('KABOOM!!  The door was booby-trapped!');
-    wake_nearby(false);
-    await losehp(flooreffects_Maybe_Half_Phys(dmg), 'explosion', KILLED_BY_AN);
-    exercise(A_STR, false);
-    await make_stunned((_hprop(STUNNED) & TIMEOUT) + dmg, true);
-}
-
 /* C detect.c:1729-1780 openone(zx, zy, num) — do_clear_area's per-square
  * callback: unlock a box, open a closed/locked door (or reveal+open a secret
  * one), open a secret corridor, spring/open a trap, or open a drawbridge.
@@ -959,7 +930,7 @@ async function openone(zx, zy, numRef) {
         if (typ === SDOOR) cvt_sdoor_to_door(lev);
         if ((lev.doormask | 0) & D_TRAPPED) {
             if (flooreffects_distu(zx, zy) < 3)
-                await _openone_b_trapped_door(zx, zy);
+                await b_trapped('door', NO_PART);
             else
                 await _Norep('You %s an explosion!',
                     cansee(zx, zy) ? 'see' : (!_hero_Deaf() ? 'hear' : 'feel the shock of'));
@@ -1014,7 +985,8 @@ async function furniture_detect() {
             if (loc && IS_FURNITURE(loc.typ)) {
                 ++found;
                 magic_map_background(loc, x, y, true);
-            } else if (loc?.disp_cls === GLYPHCLS_CMAP && _is_cmap_furniture(loc.disp_cmap)) {
+            } else if (loc?.disp_cls === GLYPHCLS_CMAP
+                       && _is_cmap_furniture(loc.disp_cmap ?? glyph_cmap_at(x, y))) {
                 ++found;
                 const mon = m_at(x, y);
                 if (mon && M_AP_TYPE(mon) === M_AP_FURNITURE) seemimic(mon);
@@ -1978,17 +1950,7 @@ export async function object_detect(detector, oclass) {
     if (!ct) {
         await force_more(g._pending_message);
     } else {
-        g.iflags = g.iflags || {};
-        g.iflags.terrainmode = ter_typ;
-        /* detect.c:112-117 browse_map: autodescribe forced on, then restored */
-        const save_autodescribe = g.iflags.autodescribe;
-        g.iflags.autodescribe = true;
-        try {
-            await getpos({ x: u.ux, y: u.uy }, false, 'object');
-        } finally {
-            g.iflags.terrainmode = 0;
-            g.iflags.autodescribe = save_autodescribe;
-        }
+        await browse_map(ter_typ, 'object');
     }
 
     if (g._pending_message) {
@@ -2011,19 +1973,7 @@ export async function object_detect(detector, oclass) {
 
 const FOOD_CLASS_RD = 7, POTION_CLASS_RD = 8;
 
-/* C ref: detect.c:70-82 unconstrain_map() / detect.c:85-90 reconstrain_map() --
- * bring a swallowed/buried/underwater hero out to (and back from) the normal
- * map for the duration of a detection's display. */
-function unconstrain_map_rd() {
-    const g = game, u = g.u || {};
-    const res = !!(u.uinwater || u.uburied || u.uswallow);
-    g.iflags = g.iflags || {};
-    g.iflags.save_uinwater = u.uinwater; u.uinwater = 0;
-    g.iflags.save_uburied = u.uburied; u.uburied = 0;
-    g.iflags.save_uswallow = u.uswallow; u.uswallow = 0;
-    return res;
-}
-
+/* C ref: detect.c:85-90 reconstrain_map() -- put hero back underwater/buried/swallowed. */
 function reconstrain_map_rd() {
     const g = game, u = g.u || {};
     const saved = {
@@ -2061,20 +2011,6 @@ async function map_redisplay_rd() {
         await under_water(2);
     if (saved.uburied)
         await under_ground(2);
-}
-
-/* C ref: detect.c:106-118 browse_map(ter_typ, ter_explain) -- getpos()'s
- * autodescribe pass over whatever is currently shown on the map. */
-async function browse_map_rd(ter_typ, ter_explain) {
-    const g = game, u = g.u || {};
-    const dummy_pos = { x: u.ux | 0, y: u.uy | 0 };
-    g.iflags = g.iflags || {};
-    const save_autodescribe = g.iflags.autodescribe;
-    g.iflags.autodescribe = true;
-    g.iflags.terrainmode = ter_typ;
-    await getpos(dummy_pos, false, ter_explain);
-    g.iflags.terrainmode = 0;
-    g.iflags.autodescribe = save_autodescribe;
 }
 
 /* C ref: detect.c:479-591 food_detect(sobj) -- "returns 1 if nothing was
@@ -2152,7 +2088,7 @@ export async function food_detect(sobj) {
         if (g._pending_message)
             await force_more(g._pending_message);
         await cls();
-        const wasConstrained = unconstrain_map_rd();
+        const wasConstrained = unconstrain_map();
         try {
             for (let obj = g.fobj; obj; obj = obj.nobj) {
                 const temp = o_in(obj, oclass);
@@ -2191,7 +2127,7 @@ export async function food_detect(sobj) {
             }
             exercise(A_WIS, true);
 
-            await browse_map_rd(ter_typ, 'food');
+            await browse_map(ter_typ, 'food');
 
             await map_redisplay_rd();
         } finally {
@@ -2295,7 +2231,7 @@ export async function gold_detect(sobj) {
     /* outgoldmap: */
     if (g._pending_message) await force_more(g._pending_message);
     await cls();
-    const wasConstrained = unconstrain_map_rd();
+    const wasConstrained = unconstrain_map();
     try {
         for (let obj = g.fobj; obj; obj = obj.nobj) {
             if (blessed && (temp = o_material(obj, GOLD_MAT_GD)) != null) {
@@ -2336,7 +2272,7 @@ export async function gold_detect(sobj) {
         await You_feel('very greedy, and sense gold!');
         exercise(A_WIS, true);
 
-        await browse_map_rd(ter_typ, 'gold');
+        await browse_map(ter_typ, 'gold');
 
         await map_redisplay_rd();
     } finally {
@@ -2355,7 +2291,7 @@ async function display_trap_map(cursed_src) {
     let ter_typ = TER_DETECT | (cursed_src ? TER_OBJ : TER_TRP);
     if (g._pending_message) await force_more(g._pending_message);
     await cls();
-    const wasConstrained = unconstrain_map_rd();
+    const wasConstrained = unconstrain_map();
     g._sensed_at_hero = false;
     try {
         detect_obj_traps(g.level?.buriedobjlist, true, cursed_src, null);
@@ -2380,7 +2316,7 @@ async function display_trap_map(cursed_src) {
             ter_typ |= TER_MON;
         }
         await You_feel(cursed_src ? 'very greedy.' : 'entrapped.');
-        await browse_map_rd(ter_typ, cursed_src ? 'gold' : 'trap of interest');
+        await browse_map(ter_typ, cursed_src ? 'gold' : 'trap of interest');
         await map_redisplay_rd();
     } finally {
         if (wasConstrained && (g.iflags?.save_uinwater
@@ -2509,7 +2445,7 @@ export async function do_mapping() {
     const cnf = _Confusion(); /* C detect.c:1430 show_map_spot(zx, zy, Confusion) */
     /* C detect.c:1427 unconstrained = unconstrain_map() — an underwater / buried
      * / engulfed hero is brought out to the normal map first. */
-    const unconstrained = unconstrain_map_rd();
+    const unconstrained = unconstrain_map();
     for (let zx = 1; zx < COLNO; zx++) {
         for (let zy = 0; zy < ROWNO; zy++) {
             const loc = g.level?.at(zx, zy);
@@ -2519,8 +2455,8 @@ export async function do_mapping() {
     if (!g.level?.flags?.hero_memory || unconstrained) {
         /* C detect.c:1432-1438 */
         await flush_screen(1);
-        await browse_map_rd(TER_DETECT | TER_MAP | TER_TRP | TER_OBJ,
-                            'anything of interest');
+        await browse_map(TER_DETECT | TER_MAP | TER_TRP | TER_OBJ,
+                         'anything of interest');
         await map_redisplay_rd();
     } else {
         reconstrain_map_rd();

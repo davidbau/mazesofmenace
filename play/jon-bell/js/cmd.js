@@ -16541,7 +16541,12 @@ export async function _spoteffects_pickup(redrawPending = false) {
                 if (only.otyp === 265 /* CORPSE */ && will_feel_cockatrice(only, false)) {
                     await pline(msg);
                 } else if (game._look_via_pline) await pline(msg);
-                else _result_append_join(game, msg);
+                else {
+                    /* C invent.c:4282 -> pline.c:273-274: You("see here ...")
+                     * runs flush_screen(1) before emitting msg. */
+                    pline_flush_point();
+                    _result_append_join(game, msg);
+                }
                 /* C invent.c:4283 precedes feel_cockatrice and the next turn. */
                 (g.iflags ||= {}).last_msg = PLNMSG_ONE_ITEM_HERE;
                 if (only.otyp === 265 /* CORPSE */ && will_feel_cockatrice(only, false))

@@ -4026,7 +4026,7 @@ async function gulpmu(mtmp, mattk) {
         const t = t_at_mu(u.ux, u.uy);
         if (t && is_pit_mu(t.ttyp) && _kb_boulder_at(u.ux, u.uy))
             return M_ATTK_MISS;
-        if (failed_grab_mu(mtmp, _hero_monst_mu(), mattk))
+        if (await failed_grab_mu(mtmp, _hero_monst_mu(), mattk))
             return M_ATTK_MISS;
 
         if (u.uball) /* C mhitu.c:1309 Punished */

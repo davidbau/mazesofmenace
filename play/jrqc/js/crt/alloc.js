@@ -27,11 +27,12 @@ export const malloc = (n) => new RawBlock(n);
 export const calloc = (n, sz) => new RawBlock(Number(n) * Number(sz));
 export function free(_p) { /* garbage collected */ }
 
-/** realloc: only for byte/scalar buffers (Ptr over a typed array or plain array) and raw blocks. */
+/** realloc: byte/scalar buffers (Ptr over a typed array or plain array), record arrays (from their first element) and raw blocks. */
 export function realloc(p, n) {
     n = Number(n);
     if (p === null) return new RawBlock(n);
     if (p instanceof RawBlock && p.obj === null && p.views === null) { const b = new RawBlock(n); return b; }
+    if (p instanceof RawBlock) return realloc(p.obj !== null ? p.obj : p.views.values().next().value, n);   // as its typed contents
     if (p instanceof Ptr && p.off === 0) {
         const old = p.buf;
         if (ArrayBuffer.isView(old)) {
@@ -48,6 +49,19 @@ export function realloc(p, n) {
             return b;
         }
     }
+    // a block that became records (asRec): a new array of n bytes' worth of records, the old ones copied
+    if (p !== null && typeof p === 'object' && p.constructor && p.constructor.$size !== undefined && (p.__arr === undefined || p.__idx === 0)) {
+        const T = p.constructor, size = T.$size;
+        const old = p.__arr !== undefined ? p.__arr : [p];
+        const b = new RawBlock(n);
+        if (n < size) return b;                         // too small for one record: bytes only
+        const o = asRec(b, T, size);
+        const a = o.__arr !== undefined ? o.__arr : [o];
+        for (let i = 0; i < Math.min(old.length, a.length); i++) a[i].$copyFrom(old[i]);
+        if (p.__tail && o.__tail) o.__tail.set(p.__tail.subarray(0, Math.min(p.__tail.length, o.__tail.length)));
+        return b;
+    }
+    // realloc of a pointer into the middle of a block is undefined in C
     throw new CTrap('realloc of a block that is not a plain buffer');
 }
 
@@ -62,8 +76,9 @@ export function asRec(p, T, size) {
     // always one record and its bytes, even when the size happens to be a multiple
     if (T.$tail && p.size >= size) { o = new T(); o.__tail = new Int8Array(p.size - size); }
     else if (p.size >= size && p.size % size === 0) o = recArray(T, p.size / size)[0];
-    else if (p.size > size && p.size - size < size) o = new T();   // alloc() rounds sizes up to 8 (ForceAlignedLength): slack
-    else if (p.size > size) throw new CTrap(`block of ${p.size} bytes used as a record of ${size} (not an array, no trailing area: annotation types[].tail)`);
+    else if (p.size > size && p.size - size < 8) o = new T();   // alloc() rounds sizes up to 8 (ForceAlignedLength): slack
+    else if (p.size > size) { o = new T(); o.__tail = new Int8Array(p.size - size); }   // a record and extra bytes past it
+    // a block smaller than the record: any access to the missing bytes is undefined in C
     else throw new CTrap(`block of ${p.size} bytes used as a record of ${size}`);
     p.obj = o;
     return o;

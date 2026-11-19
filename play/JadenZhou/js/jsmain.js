@@ -12,8 +12,10 @@
 import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
-import { newgame, moveloop_core } from './allmain.js';
-import { parseNethackrc } from './options.js';
+import { early_init, newgame, moveloop_preamble, moveloop_core } from './allmain.js';
+import { parseNethackrc, set_playmode } from './options.js';
+import { plnamesuffix } from './role.js';
+import { tty_init_nhwindows, tty_player_selection } from './wintty.js';
 import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
 
@@ -85,23 +87,28 @@ export class NethackGame {
     async start() {
         const g = resetGame();
 
-        // Parse nethackrc
+        // C ref: unixmain.c main() calls early_init() first
+        early_init();
+
+        // Parse nethackrc (sets flags.initrole, initrace, initgend,
+        // initalign and female as options.c does)
         const opts = parseNethackrc(this._nethackrc);
-        g.plname = opts.name || 'Hero';
-        g.flags = { verbose: true, ...opts.flags };
+        /* whoami(): the JS port has no login name to fall back on, so a
+           game without OPTIONS=name asks "Who are you?" */
+        g.plname = opts.name || '';
+        /* boolean options that default to on (optlist.h) */
+        g.flags = { verbose: true, legacy: true, ...opts.flags };
         g.iflags = { ...opts.iflags };
+        g.pl_character = opts.pl_character || '';
+        g.pl_race = opts.pl_race || '';
         if (opts.preferred_pet) g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set) g.tutorial_set_in_config = true;
 
-        // Initialize hero struct
-        g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0 };
+        // Initialize hero struct (zeroed again by u_init_misc())
+        g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0, uroleplay: {} };
         g.context = { move: 0 };
         g.program_state = {};
-        g.moves = 1;
-
-        // TODO: Map role/race/gender/align from opts to role data
-        g.urole = { name: { m: 'Rambler', f: 'Rambler' } };
-        g.urace = { adj: 'human' };
+        g.moves = 0; /* C: svm.moves stays 0 until u_init_role() sets it to 1 */
 
         // Initialize PRNG
         initRng(this._seed);
@@ -116,8 +123,25 @@ export class NethackGame {
         // Install capture hook
         this._installCaptureHook();
 
+        /* now we can set up window system */
+        tty_init_nhwindows();
+
+        /* wizard mode access is deferred until here */
+        set_playmode(); /* sets plname to "wizard" for wizard mode */
+        /* hide any hyphens from plnamesuffix() */
+        g.plnamelen = 0; /* exact_username: plname didn't come from whoami() */
+        /* strip role,race,&c suffix; calls askname() if plname[] is empty
+           or holds a generic user name like "player" or "games" */
+        await plnamesuffix();
+
+        /* new game:  start by choosing role, race, etc */
+        await tty_player_selection();
+
         // Run game startup
         await newgame();
+        /* C ref: unixmain.c main() -> moveloop(0) -> moveloop_preamble();
+           the caller drives moveloop_core() itself */
+        moveloop_preamble(false);
     }
 
     _installCaptureHook() {

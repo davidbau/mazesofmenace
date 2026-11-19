@@ -3,6 +3,8 @@
 
 import { game } from './gstate.js';
 import { cansee } from './vision.js';
+import { rank } from './botl.js';
+import { ACURR } from './attrib.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -180,13 +182,33 @@ function render_map_row(y) {
 }
 
 // ── Status lines ──
+// C ref: attrib.h A_STR .. A_CHA
+const A_STR = 0, A_INT = 1, A_WIS = 2, A_DEX = 3, A_CON = 4, A_CHA = 5;
+
+// C ref: botl.c get_strength_str()
+function get_strength_str() {
+    const st = ACURR(A_STR);
+
+    if (st > 18) {
+        if (st > 18 + 100) /* STR18(100) */
+            return String(st - 100).padStart(2);
+        else if (st < 18 + 100)
+            return `18/${String(st - 18).padStart(2, '0')}`;
+        else
+            return "18/**";
+    }
+    return String(st);
+}
+
 function _statusLine1() {
     const u = game.u;
     if (!u) return '';
     const name = game.plname || 'Hero';
-    const role = game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer';
+    const role = game.urole?.rank ? rank() : 'Adventurer'; // C ref: botl.c rank()
     const title = `${name} the ${role}`;
-    const stats = `St:${u.acurr?.a?.[0] || '?'} Dx:${u.acurr?.a?.[1] || '?'} Co:${u.acurr?.a?.[2] || '?'} In:${u.acurr?.a?.[3] || '?'} Wi:${u.acurr?.a?.[4] || '?'} Ch:${u.acurr?.a?.[5] || '?'}`;
+    /* C ref: botl.c do_statusline1(): ACURR() of each attribute, in
+       A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA display order */
+    const stats = `St:${get_strength_str()} Dx:${ACURR(A_DEX)} Co:${ACURR(A_CON)} In:${ACURR(A_INT)} Wi:${ACURR(A_WIS)} Ch:${ACURR(A_CHA)}`;
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
     // C uses cursor-forward for gap between title and stats
     // C pads to align stats starting at a fixed column

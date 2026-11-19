@@ -2613,6 +2613,9 @@ function count_feat_lastseentyp(mapseen, x, y, state) {
 // JS keeps subrooms under their persisted parent room, but retains C's
 // roomnoidx values. Resolve that conceptual index through the parent graph so
 // mapseen's equally source-sized msrooms[] array reads either half correctly.
+// This is the port's one reading of C's svr.rooms[index] for an index that
+// may name a subroom; scripts/room-index-lookup.test.mjs fails when other
+// code indexes level.rooms with a room number.
 export function mapseen_room(roomIndex, state) {
     const rooms = state.level?.rooms ?? [];
     const direct = rooms[roomIndex];
@@ -2635,7 +2638,12 @@ export function mapseen_room(roomIndex, state) {
         const subroom = findSubroom(room);
         if (subroom) return subroom;
     }
-    return null;
+    // C indexes svr.rooms[] directly, so a subroom slot that no parent links
+    // to still reads as the record held there. mkroom.c rest_room() (875-886)
+    // leaves one such slot after a subroom that has its own subroom: the
+    // level's map still names it, and C reads a zero record from it.
+    const slot = roomIndex - (MAXNROFROOMS + 1);
+    return slot >= 0 ? state.subrooms?.[slot] ?? null : null;
 }
 
 // C ref: dungeon.c recalc_mapseen() (3073-3261). Rebuilds the current level's
