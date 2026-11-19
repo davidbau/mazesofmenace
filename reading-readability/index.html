@@ -502,6 +502,10 @@ onscary(coordxy x, coordxy y, struct monst *mtmp)
 <p>In the AI era we will not be able to solve all problems. We will still confront scarcity. But with AI in the mix, it will be a very complex world, and the tradeoffs we face will be devilishly hard to understand. Our main challenge will be <em>human insight</em>.</p>
 <p>I will rerun this analysis as we get to the end of November, on whatever the contestants' code looks like then. I'll be very interested to see whether contestants raise their readability scores by the end of Phase 1!</p>
 <p>Happy agentic coding.</p>
+<h2>Addendum, November 18: a traditional transpiler at 100%</h2>
+<p>A recent entrant, Teoman21, has entered a traditional transpiler that reaches 100% parity with C: every screen of all 100 sessions in the judge's scoring run of November 18. It compiles NetHack's own C to WebAssembly with Emscripten and turns that into JavaScript with <code>wasm2js</code>, the same family of tool as serteal's first port.</p>
+<p>I measured its readability the same way as above, with the same questions, the same Haiku reader and the same half-penny budget, on the code in its fork as of November 16. It scores <strong>9.4</strong> with the comments kept and <strong>9.2</strong> with them removed (the 90% range is about 8 to 11). There are no comments to speak of: they are 0.1% of the bytes.</p>
+<p>That is half of serteal's 18 in October, and the number says what the reader saw. It found ten JavaScript files, one of them a 7 MB line of compiled output. Its answers say that the game logic is "compiled C", that searching for names like <code>nazgul</code> or <code>Yendor</code> finds nothing, and that it could only answer from what it remembered about NetHack. A transpiler can be perfectly correct and, for a reader, nearly empty.</p>
 </article>
 
 <footer class="post-footer">
