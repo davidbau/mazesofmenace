@@ -124,7 +124,7 @@ import { canseemon } from './display.js'; // relocate-fns
 import { dist2 } from './hacklib.js'; // relocate-fns
 import { is_rider_pm } from './mklev.js';
 import { rider_revival_time, set_corpsenm } from './mkobj.js'; // relocate-fns
-import { dealloc_mextra, zombie_form } from './mon.js'; // relocate-fns
+import { zombie_form } from './mon.js'; // relocate-fns
 import { You_feel } from './pline.js'; // relocate-fns
 import { obj_has_timer, start_timer } from './timeout.js'; // relocate-fns
 import { freeinv as _sr_freeinv, useup as _sr_useup } from './invent.js'; // relocate-fns
@@ -155,7 +155,7 @@ import { makemon } from './makemon.js'; // relocate-fns
 import { Monnam as Monnam_rc } from './mcastu.js'; // relocate-fns
 import { christen_monst } from './mhitm.js'; // relocate-fns
 import { BAG_OF_HOLDING, PM_DEATH_R, PM_DOPPELGANGER_NC, PM_FAMINE, STATUE, S_TROLL, S_ZOMBIE } from './mklev.js'; // relocate-fns
-import { dealloc_obj, free_omid, obj_extract_self } from './mkobj.js'; // relocate-fns
+import { dealloc_obj, free_omid, free_omonst, obj_extract_self } from './mkobj.js'; // relocate-fns
 import { se_scratching } from './mon.js'; // relocate-fns
 import { locomotion } from './mondata.js'; // relocate-fns
 import { m_useup as lifesave_m_useup } from './mthrowu.js'; // relocate-fns
@@ -2126,7 +2126,18 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // level that was still, in every JS structure, the level she had just
         // and its first value divergence at leaf 49731 (C rnd(10)
         // @getlev(restore.c:1219) vs JS rn2(79) @place_lregion).
-        await getlev(newLedger);
+        /* C do.c:1711 precedes flush_screen(-1): getlev can print while
+         * restoring shapechangers (mon.c:4438, worn.c:1239). Its pline flush
+         * paints the global glyph buffer and the destination's status just
+         * like a getbones prompt on the mklev arm above. */
+        g._levelgenPaintFreeze = _preSavelevPaint;
+        g._levelgenWindowOpen = true;
+        try {
+            await getlev(newLedger);
+        } finally {
+            g._levelgenPaintFreeze = null;
+            g._levelgenWindowOpen = false;
+        }
         // C do.c:1723 oinit() — o_init.c:322, `setgemprobs(&u.uz)`.  Level-dependent
         // gem probabilities are reassigned for the level we just reloaded.  RNG-free.
         await oinit();
@@ -4092,9 +4103,8 @@ export async function zombify_mon(arg, timeout) {
         if (body.oextra) {
             body.oextra.omid = 0;
             if ('oextra_omid' in body) body.oextra_omid = 0;
-            // C do.c:2307 -> mkobj.c:134-135 frees the saved monster's mextra.
-            if (body.oextra.omonst) dealloc_mextra(body.oextra.omonst);
-            body.oextra.omonst = null;
+            if (body.oextra.omonst)
+                free_omonst(body); // C do.c:2307-2308
         }
         set_corpsenm(body, zmon);
         await revive_mon(arg, timeout);
@@ -4460,8 +4470,7 @@ export async function revive_corpse(otmp, do_msgs = true) {
             if (otmp.oextra?.omid)
                 free_omid(otmp);
             if (otmp.oextra?.omonst) {
-                dealloc_mextra(otmp.oextra.omonst);
-                otmp.oextra.omonst = null;
+                free_omonst(otmp); // C zap.c:990-991
             }
             if (mon.cham === PM_DOPPELGANGER_NC) {
                 /* change shape to match the corpse */

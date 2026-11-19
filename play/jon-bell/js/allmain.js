@@ -1888,8 +1888,28 @@ async function eat_occupation_turn() {
         }
         if (g._topl_win_stop) {
             const hidden = String(g._topl_win_stop_buf || _committed || '');
-            g._topl_win_stop_buf = (hidden.length + 2 + part.length < 71)
-                ? `${hidden}  ${part}` : part;
+            /* The first pre-eat part here can be the ESC'd page's owner itself,
+             * still standing on the result channel (it was drawn, topl.c:257/300,
+             * and its swallowed successors already extended gt.toplines in
+             * pline).  It is not a new pline: re-adding it replaced the hidden
+             * buffer and filed a duplicated ^P entry. */
+            const _standingOwner = _fromPreEat && _preEatSeen === 1 && !prior
+                && g._topl_win_stop_buf != null && hidden.startsWith(part);
+            if (!_standingOwner) {
+                const _fitsHidden = hidden.length + 2 + part.length < 71;
+                g._topl_win_stop_buf = _fitsHidden ? `${hidden}  ${part}` : part;
+                /* topl.c:266-281: the join extends gt.toplines (^P's newest
+                 * entry); the fall-through arm remember_topl()s the old one. */
+                const _h = (g._msg_history ||= []);
+                if (_fitsHidden) {
+                    if (_h.length && _h[_h.length - 1] === hidden)
+                        _h[_h.length - 1] = g._topl_win_stop_buf;
+                    else _h.push(g._topl_win_stop_buf);
+                } else {
+                    if (hidden && _h[_h.length - 1] !== hidden) _h.push(hidden);
+                    _h.push(part);
+                }
+            }
             /* topl.c:257/300: the pline that raised the ESC'd more() was drawn
              * (skip sampled before more()) and is the first pre-eat part here;
              * it stays on the topline while WIN_STOP swallows what follows. */
@@ -3049,6 +3069,7 @@ async function moveloop_core_faithful() {
         await nh_callback_run(NHCB_END_TURN);
         // C allmain.c:197-198: each delayed invocation checks sanity before
         // its world block, including urgent diagnostics after an ESC'd page.
+        moveloop_reentry_cleanup(); // C allmain.c:192-195
         if (g.iflags.sanity_check || g.iflags.debug_fuzzer) {
             if (g.iflags.sanity_no_check) {
                 g.iflags.sanity_no_check = false;
@@ -4485,6 +4506,7 @@ async function moveloop_core_faithful() {
                     ? _topl_merge_result(_rl, g._pending_message, _rj)
                     : _rl;
             }
+            moveloop_reentry_cleanup(); // C allmain.c:192-195
             // C allmain.c:197-198: each occupation repeat re-enters the
             // moveloop's sanity checks before spending the incoming turn.
             if (g.iflags.sanity_check || g.iflags.debug_fuzzer) {
@@ -4662,6 +4684,7 @@ async function moveloop_core_faithful() {
         g.u.umoved = false;
     }
     while ((g.multi | 0) < 0) {
+        moveloop_reentry_cleanup(); // C allmain.c:192-195
         // C allmain.c:197-198 / wizcmds.c:1459-1477: this is a fresh
         // moveloop_core invocation even though immobility skips command input.
         if (g.iflags.sanity_check || g.iflags.debug_fuzzer) {
@@ -5229,9 +5252,19 @@ export async function moveloop_core() {
     }
 }
 
+// Internal occupation/countdown loops re-enter C's moveloop_core without
+// returning through moveloop_core_impl. Match its deferred-free/bypass prefix
+// before checking objects or processing the next world turn (allmain.c:192-198).
+function moveloop_reentry_cleanup() {
+    dobjsfree();
+    if (game.context?.bypasses || game.svc?.context?.bypasses)
+        clear_bypasses();
+}
+
 // C allmain.c:197-198 — moveloop_core's sanity_check() before its world block.
 async function moveloop_sanity_check() {
     const g = game;
+    moveloop_reentry_cleanup(); // C allmain.c:192-195
     if (!(g.iflags.sanity_check || g.iflags.debug_fuzzer)) return;
     if (g.iflags.sanity_no_check) {
         g.iflags.sanity_no_check = false;

@@ -381,7 +381,6 @@ import {
 import {
     curr_mon_load,
     hideunder,
-    m_in_air,
     minliquid,
     mnexto,
     maybe_unhide_at,
@@ -1663,16 +1662,6 @@ export function preflightDomoveDestination(x, y, state = game, run = 0) {
     }
 }
 
-// Each pline() test_move() reaches is injected rather than imported, so a test
-// can read the line without a terminal. Resolving through one helper turns a
-// missing or misspelled operation into a failure instead of a silent no-op.
-function requiredMessageOperation(env, arm) {
-    const message = env.message;
-    if (typeof message !== 'function')
-        throw new TypeError(`${arm} requires a message operation`);
-    return message;
-}
-
 // C ref: hack.c could_move_onto_boulder() (144-162), "can hero move onto a
 // spot containing one or more boulders?". C reads u.dx and u.dy for the giant
 // arm's diagonal squeeze; both are parameters here, because the command
@@ -1702,7 +1691,7 @@ function could_move_onto_boulder(sx, sy, dx, dy, state) {
 // steed; an unmounted push names the hero. Blindness also reveals the boulder.
 async function cannot_push_msg(otmp, sx, sy, state, env) {
     const what = the(xnameFresh(otmp, state), state);
-    const message = requiredMessageOperation(env, 'failed boulder push');
+    const message = env.message ?? ttyPline;
     if (state.u.usteed) {
         await message(
             `${upstart(y_monnam(state.u.usteed, state))} tries to move ${what}, but cannot.`,
@@ -1728,9 +1717,7 @@ async function cannot_push(otmp, sx, sy, state, env) {
             && !state.context?.nopick
             && autopick_testobj(otmp, true, state);
 
-        const message = requiredMessageOperation(
-            env, 'failed giant boulder push',
-        );
+        const message = env.message ?? ttyPline;
         if (state.u.usteed && P_SKILL(P_RIDING, state) < P_BASIC) {
             const what = the(xnameFresh(otmp, state), state);
             await message(
@@ -1754,9 +1741,7 @@ async function cannot_push(otmp, sx, sy, state, env) {
     if (could_move_onto_boulder(
         sx, sy, state.u.dx, state.u.dy, state,
     )) {
-        const message = requiredMessageOperation(
-            env, 'failed boulder push squeeze',
-        );
+        const message = env.message ?? ttyPline;
         await message(
             'However, you can squeeze yourself into a small opening.', state,
         );
@@ -2049,7 +2034,7 @@ async function dopush(sx, sy, rx, ry, otmp, state, env) {
     // boulder whose push says nothing would diverge.
     const what = givemesg ? the(xnameFresh(otmp, state), state) : null;
     const easypush = throws_rocks(state.youmonst?.data);
-    const message = requiredMessageOperation(env, 'boulder push');
+    const message = env.message ?? ttyPline;
     if (state.u.usteed) {
         if (givemesg) {
             await message(
@@ -2159,9 +2144,7 @@ async function moverock_core(sx, sy, state, env) {
         // then maps the live object before refusing the push.
         if (Blind(state.u)
             && glyph_to_obj(glyph_at(sx, sy, state)) !== BOULDER) {
-            const message = requiredMessageOperation(
-                env, 'unseen boulder feedback',
-            );
+            const message = env.message ?? ttyPline;
             await message('That feels like a boulder.', state);
             map_object(otmp, true, state);
             nomul(0, state);
@@ -4084,7 +4067,8 @@ async function domove_core(state = game) {
     u.ux0 = oldx;
     u.uy0 = oldy;
     state.gb ??= {};
-    state.gb.bhitpos = { x: newx, y: newy };
+    state.gb.bhitpos.x = newx;
+    state.gb.bhitpos.y = newy;
     const targetGlyph = glyph_at(newx, newy, state);
 
     // C ref: domove_core():2787-2800, which reaches domove_attackmon_at()
@@ -4822,8 +4806,6 @@ function domove_monster_trap_env(state, env = {}) {
         random,
         message,
         redraw: env.redraw ?? newsym,
-        mInAir: env.mInAir ?? ((mon, st) => m_in_air(mon, st)),
-        heroDeaf: env.heroDeaf ?? ((hookState) => Deaf(hookState.u)),
         youHear: env.youHear ?? ((line, st) => youHear(line, st)),
         // hack.c:2198-2199 calls minliquid() after the swap and consumes the
         // rloc() result inside that source function. Supply the complete
@@ -4872,9 +4854,7 @@ export async function domove_swap_with_pet(
     state = game,
     env = {},
 ) {
-    const message = env.message;
-    if (typeof message !== 'function')
-        throw new TypeError('pet swap requires a message operation');
+    const message = env.message ?? ttyPline;
     const { u } = state;
     const oldX = u.ux0;
     const oldY = u.uy0;

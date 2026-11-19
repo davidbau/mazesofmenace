@@ -2054,7 +2054,11 @@ async function _do_look_from_screen(quick) {
             /* Some target classes still lack their class-list collector.
              * A selected monster carries the full symbol-class list and the
              * independent needsLook flag from do_screen_description. */
-            if (target && target.classText) {
+            if (target && target.kind === 'warning' && !target.classCount) {
+                /* C pager.c:1950-1951 — found == 0 (the glyph's tty char matches
+                 * no gw.warnsyms[] entry, e.g. after a WARNINGS option) says so. */
+                await pline("I've never heard of such things.");
+            } else if (target && target.classText) {
                 /* C pager.c:1271 supplies a blank glyph plus eight spaces.
                  * _topl_wordwrap() drops a leading whitespace token when it
                  * starts a row (display.js:4535), so encode that nine-column

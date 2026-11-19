@@ -203,7 +203,7 @@ import { impossible as rumor_impossible } from './pline.js';
 import { paniclog, livelog_add } from './files.js';
 import { BUFSZ, ECMD_OK } from './const.js';
 import { D_TRAPPED } from './const.js';
-import { pline, pline_xy, urgent_pline, raw_printf, dumplogmsg } from './pline.js'; // relocate-fns
+import { pline, pline_xy, urgent_pline, raw_printf, dumplogmsg, impossible } from './pline.js'; // relocate-fns
 import { armor_status, bot, timebot, weapon_status, status_time_only_row } from './botl.js'; // relocate-fns
 import { IS_STWALL, WM_W_BOTTOM, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP } from './const.js'; // relocate-fns
 import { update_lastseentyp } from './dungeon.js'; // relocate-fns
@@ -3843,7 +3843,7 @@ export function mon_overrides_region(mon, mx, my) {
     return game.level?.at(mx, my)?.remembered_glyph?.cls === GLYPHCLS_INVIS;
 }
 // ── newsym ──
-export function newsym(x, y) {
+export function newsym(x, y, waitForDiagnostic = false) {
     /* Diagnostic-only visibility provenance; inert unless explicitly enabled. */
     if (typeof process !== 'undefined' && ENV?.FF_VISION_TRACE === '1') {
         const t = game.__vision_trace_newsym || (game.__vision_trace_newsym = []);
@@ -3867,6 +3867,10 @@ export function newsym(x, y) {
             error.nhPanic = true;
             throw error;
         }
+        // C display.c:930-935 blocks in impossible().  Shape restoration can
+        // await this path; ordinary render loops retain their synchronous adapter.
+        if (waitForDiagnostic)
+            return impossible('%s', text);
         _wall_impossible('%s', text);
         return;
     }
@@ -8224,6 +8228,7 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
     if (game.flags?.cond_woundedlegs) {
         const wl = u.uprops && u.uprops[WOUNDED_LEGS];
         if ((wLegsFrozen !== undefined) ? wLegsFrozen
+            : (condPaint?.woundedLegs != null) ? condPaint.woundedLegs
             : (wl && ((wl.intrinsic | 0) || (wl.extrinsic | 0))))
             s += ' WLegs';
     }
@@ -10519,8 +10524,11 @@ function _capture_botl(paint = false) {
         inLava: !!(u.utrap && (u.utraptype | 0) === TT_LAVA),
         trapType: u.utrap ? (u.utraptype | 0) : -1,
         /* botl.c:1208 bl_woundedl, painted-time: a bear trap's pline precedes
-         * set_wounded_legs (trap.c), so the --More-- page shows no WLegs. */
-        woundedLegs: !!((u.uprops?.[WOUNDED_LEGS]?.intrinsic | 0) || (u.uprops?.[WOUNDED_LEGS]?.extrinsic | 0)),
+         * set_wounded_legs (trap.c), so the --More-- page shows no WLegs; and
+         * heal_legs() (do.c:2468-2471) flushes inside Your("... better.") before
+         * zeroing HWounded_legs/EWounded_legs without re-flagging botl. */
+        woundedLegs: hpPaint?.woundedLegs != null ? hpPaint.woundedLegs
+            : !!((u.uprops?.[WOUNDED_LEGS]?.intrinsic | 0) || (u.uprops?.[WOUNDED_LEGS]?.extrinsic | 0)),
         /* botl.c:1204 bl_slippery = Glib (u.uprops[GLIB].intrinsic), painted-time */
         /* potion.c:463 make_glib's `!Glib ^ !!xtime` does not flag botl when Glib
          * first turns on, so an unflagged flush keeps the last paint (hpPaint). */
@@ -12182,7 +12190,10 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
                 /* wintty.c:2277-2283 clears WIN_STOP for ATR_URGENT before
                  * update_topl's fitting "You die" test (topl.c:264). */
                 if (_urgent.includes(_messages[j])) urgentOffset = offset;
-                else if (fits && _messages[j].startsWith('You die')) break;
+                // topl.c:264,298-299: a fitting death message clears WIN_STOP
+                // even after intervening suppressed messages. Resume at that
+                // message, retaining its original frame and join offsets.
+                else if (fits && _messages[j].startsWith('You die')) urgentOffset = offset;
                 suppressed = fits ? suppressed + '  ' + _messages[j] : _messages[j];
                 offset += _messages[j].length + 2;
             }
@@ -16185,7 +16196,9 @@ function _show_swallow_sym(x, y, sym, mndx) {
     const shown = _hallucinating_dsp()
         ? rn2_on_display_rng(MON_MCOLOR.length)
         : mndx;
-    const color = (shown >= 0 && shown < MON_MCOLOR.length) ? MON_MCOLOR[shown] : CLR_GRAY;
+    /* display.c:2866-2869: has_rogue_color -> NO_COLOR, else mon_color(offset >> 3) */
+    const color = rogue_ibm_color() ? NO_COLOR
+        : (shown >= 0 && shown < MON_MCOLOR.length) ? MON_MCOLOR[shown] : CLR_GRAY;
     /* defsym.h:221-228: retain the logical stomach symbol; show_glyph_cell
      * resolves S_sw_tl..S_sw_br through the active primary symbols. */
     show_glyph_cell(x, y, defsym_char(sym), color, false, 0, GLYPHCLS_SWALLOW,
@@ -16214,6 +16227,9 @@ export function swallowed(first) {
         game._statusBlankAfterDocrt = true;
         game._topl_sticky = null;
         clear_glyph_buffer();
+        /* cls() blanks the physical terminal, so a control-byte hero (RogueEpyx
+         * S_human) no longer keeps the pre-engulf glyph under it (display.c:1338). */
+        game._epyxPhys = null;
         game.disp ??= {};
         game.disp.botlx = 1;
         game._status1WholeNext = true;
@@ -16490,7 +16506,11 @@ export function recorder_localtime(t) {
         : y >= 1987 ? [3, 1, 9, -1] : [3, -1, 9, -1];
     const start = Date.UTC(y, sm, _sunday_of_month(y, sm, sn), 7) / 1000; /* 2:00 EST */
     const end = Date.UTC(y, em, _sunday_of_month(y, em, en), 6) / 1000;   /* 2:00 EDT */
-    const d = new Date((t + ((t >= start && t < end) ? -4 : -5) * 3600) * 1000);
+    // C calendar.c:41 localtime(): New York used LMT (UTC-4:56:02)
+    // until 1883-11-18 17:00 UTC, without daylight saving time.
+    const offset = t < Date.UTC(1883, 10, 18, 17) / 1000
+        ? -17762 : ((t >= start && t < end) ? -4 : -5) * 3600;
+    const d = new Date((t + offset) * 1000);
     const yr = d.getUTCFullYear(), mon = d.getUTCMonth(), mday = d.getUTCDate();
     return { tm_year: yr - 1900, tm_mon: mon, tm_mday: mday,
              tm_hour: d.getUTCHours(), tm_min: d.getUTCMinutes(), tm_sec: d.getUTCSeconds(),
@@ -16514,7 +16534,10 @@ export function recorder_time_from_yyyymmddhhmmss(buf) {
     // C patch 001 keeps localtime(now)'s tm_isdst in t before mktime().
     // Do not infer DST from the saved date: winter birthdays (restore.c:617)
     // are parsed with the same recording offset as getnow().
-    const result = utcApprox - (-4 * 3600);
+    // C calendar.c:157-166 mktime(), inheriting tm_isdst=1: before
+    // standardization, subtract one hour from the LMT standard offset.
+    const result = utcApprox + (utcApprox < Date.UTC(1883, 10, 18, 12, 3, 58) / 1000
+        ? 17762 - 3600 : 4 * 3600);
     return Number.isFinite(result) && result !== -1 ? result : 0;
 }
 

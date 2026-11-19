@@ -23,7 +23,7 @@ import { OBJ_CONTAINED, isok } from './const.js'; // C: obj.h OBJ_CONTAINED
 import { permonstTemplate } from './makemon.js';
 import { forget_temple_entry } from './priest.js';
 import { _cwt } from './weight.js';
-import { eaten_stat } from './eat.js';
+import { eaten_stat, eatfood } from './eat.js';
 import { LOW_PM } from './const.js';
 import { OC_WEIGHT, OTYP_LARGE_BOX, OTYP_BAG_OF_TRICKS, OTYP_BAG_OF_HOLDING, OTYP_STATUE } from './oc_weight.generated.js';
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
@@ -114,6 +114,7 @@ export function weight(obj) {
  * already holds its one real body: */
 import { confers_luck } from './attrib.js';   /* artifact.c:524 */
 import { obj_to_any } from './hack.js';
+import { near_capacity } from './hack.js';
 import { set_moreluck } from './attrib.js';
 import { drop_uswapwep } from './wield.js'; /* attrib.c / wield.c */
 import { stop_timer } from './timeout.js';
@@ -239,7 +240,7 @@ import { The, aobjnam, vtense } from './objnam.js'; // relocate-fns
 import { impossible as real_impossible } from './pline.js'; // relocate-fns
 import { addtobill as shk_addtobill, alter_cost as shk_alter_cost, shop_keeper as shk_shop_keeper, subfrombill as shk_subfrombill, unpaid_cost as shk_unpaid_cost } from './shk.js'; // relocate-fns
 import { rndmonnumAdj } from './makemon.js'; // relocate-fns
-import { artifact_exists, mk_artifact, nartifact_exist } from './artifact.js'; // relocate-fns
+import { artifact_exists, mk_artifact, nartifact_exist, permapoisoned } from './artifact.js'; // relocate-fns
 import { freeinv } from './invent.js'; // relocate-fns
 import { AMULET_CLASS, CORPSTAT_FEMALE, CORPSTAT_INIT, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_SPE_VAL, FIRE_RES, G_GONE, HATCH_EGG, In_quest, Is_rogue_level, LS_OBJECT, MIGR_TO_SPECIES, OBJ_BURIED, OBJ_ONBILL, REVIVE_MON, ROT_AGE, ROT_CORPSE, SHRINK_GLOB, TAINT_AGE, TIMER_OBJECT, TOOL_CLASS, TROLL_REVIVE_CHANCE, WAND_CLASS, ZOMBIFY_MON } from './const.js'; // relocate-fns
 import { is_ice } from './dbridge.js'; // relocate-fns
@@ -810,22 +811,332 @@ async function costly_alteration_core(obj, alter_type) {
     }
 }
 
-// C ref: mkobj.c:3250-3275 insane_obj_bits() via objlist_sanity(invent) only.
-// container walks and the other per-object checks are not ported.  fmt_ptr's
-// host address cannot be reproduced; o_id stands in for it.
-export async function obj_sanity_check() {
-    for (let obj = game.invent; obj; obj = obj.nobj) {
-        const o_in_use = obj.in_use | 0, o_bypass = obj.bypass | 0;
-        const o_nomerge = obj.nomerge | 0;
-        if (!(o_in_use || o_bypass || o_nomerge)) continue;
-        const infobuf = 'flagged' + (o_in_use ? ' in_use' : '')
-            + (o_bypass ? ' bypass' : '') + (o_nomerge ? ' nomerge' : '');
-        game.iflags.override_ID = (game.iflags.override_ID | 0) + 1;
-        const objnm = await doname(obj);
+// C mkobj.c:2940-3340,3374-3635: object-list diagnostics. Keep the
+// C traversal order: diagnostic naming can observe/identify objects.
+import { COLNO, ROWNO, BURIED_TOO, LOST_NONE, FM_FMON, ARTICLE_A, EXACT_NAME,
+    NOBJ_STATES, W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
+    W_WEP, W_QUIVER, W_SWAPWEP, W_AMUL, W_RINGL, W_RINGR, W_RING, W_TOOL,
+    W_SADDLE, W_BALL, W_CHAIN, W_ARMOR, W_WEAPONS, I_SPECIAL,
+    } from './const.js';
+import { BALL_CLASS, CHAIN_CLASS } from './objnam.js';
+// C generated onames.h (objects indices).
+const BLINDFOLD = 233, TOWEL = 234, LENSES = 232, SADDLE = 235,
+      GRAY_DRAGON_SCALES = 111, YELLOW_DRAGON_SCALES = 120;
+import { is_pool, is_pool_or_lava } from './dbridge.js';
+import { find_mid } from './light.js';
+import { is_mines_prize, is_soko_prize } from './cmd.js';
+import { mon_pmname, x_monnam, pmname, Mgender } from './do_name.js';
+import { mhis_mon } from './mhitu.js';
+import { simple_typename, makesingular } from './objnam.js';
+import { OC_NAME } from './oc_name_data.js';
+import { onshopbill } from './shk.js';
+
+const ofmt0 = '%s obj %s %s: %s';
+const ofmt3 = '%s [not null] %s %s: %s';
+const mfmt1 = '%s obj %s %s (%s)';
+const mfmt2 = '%s obj %s %s (%s) *not*';
+const obj_state_names = ['free', 'floor', 'contained', 'invent', 'minvent',
+                         'migrating', 'buried', 'onbill', 'luafree', 'deleted'];
+
+// Native fmt_ptr() prints an ASLR-dependent address, unavailable in JS. Keep
+// the existing object-ID representation for diagnostics; null is C's %p.
+function sanity_ptr(obj) {
+    return obj ? '0x' + ((obj.o_id ?? obj.m_id) >>> 0).toString(16) : '(nil)';
+}
+function where_name(obj) {
+    if (!obj) return 'nowhere';
+    const where = obj.where;
+    if (where < 0 || where >= NOBJ_STATES || !obj_state_names[where])
+        return `unknown[${where}]`;
+    return obj_state_names[where];
+}
+async function insane_object(obj, fmt, mesg, mon) {
+    let objnm = 'null!', monnm = 'null!';
+    if (obj) {
+        game.iflags.override_ID++;
+        objnm = await doname(obj);
         game.iflags.override_ID--;
-        await impossible('%s obj %s %s: %s', infobuf,
-                         '0x' + (obj.o_id | 0).toString(16), 'invent', objnm);
     }
+    if (mon || (/minvent/i.test(mesg) && !/contained/i.test(mesg))) {
+        if (mon) monnm = x_monnam(mon, ARTICLE_A, null, EXACT_NAME, true);
+        await impossible(fmt + ' held by mon %s (%s)', mesg, sanity_ptr(obj),
+                         where_name(obj), objnm, sanity_ptr(mon), monnm);
+    } else {
+        await impossible(fmt, mesg, sanity_ptr(obj), where_name(obj), objnm);
+    }
+}
+function nomerge_exception(obj) {
+    return is_mines_prize(obj) || is_soko_prize(obj);
+}
+async function insane_obj_bits(obj, mon) {
+    if (obj.where === OBJ_DELETED) return;
+    const o_in_use = obj.in_use, o_bypass = obj.bypass;
+    const o_nomerge = obj.nomerge && !nomerge_exception(obj);
+    const o_boulder = obj.otyp === BOULDER && obj.next_boulder;
+    if (o_in_use || o_bypass || o_nomerge || o_boulder) {
+        const info = 'flagged' + (o_in_use ? ' in_use' : '')
+            + (o_bypass ? ' bypass' : '') + (o_nomerge ? ' nomerge' : '')
+            + (o_boulder ? ' nxtbldr' : '');
+        await insane_object(obj, ofmt0, info, mon);
+    }
+}
+async function check_glob(obj, mesg) {
+    if (obj.quan !== 1 || obj.owt === 0
+        || obj.otyp < GLOB_OF_GRAY_OOZE || obj.otyp > GLOB_OF_BLACK_PUDDING) {
+        const globbuf = ` glob ${obj.otyp},quan=${obj.quan},owt=${obj.owt} `;
+        mesg = mesg.replace(' obj ', globbuf);
+        await insane_object(obj, ofmt0, mesg,
+                            obj.where === OBJ_MINVENT ? obj.ocarry : null);
+    }
+}
+async function check_contained(container, mesg) {
+    if (!container.cobj) return;
+    if (!/contained/i.test(mesg)) mesg = 'contained ' + mesg;
+    for (let obj = container.cobj; obj; obj = obj.nobj) {
+        if (obj === container)
+            throw new Error('panic: failed sanity check: container holds itself');
+        if (obj.where !== OBJ_CONTAINED)
+            await insane_object(obj, ofmt0, mesg, null);
+        else if (obj.ocontainer !== container)
+            await impossible('%s obj %s in container %s, not %s', mesg,
+                             sanity_ptr(obj), sanity_ptr(obj.ocontainer), sanity_ptr(container));
+        if (obj.globby) await check_glob(obj, mesg);
+        if (obj.cobj) {
+            if (obj.cobj === container)
+                throw new Error('panic: failed sanity check: container holds its parent');
+            await check_contained(obj, 'nested ' + mesg.slice(0, 112));
+        }
+    }
+}
+async function shop_obj_sanity(obj, mesg) {
+    let otop = obj;
+    while (otop.where === OBJ_CONTAINED) otop = otop.ocontainer;
+    const xp = { value: 0 }, yp = { value: 0 };
+    get_obj_location(otop, xp, yp, BURIED_TOO);
+    let x = xp.value, y = yp.value;
+    const shkp = await find_objowner(obj, x, y);
+    if (shkp && obj.where === OBJ_ONBILL) x = shkp.mx, y = shkp.my;
+    const costly = costly_spot(x, y), costlytoo = costly_adjacent(shkp, x, y);
+    let why = null;
+    if (obj.no_charge && obj.unpaid) {
+        why = '%s obj both unpaid and no_charge! %s %s: %s';
+    } else if (obj.unpaid) {
+        if (otop.where !== OBJ_INVENT && obj.where !== OBJ_ONBILL
+            && ((otop.where !== OBJ_FLOOR && obj.where !== OBJ_BURIED)
+                || !(costly || costlytoo)))
+            why = '%s unpaid obj not carried! %s %s: %s';
+        else if (!costly && !costlytoo)
+            why = '%s unpaid obj not inside tended shop! %s %s: %s';
+        else if (!shkp)
+            why = '%s unpaid obj inside untended shop! %s %s: %s';
+        else if (!(await onshopbill(obj, shkp, true)))
+            why = '%s unpaid obj not on shop bill! %s %s: %s';
+    } else if (obj.no_charge) {
+        if (otop.where !== OBJ_FLOOR && otop.where !== OBJ_BURIED
+            && otop.where !== OBJ_MINVENT)
+            why = '%s no_charge obj not on floor! %s %s: %s';
+        else if (!costly && !costlytoo)
+            why = '%s no_charge obj not inside tended shop! %s %s: %s';
+        else if (!shkp)
+            why = '%s no_charge obj inside untended shop! %s %s: %s';
+        else if (await onshopbill(obj, shkp, true))
+            why = '%s no_charge obj on shop bill! %s %s: %s';
+    }
+    if (why) await insane_object(obj, why, mesg,
+                                otop.where === OBJ_MINVENT ? otop.ocarry : null);
+}
+async function sanity_safe_typename(otyp) {
+    if (otyp < 0 || otyp >= OC_NAME.length || !OC_NAME[otyp]) {
+        const name = `glorkum[${otyp}]`;
+        await impossible('safe_typename: %s', name);
+        return name;
+    }
+    const known = game._oc_name_known, saved = known[otyp];
+    known[otyp] = 1;
+    const name = simple_typename(otyp);
+    known[otyp] = saved;
+    return name;
+}
+async function mon_obj_sanity(monlist, mesg) {
+    for (let mon = monlist; mon; mon = mon.nmon) {
+        if (mon.mhp <= 0) continue;
+        let mwep = mon.mw;
+        if (mwep) {
+            if (mwep.where !== OBJ_MINVENT) await insane_object(mwep, mfmt1, mesg, mon);
+            if (mwep.ocarry !== mon) await insane_object(mwep, mfmt2, mesg, mon);
+        }
+        for (let obj = mon.minvent; obj; obj = obj.nobj) {
+            if (obj.where !== OBJ_MINVENT) await insane_object(obj, mfmt1, mesg, mon);
+            if (obj.ocarry !== mon) await insane_object(obj, mfmt2, mesg, mon);
+            if (obj.globby) await check_glob(obj, mesg);
+            await check_contained(obj, mesg);
+            if (obj.unpaid || obj.no_charge) await shop_obj_sanity(obj, mesg);
+            if (obj.in_use || obj.bypass || obj.nomerge
+                || (obj.otyp === BOULDER && obj.next_boulder))
+                await insane_obj_bits(obj, mon);
+            if (obj === mwep) mwep = null;
+        }
+        if (mwep)
+            await impossible('monst (%s: %u) wielding %s (%u) not in %s inventory',
+                             pmname(mon.data, Mgender(mon)), mon.m_id,
+                             await sanity_safe_typename(mwep.otyp), mwep.o_id, mhis_mon(mon));
+    }
+}
+async function sanity_check_worn(obj) {
+    const u = game.u;
+    const wearbits = [W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
+        W_WEP, W_QUIVER, W_SWAPWEP, W_AMUL, W_RINGL, W_RINGR, W_TOOL,
+        W_SADDLE, W_BALL, W_CHAIN];
+    let owornmask = obj.owornmask, allmask = 0, embedded = false, n = 0;
+    for (const bit of wearbits) {
+        if (owornmask & bit) ++n;
+        allmask |= bit;
+    }
+    if (obj === u.uskin) {
+        embedded = true;
+        if ((owornmask & (W_ARM | I_SPECIAL)) === (W_ARM | I_SPECIAL))
+            owornmask &= ~I_SPECIAL;
+        else n = 0, owornmask = -1;
+    }
+    if (n === 2 && obj.where === OBJ_INVENT && obj === u.uball
+        && (owornmask & W_BALL) && (owornmask & W_WEAPONS)) {
+        owornmask &= ~W_BALL;
+        n = 1;
+    }
+    const hexmask = (obj.owornmask >>> 0).toString(16).padStart(8, '0');
+    if (n > 1)
+        await insane_object(obj, ofmt0, `worn mask (multiple) 0x${hexmask}`, null);
+    if ((owornmask & ~allmask) || (obj.where === OBJ_INVENT && (owornmask & W_SADDLE)))
+        await insane_object(obj, ofmt0, `worn mask (bogus)) 0x${hexmask}`, null);
+    if (n === 1 && (obj.where === OBJ_INVENT || (owornmask & (W_BALL | W_CHAIN)))) {
+        let what = null;
+        switch (owornmask) {
+        case W_ARM: if (obj !== (embedded ? u.uskin : u.uarm)) what = embedded ? 'skin' : 'suit'; break;
+        case W_ARMC: if (obj !== u.uarmc) what = 'cloak'; break;
+        case W_ARMH: if (obj !== u.uarmh) what = 'helm'; break;
+        case W_ARMS: if (obj !== u.uarms) what = 'shield'; break;
+        case W_ARMG: if (obj !== u.uarmg) what = 'gloves'; break;
+        case W_ARMF: if (obj !== u.uarmf) what = 'boots'; break;
+        case W_ARMU: if (obj !== u.uarmu) what = 'shirt'; break;
+        case W_WEP: if (obj !== u.uwep) what = 'primary weapon'; break;
+        case W_QUIVER: if (obj !== u.uquiver) what = 'quiver'; break;
+        case W_SWAPWEP: if (obj !== u.uswapwep) what = u.twoweap ? 'secondary weapon' : 'alternate weapon'; break;
+        case W_AMUL: if (obj !== u.uamul) what = 'amulet'; break;
+        case W_RINGL: if (obj !== u.uleft) what = 'left ring'; break;
+        case W_RINGR: if (obj !== u.uright) what = 'right ring'; break;
+        case W_TOOL: if (obj !== u.ublindf) what = 'blindfold'; break;
+        case W_BALL: if (obj !== u.uball) what = 'ball'; break;
+        case W_CHAIN: if (obj !== u.uchain) what = 'chain'; break;
+        }
+        if (what) await insane_object(obj, ofmt0, `worn mask 0x${hexmask} != ${what}`, null);
+    }
+    if (n === 1 && (obj.where === OBJ_INVENT || (owornmask & (W_BALL | W_CHAIN))
+                   || obj.where === OBJ_MINVENT)) {
+        let what = null;
+        if (owornmask & W_ARMOR) {
+            if (obj.oclass !== ARMOR_CLASS) what = 'armor';
+            if (embedded && !(obj.otyp >= GRAY_DRAGON_SCALES && obj.otyp <= YELLOW_DRAGON_SCALES)) what = 'skin';
+        } else if (owornmask & W_WEAPONS) {
+            if (obj.where === OBJ_MINVENT && (owornmask & (W_SWAPWEP | W_QUIVER)))
+                what = (owornmask & W_SWAPWEP) ? 'monst alt weapon?' : 'monst quiver?';
+            else if (obj.oclass === COIN_CLASS && (owornmask & (W_WEP | W_SWAPWEP)))
+                what = (owornmask & W_WEP) ? 'weapon' : 'alt weapon';
+        } else if (owornmask & W_AMUL) {
+            if (obj.oclass !== AMULET_CLASS) what = 'amulet';
+        } else if (owornmask & W_RING) {
+            if (obj.oclass !== RING_CLASS && obj.otyp !== MEAT_RING) what = 'ring';
+        } else if (owornmask & W_TOOL) {
+            if (obj.otyp !== BLINDFOLD && obj.otyp !== TOWEL && obj.otyp !== LENSES) what = 'blindfold';
+        } else if (owornmask & W_BALL) {
+            if (obj.oclass !== BALL_CLASS) what = 'chained ball';
+        } else if (owornmask & W_CHAIN) {
+            if (obj.oclass !== CHAIN_CLASS) what = 'chain';
+        } else if (owornmask & W_SADDLE) {
+            if (obj.otyp !== SADDLE) what = 'saddle';
+        }
+        if (what) {
+            // defsym.h:466-484 def_oc_syms[].name (plural class names).
+            const names = ['', 'illegal objects', 'weapons', 'armor', 'rings',
+                'amulets', 'tools', 'food', 'potions', 'scrolls', 'spellbooks',
+                'wands', 'coins', 'rocks', 'large stones', 'iron balls', 'chains', 'venoms'];
+            await insane_object(obj, ofmt0, `worn (${makesingular(names[obj.oclass])} ${what})`,
+                                obj.where === OBJ_MINVENT ? obj.ocarry : null);
+        }
+    }
+}
+async function objlist_sanity(objlist, wheretype, mesg) {
+    for (let obj = objlist; obj; obj = obj.nobj) {
+        if (obj.where !== wheretype) await insane_object(obj, ofmt0, mesg, null);
+        if (obj.where === OBJ_INVENT && (obj.how_lost | 0) !== LOST_NONE)
+            await insane_object(obj, ofmt0, `how_lost=${obj.how_lost} obj in inventory!`, null);
+        if (obj.cobj) {
+            if (wheretype === OBJ_ONBILL)
+                await insane_object(obj, '%s obj contains something! %s %s: %s', mesg, null);
+            await check_contained(obj, mesg);
+        }
+        if (obj.unpaid || obj.no_charge) await shop_obj_sanity(obj, mesg);
+        if (obj.owornmask) {
+            switch (obj.where) {
+            case OBJ_INVENT: case OBJ_MINVENT: await sanity_check_worn(obj); break;
+            case OBJ_MIGRATING: break;
+            default:
+                if ((obj !== game.u.uchain && obj !== game.u.uball) || obj.where !== OBJ_FLOOR)
+                    await insane_object(obj, ofmt0, `worn mask 0x${(obj.owornmask >>> 0).toString(16).padStart(8, '0')}`, null);
+                break;
+            }
+        }
+        if (obj.otyp === LEASH && obj.leashmon) {
+            const mon = find_mid(obj.leashmon, FM_FMON);
+            if (obj.where === OBJ_INVENT) {
+                if (!mon)
+                    await insane_object(obj, ofmt0, `leashmon=${obj.leashmon} no monst,`, null);
+                else if (!mon.mleashed)
+                    await insane_object(obj, ofmt0, `leashmon=${obj.leashmon} ${mon_pmname(mon)} not leashed,`, null);
+            } else if (obj.where !== OBJ_MIGRATING) {
+                const carrier = obj.where === OBJ_MINVENT ? obj.ocarry : null;
+                const msg = mon ? `leashmon:${obj.leashmon} ${mon_pmname(mon)} leashed by ${where_name(obj)} leash,`
+                                : `leashmon:${obj.leashmon} no monst for ${where_name(obj)} leash,`;
+                await insane_object(obj, ofmt0, msg, carrier);
+            }
+        }
+        if (obj.globby) await check_glob(obj, mesg);
+        if (obj.in_use || obj.bypass || obj.nomerge
+            || (obj.otyp === BOULDER && obj.next_boulder))
+            await insane_obj_bits(obj, null);
+    }
+}
+export async function obj_sanity_check() {
+    await objlist_sanity(game.fobj, OBJ_FLOOR, 'floor sanity');
+    for (let x = 0; x < COLNO; ++x)
+        for (let y = 0; y < ROWNO; ++y) {
+            let prevo = null;
+            for (let obj = game.level.levelObjects[x]?.[y]; obj; prevo = obj, obj = prevo.nexthere) {
+                if (obj.where !== OBJ_FLOOR || x === 0 || obj.ox !== x || obj.oy !== y) {
+                    await insane_object(obj, `%s obj@<${x},${y}> %s %s: %s@<${obj.ox},${obj.oy}>`, 'location sanity', null);
+                } else if (obj.otyp === BOULDER) {
+                    if (prevo && prevo.otyp !== BOULDER)
+                        await insane_object(obj, `%s boulder@<${x},${y}> %s %s: not on top`, 'boulder sanity', null);
+                    if (is_pool_or_lava(x, y))
+                        await insane_object(obj, `%s boulder@<${x},${y}> %s %s: on/in ${is_pool(x, y) ? 'water' : 'lava'}`, 'boulder sanity', null);
+                }
+            }
+        }
+    await objlist_sanity(game.invent, OBJ_INVENT, 'invent sanity');
+    await objlist_sanity(game.migrating_objs, OBJ_MIGRATING, 'migrating sanity');
+    await objlist_sanity(game.level.buriedobjlist, OBJ_BURIED, 'buried sanity');
+    await objlist_sanity(game.billobjs, OBJ_ONBILL, 'bill sanity');
+    await objlist_sanity(game.objs_deleted, OBJ_DELETED, 'deleted object sanity');
+    await mon_obj_sanity(game.fmon, 'minvent sanity');
+    await mon_obj_sanity(game.migrating_mons, 'migrating minvent sanity');
+    if (game.mydogs) {
+        await impossible('gm.mydogs sanity [not empty]');
+        await mon_obj_sanity(game.mydogs, 'mydogs minvent sanity');
+    }
+    if (game.thrownobj) await insane_object(game.thrownobj, ofmt3, 'thrownobj sanity', null);
+    if (game.kickedobj) await insane_object(game.kickedobj, ofmt3, 'kickedobj sanity', null);
+    // C:3021 intentionally passes kickedobj, even for returning_missile.
+    if (game.iflags.returning_missile) await insane_object(game.kickedobj, ofmt3, 'returning_missile sanity', null);
+    if (game.current_wand) await insane_object(game.current_wand, ofmt3, 'current_wand sanity', null);
 }
 
 const _HOP_POT_BOOZE = 317, _HOP_POT_SICKNESS = 318, _HOP_POT_OIL = 321,
@@ -1454,6 +1765,111 @@ export function start_glob_timeout(obj, when) {
     start_timer(when | 0, TIMER_OBJECT, SHRINK_GLOB, obj_to_any(obj));
 }
 
+const NOT_ON_ICE = 0, SET_ON_ICE = 1, BURIED_UNDER_ICE = 2;
+
+// C mkobj.c:1443-1469: only the outermost container's location matters.
+function item_on_ice(item) {
+    let outer = item;
+    while (outer.where === OBJ_CONTAINED)
+        outer = outer.ocontainer;
+    const x = { value: 0 }, y = { value: 0 };
+    if (get_obj_location(outer, x, y, BURIED_TOO)) {
+        switch (outer.where) {
+        case OBJ_FLOOR:
+            if (is_ice(x.value, y.value)) return SET_ON_ICE;
+            break;
+        case OBJ_BURIED:
+            if (is_ice(x.value, y.value)) return BURIED_UNDER_ICE;
+            break;
+        }
+    }
+    return NOT_ON_ICE;
+}
+
+// C mkobj.c:1501-1669. Keep delayed catch-up, ordinary shrinking, and
+// destruction in the same order; a caught-up timer emits no shrink message.
+export async function shrink_glob(arg, expire_time) {
+    const obj = arg.a_obj, globloc = item_on_ice(obj);
+    const ininv = obj.where === OBJ_INVENT;
+    const contnr = obj.where === OBJ_CONTAINED ? obj.ocontainer : null;
+    let shrink = false, updinv = false;
+    if (!obj.globby) {
+        await lifecycle_impossible('shrink_glob for non-glob [%d: %s]?',
+                                   obj.otyp, simpleonames(obj));
+        return;
+    }
+    await check_glob(obj, 'shrink obj ');
+    if (expire_time < game.moves && globloc !== BURIED_UNDER_ICE) {
+        let delta = Math.trunc((game.moves - expire_time + 24) / 25);
+        const moddelta = 25 - (delta % 25);
+        if (globloc === SET_ON_ICE) delta = Math.trunc((delta + 2) / 3);
+        if (delta >= obj.owt) {
+            obj.owt = 0;
+            await shrinking_glob_gone(obj);
+        } else {
+            obj.owt -= delta;
+            if (contnr) container_weight(contnr);
+            start_glob_timeout(obj, moddelta);
+        }
+        return;
+    }
+    // eat.c:2078-2081 eating_glob().
+    if ((game.occupation === eatfood && obj === game.context.victual.piece)
+        || globloc === BURIED_UNDER_ICE
+        || (globloc === SET_ON_ICE && game.moves % 3 === 1)) {
+        start_glob_timeout(obj, 0);
+        return;
+    }
+    game.iflags.partly_eaten_hack = true;
+    let globname = Yname2(obj);
+    game.iflags.partly_eaten_hack = false;
+    if (obj.owt > 0) {
+        const msgwt = Math.trunc((Math.max(OC_WEIGHT[obj.otyp], 1) + 1) / 2);
+        shrink = obj.owt % msgwt === 0;
+        obj.owt--;
+        if (obj.oeaten > 1) obj.oeaten--;
+    }
+    const gone = !obj.owt;
+    if (ininv) {
+        if (shrink || gone)
+            await pline('%s %s.', globname, gone ? 'dissolves completely' : 'shrinks');
+        updinv = true;
+    } else if (contnr) {
+        let top = contnr;
+        while (top.where === OBJ_CONTAINED) top = top.ocontainer;
+        const old_weight = top.owt;
+        container_weight(contnr);
+        if (top.where === OBJ_INVENT) {
+            if (gone || (shrink && top.owt !== old_weight)
+                || near_capacity() !== (game.u._oldcap | 0)) {
+                await pline('%s %s%s lighter.', Yname2(top),
+                            top.owt !== old_weight ? 'becomes' : 'seems',
+                            gone ? '' : ' slightly');
+            }
+            updinv = true;
+        }
+    }
+    if (gone) {
+        const x = { value: 0 }, y = { value: 0 };
+        const seeit = obj.where === OBJ_FLOOR
+            && get_obj_location(obj, x, y, 0) && cansee(x.value, y.value);
+        await shrinking_glob_gone(obj);
+        if (seeit) {
+            newsym(x.value, y.value);
+            if ((x.value !== game.u.ux || y.value !== game.u.uy)
+                && globname.startsWith('The '))
+                globname = globname.replace('The ', 'A ');
+            await pline('%s fades away.', globname);
+        }
+    } else {
+        start_glob_timeout(obj, 0);
+    }
+    if (updinv) {
+        update_inventory();
+        await encumber_msg();
+    }
+}
+
 export function set_corpsenm(obj, id) {
     const old_id = obj.corpsenm | 0;
     let when = 0;
@@ -1694,7 +2110,7 @@ async function mksobj_init(otmp, otyp, artif) {
             otmp.opoisoned = 1;
         if (artif && !rn2(20 + (10 * nartifact_exist())))
             await mk_artifact(otmp, A_NONE, 99, true);
-        mkobj_erosions(otmp);
+        mksobj_init_finish(otmp);
         return;
     }
     if (oc === FOOD_CLASS) {
@@ -1778,7 +2194,7 @@ async function mksobj_init(otmp, otyp, artif) {
             if (otyp !== CORPSE && otyp !== MEAT_RING && otyp !== KELP_FROND && !rn2(6))
                 otmp.quan = 2;
         }
-        mkobj_erosions(otmp);
+        mksobj_init_finish(otmp);
         return;
     }
     if (oc === GEM_CLASS) {
@@ -1792,7 +2208,7 @@ async function mksobj_init(otmp, otyp, artif) {
             otmp.quan = 2;
         else
             otmp.quan = 1;
-        mkobj_erosions(otmp);
+        mksobj_init_finish(otmp);
         return;
     }
     if (oc === ROCK_CLASS && otyp === STATUE) {
@@ -1803,7 +2219,7 @@ async function mksobj_init(otmp, otyp, artif) {
             && rn2(Math.trunc(levelDifficulty() / 2) + 10) > 10) {
             await add_to_container(otmp, (await mkobj(SPBOOK_no_NOVEL, false)));
         }
-        mkobj_erosions(otmp);
+        mksobj_init_finish(otmp);
         return;
     }
     if (oc === ARMOR_CLASS) {
@@ -1840,7 +2256,7 @@ async function mksobj_init(otmp, otyp, artif) {
             && (((game.moves | 0) <= 1) || In_quest(game.u?.uz))) {
             otmp.oerodeproof = otmp.rknown = 1;
         }
-        mkobj_erosions(otmp);
+        mksobj_init_finish(otmp);
         return;
     }
     if (oc === TOOL_CLASS) {
@@ -1916,7 +2332,7 @@ async function mksobj_init(otmp, otyp, artif) {
             default:
                 break;
         }
-        mkobj_erosions(otmp);
+        mksobj_init_finish(otmp);
         return;
     }
     if (oc === RING_CLASS) {
@@ -1941,7 +2357,7 @@ async function mksobj_init(otmp, otyp, artif) {
             || !rn2(9))) {
             curse(otmp);
         }
-        mkobj_erosions(otmp);
+        mksobj_init_finish(otmp);
         return;
     }
     if (oc === AMULET_CLASS) {
@@ -1962,14 +2378,14 @@ async function mksobj_init(otmp, otyp, artif) {
         else {
             blessorcurse(otmp, 10);
         }
-        mkobj_erosions(otmp);
+        mksobj_init_finish(otmp);
         return;
     }
     if (oc === SPBOOK_CLASS) {
         /* C mkobj.c mksobj_init SPBOOK_CLASS (mkobj.c:1082–1085) */
         otmp.spestudied = 0;
         blessorcurse(otmp, 17);
-        mkobj_erosions(otmp);
+        mksobj_init_finish(otmp);
         return;
     }
     if (oc === WAND_CLASS) {
@@ -1985,7 +2401,7 @@ async function mksobj_init(otmp, otyp, artif) {
         }
         blessorcurse(otmp, 17);
         otmp.recharged = 0;
-        mkobj_erosions(otmp);
+        mksobj_init_finish(otmp);
         return;
     }
     if (oc === POTION_CLASS || oc === SCROLL_CLASS) {
@@ -1993,7 +2409,16 @@ async function mksobj_init(otmp, otyp, artif) {
         if (otyp !== SCR_MAIL)
             blessorcurse(otmp, 4);
     }
+    mksobj_init_finish(otmp);
+}
+
+// C mkobj.c:1172-1174: every class runs the same post-initialization tail.
+// mk_artifact also sets poison; retaining this tail makes the constructor own
+// its C guarantee even when the artifact helper already supplied that value.
+function mksobj_init_finish(otmp) {
     mkobj_erosions(otmp);
+    if (permapoisoned(otmp))
+        otmp.opoisoned = 1;
 }
 
 export function add_to_migration(obj) {
@@ -2187,6 +2612,27 @@ export function place_object(otmp, x, y) {
         return;
     const xi = x | 0;
     const yi = y | 0;
+    if (!isok(xi, yi) || otmp.where !== OBJ_FREE)
+        return place_object_checked(otmp, xi, yi);
+    return place_object_valid(otmp, xi, yi);
+}
+
+// C mkobj.c:2309-2325: column zero warns and continues; locations outside
+// the map array, and objects which are still linked elsewhere, panic.
+async function place_object_checked(otmp, x, y) {
+    if (!isok(x, y)) {
+        const name = await sanity_safe_typename(otmp.otyp);
+        if (x < 0 || y < 0 || x > COLNO - 1 || y > ROWNO - 1)
+            throw new Error(`panic: place_object: "${name}" [${otmp.where}] off map <${x},${y}>`);
+        await lifecycle_impossible('place_object: "%s" [%d] off map <%d,%d>',
+                                   name, otmp.where, x, y);
+    }
+    if (otmp.where !== OBJ_FREE)
+        throw new Error(`panic: place_object: obj "${await sanity_safe_typename(otmp.otyp)}" [${otmp.where}] not free`);
+    return place_object_valid(otmp, x, y);
+}
+
+function place_object_valid(otmp, xi, yi) {
     // C mkobj.c:2328 — otmp2 = svl.level.objects[x][y]
     let otmp2 = (game.level?.levelObjects?.[xi]?.[yi]) ?? null;
     // C mkobj.c:2330, after reading the pile and before linking the object.
@@ -2342,6 +2788,17 @@ export function add_to_buried(obj) {
         obj.nobj = game.level.buriedobjlist ?? null;
         game.level.buriedobjlist = obj;
     }
+}
+
+/* C mkobj.c:2423-2436. Both age and moves are long; narrowing either to
+ * signed 32 bits changes the effective age at the 2^31 boundary. */
+export function peek_at_iced_corpse_age(otmp) {
+    let retval = otmp.age;
+    if (otmp.otyp === CORPSE && otmp.on_ice) {
+        const age = game.moves - otmp.age;
+        retval += Math.trunc(age / 2); // ROT_ICE_ADJUSTMENT is 2.
+    }
+    return retval;
 }
 
 /* C mkobj.c:2399-2417 — obj_ice_effects: apply ice effects to objects at (x,y) */

@@ -30,7 +30,7 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
 import { FOOD_PROPS } from './food_props.js';
 import { impossible_sync, debugpline } from './display.js';
-import { is_rottable } from './mkobj.js';
+import { is_flammable, is_rottable } from './mkobj.js';
 import { inv_cnt, rounddiv } from './hack.js';
 import { reorder_invent } from './invent.js';
 import { set_itimeout, incr_itimeout } from './potion.js';
@@ -45,7 +45,7 @@ import { is_pool_or_lava } from './dbridge.js';
 import { end_running } from './hack.js';
 import { PM_ELF as PM_ELF_EAT } from './pm.generated.js';
 import { BY_COOKIE, slimeproof, polyfood, pline_mon_unported as pline_mon_eat } from './mklev.js';
-import { mksobj, obj_extract_self } from './mkobj.js';
+import { mksobj, obj_extract_self, peek_at_iced_corpse_age } from './mkobj.js';
 import { getrumor, outrumor } from './rumors.js';
 import { eos } from './hacklib.js';
 import { discover_object, objdescr_is } from './o_init.js';
@@ -309,9 +309,9 @@ async function _edibility_prompts(otmp) {
         if (mnum === PM_GREEN_SLIME_E || (otmp.otyp | 0) === GLOB_OF_GREEN_SLIME)
             stoneorslime = !_uprop_on(UNCHANGING) && !slimeproof(game.youmonst?.data);
         if (cadaver && !_nonrotting_corpse(mnum)) {
-            const age = _peek_at_iced_corpse_age(otmp);
+            const age = peek_at_iced_corpse_age(otmp);
             /* worst case rather than random: eat.c:2659 `10L + 0` */
-            rotted = Math.trunc(((game.moves | 0) - age) / 10);
+            rotted = Math.trunc((game.moves - age) / 10);
             if (otmp.cursed) rotted += 2;
             else if (otmp.blessed) rotted -= 2;
         }
@@ -1816,14 +1816,6 @@ function _hero_humanoid() { const m = _heroMnum(); return m >= 0 ? ((_mf1E(m) & 
 function _hero_herbivorous() { const m = _heroMnum(); return m >= 0 ? _herbivorousE(m) : false; }
 function _hero_metallivorous() { const m = _heroMnum(); return m >= 0 ? _metallivorousE(m) : false; }
 
-function _peek_at_iced_corpse_age(otmp) {
-    let retval = otmp.age | 0;
-    if ((otmp.otyp | 0) === CORPSE_OTYP && otmp.on_ice) {
-        const age = (game.moves | 0) - (otmp.age | 0);
-        retval += Math.trunc(age * (2 - 1) / 2); /* ROT_ICE_ADJUSTMENT=2 */
-    }
-    return retval;
-}
 /* C mondata.h nonrotting_corpse(mnum): lichen / lizard never rot. */
 const PM_LIZARD_E = 326, PM_LICHEN_E = 158;
 /* C eat.c:58-61 #define nonrotting_corpse(mnum) —
@@ -2299,8 +2291,8 @@ async function eatcorpse(otmp) {
 
     /* C eat.c:1884-1893 — corpse rot age calc (rn2(20)). */
     if (!_nonrotting_corpse(mnum)) {
-        const age = _peek_at_iced_corpse_age(otmp);
-        rotted = Math.trunc(((game.moves | 0) - age) / (10 + rn2(20))); /* eat.c:1887 */
+        const age = peek_at_iced_corpse_age(otmp);
+        rotted = Math.trunc((game.moves - age) / (10 + rn2(20))); /* eat.c:1887 */
         if (otmp.cursed) rotted += 2;
         else if (otmp.blessed) rotted -= 2;
     }
@@ -3943,31 +3935,11 @@ export function is_edible(obj) {
     return ((oclass | 0) === FOOD_CLASS) ? 1 : 0;
 }
 
+// C eat.c:100-102 calls mkobj.c:2270, including candle and FIRE_RES
+// exclusions and the runtime shuffled material. Share that body so callers
+// and object generation cannot acquire different flammability rules.
 function _is_edible_flammable(obj) {
-    const otyp = obj.otyp | 0;
-    /* objects.h WAND() run: svb.bases[WAND_CLASS=11] = 410, WAN_FIRE = 430.
-     * 244 was BEARTRAP (a TOOL), so this test was both dead for the wand of
-     * fire and spuriously live for bear traps. */
-    const TALLOW_CANDLE = 224, WAX_CANDLE = 225, WAN_FIRE = 430;
-    /* FIRE_RES comes from the frozen js/const.js import at the top of this file
-     * (prop.h:15 FIRE_RES = 1).  A local `const FIRE_RES = 30` used to shadow
-     * it here, so `oc_oprop === FIRE_RES` never matched a fireproof object. */
-
-    /* Candles are not flammable */
-    if (otyp === TALLOW_CANDLE || otyp === WAX_CANDLE) {
-        return false;
-    }
-
-    /* Fire-resistant or wand of fire */
-    const oprop = MKOBJ_OC_OPROP[otyp | 0] | 0;
-    if (oprop === FIRE_RES || otyp === WAN_FIRE) {
-        return false;
-    }
-
-    /* Check material: flammable if WOOD or below (except LIQUID) or PLASTIC */
-    const LIQUID = 1, WOOD = 8, PLASTIC = 18;
-    const omat = MKOBJ_OC_MATERIAL[otyp | 0] | 0;
-    return ((omat <= WOOD && omat !== LIQUID) || omat === PLASTIC);
+    return is_flammable(obj);
 }
 
 function _is_edible_metallivorous(mondata) {

@@ -496,7 +496,6 @@ export async function use_offensive(mtmp) {
          * BZ_M_WAND path.  The old port fell through to the ordinary attack
          * loop, which made a monster carrying a death wand throw its boulder
          * instead and skipped the hero-side exercise/zap RNG. */
-        game.zap_oseen = oseen;
         await mzapwand(mtmp, otmp, false);
         if (oseen) makeknown_muse(otmp.otyp | 0);
         game.m_using = true;

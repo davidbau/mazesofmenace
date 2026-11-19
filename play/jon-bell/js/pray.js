@@ -28,7 +28,7 @@ import { game, wizard } from './gstate.js';
 import { upstart } from './hacklib.js';
 import { update_inventory } from './invent.js';
 import { arti_light_radius } from './light.js';
-import { maybe_adjust_light } from './mkobj.js';
+import { maybe_adjust_light, peek_at_iced_corpse_age } from './mkobj.js';
 import { Inhell, permonstTemplate, set_malign } from './makemon.js';
 import { attacktype_fordmg, can_chant } from './mondata.js';
 import { ureflects as ureflects_gz } from './muse.js';
@@ -268,17 +268,11 @@ function _sacrifice_value(otmp) {
     const row = monsPack.mons[otmp.corpsenm | 0];
     let value = 0;
     if ((otmp.corpsenm | 0) === PM_ACID_BLOB
-        || ((game.moves | 0) <= (_peek_age_sac(otmp) + 50))) {
+        || (game.moves <= (peek_at_iced_corpse_age(otmp) + 50))) {
         value = (row[2] | 0) + 1;
         if (otmp.oeaten) value = eaten_stat(value, otmp);
     }
     return value;
-}
-
-function _peek_age_sac(otmp) {
-    let retval = otmp.age | 0;
-    if (otmp.on_ice) retval += Math.trunc(((game.moves | 0) - retval) / 2);
-    return retval;
 }
 
 /* C ref: pray.c:1899 eval_offering(otmp, altaralign) */

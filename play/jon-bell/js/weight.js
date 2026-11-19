@@ -11,7 +11,7 @@ import { UNENCUMBERED, OVERLOADED, LEVITATION, FLYING, LOW_PM, Upolyd, WOUNDED_L
 import { OC_WEIGHT, OTYP_LARGE_BOX, OTYP_BAG_OF_TRICKS, OTYP_BAG_OF_HOLDING, OTYP_STATUE, OTYP_BOULDER } from './oc_weight.generated.js';
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
-import { impossible_sync } from './display.js';
+import { impossible_sync, you_buf_message } from './display.js';
 import { pline } from './pline.js';
 import { simpleonames } from './objnam.js';
 import { float_vs_flight } from './polyself.js';
@@ -135,7 +135,15 @@ export function encumber_msg_sync() {
     }
     if (msg) {
         game._encumber_pline = true;
-        try { pline(msg); } finally { game._encumber_pline = false; }
+        /* C pickup.c:1971-2016 uses Your()/You() with %-free text for most arms,
+         * which vpline() uses IN PLACE in gy.you_buf (pline.c:192-194); a
+         * nested notice_mon You("%s %s.") from vision_recalc can rewrite it. */
+        let out = msg;
+        if (!msg.includes('%')) {
+            if (msg.startsWith('Your ')) out = you_buf_message('Your ', msg.slice(5));
+            else if (msg.startsWith('You ')) out = you_buf_message('You ', msg.slice(4));
+        }
+        try { pline(out); } finally { game._encumber_pline = false; }
     }
     // C pickup.c:1999,2016: both changes flag status, even the silent 5 -> 4.
     if (oldcap !== newcap) {

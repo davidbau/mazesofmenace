@@ -364,14 +364,8 @@ export async function js_makemaz(s, sp) {
             await dmonsfree();
             return;
         }
-        /* C: impossible("Couldn't load \"%s\" - making a maze.", protofile);
-         * impossible() logs and RETURNS in C, so control falls through into the
-         * maze fallback below rather than stopping. */
-        // This is C's impossible() (pline.c:587-637), not a debug probe — the same
-        // spelling js/mklev.js's mktrap already uses for its own impossible().
-        // It logs and RETURNS, which is why control falls through to the maze.
-        // ALLOW_LANE_PROBE: C impossible(), see the three lines above
-        console.error('makemaz', `Couldn't load "${protofile}" - making a maze.`);
+        // C mkmaze.c:1194 prints the diagnostic before generating the fallback.
+        await impossible('Couldn\'t load "%s" - making a maze.', protofile);
     }
 
     /* ── the maze fallback, C mkmaze.c:1197-1222 ─────────────────────────── */

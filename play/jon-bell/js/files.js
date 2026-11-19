@@ -306,13 +306,14 @@ export async function read_tribute(tribsection, tribtitle, tribpassage, nowin_bu
 export function unlock_file(filename) { /* no-op */ }
 
 export function fopen_datafile(filename, mode, prefix) {
-    const write = String(mode).indexOf('w') >= 0;
+    const append = String(mode).indexOf('a') >= 0;
+    const write = append || String(mode).indexOf('w') >= 0;
     return {
         name: String(filename),
         write,
         data: write ? '' : (vfsReadFile(String(filename)) ?? ''),
         pos: 0,
-        out: '',
+        out: append ? (vfsReadFile(String(filename)) ?? '') : '',
     };
 }
 

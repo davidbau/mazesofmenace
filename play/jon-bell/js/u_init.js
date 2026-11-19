@@ -225,6 +225,14 @@ export async function u_init_misc() {
     const u = g.u;
     u.ustuck = null;
     u.uroleplay = tmpuroleplay;
+    // C u_init.c:954 also zeroes the embedded struct u_conduct (you.h:147).
+    // A hero with no pet or conduct-breaking actions still logs these fields.
+    u.uconduct = {
+        unvegetarian: 0, unvegan: 0, food: 0, gnostic: 0, weaphit: 0,
+        killer: 0, literate: 0, polypiles: 0, polyselfs: 0, wishes: 0,
+        wisharti: 0, hf_reserved1: 0, sokocheat: 0, pets: 0,
+        reserved1: 0, reserved2: 0, reserved3: 0, reserved4: 0,
+    };
     if (savedUbirthday !== undefined) u.ubirthday = savedUbirthday;
     if (savedLgod !== undefined) u.lgod = savedLgod;
     if (savedNgod !== undefined) u.ngod = savedNgod;

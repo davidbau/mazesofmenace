@@ -35,7 +35,7 @@ import { menucolor_row, menucolor_text, add_menu_coloring, add_menu_coloring_par
 import { TtyMenu, tty_menu_text, PICK_NONE, PICK_ONE, PICK_ANY, ATR_NONE } from './tty_menu.js';
 import { getlin, menuitem_invert_test, choose_windows } from './windows.js';
 import { mungspaces, fuzzymatch } from './hacklib.js';
-import { nh_sprintf, docorner_status_rows, _threeStatusLines } from './display.js';
+import { nh_sprintf, docorner_status_rows, docorner_blank_utf8_captures, _threeStatusLines } from './display.js';
 import { pline } from './pline.js';
 import { optfn_sortdiscoveries_set, get_sortdisco } from './o_init.js';
 // C options.c:6768 match_optname compares names case-insensitively; keep
@@ -2673,7 +2673,8 @@ const PAGES = [
         { name: 'statuslines', kind: 'comp', hasHandler: false,
           value: () => ((game.iflags?.wc2_statuslines ?? 2) < 3 ? '2' : '3'),
           set: async (v) => {
-              const text = String(v ?? '');
+              /* options.c:529-533 parseoptions() strips trailing isspace() */
+              const text = String(v ?? '').replace(/[\t\n\v\f\r ]+$/, '');
               /* C atoi(): leading whitespace and an optional sign are accepted;
                * parsing stops at the first non-digit. */
               const match = text.match(/^[\t\n\r\f\v ]*([+-]?\d+)/);
@@ -3097,6 +3098,8 @@ async function numberPadSubmenu(preserveStatus = false) {
 function pickupMenuDismissCorner() {
     const c = game._pickupMenuCorner;
     game._pickupMenuCorner = null;
+    /* wintty.c:982,3684 docorner(): cl_end() then row_refresh() reprints the covered map cells at print time (live pet attr). */
+    if (c) docorner_blank_utf8_captures(c.col - 1, c.rows + 1);
     if (c) docorner_status_rows(c.col - 1, c.rows + 1);
     /* wintty.c:3715-3719: ymax reaching the status window wrecks the bottom line. */
     if (c && c.rows + 1 >= SCREEN_ROWS - (_threeStatusLines() ? 3 : 2) && game.disp) game.disp.botlx = 1;
@@ -3555,7 +3558,10 @@ export async function doset_simple() {
                      * already shows the new hero glyph. */
                     g.go ||= {};
                     g.go.opt_need_redraw = g.go.opt_need_glyph_reset = true;
+                    /* options.c:8725-8730: flush = go.opt_need_redraw is latched
+                     * before reset_needed_visuals() and flush_screen(1) follows. */
                     await reset_needed_visuals();
+                    await flush_screen(1);
                 }
                 pageIdx = 0;
                 continue;
@@ -3928,6 +3934,10 @@ export async function handler_menu_colors(preserveStatus = false) {
 /* C options.c:4067-4098 optfn_statuslines(do_set); returns the error texts
  * (config_error_add calls, in order), or null. */
 function optfn_statuslines_set(text) {
+    /* options.c:529-533 parseoptions() skips leading and strips trailing
+     * isspace() of the whole "statuslines:<answer>" string, so trailing
+     * blanks of the answer never reach the error text. */
+    text = text.replace(/[\t\n\v\f\r ]+$/, '');
     /* options.c:4080 string_for_opt(opts, FALSE): options.c:6675-6676 */
     const errs = text ? [] : ["Missing parameter for 'statuslines:'."];
     const match = text.match(/^[\t\n\r\f\v ]*([+-]?\d+)/);

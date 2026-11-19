@@ -495,115 +495,6 @@ async function burn_object(arg, timeout) {
 }
 
 
-/* C mkobj.c:1501-1647 shrink_glob(). */
-async function shrink_glob_timer(arg, timeout) {
-    const obj = arg?.a_obj;
-    if (!obj)
-        return;
-    if (!obj.globby) {
-        /* C mkobj.c:1516 */
-        await impossible('shrink_glob for non-glob [%d: %s]?', obj.otyp, simpleonames(obj));
-        return;
-    }
-
-    let outer = obj;
-    while ((outer.where | 0) === OBJ_CONTAINED && outer.ocontainer)
-        outer = outer.ocontainer;
-    let globloc = 0;
-    const ox = outer.ox | 0, oy = outer.oy | 0;
-    if ((outer.where | 0) === OBJ_FLOOR && is_ice(ox, oy)) globloc = 1;
-    else if ((outer.where | 0) === OBJ_BURIED && is_ice(ox, oy)) globloc = 2;
-
-    if ((timeout | 0) < (game.moves | 0) && globloc !== 2) {
-        let delta = Math.floor(((game.moves | 0) - (timeout | 0) + 24) / 25);
-        const moddelta = 25 - (delta % 25);
-        if (globloc === 1)
-            delta = Math.floor((delta + 2) / 3);
-        if (delta >= (obj.owt | 0)) {
-            obj.owt = 0;
-            await shrinking_glob_gone(obj);
-        } else {
-            obj.owt = (obj.owt | 0) - delta;
-            if ((obj.where | 0) === OBJ_CONTAINED && obj.ocontainer)
-                container_weight(obj.ocontainer);
-            start_timer(moddelta, TIMER_OBJECT, SHRINK_GLOB, arg);
-        }
-        return;
-    }
-
-    const beingEaten = game.occupation === eatfood
-        && game.context?.victual?.piece === obj;
-    if (beingEaten || globloc === 2
-        || (globloc === 1 && ((game.moves | 0) % 3) === 1)) {
-        start_timer(23 + rn2(5), TIMER_OBJECT, SHRINK_GLOB, arg);
-        return;
-    }
-
-    game.iflags ??= {};
-    const oldPartlyEatenHack = !!game.iflags.partly_eaten_hack;
-    let globname;
-    game.iflags.partly_eaten_hack = true;
-    try {
-        globname = Yname2(obj);
-    } finally {
-        game.iflags.partly_eaten_hack = oldPartlyEatenHack;
-    }
-
-    const ininv = (obj.where | 0) === OBJ_INVENT || burn_carried(obj);
-    const contnr = (obj.where | 0) === OBJ_CONTAINED ? obj.ocontainer : null;
-    let topcontnr = contnr;
-    while (topcontnr && (topcontnr.where | 0) === OBJ_CONTAINED)
-        topcontnr = topcontnr.ocontainer;
-    const oldTopWeight = topcontnr ? (topcontnr.owt | 0) : 0;
-    const basewt = OC_WEIGHT[obj.otyp | 0] | 0;
-    const msgwt = Math.floor((Math.max(basewt, 1) + 1) / 2);
-    let shrink = false, updinv = false;
-    if ((obj.owt | 0) > 0) {
-        shrink = ((obj.owt | 0) % msgwt) === 0;
-        obj.owt = (obj.owt | 0) - 1;
-        if ((obj.oeaten | 0) > 1)
-            obj.oeaten = (obj.oeaten | 0) - 1;
-    }
-    const gone = !(obj.owt | 0);
-
-    if (ininv) {
-        if (shrink || gone)
-            await pline(`${globname} ${gone ? 'dissolves completely' : 'shrinks'}.`);
-        updinv = true;
-    } else if (contnr) {
-        container_weight(contnr);
-        if (topcontnr && (topcontnr.where | 0) === OBJ_INVENT) {
-            const changed = (topcontnr.owt | 0) !== oldTopWeight;
-            if (gone || (shrink && changed)
-                || near_capacity() !== (game.u?._oldcap | 0)) {
-                await pline(`${Yname2(topcontnr)} ${changed ? 'becomes' : 'seems'}${gone ? '' : ' slightly'} lighter.`);
-            }
-            updinv = true;
-        }
-    }
-
-    if (gone) {
-        const floor = (obj.where | 0) === OBJ_FLOOR;
-        const x = obj.ox | 0, y = obj.oy | 0;
-        const seeit = floor && cansee(x, y);
-        await shrinking_glob_gone(obj);
-        if (seeit) {
-            newsym(x, y);
-            let fadeName = globname;
-            if ((x !== (game.u?.ux | 0) || y !== (game.u?.uy | 0))
-                && fadeName.startsWith('The '))
-                fadeName = `A ${fadeName.slice(4)}`;
-            await pline(`${fadeName} fades away.`);
-        }
-    } else {
-        start_timer(23 + rn2(5), TIMER_OBJECT, SHRINK_GLOB, arg);
-    }
-    if (updinv) {
-        update_inventory();
-        await encumber_msg();
-    }
-}
-
 /* C mondata.h:62 is_silent(ptr) — msound == MS_SILENT. */
 const MS_SILENT = 0;
 const is_silent = (ptr) => (ptr?.msound | 0) === MS_SILENT;
@@ -916,7 +807,7 @@ const timeout_funcs = [
       cleanup: (arg, expire_time) => cleanup_burn(arg, expire_time), name: 'burn_object' },
     { f: (arg, timeout) => hatch_egg(arg, timeout), cleanup: 0, name: 'hatch_egg' },
     { f: (arg, timeout) => fig_transform_timer(arg, timeout), cleanup: 0, name: 'fig_transform' },
-    { f: (arg, timeout) => shrink_glob_timer(arg, timeout), cleanup: 0, name: 'shrink_glob' },
+    { f: (arg, timeout) => shrink_glob(arg, timeout), cleanup: 0, name: 'shrink_glob' },
     { f: async (arg) => {
         // C zap.c:5123-5131: natural melting must not credit/blame the hero.
         const save_mon_moving = game.context.mon_moving;
@@ -1335,7 +1226,7 @@ import { rndmonnam } from './do_name.js'; // relocate-fns
 import { PM_GREEN_SLIME_E, Popeye, _eat_Blind, _eat_Hallucination, _uprop_on, make_stoned } from './eat.js'; // relocate-fns
 import { an as an_eat } from './objnam.js'; // relocate-fns
 import { make_slimed, make_vomiting } from './potion.js'; // relocate-fns
-import { shrinking_glob_gone } from './mkobj.js'; // relocate-fns
+import { shrink_glob } from './mkobj.js'; // C mkobj.c:1501-1669
 import { ECMD_OK } from './const.js'; // relocate-fns
 import { displayLookWindow } from './look-window.js'; // relocate-fns
 import { any_visible_region, region_stats_snapshot } from './region.js'; // relocate-fns

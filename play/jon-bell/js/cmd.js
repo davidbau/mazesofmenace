@@ -7072,6 +7072,7 @@ function _Blind_cmd() {
 import * as _PROPIDS from './const.js';
 function _uprop_active(name) {
     if (name === 'HALLUC') return _cmd_Hallucination(); // youprop.h:120
+    if (name === 'DEAF') return _Deaf(); // youprop.h:125 includes roleplay deafness
     const u = game.u;
     if (!u || !u.uprops) return false;
     /* youprop.h:110 `#define Strangled u.uprops[STRANGLED].intrinsic` —
@@ -15810,7 +15811,7 @@ export async function dbase_display_window(srcLines, statusClipCol) {
             const page = lines.slice(start, start + 23);
             const rows = new Array(24).fill('');
             page.forEach((ln, i) => {
-                rows[i] = String(ln).replace(/\s+$/, '')
+                rows[i] = tty_text_window_utf8_line(String(ln)).replace(/\s+$/, '')
                     .replace(/\t/g, '\x1b[1C')
                     .replace(/ {5,}/g, (m) => `\x1b[${m.length}C`);
             });
@@ -15837,7 +15838,8 @@ export async function dbase_display_window(srcLines, statusClipCol) {
         .concat([offx ? '--More--' : ' --More--']);
     const uac = (g.u && g.u.uac) ?? 0;
     g._pending_message = '';
-    const spilled = prompt_spilled_onto_row1();
+    const spilled = prompt_spilled_onto_row1()
+        || (g._row1ErasedFrame != null && g._row1ErasedFrame === g._screen_output);
     /* C ref: process_text_window's final tty_curs(window, 1, n) + dmore() */
     while (true) {
         if (noOverlay) {

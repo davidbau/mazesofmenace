@@ -1,7 +1,6 @@
-import { dealloc_mextra } from './mon.js';
 import { msgtype_type } from './options.js';
 import { nh_delay_output } from './animframes.js';
-import { fixup_oil, get_mtraits, free_omid, recreate_pile_at, replace_object, stone_object_type, stone_furniture_type, corpse_revive_type } from './mkobj.js';
+import { fixup_oil, get_mtraits, free_omid, free_omonst, recreate_pile_at, replace_object, stone_object_type, stone_furniture_type, corpse_revive_type } from './mkobj.js';
 import { POT_OIL } from './const.js';
 import { sp_levchn_lookup, pline_mon } from './mklev.js';
 import { add_to_minv, set_corpsenm } from './mkobj.js';
@@ -1324,10 +1323,8 @@ export async function revive(corpse, by_hero) {
         mon = await makemon(permonstTemplate(mtype.value), x, y, mmflags);
         if (mon) {
             if (corpse.oextra?.omid) free_omid(corpse);
-            if (corpse.oextra?.omonst) {
-                dealloc_mextra(corpse.oextra.omonst);
-                corpse.oextra.omonst = null;
-            }
+            if (corpse.oextra?.omonst)
+                free_omonst(corpse); // C zap.c:990-991
             if (mon.cham === PM_DOPPELGANGER)
                 await newcham(mon, mptr.pmidx, NO_NC_FLAGS);
             else if (mon.data.mlet === 52) {

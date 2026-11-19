@@ -2148,9 +2148,7 @@ export async function mondead(mtmp) {
      * and silently drop the RNG draws a real blast makes.  js/uhitm.js's
      * unlink_mon() carries the same rule.  Do not add a `mtmp.mx = mtmp.my = 0`
      * here. */
-    /* C mon.c:2711 mon_leaving_level -> newsym(mx, my): repaint the cell the
-     * monster just vacated.  RNG-free. */
-    if (mx > 0) newsym(mx, my); /* mon_leaving_level: parked guard is off-map */
+    if (onmap) newsym(mx, my);
     if (mtmp.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, before relobj */
     await quest_monster_died(mtmp);
     await relobj_md(mtmp);
@@ -2850,7 +2848,7 @@ export async function newcham(mtmp, mdat, ncflags) {
     }
 
     mtmp.meverseen = 0; /* never seen mon in present shape */
-    newsym(mtmp.mx, mtmp.my);
+    await newsym(mtmp.mx, mtmp.my, true);
 
     /* C mon.c:5455-5471 — the msg arms.  WAS a no-op comment claiming this is
      * unreachable under NO_NC_FLAGS: true only for makemon's shapechanger-
@@ -3866,7 +3864,7 @@ export async function normal_shape(mon) {
         mon.cham = NON_PM;
         if (mcan)
             mon.mcan = 1;
-        newsym(mon.mx | 0, mon.my | 0);
+        await newsym(mon.mx | 0, mon.my | 0, true);
     }
     if (is_were(mon?.data) && (mon.data.mlet | 0) !== S_HUMAN)
         await new_were(mon);

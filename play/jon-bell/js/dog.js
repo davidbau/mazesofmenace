@@ -88,7 +88,7 @@ const SPE_CREATE_FAMILIAR_DOG = 401;
 import { attacktype as _attacktype_real } from './mondata.js';
 import { canseemon, canspotmon } from './display.js';   /* C display.c */
 import { cansee } from './vision.js';                   /* C vision.c */
-import { place_object } from './mkobj.js';
+import { place_object, peek_at_iced_corpse_age } from './mkobj.js';
 import { wake_nearto } from './mon.js'; /* C sounds.c / mkobj.c */
 import { ismnum, has_edog, HALLUC, HALLUC_RES } from './const.js'; /* monst.h/mextra.h/youprop.h */
 import { the, xname, Tobjnam, an } from './objnam.js';  /* C objnam.c */
@@ -1632,17 +1632,6 @@ function _same_race(m1, m2) {
     return same_race(permonstTemplate(m1), permonstTemplate(m2));
 }
 
-const ROT_ICE_ADJUSTMENT = 2;
-
-function peek_at_iced_corpse_age_js(otmp, moves) {
-    let retval = otmp.age | 0;
-    if ((otmp.otyp | 0) === CORPSE_OTYP && otmp.on_ice) {
-        const age = moves - (otmp.age | 0);
-        retval += Math.trunc(age * (ROT_ICE_ADJUSTMENT - 1) / ROT_ICE_ADJUSTMENT);
-    }
-    return retval;
-}
-
 /* C const: ismnum(x) — valid monster index (0 <= x < NUMMONS). */
 export function dogfood(mtmp, obj) {
     if (otrapped_of(obj) && !Resists_Elem(mtmp, 6 /* POISON_RES */))
@@ -1699,8 +1688,8 @@ export function dogfood(mtmp, obj) {
         if (mndx === PM_GHOUL) {
             const fxg = (obj.corpsenm ?? -1) | 0;
             if (otyp === CORPSE_OTYP)
-                return ((obj.on_ice ? peek_at_iced_corpse_age_js(obj, (game.moves ?? 0) | 0) : (obj.age | 0)) + 50
-                        <= ((game.moves ?? 0) | 0)
+                return (peek_at_iced_corpse_age(obj) + 50
+                        <= game.moves
                         && !(fxg === PM_LIZARD_C || fxg === PM_LICHEN_C)) ? DOGFOOD
                     : (starving && !(ismnum_js(fxg) && _vegan(fxg))) ? ACCFOOD
                         : POISON;
@@ -1733,8 +1722,8 @@ export function dogfood(mtmp, obj) {
              * No RNG fired here; all RNG already consumed by obj_resists above. */
             const fx = (obj.corpsenm ?? -1) | 0; /* CORPSE → corpsenm */
             const fxValid = ismnum_js(fx);
-            const moves = (game.moves ?? 0) | 0;
-            const corpseAge = (obj.on_ice ? peek_at_iced_corpse_age_js(obj, moves) : (obj.age | 0));
+            const moves = game.moves;
+            const corpseAge = peek_at_iced_corpse_age(obj);
             const mlet_pet = _mlet(mndx);
             /* C dog.c:1068-1073 — reject rot or unresisted acid/poison. */
             if ((corpseAge + 50 <= moves

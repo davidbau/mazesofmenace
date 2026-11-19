@@ -185,6 +185,58 @@ function loadfruitchn(head) {
     return restored;
 }
 
+/* C restore.c:1131-1138 and mkroom.c:875-907: every getlev() reads
+ * fresh room records, reconstructs the subroom preorder and recomputes the
+ * door count from the last top-level room.  dorecover() reads the current
+ * level twice and each inactive level once; graph copies need the same pass.
+ * In particular, doors added after that last room (for example a niche door)
+ * remain in doors[] but fall outside doorindex after a read, just as in C. */
+function rest_rooms(level) {
+    // C mkroom.c:851-918 save_room/rest_room: subrooms are written by
+    // parent-room traversal, then assigned consecutive slots on restore.
+    // levl[].roomno is NOT renumbered, even when that changes its room type.
+    const records = [];
+    const saveRoom = (room) => {
+        records.push({ ...room, sbrooms: [...(room.sbrooms || [])] });
+        for (let i = 0; i < (room.nsubrooms | 0); i++) saveRoom(room.sbrooms[i]);
+    };
+    for (let i = 0; i < (level.nroom | 0); i++) saveRoom(level.rooms[i]);
+    const subrooms = [];
+    let record = 0, nsubroom = 0;
+    const readRoom = (room) => {
+        Object.assign(room, records[record++]);
+        for (let i = 0; i < (room.nsubrooms | 0); i++) {
+            const child = subrooms[nsubroom] ||= {};
+            room.sbrooms[i] = child;
+            readRoom(child);
+            (subrooms[nsubroom++] ||= {}).resident = null;
+        }
+    };
+    for (let i = 0; i < (level.nroom | 0); i++) {
+        readRoom(level.rooms[i]);
+        level.rooms[i].resident = null;
+    }
+    level._nsubroom = nsubroom;
+    subrooms[nsubroom] = { hx: -1 };
+    level._subrooms = subrooms;
+    level.rooms.length = MAXNROFROOMS + 1;
+    for (let i = 0; i < subrooms.length; i++) {
+        subrooms[i].roomnoidx = MAXNROFROOMS + 1 + i;
+        level.rooms[MAXNROFROOMS + 1 + i] = subrooms[i];
+    }
+    /* C restore.c:1132-1139 — gd.doorindex is recomputed from the last room
+     * rather than restored, because rest_rooms does not carry it. */
+    if (level) {
+        const nroom = level.nroom | 0;
+        if (nroom) {
+            const last = level.rooms[nroom - 1];
+            level.doorindex = ((last?.fdoor | 0) + (last?.doorct | 0));
+        } else {
+            level.doorindex = 0;
+        }
+    }
+}
+
 export async function getlev(lev, restoreFloor = null) {
     const g = game;
     const u = g.u || (g.u = {});
@@ -221,38 +273,7 @@ export async function getlev(lev, restoreFloor = null) {
      * from its relative offset stored by save_adjust_levelflags(). */
     if (g.level?.flags)
         g.level.flags.stasis_until = (g.level.flags.stasis_until | 0) + (g.moves | 0);
-    // C mkroom.c:851-918 save_room/rest_room: subrooms are written by
-    // parent-room traversal, then assigned consecutive slots on restore.
-    // levl[].roomno is NOT renumbered, even when that changes its room type.
-    const records = [];
-    const saveRoom = (room) => {
-        records.push({ ...room, sbrooms: [...(room.sbrooms || [])] });
-        for (let i = 0; i < (room.nsubrooms | 0); i++) saveRoom(room.sbrooms[i]);
-    };
-    for (let i = 0; i < (g.level.nroom | 0); i++) saveRoom(g.level.rooms[i]);
-    const subrooms = [];
-    let record = 0, nsubroom = 0;
-    const readRoom = (room) => {
-        Object.assign(room, records[record++]);
-        for (let i = 0; i < (room.nsubrooms | 0); i++) {
-            const child = subrooms[nsubroom] ||= {};
-            room.sbrooms[i] = child;
-            readRoom(child);
-            (subrooms[nsubroom++] ||= {}).resident = null;
-        }
-    };
-    for (let i = 0; i < (g.level.nroom | 0); i++) {
-        readRoom(g.level.rooms[i]);
-        g.level.rooms[i].resident = null;
-    }
-    g.level._nsubroom = nsubroom;
-    subrooms[nsubroom] = { hx: -1 };
-    g.level._subrooms = subrooms;
-    g.level.rooms.length = MAXNROFROOMS + 1;
-    for (let i = 0; i < subrooms.length; i++) {
-        subrooms[i].roomnoidx = MAXNROFROOMS + 1 + i;
-        g.level.rooms[MAXNROFROOMS + 1 + i] = subrooms[i];
-    }
+    rest_rooms(g.level);
     restdamage_reverse(g.level, g.program_state?.reading_bonesfile
         ? (g.moves | 0) - (snap.omoves | 0) : 0);
     find_lev_obj_clear_no_charge(g.level);
@@ -323,18 +344,6 @@ export async function getlev(lev, restoreFloor = null) {
         for (let i = 0; i < g._track.utrack.length && i < snap.track.utrack.length; i++) {
             g._track.utrack[i].x = snap.track.utrack[i].x | 0;
             g._track.utrack[i].y = snap.track.utrack[i].y | 0;
-        }
-    }
-
-    /* C restore.c:1094-1098 — gd.doorindex is recomputed from the last room
-     * rather than restored, because rest_rooms does not carry it. */
-    if (g.level) {
-        const nroom = g.level.nroom | 0;
-        if (nroom) {
-            const last = g.level.rooms[nroom - 1];
-            g.level.doorindex = ((last?.fdoor | 0) + (last?.doorct | 0));
-        } else {
-            g.level.doorindex = 0;
         }
     }
 
@@ -659,6 +668,7 @@ export async function dorecover(save) {
     // crysknife reverting in find_lev_obj) must not alter the final read.
     const firstLevel = saved_state_for(save.body);
     g.program_state.in_getlev = 1;
+    rest_rooms(firstLevel.level);
     await first_getlev_place_monsters(firstLevel.fmon);
     await find_lev_obj_no_longer_held(firstLevel.fobj);
     const baseTopline = g._base_topline; /* restgamestate copies saved keys over game */
@@ -704,6 +714,7 @@ export async function dorecover(save) {
     // getlev() reloads the map but leaves this fresh allocator in place.
     init_rect();
     g.program_state.in_getlev = 1;
+    rest_rooms(g.level);
     restdamage_reverse(g.level);
     find_lev_obj_clear_no_charge(g.level);
     // C restore.c:811,898 reads the original saved current level twice;
@@ -732,6 +743,7 @@ export async function dorecover(save) {
          * restored svm.moves (save.c:516).  rest_regions (region.c:813) ages
          * its regions by the old stamp during that read.  So a revisit after
          * restore measures elapsed from the SAVE, not from when it was left. */
+        rest_rooms(snap.level);
         const aged = (g.moves | 0) - (snap.omoves | 0);
         for (let i = 0; i < (snap.regions?.n_regions | 0); i++) {
             const reg = snap.regions.regions[i];
@@ -782,7 +794,11 @@ export async function dorecover(save) {
     const grid = new Map();
     restmonchn_data(g.fmon);
     for (let mon = g.fmon; mon; mon = mon.nmon) {
-        if (mon.isshk) restshk(mon, false);
+        if (mon.isshk) {
+            restshk(mon, false);
+            // C restore.c:1182-1183: rest_rooms cleared the resident slot.
+            set_residency(mon, false);
+        }
         if (mon === g.u?.usteed) continue;
         const key = (mon.mx | 0) * 256 + (mon.my | 0);
         const othermon = grid.get(key);

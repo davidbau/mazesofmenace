@@ -288,6 +288,7 @@ class Parser {
 // assertions even when a nullable iteration could instead be skipped.
 function compileNfa(root) {
   const states = [];
+  const zeroWidth = new WeakMap();
   let transitions = 0;
   const add = state => {
     if (states.length >= MAX_STATES) fail(REG_ESPACE);
@@ -315,7 +316,31 @@ function compileNfa(root) {
     if (max < 0) connect(child.last, child.first);
     return { ...child, nullable: min === 0 || child.nullable, empty: child.nullable ? child.empty : 0 };
   }
+  function characterRepetition(child, min, max) {
+    // Each count follows the same chain. Link its allowed endpoints to the
+    // next expression instead of connecting every optional copy to every later copy.
+    const count = max < 0 ? Math.max(1, min) : max;
+    const positions = [];
+    for (let i = 0; i < count; i++) {
+      const id = add({ ...child, out: [] });
+      const position = { id, assertions: 0 };
+      if (i) connect([positions[i - 1]], [position]);
+      positions.push(position);
+    }
+    const last = max < 0 ? [positions.at(-1)] : positions.slice(Math.max(1, min) - 1);
+    if (max < 0) connect(last, last);
+    return { nullable: min === 0, empty: 0, first: positions.slice(0, 1), last };
+  }
   function emit(node) {
+    const cached = zeroWidth.get(node);
+    if (cached) return cached;
+    const result = emitUncached(node);
+    // Empty groups and assertions have no state IDs to duplicate. Cache
+    // their summaries so nested repetition cannot expand them exponentially.
+    if (!result.first.length) zeroWidth.set(node, result);
+    return result;
+  }
+  function emitUncached(node) {
     switch (node.kind) {
       case 'empty': return empty();
       case 'assert': return { ...empty(), empty: ASSERTIONS[node.assertion] };
@@ -326,6 +351,15 @@ function compileNfa(root) {
       case 'concat': return node.parts.map(emit).reduce(concat);
       case 'alt': return node.parts.map(emit).reduce(union);
       case 'repeat': {
+        const child = node.child;
+        if (child.kind === 'char') return characterRepetition(child, node.min, node.max);
+        if (child.kind === 'repeat' && child.child.kind === 'char') {
+          // Repeating a?, a*, or a+ yields a continuous range of counts.
+          if (child.min === 0 && child.max === 1)
+            return characterRepetition(child.child, 0, node.max);
+          if (child.max < 0 && child.min <= 1)
+            return characterRepetition(child.child, child.min * node.min, -1);
+        }
         if (node.min <= 1 && node.max <= 1) return iteration(emit(node.child), node.min, node.max);
         let required = null, optional = null;
         for (let i = 0; i < node.min; ++i) {

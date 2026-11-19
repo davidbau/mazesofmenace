@@ -24,6 +24,7 @@ import { helpless } from './mhitm.js';
 import { x_monnam, y_monnam as y_monnam_real } from './do_name.js';
 import { Monnam } from './do_name.js';
 import { finish_meating } from './dogmove.js';
+import { worm_seg_at, worm_seg_clear_at } from './worm.js';
 import { canSaddleMndx, monsndx } from './makemon.js'; // relocate-fns
 import { minimal_monnam } from './do_name.js'; // relocate-fns
 import { m_unleash } from './apply.js'; // relocate-fns
@@ -163,7 +164,12 @@ export function place_monster(mon, x, y, selfInGrid) {
     /* C steed.c:930 overwrites the grid slot even after a collision diagnostic.
      * The displaced monster stays on fmon with its coordinates and mstate,
      * but m_at must no longer find it until it is placed again. */
-    if (othermon && othermon !== mon) othermon._mapRemoved = true;
+    if (othermon && othermon !== mon
+        && othermon.mx === x && othermon.my === y)
+        othermon._mapRemoved = true;
+    /* Replacing a tail cell doesn't remove the worm's head.  The segment
+     * remains in its linked list, but this grid cell now holds mon. */
+    worm_seg_clear_at(x, y);
     delete mon._mapRemoved;
     /* svl.level.monsters[x][y] = mon — only mon now occupies this grid slot. */
     mon.mstate = MON_FLOOR;
@@ -179,7 +185,9 @@ function m_at_steed(x, y, excl) {
         if (m === excl || (steed && m === steed)) continue;
         if (m.mx === x && m.my === y) return m;
     }
-    return null;
+    /* steed.c:922 reads the whole monster grid, including worm tails.
+     * A worm whose head was overwritten can still occupy tail cells. */
+    return worm_seg_at(x, y);
 }
 
 /* helper: DEADMONSTER macro */

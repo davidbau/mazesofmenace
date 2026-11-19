@@ -962,10 +962,10 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     if (!obj || obj.where !== OBJ_FREE)
         throw new Error('flooreffects: obj not free');
-    const previous = state.gb?.bhitpos
-        ? { ...state.gb.bhitpos } : null;
-    state.gb ??= {};
-    state.gb.bhitpos = { x, y };
+    // C do.c:182-183 copies gb.bhitpos and restores it at 357.
+    const save_bhitpos = { ...state.gb.bhitpos };
+    state.gb.bhitpos.x = x;
+    state.gb.bhitpos.y = y;
     obj.nobj = null;
     obj.nexthere = null;
     let result = false;
@@ -1191,8 +1191,8 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
         }
         return result;
     } finally {
-        if (previous) state.gb.bhitpos = previous;
-        else delete state.gb.bhitpos;
+        state.gb.bhitpos.x = save_bhitpos.x;
+        state.gb.bhitpos.y = save_bhitpos.y;
     }
 }
 
@@ -2414,7 +2414,7 @@ export async function dodown(state = game, env = {}) {
     } else {
         state.ga ??= {};
         state.ga.at_ladder = state.level?.at(u.ux, u.uy)?.typ === LADDER;
-        await next_level(!trap, state, { gotoLevel: goto_level });
+        await next_level(!trap, state);
         state.ga.at_ladder = false;
     }
     return ECMD_TIME;
@@ -2471,7 +2471,7 @@ export async function doup(state = game) {
     }
     state.ga ??= {};
     state.ga.at_ladder = state.level?.at(u.ux, u.uy)?.typ === LADDER;
-    await prev_level(true, state, { gotoLevel: goto_level, done });
+    await prev_level(true, state);
     state.ga.at_ladder = false;
     return ECMD_TIME;
 }
@@ -2703,12 +2703,7 @@ export async function goto_level(
     await set_uinwater(false, state);
     u.uundetected = false;
     if (!state.iflags?.nofollowers) {
-        await keepdogs(false, {
-            state,
-            inWizardTower: (x, y, level, callbackState) =>
-                finish_steps(In_W_tower_steps(x, y, level, callbackState),
-                    impossible_printer(callbackState)),
-        });
+        await keepdogs(false, { state });
     }
 
     // do.c:1625 refreshes the departing level's overview before savelev()

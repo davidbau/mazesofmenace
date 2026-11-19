@@ -63,7 +63,7 @@ import { acurr, exercise, change_luck, adjalign, adjattrib, minuhpmax, setuhpmax
 import { losexp } from './exper.js';
 /* dofiretrap's Underwater/Drain_resistance guards (trap.c:4247, :4291). */
 import { HALF_PHDAM, DRAIN_RES, MON_DETACH, SHOPBASE, UTOTYPE_FALLING, UTOTYPE_NONE } from './const.js';
-import { canseemon, canspotmon, newsym, map_trap, tmp_at, obj_to_glyph, glyph_is_invisible_at, unmap_object, Unaware as _trap_Unaware, feel_newsym, map_invisible, shieldeff, topl_force_break_now, flush_pending_messages } from './display.js';
+import { canseemon, canspotmon, newsym, map_trap, tmp_at, obj_to_glyph, remembered_glyph_is_invisible, unmap_object, Unaware as _trap_Unaware, feel_newsym, map_invisible, shieldeff, topl_force_break_now, flush_pending_messages } from './display.js';
 import { bot } from './botl.js';
 import { pline, pline_xy, Norep, You_hear, You_hear as _trap_You_hear, livelog_printf } from './pline.js';
 import { cansee, clear_path, couldsee, recalc_block_point, Blind, vision_recalc } from './vision.js';
@@ -574,7 +574,7 @@ export async function monkilled_trap(mtmp, fltxt = '', nocorpse = false) {
      * be repainted there after placement (C: mon_leaving_level newsym(mx,my) +
      * the placed corpse object render). */
     const _dx = mtmp.mx | 0, _dy = mtmp.my | 0;
-    if (glyph_is_invisible_at(_dx, _dy))
+    if (remembered_glyph_is_invisible(_dx, _dy))
         unmap_object(_dx, _dy);
     /* C mon.c:2765-2779: m_detach releases a dead monster's inventory before
      * mondied() rolls corpse_chance.  Keep this before the corpse roll: dropped
@@ -606,8 +606,13 @@ export async function monkilled_trap(mtmp, fltxt = '', nocorpse = false) {
      * killed fire elemental stops lighting its surroundings. */
     if (_dx > 0 && emits_light(priorData))
         del_light_source(LS_MONSTER, monst_to_any(mtmp));
+    /* C mon.c:2699,2716: newsym only when the monster was `onmap`
+     * (svl.level.monsters[mx][my] == mon).  A ridden steed is never in the
+     * grid, so its death does not repaint the hero's square here; under
+     * Hallucination that repaint would re-roll the hero glyph. */
+    const onmap = isok(_dx, _dy) && m_at(_dx, _dy) === mtmp;
     mtmp._dyingInGrid = false; /* C mon.c:2711: remove_monster precedes newsym */
-    if (_dx > 0)
+    if (onmap)
         newsym(_dx, _dy);
     if (mtmp.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, before relobj */
     await quest_monster_died(mtmp);

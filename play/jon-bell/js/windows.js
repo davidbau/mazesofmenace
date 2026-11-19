@@ -147,8 +147,16 @@ function _getlin_clear_message_window(g) {
     // Both calls follow the prompt flush. Like C's WIN_MESSAGE, the screen
     // and display exist throughout getlin; there is no uninitialized arm.
     const rows = s.split('\n');
+    /* wintty.c:1048-1056 tty_clear_nhwindow(WIN_MESSAGE): a prompt hard-wrapped
+     * onto row 1 (cury > 0) also runs docorner(1, cury + 1, 0), which cl_end()s
+     * rows 0..cury and repaints no map for y < 2. */
+    const wrapped = rows[0].replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').length >= 78
+        && String(g._topl_prompt_written ?? '').length >= 80
+        && rows.length > 1 && g._topl_prompt_echo === true;
     rows[0] = '';
+    if (wrapped) rows[1] = '';
     g._screen_output = rows.join('\n');
+    g._row1ErasedFrame = wrapped ? g._screen_output : null;
 }
 
 export async function getlin(prompt) {

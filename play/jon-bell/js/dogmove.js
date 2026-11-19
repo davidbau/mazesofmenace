@@ -33,7 +33,6 @@ import { is_pole as is_pole_dm, xytodir as xytodir_dm, dirtocoord as dirtocoord_
 import { flooreffects as flooreffects_dm } from './do.js';
 import { wizdeadorgone } from './wizard.js';
 import { set_msg_xy as set_msg_xy_dm } from './pline.js';
-import { obj_no_longer_held } from './do.js';
 import { impossible as polystone_impossible } from './pline.js';
 import { m_in_out_region as m_in_out_region_dm, create_gas_cloud as create_gas_cloud_dm } from './region.js';
 import { set_apparxy as set_apparxy_dm, itsstuck, find_pmmonst, bee_eat_jelly } from './monmove.js';
@@ -687,7 +686,6 @@ async function relobj_dm(mtmp) {
         if (cansee(omx, omy) && game.flags?.verbose !== false)
             { set_msg_xy_dm(mtmp.mx, mtmp.my); await pline(`${Monnam_dm(mtmp)} drops ${objName}.`); } /* pline_mon, steal.c:836 */
         if (!await flooreffects_dm(otmp, omx, omy, 'fall')) {
-            await obj_no_longer_held(otmp);
             await place_object(otmp, omx, omy);
             await stackobj_dm(otmp);
         }
@@ -725,7 +723,6 @@ async function relobj_dead_dm(mtmp) {
                 .includes(game.level?.locations?.[omx]?.[omy]?.roomno | 0))
             otmp.no_charge = 1;
         if (!await flooreffects_dm(otmp, omx, omy, "fall")) {
-            await obj_no_longer_held(otmp); /* C mkobj.c:2330 via place_object */
             await place_object(otmp, omx, omy);
             await stackobj_dm(otmp);
         }

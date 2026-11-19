@@ -3205,7 +3205,7 @@ function _Blind_dw() {
  * Refresh sensed monsters after vision changes, including stationary monsters
  * outside the cells vision_recalc repaints.  The remaining unported call is
  * learn_unseen_invent(). */
-function toggle_blindness_dw() {
+async function toggle_blindness_dw() {
     const g = game;
     // C potion.c:338,349-350: Blind_telepat || Infravision || Stinging.
     const up = g.u?.uprops;
@@ -3214,7 +3214,9 @@ function toggle_blindness_dw() {
     g.disp = g.disp || {};
     g.disp.botl = 1;
     g.vision_full_recalc = 1;
-    vision_recalc(0);
+    // C potion.c:346-350 finishes vision_recalc's monster notices before
+    // see_monsters paints telepathically sensed monsters outside old sight.
+    await vision_recalc(0);
     if (has(TELEPAT_DISP_PROP) || has(INFRAVISION_PROP) || Stinging)
         see_monsters();
     if (Stinging)
@@ -3260,7 +3262,7 @@ export async function Blindf_on(otmp) {
             await You('can see!');
     }
     if (changed)
-        toggle_blindness_dw();
+        await toggle_blindness_dw();
 }
 
 export async function Blindf_off(otmp) {
@@ -3306,7 +3308,7 @@ export async function Blindf_off(otmp) {
         await pline('You can see again.');
     }
     if (changed)
-        toggle_blindness_dw();
+        await toggle_blindness_dw();
 }
 
 export const RIN_LEVITATION_OTYP = 183;

@@ -175,6 +175,7 @@ export class NethackGame {
          * whole end-of-game score list, header included.  sysopt comes from
          * sys.c:67-68: entrymax = max(ENTRYMAX, 10), pointsmin = max(POINTSMIN, 1). */
         g.flags = { verbose: true, end_top: 3, end_around: 2, end_own: false,
+                    bones: true, /* C optlist.h:213-214; may be disabled by the rc. */
                     sortloot: 'l' /* C options.c:7208 */,
                     sortpack: true /* C optlist.h:687-688; options.c:7167 */,
                     rest_on_space: false,

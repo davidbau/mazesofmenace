@@ -140,13 +140,6 @@ const EROSION = Object.freeze({
     },
 });
 
-function erosionOperation(env, name, fallback) {
-    const operation = env[name] ?? fallback;
-    if (typeof operation !== 'function')
-        throw new TypeError(`item erosion requires a ${name} operation`);
-    return operation;
-}
-
 function currentErosion(obj, primary) {
     return Math.trunc(primary ? obj.oeroded ?? 0 : obj.oeroded2 ?? 0);
 }
@@ -189,27 +182,23 @@ export async function erode_obj(obj, description, type, flags, env) {
     }
     // trap.c:257 draws rnl(4) for a blessed item.
     const random = env.random ?? coreRandom;
-    const message = erosionOperation(env, 'message', ttyPline);
-    const vismon = monsterVictim && erosionOperation(
-        env,
-        'canSeeMonster',
-        canseemon,
-    )(monsterVictim, state);
-    const hit = state.gb?.bhitpos;
+    const message = env.message ?? ttyPline;
+    const vismon = monsterVictim
+        && (env.canSeeMonster ?? canseemon)(monsterVictim, state);
     let pool = false;
-    if (floorVictim && hit) {
+    if (floorVictim) {
         const poolAt = env.poolAt
             ?? (await import('./dbridge.js')).is_pool;
-        pool = await poolAt(hit.x, hit.y, state);
+        pool = await poolAt(state.gb.bhitpos.x, state.gb.bhitpos.y, state);
     }
     const visibleAtObject = floorVictim
         && (typeof env.canSeeObject === 'function'
-            ? env.canSeeObject(obj, hit?.x, hit?.y, state)
-            : hit && cansee(hit.x, hit.y, state));
+            ? env.canSeeObject(obj, state.gb.bhitpos.x, state.gb.bhitpos.y, state)
+            : cansee(state.gb.bhitpos.x, state.gb.bhitpos.y, state));
     const visobj = Boolean(visibleAtObject
         && (!pool
             || (Boolean(state.u?.uinwater)
-                && dist2(hit.x, hit.y, state.u.ux, state.u.uy) <= 2)));
+                && dist2(state.gb.bhitpos.x, state.gb.bhitpos.y, state.u.ux, state.u.uy) <= 2)));
     const visible = uvictim || vismon || visobj;
 
     // trap.c:202-206 and 218-222, inside the switch that also selects the
@@ -384,7 +373,7 @@ export async function erode_obj(obj, description, type, flags, env) {
 export async function grease_protect(obj, description, victim, env = {}) {
     const state = env.state ?? game;
     const random = env.random ?? coreRandom;
-    const message = erosionOperation(env, 'message', ttyPline);
+    const message = env.message ?? ttyPline;
     const heroVictim = victim === state.youmonst;
     const vismon = victim && !heroVictim && canseemon(victim, state);
 
@@ -447,11 +436,11 @@ export async function acid_damage(obj, env = {}) {
             && !Blind(state.u)) {
             const msg = aobjnam(obj, 'fade', state);
             if (heroVictim) {
-                await erosionOperation(env, 'message', ttyPline)(
+                await (env.message ?? ttyPline)(
                     `Your ${msg}.`, state,
                 );
             } else if (vismon) {
-                await erosionOperation(env, 'message', ttyPline)(
+                await (env.message ?? ttyPline)(
                 `${monsterPossessive(victim, state, true)} ${msg}.`, state,
                 );
             }

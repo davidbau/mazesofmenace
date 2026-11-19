@@ -662,7 +662,7 @@ export function count_achievements() {
 
 /* C insight.c:2953 num_genocides().  mvitals and the monster table are both
  * present in the JS state; count the G_GENOD bit directly. */
-function num_genocides() {
+export function num_genocides() {
     const G_GENOD = 0x02;
     const vitals = game.mvitals || [];
     let n = 0;
@@ -680,7 +680,7 @@ function num_genocides() {
 
 /* C insight.c:2527-2537 sokoban_in_play() — the branch is considered active
  * once the corresponding achievement has been recorded. */
-function sokoban_in_play() {
+export function sokoban_in_play() {
     const achieved = game.u?.uachieved;
     if (!Array.isArray(achieved)) return false;
     for (let i = 0; i < achieved.length && achieved[i]; i++)

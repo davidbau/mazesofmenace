@@ -83,6 +83,9 @@ function remove_monster(x, y) {
 /* The grid READ, for js/uhitm.js m_at().  C has no separate entry point: its
  * m_at() is the one grid lookup and a segment square answers with the worm. */
 export function worm_seg_at(x, y) { return _seg_occ.get(_seg_key(x, y)) || null; }
+/* C steed.c:930 replaces one monster-grid cell without changing the
+ * corresponding worm segment's coordinates or its head's occupancy. */
+export function worm_seg_clear_at(x, y) { _seg_occ.delete(_seg_key(x, y)); }
 export function worm_seg_swap(x1, y1, x2, y2) {
     const k1 = _seg_key(x1, y1), k2 = _seg_key(x2, y2);
     const a = _seg_occ.get(k1), b = _seg_occ.get(k2);

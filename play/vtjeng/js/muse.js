@@ -145,7 +145,7 @@ import { m_next2u } from './mhitu.js';
 import { paralyze_monst } from './mhitm.js';
 import {
     healmon, m_carrying, maybe_unhide_at, mon_offmap, mondead, mongone, monkilled,
-    seemimic, wakeup, xkilled, is_Vlad, flash_mon, m_in_air, newcham,
+    seemimic, wakeup, xkilled, is_Vlad, flash_mon, newcham,
 } from './mon.js';
 import {
     acidic, amorphous, attacktype, attacktype_fordmg, can_blow, dmgtype,
@@ -2399,7 +2399,8 @@ async function mbhit(mon, range, fhitm, fhito_fn, obj, state, rawEnv = {}) {
     const otyp = obj.otyp;
 
     state.gb ??= {};
-    state.gb.bhitpos = { x: mon.mx, y: mon.my };
+    state.gb.bhitpos.x = mon.mx;
+    state.gb.bhitpos.y = mon.my;
     const ddx = sgn(mon.mux - mon.mx);
     const ddy = sgn(mon.muy - mon.my);
 
@@ -3355,8 +3356,6 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
         random,
         message,
         redraw,
-        mInAir: env.mInAir ?? m_in_air,
-        heroDeaf: env.heroDeaf ?? ((hookState) => Deaf(hookState.u)),
         youHear: env.youHear ?? youHear,
         displayRandom: env.displayRandom
             ?? ((bound) => rn2_on_display_rng(bound, state)),

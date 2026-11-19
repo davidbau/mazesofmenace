@@ -956,13 +956,6 @@ export function is_safemon(monster, state = game) {
     );
 }
 
-function requireAttackOperation(env, name) {
-    const operation = env[name];
-    if (typeof operation !== 'function')
-        throw new TypeError(`do_attack requires ${name}`);
-    return operation;
-}
-
 // C ref: uhitm.c mhitm_mgc_atk_negated() (74-98). Whether the defender's
 // magic cancellation thwarts the attack before its damage type is applied.
 //
@@ -981,7 +974,7 @@ export async function mhitm_mgc_atk_negated(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
 
     /* mcan doesn't apply to youmonst; hero can't be cancelled */
     if (magr !== state.youmonst && magr.mcan)
@@ -1157,8 +1150,7 @@ export async function attack_checks(mtmp, wep, state = game, env = {}) {
 
     // 220: cache the shown glyph for the visibility and mimic tests below.
     // hack.c stores the destination in gb.bhitpos before calling do_attack().
-    const bhitpos = state.gb?.bhitpos ?? { x: mtmp.mx, y: mtmp.my };
-    const glyph = glyph_at(bhitpos.x, bhitpos.y, state);
+    const glyph = glyph_at(state.gb.bhitpos.x, state.gb.bhitpos.y, state);
 
     // 230-252: a target the hero cannot spot, not hidden under something.
     if (!canspotmon(mtmp, state)
@@ -1170,7 +1162,7 @@ export async function attack_checks(mtmp, wep, state = game, env = {}) {
             `Wait!  There's ${something} there you can't see!`,
             state,
         );
-        map_invisible(bhitpos.x, bhitpos.y, state);
+        map_invisible(state.gb.bhitpos.x, state.gb.bhitpos.y, state);
         // An unseen mimic is treated as though the hero stumbled onto a
         // visible mimic, including the source's adjacent-sticking check.
         if (M_AP_TYPE(mtmp)
@@ -1364,7 +1356,7 @@ export async function find_roll_to_hit(
     }
 
     /* encumbrance: with a lot of luggage, your agility diminishes */
-    const tmp2 = requireAttackOperation(env, 'nearCapacity')(state);
+    const tmp2 = near_capacity(state);
     if (tmp2 !== 0) tmp -= (tmp2 * 2) - 1;
     if (u.utrap) tmp -= 3;
 
@@ -1424,7 +1416,7 @@ export function hugThrottles(species, state) {
 export async function explum(mdef, mattk, state = game, env = {}) {
     const random = env.random ?? coreRandom;
     let damage = random.d(mattk.damn, mattk.damd);
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
 
     switch (mattk.adtyp) {
     case AD_BLND:
@@ -1475,7 +1467,7 @@ export async function explum(mdef, mattk, state = game, env = {}) {
 // C ref: uhitm.c start_engulf() (4931-4946), including its transient display
 // glyph and two source-ordered output delays.
 export async function start_engulf(mdef, state = game, env = {}) {
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const uDigest = digests(state.youmonst.data);
     const uEnfold = enfolds(state.youmonst.data);
     if (!Invisible(state.u)) {
@@ -1508,7 +1500,7 @@ export async function end_engulf(state = game) {
 // deferred corpse effects use eat.c:Finish_digestion through state.afternmv.
 export async function gulpum(mdef, mattk, state = game, env = {}) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const uDigest = digests(state.youmonst.data);
     const uEnfold = enfolds(state.youmonst.data);
     const expelVerb = uDigest ? 'regurgitate' : uEnfold ? 'release' : 'expel';
@@ -1754,7 +1746,7 @@ export async function hmonas(mon, state = game, env = {}) {
     // As in do_attack(), rnl() is reached through a split pudding's mintrap().
     const random = env.random ?? coreRandom;
     const attackEnv = { ...env, state, random };
-    const message = requireAttackOperation(attackEnv, 'message');
+    const message = attackEnv.message ?? ttyPline;
     const sums = new Array(NATTK).fill(M_ATTK_MISS);
     let altAttack = {};
     let altWeapon = false;
@@ -2081,7 +2073,7 @@ export async function hmonas(mon, state = game, env = {}) {
                         if (sums[i] === M_ATTK_DEF_DIED
                             && [S_ZOMBIE, S_MUMMY].includes(mon.data.mlet)
                             && random.rn2(5) && !heroSickResistance(state)) {
-                            await requireAttackOperation(attackEnv, 'message')(
+                            await (attackEnv.message ?? ttyPline)(
                                 youFeel(`${heroSick(state) ? 'very ' : ''}sick.`, state),
                                 state,
                             );
@@ -2235,7 +2227,8 @@ export async function do_attack(monster, state = game, env = {}) {
     state.go ??= {};
     state.go.override_confirmation = false;
     state.gb ??= {};
-    state.gb.bhitpos = { x: state.u.ux + state.u.dx, y: state.u.uy + state.u.dy };
+    state.gb.bhitpos.x = state.u.ux + state.u.dx;
+    state.gb.bhitpos.y = state.u.uy + state.u.dy;
     state.gn ??= {};
     state.gn.notonhead = state.gb.bhitpos.x !== monster.mx
         || state.gb.bhitpos.y !== monster.my;
@@ -2483,7 +2476,7 @@ export async function hitum_cleave(target, uattk, state = game, env = {}) {
     direction = (direction + (clockwise ? 6 : 2)) % 8;
 
     const oldMortality = u.umortality;
-    const oldHitPosition = state.gb.bhitpos;
+    const oldHitPosition = { ...state.gb.bhitpos };
     const oldNotOnHead = state.gn.notonhead;
 
     for (let count = 3; count > 0; count--) {
@@ -2506,7 +2499,8 @@ export async function hitum_cleave(target, uattk, state = game, env = {}) {
         mon_maybe_unparalyze(mon, random);
         const dieroll = random.rnd(20);
         const mhit = { value: needed > dieroll };
-        state.gb.bhitpos = { x: tx, y: ty };
+        state.gb.bhitpos.x = tx;
+        state.gb.bhitpos.y = ty;
         state.gn.notonhead = mon.mx !== tx || mon.my !== ty;
         await known_hitum(
             mon, state.uwep, mhit, needed, counters.role_roll_penalty,
@@ -2523,7 +2517,8 @@ export async function hitum_cleave(target, uattk, state = game, env = {}) {
     }
 
     state.cleaverClockwise = !clockwise;
-    state.gb.bhitpos = oldHitPosition;
+    state.gb.bhitpos.x = oldHitPosition.x;
+    state.gb.bhitpos.y = oldHitPosition.y;
     state.gn.notonhead = oldNotOnHead;
     return !(target && target.mhp < 1);
 }
@@ -2810,7 +2805,7 @@ async function hmon_hitmon_weapon_melee(hmd, mon, obj, state, env, random) {
                && !Upolyd(state.u)
                /* multi-shot throwing is too powerful here */
                && hmd.hand_to_hand) {
-        await requireAttackOperation(env, 'message')(
+        await (env.message ?? ttyPline)(
             `You strike ${monsterCommonName(mon, state)} from behind!`,
             state,
         );
@@ -2848,7 +2843,7 @@ async function hmon_hitmon_weapon_melee(hmd, mon, obj, state, env, random) {
                 + ` ${otense(monwep, 'shatter', state)}`;
         /* buf[sizeof buf - sizeof from_your_blow] = '\0' */
         buf = buf.slice(0, BUFSZ - (from_your_blow.length + 1));
-        await requireAttackOperation(env, 'message')(
+        await (env.message ?? ttyPline)(
             `${buf}${from_your_blow}`,
             state,
         );
@@ -2937,7 +2932,7 @@ async function hmon_hitmon_weapon_ranged(hmd, mon, obj, state, env, random) {
     if (!hmd.thrown && obj === state.uwep && obj.otyp === BOOMERANG
         && (random.rnl ?? rnl)(4) === 3) {
         const moreThanOne = obj.quan > 1;
-        const message = requireAttackOperation(env, 'message');
+        const message = env.message ?? ttyPline;
         await message(
             `As you hit ${mon_nam(mon, state)}, ${moreThanOne ? 'one of ' : ''}`
             + `${yname(obj, state)} breaks into splinters.`,
@@ -2973,7 +2968,7 @@ async function hmon_hitmon_weapon(hmd, mon, obj, state, env, random) {
 // C ref: uhitm.c hmon_hitmon_misc_obj() (1119-1386). This switch handles
 // held and thrown nonweapon hits, including their object-lifetime effects.
 async function hmon_hitmon_misc_obj(hmd, mon, obj, state, env, random) {
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const wornEnv = setwornEnv(state, env);
     const lifeEnv = {
         ...env,
@@ -3425,7 +3420,7 @@ async function hmon_hitmon_dmg_recalc(hmd, obj, state, env) {
 async function hmon_hitmon_poison(hmd, mon, obj, state, env, random) {
     let nopoison = 10 - Math.trunc((obj.owt ?? 0) / 10);
     if (nopoison < 2) nopoison = 2;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     if (state.urole?.mnum === PM_SAMURAI) {
         await message('You dishonorably use a poisoned weapon!', state);
         adjalign(-sgn(state.u.ualign?.type ?? 0), state);
@@ -3587,7 +3582,7 @@ async function hmon_hitmon_splitmon(hmd, mon, obj, state, env) {
             state,
         });
         if (mclone) {
-            const message = requireAttackOperation(env, 'message');
+            const message = env.message ?? ttyPline;
             let withwhat = '';
             if (state.u.twoweap && state.flags?.verbose)
                 withwhat = ` with ${yname(obj, state)}`;
@@ -3617,7 +3612,7 @@ async function hmon_hitmon_msg_hit(hmd, mon, obj, state, env) {
         && state.m_shot.o === obj.otyp;
     if (!hmd.hittxt /*( thrown => obj exists )*/
         && (!hmd.destroyed || shotContinues)) {
-        const message = requireAttackOperation(env, 'message');
+        const message = env.message ?? ttyPline;
         if (hmd.thrown) {
             await hit(mshot_xname(obj, state), mon, exclam(hmd.dmg), state, env);
         } else if (!state.flags?.verbose) {
@@ -3665,7 +3660,7 @@ export async function hmon_hitmon_msg_silver(hmd, mon, state = game, env = {}) {
     if (!noncorporeal(hmd.mdat) && !amorphous(hmd.mdat))
         whom = `${s_suffix(whom)} flesh`;
     const text = format.replace(/%%|%s/gu, slot => slot === '%%' ? '%' : whom);
-    await requireAttackOperation(env, 'message')(text, state);
+    await (env.message ?? ttyPline)(text, state);
 }
 
 // C ref: uhitm.c hmon_hitmon_msg_lightobj() (1702-1730); obj is unused.
@@ -3689,7 +3684,7 @@ export async function hmon_hitmon_msg_lightobj(hmd, mon, state = game, env = {})
     if (!noncorporeal(hmd.mdat) && !amorphous(hmd.mdat))
         whom = s_suffix(whom) + ' flesh';
     const line = visible ? prefix + whom + suffix : whom + suffix;
-    await requireAttackOperation(env, 'message')(line, state);
+    await (env.message ?? ttyPline)(line, state);
 }
 
 // C ref: uhitm.c nohandglow() (6314-6337). The helper emits the current
@@ -3700,7 +3695,7 @@ async function nohandglow(mon, state, env) {
 
     const hands = makeplural(body_part(HAND, state.youmonst));
     const altfeedback = Blind(state.u) || Invisible(state.u);
-    const postMessage = requireAttackOperation(env, 'message');
+    const postMessage = env.message ?? ttyPline;
     if (state.u.umconf === 1) {
         if (altfeedback) {
             await postMessage(`Your ${hands} stop tingling.`, state);
@@ -3900,7 +3895,7 @@ async function hmon_hitmon(mon, obj, thrown, dieroll, state = game, env = {}) {
     if (hmd.unpoisonmsg)
         hmd.saved_oname = cxname(obj, state);
 
-    const postMessage = requireAttackOperation(env, 'message');
+    const postMessage = env.message ?? ttyPline;
     if (hmd.needpoismsg)
         await postMessage(
             `The poison doesn't seem to affect ${mon_nam(mon, state)}.`,
@@ -4014,7 +4009,7 @@ async function theft_petrifies(otmp, state = game, rawEnv = {}) {
 // thefts, then restore it through mpickobj() in the same source order.
 async function steal_it(mdef, mattk, state = game, rawEnv = {}) {
     const random = rawEnv.random ?? coreRandom;
-    const message = requireAttackOperation(rawEnv, 'message');
+    const message = rawEnv.message ?? ttyPline;
     const env = { ...rawEnv, state, random, message };
     const nameEnv = { ...env, canSpotMonster: canspotmon };
     const inventoryEnv = {
@@ -4119,7 +4114,7 @@ async function steal_it(mdef, mattk, state = game, rawEnv = {}) {
 // Otherwise steal() runs and the attacker teleports away on success.
 async function mhitm_ad_sedu(magr, mattk, mdef, mhm, state = game, env = {}) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
 
     if (magr === state.youmonst) {
         await steal_it(mdef, mattk, state, { ...env, state, random, message });
@@ -4373,7 +4368,7 @@ export async function mhitm_ad_fire(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const effectEnv = { ...env, state, random };
     const orig_dmg = mhm.damage;
     const pd = mdef.data;
@@ -4522,7 +4517,7 @@ export async function mhitm_ad_cold(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const effectEnv = { ...env, state, random };
     const orig_dmg = mhm.damage;
 
@@ -4598,7 +4593,7 @@ export async function mhitm_ad_elec(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const effectEnv = { ...env, state, random };
     const orig_dmg = mhm.damage;
 
@@ -4676,7 +4671,7 @@ export async function mhitm_ad_acid(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const effectEnv = { ...env, state, random, message };
 
     if (magr === state.youmonst) {
@@ -4756,7 +4751,7 @@ export async function mhitm_really_poison(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const visible = Boolean(state.gv?.vis);
     const nameEnv = { displayRandom: env.displayRandom };
 
@@ -4799,7 +4794,7 @@ export async function mhitm_ad_drst(
     if (magr === state.youmonst) {
         /* uhitm */
         if (!negated && !random.rn2(8)) {
-            const message = requireAttackOperation(env, 'message');
+            const message = env.message ?? ttyPline;
             const subject = mpoisons_subj(magr, mattk, state);
             await message(`Your ${subject} was poisoned!`, state);
             if (Resists_Elem(mdef, POISON_RES, state)) {
@@ -4997,7 +4992,7 @@ export async function mhitm_ad_phys(
                 && touch_petrifies(state.mons?.[otmp.corpsenm]);
             if (petrifyingCorpse) {
                 mhm.damage = 1;
-                const message = requireAttackOperation(env, 'message');
+                const message = env.message ?? ttyPline;
                 await message(messageAt(
                     `${Monnam(magr, state, env)} hits you with the `
                     + `${pmname(state.mons[otmp.corpsenm], NEUTRAL)} corpse.`,
@@ -5039,7 +5034,7 @@ export async function mhitm_ad_phys(
             if (objectType(otmp, state).oc_material === SILVER
                 && (state.u.ulycn >= LOW_PM
                     || hates_silver(state.youmonst.data))) {
-                const message = requireAttackOperation(env, 'message');
+                const message = env.message ?? ttyPline;
                 await message('The silver sears your flesh!', state, env);
                 await exercise(A_CON, false, state, random, {
                     encumberMessage: mhitmEncumberMessage(env),
@@ -5067,7 +5062,7 @@ export async function mhitm_ad_phys(
                 state.disp.botl = true;
                 mhm.damage = 0;
                 if (await cloneu(state, { ...env, random })) {
-                    const message = requireAttackOperation(env, 'message');
+                    const message = env.message ?? ttyPline;
                     await message(
                         `You divide as ${mon_nam(magr, state, env)} hits you!`,
                         state,
@@ -5132,7 +5127,7 @@ export async function mhitm_ad_phys(
             mhm.damage = artifactDamage.value;
             if (!artifactHit) {
                 if (state.gv?.vis) {
-                    const message = requireAttackOperation(env, 'message');
+                    const message = env.message ?? ttyPline;
                     await message(
                         messageAt(
                             `${Monnam(magr, state, env)} hits `
@@ -5251,7 +5246,7 @@ export async function mhitm_ad_blnd(
     state = game,
     env = {},
 ) {
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const random = env.random ?? coreRandom;
 
     if (magr === state.youmonst) {
@@ -5349,7 +5344,7 @@ export async function mhitm_ad_ston(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
 
     if (magr === state.youmonst) {
         // C's munstone() return is used to decide whether minstapetrify()
@@ -5424,7 +5419,7 @@ export async function mhitm_ad_stun(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const defenderData = mdef.data;
 
     if (magr === state.youmonst) {
@@ -5485,7 +5480,7 @@ export async function mhitm_ad_legs(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
 
     if (magr === state.youmonst) {
         // uhitm.c:4427-4435.  This arm is the ordinary hero physical blow;
@@ -5600,7 +5595,7 @@ export async function mhitm_ad_curs(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const pa = magr.data;
     const pd = mdef.data;
 
@@ -6043,7 +6038,7 @@ export async function mhitm_ad_stck(
         if (!negated && !sticks(pd) && m_next2u(mdef, state)) {
             set_ustuck(mdef, state);
             if (barbs) {
-                const message = requireAttackOperation(env, 'message');
+                const message = env.message ?? ttyPline;
                 await message(
                     `Your barbs stick to ${y_monnam(mdef, state, env)}!`,
                     state,
@@ -6055,7 +6050,7 @@ export async function mhitm_ad_stck(
         if (!negated && !state.u.ustuck && !sticks(pd)) {
             set_ustuck(magr, state);
             if (barbs) {
-                const message = requireAttackOperation(env, 'message');
+                const message = env.message ?? ttyPline;
                 await message('The barbs stick to you!', state);
             }
         }
@@ -6290,7 +6285,7 @@ export async function mhitm_ad_slee(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const effectEnv = { ...env, state, random, message };
 
     if (magr === state.youmonst) {
@@ -6520,7 +6515,7 @@ export async function mhitm_ad_slow(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const effectEnv = { ...env, state, random, message };
     const negated = await mhitm_mgc_atk_negated(
         magr, mdef, false, state, effectEnv,
@@ -6579,7 +6574,7 @@ export async function mhitm_ad_drli(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const effectEnv = { ...env, state, random, message };
 
     if (magr === state.youmonst) {
@@ -6667,7 +6662,7 @@ export async function mhitm_ad_conf(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
 
     if (magr === state.youmonst) {
         if (!mdef.mconf) {
@@ -6724,7 +6719,7 @@ export async function mhitm_ad_famn(
 ) {
     if (magr !== state.youmonst && mdef === state.youmonst) {
         const random = env.random ?? coreRandom;
-        const message = requireAttackOperation(env, 'message');
+        const message = env.message ?? ttyPline;
         const text = `${Monnam(magr, state, env)} reaches out, and your body shrivels.`;
         await message(messageAt(text, magr.mx, magr.my, state), state, env);
         await exercise(A_CON, false, state, random, {
@@ -6765,7 +6760,7 @@ export async function mhitm_ad_pest(
         const altAttk = { ...mattk, adtyp: AD_DISE };
         await mhitm_ad_dise(magr, altAttk, mdef, mhm, state, env);
     } else {
-        const message = requireAttackOperation(env, 'message');
+        const message = env.message ?? ttyPline;
         await message(
             messageAt(
                 `${Monnam(magr, state, env)} reaches out, and you feel fever and chills.`,
@@ -6844,7 +6839,7 @@ export async function mhitm_ad_deth(
 ) {
     const defenderData = mdef.data;
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
 
     if (magr !== state.youmonst && mdef === state.youmonst) {
         const text = `${Monnam(magr, state, env)} reaches out with its deadly touch.`;
@@ -6871,7 +6866,7 @@ export async function mhitm_ad_deth(
             return;
         }
 
-        await requireAttackOperation(env, 'message')(
+        await (env.message ?? ttyPline)(
             youFeel('your life force draining away...', state), state,
         );
         mhm.permdmg = 1;
@@ -6900,7 +6895,7 @@ export async function mhitm_ad_heal(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const pd = mdef.data;
     const u = state.u;
 
@@ -7027,7 +7022,7 @@ export async function mhitm_ad_rust(
 
     if (magr === state.youmonst) {
         if (completelyrusts(pd)) {
-            const message = requireAttackOperation(env, 'message');
+            const message = env.message ?? ttyPline;
             await message(
                 `${Monnam(mdef, state, env)} ${mlifesaver(mdef, state)
                     ? 'starts to fall' : 'falls'} to pieces!`,
@@ -7043,7 +7038,7 @@ export async function mhitm_ad_rust(
         await hitmsg(magr, mattk, state, env);
         if (magr.mcan) return;
         if (completelyrusts(pd)) {
-            const message = requireAttackOperation(env, 'message');
+            const message = env.message ?? ttyPline;
             await message('You rust!', state, env);
             await rehumanize(state, env);
             return;
@@ -7053,7 +7048,7 @@ export async function mhitm_ad_rust(
         if (magr.mcan) return;
         if (completelyrusts(pd)) {
             if (state.gv?.vis && canseemon(mdef, state)) {
-                const message = requireAttackOperation(env, 'message');
+                const message = env.message ?? ttyPline;
                 const text = `${Monnam(mdef, state, env)} ${mlifesaver(mdef, state)
                     ? 'starts to fall' : 'falls'} to pieces!`;
                 await message(
@@ -7123,7 +7118,7 @@ export async function mhitm_ad_dcay(
 
     if (magr === state.youmonst) {
         if (completelyrots(pd)) {
-            const message = requireAttackOperation(env, 'message');
+            const message = env.message ?? ttyPline;
             await message(
                 `${Monnam(mdef, state, env)} ${mlifesaver(mdef, state)
                     ? 'starts to fall' : 'falls'} to pieces!`,
@@ -7138,7 +7133,7 @@ export async function mhitm_ad_dcay(
         await hitmsg(magr, mattk, state, env);
         if (magr.mcan) return;
         if (completelyrots(pd)) {
-            const message = requireAttackOperation(env, 'message');
+            const message = env.message ?? ttyPline;
             await message('You rot!', state, env);
             await rehumanize(state, env);
             return;
@@ -7148,7 +7143,7 @@ export async function mhitm_ad_dcay(
         if (magr.mcan) return;
         if (completelyrots(pd)) {
             if (state.gv?.vis && canseemon(mdef, state)) {
-                const message = requireAttackOperation(env, 'message');
+                const message = env.message ?? ttyPline;
                 const text = `${Monnam(mdef, state, env)} ${mlifesaver(mdef, state)
                     ? 'starts to fall' : 'falls'} to pieces!`;
                 await message(
@@ -7474,7 +7469,7 @@ async function mhitm_ad_halu(magr, mdef, mhm, state = game, env = {}) {
 
     if (!magr.mcan && haseyes(mdef.data) && mdef.mcansee) {
         if (state.gv?.vis && canseemon(mdef, state)) {
-            const message = requireAttackOperation(env, 'message');
+            const message = env.message ?? ttyPline;
             const confusion = mdef.mconf ? 'more confused' : 'confused';
             await message(
                 messageAt(
@@ -7504,7 +7499,7 @@ export async function mhitm_ad_dren(
     env = {},
 ) {
     const random = env.random ?? coreRandom;
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const negated = await mhitm_mgc_atk_negated(
         magr,
         mdef,
@@ -7695,7 +7690,7 @@ export async function damageum(
     state = game,
     env = {},
 ) {
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     const random = env.random ?? coreRandom;
     const mhm = {
         damage: random.d(mattk.damn, mattk.damd),
@@ -7785,7 +7780,7 @@ export async function missum(
     state = game,
     env = {},
 ) {
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
 
     if (wouldhavehit) /* monk is missing due to penalty for wearing suit */
         await message('Your armor is rather cumbersome...', state);
@@ -7917,7 +7912,7 @@ export async function mhitm_knockback(
     if ((u_agr || u_def) && !(flags.value & M_ATTK_HIT)) return false;
 
     if (m_is_steadfast(mdef, state)) {
-        const message = requireAttackOperation(env, 'message');
+        const message = env.message ?? ttyPline;
         if (u_def || (state.u?.usteed && mdef === state.u.usteed)) {
             const suffix = state.u?.usteed
                 ? `and ${y_monnam(state.u.usteed, state, env)} ` : '';
@@ -7931,7 +7926,7 @@ export async function mhitm_knockback(
     const knockedhow = dismount ? 'out of your saddle'
         : will_hurtle(mdef, defx + dx, defy + dy, state, env)
             ? 'backward' : 'back';
-    const message = requireAttackOperation(env, 'message');
+    const message = env.message ?? ttyPline;
     if (u_def || canseemon(mdef, state)) {
         const attacker = u_agr ? 'You' : Monnam(magr, state, { displayRandom: env?.displayRandom });
         const defender = u_def || was_u ? 'you' : y_monnam(mdef, state, env);

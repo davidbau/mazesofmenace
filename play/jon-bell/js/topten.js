@@ -16,6 +16,16 @@ export { oname } from './objnam.js';
 import { an } from "./objnam.js";
 import { oname } from './do_name.js';
 import { display_text_window } from './com_pager.js';
+import {
+    ACH_UWIN, ACH_ASTR, ACH_ENDG, ACH_AMUL, ACH_INVK, ACH_BOOK,
+    ACH_BELL, ACH_CNDL, ACH_HELL, ACH_MEDU, ACH_MINE_PRIZE, ACH_SOKO_PRIZE,
+    ACH_ORCL, ACH_NOVL, ACH_MINE, ACH_TOWN, ACH_SHOP, ACH_TMPL,
+    ACH_SOKO, ACH_BGRM, ACH_TUNE, ACH_RNK1, ACH_RNK8,
+} from './const.js';
+import { num_genocides, sokoban_in_play } from './insight.js';
+import { rank_of, rank_to_xlev } from './botl.js';
+import { money_cnt } from './hack.js';
+import { hidden_gold } from './vault.js';
 
 /**
  * int tt_doppel(struct monst *mon)
@@ -541,6 +551,131 @@ export function writeentry(rfile, tt) {
     rfile.out += out;
 }
 
+/* C topten.c:340-613.  The log is written before wizard/discover games
+ * bypass the high score list.  None of these encoders consumes random draws. */
+export function encodexlogflags() {
+    const rp = game.u.uroleplay;
+    let e = 0n;
+    if (wizard()) e |= 1n;
+    if (discover()) e |= 2n;
+    if (!rp.numbones) e |= 4n;
+    if (rp.reroll) e |= 8n;
+    return e;
+}
+
+export function encodeconduct() {
+    const c = game.u.uconduct;
+    let e = 0n;
+    const fields = ['food', 'unvegan', 'unvegetarian', 'gnostic', 'weaphit',
+                    'killer', 'literate', 'polypiles', 'polyselfs', 'wishes',
+                    'wisharti'];
+    for (let i = 0; i < fields.length; i++)
+        if (!c[fields[i]]) e |= 1n << BigInt(i);
+    if (!num_genocides()) e |= 1n << 11n;
+    if (!c.sokocheat && sokoban_in_play()) e |= 1n << 12n;
+    if (!c.pets) e |= 1n << 13n;
+    return e;
+}
+
+export function encodeachieve(secondlong) {
+    const offset = secondlong ? 31 : 0;
+    let r = 0n;
+    for (const achieved of game.u.uachieved || []) {
+        if (!achieved) break;
+        const achidx = achieved - offset;
+        if (achidx > 0 && achidx < 32)
+            r |= 1n << BigInt(achidx - 1);
+    }
+    return r;
+}
+
+/* C writes into buf; the JS string result represents the updated buffer. */
+export function add_achieveX(buf, achievement, condition) {
+    return condition ? buf + (buf ? ',' : '') + achievement : buf;
+}
+
+export function encode_extended_achievements() {
+    const names = {
+        [ACH_UWIN]: 'ascended', [ACH_ASTR]: 'entered_astral_plane',
+        [ACH_ENDG]: 'entered_elemental_planes',
+        [ACH_AMUL]: 'obtained_the_amulet_of_yendor',
+        [ACH_INVK]: 'performed_the_invocation_ritual',
+        [ACH_BOOK]: 'obtained_the_book_of_the_dead',
+        [ACH_BELL]: 'obtained_the_bell_of_opening',
+        [ACH_CNDL]: 'obtained_the_candelabrum_of_invocation',
+        [ACH_HELL]: 'entered_gehennom', [ACH_MEDU]: 'defeated_medusa',
+        [ACH_MINE_PRIZE]: 'obtained_the_luckstone_from_the_mines',
+        [ACH_SOKO_PRIZE]: 'obtained_the_sokoban_prize',
+        [ACH_ORCL]: 'consulted_the_oracle', [ACH_NOVL]: 'read_a_discworld_novel',
+        [ACH_MINE]: 'entered_the_gnomish_mines', [ACH_TOWN]: 'entered_mine_town',
+        [ACH_SHOP]: 'entered_a_shop', [ACH_TMPL]: 'entered_a_temple',
+        [ACH_SOKO]: 'entered_sokoban', [ACH_BGRM]: 'entered_bigroom',
+        [ACH_TUNE]: 'learned_castle_drawbridge_tune',
+    };
+    let buf = '';
+    for (const achidx of game.u.uachieved || []) {
+        if (!achidx) break;
+        const absidx = Math.abs(achidx);
+        let achievement;
+        if (absidx >= ACH_RNK1 && absidx <= ACH_RNK8) {
+            const rank = rank_of(rank_to_xlev(absidx - (ACH_RNK1 - 1)),
+                                 game.urole.mnum, achidx < 0);
+            achievement = ('attained_the_rank_of_' + rank).replaceAll(' ', '_').toLowerCase();
+        } else {
+            achievement = names[absidx];
+            if (!achievement) continue;
+        }
+        buf = add_achieveX(buf, achievement, true);
+    }
+    return buf;
+}
+
+export function encode_extended_conducts() {
+    const c = game.u.uconduct, rp = game.u.uroleplay;
+    let buf = '';
+    for (const [field, name] of [
+        ['food', 'foodless'], ['unvegan', 'vegan'], ['unvegetarian', 'vegetarian'],
+        ['gnostic', 'atheist'], ['weaphit', 'weaponless'], ['killer', 'pacifist'],
+        ['literate', 'illiterate'], ['polypiles', 'polyless'], ['polyselfs', 'polyselfless'],
+        ['wishes', 'wishless'], ['wisharti', 'artiwishless'],
+    ]) buf = add_achieveX(buf, name, !c[field]);
+    buf = add_achieveX(buf, 'genocideless', !num_genocides());
+    if (sokoban_in_play()) buf = add_achieveX(buf, 'sokoban', !c.sokocheat);
+    for (const field of ['blind', 'deaf', 'nudist', 'pauper'])
+        buf = add_achieveX(buf, field, rp[field]);
+    buf = add_achieveX(buf, 'bonesless', !game.flags.bones);
+    buf = add_achieveX(buf, 'petless', !c.pets);
+    buf = add_achieveX(buf, 'unrerolled', !rp.reroll);
+    return buf;
+}
+
+export function writexlentry(rfile, tt, how) {
+    const g = game, u = g.u, rp = u.uroleplay;
+    const fields = [
+        ['version', `${tt.ver_major}.${tt.ver_minor}.${tt.patchlevel}`],
+        ['points', tt.points], ['deathdnum', tt.deathdnum], ['deathlev', tt.deathlev],
+        ['maxlvl', tt.maxlvl], ['hp', tt.hp], ['maxhp', tt.maxhp], ['deaths', tt.deaths],
+        ['deathdate', tt.deathdate], ['birthdate', tt.birthdate], ['uid', tt.uid],
+        ['role', tt.plrole], ['race', tt.plrace], ['gender', tt.plgend], ['align', tt.plalign],
+        ['name', g.plname], ['death', formatkiller('', _TT_DTHSZ + 1, how, false)],
+    ];
+    if (g.multi < 0) fields.push(['while', g.multi_reason || 'helpless']);
+    fields.push(
+        ['conduct', '0x' + encodeconduct().toString(16)], ['turns', g.moves],
+        ['achieve', '0x' + encodeachieve(false).toString(16)],
+        ['achieveX', encode_extended_achievements()], ['conductX', encode_extended_conducts()],
+        ['realtime', g.urealtime.realtime], ['starttime', u.ubirthday],
+        ['endtime', g.urealtime.finish_time],
+        ['gender0', _tt_genders[g.flags.initgend].filecode],
+        ['align0', _tt_aligns[1 - u.ualignbase[1]].filecode],
+        ['flags', '0x' + encodexlogflags().toString(16)],
+        ['gold', clong(money_cnt(g.invent)) + clong(hidden_gold(true))],
+        ['wish_cnt', u.uconduct.wishes || 0], ['arti_wish_cnt', u.uconduct.wisharti || 0],
+        ['bones', rp.numbones || 0], ['rerolls', rp.numrerolls || 0],
+    );
+    rfile.out += fields.map(([k, v]) => `${k}=${v}`).join('\t') + '\n';
+}
+
 /* ---- local helpers needed by topten ---- */
 
 function getuid() { return 0; }
@@ -672,9 +807,26 @@ export async function topten(how, when) {
     }
     t0.name = copynchars(t0.name, gs.svp?.plname ?? gs.plname ?? "", 10);
     t0.death = formatkiller('', _TT_DTHSZ + 1, how, true);
-    t0.birthdate = yyyymmdd(gs.ubirthday || 0);
+    t0.birthdate = yyyymmdd(gs.u.ubirthday);
     t0.deathdate = yyyymmdd(when);
     t0.tt_next = null;
+
+    /* C topten.c:700-723: these logs include wizard and discover games. */
+    for (const [name, write] of [['logfile', writeentry],
+                                ['xlogfile', (file, entry) => writexlentry(file, entry, how)]]) {
+        if (lock_file(name, 'scoreprefix', 10)) {
+            const file = fopen_datafile(name, 'a', 'scoreprefix');
+            if (!file) {
+                if (!gs.program_state?.done_hup)
+                    raw_print(name === 'logfile' ? 'Cannot open log file!'
+                                                : 'Cannot open extended log file!');
+            } else {
+                write(file, t0);
+                fclose(file);
+            }
+            unlock_file(name);
+        }
+    }
 
     if (wizard() || discover()) {
         if (how !== PANICKED) {

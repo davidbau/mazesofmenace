@@ -880,7 +880,10 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
          * map; dismissing it (clear_nhwindow, cl_end per spilled row) leaves the
          * row blank, and a window opened at offx > 0 does not repaint the map
          * left of it (wintty.c process_text_window). */
-        if (screenRow === 1 && prompt_spilled_onto_row1()) {
+        if (screenRow === 1 && (prompt_spilled_onto_row1()
+            /* wintty.c:1048-1056 docorner(1, cury + 1, 0) already erased the wrapped
+             * prompt's rows and repaints no map there: a physically blank row 1 stays blank. */
+            || (game._row1ErasedFrame != null && game._row1ErasedFrame === game._screen_output))) {
             mapStr = '';
             mapEnd = 0;
         }

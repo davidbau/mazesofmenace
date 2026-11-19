@@ -173,7 +173,6 @@ export async function water_damage_chain(obj, here = false, env = {}) {
     acidContext.ctx_valid = true;
 
     state.gb ??= {};
-    state.gb.bhitpos ??= { x: 0, y: 0 };
     const savedBhitpos = {
         x: state.gb.bhitpos.x,
         y: state.gb.bhitpos.y,
@@ -202,16 +201,6 @@ export async function water_damage_chain(obj, here = false, env = {}) {
     }
 }
 
-function waterOperation(env, name, fallback) {
-    const operation = env[name] ?? fallback;
-    if (typeof operation !== 'function') {
-        throw new TypeError(
-            `monster water damage requires a ${name} operation`,
-        );
-    }
-    return operation;
-}
-
 function floorFireVisible(x, y, state) {
     return !Blind(state.u) && couldsee(x, y, state);
 }
@@ -234,12 +223,13 @@ export async function fire_damage(obj, force, x, y, rawEnv = {}) {
     const visible = floorFireVisible(x, y, state);
 
     // C trap.c calls apply.c catch_lit() before fire damage; TRUE means the
-    // controlled burn handled this object, so skip destruction.
+    // controlled burn handled this object, so skip destruction. catch_lit()
+    // tests cansee() at the object's square (apply.c:1598), not this
+    // function's !Blind && couldsee() in_sight, so it keeps its own test.
     if (await catch_lit(obj, {
         ...rawEnv,
         state,
         random,
-        squareVisible: (sx, sy) => floorFireVisible(sx, sy, state),
         message,
     })) return false;
 
@@ -402,11 +392,7 @@ export async function water_damage_monster_equipment(
         );
     }
 
-    const splashLight = waterOperation(
-        env,
-        'splashLight',
-        splash_lit,
-    );
+    const splashLight = env.splashLight ?? splash_lit;
     if (await splashLight(obj, env)) return ER_DAMAGED;
 
     if (obj.greased) {
@@ -414,11 +400,7 @@ export async function water_damage_monster_equipment(
         return ER_GREASED;
     }
 
-    const erodeObject = waterOperation(
-        env,
-        'erodeObject',
-        erode_obj,
-    );
+    const erodeObject = env.erodeObject ?? erode_obj;
     return erodeObject(
         obj,
         description,

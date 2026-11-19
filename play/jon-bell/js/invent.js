@@ -1403,62 +1403,9 @@ export async function stackobj(obj) {
     const xi = obj.ox | 0, yi = obj.oy | 0;
     const cell = game.level?.levelObjects?.[xi];
     for (let otmp = cell ? cell[yi] : null; otmp; otmp = otmp.nexthere) {
-        if (otmp !== obj && (await _merged_floor(obj, otmp)))
+        if (otmp !== obj && (await merged({ o: obj }, { o: otmp })))
             break;
     }
-}
-
-async function _merged_floor(survivor, victim) {
-    if (!(await mergable(survivor, victim)))
-        return false;
-
-    /* C: age is quantity-weighted unless lit or globby. */
-    if (!victim.lamplit && !victim.globby) {
-        const sq = survivor.quan, vq = victim.quan;
-        if (sq + vq > 0)
-            survivor.age = Math.trunc((((survivor.age ?? 0) * sq)
-                                       + ((victim.age ?? 0) * vq)) / (sq + vq));
-    }
-    if (!survivor.globby)
-        survivor.quan += victim.quan; // C invent.c:836-840 uses long quantities.
-    /* C: gold re-weighs and forgets bknown; puddings keep their owt. */
-    if ((survivor.oclass | 0) === 12 /* COIN_CLASS */) {
-        survivor.owt = weight(survivor);
-        survivor.bknown = 0;
-    } else if (!survivor.globby) {
-        survivor.owt = weight(survivor);
-    }
-
-    remove_object(victim);
-
-    if (victim.timed)
-        obj_stop_timers(victim);
-
-    /* C: identification states union; the `discovered` pline is OBJ_INVENT-only. */
-    if ((victim.known | 0) !== (survivor.known | 0))
-        survivor.known = 1;
-    if ((victim.rknown | 0) !== (survivor.rknown | 0))
-        survivor.rknown = 1;
-    if ((victim.bknown | 0) !== (survivor.bknown | 0))
-        survivor.bknown = 1;
-    if (victim.bypass)
-        survivor.bypass = 1;
-    /* C invent.c:930 obfree(obj, otmp) — the absorbed object is FREED, not just
-     * unlinked.  Omitting it left the victim alive in whatever else still
-     * referenced it (a timer, above; C's own dealloc_obj is what stops those). */
-    await obfree(victim, survivor);
-    /* Bump bridge objs_deleted.count to match C's delobj counter (mirrors
-     * js/cmd.js:6249 _bumpObjsDeletedCount_useupf and js/potion.js:1782's
-     * useup_potion).  obfree() bottoms out in js/dokick.js's obfree ->
-     * js/mklev.js dealloc_obj(), and dealloc_obj deliberately does NOT bump
-     * this counter itself (js/mklev.js:3609's own comment: a single-point bump
-     * there would double-count every existing hand-bumped caller).  This is
-     * the one and only free this function performs, so bump once, here. */
-    const store = game.__bridge__ || (game.__bridge__ = {});
-    const key = 'objs_deleted.count';
-    const cur = store[key] !== undefined ? Number(store[key]) : 0;
-    store[key] = String(cur + 1);
-    return true;
 }
 
 /* C ref: hacklib.c:804 strstri() — case-insensitive substring search */
@@ -1772,8 +1719,8 @@ async function dispinv_inuse_menu(lets, altLabel, want_reply = true) {
         if (obj === fakeobj) {
             /* C invent.c:3311-3320 — "%s %s (no weapon)". */
             const hands = makeplural_objnam(body_part(HAND));
-            windowLines.push(`${HANDS_SYM} - ${u.uarmg ? 'gloved' : 'bare'} `
-                             + `${hands} (no weapon)`);
+            windowLines.push(menucolor_row(`${HANDS_SYM} - ${u.uarmg ? 'gloved' : 'bare'} `
+                             + `${hands} (no weapon)`));
         } else {
             let txt = await _pickinv_item_text(obj, hand);
             /* C wintty.c:1383-1390,1475-1483 show_obj_syms: with
@@ -2162,7 +2109,8 @@ export async function display_minventory(mon, title) {
                 ? '$' : String.fromCharCode(menuAccel);
             if (accel !== '$') menuAccel = menuAccel === 122 ? 65 : menuAccel + 1;
             first = false;
-            windowLines.push(`${accel} - ${(await doname_body(o, hand))}`);
+            // tty_end_menu (wintty.c:2729-2731) reserves both menu margins.
+            windowLines.push(`${accel} - ${(await doname_body(o, hand))}`.slice(0, 78));
             lineItems.push(null);
         }
     }
