@@ -651,10 +651,18 @@ async function loadLeaderboard() {
         const tbody = document.getElementById('tbody');
         tbody.innerHTML = '';
 
+        const REACHED_AT = (t) => {
+            // When the team first reached its current combined score (earlier wins a tie).
+            const now = (t.public?.points || 0) + (t.heldOut?.points || 0);
+            const hit = (t.history || []).find(h => ((h.points || 0) + (h.heldPoints || 0)) >= now);
+            return hit ? Date.parse(hit.ts) : Infinity;
+        };
+
         const SCORE_SORT = (a, b) =>
             (((b.public?.points || 0) + (b.heldOut?.points || 0)) - ((a.public?.points || 0) + (a.heldOut?.points || 0)))
             || (((b.public?.passing || 0) + (b.heldOut?.passing || 0)) - ((a.public?.passing || 0) + (a.heldOut?.passing || 0)))
             || ((b.public?.rngPct || 0) - (a.public?.rngPct || 0))
+            || (REACHED_AT(a) - REACHED_AT(b))
         ;
 
         const allTeams = (data.teams || []).slice().sort(SCORE_SORT);
