@@ -1414,13 +1414,13 @@ async function _merged_floor(survivor, victim) {
 
     /* C: age is quantity-weighted unless lit or globby. */
     if (!victim.lamplit && !victim.globby) {
-        const sq = survivor.quan | 0, vq = victim.quan | 0;
+        const sq = survivor.quan, vq = victim.quan;
         if (sq + vq > 0)
-            survivor.age = Math.trunc((((survivor.age | 0) * sq)
-                                       + ((victim.age | 0) * vq)) / (sq + vq));
+            survivor.age = Math.trunc((((survivor.age ?? 0) * sq)
+                                       + ((victim.age ?? 0) * vq)) / (sq + vq));
     }
     if (!survivor.globby)
-        survivor.quan = (survivor.quan | 0) + (victim.quan | 0);
+        survivor.quan += victim.quan; // C invent.c:836-840 uses long quantities.
     /* C: gold re-weighs and forgets bknown; puddings keep their owt. */
     if ((survivor.oclass | 0) === 12 /* COIN_CLASS */) {
         survivor.owt = weight(survivor);

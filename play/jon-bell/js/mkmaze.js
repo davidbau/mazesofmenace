@@ -352,8 +352,9 @@ export async function js_makemaz(s, sp) {
                 protofile = `${protofile}-${rnd(sp.rndlevs)}`;
         }
     }
-    // C: wizard-mode SPLEVTYPE env override (mkmaze.c:1157-1178) — never in
-    // sp->rndlevs is set; tut-1/tut-2 have no rndlevs. Not ported.
+    // C mkmaze.c:1157-1178 reads the host SPLEVTYPE environment override.
+    // runSegment inputs expose no host environment; wizard mode itself is
+    // available through nethackrc. The host-only override is not modeled.
     if (protofile) {
         check_ransacked(protofile);
         protofile = `${protofile}${LEV_EXT}`;
@@ -819,6 +820,12 @@ export async function fumaroles() {
         await Norep(`You hear a ${loud ? 'loud ' : ''}whoosh!`);
 }
 
+/* C mkmaze.c:1516-2107 — the Water bubble and Air cloud subsystem.
+ * Water movement detaches and replaces objects, monsters, the hero and traps
+ * through container records (movebubbles:1566-1646, mv_bubble:2027-2085).
+ * Air movement rebuilds the cloud terrain without carrying contents.
+ * Save/restore adapters below retain bubble list order and scalar bounds;
+ * traversal direction is process state rather than saved level state. */
 
 /* C mkmaze.c: svx.xmin / svy.ymin / svx.xmax / svy.ymax, set by
  * setup_waterlevel() and read by the gbxmin/gbymin/gbxmax/gbymax macros. */
@@ -1176,8 +1183,10 @@ export async function movebubbles() {
             for (let i = 0, x = b.x; i < b.bm[0]; i++, x++)
                 for (let j = 0, y = b.y; j < b.bm[1]; j++, y++)
                     if (b.bm[j + 2] & (1 << i)) {
-                        if (!isok(x, y))
+                        if (!isok(x, y)) {
+                            await impossible("movebubbles: bad pos (%d,%d)", x, y);
                             continue;
+                        }
                         const loc = game.level?.at(x, y);
                         if (!loc)
                             continue;
@@ -1780,7 +1789,8 @@ export function get_level_extends() {
     const map = game.level;
     let xmin = 0, xmax = COLNO - 1, ymin = 0, ymax = ROWNO - 1;
     let found = false, nonwall = false;
-    for (xmin = 0; !found && xmin <= COLNO - 1; xmin++) {
+    // C mkmaze.c:1364 includes the sentinel column before adjusting xmin.
+    for (xmin = 0; !found && xmin <= COLNO; xmin++) {
         for (let y = 0; y <= ROWNO - 1; y++) {
             const typ = map.at(xmin, y)?.typ ?? STONE;
             if (typ !== STONE) {
@@ -1810,7 +1820,8 @@ export function get_level_extends() {
         xmax = COLNO - 1;
     found = false;
     nonwall = false;
-    for (ymin = 0; !found && ymin <= ROWNO - 1; ymin++) {
+    // C mkmaze.c:1396 likewise includes the sentinel row on an empty map.
+    for (ymin = 0; !found && ymin <= ROWNO; ymin++) {
         for (let x = xmin; x <= xmax; x++) {
             const typ = map.at(x, ymin)?.typ ?? STONE;
             if (typ !== STONE) {
@@ -1934,30 +1945,16 @@ function pm_resistance(mndx, typ) {
     return row ? (((row[5] | 0) & typ) !== 0) : false;
 }
 
-// C ref: mkmaze.c:569-704 fixup_special(). gl.lregions is game._lregions —
-// populated by lspo_stair/lspo_region/lspo_branch/lspo_teleport_region,
-// all four of which are ported and real (see above), so this loop is live
-// for any level whose des-file declares a stair/branch/portal levregion
-// (e.g. nethack-c/dat/Tou-strt.lua's branch region at (68,14,68,14)). The
-// medusa/cleric-quest/stronghold/baalzebub/mines-ransacked tail is a
-// straight port of the C if/else-if chain using already-real predicates
-// (Is_waterlevel/Is_airlevel/Is_stronghold/In_quest/on_level); the branches
-// whose bodies need genuinely unported machinery (setup_waterlevel, the
-// medusa statue placement, baalz_fixup, stolen_booty) still throw rather
-// than guess at their behavior — none of those conditions are true for
-// tut-1/tut-2 (verified against keystone-spec-phase3-wiring.md §1.8 and
-// nethack-c/dat/dungeon.lua's Tutorial stanza: "unconnected", no branches
-// entry, not medusa/stronghold/baalzebub/mines) so none of those throws
+// C mkmaze.c:569-704 fixup_special(): place level regions, retain teleport
+// arrival bounds, and apply the Medusa, quest, castle, Baalzebub and orctown
+// additions. Water/Air setup precedes placement of the portal regions.
 export async function fixup_special() {
     const uz = game.u?.uz;
     if (Is_waterlevel(uz) || Is_airlevel(uz)) {
         if (game.level)
             game.level.flags.hero_memory = 0;
-        /* C mkmaze.c:585-588 — `svl.level.flags.hero_memory = 0;
-         * setup_waterlevel();`.  js/mkmaze.js carries the AIR half of the
-         * bubble subsystem (see its header for what the WATER half still
-         * omits); this used to throw, which is what kept `air` and `water`
-         * out of js/mklev.js's LOADER_READY. */
+        /* C mkmaze.c:581-585: configure bubbles/clouds before placing
+         * the level regions, including the magic portal. */
         await setup_waterlevel();
         /* NO early return: C falls through into the lregion loop below (its
          * own comment says the water level "has to be set up BEFORE calling

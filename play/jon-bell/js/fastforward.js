@@ -971,6 +971,8 @@ async function fastforward_step_generic_turn_nodochug() {
     age_spells();
     /* C ref: allmain.c:409 exerchk(). */
     await exerchk();
+    /* C ref: allmain.c:410 invault(). */
+    await invault();
     /* C ref: allmain.c:413 u_wipe_engr condition — dynamic DEX lookup. */
     allmain_u_wipe_engr();
     /* C allmain.c:374-377: level activity also runs on generic turns. */
@@ -1048,6 +1050,8 @@ async function fastforward_step_generic_turn() {
     /* C ref: allmain.c:408 age_spells() — decrement spell retention (no RNG). */
     age_spells();
     await exerchk();
+    /* C ref: allmain.c:410 invault(). */
+    await invault();
     /* C ref: allmain.c:413 u_wipe_engr condition — dynamic DEX lookup. */
     allmain_u_wipe_engr();
     /* C allmain.c:374-377: wielding a tool can spend this whole turn. */

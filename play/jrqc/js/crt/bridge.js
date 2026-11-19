@@ -7,6 +7,8 @@
 //   'i8' 'u8' 'i16' 'u16' 'i32' 'u32' 'i64' 'u64' 'f32' 'f64'  scalars (same value in both worlds)
 //   's'  char *: a heap Ptr passes its address; another Ptr is copied to the
 //        heap stack for the call (up to its NUL); heap -> object: a Ptr over the heap
+//   'sb' char * parameter (not const): the callee may write the buffer; an object
+//        Ptr's whole array from its offset is copied in, and back after the call
 //   'o'  pointer to a record only the heap world looks into (lua_State *): the number
 //   'v'  void *: handles for object-world values, userdata blocks for heap memory
 //   'S'  const char *const *: a NULL-terminated list of strings, copied in
@@ -24,7 +26,7 @@ import { Ptr } from './mem.js';
 import { RawBlock } from './alloc.js';
 import { CTrap } from './int.js';
 
-const SIZE = { i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, i64: 8, u64: 8, f32: 4, f64: 8, s: 8, o: 8, v: 8, S: 8 };
+const SIZE = { i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, i64: 8, u64: 8, f32: 4, f64: 8, s: 8, sb: 8, o: 8, v: 8, S: 8 };
 const sizeOf = (k) => (typeof k === 'string' ? SIZE[k] : k.a ? sizeOf(k.a) * k.n : 8);
 
 let records = {};
@@ -86,6 +88,7 @@ export function toHeap(k, v, tmp) {
     if (typeof k === 'string') {
         switch (k) {
         case 's': return strIn(v, tmp);
+        case 'sb': return bufIn(v, tmp);
         case 'o': if (v === null || v === undefined) return 0; if (typeof v === 'number') return v; throw new CTrap('bridge: an object passed as an opaque heap pointer');
         case 'v': return voidIn(v);
         case 'S': return listIn(v, tmp);
@@ -116,6 +119,19 @@ function strIn(v, tmp) {
     const a = tmp.alloc(len + 1);
     for (let i = 0; i < len; i++) H.u8[a + i] = b[v.off + i] & 0xff;
     H.u8[a + len] = 0;
+    return a;
+}
+function bufIn(v, tmp) {
+    if (v === null || v === undefined) return 0;
+    if (typeof v === 'number') return v;
+    if (!(v instanceof Ptr)) throw new CTrap('bridge: a char * that is not a byte pointer');
+    const b = v.buf;
+    if (b.buffer === H.u8.buffer) return v.off * b.BYTES_PER_ELEMENT;
+    const len = b.length - v.off;
+    const a = tmp.alloc(len + 1);
+    for (let i = 0; i < len; i++) H.u8[a + i] = b[v.off + i] & 0xff;
+    H.u8[a + len] = 0;
+    tmp.post.push(() => { for (let i = 0; i < len; i++) b[v.off + i] = H.i8[a + i]; });
     return a;
 }
 function voidIn(v) {

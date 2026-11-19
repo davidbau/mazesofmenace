@@ -68,6 +68,19 @@ export function lit(s) {
     }
     return a;
 }
+/** A wide string literal (L"...": wchar_t values, 32-bit, NUL-terminated), interned. */
+const wlitCache = new Map();
+export function wlit(w) {
+    const k = w.join(',');
+    let a = wlitCache.get(k);
+    if (a === undefined) {
+        a = data((w.length + 1) * 4, 4);
+        i32.set(w, a >>> 2);
+        i32[(a >>> 2) + w.length] = 0;
+        wlitCache.set(k, a);
+    }
+    return a;
+}
 
 // ---------- stack ----------
 const stackBottom = STATIC_MAX, stackTop = STATIC_MAX + STACK;

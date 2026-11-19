@@ -54,7 +54,7 @@ export const nomux_buf = $c.arrayOf(24, () => $c.recArray($T.nomux_cell, 80));
 let nomux_fg_cur = 0;
 let nomux_attr_cur = 0;
 let nomux_decgfx_cur = 0;
-const nomux_out = new Int8Array(6144);
+const nomux_out = new Int8Array(61825);
 let nomux_raw_active = 0;
 let nomux_raw_row = 0;
 let nomux_raw_col = 0;

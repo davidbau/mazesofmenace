@@ -21,6 +21,37 @@ export function initRng(seed) {
     _rngLog = [];
 }
 
+// ── Caller tracing (method rule: "match every roll, including who rolls it") ──
+// Off unless a dev tool sets globalThis.__TELEPORT_CALLER_TRACE = true.
+// When on, each log entry gets " @ <caller>" appended, mirroring the C
+// recorder's " @ fn(file:line)" tail. The official scorer strips
+// everything after " @ ", so this never affects scoring.
+// The caller is the nearest stack frame that is not an RNG helper — the
+// same attribution C uses (rolls inside rne/rnz/d count for the outer fn).
+// Code that rolls on behalf of something else (e.g. a Lua bridge) can set
+// an explicit caller with setRngCaller(tag) / setRngCaller(null).
+const RNG_HELPERS = new Set(['RND', 'rn2', 'rnd', 'rn1', 'rnl', 'rne', 'rnz',
+    'd', 'c_d', 'lua_d', 'rngCallerTag', 'rn2_on_display_rng',
+    'rnd_on_display_rng']);
+let _explicitCaller = null;
+export function setRngCaller(tag) { _explicitCaller = tag; }
+export function rngCallerTag() {
+    if (!globalThis.__TELEPORT_CALLER_TRACE) return '';
+    if (_explicitCaller) return ` @ ${_explicitCaller}`;
+    const saved = Error.stackTraceLimit;
+    Error.stackTraceLimit = 30;
+    const stack = new Error().stack || '';
+    Error.stackTraceLimit = saved;
+    for (const line of stack.split('\n').slice(1)) {
+        const m = /^\s*at (?:async )?([^\s(]+)/.exec(line);
+        if (!m) continue;
+        const name = m[1].split('.').pop();
+        if (RNG_HELPERS.has(name) || name === '<anonymous>') continue;
+        return ` @ ${name}`;
+    }
+    return ' @ ?';
+}
+
 export function enableRngLog() { _rngLogEnabled = true; _rngLog = []; }
 export function getRngLog() { return _rngLog; }
 export function pushRngLogEntry(entry) { if (_rngLogEnabled) _rngLog.push(entry); }
@@ -34,7 +65,7 @@ function RND(x) {
 export function rn2(x) {
     if (x <= 0) return 0;
     const val = RND(x);
-    if (_rngLogEnabled) _rngLog.push(`rn2(${x})=${val}`);
+    if (_rngLogEnabled) _rngLog.push(`rn2(${x})=${val}` + rngCallerTag());
     return val;
 }
 
@@ -42,7 +73,7 @@ export function rn2(x) {
 export function rnd(x) {
     if (x <= 0) return 0;
     const val = RND(x) + 1;
-    if (_rngLogEnabled) _rngLog.push(`rnd(${x})=${val}`);
+    if (_rngLogEnabled) _rngLog.push(`rnd(${x})=${val}` + rngCallerTag());
     return val;
 }
 
@@ -63,7 +94,7 @@ export function rne(x) {
     const utmp = ulevel < 15 ? 5 : Math.trunc(ulevel / 3);
     let tmp = 1;
     while (tmp < utmp && !rn2(x)) tmp++;
-    if (_rngLogEnabled) _rngLog.push(`rne(${x})=${tmp}`);
+    if (_rngLogEnabled) _rngLog.push(`rne(${x})=${tmp}` + rngCallerTag());
     return tmp;
 }
 
@@ -76,7 +107,7 @@ export function rnz(i) {
     tmp *= rne(4);
     if (rn2(2)) { x *= tmp; x = Math.trunc(x / 1000); }
     else { x *= 1000; x = Math.trunc(x / tmp); }
-    if (_rngLogEnabled) _rngLog.push(`rnz(${i})=${x}`);
+    if (_rngLogEnabled) _rngLog.push(`rnz(${i})=${x}` + rngCallerTag());
     return x;
 }
 

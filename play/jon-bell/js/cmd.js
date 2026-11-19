@@ -15092,6 +15092,13 @@ async function _do_look_lookat(x, y) {
                  ...cmapClassDescription(dglyph.ch, !!dglyph.dec), firstmatch,
                  dbaseEntries: checkfile_entries(firstmatch) };
     }
+    /* C pager.c:741-795 dispatches on glyph_at(), so a painted wall stays
+     * "wall" when a wizard Lua overlay has changed its underlying terrain. */
+    if (dglyph?.cls === GLYPHCLS_CMAP
+        && dglyph.cmap >= S_vwall && dglyph.cmap <= S_trwall) {
+        return { kind: 'cmap-wall', glyphChar: dglyph.ch, glyphDec: !!dglyph.dec,
+            ...pager_cmap_description(dglyph), firstmatch: 'wall', dbaseEntry: null };
+    }
     const cell = _levlAt(x, y);
     {
         /* pager.c:1301 tells the two apart: TER_DETECT without TER_MAP is the
@@ -15110,8 +15117,9 @@ async function _do_look_lookat(x, y) {
         const terMap = !!(game.iflags && (game.iflags.terrainmode & TER_MAP));
         const neverMapped = paintedStone && !terMap && (cell.disp_unmapped
             ?? (!(cell.remembered_glyph) && !(cell.seenv | 0)));
-        // C under_water() clears the display buffer without erasing hero memory.
-        if ((!dglyph || neverMapped) && (neverMapped || !paintedStone) && (submerged || overlay || neverMapped || !(cell && cell.remembered_glyph))) {
+        // C pager.c:729-737 describes an explicit unexplored display glyph
+        // even when cls() has left remembered terrain beneath that buffer cell.
+        if ((!dglyph || neverMapped) && (neverMapped || !paintedStone) && (cell?.disp_cls === GLYPHCLS_UNEXPLORED || submerged || overlay || neverMapped || !(cell && cell.remembered_glyph))) {
             /* pager.c:1268-1271: sym is GLYPH_UNEXPLORED's ttychar,
              * showsyms[SYM_UNEXPLORED + SYM_OFF_X] (display.c:2778-2781);
              * SYMBOLS=S_unexplored:x makes it 'x', not blank. */

@@ -5061,7 +5061,8 @@ export function can_carry(mtmp, otmp) {
     if (!touch_artifact_mon(otmp, mtmp))
         return 0;
 
-    const quanRaw = (otmp.quan ?? 1) | 0;
+    /* C mon.c:2004-2006 compares the long quantity before narrowing it. */
+    const quanRaw = otmp.quan ?? 1;
     const iquan = (quanRaw > LARGEST_INT)
         ? (20000 + rn2(LARGEST_INT - 20000 + 1))
         : quanRaw;

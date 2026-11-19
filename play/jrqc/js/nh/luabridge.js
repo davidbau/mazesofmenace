@@ -13,10 +13,14 @@ import { lua_close as H$lua_close, lua_newstate as H$lua_newstate } from './lsta
 import { luaopen_string as H$luaopen_string } from './lstrlib.js';
 import { luaopen_table as H$luaopen_table } from './ltablib.js';
 import { luaopen_utf8 as H$luaopen_utf8 } from './lutf8lib.js';
+import { regcomp as H$regcomp, regfree as H$regfree } from './regcomp.js';
+import { regerror as H$regerror } from './regerror.js';
+import { regexec as H$regexec } from './regexec.js';
 
 $b.setRecords({
     "luaL_Reg": { cls: () => $T.luaL_Reg, size: 16, fields: [["name", 0, "s"], ["func", 8, {"f":["i32","o"]}]] },
     "lua_Debug": { cls: () => $T.lua_Debug, size: 136, fields: [["event", 0, "i32"], ["name", 8, "s"], ["namewhat", 16, "s"], ["what", 24, "s"], ["source", 32, "s"], ["srclen", 40, "u64"], ["currentline", 48, "i32"], ["linedefined", 52, "i32"], ["lastlinedefined", 56, "i32"], ["nups", 60, "u8"], ["nparams", 61, "u8"], ["isvararg", 62, "i8"], ["istailcall", 63, "i8"], ["ftransfer", 64, "u16"], ["ntransfer", 66, "u16"], ["short_src", 68, {"a":"i8","n":60}], ["i_ci", 128, "o"]] },
+    "regex_t": { cls: () => $T.regex_t, size: 32, fields: [["re_magic", 0, "i32"], ["re_nsub", 8, "u64"], ["re_endp", 16, "s"], ["re_g", 24, "o"]] },
 });
 
 export const luaL_checkinteger = $b.toObj(H$luaL_checkinteger, ["i64","o","i32"]);
@@ -145,3 +149,11 @@ export const luaopen_table = $b.toObj(H$luaopen_table, ["i32","o"]);
 $b.register("luaopen_table", H$luaopen_table);
 export const luaopen_utf8 = $b.toObj(H$luaopen_utf8, ["i32","o"]);
 $b.register("luaopen_utf8", H$luaopen_utf8);
+export const regcomp = $b.toObj(H$regcomp, ["i32",{"r":"regex_t","ro":false},"s","i32"]);
+$b.register("regcomp", H$regcomp);
+export const regerror = $b.toObj(H$regerror, ["u64","i32",{"r":"regex_t","ro":true},"sb","u64"]);
+$b.register("regerror", H$regerror);
+export const regexec = $b.toObj(H$regexec, ["i32",{"r":"regex_t","ro":true},"s","u64","o","i32"]);
+$b.register("regexec", H$regexec);
+export const regfree = $b.toObj(H$regfree, ["void",{"r":"regex_t","ro":false}]);
+$b.register("regfree", H$regfree);

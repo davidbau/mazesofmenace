@@ -562,8 +562,8 @@ export async function dotalk() {
 
 
 
-/* C sounds.c:479-516 whimper(mtmp).  The leash check reaches this
- * synchronously, so keep the sound/message path synchronous like yelp(). */
+/* C sounds.c:479-516 whimper(mtmp).  Finish the message, including a
+ * blocking page, before interrupting travel or waking nearby monsters. */
 const _WHIMPER_H_SOUNDS = [
     'beep','boing','sing','belche','creak','cough','rattle','ululate','pop',
     'jingle','sniffle','tinkle','eep','clatter','hum','sizzle','twitter',
@@ -571,7 +571,7 @@ const _WHIMPER_H_SOUNDS = [
     'murmur','oink','quack','rumble','twang','toot','gargle','hoot','warble',
 ];
 
-export function whimper(mtmp) {
+export async function whimper(mtmp) {
     const data = mtmp?.data;
     const msound = data?.msound | 0;
     if ((mtmp?.msleeping | 0) || !(mtmp?.mcanmove | 0) || !msound)
@@ -593,7 +593,7 @@ export function whimper(mtmp) {
         if (!_uprop_active('HALLUC')) {
             Soundeffect(se, 50);
         }
-        pline(`${Monnam(mtmp)} ${vtense(null, verb)}.`);
+        await pline(`${Monnam(mtmp)} ${vtense(null, verb)}.`);
         if (game.context?.run)
             nomul(0);
         wake_nearto(mtmp.mx | 0, mtmp.my | 0, (data.mlevel | 0) * 6);

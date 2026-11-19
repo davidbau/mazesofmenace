@@ -15128,12 +15128,19 @@ export function reset_glyphmap(trigger) {
  * through the same disp_* cell buffer newsym()'s monster arm writes (the
  * numeric show_glyph() below feeds a separate gbuf the screen never reads).
  * C ref: display.c:2196-2201 you_aggravate(). */
-export function show_monster_glyph_at(x, y, mndx) {
+export function show_monster_glyph_at(x, y, mndx, female = false) {
+    if (suppress_map_output()) return;
     const mlet = (mndx >= 0 && mndx < MON_MLET.length) ? MON_MLET[mndx] : 53;
-    const mcol = (mndx >= 0 && mndx < MON_MCOLOR.length) ? MON_MCOLOR[mndx] : 7;
-    _pendingMonGlyph = _monster_glyph_id(mndx, false, 'normal');
-    show_glyph_cell(x, y, monster_symbol(mlet), mcol, false, 0, GLYPHCLS_MON);
-    const loc = game.level?.at(x, y); if (loc) loc.disp_mon_pm = mndx;
+    const mcol = rogue_ibm_color() ? (female ? NO_COLOR : CLR_YELLOW)
+        : (mndx >= 0 && mndx < MON_MCOLOR.length) ? MON_MCOLOR[mndx] : 7;
+    _pendingMonGlyph = _monster_glyph_id(mndx, !!female, 'normal');
+    show_glyph_cell(x, y, monster_symbol(mlet), mcol, false,
+                    _wizmgender_attr(female), GLYPHCLS_MON);
+    const loc = game.level?.at(x, y);
+    if (loc) {
+        loc.disp_mon_pm = mndx;
+        loc.disp_mon_female = !!female;
+    }
 }
 export function show_glyph(x, y, glyph) {
     if (suppress_map_output())

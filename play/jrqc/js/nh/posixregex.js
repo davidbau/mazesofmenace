@@ -3,6 +3,7 @@ import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
 import { alloc } from './alloc.js';
+import { regcomp, regerror, regexec, regfree } from './luabridge.js';
 
 export const regex_id = new Int8Array(11);
 export async function regex_init() {   // posixregex.c:60
@@ -13,7 +14,7 @@ export function regex_compile(s, re) {   // posixregex.c:66
     if (!re) {
         return 0;
     }
-    if ($t1 = $c.missing("regcomp")(re.re, s, 5), re.err = $t1) {
+    if ($t1 = regcomp(re.re, s, 5), re.err = $t1) {
         return 0;
     }
     return 1;
@@ -25,7 +26,7 @@ export function regex_error_desc(re, errbuf) {   // posixregex.c:76
         $c.__builtin___strcpy_chk(errbuf, $c.lit("no explanation"), -1);
     } else {
         errbuf.set(0, 0);
-        $c.missing("regerror")(re.err, re.re, errbuf, 256);
+        regerror(re.err, re.re, errbuf, 256);
         if (!errbuf.get(0)) {
             $c.__builtin___strcpy_chk(errbuf, $c.lit("unspecified regexp error"), -1);
         }
@@ -37,7 +38,7 @@ export function regex_match(s, re) {   // posixregex.c:92
     if (!re || !s) {
         return 0;
     }
-    if (result = $c.missing("regexec")(re.re, s, 0, null, 0)) {
+    if (result = regexec(re.re, s, 0, null, 0)) {
         if (result !== 1) {
             re.err = result;
         }
@@ -46,7 +47,7 @@ export function regex_match(s, re) {   // posixregex.c:92
     return 1;
 }
 export function regex_free(re) {   // posixregex.c:108
-    $c.missing("regfree")(re.re);
+    regfree(re.re);
     $c.free(re);
 }
 

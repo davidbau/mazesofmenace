@@ -693,12 +693,13 @@ export function inv_weight() {
 /* C hack.c:4336 calc_capacity(xtra_wt). */
 export function calc_capacity(xtra_wt) {
     const wc = weight_cap();        /* C: gw.wc set inside inv_weight() */
-    const wt = (inv_weight_raw() - wc) + (xtra_wt | 0);
+    const wt = ((inv_weight_raw() - wc) + (xtra_wt | 0)) | 0;
     if (wt <= 0)
         return UNENCUMBERED;
     if (wc <= 1)
         return OVERLOADED;
-    const cap = Math.trunc((wt * 2) / wc) + 1;
+    // C hack.c:4374,4380 keeps both wt and wt * 2 in signed int arithmetic.
+    const cap = Math.trunc(Math.imul(wt, 2) / wc) + 1;
     return Math.min(cap, OVERLOADED);
 }
 

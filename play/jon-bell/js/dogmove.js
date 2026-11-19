@@ -51,7 +51,7 @@ import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { sticks, dismount_steed as dismount_steed_qm } from './dog.js';
 import { unstuck as unstuck_dm } from './mon.js';
 import { m_unleash } from './apply.js';
-import { topl_force_break_after as topl_force_break_after_qm, GLYPHCLS_OBJ as GLYPHCLS_OBJ_DM, Deaf as Deaf_dm, flush_screen, nh_sprintf } from './display.js';
+import { topl_force_break_after as topl_force_break_after_qm, GLYPHCLS_OBJ as GLYPHCLS_OBJ_DM, Deaf as Deaf_dm, flush_screen, nh_sprintf, display_glyph_number } from './display.js';
 import { snuff_lit } from './apply.js';
 import { whimper as whimper_dm } from './sounds.js';
 import { mwelded as mwelded_dm } from './wield.js';
@@ -96,6 +96,7 @@ import { place_object, mkcorpstat, mksobj_at, add_to_container, dealloc_obj, mks
 import { makemon } from './makemon.js';
 import { set_ustuck, mondead, newcham, mongone, minliquid as minliquid_real, healmon as healmon_dg, wake_nearto as wake_nearto_dg, mlifesaver as mlifesaver_dg } from './mon.js';
 import { is_pool } from './look.js';
+import { is_lava } from './dbridge.js';
 import { closed_door, accessible } from './monmove.js';
 import { may_dig } from './hack.js';
 import { erode_obj, mintrap as mintrap_real } from './trap.js';
@@ -366,7 +367,8 @@ function obj_weight(obj) {
     if ((obj.oclass | 0) === FOOD_CLASS && obj.oeaten)
         return eaten_stat(quan * wt, obj);
     if ((obj.oclass | 0) === COIN_CLASS_) {
-        const cwt = Math.trunc((quan + 50) / 100);
+        /* C mkobj.c:1968 narrows only after dividing the long quantity. */
+        const cwt = Math.trunc(((obj.quan ?? 1) + 50) / 100) | 0;
         return Math.max(cwt, 1);
     }
     if (otyp === CANDELABRUM_OTYP && (obj.spe | 0))
@@ -497,8 +499,9 @@ async function dog_starve(mtmp) {
  * No RNG in the common case (pet has enough food: moves < hungrytime+DOG_WEAK).
  * ----------------------------------------------------------------------- */
 async function dog_hunger(mtmp, edog) {
-    const moves = (game.moves ?? 0) | 0;
-    if (moves <= (edog.hungrytime | 0) + DOG_WEAK)
+    // C decl.h:1165 and mextra.h:178 keep turn timestamps as long.
+    const moves = game.moves ?? 0;
+    if (moves <= edog.hungrytime + DOG_WEAK)
         return false;
     const mndx = (mtmp.data?.pmidx ?? mtmp.mnum ?? mtmp.mndx ?? -1) | 0;
     const mf1 = (_MONS[mndx]?.[6] | 0);
@@ -531,7 +534,7 @@ async function dog_hunger(mtmp, edog) {
         await stop_occupation_dm();
         return false;
     }
-    if (moves > (edog.hungrytime | 0) + DOG_STARVE || (mtmp.mhp | 0) < 1) {
+    if (moves > edog.hungrytime + DOG_STARVE || (mtmp.mhp | 0) < 1) {
         await dog_starve(mtmp);
         return true;
     }
@@ -759,13 +762,13 @@ async function mergable_dm(otmp, obj) {
 
 async function merged_dm(otmp, obj) {
     if (!obj.lamplit && !obj.globby
-        && (otmp.quan | 0) + (obj.quan | 0) > 0
+        && otmp.quan + obj.quan > 0
         && (otmp.age != null || obj.age != null)) {
-        const oa = otmp.age | 0, oq = otmp.quan | 0, ba = obj.age | 0, bq = obj.quan | 0;
+        const oa = otmp.age ?? 0, oq = otmp.quan, ba = obj.age ?? 0, bq = obj.quan;
         otmp.age = Math.trunc((oa * oq + ba * bq) / (oq + bq));
     }
     if (!otmp.globby)
-        otmp.quan = (otmp.quan | 0) + (obj.quan | 0);
+        otmp.quan += obj.quan; // C invent.c:836-840: age and quantity are long.
     /* C invent.c merged: coins refresh owt+clear bknown; otherwise refresh owt
      * unless pudding (globby).  Puddings are globby on the JS side. */
     if ((otmp.oclass | 0) === COIN_CLASS_) {
@@ -979,12 +982,14 @@ export function dog_nutrition(mtmp, obj) {
         }
     } else if ((obj.oclass | 0) === COIN_CLASS) {
         /* C:197-203 */
-        mtmp.meating = Math.trunc((obj.quan | 0) / 2000) + 1;
+        /* C dogmove.c:201-205 divides the long stack before casting to int. */
+        mtmp.meating = ((Math.trunc(obj.quan / 2000) | 0) + 1) | 0;
         if ((mtmp.meating | 0) < 0) mtmp.meating = 1;
-        nutrit = Math.trunc((obj.quan | 0) / 20);
+        nutrit = Math.trunc(obj.quan / 20) | 0;
         if (nutrit < 0) nutrit = 0;
     } else {
-        mtmp.meating = Math.trunc((obj.owt | 0) / 20) + 1;
+        // C dogmove.c:210: owt is unsigned (obj.h:46), including wrapped weights.
+        mtmp.meating = Math.trunc((obj.owt >>> 0) / 20) + 1;
         nutrit = 5 * _oc_nutrition_nonfood(obj);
     }
     return nutrit;
@@ -1017,10 +1022,10 @@ function _oc_nutrition_nonfood(obj) {
 
 export async function dog_eat(mtmp, obj, x, y, devour) {
     const edog = (mtmp.mtame && mtmp.mextra?.edog) ? mtmp.mextra.edog : null;
-    const moves = (game.moves ?? 0) | 0;
+    const moves = game.moves ?? 0;
 
     /* C dogmove.c:231-232: edog->hungrytime = max(hungrytime, moves) */
-    if (edog && (edog.hungrytime | 0) < moves)
+    if (edog && edog.hungrytime < moves)
         edog.hungrytime = moves;
 
     /* C dogmove.c:233: nutrit = dog_nutrition(mtmp, obj).  No RNG. */
@@ -1030,7 +1035,8 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
         if ((mtmp.meating | 0) > 1) mtmp.meating = Math.trunc(mtmp.meating / 2);
         if (nutrit > 1) nutrit = Math.trunc((nutrit * 3) / 4);
     }
-    if (edog) edog.hungrytime = (edog.hungrytime | 0) + nutrit;
+    // C mextra.h:178: hungrytime is long, including large coin meals.
+    if (edog) edog.hungrytime += nutrit;
     mtmp.mconf = 0;
     /* C dogmove.c:245-249 mhpmax_penalty restore — early game: none. */
     if (edog && (edog.mhpmax_penalty | 0)) {
@@ -1053,7 +1059,7 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
         const res = await bee_eat_jelly(mtmp, obj);
         if (res >= 0) return res + 1;
     }
-    if (((obj.quan ?? 1) | 0) > 1 && (obj.oclass | 0) === FOOD_CLASS)
+    if ((obj.quan ?? 1) > 1 && (obj.oclass | 0) === FOOD_CLASS)
         obj = (await splitobj(obj, 1));
     if (obj.unpaid) game.iflags.suppress_price = (game.iflags.suppress_price || 0) + 1;
 
@@ -1071,12 +1077,12 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
         const _tunnels = _mndx >= 0 && _mndx < _MONS.length
             && ((_MONS[_mndx][6] | 0) & M1_TUNNEL) !== 0; /* tunnels() */
         if (_tunnels)
-            pline_mon(mtmp, `${noit_Monnam(mtmp)} digs in.`);
+            await pline_mon(mtmp, `${noit_Monnam(mtmp)} digs in.`);
         else
-            pline_mon(mtmp, `${noit_Monnam(mtmp)} ${devour ? 'devours' : 'eats'} ${objName}.`);
+            await pline_mon(mtmp, `${noit_Monnam(mtmp)} ${devour ? 'devours' : 'eats'} ${objName}.`);
     } else if (seeobj) {
         const objName = await dog_obj_name(obj);
-        void pline(`It ${devour ? 'devours' : 'eats'} ${objName}.`);
+        await pline(`It ${devour ? 'devours' : 'eats'} ${objName}.`);
     }
     const objnambuf = obj.unpaid ? xname(obj) : '';
     if (obj.unpaid) game.iflags.suppress_price--;
@@ -1102,7 +1108,7 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
         if (edog) {
             const prior_apport = edog.apport | 0;
             const dropdist = (edog.dropdist | 0);
-            const droptime = (edog.droptime | 0);
+            const droptime = edog.droptime;
             edog.apport = (edog.apport | 0)
                 + Math.trunc(200 / (dropdist + moves - droptime));
             if ((edog.apport | 0) <= 0) {
@@ -1133,7 +1139,7 @@ async function dog_invent(mtmp, edog, udist) {
 
     const omx = mtmp.mx | 0;
     const omy = mtmp.my | 0;
-    const moves = (game.moves ?? 0) | 0;
+    const moves = game.moves ?? 0;
 
     /* C dogmove.c:418 — if (droppables(mtmp)): pet carrying something it would
      * drop.  C drops it (near @) and decrements apport. */
@@ -1189,7 +1195,8 @@ async function dog_invent(mtmp, edog, udist) {
             /* C: if (rn2(udist) || !rn2(edog->apport)) */
             if (rn2(udist) || !rn2(edog.apport)) {
                 let otmp = floorObj;
-                if (carryamt !== ((floorObj.quan ?? 1) | 0))
+                // C dogmove.c:449 compares int carryamt to the long quantity.
+                if (carryamt !== (floorObj.quan ?? 1))
                     otmp = await splitobj(floorObj, carryamt);
                 /* C dogmove.c:451-461: distant_name side-effects + the verbose
                  * "<Monnam> picks up <obj>." pline when the tile is in sight. */
@@ -1197,7 +1204,7 @@ async function dog_invent(mtmp, edog, udist) {
                     const otmpname = await distant_obj_name(otmp);
                     if (game.flags?.verbose !== false) {
                         /* C pline_xy(omx, omy, ...) = set_msg_xy + vpline (pline.c:150-157) */
-                        void pline_xy(omx, omy, '%s picks up %s.',
+                        await pline_xy(omx, omy, '%s picks up %s.',
                                       Monnam_dm(mtmp), otmpname);
                         if (_topline_more_pending() && _more_never_dismissed())
                             await flush_pending_messages();
@@ -1237,7 +1244,7 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
 
     const omx = mtmp.mx | 0;
     const omy = mtmp.my | 0;
-    const moves = (game.moves ?? 0) | 0;
+    const moves = game.moves ?? 0;
 
     /* Initialize goal globals */
     const gg = game.gg ?? (game.gg = { gx: 0, gy: 0, gtyp: UNDEF });
@@ -1491,8 +1498,6 @@ const M1_SWIM_DM = 0x00000002;
 const PM_FIRE_ELEMENTAL_DM = 155, PM_SALAMANDER_DM = 329;
 
 export function could_reach_item(mtmp, nx, ny) {
-    const locs = game.level?.locations;
-    const typ = (locs?.[nx]?.[ny]?.typ ?? 0) | 0;
     /* C dogmove.c:1423-1429 reads mtmp->data, which may differ from the
      * original mndx after polymorphing.  Prefer the live permonst index so
      * swimmer/lava/rock throwing capabilities follow the current form. */
@@ -1500,12 +1505,11 @@ export function could_reach_item(mtmp, nx, ny) {
     const _mrow = (_mndx >= 0 && _mndx < _MONS.length) ? _MONS[_mndx] : null;
     const _mf1 = _mrow ? (_mrow[6] >>> 0) : 0;
     const _mf2 = _mrow ? (_mrow[7] >>> 0) : 0;
-    /* is_pool: POOL, MOAT, WATER, DRAWBRIDGE_UP (typ 16-19) */
-    if (typ >= POOL_TYP && typ <= DRAWBRIDGE_UP_TYP
+    /* C dogmove.c:1363-1364: raised bridges use their underlying terrain. */
+    if (is_pool(nx, ny)
         && !(_mf1 & M1_SWIM_DM))            /* C mondata.h:25 is_swimmer(ptr) */
         return false;
-    /* is_lava: LAVAPOOL(20), LAVAWALL(21) */
-    if ((typ === LAVAPOOL_TYP || typ === LAVAWALL_TYP)
+    if (is_lava(nx, ny)
         /* C mondata.h:190 likes_lava(ptr) — fire elemental / salamander only */
         && _mndx !== PM_FIRE_ELEMENTAL_DM && _mndx !== PM_SALAMANDER_DM)
         return false;
@@ -1884,7 +1888,7 @@ export async function pet_ranged_attk(mtmp, forced) {
     if (!(mtmp.isminion | 0)) {
         const edog = mtmp.mextra?.edog;
         if (edog) {
-            const moves = (game.moves ?? 0) | 0;
+            const moves = game.moves ?? 0;
             hungry = (moves > (edog.hungrytime + DOG_HUNGRY)) ? 1 : 0;
         }
     }
@@ -2427,7 +2431,7 @@ export async function dog_move(mtmp, after) {
     const omx = mtmp.mx | 0;
     const omy = mtmp.my | 0;
     const u   = game.u;
-    const moves = (game.moves ?? 0) | 0;
+    const moves = game.moves ?? 0;
 
     /* C: dog_hunger(mtmp, edog) — check starvation */
     if (edog && await dog_hunger(mtmp, edog))
@@ -2469,7 +2473,7 @@ export async function dog_move(mtmp, after) {
             return leash_kludge_dm(mtmp, omx, omy, nix, niy);
 
         const moves_c = FF_FAITHFUL ? moves : (moves - 1);
-        whappr = ((moves_c - (edog.whistletime | 0)) < 5) ? 1 : 0;
+        whappr = ((moves_c - edog.whistletime) < 5) ? 1 : 0;
     } else {
         whappr = 0;
     }
@@ -2565,9 +2569,10 @@ export async function dog_move(mtmp, after) {
                 const agr_mhpmax = (mtmp.mhpmax | 0) || 1;
                 const balk = agr_mlev + Math.trunc((5 * agr_mhp) / agr_mhpmax) - 2;
                 const mndx_def = (mtmp2.mndx ?? mtmp2.mnum ?? 0) | 0;
-                const def_mlev_base = (mndx_def >= 0 && mndx_def < _MONS.length)
-                    ? (_MONS[mndx_def][1] | 0) : 0;
-                const def_mlev = (mtmp2.m_lev ?? def_mlev_base) | 0;
+                // C dogmove.c:1121: use this monster's adjusted level.
+                // Live monsters always carry m_lev (monst.h:104); the species
+                // base-level fallback was an extra, unreachable JS branch.
+                const def_mlev = mtmp2.m_lev | 0;
 
                 /* C dogmove.c:1118-1126, all four disjuncts.  Conflict has no
                  * source in this port (see m_avoid_kicked_loc above), so
@@ -2627,7 +2632,7 @@ export async function dog_move(mtmp, after) {
 
                 if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT) {
                     if (rn2(4)
-                        && (mtmp2.mlstmv | 0) !== (game.moves | 0)
+                        && mtmp2.mlstmv !== game.moves
                         && !onscary(mtmp.mx | 0, mtmp.my | 0, mtmp2)
                         /* C mon.c monnear(mon,x,y): dist2 < 3, with dist2 == 2
                          * (a diagonal) rejected for a grid bug (NODIAG). */
@@ -2672,7 +2677,7 @@ export async function dog_move(mtmp, after) {
             if (trap) {
                 if (mtmp.mleashed | 0) {
                     if (!Deaf_dm())
-                        whimper_dm(mtmp);
+                        await whimper_dm(mtmp);
                 } else if (trap.tseen && rn2(40)) {
                     continue;
                 }
@@ -2689,7 +2694,7 @@ export async function dog_move(mtmp, after) {
                 } else if (can_reach_food) {
                     /* C: dogfood(mtmp, obj) — fires rn2(100) */
                     const otyp = dogfood(mtmp, obj);
-                    const hungrytime = edog.hungrytime | 0;
+                    const hungrytime = edog.hungrytime;
                     if (otyp < MANFOOD
                         && (otyp < ACCFOOD || hungrytime <= moves)) {
                         nix = nx;
@@ -2753,7 +2758,9 @@ export async function dog_move(mtmp, after) {
     if (nix !== omx || niy !== omy) {
         if (chi >= 0 && (mfp_poss[chi].info & ALLOW_U)) {
             if (mtmp.mleashed | 0) {
-                void pline(`${Monnam_dm(mtmp)} breaks loose of ${mhis_dm(mtmp)} leash!`);
+                // C dogmove.c:1282-1284: pline_mon completes before unleashing
+                // and attacking, including an immediate MSGTYPE=stop page.
+                await pline_mon(mtmp, `${Monnam_dm(mtmp)} breaks loose of ${mhis_dm(mtmp)} leash!`);
                 m_unleash(mtmp, false);
             }
             await mattacku(mtmp);
@@ -2783,7 +2790,7 @@ export async function dog_move(mtmp, after) {
             const what = o ? (await distant_obj_name(o)) : 'something';
             const verb = vtense(null, locomotion(mtmp.data, 'step')); // C dogmove.c:1308
             const prep = (is_flyer_dm(mtmp) || is_floater_dm(mtmp)) ? 'over' : 'onto';
-            pline_mon(mtmp, "%s", `${noit_Monnam(mtmp)} ${verb} reluctantly ${prep} ${what}.`);
+            await pline_mon(mtmp, "%s", `${noit_Monnam(mtmp)} ${verb} reluctantly ${prep} ${what}.`);
         }
         /* C: mon_track_add(mtmp, omx, omy) — update mtrack */
         if (!mtmp.mtrack) mtmp.mtrack = [];
@@ -2917,12 +2924,10 @@ export async function quickmimic(mtmp) {
 
     if (spotted || seeloc || canspotmon(mtmp)) {
         const x = mtmp.mx | 0, y = mtmp.my | 0;
-        const gl = () => {
-            const l = game.level?.at(x, y);
-            return l ? [l.disp_ch, l.disp_color, l.disp_cls, l.disp_obj_otyp,
-                        l.disp_obj_corpsenm, l.disp_attr, l.disp_mon_pm, l.disp_mon_kind,
-                        l.disp_mon_female].join('|') : '';
-        };
+        // C dogmove.c:1509,1533 compares glyph identities, independent of
+        // symbol aliases, color and attributes. Decode the painted cell's
+        // logical glyph through the shared display adapter.
+        const gl = () => display_glyph_number(null, game.level?.at(x, y));
         const prev_glyph = gl();
         const apt = mtmp.m_ap_type | 0, app = mtmp.mappearance | 0;
         const what = (apt === 1) ? DEFSYM_EXPL_QM[app]

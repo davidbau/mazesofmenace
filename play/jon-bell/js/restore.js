@@ -42,7 +42,7 @@ import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level } from './worm.js';
 import { change_luck } from './attrib.js';
-import { HALLUC, HALLUC_RES, OBJ_FREE, COLNO, W_BALL, W_CHAIN, MAXNROFROOMS, MAGIC_PORTAL, BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL, Is_rogue_level } from './const.js';
+import { HALLUC, HALLUC_RES, OBJ_FREE, W_BALL, W_CHAIN, MAXNROFROOMS, MAGIC_PORTAL, BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL, Is_rogue_level } from './const.js';
 import { set_residency, restshk } from './shk.js';
 import { setworn } from './worn.js';
 import { PM_MONK } from './pm.generated.js';
@@ -71,13 +71,16 @@ function find_lev_obj_clear_no_charge(level) {
     }
 }
 
-function restobjchn_clear_bypass(ochain) {
+function restobjchn_clear_bypass(ochain, shift = 0) {
     for (let otmp = ochain; otmp; otmp = otmp.nobj) {
         otmp.lua_ref_cnt = 0; // C restore.c:190: Lua handles belong to the old read.
+        // C restore.c:207-212 reads stored corpse/statue traits through
+        // restmon(), including its edog time conversion and apport clamp.
+        rest_edog(otmp.oextra?.omonst, shift);
         if (otmp.bypass)
             otmp.bypass = 0;
         if (otmp.cobj)
-            restobjchn_clear_bypass(otmp.cobj);
+            restobjchn_clear_bypass(otmp.cobj, shift);
     }
 }
 
@@ -85,12 +88,12 @@ function restobjchn_clear_bypass(ochain) {
  * (:1166), level.buriedobjlist (:1172) and gb.billobjs (:1173) through
  * restobjchn, and restmonchn's restmon() reads each monster's minvent (:421)
  * through it as well. */
-function restobjchn_clear_level_bypass(fmon, fobj, buried, billobjs) {
-    restobjchn_clear_bypass(fobj);
-    restobjchn_clear_bypass(buried);
-    restobjchn_clear_bypass(billobjs);
+function restobjchn_clear_level_bypass(fmon, fobj, buried, billobjs, shift = 0) {
+    restobjchn_clear_bypass(fobj, shift);
+    restobjchn_clear_bypass(buried, shift);
+    restobjchn_clear_bypass(billobjs, shift);
     for (let mtmp = fmon; mtmp; mtmp = mtmp.nmon)
-        restobjchn_clear_bypass(mtmp.minvent);
+        restobjchn_clear_bypass(mtmp.minvent, shift);
 }
 
 /* C restore.c:167-178 restdamage(): each record read is PREPENDED to
@@ -134,13 +137,17 @@ function restdamage_reverse(level, shift = 0) {
  * monsters in memory, so the round trip is the shift by (read - write) turns:
  * a pet left behind does not grow hungry while the hero is away. */
 function rest_edog_times(fmon, shift) {
-    if (!shift) return;
-    for (let mtmp = fmon; mtmp; mtmp = mtmp.nmon) {
-        const edog = mtmp.mextra?.edog;
-        if (!edog) continue;
-        edog.droptime = (edog.droptime | 0) + shift;
-        edog.hungrytime = (edog.hungrytime | 0) + shift;
-    }
+    for (let mtmp = fmon; mtmp; mtmp = mtmp.nmon)
+        rest_edog(mtmp, shift);
+}
+
+// C restore.c:354-359 applies to every restmon(), not just restmonchn().
+function rest_edog(mon, shift) {
+    const edog = mon?.mextra?.edog;
+    if (!edog) return;
+    edog.droptime = (edog.droptime | 0) + shift;
+    edog.hungrytime = (edog.hungrytime | 0) + shift;
+    if (edog.apport <= 0) edog.apport = 1;
 }
 
 // C restore.c:358-359,405-406: pointers in a save belong to the old
@@ -283,7 +290,7 @@ export async function getlev(lev, restoreFloor = null) {
      * buriedobjlist :1172, billobjs :1173, each monster's minvent :421) has
      * its objects' bypass bit cleared by restobjchn(). */
     restobjchn_clear_level_bypass(g.fmon, g.fobj, g.level?.buriedobjlist,
-                                  g.billobjs);
+                                  g.billobjs, (g.moves | 0) - (snap.omoves | 0));
     g.ftrap = snap.ftrap = rest_trapchn_reverse(snap.ftrap);
     g.updest = snap.updest;
     g.dndest = snap.dndest;
@@ -733,7 +740,7 @@ export async function dorecover(save) {
         /* that getlev()'s restobjchn reads (restore.c:281-282) clear this
          * snapshot's bypass bits before restlevelfile() writes it back */
         restobjchn_clear_level_bypass(snap.fmon, snap.fobj,
-                                      snap.level?.buriedobjlist, snap.billobjs);
+                                      snap.level?.buriedobjlist, snap.billobjs, aged);
         /* the same read's restmon() re-bases each pet's edog times */
         rest_edog_times(snap.fmon, aged);
         restmonchn_data(snap.fmon);
@@ -929,17 +936,11 @@ export async function restore_preamble() {
     if (!doomed) {
         const temperature = g.level?.flags?.temperature | 0;
         if (temperature) {
-            const append = (msg) => {
-                const last = msgs.length - 1;
-                /* C topl.c:265: leave room for --More-- when joining. */
-                if (last >= 0 && msgs[last].length + msg.length + 3 < COLNO - 8)
-                    msgs[last] += `  ${msg}`;
-                else
-                    msgs.push(msg);
-            };
-            append(`It is ${temperature > 0 ? 'hot' : 'cold'} here.`);
+            // C do.c:2005-2010 uses separate plines. Each message must pass
+            // MSGTYPE filtering before update_topl decides whether to join it.
+            msgs.push(`It is ${temperature > 0 ? 'hot' : 'cold'} here.`);
             if (temperature > 0 && In_hell(g.u.uz))
-                append(`You ${olfaction(g.youmonst.data) ? 'smell' : 'sense'} smoke...`);
+                msgs.push(`You ${olfaction(g.youmonst.data) ? 'smell' : 'sense'} smoke...`);
         }
     }
     /* C allmain.c:927 welcome(FALSE): print_level_annotation() (dungeon.c:2489)
@@ -1017,31 +1018,12 @@ export async function restore_preamble() {
         if (msgtype_type(msg) !== 'hide') msgs.push(msg);
         change_luck(-1);
     }
-    /* C topl.c:260-275 update_topl(): a pline that fits the standing line
-     * (n0 + strlen(toplines) + 3 < CO - 8) is joined with two spaces, no more(). */
-    for (let i = 0; i + 1 < msgs.length;) {
-        if (msgs[i].length + msgs[i + 1].length + 3 < 72)
-            msgs.splice(i, 2, msgs[i] + '  ' + msgs[i + 1]);
-        else
-            i++;
-    }
-    const { topl_more_page } = await import('./com_pager.js');
-    const { pline_flush_point } = await import('./display.js');
-    let dismissedEsc = false;
-    for (let i = 0; i < msgs.length; i++) {
-        if (i < msgs.length - 1) {
-            pline_flush_point();
-            dismissedEsc = await topl_more_page(msgs[i], g.u?.uac ?? 0) === 27;
-        } else
-            g._pending_message = msgs[i];
-    }
-    /* C topl.c:232-235: ESC at the more() paging the previous message leaves
-     * WIN_STOP set, so the read_engr_at plines below (allmain.c:87) are
-     * suppressed by update_topl's skip test (topl.c:257). */
-    if (dismissedEsc && msgs.length) {
-        g._topl_win_stop = true;
-        g._topl_win_stop_buf = msgs[msgs.length - 1];
-    }
+    // C allmain.c:57-68 emits ordinary plines. In particular MSGTYPE=stop
+    // pages even the last message; update_topl owns joining and ESC suppression.
+    for (const msg of msgs)
+        await pline(msg);
+    if (_topline_more_pending())
+        await flush_screen(1, false);
     /* C topl.c:544 leaves an answered question TOPLINE_NON_EMPTY, so
      * update_topl():262-275 replaces it without joining or calling more().
      * Keep only its physical text; it is not an unacknowledged pline. */

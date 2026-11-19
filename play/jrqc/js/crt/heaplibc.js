@@ -77,6 +77,12 @@ export function strtod(s, endptr) {
     if (endptr) H.stp(endptr, H.A(box[0]));
     return v;
 }
+export function strtol(s, endptr, base) {
+    const box = [null];
+    const v = $c.strtol(H.P(s), endptr ? new $c.Ptr(box, 0) : null, base);
+    if (endptr) H.stp(endptr, H.A(box[0]));
+    return v;
+}
 
 // ---------- libc-owned memory ----------
 let cells = null;

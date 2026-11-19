@@ -71,7 +71,8 @@ import { update_mon_extrinsics, m_dowear } from './worn.js';
  * arm (sp_lev.c:1819) is its only caller outside makemaz. */
 import { pick_vibrasquare_location, place_lregion } from './mkmaze.js';
 import { mergable } from './invent.js';
-import { on_level } from './dungeon.js';
+import { on_level, describe_level_buf } from './dungeon.js';
+import { simpleonames } from './objnam.js';
 import { m_at } from './uhitm.js';
 import { monmightthrowwep } from './weapon.js';
 import { christen_monst } from './mhitm.js';
@@ -2701,19 +2702,22 @@ async function create_object(o, croom) {
                    will be reset in addinv_core1() */
                 otmp.nomerge = 1;
             }
-            /* else C: impossible("multiple prizes on mines end level") */
+            else {
+                await impossible("multiple prizes on %s level", "mines end");
+            }
         } else if (Is_sokoend_level(game.u?.uz)) {
             if (!achieveo.soko_prize_oid) {
                 achieveo.soko_prize_oid = otmp.o_id;
                 achieveo.soko_prize_otyp = otmp.otyp;
                 otmp.nomerge = 1; /* redundant; Sokoban prizes don't stack */
             }
-            /* else C: impossible("multiple prizes on sokoban end level") */
+            else {
+                await impossible("multiple prizes on %s level", "sokoban end");
+            }
+        } else if (!game.iflags?.lua_testing) {
+            await impossible('create_object: unknown achievement (%s"%s")',
+                             describe_level_buf(1 | 2), simpleonames(otmp));
         }
-        /* else if (!iflags.lua_testing) C impossible()s with describe_level() +
-         * simpleonames(); a diagnostic-only arm with no game effect and no RNG.
-         * minend-[123].lua and soko1-[12].lua are the only achievement=1 users
-         * in dat/, and both land on one of the two arms above. */
     }
 
     if (!(o.containment & SP_OBJ_CONTENT)) {
@@ -5971,7 +5975,9 @@ export function lspo_terrain(...args) {
         selection_getbounds(sel, rect);
         for (let sx = rect.lx; sx <= rect.hx; sx++)
             for (let sy = rect.ly; sy <= rect.hy; sy++)
-                if (selection_getpoint(sx, sy, sel))
+                // C selvar.c:741: selection_iterate rejects off-map points
+                // before invoking sel_set_ter, including the unused column 0.
+                if (isok(sx, sy) && selection_getpoint(sx, sy, sel))
                     sel_set_ter(sx, sy, tmpterrain);
     } else {
         const coord = { x, y };
