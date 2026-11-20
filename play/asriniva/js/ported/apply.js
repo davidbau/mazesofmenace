@@ -4,56 +4,9 @@ import {C} from '../c-runtime/context.js';
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
  /* occupation callback */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 const no_elbow_room = "don't have enough elbow-room to maneuver.";
-
 
 export function do_blinding_ray(obj)
 {
@@ -72,7 +25,6 @@ export function do_blinding_ray(obj)
        to be deferred until after flash_hits_mon() */
     C.transient_light_cleanup();
 }
-
 
 export function use_camera(obj)
 {
@@ -105,7 +57,6 @@ export function use_camera(obj)
     }
     return C.ECMD_TIME;
 }
-
 
 export function use_towel(obj)
 {
@@ -401,7 +352,8 @@ export function use_stethoscope(obj)
         } else if (mtmp.mappearance) {
             let what = "thing";
             let use_plural = 0;
-            const dummyobj = C.localRecord("struct obj"); let odummy;
+            const dummyobj = C.localRecord("struct obj");
+            let odummy;
 
             switch (C.M_AP_TYPE(mtmp)) {
             case C.M_AP_OBJECT:
@@ -441,7 +393,7 @@ export function use_stethoscope(obj)
             C.map_invisible(rx, ry);
         return res.value;
     }
-    if (C.unmap_invisible(rx,ry))
+    if (C.unmap_invisible(rx, ry))
         C.pline_The("invisible monster must have moved.");
 
     lev = C.levl[rx][ry];
@@ -469,7 +421,6 @@ export function use_stethoscope(obj)
 const whistle_str = "produce a %s whistling sound.",
                   alt_whistle_str = "produce a %s, sharp vibration.";
 
-
 export function use_whistle(obj)
 {
     if (!C.can_blow(C.gy.youmonst)) {
@@ -487,7 +438,6 @@ export function use_whistle(obj)
             C.vault_summon_gd();
     }
 }
-
 
 export function use_magic_whistle(obj)
 {
@@ -677,13 +627,10 @@ export function magic_whistled(obj)
     return;
 }
 
-
-
 export function um_dist(x, y, n)
 {
     return C.boolean((Number(Boolean(C.abs(C.u.ux - x) > n || C.abs(C.u.uy - y) > n))));
 }
-
 
 export function number_leashed()
 {
@@ -745,15 +692,12 @@ export function unleash_all()
         mtmp.mleashed = 0;
 }
 
-
-
 export function leashable(mtmp)
 {
     return C.boolean((Number(Boolean(mtmp.mnum != C.PM_LONG_WORM
                        && !C.unsolid(mtmp.data)
                        && (!C.nolimbs(mtmp.data) || C.has_head(mtmp.data))))));
 }
-
 
 export function use_leash(obj)
 {
@@ -805,7 +749,6 @@ export function use_leash(obj)
     C.callLocal(use_leash_core, obj, mtmp, cc, C.canspotmon(mtmp));
     return C.ECMD_TIME;
 }
-
 
 export function use_leash_core(obj, mtmp, cc, spotmon)
 {
@@ -876,7 +819,6 @@ export function get_mleash(mtmp)
     return otmp;
 }
 
-
 export function mleashed_next2u(mtmp)
 {
     if (mtmp.mleashed) {
@@ -902,8 +844,6 @@ export function mleashed_next2u(mtmp)
     return 0;
 }
 
-
-
 export function next_to_u()
 {
     if (C.get_iter_mons(mleashed_next2u))
@@ -914,7 +854,6 @@ export function next_to_u()
         return 0;
     return 1;
 }
-
 
 export function check_leash(x, y)
 {
@@ -1001,7 +940,6 @@ export function beautiful()
 }
 
 const look_str = "look %s.";
-
 
 export function use_mirror(obj)
 {
@@ -1185,7 +1123,6 @@ export function use_mirror(obj)
     return C.ECMD_TIME;
 }
 
-
 export function use_bell(optr)
 {
     let obj = optr.value;
@@ -1302,7 +1239,6 @@ export function use_bell(optr)
         C.wake_nearby(1);
 }
 
-
 export function use_candelabrum(obj)
 {
     let s = (obj.spe != 1) ? "candles" : "candle";
@@ -1370,7 +1306,6 @@ export function use_candelabrum(obj)
     C.begin_burn(obj, 0);
 }
 
-
 export function use_candle(optr)
 {
     let obj = optr.value;
@@ -1430,7 +1365,7 @@ export function use_candle(optr)
         else if (!otmp.lamplit && was_lamplit)
             C.pline("%s out.", (obj.quan > 1n) ? "They go" : "It goes");
         if (obj.unpaid) {
-            let shkp 
+            let shkp
                                = C.shop_keeper(C.byte(C.in_rooms(C.u.ux, C.u.uy, C.SHOPBASE)).value);
 
             ;
@@ -1463,7 +1398,8 @@ export function snuff_candle(otmp)
     if ((candle || otmp.otyp == C.CANDELABRUM_OF_INVOCATION)
         && otmp.lamplit) {
         let buf = C.stackAlloc(256);
-        const x = C.localScalar("short"); const y = C.localScalar("short");
+        const x = C.localScalar("short");
+        const y = C.localScalar("short");
         let many = candle ? (otmp.quan > 1n) : (otmp.spe > 1);
 
         C.get_obj_location(otmp, x, y, 0);
@@ -1483,7 +1419,8 @@ export function snuff_candle(otmp)
 
 export function snuff_lit(obj)
 {
-    const x = C.localScalar("short"); const y = C.localScalar("short");
+    const x = C.localScalar("short");
+    const y = C.localScalar("short");
 
     if (obj.lamplit) {
         if (obj.otyp == C.OIL_LAMP || obj.otyp == C.MAGIC_LAMP
@@ -1527,7 +1464,8 @@ export function splash_lit(obj)
                    /* don't assume that lit lantern has been swallowed;
                       a nymph might have stolen it or picked it up */
                    && ((mtmp = obj.ocarry), C.humanoid(mtmp.data))) {
-            const x = C.localScalar("short"); const y = C.localScalar("short");
+            const x = C.localScalar("short");
+            const y = C.localScalar("short");
 
             useeit = Number(Boolean(C.get_obj_location(obj, x, y, 0) && C.cansee(x.value, y.value)));
             uhearit = Number(Boolean(C.couldsee(x.value, y.value) && C.distu(x.value, y.value) < 5 * 5));
@@ -1563,7 +1501,8 @@ export function splash_lit(obj)
 
 export function catch_lit(obj)
 {
-    const x = C.localScalar("short"); const y = C.localScalar("short");
+    const x = C.localScalar("short");
+    const y = C.localScalar("short");
 
     if (!obj.lamplit && C.ignitable(obj) && C.get_obj_location(obj, x, y, 0)) {
         if (((obj.otyp == C.MAGIC_LAMP /* spe==0 => no djinni inside */
@@ -1593,7 +1532,7 @@ export function catch_lit(obj)
         if (obj.otyp == C.POT_OIL)
             C.makeknown(obj.otyp);
         if (C.carried(obj) && obj.unpaid && C.costly_spot(C.u.ux, C.u.uy)) {
-            let shkp 
+            let shkp
                                = C.shop_keeper(C.byte(C.in_rooms(C.u.ux, C.u.uy, C.SHOPBASE)).value);
 
             /* if it catches while you have it, then it's your tough luck */
@@ -1674,7 +1613,7 @@ export function use_lamp(obj)
             if (obj.unpaid && C.costly_spot(C.u.ux, C.u.uy)
                 && obj.age == 20n * C.long(C.objects[obj.otyp].oc_cost)) {
                 let ithem = (obj.quan > 1n) ? "them" : "it";
-                let shkp 
+                let shkp
                                = C.shop_keeper(C.byte(C.in_rooms(C.u.ux, C.u.uy, C.SHOPBASE)).value);
 
                 ;
@@ -1685,7 +1624,6 @@ export function use_lamp(obj)
         C.begin_burn(obj, 0);
     }
 }
-
 
 export function light_cocktail(optr)
 {
@@ -1874,7 +1812,6 @@ export function check_jump(arg, x, y)
     return 1;
 }
 
-
 export function is_valid_jump_pos(x, y, magic, showmsg)
 {
     if (!magic && !(C.HJumping & ~C.INTRINSIC) && !C.EJumping && C.distu(x, y) != 5) {
@@ -1903,7 +1840,8 @@ export function is_valid_jump_pos(x, y, magic, showmsg)
            passage through doorways: horizontal, vertical, or diagonal;
            since knight's jump and other irregular directions are
            possible, we flatten those out to simplify door checks */
-        let diag; const traj = C.localScalar("int");
+        let diag;
+        const traj = C.localScalar("int");
         let dx = x - C.u.ux, dy = y - C.u.uy,
                 ax = C.abs(dx), ay = C.abs(dy);
 
@@ -1940,14 +1878,12 @@ export function is_valid_jump_pos(x, y, magic, showmsg)
     return 1;
 }
 
-
 export function get_valid_jump_position(x, y)
 {
     return (Number(Boolean(C.isok(x, y)
             && (C.ACCESSIBLE(C.levl[x][y].typ) || C.Passes_walls)
             && C.callLocal(is_valid_jump_pos, x, y, C.gj.jumping_is_magic, 0))));
 }
-
 
 export function display_jump_positions(on_off)
 {
@@ -1968,7 +1904,6 @@ export function display_jump_positions(on_off)
         C.tmp_at(C.DISP_END, 0);
     }
 }
-
 
 export function jump(magic)
 /* 0=Physical, otherwise skill level */
@@ -2056,7 +1991,8 @@ export function jump(magic)
     } else {
         const uc = C.localRecord("struct nhcoord");
         let side;
-        const range = C.localScalar("int"); let  temp;
+        const range = C.localScalar("int");
+        let  temp;
         let wastrapped = 0;
 
         if (C.u.utrap) {
@@ -2149,7 +2085,6 @@ export function jump(magic)
     }
 }
 
-
 export function tinnable(corpse)
 {
     if (corpse.oeaten)
@@ -2158,7 +2093,6 @@ export function tinnable(corpse)
         return 0;
     return 1;
 }
-
 
 export function use_tinning_kit(obj)
 {
@@ -2227,7 +2161,7 @@ export function use_tinning_kit(obj)
             C.useup(corpse);
         } else {
             if (C.costly_spot(corpse.ox, corpse.oy) && !corpse.no_charge) {
-                let shkp 
+                let shkp
                    = C.shop_keeper(C.byte(C.in_rooms(corpse.ox, corpse.oy, C.SHOPBASE)).value);
 
                 ;
@@ -2240,7 +2174,6 @@ export function use_tinning_kit(obj)
     } else
         C.impossible("Tinning failed.");
 }
-
 
 export function use_unicorn_horn(optr)
 {
@@ -2288,7 +2221,6 @@ export function use_unicorn_horn(optr)
         }
         return;
     }
-
 
     trouble_count = unfixable_trbl = did_prop = 0;
 
@@ -2369,7 +2301,6 @@ export function use_unicorn_horn(optr)
         C.disp.botl = 1;
     else
         C.pline("%s", C.nothing_seems_to_happen);
-
 }
 
 /*
@@ -2484,7 +2415,6 @@ export function fig_transform(arg, timeout)
         C.newsym(cc.x, cc.y);
 }
 
-
 export function figurine_location_checks(obj, cc, quietly)
 {
     let x, y;
@@ -2516,7 +2446,6 @@ export function figurine_location_checks(obj, cc, quietly)
     }
     return 1;
 }
-
 
 export function use_figurine(optr)
 {
@@ -2576,7 +2505,6 @@ export function grease_ok(obj)
      * greased. */
     return C.GETOBJ_SUGGEST;
 }
-
 
 export function use_grease(obj)
 {
@@ -2650,7 +2578,6 @@ export function touchstone_ok(obj)
 
     return C.GETOBJ_DOWNPLAY;
 }
-
 
 /* touchstones - by Ken Arnold */
 
@@ -2785,7 +2712,6 @@ export function use_stone(tstone)
         C.pline(scritch);
     return C.ECMD_TIME;
 }
-
 
 export function reset_trapset()
 {
@@ -2928,7 +2854,6 @@ export function set_trap()
     return 0;
 }
 
-
 export function use_whip(obj)
 {
     let buf = C.stackAlloc(256);
@@ -2947,7 +2872,7 @@ export function use_whip(obj)
         return C.ECMD_OK;
     }
     if (!C.getdir(0))
-        return (res|C.ECMD_CANCEL);
+        return (res | C.ECMD_CANCEL);
 
     if (C.u.uswallow) {
         mtmp = C.u.ustuck;
@@ -3108,7 +3033,6 @@ export function use_whip(obj)
     }
     }
     if (whip_target === 1) {
-
         otmp = 0; /* if monster is unseen, can't attempt to disarm it */
         if (!C.canspotmon(mtmp)) {
             let spotitnow;
@@ -3242,13 +3166,14 @@ const not_enough_room = "There's not enough room here to use that.",
     cant_see_spot = "won't hit anything if you can't see that spot.",
     cant_reach = "can't reach that spot from here.";
 
-
 /* find pos of monster in range, if only one monster */
 
 export function find_poleable_mon(pos)
 {
     let mtmp;
-    const mpos = C.localRecord("struct nhcoord"); mpos.x = 0; mpos.y = 0; /* no candidate location yet */
+    const mpos = C.localRecord("struct nhcoord");
+    mpos.x = 0;
+    mpos.y = 0; /* no candidate location yet */
     let impaired;
     let x, y, lo_x, hi_x, lo_y, hi_y, rt;
     let glyph;
@@ -3281,7 +3206,6 @@ export function find_poleable_mon(pos)
     return 1;
 }
 
-
 export function get_valid_polearm_position(x, y)
 {
     let glyph;
@@ -3293,7 +3217,6 @@ export function get_valid_polearm_position(x, y)
             && (C.cansee(x, y) || (C.couldsee(x, y)
                                  && (C.glyph_is_monster(glyph) || C.glyph_is_invisible(glyph) || C.glyph_is_statue(glyph)))))));
 }
-
 
 export function display_polearm_positions(on_off)
 {
@@ -3346,7 +3269,6 @@ export function calc_pole_range(min_range, max_range)
 
     C.gp.polearm_range_min = min_range.value;
     C.gp.polearm_range_max = max_range.value;
-
 }
 
 /* return TRUE if hero is wielding a polearm and there's
@@ -3354,7 +3276,8 @@ export function calc_pole_range(min_range, max_range)
 
 export function could_pole_mon()
 {
-    const min_range = C.localScalar("int"); const max_range = C.localScalar("int");
+    const min_range = C.localScalar("int");
+    const max_range = C.localScalar("int");
     const cc = C.localRecord("struct nhcoord");
     let hitm = C.svc.context.polearm.hitmon;
 
@@ -3390,7 +3313,10 @@ export function snickersnee_used_dist_attk(obj)
 export function use_pole(obj, autohit)
 {
     const thump = "Thump!  Your blow bounces harmlessly off the %s.";
-    let res = C.ECMD_OK; const max_range = C.localScalar("int"); const min_range = C.localScalar("int"); let  glyph;
+    let res = C.ECMD_OK;
+    const max_range = C.localScalar("int");
+    const min_range = C.localScalar("int");
+    let  glyph;
     const cc = C.localRecord("struct nhcoord");
     let mtmp;
     let hitm = C.svc.context.polearm.hitmon;
@@ -3526,8 +3452,6 @@ export function use_pole(obj, autohit)
     return freehit ? C.ECMD_OK : C.ECMD_TIME;
 }
 
-
-
 export function use_cream_pie(obj)
 {
     let wasblind = C.Blind;
@@ -3574,7 +3498,6 @@ export function jelly_ok(obj)
 
     return C.GETOBJ_EXCLUDE;
 }
-
 
 export function use_royal_jelly(optr)
 {
@@ -3637,7 +3560,6 @@ export function use_royal_jelly(optr)
         C.pline("The %s %s briefly.", C.xname(eobj), C.otense(eobj, "quiver"));
     else
         C.pline("%s", C.nothing_seems_to_happen);
-
     }
 
     /* not useup() because we've already done freeinv() */
@@ -3646,7 +3568,6 @@ export function use_royal_jelly(optr)
     optr.value = 0;
     return C.ECMD_TIME;
 }
-
 
 export function grapple_range()
 {
@@ -3662,12 +3583,10 @@ export function grapple_range()
     return max_range;
 }
 
-
 export function can_grapple_location(x, y)
 {
     return (Number(Boolean(C.isok(x, y) && C.cansee(x, y) && C.distu(x, y) <= C.callLocal(grapple_range))));
 }
-
 
 export function display_grapple_positions(on_off)
 {
@@ -3689,7 +3608,6 @@ export function display_grapple_positions(on_off)
         C.tmp_at(C.DISP_END, 0);
     }
 }
-
 
 export function use_grapple(obj)
 {
@@ -3813,7 +3731,7 @@ export function use_grapple(obj)
             C.thitmonst(mtmp, C.uwep);
             return C.ECMD_TIME;
         }
-        
+
     /*FALLTHRU*/
     case 3: /* Surface */
         if (C.IS_AIR(C.levl[cc.x][cc.y].typ) || C.is_pool(cc.x, cc.y))
@@ -3837,7 +3755,6 @@ export function use_grapple(obj)
     return C.ECMD_TIME;
 }
 
-
 export function discard_broken_wand()
 {
     let obj;
@@ -3848,7 +3765,6 @@ export function discard_broken_wand()
         C.delobj(obj);
     C.nomul(0);
 }
-
 
 export function broken_wand_explode(obj, dmg, expltype)
 {
@@ -3865,7 +3781,7 @@ export function maybe_dunk_boulders(x, y)
 
     while (C.is_pool_or_lava(x, y) && (otmp = C.sobj_at(C.BOULDER, x, y)) != 0) {
         C.obj_extract_self(otmp);
-        C.boulder_hits_pool(otmp, x,y, 0);
+        C.boulder_hits_pool(otmp, x, y, 0);
     }
 }
 
@@ -3944,7 +3860,7 @@ export function do_break_wand(obj)
             C.callLocal(discard_broken_wand);
             return C.ECMD_TIME;
         }
-        
+
         /*FALLTHRU*/
     case C.WAN_WISHING:
     case C.WAN_NOTHING:
@@ -3974,7 +3890,7 @@ export function do_break_wand(obj)
         ;
         C.pline("A wall of force smashes down around you!");
         dmg = (C.rngSource(4012, 70), C.d(1 + obj.spe, 6)); /* normally 2d12 */
-        
+
         /*FALLTHRU*/
     case C.WAN_CANCELLATION:
     case C.WAN_POLYMORPH:
@@ -4365,7 +4281,7 @@ export function doapply()
             C.pline("It rings! ... But no-one answers.");
             break;
         }
-        
+
         /*FALLTHRU*/
     default:
         /* Pole-weapons can strike at a distance */
@@ -4432,7 +4348,6 @@ export function unfixable_trouble_count(is_horn)
     return unfixable_trbl;
 }
 
-
 export function flip_through_book(obj)
 {
     if (C.Underwater) {
@@ -4485,7 +4400,6 @@ export function flip_through_book(obj)
 
     return C.ECMD_TIME;
 }
-
 
 export function flip_coin(obj)
 {

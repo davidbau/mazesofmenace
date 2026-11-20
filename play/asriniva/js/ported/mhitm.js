@@ -10,7 +10,6 @@ import { combatFieldsFor, monsterHP, setMonsterHP, monsterX, monsterY } from './
 export const brief_feeling =
     "have a %s feeling for a moment, then it passes.";
 
-
 export function noises(magr, mattk)
 {
     let farq = (C.mdistu(magr) > 15);
@@ -280,7 +279,8 @@ export function mattackm(magr, mdef)
         struck = 0, /* hit at least once */
         res = C.intArrayLocal(C.NATTK), /* results of all attacks */
         dieroll = 0;
-    let mattk; const alt_attk = C.attackLocal();
+    let mattk;
+    const alt_attk = C.attackLocal();
     let mwep;
     let pa, pd;
 
@@ -393,7 +393,7 @@ export function mattackm(magr, mdef)
                     mswingsm(magr, mdef, mwep);
                 tmp += C.hitval(mwep, mdef);
             }
-            
+
             /*FALLTHRU*/
         case C.AT_CLAW:
         case C.AT_KICK:
@@ -580,7 +580,7 @@ export function failed_grab(magr, mdef, mattk)
            stick-to damage: mimic, lichen;
            digestion damage: purple worm swallowing */
         && (mattk.aatyp == C.AT_HUGS || mattk.adtyp == C.AD_WRAP
-            || mattk.adtyp == C.AD_STCK  || mattk.adtyp == C.AD_DGST)) {
+            || mattk.adtyp == C.AD_STCK || mattk.adtyp == C.AD_DGST)) {
         if ((C.gv.vis && C.canspotmon(mdef)) /* mon-vs-mon */
             || C.samePtr(magr, C.gy.youmonst) || C.samePtr(mdef, C.gy.youmonst)) {
             const magrnam = C.stackAlloc(C.BUFSZ), mdefnam = C.stackAlloc(C.BUFSZ);
@@ -663,7 +663,7 @@ export function hitmm(magr, mdef, mattk, mwep, dieroll)
                     C.Snprintf(buf, C.BUFSZ, "%s squeezes", magr_name, 6);
                     break;
                 }
-                
+
                 /*FALLTHRU*/
             default:
                 if (!weaponhit || !mwep || !mwep.oartifact)
@@ -923,7 +923,7 @@ export function gulpmm(magr, mdef, mattk)
                       : "expelled");
         }
 
-        C.remove_monster(dx,dy);
+        C.remove_monster(dx, dy);
         C.place_monster(magr, ax, ay);
         C.place_monster(mdef, dx, dy);
         C.newsym(ax, ay);

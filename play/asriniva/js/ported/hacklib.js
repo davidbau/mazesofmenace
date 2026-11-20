@@ -5,7 +5,6 @@ import { C } from '../c-runtime/context.js';
 /* Copyright (c) Robert Patrick Rankin, 1991                      */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 /* for config.h+extern.h */
 
 export function nh_qsort_idx_cmp(va, vb)
@@ -26,7 +25,8 @@ export function nh_qsort_idx_cmp(va, vb)
  */
 export function nh_deterministic_qsort(base, nmemb, size, compar)
 {
-    nmemb = C.size_t(nmemb); size = C.size_t(size);
+    nmemb = C.size_t(nmemb);
+    size = C.size_t(size);
     let bytes = base;
     let order;
     let tmp;
@@ -266,7 +266,8 @@ export function c_eos(s)
  * panics on huge strings */
 export function str_start_is(str, chkstr, caseblind)
 {
-    str = C.charPointer(str); chkstr = C.charPointer(chkstr);
+    str = C.charPointer(str);
+    chkstr = C.charPointer(chkstr);
     caseblind = C.boolean(caseblind);
     let t1, t2;
     let n = C.LARGEST_INT;
@@ -288,7 +289,8 @@ export function str_start_is(str, chkstr, caseblind)
 /* determine whether 'str' ends in 'chkstr' */
 export function str_end_is(str, chkstr)
 {
-    str = C.charPointer(str); chkstr = C.charPointer(chkstr);
+    str = C.charPointer(str);
+    chkstr = C.charPointer(chkstr);
     let clen = C.int(C.strlen(chkstr));
 
     if (C.int(C.strlen(str)) >= clen)
@@ -335,7 +337,8 @@ export function strkitten(s, c)
 /* truncating string copy */
 export function copynchars(dst, src, n)
 {
-    dst = C.charPointer(dst); src = C.charPointer(src);
+    dst = C.charPointer(dst);
+    src = C.charPointer(src);
     n = C.int(n);
     /* copies at most n characters, stopping sooner if terminator reached;
        treats newline as input terminator; unlike strncpy, always supplies
@@ -350,7 +353,8 @@ export function copynchars(dst, src, n)
 /* convert char nc into oc's case; mostly used by strcasecpy */
 export function chrcasecpy(oc, nc)
 {
-    oc = C.int(oc); nc = C.int(nc);
+    oc = C.int(oc);
+    nc = C.int(nc);
     /* this will be necessary if we switch to <ctype.h> */
     if ('a'.charCodeAt(0) <= oc && oc <= 'z'.charCodeAt(0)) {
         /* old char is lower case; if new char is upper case, downcase it */
@@ -369,7 +373,8 @@ export function chrcasecpy(oc, nc)
    src might be shorter, same length, or longer than dst */
 export function strcasecpy(dst, src)
 {
-    dst = C.charPointer(dst); src = C.charPointer(src);
+    dst = C.charPointer(dst);
+    src = C.charPointer(src);
     let result = dst;
     let ic, oc, dst_exhausted = 0;
 
@@ -446,7 +451,8 @@ export function ing_suffix(s)
 /* trivial text encryption routine (see makedefs) */
 export function xcrypt(str, buf)
 {
-    str = C.charPointer(str); buf = C.charPointer(buf);
+    str = C.charPointer(str);
+    buf = C.charPointer(buf);
     let p;
     let q;
     let bitmask;
@@ -516,7 +522,7 @@ export function visctrl(c)
 {
     c = C.char(c);
     const visctrl_bufs = C.storage(2);
-    
+
     let i = 0;
     let ccc = visctrl_bufs + C.hacklibState.nbuf * 5;
     C.hacklibState.nbuf = (C.hacklibState.nbuf + 1) % C.VISCTRL_NBUF;
@@ -544,7 +550,9 @@ export function visctrl(c)
    valid pointer to a BUFSZ buffer */
 export function stripchars(bp, stuff_to_strip, orig)
 {
-    bp = C.charPointer(bp); stuff_to_strip = C.charPointer(stuff_to_strip); orig = C.charPointer(orig);
+    bp = C.charPointer(bp);
+    stuff_to_strip = C.charPointer(stuff_to_strip);
+    orig = C.charPointer(orig);
     let i = 0;
     let s = bp;
 
@@ -578,8 +586,11 @@ export function stripdigits(s)
    caller is responsible for ensuring that bp points to big enough buffer */
 export function strsubst(bp, orig, replacement)
 {
-    bp = C.charPointer(bp); orig = C.charPointer(orig); replacement = C.charPointer(replacement);
-    let found; const buf = C.stackAlloc(C.BUFSZ);
+    bp = C.charPointer(bp);
+    orig = C.charPointer(orig);
+    replacement = C.charPointer(replacement);
+    let found;
+    const buf = C.stackAlloc(C.BUFSZ);
     /* [this could be replaced by strNsubst(bp, orig, replacement, 1)] */
 
     found = C.strstr(bp, orig);
@@ -597,9 +608,12 @@ export function strsubst(bp, orig, replacement)
 export function strNsubst(inoutbuf, orig, replacement, n)
 /* current string, and result buffer */ /* old substring; if "", insert in front of Nth char */ /* new substring; if "", delete old substring */ /* which occurrence to replace; 0 => all */
 {
-    inoutbuf = C.charPointer(inoutbuf); orig = C.charPointer(orig); replacement = C.charPointer(replacement);
+    inoutbuf = C.charPointer(inoutbuf);
+    orig = C.charPointer(orig);
+    replacement = C.charPointer(replacement);
     n = C.int(n);
-    let bp, op; const workbuf = C.stackAlloc(C.BUFSZ);
+    let bp, op;
+    const workbuf = C.stackAlloc(C.BUFSZ);
     let rp;
     let len = C.uint(C.strlen(orig));
     let ocount = 0, /* number of times 'orig' has been matched */
@@ -639,8 +653,10 @@ export function strNsubst(inoutbuf, orig, replacement, n)
 export function findword(list, word, wordlen, ignorecase)
 /* string of space-separated words */ /* word to try to find */ /* so that it isn't required to be \0 terminated */ /* T: case-blind, F: case-sensitive */
 {
-    list = C.charPointer(list); word = C.charPointer(word);
-    wordlen = C.int(wordlen); ignorecase = C.boolean(ignorecase);
+    list = C.charPointer(list);
+    word = C.charPointer(word);
+    wordlen = C.int(wordlen);
+    ignorecase = C.boolean(ignorecase);
     let p = list;
 
     while (p) {
@@ -681,7 +697,6 @@ export function sitoa(n)
     return buf;
 }
 
-
 /* return the sign of a number: -1, 0, or 1 */
 export function sgn(n)
 {
@@ -692,7 +707,10 @@ export function sgn(n)
 /* distance between two points, in moves */
 export function distmin(x0, y0, x1, y1)
 {
-    x0 = C.coordxy(x0); y0 = C.coordxy(y0); x1 = C.coordxy(x1); y1 = C.coordxy(y1);
+    x0 = C.coordxy(x0);
+    y0 = C.coordxy(y0);
+    x1 = C.coordxy(x1);
+    y1 = C.coordxy(y1);
     let dx = C.coordxy(x0 - x1), dy = C.coordxy(y0 - y1);
 
     if (dx < 0)
@@ -708,7 +726,10 @@ export function distmin(x0, y0, x1, y1)
 /* square of Euclidean distance between pair of pts */
 export function dist2(x0, y0, x1, y1)
 {
-    x0 = C.coordxy(x0); y0 = C.coordxy(y0); x1 = C.coordxy(x1); y1 = C.coordxy(y1);
+    x0 = C.coordxy(x0);
+    y0 = C.coordxy(y0);
+    x1 = C.coordxy(x1);
+    y1 = C.coordxy(y1);
     let dx = C.coordxy(x0 - x1), dy = C.coordxy(y0 - y1);
 
     return C.int(dx * dx + dy * dy);
@@ -739,7 +760,10 @@ export function isqrt(val)
 /* are two points lined up (on a straight line)? */
 export function online2(x0, y0, x1, y1)
 {
-    x0 = C.coordxy(x0); y0 = C.coordxy(y0); x1 = C.coordxy(x1); y1 = C.coordxy(y1);
+    x0 = C.coordxy(x0);
+    y0 = C.coordxy(y0);
+    x1 = C.coordxy(x1);
+    y1 = C.coordxy(y1);
     let dx = x0 - x1, dy = y0 - y1;
     /*  If either delta is zero then they're on an orthogonal line,
      *  else if the deltas are equal (signs ignored) they're on a diagonal.
@@ -752,7 +776,8 @@ export function online2(x0, y0, x1, y1)
 export function strncmpi(s1, s2, n)
 /*(should probably be size_t, which is unsigned)*/
 {
-    s1 = C.charPointer(s1); s2 = C.charPointer(s2);
+    s1 = C.charPointer(s1);
+    s2 = C.charPointer(s2);
     n = C.int(n);
     let t1, t2;
 
@@ -774,7 +799,8 @@ export function strncmpi(s1, s2, n)
 /* case-insensitive substring search */
 export function strstri(str, sub)
 {
-    str = C.charPointer(str); sub = C.charPointer(sub);
+    str = C.charPointer(str);
+    sub = C.charPointer(sub);
     let s1, s2;
     let i, k;
     /* 0x40 would be case-sensitive */
@@ -819,7 +845,9 @@ export function strstri(str, sub)
    characters (typically whitespace) and possibly ignoring case */
 export function fuzzymatch(s1, s2, ignore_chars, caseblind)
 {
-    s1 = C.charPointer(s1); s2 = C.charPointer(s2); ignore_chars = C.charPointer(ignore_chars);
+    s1 = C.charPointer(s1);
+    s2 = C.charPointer(s2);
+    ignore_chars = C.charPointer(ignore_chars);
     caseblind = C.boolean(caseblind);
     let c1, c2;
 
@@ -858,12 +886,13 @@ export function fuzzymatch(s1, s2, ignore_chars, caseblind)
 /* swapbits(val, bita, bitb) swaps bit a with bit b in val */
 export function swapbits(val, bita, bitb)
 {
-    val = C.int(val); bita = C.int(bita); bitb = C.int(bitb);
+    val = C.int(val);
+    bita = C.int(bita);
+    bitb = C.int(bitb);
     let tmp = ((val >> bita) & 1) ^ ((val >> bitb) & 1);
 
     return (val ^ ((tmp << bita) | (tmp << bitb)));
 }
-
 
 /*
  * Wrap snprintf for use in the main code.
@@ -879,9 +908,11 @@ export function swapbits(val, bita, bitb)
  */
 export function nh_snprintf(func, line, str, size, fmt, ...ap)
 {
-    func = C.charPointer(func); str = C.charPointer(str); fmt = C.charPointer(fmt);
+    func = C.charPointer(func);
+    str = C.charPointer(str);
+    fmt = C.charPointer(fmt);
     size = C.size_t(size);
-    
+
     let n;
 
     C.va_start(ap, fmt);
@@ -892,12 +923,12 @@ export function nh_snprintf(func, line, str, size, fmt, ...ap)
     }
 }
 
-
 /* Unicode routines */
 
 export function unicodeval_to_utf8str(uval, buffer, bufsz)
 {
-    uval = C.int(uval); bufsz = C.size_t(bufsz);
+    uval = C.int(uval);
+    bufsz = C.size_t(bufsz);
     //    static uint8 buffer[7];
     let b = buffer;
 
@@ -937,7 +968,8 @@ export function unicodeval_to_utf8str(uval, buffer, bufsz)
 
 export function case_insensitive_comp(s1, s2)
 {
-    s1 = C.charPointer(s1); s2 = C.charPointer(s2);
+    s1 = C.charPointer(s1);
+    s2 = C.charPointer(s2);
     let u1, u2;
 
     for (;; s1++, s2++) {
@@ -953,10 +985,10 @@ export function case_insensitive_comp(s1, s2)
     return u1 - u2;
 }
 
-
 export function copy_bytes(ifd, ofd)
 {
-    ifd = C.int(ifd); ofd = C.int(ofd);
+    ifd = C.int(ifd);
+    ofd = C.int(ofd);
     const buf = C.stackAlloc(C.BUFSIZ);
     let nfrom, nto;
 
@@ -973,11 +1005,11 @@ export function copy_bytes(ifd, ofd)
 }
 
 export const dm = [
-    {sz:['shortSize','intSize','longSize','longLongSize','pointerSize'], datamodel:"", dmplatform:""},
-    {sz:[2,4,4,8,4],datamodel:"ILP32LL64",dmplatform:"x86 32-bit"}, /* Windows or Unix */
-    {sz:[2,4,4,8,8],datamodel:"IL32LLP64",dmplatform:"Windows x64 64-bit"},
-    {sz:[2,4,8,8,8],datamodel:"I32LP64",dmplatform:"Unix 64-bit"},
-    {sz:[2,8,8,8,8],datamodel:"ILP64",dmplatform:"Unix ILP64"}, /* HAL, SPARC64 */
+    {sz:['shortSize', 'intSize', 'longSize', 'longLongSize', 'pointerSize'], datamodel:"", dmplatform:""},
+    {sz:[2, 4, 4, 8, 4], datamodel:"ILP32LL64", dmplatform:"x86 32-bit"}, /* Windows or Unix */
+    {sz:[2, 4, 4, 8, 8], datamodel:"IL32LLP64", dmplatform:"Windows x64 64-bit"},
+    {sz:[2, 4, 8, 8, 8], datamodel:"I32LP64", dmplatform:"Unix 64-bit"},
+    {sz:[2, 8, 8, 8, 8], datamodel:"ILP64", dmplatform:"Unix ILP64"}, /* HAL, SPARC64 */
 ];
 
 export function datamodel(retidx)
@@ -1000,7 +1032,12 @@ export function datamodel(retidx)
 
 export function what_datamodel_is_this(retidx, szshort, szint, szlong, szll, szptr)
 {
-    retidx = C.int(retidx); szshort = C.int(szshort); szint = C.int(szint); szlong = C.int(szlong); szll = C.int(szll); szptr = C.int(szptr);
+    retidx = C.int(retidx);
+    szshort = C.int(szshort);
+    szint = C.int(szint);
+    szlong = C.int(szlong);
+    szll = C.int(szll);
+    szptr = C.int(szptr);
     let i;
     const unknown = C.charPointer("Unknown");
 

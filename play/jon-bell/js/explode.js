@@ -992,7 +992,9 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
             if (game.gt) game.gt.thrownobj = stmp.obj;
             let bx = stmp.ox + stmp.dx, by = stmp.oy + stmp.dy;
             const typ = isok(bx, by) ? ((game.level?.at(bx, by)?.typ) ?? STONE) : STONE;
-            game.bhitpos = { x: bx, y: by };
+            // C explode.c:843-844 shares this position with mattackm's
+            // next-attack target check (mhitm.c:379-381).
+            game.bhitpos = (game.gb ||= {}).bhitpos = { x: bx, y: by };
             let mtmp;
             if (!isok(bx, by)) {
                 game.bhitpos.x -= stmp.dx; game.bhitpos.y -= stmp.dy;

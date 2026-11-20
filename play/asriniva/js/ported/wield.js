@@ -5,7 +5,6 @@ import { C } from '../c-runtime/context.js';
 /*-Copyright (c) Robert Patrick Rankin, 2009. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 /* KMH -- Differences between the three weapon slots.
  *
  * The main weapon (uwep):
@@ -52,7 +51,6 @@ import { C } from '../c-runtime/context.js';
  *
  * No item may be in more than one of these slots.
  */
-
 
 /* used by will_weld() */
 /* probably should be renamed */
@@ -190,7 +188,12 @@ export function ready_weapon(wep)
     } else {
         /* Weapon WILL be wielded after this point */
         res = C.ECMD_TIME;
-        if (((wep).cursed && (((wep).oclass == C.WEAPON_CLASS || C.is_weptool(wep) || (wep).otyp == C.HEAVY_IRON_BALL || (wep).otyp == C.IRON_CHAIN) || (wep).otyp == C.TIN_OPENER))) {
+        if (((wep).cursed
+            && (((wep).oclass == C.WEAPON_CLASS
+            || C.is_weptool(wep)
+            || (wep).otyp == C.HEAVY_IRON_BALL
+            || (wep).otyp == C.IRON_CHAIN)
+            || (wep).otyp == C.TIN_OPENER))) {
             let tmp = C.xname(wep), thestr = "The ";
 
             if (C.strncmp(tmp, thestr, 4) && !C.strncmp(C.The(tmp), thestr, 4))
@@ -229,7 +232,10 @@ export function ready_weapon(wep)
             /* skip this message if we already got "empty handed" one above;
                also, Null is not safe for neither TWOWEAPOK() or bimanual() */
             if (C.uwep)
-                C.You("%s.", (((((C.uwep).oclass == C.WEAPON_CLASS) ? !(C.is_launcher(C.uwep) || C.is_ammo(C.uwep) || C.is_missile(C.uwep)) : C.is_weptool(C.uwep)) && !C.bimanual(C.uwep))
+                C.You("%s.", (((((C.uwep).oclass == C.WEAPON_CLASS) ? !(C.is_launcher(C.uwep)
+                    || C.is_ammo(C.uwep)
+                    || C.is_missile(C.uwep)) : C.is_weptool(C.uwep))
+                    && !C.bimanual(C.uwep))
                             ? are_no_longer_twoweap
                             : can_no_longer_twoweap));
         }
@@ -721,7 +727,12 @@ export function wield_tool(obj, verb)
     } else {
         let oldwep = C.uwep;
 
-        if (((obj).cursed && (((obj).oclass == C.WEAPON_CLASS || C.is_weptool(obj) || (obj).otyp == C.HEAVY_IRON_BALL || (obj).otyp == C.IRON_CHAIN) || (obj).otyp == C.TIN_OPENER))) {
+        if (((obj).cursed
+            && (((obj).oclass == C.WEAPON_CLASS
+            || C.is_weptool(obj)
+            || (obj).otyp == C.HEAVY_IRON_BALL
+            || (obj).otyp == C.IRON_CHAIN)
+            || (obj).otyp == C.TIN_OPENER))) {
             /* hope none of ready_weapon()'s early returns apply here... */
             C.callLocal(ready_weapon, obj);
         } else {
@@ -760,8 +771,15 @@ export function can_twoweapon()
         /* "your hands are empty" or "your {left|right} hand is empty" */
         C.Your("%s%s %s empty.", C.uwep ? "left " : C.uswapwep ? "right " : "",
              hand_s, C.vtense(hand_s, "are"));
-    } else if (!(((C.uwep).oclass == C.WEAPON_CLASS) ? !(C.is_launcher(C.uwep) || C.is_ammo(C.uwep) || C.is_missile(C.uwep)) : C.is_weptool(C.uwep)) || !(((C.uswapwep).oclass == C.WEAPON_CLASS) ? !(C.is_launcher(C.uswapwep) || C.is_ammo(C.uswapwep) || C.is_missile(C.uswapwep)) : C.is_weptool(C.uswapwep))) {
-        otmp = !(((C.uwep).oclass == C.WEAPON_CLASS) ? !(C.is_launcher(C.uwep) || C.is_ammo(C.uwep) || C.is_missile(C.uwep)) : C.is_weptool(C.uwep)) ? C.uwep : C.uswapwep;
+    } else if (!(((C.uwep).oclass == C.WEAPON_CLASS) ? !(C.is_launcher(C.uwep)
+        || C.is_ammo(C.uwep)
+        || C.is_missile(C.uwep)) : C.is_weptool(C.uwep))
+        || !(((C.uswapwep).oclass == C.WEAPON_CLASS) ? !(C.is_launcher(C.uswapwep)
+        || C.is_ammo(C.uswapwep)
+        || C.is_missile(C.uswapwep)) : C.is_weptool(C.uswapwep))) {
+        otmp = !(((C.uwep).oclass == C.WEAPON_CLASS) ? !(C.is_launcher(C.uwep)
+            || C.is_ammo(C.uwep)
+            || C.is_missile(C.uwep)) : C.is_weptool(C.uwep)) ? C.uwep : C.uswapwep;
         C.pline("%s %s suitable %s weapon%s.", C.Yname2(otmp),
               C.is_plural(otmp) ? "aren't" : "isn't a",
               (C.samePtr(otmp, C.uwep)) ? "primary" : "secondary",
@@ -902,7 +920,14 @@ export function chwepon(otmp, amount)
     if (!C.uwep || (C.uwep.oclass != C.WEAPON_CLASS && !C.is_weptool(C.uwep))) {
         const buf = C.stackAlloc(C.BUFSZ);
 
-        if (amount >= 0 && C.uwep && ((C.uwep).cursed && (((C.uwep).oclass == C.WEAPON_CLASS || C.is_weptool(C.uwep) || (C.uwep).otyp == C.HEAVY_IRON_BALL || (C.uwep).otyp == C.IRON_CHAIN) || (C.uwep).otyp == C.TIN_OPENER))) { /* cursed tin opener */
+        if (amount >= 0
+            && C.uwep
+            && ((C.uwep).cursed
+            && (((C.uwep).oclass == C.WEAPON_CLASS
+            || C.is_weptool(C.uwep)
+            || (C.uwep).otyp == C.HEAVY_IRON_BALL
+            || (C.uwep).otyp == C.IRON_CHAIN)
+            || (C.uwep).otyp == C.TIN_OPENER))) { /* cursed tin opener */
             if (!C.Blind) {
                 C.Sprintf(buf, "%s with %s aura.",
                         C.Yobjnam2(C.uwep, "glow"), C.an(C.hcolor(C.NH_AMBER)));
@@ -1026,7 +1051,14 @@ export function chwepon(otmp, amount)
 
 export function welded(obj)
 {
-    if (obj && C.samePtr(obj, C.uwep) && ((obj).cursed && (((obj).oclass == C.WEAPON_CLASS || C.is_weptool(obj) || (obj).otyp == C.HEAVY_IRON_BALL || (obj).otyp == C.IRON_CHAIN) || (obj).otyp == C.TIN_OPENER))) {
+    if (obj
+        && C.samePtr(obj, C.uwep)
+        && ((obj).cursed
+        && (((obj).oclass == C.WEAPON_CLASS
+        || C.is_weptool(obj)
+        || (obj).otyp == C.HEAVY_IRON_BALL
+        || (obj).otyp == C.IRON_CHAIN)
+        || (obj).otyp == C.TIN_OPENER))) {
         C.set_bknown(obj, 1);
         return 1;
     }
@@ -1052,7 +1084,14 @@ export function weldmsg(obj)
 export function mwelded(obj)
 {
     /* caller is responsible for making sure this is a monster's item */
-    if (obj && (obj.owornmask & C.W_WEP) && ((obj).cursed && (((obj).oclass == C.WEAPON_CLASS || C.is_weptool(obj) || (obj).otyp == C.HEAVY_IRON_BALL || (obj).otyp == C.IRON_CHAIN) || (obj).otyp == C.TIN_OPENER)))
+    if (obj
+        && (obj.owornmask & C.W_WEP)
+        && ((obj).cursed
+        && (((obj).oclass == C.WEAPON_CLASS
+        || C.is_weptool(obj)
+        || (obj).otyp == C.HEAVY_IRON_BALL
+        || (obj).otyp == C.IRON_CHAIN)
+        || (obj).otyp == C.TIN_OPENER)))
         return 1;
     return 0;
 }

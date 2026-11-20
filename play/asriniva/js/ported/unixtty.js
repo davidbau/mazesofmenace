@@ -17,14 +17,11 @@ import { C } from '../c-runtime/context.js';
 
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 /* tty.c - (Unix) version */
-
 
 /* With thanks to the people who sent code for SYSV - hpscdi!jon,
  * arnold@ucsf-cgl, wcs@bo95b, cbcephus!pds and others.
  */
-
 
 // #define NEED_VARARGS
 // #include "hack.h"
@@ -56,7 +53,7 @@ import { C } from '../c-runtime/context.js';
 // #else
 // #define termstruct termio
 // #endif
-// #endif 
+// #endif
 /* POSIX_TYPES */
 
 // #ifdef LINUX
@@ -66,7 +63,7 @@ import { C } from '../c-runtime/context.js';
 // #define kill_sym c_cc[VKILL]
 // #define erase_sym c_cc[VERASE]
 // #define intr_sym c_cc[VINTR]
-// #ifdef TAB3 
+// #ifdef TAB3
 /* not a POSIX flag, but some have it anyway */
 
 // #define EXTABS TAB3
@@ -84,7 +81,7 @@ import { C } from '../c-runtime/context.js';
 // #define OSPEED(x) (speednum(cfgetospeed(&x)))
 // #else
 // #ifndef CBAUD
-// #define CBAUD _CBAUD 
+// #define CBAUD _CBAUD
 /* for POSIX nitpickers (like RS/6000 cc) */
 
 // #endif
@@ -104,7 +101,7 @@ import { C } from '../c-runtime/context.js';
 // #define GTTY(x) (ioctl(0, TCGETA, x))
 // #define STTY(x) (ioctl(0, TCSETAW, x))
 // #endif
-// #endif 
+// #endif
 /* POSIX_TYPES */
 
 // #define GTTY2(x) 1
@@ -121,9 +118,8 @@ import { C } from '../c-runtime/context.js';
 // #define inittyb2 inittyb
 // #define curttyb2 curttyb
 
-// #else 
+// #else
 /* V7 */
-
 
 // #include <sgtty.h>
 // #define termstruct sgttyb
@@ -135,14 +131,14 @@ import { C } from '../c-runtime/context.js';
 // #define echoflgs sg_flags
 // #define cbrkflgs sg_flags
 // #define CBRKMASK CBREAK
-// #define CBRKON              
+// #define CBRKON
 /* empty */
 
-// #define inputflags sg_flags 
+// #define inputflags sg_flags
 /* don't know how enabling meta bits */
 
 // #define IS_7BIT(x) (FALSE)
-// #define STRIPHI 0 
+// #define STRIPHI 0
 /* should actually be done on BSD */
 
 // #define OSPEED(x) (x).sg_ospeed
@@ -158,9 +154,8 @@ import { C } from '../c-runtime/context.js';
 // #define nonesuch -1
 // struct tchars inittyb2, curttyb2;
 
-// #endif 
+// #endif
 /* V7 */
-
 
 /*
  * Old curses.h relied on implicit declaration of has_colors().
@@ -177,14 +172,14 @@ import { C } from '../c-runtime/context.js';
 
 // #if defined(TTY_GRAPHICS) && ((!defined(SYSV) && !defined(HPUX)) \
 //                               || defined(UNIXPC) || defined(SVR4))
-// extern 
+// extern
 /* it is defined in libtermlib (libtermcap) */
 
-//     short ospeed; 
+//     short ospeed;
 /* terminal baudrate; set by gettty */
 
 // #else
-// short ospeed = 0; 
+// short ospeed = 0;
 /* gets around "not defined" error message */
 
 // #endif
@@ -245,10 +240,9 @@ function setctty()
     if (C.STTY(C.curttyb) < 0 || C.STTY2(C.curttyb2) < 0) {
         /* Silent when running under NOMUX_MARKERS (no controlling tty). */
         if (!C.getenv("NOMUX_MARKERS"))
-        C.perror("NetHack (setctty)");
+            C.perror("NetHack (setctty)");
     }
 }
-
 
 /*
  * Get initial state of terminal, set ospeed (for termcap routines)
@@ -260,7 +254,7 @@ export function gettty()
 {
     if (C.GTTY(C.inittyb) < 0 || C.GTTY2(C.inittyb2) < 0) {
         if (!C.getenv("NOMUX_MARKERS"))
-        C.perror("NetHack (gettty)");
+            C.perror("NetHack (gettty)");
     }
     if (C.getenv("NOMUX_MARKERS")) {
         /* Without a real tty the GTTY ioctls leave inittyb zeroed.
@@ -268,7 +262,7 @@ export function gettty()
          * getline.c sees the same erase_char/kill_char as a recording
          * captured under tmux: \177 (DEL) for erase, ^U for kill. */
         C.inittyb.erase_sym = 127;
-        C.inittyb.kill_sym  = 21;
+        C.inittyb.kill_sym = 21;
         C.inittyb2.intr_sym = 3;
     }
     C.copyTerm(C.curttyb, C.inittyb);
@@ -287,7 +281,6 @@ export function gettty()
     C.unixttyState.settty_needed = 1;
 }
 
-
 /* reset terminal to original state */
 
 export function settty(s)
@@ -302,7 +295,7 @@ export function settty(s)
         C.raw_print(s);
     if (C.STTY(C.inittyb) < 0 || C.STTY2(C.inittyb2) < 0) {
         if (!C.getenv("NOMUX_MARKERS"))
-        C.perror("NetHack (settty)");
+            C.perror("NetHack (settty)");
     }
     C.iflags.echo = (C.inittyb.echoflgs & C.ECHO) ? 1 : 0;
     C.iflags.cbreak = (C.CBRKON(C.inittyb.cbrkflgs & C.CBRKMASK)) ? 1 : 0;
@@ -310,7 +303,6 @@ export function settty(s)
     C.setioctls();
     C.unixttyState.settty_needed = 0;
 }
-
 
 export function setftty()
 {
@@ -403,7 +395,6 @@ export function setftty()
 // #endif
 }
 
-
 export function intron() /* enable kbd interrupts if enabled when game started */
 {
 // #ifdef TTY_GRAPHICS
@@ -418,7 +409,6 @@ export function intron() /* enable kbd interrupts if enabled when game started *
 // #endif
 }
 
-
 export function introff() /* disable kbd interrupts if required*/
 {
 // #ifdef TTY_GRAPHICS
@@ -432,16 +422,14 @@ export function introff() /* disable kbd interrupts if required*/
 // #endif
 }
 
-
-// #ifdef _M_UNIX 
+// #ifdef _M_UNIX
 /* SCO UNIX (3.2.4), from Andreas Arens */
 
 // #include <sys/console.h>
 
 // #define BSIZE (E_TABSZ * 2)
-// #define LDIOC ('D' << 8) 
+// #define LDIOC ('D' << 8)
 /* POSIX prevents definition */
-
 
 // #include <sys/emap.h>
 
@@ -503,11 +491,10 @@ export function introff() /* disable kbd interrupts if required*/
 //     }
 // #endif
 // }
-// #endif 
+// #endif
 /* _M_UNIX */
 
-
-// #ifdef __linux__ 
+// #ifdef __linux__
 /* via Jesse Thilo and Ben Gertzfield */
 
 // #include <sys/vt.h>
@@ -562,13 +549,12 @@ export function introff() /* disable kbd interrupts if required*/
 //     }
 // #endif
 // }
-// #endif 
+// #endif
 /* __linux__ */
-
 
 // DISABLE_WARNING_FORMAT_NONLITERAL
 
-// #ifndef __begui__ 
+// #ifndef __begui__
 /* the Be GUI will define its own error proc */
 
 /* fatal error */
@@ -588,9 +574,8 @@ export function error(s, ...the_args)
     C.exit(C.EXIT_FAILURE);
 }
 
-// #endif 
+// #endif
 /* !__begui__ */
-
 
 // RESTORE_WARNING_FORMAT_NONLITERAL
 
@@ -606,4 +591,3 @@ export function tty_utf8graphics_fixup()
 }
 
 // #endif
-

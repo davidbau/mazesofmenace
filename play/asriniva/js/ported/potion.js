@@ -5,7 +5,6 @@ import {C} from '../c-runtime/context.js';
 /*-Copyright (c) Robert Patrick Rankin, 2013. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 /* used to indicate whether quaff or dip has skipped an opportunity to
    use a fountain or such, in order to vary the feedback if hero lacks
    any potions [reinitialized every time it's used so does not need to
@@ -14,7 +13,6 @@ export const drink_ok_extra_initial = 0;
 
 /* force `val' to be within valid range for intrinsic timeout value */
 export function itimeout(val)
-
 {
     val = C.long(C.long(val));
     if ((C.long(val) >= C.long(C.TIMEOUT)))
@@ -27,15 +25,14 @@ export function itimeout(val)
 
 /* increment `old' by `incr' and force result to be valid intrinsic timeout */
 export function itimeout_incr(old, incr)
-
 {
-    old = C.long(C.long(old)); incr = C.int(C.int(incr));
+    old = C.long(C.long(old));
+    incr = C.int(C.int(incr));
     return C.long(itimeout(C.long((C.long(C.long((C.long(old) & C.long(C.TIMEOUT)))) + C.long(C.long(incr))))));
 }
 
 /* set the timeout field of intrinsic `which' */
 export function set_itimeout(which, val)
-
 {
     val = C.long(C.long(val));
     which.value &= ~C.TIMEOUT;
@@ -44,16 +41,15 @@ export function set_itimeout(which, val)
 
 /* increment the timeout field of intrinsic `which' */
 export function incr_itimeout(which, incr)
-
 {
     incr = C.int(C.int(incr));
     set_itimeout(which, itimeout_incr(which.value, incr));
 }
 
 export function make_confused(xtime, talk)
-
 {
-    xtime = C.long(C.long(xtime)); talk = C.int(C.boolean(talk));
+    xtime = C.long(C.long(xtime));
+    talk = C.int(C.boolean(talk));
     let old = C.long(C.HConfusion);
 
     if (C.Unaware)
@@ -70,9 +66,9 @@ export function make_confused(xtime, talk)
 }
 
 export function make_stunned(xtime, talk)
-
 {
-    xtime = C.long(C.long(xtime)); talk = C.int(C.boolean(talk));
+    xtime = C.long(C.long(xtime));
+    talk = C.int(C.boolean(talk));
     let old = C.long(C.HStun);
 
     if (C.Unaware)
@@ -104,9 +100,10 @@ export function make_sick(xtime,
           cause, /* sickness cause */
           talk,
           type)
-
 {
-    xtime = C.long(C.long(xtime)); talk = C.int(C.boolean(talk)); type = C.int(C.int(type));
+    xtime = C.long(C.long(xtime));
+    talk = C.int(C.boolean(talk));
+    type = C.int(C.int(type));
     let kptr;
     let old = C.long(C.Sick);
 
@@ -158,7 +155,6 @@ export function make_sick(xtime,
 }
 
 export function make_slimed(xtime, msg)
-
 {
     xtime = C.long(C.long(xtime));
     let old = C.long(C.Slimed);
@@ -183,9 +179,9 @@ export function make_slimed(xtime, msg)
 
 /* start or stop petrification */
 export function make_stoned(xtime, msg, killedby, killername)
-
 {
-    xtime = C.long(C.long(xtime)); killedby = C.int(C.int(killedby));
+    xtime = C.long(C.long(xtime));
+    killedby = C.int(C.int(killedby));
     let old = C.long(C.Stoned);
 
 /* tell player even if hero is unconscious */
@@ -203,9 +199,9 @@ export function make_stoned(xtime, msg, killedby, killername)
 }
 
 export function make_vomiting(xtime, talk)
-
 {
-    xtime = C.long(C.long(xtime)); talk = C.int(C.boolean(talk));
+    xtime = C.long(C.long(xtime));
+    talk = C.int(C.boolean(talk));
     let old = C.long(C.Vomiting);
 
     if (C.Unaware)
@@ -222,9 +218,9 @@ export const vismsg = "vision seems to %s for a moment but is %s now.";
 export const eyemsg = "%s momentarily %s.";
 
 export function make_blinded(xtime, talk)
-
 {
-    xtime = C.long(C.long(xtime)); talk = C.int(C.boolean(talk));
+    xtime = C.long(C.long(xtime));
+    talk = C.int(C.boolean(talk));
     let old = C.long(C.BlindedTimeout);
     let u_could_see, can_see_now;
     let eyes;
@@ -298,7 +294,6 @@ export function make_blinded(xtime, talk)
 /* blindness has just started or just ended--caller enforces that;
    called by Blindf_on(), Blindf_off(), and make_blinded() */
 export function toggle_blindness()
-
 {
     let Stinging = (C.int(((C.uwep && (C.ulong(C.ulong((C.ulong(C.EWarn_of_mon) & C.ulong(C.W_WEP)))) != C.ulong(0n))) ? 1 : 0)));
 
@@ -336,7 +331,9 @@ export function make_hallucinated(
     mask)
     /* nonzero if resistance status should change by mask */
 {
-    xtime = C.long(C.long(xtime)); talk = C.int(C.boolean(talk)); mask = C.long(C.long(mask));
+    xtime = C.long(C.long(xtime));
+    talk = C.int(C.boolean(talk));
+    mask = C.long(C.long(mask));
     let old = C.long(C.HHallucination);
     let changed = C.int(0);
     let message, verb;
@@ -406,9 +403,9 @@ export function make_hallucinated(
 /* RESTORE_WARNING_FORMAT_NONLITERAL */
 
 export function make_deaf(xtime, talk)
-
 {
-    xtime = C.long(C.long(xtime)); talk = C.int(C.boolean(talk));
+    xtime = C.long(C.long(xtime));
+    talk = C.int(C.boolean(talk));
     let old = C.long(C.HDeaf);
 
     if (C.Unaware)
@@ -425,7 +422,6 @@ export function make_deaf(xtime, talk)
 
 /* set or clear "slippery fingers" */
 export function make_glib(xtime)
-
 {
     xtime = C.int(C.int(xtime));
     C.disp.botl = C.int((C.disp.botl) | (C.int((!C.Glib) ^ (!!xtime))));
@@ -436,7 +432,6 @@ export function make_glib(xtime)
 }
 
 export function self_invis_message()
-
 {
     C.pline("%s %s.",
           C.Hallucination ? "Far out, man!  You"
@@ -446,7 +441,6 @@ export function self_invis_message()
 }
 
 export function ghost_from_bottle()
-
 {
     let mtmp = C.makemon(C.mons[C.PM_GHOST], C.u.ux, C.u.uy, C.MM_NOMSG);
 
@@ -470,7 +464,6 @@ export function ghost_from_bottle()
 /* getobj callback for object to drink from, which also does double duty as
    the callback for dipping into (both just allow potions). */
 export function drink_ok(obj)
-
 {
     /* getobj()'s callback to test whether hands/self is a valid "item" to
        pick is used here to communicate the fact that player has already
@@ -491,7 +484,6 @@ export function drink_ok(obj)
 /* "Quaffing is like drinking, except you spill more." - Terry Pratchett */
 /* the #quaff command */
 export function dodrink()
-
 {
     let otmp;
 
@@ -564,11 +556,15 @@ export function dodrink()
     }
     otmp.in_use = 1; /* you've opened the stopper */
 
-    if (((((C.objdescr_is(otmp, "milky") && !(C.int((C.svm.mvitals[C.PM_GHOST].mvflags) & (C.G_GONE)))) ? 1 : 0) && !C.rn2(C.POTION_OCCUPANT_CHANCE(C.svm.mvitals[C.PM_GHOST].born), 603, "dodrink")) ? 1 : 0)) {
+    if (((((C.objdescr_is(otmp, "milky")
+        && !(C.int((C.svm.mvitals[C.PM_GHOST].mvflags) & (C.G_GONE)))) ? 1 : 0)
+        && !C.rn2(C.POTION_OCCUPANT_CHANCE(C.svm.mvitals[C.PM_GHOST].born), 603, "dodrink")) ? 1 : 0)) {
         ghost_from_bottle();
         C.useup(otmp);
         return C.int(C.ECMD_TIME);
-    } else if (((((C.objdescr_is(otmp, "smoky") && !(C.int((C.svm.mvitals[C.PM_DJINNI].mvflags) & (C.G_GONE)))) ? 1 : 0) && !C.rn2(C.POTION_OCCUPANT_CHANCE(C.svm.mvitals[C.PM_DJINNI].born), 609, "dodrink")) ? 1 : 0)) {
+    } else if (((((C.objdescr_is(otmp, "smoky")
+        && !(C.int((C.svm.mvitals[C.PM_DJINNI].mvflags) & (C.G_GONE)))) ? 1 : 0)
+        && !C.rn2(C.POTION_OCCUPANT_CHANCE(C.svm.mvitals[C.PM_DJINNI].born), 609, "dodrink")) ? 1 : 0)) {
         C.callLocal(djinni_from_bottle, otmp);
         C.useup(otmp);
         return C.int(C.ECMD_TIME);
@@ -577,7 +573,6 @@ export function dodrink()
 }
 
 export function dopotion(otmp)
-
 {
     let retval;
 
@@ -605,7 +600,6 @@ export function dopotion(otmp)
 /* potion or spell of restore ability; for spell, otmp is a temporary
    spellbook object that will be blessed if hero is skilled in healing */
 export function peffect_restore_ability(otmp)
-
 {
     C.gp.potion_unkn++;
     if (otmp.cursed) {
@@ -655,7 +649,6 @@ export function peffect_restore_ability(otmp)
 }
 
 export function peffect_hallucination(otmp)
-
 {
     if (C.Halluc_resistance) {
         C.gp.potion_nothing++;
@@ -666,7 +659,10 @@ export function peffect_hallucination(otmp)
     make_hallucinated(itimeout_incr(C.HHallucination,
                                            C.int(C.int((C.rn2(200, 705, "peffect_hallucination")) + (C.int((600) - (Math.imul(300, C.bcsign(otmp)))))))),
                              1, 0n);
-    if (((((otmp.blessed && !C.rn2(3, 707, "peffect_hallucination")) ? 1 : 0) || ((!otmp.cursed && !C.rn2(6, 707, "peffect_hallucination")) ? 1 : 0)) ? 1 : 0)) {
+    if (((((otmp.blessed
+        && !C.rn2(3, 707, "peffect_hallucination")) ? 1 : 0)
+        || ((!otmp.cursed
+        && !C.rn2(6, 707, "peffect_hallucination")) ? 1 : 0)) ? 1 : 0)) {
         C.You("perceive yourself...");
         C.display_nhwindow(C.WIN_MESSAGE, 0);
         C.enlightenment(C.MAGICENLIGHTENMENT, C.ENL_GAMEINPROGRESS);
@@ -676,7 +672,6 @@ export function peffect_hallucination(otmp)
 }
 
 export function peffect_water(otmp)
-
 {
     if (((!otmp.blessed && !otmp.cursed) ? 1 : 0)) {
         C.pline("This tastes like %s.", C.hliquid("water"));
@@ -729,7 +724,6 @@ export function peffect_water(otmp)
 }
 
 export function peffect_booze(otmp)
-
 {
     C.gp.potion_unkn++;
     C.pline("Ooph!  This tastes like %s%s!",
@@ -753,7 +747,6 @@ export function peffect_booze(otmp)
 }
 
 export function peffect_enlightenment(otmp)
-
 {
     if (otmp.cursed) {
         C.gp.potion_unkn++;
@@ -769,7 +762,6 @@ export function peffect_enlightenment(otmp)
 }
 
 export function peffect_invisibility(otmp)
-
 {
     let is_spell = (C.int((otmp.oclass == C.SPBOOK_CLASS)));
 
@@ -799,7 +791,6 @@ export function peffect_invisibility(otmp)
 }
 
 export function peffect_see_invisible(otmp)
-
 {
     let msg = C.int(((C.Invisible && !C.Blind) ? 1 : 0));
     let permchance = C.int(C.int((C.int((10) - (C.HInvis ? 3 : 0))) - (C.HSee_invisible ? 6 : 0)));
@@ -839,7 +830,6 @@ export function peffect_see_invisible(otmp)
 }
 
 export function peffect_paralysis(otmp)
-
 {
     if (C.Free_action) {
         C.You("stiffen momentarily.");
@@ -859,7 +849,6 @@ export function peffect_paralysis(otmp)
 }
 
 export function peffect_sleeping(otmp)
-
 {
     if (((C.Sleep_resistance || C.Free_action) ? 1 : 0)) {
         C.monstseesu(C.M_SEEN_SLEEP);
@@ -872,7 +861,6 @@ export function peffect_sleeping(otmp)
 }
 
 export function peffect_monster_detection(otmp)
-
 {
     if (otmp.blessed) {
         let i, x, y;
@@ -913,7 +901,6 @@ export function peffect_monster_detection(otmp)
 }
 
 export function peffect_object_detection(otmp)
-
 {
     if (C.object_detect(otmp, 0))
         return C.int(1); /* nothing detected */
@@ -922,7 +909,6 @@ export function peffect_object_detection(otmp)
 }
 
 export function peffect_sickness(otmp)
-
 {
     C.pline("Yecch!  This stuff tastes like poison.");
     if (otmp.blessed) {
@@ -972,7 +958,6 @@ export function peffect_sickness(otmp)
 }
 
 export function peffect_confusion(otmp)
-
 {
     if (!C.Confusion) {
         if (C.Hallucination) {
@@ -988,7 +973,6 @@ export function peffect_confusion(otmp)
 }
 
 export function peffect_gain_ability(otmp)
-
 {
     if (otmp.cursed) {
         C.pline("Ulch!  That potion tasted foul!");
@@ -1010,7 +994,6 @@ export function peffect_gain_ability(otmp)
 }
 
 export function peffect_speed(otmp)
-
 {
     let is_speed = (C.int((otmp.otyp == C.POT_SPEED)));
 
@@ -1031,7 +1014,6 @@ export function peffect_speed(otmp)
 }
 
 export function peffect_blindness(otmp)
-
 {
     if (((C.Blind || ((((C.HBlinded || C.EBlinded) ? 1 : 0) && C.BBlinded) ? 1 : 0)) ? 1 : 0))
         C.gp.potion_nothing++;
@@ -1041,7 +1023,6 @@ export function peffect_blindness(otmp)
 }
 
 export function peffect_gain_level(otmp)
-
 {
     if (otmp.cursed) {
         let on_lvl_1 = (C.int((C.ledger_no(C.u.uz) == 1)));
@@ -1077,7 +1058,6 @@ export function peffect_gain_level(otmp)
 }
 
 export function peffect_healing(otmp)
-
 {
     C.You_feel("better.");
     healup(C.int((8) + (C.d(C.int((4) + (Math.imul(2, C.bcsign(otmp)))), 4, 1122, "peffect_healing"))), !otmp.cursed ? 1 : 0,
@@ -1086,7 +1066,6 @@ export function peffect_healing(otmp)
 }
 
 export function peffect_extra_healing(otmp)
-
 {
     C.You_feel("much better.");
     healup(C.int((16) + (C.d(C.int((4) + (Math.imul(2, C.bcsign(otmp)))), 8, 1131, "peffect_extra_healing"))),
@@ -1102,7 +1081,6 @@ export function peffect_extra_healing(otmp)
 }
 
 export function peffect_full_healing(otmp)
-
 {
     C.You_feel("completely healed.");
     healup(400, C.int((4) + (Math.imul(4, C.bcsign(otmp)))), !otmp.cursed, 1);
@@ -1123,7 +1101,6 @@ export function peffect_full_healing(otmp)
 }
 
 export function peffect_levitation(otmp)
-
 {
     /*
      * BLevitation will be set if levitation is blocked due to being
@@ -1182,7 +1159,6 @@ export function peffect_levitation(otmp)
 }
 
 export function peffect_gain_energy(otmp)
-
 {
     let num;
 
@@ -1218,7 +1194,6 @@ export function peffect_gain_energy(otmp)
 }
 
 export function peffect_oil(otmp)
-
 {
     let good_for_you = C.int(0), vulnerable;
 
@@ -1255,7 +1230,6 @@ export function peffect_oil(otmp)
 }
 
 export function peffect_acid(otmp)
-
 {
     if (C.Acid_resistance) {
         /* Not necessarily a creature who _likes_ acid */
@@ -1276,7 +1250,6 @@ export function peffect_acid(otmp)
 }
 
 export function peffect_polymorph(otmp)
-
 {
     C.You_feel("a little %s.", C.Hallucination ? "normal" : "strange");
     if (!C.Unchanging) {
@@ -1291,7 +1264,6 @@ export function peffect_polymorph(otmp)
 }
 
 export function peffects(otmp)
-
 {
     switch (otmp.otyp) {
     case C.POT_RESTORE_ABILITY:
@@ -1386,9 +1358,11 @@ export function peffects(otmp)
 }
 
 export function healup(nhp, nxtra, curesick, cureblind)
-
 {
-    nhp = C.int(C.int(nhp)); nxtra = C.int(C.int(nxtra)); curesick = C.int(C.boolean(curesick)); cureblind = C.int(C.boolean(cureblind));
+    nhp = C.int(C.int(nhp));
+    nxtra = C.int(C.int(nxtra));
+    curesick = C.int(C.boolean(curesick));
+    cureblind = C.int(C.boolean(cureblind));
     if (nhp) {
         if (C.Upolyd) {
             C.u.mh = C.int((C.u.mh) + (nhp));
@@ -1420,7 +1394,6 @@ export function healup(nhp, nxtra, curesick, cureblind)
 }
 
 export function strange_feeling(obj, txt)
-
 {
     if (((C.flags.beginner || !txt) ? 1 : 0))
         C.You("have a %s feeling for a moment, then it passes.",
@@ -1447,7 +1420,6 @@ export const hbottlenames = [
 ];
 
 export function bottlename()
-
 {
     if (C.Hallucination)
         return hbottlenames[C.rn2(hbottlenames.length, 1491, "bottlename")];
@@ -1559,7 +1531,8 @@ export function impact_arti_light(
     seeit)
    /* True: give "<obj> glows <color>" message */
 {
-    worsen = C.int(C.boolean(worsen)); seeit = C.int(C.boolean(seeit));
+    worsen = C.int(C.boolean(worsen));
+    seeit = C.int(C.boolean(seeit));
     let otmp;
 
     /* if already worst/best BUC it can be, or if it resists, do nothing */
@@ -1583,7 +1556,6 @@ export function impact_arti_light(
 
 /* potion obj hits monster mon, which might be youmonst; obj always used up */
 export function potionhit(mon, obj, how)
-
 {
     how = C.int(C.int(how));
     let botlnam = bottlename();
@@ -1604,11 +1576,18 @@ export function potionhit(mon, obj, how)
     } else {
         tx = C.int(mon.mx), ty = C.int(mon.my);
         /* sometimes it hits the saddle */
-        if (((((C.ulong((C.ulong(mon.misc_worn_check) & C.ulong(C.W_SADDLE))) && (saddle = C.which_armor(mon, C.W_SADDLE))) ? 1 : 0) && ((!C.rn2(10, 1647, "potionhit") || (((obj.otyp == C.POT_WATER) && (((((((C.rnl(10, 1649, "potionhit") > 7) && obj.cursed) ? 1 : 0) || (((C.rnl(10, 1650, "potionhit") < 4) && obj.blessed) ? 1 : 0)) ? 1 : 0) || !C.rn2(3, 1650, "potionhit")) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
+        if (((((C.ulong((C.ulong(mon.misc_worn_check) & C.ulong(C.W_SADDLE)))
+            && (saddle = C.which_armor(mon, C.W_SADDLE))) ? 1 : 0)
+            && ((!C.rn2(10, 1647, "potionhit")
+            || (((obj.otyp == C.POT_WATER)
+            && (((((((C.rnl(10, 1649, "potionhit") > 7)
+            && obj.cursed) ? 1 : 0)
+            || (((C.rnl(10, 1650, "potionhit") < 4)
+            && obj.blessed) ? 1 : 0)) ? 1 : 0)
+            || !C.rn2(3, 1650, "potionhit")) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
             hit_saddle = C.int(1);
         distance = C.int(C.distu(tx, ty));
         if (!C.cansee(tx, ty)) {
-            
             C.pline("Crash!");
         } else {
             let mnam = C.mon_nam(mon);
@@ -1625,7 +1604,7 @@ export function potionhit(mon, obj, how)
             } else {
                 C.Strcpy(buf, mnam);
             }
-            
+
             C.pline_The("%s crashes on %s and breaks into shards.", botlnam,
                       buf);
         }
@@ -1661,7 +1640,8 @@ export function potionhit(mon, obj, how)
             break;
         }
     } else if (((hit_saddle && saddle) ? 1 : 0)) {
-        let mnam; const buf = C.stackAlloc(C.BUFSZ), saddle_glows = C.stackAlloc(C.BUFSZ);
+        let mnam;
+        const buf = C.stackAlloc(C.BUFSZ), saddle_glows = C.stackAlloc(C.BUFSZ);
         let affected = C.int(0);
         let useeit = C.int(((((!C.Blind && C.canseemon(mon)) ? 1 : 0) && C.cansee(tx, ty)) ? 1 : 0));
 
@@ -1690,19 +1670,19 @@ export function potionhit(mon, obj, how)
         switch (obj.otyp) {
         case C.POT_FULL_HEALING:
             cureblind = C.int(1);
-            
+
             /*FALLTHRU*/
         case C.POT_EXTRA_HEALING:
             if (!obj.cursed)
                 cureblind = C.int(1);
-            
+
             /*FALLTHRU*/
         case C.POT_HEALING:
             if (obj.blessed)
                 cureblind = C.int(1);
             if (C.samePtr(mon.data, C.mons[C.PM_PESTILENCE]))
                 break do_illness;
-            
+
             /*FALLTHRU*/
         case C.POT_RESTORE_ABILITY:
         case C.POT_GAIN_ABILITY:
@@ -1710,7 +1690,8 @@ export function potionhit(mon, obj, how)
         case C.POT_SICKNESS:
             if (C.samePtr(mon.data, C.mons[C.PM_PESTILENCE]))
                 break do_healing;
-            if (((((C.dmgtype(mon.data, C.AD_DISE) /* won't happen, see prior goto */ || C.dmgtype(mon.data, C.AD_PEST) /* most common case */) ? 1 : 0) || C.resists_poison(mon)) ? 1 : 0)) {
+            if (((((C.dmgtype(mon.data, C.AD_DISE) /* won't happen, see prior goto */ || C.dmgtype(mon.data, C.AD_PEST) /* most common case */) ? 1 : 0)
+                || C.resists_poison(mon)) ? 1 : 0)) {
                 if (C.canseemon(mon))
                     C.pline("%s looks unharmed.", C.Monnam(mon));
                 break;
@@ -1843,7 +1824,7 @@ export function potionhit(mon, obj, how)
             }
             if (cureblind)
                 C.mcureblindness(mon, C.canseemon(mon));
-            
+
         break effect_done;
         }
 
@@ -1852,7 +1833,6 @@ export function potionhit(mon, obj, how)
                 if (C.canseemon(mon))
                     C.pline("%s looks rather ill.", C.Monnam(mon));
             }
-            
         }
         /* target might have been killed */
         if (!C.DEADMONSTER(mon)) {
@@ -1864,7 +1844,11 @@ export function potionhit(mon, obj, how)
     }
 
     /* Note: potionbreathe() does its own docall() */
-    if ((((((distance == 0) || (((distance < 3) && !C.rn2(C.int(((1 + C.ACURR(C.A_DEX))) / (2)), 1907, "potionhit")) ? 1 : 0)) ? 1 : 0) && ((!C.breathless(C.gy.youmonst.data) || C.haseyes(C.gy.youmonst.data)) ? 1 : 0)) ? 1 : 0))
+    if ((((((distance == 0)
+        || (((distance < 3)
+        && !C.rn2(C.int(((1 + C.ACURR(C.A_DEX))) / (2)), 1907, "potionhit")) ? 1 : 0)) ? 1 : 0)
+        && ((!C.breathless(C.gy.youmonst.data)
+        || C.haseyes(C.gy.youmonst.data)) ? 1 : 0)) ? 1 : 0))
         potionbreathe(obj);
     else if (((obj.dknown && C.cansee(tx, ty)) ? 1 : 0))
         C.trycall(obj);
@@ -1888,7 +1872,6 @@ export function potionhit(mon, obj, how)
 
 /* vapors are inhaled or get in your eyes */
 export function potionbreathe(obj)
-
 {
     let i, ii, isdone, kn = C.int(0);
     let cureblind = C.int(0);
@@ -1939,7 +1922,7 @@ export function potionbreathe(obj)
         if ((C.u.uhp < C.u.uhpmax))
             C.u.uhp++, C.disp.botl = C.int(1);
         cureblind = C.int(1);
-        
+
         /*FALLTHRU*/
     case C.POT_EXTRA_HEALING:
         if (((C.Upolyd && (C.u.mh < C.u.mhmax)) ? 1 : 0))
@@ -1948,7 +1931,7 @@ export function potionbreathe(obj)
             C.u.uhp++, C.disp.botl = C.int(1);
         if (!obj.cursed)
             cureblind = C.int(1);
-        
+
         /*FALLTHRU*/
     case C.POT_HEALING:
         if (((C.Upolyd && (C.u.mh < C.u.mhmax)) ? 1 : 0))
@@ -2078,12 +2061,18 @@ export function potionbreathe(obj)
 
 /* returns the potion type when o1 is dipped in o2 */
 export function mixtype(o1, o2)
-
 {
     let o1typ = C.int(o1.otyp), o2typ = C.int(o2.otyp);
 
     /* cut down on the number of cases below */
-    if ((((o1.oclass == C.POTION_CLASS) && (((((((((((((o2typ == C.POT_GAIN_LEVEL) || (o2typ == C.POT_GAIN_ENERGY)) ? 1 : 0) || (o2typ == C.POT_HEALING)) ? 1 : 0) || (o2typ == C.POT_EXTRA_HEALING)) ? 1 : 0) || (o2typ == C.POT_FULL_HEALING)) ? 1 : 0) || (o2typ == C.POT_ENLIGHTENMENT)) ? 1 : 0) || (o2typ == C.POT_FRUIT_JUICE)) ? 1 : 0)) ? 1 : 0)) {
+    if ((((o1.oclass == C.POTION_CLASS)
+        && (((((((((((((o2typ == C.POT_GAIN_LEVEL)
+        || (o2typ == C.POT_GAIN_ENERGY)) ? 1 : 0)
+        || (o2typ == C.POT_HEALING)) ? 1 : 0)
+        || (o2typ == C.POT_EXTRA_HEALING)) ? 1 : 0)
+        || (o2typ == C.POT_FULL_HEALING)) ? 1 : 0)
+        || (o2typ == C.POT_ENLIGHTENMENT)) ? 1 : 0)
+        || (o2typ == C.POT_FRUIT_JUICE)) ? 1 : 0)) ? 1 : 0)) {
         /* swap o1 and o2 */
         o1typ = C.int(o2.otyp);
         o2typ = C.int(o1.otyp);
@@ -2093,7 +2082,7 @@ export function mixtype(o1, o2)
     case C.POT_HEALING:
         if ((o2typ == C.POT_SPEED))
             return C.int(C.POT_EXTRA_HEALING);
-        
+
         /*FALLTHRU*/
     case C.POT_EXTRA_HEALING:
     case C.POT_FULL_HEALING:
@@ -2101,7 +2090,7 @@ export function mixtype(o1, o2)
             return C.int(((o1typ == C.POT_HEALING)) ? C.POT_EXTRA_HEALING
                    : ((o1typ == C.POT_EXTRA_HEALING)) ? C.POT_FULL_HEALING
                      : C.POT_GAIN_ABILITY);
-        
+
         /*FALLTHRU*/
     case C.UNICORN_HORN:
         switch (o2typ) {
@@ -2166,7 +2155,6 @@ export function mixtype(o1, o2)
 /* getobj callback for object to be dipped (not the thing being dipped into,
  * that uses drink_ok) */
 export function dip_ok(obj)
-
 {
     if (!obj)
         return C.int(C.GETOBJ_DOWNPLAY);
@@ -2183,7 +2171,6 @@ export function dip_ok(obj)
 
 /* getobj callback for object to be dipped when hero has slippery hands */
 export function dip_hands_ok(obj)
-
 {
     if (((!obj && ((C.Glib && C.can_reach_floor(0)) ? 1 : 0)) ? 1 : 0))
         return C.int(C.GETOBJ_SUGGEST);
@@ -2198,7 +2185,6 @@ export function hold_potion(
     potobj,
     drop_fmt, drop_arg,
     hold_msg)
-
 {
     let cap = C.int(C.near_capacity()),
         save_pickup_burden = C.int(C.flags.pickup_burden);
@@ -2219,7 +2205,6 @@ export function hold_potion(
 /* #dip command - get item to dip, then get potion to dip it into;
    precede with 'm' to bypass fountain, pool, or sink at hero's spot */
 export function dodip()
-
 {
     const Dip_ = "Dip ";
     let potion, obj;
@@ -2327,7 +2312,6 @@ export function dodip()
    inventory item-action: the potion has already been selected and is in
    cmdq ready to answer the first getobj() prompt */
 export function dip_into()
-
 {
     let obj, potion;
     const qbuf = C.stackAlloc(C.QBUFSZ);
@@ -2356,7 +2340,6 @@ export function dip_into()
 }
 
 export function poof(potion)
-
 {
     if (potion.dknown)
         C.trycall(potion);
@@ -2365,10 +2348,14 @@ export function poof(potion)
 
 /* do dipped potion(s) explode? */
 export function dip_potion_explosion(obj, dmg)
-
 {
     dmg = C.int(C.int(dmg));
-    if (((((((obj.cursed || (obj.otyp == C.POT_ACID)) ? 1 : 0) || (((obj.otyp == C.POT_OIL) && obj.lamplit) ? 1 : 0)) ? 1 : 0) || !C.rn2((((C.uarmc && (C.uarmc.otyp == C.ALCHEMY_SMOCK)) ? 1 : 0)) ? 30 : 10, 2421, "dip_potion_explosion")) ? 1 : 0)) {
+    if (((((((obj.cursed
+        || (obj.otyp == C.POT_ACID)) ? 1 : 0)
+        || (((obj.otyp == C.POT_OIL)
+        && obj.lamplit) ? 1 : 0)) ? 1 : 0)
+        || !C.rn2((((C.uarmc
+        && (C.uarmc.otyp == C.ALCHEMY_SMOCK)) ? 1 : 0)) ? 30 : 10, 2421, "dip_potion_explosion")) ? 1 : 0)) {
         /* it would be better to use up the whole stack in advance
            of the message, but we can't because we need to keep it
            around for potionbreathe() [and we can't set obj->in_use
@@ -2389,7 +2376,6 @@ export function dip_potion_explosion(obj, dmg)
 
 /* called by dodip() or dip_into() after obj and potion have been chosen */
 export function potion_dip(obj, potion)
-
 {
     let singlepotion;
     const qbuf = C.stackAlloc(C.QBUFSZ);
@@ -2573,7 +2559,11 @@ export function potion_dip(obj, potion)
             obj.opoisoned = 1;
             poof(potion);
             return C.int(C.ECMD_TIME);
-        } else if (((((obj.opoisoned && !C.permapoisoned(obj)) ? 1 : 0) && (((((potion.otyp == C.POT_HEALING) || (potion.otyp == C.POT_EXTRA_HEALING)) ? 1 : 0) || (potion.otyp == C.POT_FULL_HEALING)) ? 1 : 0)) ? 1 : 0)) {
+        } else if (((((obj.opoisoned
+            && !C.permapoisoned(obj)) ? 1 : 0)
+            && (((((potion.otyp == C.POT_HEALING)
+            || (potion.otyp == C.POT_EXTRA_HEALING)) ? 1 : 0)
+            || (potion.otyp == C.POT_FULL_HEALING)) ? 1 : 0)) ? 1 : 0)) {
             C.pline("A coating wears off %s.", C.the(C.xname(obj)));
             obj.opoisoned = 0;
             poof(potion);
@@ -2604,7 +2594,11 @@ export function potion_dip(obj, potion)
              * cracks.  Arrows, etc are classed as metallic due to arrowhead
              * material, but dipping in oil shouldn't repair them.
              */
-        } else if (((((((!C.is_rustprone(obj) && !C.is_corrodeable(obj)) ? 1 : 0) || C.is_ammo(obj)) ? 1 : 0) || ((!obj.oeroded && !obj.oeroded2) ? 1 : 0)) ? 1 : 0)) {
+        } else if (((((((!C.is_rustprone(obj)
+            && !C.is_corrodeable(obj)) ? 1 : 0)
+            || C.is_ammo(obj)) ? 1 : 0)
+            || ((!obj.oeroded
+            && !obj.oeroded2) ? 1 : 0)) ? 1 : 0)) {
             /* uses up potion, doesn't set obj->greased */
             if (!C.Blind)
                 C.pline("%s %s with an oily sheen.", C.Yname2(obj),
@@ -2667,7 +2661,9 @@ export function potion_dip(obj, potion)
     }
 
     potion.in_use = 0; /* didn't go poof */
-    if ((((((obj.otyp == C.UNICORN_HORN) || (obj.otyp == C.AMETHYST)) ? 1 : 0) && ((mixture = C.int(mixtype(obj, potion))) != C.STRANGE_OBJECT)) ? 1 : 0)) {
+    if ((((((obj.otyp == C.UNICORN_HORN)
+        || (obj.otyp == C.AMETHYST)) ? 1 : 0)
+        && ((mixture = C.int(mixtype(obj, potion))) != C.STRANGE_OBJECT)) ? 1 : 0)) {
         const oldbuf = C.stackAlloc(C.BUFSZ), newbuf = C.stackAlloc(C.BUFSZ);
         let old_otyp = C.int(potion.otyp);
         let old_dknown = C.int(0);
@@ -2733,7 +2729,6 @@ export function potion_dip(obj, potion)
 
 /* *monp grants a wish and then leaves the game */
 export function mongrantswish(monp)
-
 {
     let mon = monp.value;
     let mx = C.int(mon.mx), my = C.int(mon.my), glyph = C.int(C.glyph_at(mx, my));
@@ -2752,7 +2747,6 @@ export function mongrantswish(monp)
 }
 
 export function djinni_from_bottle(obj)
-
 {
     const mtmp = C.monPointerLocal(0);
     let chance;
@@ -2777,7 +2771,6 @@ export function djinni_from_bottle(obj)
         chance = C.int(((chance == 0)) ? C.rn2(4, 2837, "djinni_from_bottle") : 4);
     /* 0,1,2,3,4:  b=80%,5,5,5,5; nc=20%,20,20,20,20; c=5%,5,5,5,80 */
 
-    
     switch (chance) {
     case 0:
         C.verbalize("I am in your debt.  I will grant one wish!");
@@ -2856,7 +2849,6 @@ export function split_mon(
 
 /* Character becomes very fast temporarily. */
 export function speed_up(duration)
-
 {
     duration = C.long(C.long(duration));
    if (!C.Very_fast)

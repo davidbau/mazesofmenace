@@ -4,49 +4,7 @@ import {C} from '../c-runtime/context.js';
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* MAIL_STRUCTURES */
-
-
-
-
-
-
 
 export function learnscrolltyp(scrolltyp)
 {
@@ -78,7 +36,6 @@ export function cap_spe(obj)
     }
 }
 
-
 export function erode_obj_text(otmp, buf)
 {
     let erosion = C.greatest_erosion(otmp);
@@ -88,7 +45,6 @@ export function erode_obj_text(otmp, buf)
                      otmp.o_id ^ C.uint(C.ubirthday));
     return buf;
 }
-
 
 export function tshirt_text(tshirt, buf)
 {
@@ -179,7 +135,6 @@ export function tshirt_text(tshirt, buf)
     return C.callLocal(erode_obj_text, tshirt, buf);
 }
 
-
 export function hawaiian_motif(shirt, buf)
 {
     const hawaiian_motifs = [
@@ -213,7 +168,6 @@ export function hawaiian_motif(shirt, buf)
     return buf;
 }
 
-
 export function hawaiian_design(shirt, buf)
 {
     const hawaiian_bgs = [
@@ -242,7 +196,6 @@ export function hawaiian_design(shirt, buf)
             C.an(hawaiian_bgs[bg % C.SIZE(hawaiian_bgs)]));
     return buf;
 }
-
 
 export function apron_text(apron, buf)
 {
@@ -315,8 +268,6 @@ export function read_ok(obj)
 
     return C.GETOBJ_DOWNPLAY;
 }
-
-
 
 /* the #read command; read a scroll or spell book or various other things */
 
@@ -637,9 +588,6 @@ export function doread()
     return C.ECMD_TIME;
 }
 
-
-
-
 export function stripspe(obj)
 {
     if (obj.blessed || obj.spe <= 0) {
@@ -654,19 +602,16 @@ export function stripspe(obj)
     }
 }
 
-
 export function p_glow1(otmp)
 {
     C.pline("%s briefly.", C.Yobjnam2(otmp, C.Blind ? "vibrate" : "glow"));
 }
-
 
 export function p_glow2(otmp, color)
 {
     C.pline("%s%s%s for a moment.", C.Yobjnam2(otmp, C.Blind ? "vibrate" : "glow"),
           C.Blind ? "" : " ", C.Blind ? "" : C.hcolor(color));
 }
-
 
 export function p_glow3(otmp, color)
 {
@@ -1062,7 +1007,7 @@ export function maybe_tame(mtmp, sobj)
 
 export function valid_cloud_pos(x, y)
 {
-    if (!C.isok(x,y))
+    if (!C.isok(x, y))
         return 0;
     return Number(Boolean(C.ACCESSIBLE(C.levl[x][y].typ) || C.is_pool(x, y) || C.is_lava(x, y)));
 }
@@ -1077,7 +1022,6 @@ export function can_center_cloud(x, y)
         return 0;
     return (Number(Boolean(C.cansee(x, y) && C.distu(x, y) < 32)));
 }
-
 
 export function display_stinking_cloud_positions(on_off)
 {
@@ -1104,7 +1048,6 @@ export function display_stinking_cloud_positions(on_off)
         C.tmp_at(C.DISP_END, 0);
     }
 }
-
 
 export function seffect_enchant_armor(sobjp)
 {
@@ -1314,7 +1257,6 @@ export function disintegrate_cursed_armor()
     return 0;
 }
 
-
 export function seffect_destroy_armor(sobjp)
 {
     let sobj = sobjp.value;
@@ -1389,7 +1331,6 @@ export function seffect_destroy_armor(sobjp)
     }
 }
 
-
 export function seffect_confuse_monster(sobjp)
 {
     let sobj = sobjp.value;
@@ -1444,7 +1385,6 @@ export function seffect_confuse_monster(sobjp)
     }
 }
 
-
 export function seffect_scare_monster(sobjp)
 {
     let sobj = sobjp.value;
@@ -1478,7 +1418,6 @@ export function seffect_scare_monster(sobjp)
                  !ct ? "in the distance" : "close by");
     }
 }
-
 
 export function seffect_remove_curse(sobjp)
 {
@@ -1598,7 +1537,6 @@ export function seffect_remove_curse(sobjp)
     C.update_inventory();
 }
 
-
 export function seffect_create_monster(sobjp)
 {
     let sobj = sobjp.value;
@@ -1607,7 +1545,8 @@ export function seffect_create_monster(sobjp)
     let confused = (C.Confusion != 0);
 
     if (C.create_critters(1 + ((confused || scursed) ? 12 : 0)
-                        + ((sblessed || (C.rngSource(1616, "seffect_create_monster"), C.rn2(73))) ? 0 : (C.rngSource(1616, "seffect_create_monster"), C.rnd(4))),
+                        + ((sblessed
+                            || (C.rngSource(1616, "seffect_create_monster"), C.rn2(73))) ? 0 : (C.rngSource(1616, "seffect_create_monster"), C.rnd(4))),
                         confused ? C.mons[C.PM_ACID_BLOB]
                         : 0,
                         0))
@@ -1616,7 +1555,6 @@ export function seffect_create_monster(sobjp)
      * monsters are not visible
      */
 }
-
 
 export function seffect_enchant_weapon(sobjp)
 {
@@ -1669,7 +1607,6 @@ export function seffect_enchant_weapon(sobjp)
         C.callLocal(cap_spe, C.uwep);
 }
 
-
 export function seffect_taming(sobjp)
 {
     let sobj = sobjp.value;
@@ -1712,7 +1649,6 @@ export function seffect_taming(sobjp)
     }
 }
 
-
 export function seffect_genocide(sobjp)
 {
     let sobj = sobjp.value;
@@ -1730,7 +1666,6 @@ export function seffect_genocide(sobjp)
     else
         C.callLocal(do_genocide, (!scursed) | (2 * !!C.Confusion));
 }
-
 
 export function seffect_light(sobjp)
 {
@@ -1778,7 +1713,6 @@ export function seffect_light(sobjp)
     }
 }
 
-
 export function seffect_charging(sobjp)
 {
     let sobj = sobjp.value;
@@ -1820,7 +1754,6 @@ export function seffect_charging(sobjp)
         C.callLocal(recharge, otmp, scursed ? -1 : sblessed ? 1 : 0);
 }
 
-
 export function seffect_amnesia(sobjp)
 {
     let sobj = sobjp.value;
@@ -1839,7 +1772,6 @@ export function seffect_amnesia(sobjp)
         C.pline("Thinking of Maud you forget everything else.");
     C.exercise(C.A_WIS, 0);
 }
-
 
 export function seffect_fire(sobjp)
 {
@@ -1908,7 +1840,6 @@ export function seffect_fire(sobjp)
     C.explode(cc.x, cc.y, C.ZT_SPELL_O_FIRE, dam, C.SCROLL_CLASS, C.EXPL_FIERY);
 }
 
-
 export function seffect_earth(sobjp)
 {
     let sobj = sobjp.value;
@@ -1965,7 +1896,6 @@ export function seffect_earth(sobjp)
     }
 }
 
-
 export function seffect_punishment(sobjp)
 {
     let sobj = sobjp.value;
@@ -1980,7 +1910,6 @@ export function seffect_punishment(sobjp)
     C.callLocal(punish, sobj);
 }
 
-
 export function seffect_stinking_cloud(sobjp)
 {
     let sobj = sobjp.value;
@@ -1994,7 +1923,6 @@ export function seffect_stinking_cloud(sobjp)
     C.callLocal(do_stinking_cloud, sobj, already_known);
 }
 
-
 export function seffect_blank_paper(sobjp)
 {
     if (C.Blind)
@@ -2003,7 +1931,6 @@ export function seffect_blank_paper(sobjp)
         C.pline("This scroll seems to be blank.");
     C.gk.known = 1;
 }
-
 
 export function seffect_teleportation(sobjp)
 {
@@ -2024,7 +1951,6 @@ export function seffect_teleportation(sobjp)
     }
 }
 
-
 export function seffect_gold_detection(sobjp)
 {
     let sobj = sobjp.value;
@@ -2035,7 +1961,6 @@ export function seffect_gold_detection(sobjp)
         sobjp.value = 0; /* failure: strange_feeling() -> useup() */
 }
 
-
 export function seffect_food_detection(sobjp)
 {
     let sobj = sobjp.value;
@@ -2043,7 +1968,6 @@ export function seffect_food_detection(sobjp)
     if (C.food_detect(sobj))
         sobjp.value = 0; /* nothing detected: strange_feeling -> useup */
 }
-
 
 export function seffect_identify(sobjp)
 {
@@ -2090,7 +2014,6 @@ export function seffect_identify(sobjp)
               (is_scroll) ? " else" : "");
     }
 }
-
 
 export function seffect_magic_mapping(sobjp)
 {
@@ -2144,7 +2067,6 @@ export function seffect_magic_mapping(sobjp)
         C.pline("Unfortunately, you can't grasp the details.");
     }
 }
-
 
 export function seffect_mail(sobjp)
 {
@@ -2277,7 +2199,6 @@ export function seffects(sobj)
     return sobj.value ? 0 : 1;
 }
 
-
 export function drop_boulder_on_player(confused, helmet_protects, byu, skip_uswallow)
 {
     let dmg;
@@ -2319,7 +2240,6 @@ export function drop_boulder_on_player(confused, helmet_protects, byu, skip_uswa
     if (dmg)
         C.losehp(C.Maybe_Half_Phys(dmg), "scroll of earth", C.KILLED_BY_AN);
 }
-
 
 export function drop_boulder_on_monster(x, y, confused, byu)
 {
@@ -2441,8 +2361,6 @@ export function wand_explode(obj, chg)
 
 /* used to collect gremlins being hit by light so that they can be processed
    after vision for the entire lit area has been brought up to date */
-
-
 
 /*
  * Low-level lit-field update routine.
@@ -2612,7 +2530,6 @@ export function litroom(on, obj)
     }
     return;
 }
-
 
 export function do_class_genocide()
 {
@@ -2797,7 +2714,6 @@ export function do_class_genocide()
         return;
     }
 }
-
 
 export function do_genocide(how)
 /* 0 = no genocide; create monsters (cursed scroll)
@@ -2991,7 +2907,6 @@ export function do_genocide(how)
     }
 }
 
-
 export function punish(sobj)
 {
     /* angrygods() calls this with NULL sobj arg */
@@ -3106,7 +3021,6 @@ export function cant_revive(mtype, revival, from_obj)
     return 0;
 }
 
-
 export function create_particular_parse(str, d)
 {
     const gender_name_var = C.localScalar("int", C.NEUTRAL);
@@ -3216,7 +3130,6 @@ export function create_particular_parse(str, d)
     }
     return 0;
 }
-
 
 export function create_particular_creation(d)
 {

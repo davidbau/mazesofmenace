@@ -134,7 +134,7 @@ export function mk_mplayer(ptr, x, y, special)
         return (0);
 
     if (C.MON_AT(x, y))
-        C.rloc(C.m_at(x, y), C.RLOC_ERR|C.RLOC_NOMSG); /* insurance */
+        C.rloc(C.m_at(x, y), C.RLOC_ERR | C.RLOC_NOMSG); /* insurance */
 
     if (!C.In_endgame(C.u.uz))
         special = 0;
@@ -158,10 +158,10 @@ export function mk_mplayer(ptr, x, y, special)
 
         /* default equipment; much of it will be overridden below */
         weapon = C.short(!C.rn2(2, 150, 'mk_mplayer') ? C.LONG_SWORD : C.rnd_class(C.SPEAR, C.BULLWHIP));
-        armor  = C.short(C.rnd_class(C.GRAY_DRAGON_SCALE_MAIL, C.YELLOW_DRAGON_SCALE_MAIL));
-        cloak  = C.short(!C.rn2(8, 152, 'mk_mplayer') ? C.STRANGE_OBJECT
+        armor = C.short(C.rnd_class(C.GRAY_DRAGON_SCALE_MAIL, C.YELLOW_DRAGON_SCALE_MAIL));
+        cloak = C.short(!C.rn2(8, 152, 'mk_mplayer') ? C.STRANGE_OBJECT
                          : C.rnd_class(C.OILSKIN_CLOAK, C.CLOAK_OF_DISPLACEMENT));
-        helm   = C.short(!C.rn2(8, 154, 'mk_mplayer') ? C.STRANGE_OBJECT
+        helm = C.short(!C.rn2(8, 154, 'mk_mplayer') ? C.STRANGE_OBJECT
                          : C.rnd_class(C.ELVEN_LEATHER_HELM, C.HELM_OF_TELEPATHY));
         shield = C.short(!C.rn2(8, 156, 'mk_mplayer') ? C.STRANGE_OBJECT
                          : C.rnd_class(C.ELVEN_SHIELD, C.SHIELD_OF_REFLECTION));

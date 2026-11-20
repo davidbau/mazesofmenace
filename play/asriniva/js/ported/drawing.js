@@ -2,8 +2,6 @@
 /* Copyright (c) NetHack Development Team 1992.                   */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
 import constants from '../wasm/drawing-constants.json' with { type: 'json' };
 
 const {
@@ -80,7 +78,6 @@ export const def_oc_syms = [
     { sym: '0'.charCodeAt(0), name: "iron balls", explain: "iron ball" }, /* S_ball: 15 */
     { sym: '_'.charCodeAt(0), name: "chains", explain: "iron chain" }, /* S_chain: 16 */
     { sym: '.'.charCodeAt(0), name: "venoms", explain: "splash of venom" }, /* S_venom: 17 */
-
 ];
 
 /* Default monster class symbols.  See sym.h and defsym.h. */
@@ -158,7 +155,6 @@ export const def_monsyms = [
     { sym: ':'.charCodeAt(0), name: "", explain: "lizard" }, /* S_LIZARD: 58 */
     { sym: '~'.charCodeAt(0), name: "", explain: "long worm tail" }, /* S_WORM_TAIL: 59 */
     { sym: ']'.charCodeAt(0), name: "", explain: "mimic" }, /* S_MIMIC_DEF: 60 */
-
 ];
 
 export const def_warnsyms = [
@@ -309,14 +305,14 @@ export const defsyms = [
     /*      4 5 6                                                  */
     /*      7 8 9                                                  */
     /*                                                             */
-    { sym: '/'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_tl: 88 */      /*1*/
-    { sym: '-'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_tc: 89 */    /*2*/
-    { sym: '\\'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_tr: 90 */     /*3*/
-    { sym: '|'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_ml: 91 */   /*4*/
-    { sym: '|'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_mr: 92 */  /*6*/
-    { sym: '\\'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_bl: 93 */   /*7*/
+    { sym: '/'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_tl: 88 */ /*1*/
+    { sym: '-'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_tc: 89 */ /*2*/
+    { sym: '\\'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_tr: 90 */ /*3*/
+    { sym: '|'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_ml: 91 */ /*4*/
+    { sym: '|'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_mr: 92 */ /*6*/
+    { sym: '\\'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_bl: 93 */ /*7*/
     { sym: '-'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_bc: 94 */ /*8*/
-    { sym: '/'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_br: 95 */  /*9*/
+    { sym: '/'.charCodeAt(0), explanation: "", color: CLR_GREEN }, /* S_sw_br: 95 */ /*9*/
     /*                                                             */
     /* explosion colors are changed by reset_glyphmap() to match   */
     /* the type of expl.                                           */
@@ -341,15 +337,24 @@ export const defsyms = [
 
 /* default rogue level symbols */
 export const def_r_oc_syms = [
-/* 0*/ '\0'.charCodeAt(0), ILLOBJ_SYM, WEAPON_SYM, ']'.charCodeAt(0), /* armor */
-       RING_SYM,
-/* 5*/ ','.charCodeAt(0),                     /* amulet */
-       TOOL_SYM, ':'.charCodeAt(0),           /* food */
-       POTION_SYM, SCROLL_SYM,
-/*10*/ SPBOOK_SYM, WAND_SYM,
-       GEM_SYM,                /* gold -- yes it's the same as gems */
-       GEM_SYM, ROCK_SYM,
-/*15*/ BALL_SYM, CHAIN_SYM, VENOM_SYM
+    /* 0*/ '\0'.charCodeAt(0),
+    ILLOBJ_SYM,
+    WEAPON_SYM,
+    ']'.charCodeAt(0), /* armor */
+    RING_SYM,
+    /* 5*/ ','.charCodeAt(0), /* amulet */
+    TOOL_SYM,
+    ':'.charCodeAt(0), /* food */
+    POTION_SYM,
+    SCROLL_SYM,
+    /*10*/ SPBOOK_SYM,
+    WAND_SYM,
+    GEM_SYM, /* gold -- yes it's the same as gems */
+    GEM_SYM,
+    ROCK_SYM,
+    /*15*/ BALL_SYM,
+    CHAIN_SYM,
+    VENOM_SYM
 ];
 
 /*

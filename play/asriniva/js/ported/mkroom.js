@@ -17,11 +17,6 @@ import { C } from '../c-runtime/context.js';
  *      cmap_to_type() -- convert S_xxx symbol to XXX topology code
  */
 
-
-
-
-
-
  /* defined in shknam.c */
 
 /* #define sq(x) ((x) * (x)) */
@@ -140,7 +135,6 @@ export function mkshop()
                 i = -1;
         }
     }
-
     }
     for (sroom = C.svr.rooms[0];; sroom = C.roomNext(sroom)) {
         /* return from this loop: cannot find any eligible room to be a shop
@@ -239,7 +233,8 @@ export function mkzoo(type)
 
 export function mk_zoo_thronemon(x, y)
 {
-    x = C.coordxy(x); y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     let i = C.rnd(C.level_difficulty(), 259, 'mk_zoo_thronemon');
     let pm = (i > 9) ? C.PM_OGRE_TYRANT
         : (i > 5) ? C.PM_ELVEN_MONARCH
@@ -438,7 +433,8 @@ export function fill_zoo(sroom)
 /* make a swarm of undead around mm */
 export function mkundead(mm, revive_corpses, mm_flags)
 {
-    revive_corpses = C.boolean(revive_corpses); mm_flags = C.int(mm_flags);
+    revive_corpses = C.boolean(revive_corpses);
+    mm_flags = C.int(mm_flags);
     let cnt = Math.trunc((C.level_difficulty() + 1) / 10) + C.rnd(5, 461, 'mkundead');
     let mdat;
     let otmp;
@@ -599,7 +595,8 @@ export function mktemple()
 
 export function nexttodoor(sx, sy)
 {
-    sx = C.int(sx); sy = C.int(sy);
+    sx = C.int(sx);
+    sy = C.int(sy);
     let dx, dy;
     let lev;
 
@@ -650,7 +647,8 @@ export function somey(croom)
 
 export function inside_room(croom, x, y)
 {
-    x = C.coordxy(x); y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     if (croom.irregular) {
         let i = C.int(C.roomDifference(croom, C.svr.rooms[0]) + BigInt(C.ROOMOFFSET));
         return C.bool(!C.levl[x][y].edge && C.levl[x][y].roomno == i);

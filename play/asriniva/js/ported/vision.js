@@ -4,7 +4,6 @@ import { terrainAt } from './level-grid.js';
 /* Copyright (c) Dean Luick, with acknowledgements to Dave Cohrs, 1990. */
 /* NetHack may be freely redistributed.  See license for details.       */
 
-
 /* Circles
  * ==================================================================*/
 
@@ -78,22 +77,11 @@ export const circle_start = [
 
  /* vision work space */
 
-
-
-
  /* vision clear/blocked map */
-
 
  /* LOS algorithm helpers */
 
-
 /* Forward declarations. */
-
-
-
-
-
-
 
 /* Macro definitions that I can't find anywhere. */
 /* don't use abs -- it may exist */
@@ -102,7 +90,7 @@ export const circle_start = [
 
 export function get_viz_clear(x, y)
 {
-    if (C.isok(x,y) && !C.viz_clear[y][x])
+    if (C.isok(x, y) && !C.viz_clear[y][x])
         return 1;
     return 0;
 }
@@ -267,7 +255,7 @@ export function vision_reset()
 export function get_unused_cs(rows, rmin, rmax)
 {
     let row;
-    let nrmin,nrmax;
+    let nrmin, nrmax;
 
     if (C.samePointer(C.gv.viz_array, C.cs_rows0)) {
         rows.value = C.cs_rows1;
@@ -414,7 +402,6 @@ export function rogue_vision(next, rmin, rmax)
  *
  * The other parameters are not used.
  */
-
 
 /*
  * vision_recalc()
@@ -792,14 +779,13 @@ export function vision_recalc(control)
                     if (col != 0)
                     /*
                      */
-                    C.newsym(col, row);
+                        C.newsym(col, row);
                 }
             }
 
         } /* end for col . . */
     }     /* end for row . .  */
     C.colbump[C.u.ux] = C.colbump[C.u.ux + 1] = 0;
-
     }
     /* This newsym() caused a crash delivering msg about failure to open
      * dungeon file init_dungeons() -> panic() -> done(11) ->
@@ -1005,7 +991,6 @@ export function dig_point(row, col)
     }
 }
 
-
 export function fill_point(row, col)
 {
     let i;
@@ -1091,15 +1076,6 @@ export function fill_point(row, col)
 /*
  * Variables local to Algorithm C.
  */
-
-
-
-
-
-
-
-
-
 
 /*
  * Algorithm C uses the following macros:
@@ -1223,7 +1199,7 @@ export function clear_path(col1, row1, col2, row2)
                 let k, err, x, y, dxs, dys;
                 x = (col1);
                 y = (row1);
-                dx = (col2) -x;
+                dx = (col2) - x;
                 dy = y - (row2);
                 result = 0;
                 dxs = dx << 1;
@@ -1260,8 +1236,8 @@ export function clear_path(col1, row1, col2, row2)
                 let k, err, x, y, dxs, dys;
                 x = (col1);
                 y = (row1);
-                dx = (col2) -x;
-                dy = (row2) -y;
+                dx = (col2) - x;
+                dy = (row2) - y;
                 result = 0;
                 dxs = dx << 1;
                 dys = dy << 1;
@@ -1339,7 +1315,7 @@ export function clear_path(col1, row1, col2, row2)
                 x = (col1);
                 y = (row1);
                 dx = x - (col2);
-                dy = (row2) -y;
+                dy = (row2) - y;
                 result = 0;
                 dxs = dx << 1;
                 dys = dy << 1;
@@ -1383,8 +1359,6 @@ export function clear_path(col1, row1, col2, row2)
 /*
  * Defines local to Algorithm C.
  */
-
-
 
 /* Initialize algorithm C (nothing). */
 
@@ -1489,7 +1463,7 @@ export function right_side(row, left, right_mark, limits)
                         let k, err, x, y, dxs, dys;
                         x = (C.start_col);
                         y = (C.start_row);
-                        dx = (left) -x;
+                        dx = (left) - x;
                         dy = y - (row);
                         result = 0;
                         dxs = dx << 1;
@@ -1526,8 +1500,8 @@ export function right_side(row, left, right_mark, limits)
                         let k, err, x, y, dxs, dys;
                         x = (C.start_col);
                         y = (C.start_row);
-                        dx = (left) -x;
-                        dy = (row) -y;
+                        dx = (left) - x;
+                        dy = (row) - y;
                         result = 0;
                         dxs = dx << 1;
                         dys = dy << 1;
@@ -1613,7 +1587,7 @@ export function right_side(row, left, right_mark, limits)
                         let k, err, x, y, dxs, dys;
                         x = (C.start_col);
                         y = (C.start_row);
-                        dx = (right) -x;
+                        dx = (right) - x;
                         dy = y - (row);
                         result = 0;
                         dxs = dx << 1;
@@ -1650,8 +1624,8 @@ export function right_side(row, left, right_mark, limits)
                         let k, err, x, y, dxs, dys;
                         x = (C.start_col);
                         y = (C.start_row);
-                        dx = (right) -x;
-                        dy = (row) -y;
+                        dx = (right) - x;
+                        dy = (row) - y;
                         result = 0;
                         dxs = dx << 1;
                         dys = dy << 1;
@@ -1829,7 +1803,7 @@ export function left_side(row, left_mark, right, limits)
                         x = (C.start_col);
                         y = (C.start_row);
                         dx = x - (right);
-                        dy = (row) -y;
+                        dy = (row) - y;
                         result = 0;
                         dxs = dx << 1;
                         dys = dy << 1;
@@ -1931,7 +1905,7 @@ export function left_side(row, left_mark, right, limits)
                         x = (C.start_col);
                         y = (C.start_row);
                         dx = x - (left);
-                        dy = (row) -y;
+                        dy = (row) - y;
                         result = 0;
                         dxs = dx << 1;
                         dys = dy << 1;

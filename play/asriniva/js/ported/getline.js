@@ -6,7 +6,6 @@
 
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 import { C } from '../c-runtime/context.js';
 
 /* JavaScript translation of getline.c. Five original function boundaries
@@ -31,7 +30,7 @@ import { C } from '../c-runtime/context.js';
 // #include "wintty.h"
 // #include "func_tab.h"
 
-// char morc = 0; 
+// char morc = 0;
 /* tell the outside world what char you chose */
 
 // static boolean suppress_history;
@@ -40,13 +39,11 @@ import { C } from '../c-runtime/context.js';
 // typedef boolean (*getlin_hook_proc)(char *);
 
 // static void hooked_tty_getlin(const char *, char *, getlin_hook_proc);
-// extern int extcmd_via_menu(void); 
+// extern int extcmd_via_menu(void);
 /* cmd.c */
 
-
-// extern char erase_char, kill_char; 
+// extern char erase_char, kill_char;
 /* from appropriate tty.c file */
-
 
 /*
  * Read a line closed with '\n' into the array char bufp[BUFSZ].
@@ -61,7 +58,6 @@ export function tty_getlin(query, bufp)
     C.getlineState.suppress_history = 0;
     hooked_tty_getlin(query, bufp, 0);
 }
-
 
 export function hooked_tty_getlin(
     query,
@@ -171,7 +167,7 @@ export function hooked_tty_getlin(
 /* NEWAUTOCOMP */
                 bufp--;
 // #ifndef NEWAUTOCOMP
-//                 putsyms("\b \b"); 
+//                 putsyms("\b \b");
 /* putsym converts \b */
 // #else
 /* NEWAUTOCOMP */
@@ -259,7 +255,6 @@ export function hooked_tty_getlin(
     }
 }
 
-
 export function xwaitforspace(s, context = C) /* chars allowed besides return */
 {
     let c, x = context.ttyDisplay ? context.ttyDisplay.dismiss_more : 10;
@@ -289,7 +284,6 @@ export function xwaitforspace(s, context = C) /* chars allowed besides return */
     }
 }
 
-
 /*
  * Implement extended command completion by using this hook into
  * tty_getlin.  Check the characters already typed, if they uniquely
@@ -317,7 +311,6 @@ export function ext_cmd_getlin_hook(base)
 
     return 0; /* didn't match anything */
 }
-
 
 /*
  * Read in an extended command, doing command line completion.  We
@@ -360,10 +353,7 @@ export function tty_get_ext_cmd()
     return ecmatches.value[0];
 }
 
-
-// #endif 
+// #endif
 /* TTY_GRAPHICS */
 
-
 /*getline.c*/
-

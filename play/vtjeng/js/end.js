@@ -196,7 +196,6 @@ import { force_launch_placement, launch_in_progress } from './trap_effects.js';
 import {
     clearTtyMessageWindow,
     displayPendingTtyMessageWindow,
-    showPendingTtyMessage,
     ttyPline,
 } from './tty_message.js';
 import { tty_raw_print, tty_wait_synch } from './tty_rawprint.js';
@@ -206,6 +205,7 @@ import { objectGenerationEnv } from './object_generation.js';
 import { shkname, shkname_is_pname } from './shknam.js';
 import { accessible } from './monmove.js';
 import { note_unported } from './unported.js';
+import { set_error_savefile } from './files.js';
 import { keepdogs } from './dog.js';
 import { make_sick, peffects, set_itimeout } from './potion.js';
 import { coreRandom } from './rng.js';
@@ -1116,19 +1116,17 @@ export async function panic(str, state = game) {
         else
             tty_raw_print(state, `Report error to "wizard"${maybe_rebuild}`);
     }
+    // set_error_savefile() points gs.SAVEF at the ".e" panic save file, which
+    // the next segment's unixmain.c finds through check_panic_save().
     if (state.program_state.something_worth_saving
         && !state.iflags?.debug_fuzzer) {
-        // files.c set_error_savefile() appends ".e" to the save file name and
-        // dosave0() writes the game there, a host file. The port's dosave0()
-        // writes only the set_savefile_name() file, which the next segment
-        // would restore. C's next process would find the ".e" file through
-        // CHECK_PANIC_SAVE (include/unixconf.h:134, unixmain.c
-        // check_panic_save()) and ask whether to start a new game, but no
-        // recording reaches one: CRASHREPORT (config.h:244-256) makes panic()
-        // end in NH_abort() (end.c:463-467), which the recorder reports as a
-        // failure. dosave0()'s result selects only the sysopt.recover line,
-        // which the recorder's sysconf leaves unset.
-        note_unported('files.c set_error_savefile');
+        // Loaded on use: js/save.js imports this module.
+        const { dosave0 } = await import('./save.js');
+        if (await dosave0(state, set_error_savefile(state))) {
+            /* os/win port specific recover instructions */
+            if (state.sysopt?.recover)
+                tty_raw_print(state, state.sysopt.recover);
+        }
     }
 
     tty_raw_print(state, str);
@@ -1295,8 +1293,8 @@ async function really_done(how, state) {
     }
 
     // C ref: end.c:1189. Flush the final death message before asking
-    // can_make_bones(); the live map-window arm leaves its --More-- marker
-    // for the disclosure reader.
+    // can_make_bones(). The live map-window arm draws no --More-- marker;
+    // display_nhwindow(WIN_MESSAGE, FALSE) at end.c:1246 does.
     if (haveWindows)
         await tty_wait_synch(state);
 
@@ -1428,11 +1426,11 @@ async function really_done(how, state) {
         }
     }
 
-    // C ref: end.c:1351-1361.  A polymorph death can leave a valid monster
-    // number in ugrave_arise even when bones are disabled; this feedback is
+    // C ref: end.c:1351-1361.  A death that sets ugrave_arise leaves a valid
+    // monster number there even when bones are disabled; this feedback is
     // shown before the bones prompt so it cannot reveal whether a corpse was
-    // saved.  display_nhwindow(WIN_MESSAGE, FALSE) is the nonblocking
-    // pending-message handoff used above.
+    // saved.  display_nhwindow(WIN_MESSAGE, FALSE) waits at the message's
+    // --More-- here, before savebones() runs, as the call at end.c:1247 does.
     if (ismnum(state.u.ugrave_arise) && !disclosureStopprint(state)) {
         // monst_globals_init() stores permonst records directly in mons;
         // live monsters carry their template in .data, but ugrave_arise is a
@@ -1446,7 +1444,7 @@ async function really_done(how, state) {
                 `Your ${feedback} as ${an(pmname(species, Ugender(state)))}...`,
                 state,
             );
-            showPendingTtyMessage(state);
+            await displayPendingTtyMessageWindow(state);
         }
     }
 
@@ -1928,9 +1926,9 @@ export async function container_contents(
                     `${upstart(thesimpleoname(box, state))} is empty.`,
                     state,
                 );
-                // C: display_nhwindow(WIN_MESSAGE, FALSE). The pline call
-                // above displays the message; the explicit display_nhwindow
-                // in C ensures it is flushed, which ttyPline already does.
+                // C: display_nhwindow(WIN_MESSAGE, FALSE) waits at the
+                // message's --More--.
+                await displayPendingTtyMessageWindow(state);
             }
         }
         if (!all_containers) break;

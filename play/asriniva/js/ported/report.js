@@ -10,7 +10,6 @@ import { C } from '../c-runtime/context.js';
 // ABI stack, and output-pointer/int references retain actual linear-memory
 // writes. SWR_ADD expands here so its truncation decisions remain in this TU.
 
-
 /* NB: CRASHREPORT implies PANICTRACE */
 /* Binary ID - Use only as a hint to contact.html for recognizing our own
    binaries.  This is easily spoofed! */
@@ -18,7 +17,8 @@ import { C } from '../c-runtime/context.js';
 export function crashreport_init(argc, argv)
 {
     const s = C.reportState;
-    const once = s.once; s.once = (s.once + 1) | 0;
+    const once = s.once;
+    s.once = (s.once + 1) | 0;
     if (once) /* NetHackW.exe calls us twice */
         return;
     let binfile = C.stackAlloc(C.PATH_MAX + 1);
@@ -28,7 +28,7 @@ export function crashreport_init(argc, argv)
             break skip;
         let len = C.readlink('/proc/self/exe', binfile, C.PATH_MAX);
         if (len > 0) C.HEAPU8[binfile + len] = 0;
-        else break skip; /* Does "goto skip" on error. */
+            else break skip; /* Does "goto skip" on error. */
         let fd = C.open(binfile, C.O_RDONLY, 0);
         if (fd == -1) {
             break skip;
@@ -155,7 +155,8 @@ export function submit_web_report(cos, msg, why)
         if (s.utmp >= s.urem)
             break full;
         C.memcpy(s.uend, C.sysopt.crashreporturl, s.utmp);
-        s.uend += s.utmp; s.urem -= s.utmp;
+        s.uend += s.utmp;
+        s.urem -= s.utmp;
         C.HEAPU8[s.uend] = 0;
         /*
          * Note: all snprintf() calls here changed to sprintf() to avoid
@@ -169,7 +170,8 @@ export function submit_web_report(cos, msg, why)
         if (s.utmp >= s.urem)
             break full;
         C.memcpy(s.uend, temp, s.utmp);
-        s.uend += s.utmp; s.urem -= s.utmp;
+        s.uend += s.utmp;
+        s.urem -= s.utmp;
         C.HEAPU8[s.uend] = 0;
         /* msg==NULL for #bugreport */
         if (msg) {
@@ -178,7 +180,8 @@ export function submit_web_report(cos, msg, why)
             if (s.utmp >= s.urem)
                 break full;
             C.memcpy(s.uend, '&subject=', s.utmp);
-            s.uend += s.utmp; s.urem -= s.utmp;
+            s.uend += s.utmp;
+            s.urem -= s.utmp;
             C.HEAPU8[s.uend] = 0;
             C.Sprintf(temp, '%.40s report for NetHack %.40s', msg, C.version_string(temp2, 200));
             if (swr_add_uricoded(temp, s.uendRef, s.uremRef, s.mark)) break full;
@@ -188,7 +191,8 @@ export function submit_web_report(cos, msg, why)
         if (s.utmp >= s.urem)
             break full;
         C.memcpy(s.uend, '&gitver=', s.utmp);
-        s.uend += s.utmp; s.urem -= s.utmp;
+        s.uend += s.utmp;
+        s.urem -= s.utmp;
         C.HEAPU8[s.uend] = 0;
         if (swr_add_uricoded(C.getversionstring(temp2, 200), s.uendRef, s.uremRef, s.mark)) break full;
         if (C.gc.crash_name) {
@@ -197,7 +201,8 @@ export function submit_web_report(cos, msg, why)
             if (s.utmp >= s.urem)
                 break full;
             C.memcpy(s.uend, '&name=', s.utmp);
-            s.uend += s.utmp; s.urem -= s.utmp;
+            s.uend += s.utmp;
+            s.urem -= s.utmp;
             C.HEAPU8[s.uend] = 0;
             if (swr_add_uricoded(C.gc.crash_name, s.uendRef, s.uremRef, s.mark)) break full;
         }
@@ -207,7 +212,8 @@ export function submit_web_report(cos, msg, why)
             if (s.utmp >= s.urem)
                 break full;
             C.memcpy(s.uend, '&email=', s.utmp);
-            s.uend += s.utmp; s.urem -= s.utmp;
+            s.uend += s.utmp;
+            s.urem -= s.utmp;
             C.HEAPU8[s.uend] = 0;
             if (swr_add_uricoded(C.gc.crash_email, s.uendRef, s.uremRef, s.mark)) break full;
         }
@@ -219,7 +225,8 @@ export function submit_web_report(cos, msg, why)
         if (s.utmp >= s.urem)
             break full;
         C.memcpy(s.uend, '&details=', s.utmp);
-        s.uend += s.utmp; s.urem -= s.utmp;
+        s.uend += s.utmp;
+        s.urem -= s.utmp;
         C.HEAPU8[s.uend] = 0;
         if (why) {
             if (swr_add_uricoded(why, s.uendRef, s.uremRef, s.mark)) break full;
@@ -258,7 +265,8 @@ export function submit_web_report(cos, msg, why)
         if (s.utmp >= s.urem)
             break full;
         C.memcpy(s.uend, '&detailrows=', s.utmp);
-        s.uend += s.utmp; s.urem -= s.utmp;
+        s.uend += s.utmp;
+        s.urem -= s.utmp;
         C.HEAPU8[s.uend] = 0;
         C.Sprintf(temp, '%d', Math.min(count + countpp, 30));
         if (swr_add_uricoded(temp, s.uendRef, s.uremRef, s.mark)) break full;

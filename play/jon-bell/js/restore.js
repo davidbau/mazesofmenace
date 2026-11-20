@@ -27,7 +27,7 @@ import { _gm_migrating } from './mklev.js';
 import { rest_engravings } from './engrave.js';
 import { In_hell, Is_branchlev, on_level, assign_level, ledger_no } from './dungeon.js';
 import { deltrap } from './trap.js';
-import { restore_cham, hide_monst, hideunder } from './mon.js';
+import { restore_cham, hide_monst, hideunder, set_ustuck } from './mon.js';
 import { restore_luadata, l_nhcore_call, NHCORE_RESTORE_OLD_GAME } from './nhlua.js';
 import { regions_rest_snapshot } from './region.js';
 import { restore_timer_order, restore_timers_level, run_timers } from './timeout.js';
@@ -40,7 +40,7 @@ import { assign_graphics } from './symbols.js';
 import { pline, You } from './pline.js';
 import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
-import { place_wsegs, worm_seg_clear_level } from './worm.js';
+import { place_wsegs, worm_seg_clear_level, worm_seg_at, worm_seg_clear_at } from './worm.js';
 import { change_luck } from './attrib.js';
 import { HALLUC, HALLUC_RES, OBJ_FREE, W_BALL, W_CHAIN, MAXNROFROOMS, MAGIC_PORTAL, BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL, Is_rogue_level, REST_GSTATE, REST_LEVELS, REST_CURRENT_LEVEL } from './const.js';
 import { set_residency, restshk } from './shk.js';
@@ -355,18 +355,43 @@ export async function getlev(lev, restoreFloor = null) {
     const ghostly = !!(g.program_state?.reading_bonesfile);
     /* C restore.c:1177-1180 — the grid clear, ahead of the fmon loop. */
     worm_seg_clear_level();
+    const grid = new Map();
+    for (let mon = g.fmon; mon; mon = mon.nmon)
+        mon._mapRemoved = true;
     for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
         if (mtmp.isshk) set_residency(mtmp, false); // C restore.c:1183
-        /* restore.c:1194-1195 — place_monster() is the fmon chain here (see the
-         * note above); place_wsegs() is the part the chain cannot carry. */
-        if (mtmp.wormno)
-            place_wsegs(mtmp, null);
-        /* restore.c:1196-1197 */
-        if (hides_under(mtmp.data) && mtmp.mundetected)
-            hideunder(mtmp);
+        if (mtmp.m_id === u.usteed_mid) {
+            // C restore.c:1184-1187: a recovered steed remains off the map.
+            u.usteed = mtmp;
+            u.usteed_mid = 0;
+        } else {
+            if (mtmp.m_id === u.ustuck_mid) {
+                set_ustuck(mtmp);
+                u.ustuck_mid = 0;
+            }
+            // C restore.c:1194: rebuild occupancy in fmon order, including
+            // monsters displaced from their saved slot before departure.
+            const key = (mtmp.mx | 0) * 256 + (mtmp.my | 0);
+            const othermon = worm_seg_at(mtmp.mx, mtmp.my) || grid.get(key);
+            if (othermon) {
+                await impossible('placing %s over %s at <%d,%d>, mstates:%lx %lx on %s?',
+                                 minimal_monnam(mtmp, false), minimal_monnam(othermon, true),
+                                 mtmp.mx, mtmp.my, othermon.mstate, mtmp.mstate, describe_level_buf(0));
+                if (othermon.mx === mtmp.mx && othermon.my === mtmp.my)
+                    othermon._mapRemoved = true;
+                if (_topline_more_pending()) await flush_screen(1, false);
+            }
+            worm_seg_clear_at(mtmp.mx, mtmp.my); // place_monster overwrites a tail cell too
+            delete mtmp._mapRemoved;
+            grid.set(key, mtmp);
+            if (mtmp.wormno)
+                await place_wsegs(mtmp, null);
+            if (hides_under(mtmp.data) && mtmp.mundetected)
+                hideunder(mtmp);
+        }
 
         /* restore.c:1201-1202 — regenerate monsters while on another level. */
-        if (!(u.uz?.dlevel | 0))
+        if (!(u.uz?.dlevel | 0) || g.program_state.restoring === REST_LEVELS)
             continue;
         if (ghostly) {
             /* restore.c:1204-1212 — reset peaceful/malign relative to the new
@@ -627,18 +652,54 @@ async function restgamestate(state) {
  * u.usteed_mid == 0, so its fmon loop (:1181-1194) place_monster()s the steed
  * too and steed.c:922-928 reports any monster already on that grid slot.
  * u.uz is still the fresh process's (describe_level). */
-async function first_getlev_place_monsters(chain) {
+async function first_getlev_place_monsters(chain, worms) {
     const grid = new Map();
     for (let mtmp = chain; mtmp; mtmp = mtmp.nmon) {
         const key = (mtmp.mx | 0) * 256 + (mtmp.my | 0);
         const othermon = grid.get(key);
-        if (othermon)
+        if (othermon) {
+            // minimal_monnam's worm-tail test must consult this detached
+            // read's grid, rather than the still-active game's fmon chain.
+            const otherHead = (othermon.mx | 0) * 256 + (othermon.my | 0);
             await impossible('placing %s over %s at <%d,%d>, mstates:%lx %lx on %s?',
-                             minimal_monnam(mtmp, false), minimal_monnam(othermon, true),
+                             minimal_monnam(mtmp, false),
+                             minimal_monnam(othermon, grid.get(otherHead) !== othermon),
                              mtmp.mx, mtmp.my, othermon.mstate, mtmp.mstate, describe_level_buf(0));
+            // A copying save read uses the live tty rather than the recovery
+            // base window. Drain the plines before processing the next monster.
+            if (!game._base_topline && _topline_more_pending())
+                await flush_screen(1, false);
+        }
         grid.set(key, mtmp);
+        // C restore.c:1195 -> worm.c:615-634 places this worm's segments
+        // before reading the next monster's head. These detached reads must
+        // not borrow the active level's module-scoped worm arrays.
+        if (mtmp.wormno) {
+            const num = mtmp.wormno | 0;
+            const head = worms?.wheads?.[num];
+            let seg = worms?.wtails?.[num];
+            while (seg && seg !== head) {
+                const segkey = (seg.wx | 0) * 256 + (seg.wy | 0);
+                if (grid.has(segkey)) {
+                    await impossible('placing worm seg <%d,%d> over another mon',
+                                     seg.wx, seg.wy);
+                    if (!game._base_topline && _topline_more_pending())
+                        await flush_screen(1, false);
+                }
+                grid.set(segkey, mtmp);
+                seg = seg.nseg;
+            }
+            if (seg) {
+                seg.wx = mtmp.mx;
+                seg.wy = mtmp.my;
+            }
+        }
     }
 }
+
+// The same head-placement diagnostics run when save.c:210 copies an inactive
+// level, and when dorecover's REST_LEVELS pass reads it (restore.c:873).
+export { first_getlev_place_monsters as restmonchn_place_diagnostics };
 
 export async function find_lev_obj_no_longer_held(fobj, restoreWorn = true) {
     const chain = [];
@@ -672,7 +733,7 @@ export async function dorecover(save) {
     restmonchn_data(firstLevel.fmon);
     await find_lev_obj_no_longer_held(firstLevel.fobj);
     // draws must precede any monster-placement diagnostic's input wait.
-    await first_getlev_place_monsters(firstLevel.fmon);
+    await first_getlev_place_monsters(firstLevel.fmon, firstLevel.__worms);
     const baseTopline = g._base_topline; /* restgamestate copies saved keys over game */
     delete g._base_topline;
     await bubbles_copy_snapshot(firstLevel.__bubbles, firstLevel.level);
@@ -777,6 +838,9 @@ export async function dorecover(save) {
         restdamage_reverse(snap.level);
         find_lev_obj_clear_no_charge(snap.level);
         await find_lev_obj_no_longer_held(snap.fobj, false); /* C restore.c:873 -> 1168 -> 93-97 */
+        // REST_LEVELS skips catch-up and shape changes at :1201, after the
+        // placement loop. Overlaps on an inactive level still report here.
+        await first_getlev_place_monsters(snap.fmon, snap.worms);
         if (!snap.bubbles) continue;
         snap.bubbles = await bubbles_copy_snapshot(snap.bubbles, snap.level);
     }
@@ -806,16 +870,18 @@ export async function dorecover(save) {
         }
         if (mon !== g.u?.usteed) {
             const key = (mon.mx | 0) * 256 + (mon.my | 0);
-            const othermon = grid.get(key);
+            const othermon = worm_seg_at(mon.mx, mon.my) || grid.get(key);
             if (othermon) {
                 await impossible('placing %s over %s at <%d,%d>, mstates:%lx %lx on %s?',
                                  minimal_monnam(mon, false), minimal_monnam(othermon, true),
                                  mon.mx, mon.my, othermon.mstate, mon.mstate, describe_level_buf(0));
-                othermon._mapRemoved = true;
+                if (othermon.mx === mon.mx && othermon.my === mon.my)
+                    othermon._mapRemoved = true;
             }
+            worm_seg_clear_at(mon.mx, mon.my); // C steed.c:930 replaces this grid cell
             delete mon._mapRemoved;
             grid.set(key, mon);
-            if (mon.wormno) place_wsegs(mon, null);
+            if (mon.wormno) await place_wsegs(mon, null);
             if (hides_under(mon.data) && mon.mundetected)
                 hideunder(mon);
         }

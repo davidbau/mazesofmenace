@@ -5,51 +5,12 @@ import { combatFieldsFor, monsterHP, setMonsterHP, monsterX, monsterY } from './
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 const brief_feeling =
     "have a %s feeling for a moment, then it passes.";
-
-
-
-
 
 /* hitum_cleave() has contradictory information. There's a comment
  * beside the 1st arg 'target' stating non-null, but later on there
  * is a test for 'target' being null */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export function mhitm_mgc_atk_negated(magr, mdef, verbosely)
 /* give mesg if magical cancellation prevents damage */
@@ -90,7 +51,8 @@ export function dynamic_multi_reason(mon, verb, by_gaze)
                          (C.SUPPRESS_IT | C.SUPPRESS_INVISIBLE
                           | C.SUPPRESS_HALLUCINATION | C.SUPPRESS_SADDLE
                           | C.SUPPRESS_NAME),
-                         0); let p = C.gm.multireasonbuf;
+                         0);
+                         let p = C.gm.multireasonbuf;
 
     /* prefix info for done_in_by() */
     C.Sprintf(p, "%u:", combat.m_id(mon));
@@ -100,7 +62,6 @@ export function dynamic_multi_reason(mon, verb, by_gaze)
             !by_gaze ? "" : " gaze");
     C.gm.multi_reason = p;
 }
-
 
 export function erode_armor(mdef, hurt)
 {
@@ -346,7 +307,8 @@ export function mon_maybe_unparalyze(mtmp)
 export function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_penalty)
 {
     const combat = combatFieldsFor(C);
-     let tmp; let tmp2;
+     let tmp;
+     let tmp2;
 
     role_roll_penalty.value = 0; /* default is `none' */
 
@@ -409,7 +371,8 @@ export function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_pena
 export function force_attack(mtmp, pets_too)
 {
     const combat = combatFieldsFor(C);
-     let attacked; let save_Forcefight;
+     let attacked;
+     let save_Forcefight;
 
     save_Forcefight = C.svc.context.forcefight;
     /* always set forcefight On for hostiles and peacefuls, maybe for pets */
@@ -453,7 +416,8 @@ export function do_attack(mtmp)
              let foo = (Number(Boolean(C.Punished || !(C.rngSource(474, 8), C.rn2(7))
                            || (C.is_longworm(mtmp.data) && combat.wormno(mtmp))
                            || (C.IS_OBSTRUCTED(C.levl[C.u.ux][C.u.uy].typ)
-                               && !C.passes_walls(mtmp.data))))); let inshop = 0;
+                               && !C.passes_walls(mtmp.data)))));
+                               let inshop = 0;
              let p;
 
             /* only check for in-shop if don't already have reason to stop */
@@ -546,7 +510,6 @@ export function do_attack(mtmp)
     else
         C.callLocal(hitum, mtmp, C.gy.youmonst.data.mattk);
     combat.setMstrategy(mtmp, combat.mstrategy(mtmp) & (~C.STRAT_WAITMASK));
-
     }
 
     /* see comment in attack_checks() */
@@ -569,7 +532,9 @@ export function do_attack(mtmp)
 export function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, dieroll)
 {
     const combat = combatFieldsFor(C);
-     let malive = 1;/* hmon() might destroy weapon; remember aspect for cutworm */ let slice_or_chop = (Number(Boolean(weapon && (C.is_blade(weapon) || C.is_axe(weapon)))));
+     let malive = 1;/* hmon() might destroy weapon; remember aspect for cutworm */ let slice_or_chop = (Number(Boolean(weapon
+         && (C.is_blade(weapon)
+         || C.is_axe(weapon)))));
 
     if (C.go.override_confirmation) {
         /* this may need to be generalized if weapons other than
@@ -628,11 +593,14 @@ export function hitum_cleave(target, uattk)
        are non-consecutive, hero will sometimes start a series of attacks
        with a backswing--that doesn't impact actual play, just spoils the
        simulation attempt a bit */
-    
+
      let i;
     const save_bhitpos = C.localRecord("struct nhcoord");
      let save_notonhead;
-     let count; let umort; let x = C.u.ux; let y = C.u.uy;
+     let count;
+     let umort;
+     let x = C.u.ux;
+     let y = C.u.uy;
 
     /* find the direction toward primary target */
     i = C.xytodir(C.u.dx, C.u.dy);
@@ -659,7 +627,13 @@ export function hitum_cleave(target, uattk)
      */
     for (count = 3; count > 0; --count) {
          let mtmp;
-         let tx; let ty; let tmp; let dieroll; const mhit = C.localScalar("int", 0); const attknum = C.localScalar("int", 0); const armorpenalty = C.localScalar("int", 0);
+         let tx;
+         let ty;
+         let tmp;
+         let dieroll;
+         const mhit = C.localScalar("int", 0);
+         const attknum = C.localScalar("int", 0);
+         const armorpenalty = C.localScalar("int", 0);
 
         /* ++i, wrap 8 to i=0 /or/ --i, wrap -1 to i=7 */
         i = C.cleave_clockwise ? C.DIR_RIGHT(i) : C.DIR_LEFT(i);
@@ -728,9 +702,18 @@ export function double_punch()
 
 export function hitum(mon, uattk)
 {
-     let malive; let wep_was_destroyed = 0;
-     let wepbefore = C.uwep; let secondwep = C.u.twoweap ? C.uswapwep : 0;
-     let tmp; let dieroll; const mhit = C.localScalar("int", 0); const armorpenalty = C.localScalar("int", 0); const attknum = C.localScalar("int", 0); let x = C.u.ux + C.u.dx; let y = C.u.uy + C.u.dy; let oldumort = C.u.umortality;
+     let malive;
+     let wep_was_destroyed = 0;
+     let wepbefore = C.uwep;
+     let secondwep = C.u.twoweap ? C.uswapwep : 0;
+     let tmp;
+     let dieroll;
+     const mhit = C.localScalar("int", 0);
+     const armorpenalty = C.localScalar("int", 0);
+     const attknum = C.localScalar("int", 0);
+     let x = C.u.ux + C.u.dx;
+     let y = C.u.uy + C.u.dy;
+     let oldumort = C.u.umortality;
 
     /* Cleaver attacks three spots, 'mon' and one on either side of 'mon';
        it can't be part of dual-wielding but we guard against that anyway;
@@ -788,7 +771,8 @@ export function hitum(mon, uattk)
 export function hmon(mon, obj, thrown, dieroll)
 {
     const combat = combatFieldsFor(C);
-     let result; let anger_guards;
+     let result;
+     let anger_guards;
 
     anger_guards = (Number(Boolean(combat.mpeaceful(mon)
                     && (combat.ispriest(mon) || combat.isshk(mon) || C.is_watch(mon.data)))));
@@ -804,7 +788,8 @@ export function hmon(mon, obj, thrown, dieroll)
 
 export function hmon_hitmon_barehands(hmd, mon)
 {
-     let spcdmgflg; const silverhit = C.localScalar("long", 0n); /* worn masks */
+     let spcdmgflg;
+     const silverhit = C.localScalar("long", 0n); /* worn masks */
 
     if (hmd.mdat == C.mons[C.PM_SHADE]) {
         hmd.dmg = 0;
@@ -847,7 +832,6 @@ export function hmon_hitmon_barehands(hmd, mon)
     if (hmd.barehand_silver_rings > 0)
         hmd.silvermsg = 1;
 }
-
 
 export function hmon_hitmon_weapon_ranged(hmd, mon, obj)
 /* obj is not NULL */
@@ -895,7 +879,6 @@ export function backstabbable(mon)
         && C.canseemon(mon)
         && (combat.mflee(mon) || C.helpless(mon))));
 }
-
 
 export function hmon_hitmon_weapon_melee(hmd, mon, obj)
 /* obj is not NULL */
@@ -1031,7 +1014,6 @@ export function hmon_hitmon_weapon_melee(hmd, mon, obj)
         hmd.ispoisoned = 1;
 }
 
-
 export function hmon_hitmon_weapon(hmd, mon, obj)
 /* obj is not NULL */
 {
@@ -1042,7 +1024,7 @@ export function hmon_hitmon_weapon(hmd, mon, obj)
         || (!hmd.thrown && (C.is_missile(obj) || C.is_ammo(obj)))
         /* or use a pole at short range and not mounted... */
         || (!hmd.thrown && !C.u.usteed && C.is_pole(obj)
-            && !C.is_art(obj,C.ART_SNICKERSNEE))
+            && !C.is_art(obj, C.ART_SNICKERSNEE))
         /* or throw a missile without the proper bow... */
         || (C.is_ammo(obj) && (hmd.thrown != C.HMON_THROWN
                              || !C.ammo_and_launcher(obj, C.uwep)))) {
@@ -1053,7 +1035,6 @@ export function hmon_hitmon_weapon(hmd, mon, obj)
             return;
     }
 }
-
 
 export function hmon_hitmon_potion(hmd, mon, obj)
 /* obj is not NULL */
@@ -1075,7 +1056,6 @@ export function hmon_hitmon_potion(hmd, mon, obj)
     hmd.mdat = mon.data;
     hmd.dmg = (hmd.mdat == C.mons[C.PM_SHADE]) ? 0 : 1;
 }
-
 
 export function hmon_hitmon_misc_obj(hmd, mon, obj)
 /* obj is not NULL */
@@ -1379,10 +1359,11 @@ export function hmon_hitmon_do_hit(hmd, mon, obj)
     }
 }
 
-
 export function hmon_hitmon_dmg_recalc(hmd, obj)
 {
-     let dmgbonus = 0; let strbonus; let absbonus;
+     let dmgbonus = 0;
+     let strbonus;
+     let absbonus;
 
     /*
      * Potential bonus (or penalty) from worn ring of increase damage
@@ -1453,7 +1434,6 @@ export function hmon_hitmon_dmg_recalc(hmd, obj)
         hmd.dmg = 1;
 }
 
-
 export function hmon_hitmon_poison(hmd, mon, obj)
 /* obj is not NULL */
 {
@@ -1509,7 +1489,6 @@ export function hmon_hitmon_jousting(hmd, mon, obj)
     hmd.hittxt = 1;
 }
 
-
 export function hmon_hitmon_stagger(hmd, mon, obj)
 {
     /* VERY small chance of stunning opponent if unarmed. */
@@ -1524,7 +1503,6 @@ export function hmon_hitmon_stagger(hmd, mon, obj)
     }
 }
 
-
 export function hmon_hitmon_pet(hmd, mon, obj)
 {
     const combat = combatFieldsFor(C);
@@ -1537,7 +1515,6 @@ export function hmon_hitmon_pet(hmd, mon, obj)
             C.monflee(mon, 10 * (C.rngSource(1599, 26), C.rnd(hmd.dmg)), 0, 0);
     }
 }
-
 
 export function hmon_hitmon_splitmon(hmd, mon, obj)
 /* obj can be NULL but guards are in place below */
@@ -1570,7 +1547,6 @@ export function hmon_hitmon_splitmon(hmd, mon, obj)
     }
 }
 
-
 export function hmon_hitmon_msg_hit(hmd, mon, obj)
 /* obj can be NULL for hand_to_hand; otherwise not */
 {
@@ -1593,7 +1569,6 @@ export function hmon_hitmon_msg_hit(hmd, mon, obj)
                 C.mon_nam(mon), C.canseemon(mon) ? C.exclam(hmd.dmg) : ".");
     }
 }
-
 
 export function hmon_hitmon_msg_silver(hmd, mon, obj)
 {
@@ -1625,11 +1600,9 @@ export function hmon_hitmon_msg_silver(hmd, mon, obj)
     /* note: s_suffix returns a modifiable buffer */
     if (!C.noncorporeal(hmd.mdat) && !C.amorphous(hmd.mdat))
         whom = C.strcat(C.s_suffix(whom), " flesh");
-    
-    C.pline(fmt, whom);
-    
-}
 
+    C.pline(fmt, whom);
+}
 
 export function hmon_hitmon_msg_lightobj(hmd, mon, obj)
 {
@@ -1653,9 +1626,8 @@ export function hmon_hitmon_msg_lightobj(hmd, mon, obj)
     /* note: s_suffix returns a modifiable buffer */
     if (!C.noncorporeal(hmd.mdat) && !C.amorphous(hmd.mdat))
         whom = C.strcat(C.s_suffix(whom), " flesh");
-    
+
     C.pline(fmt, whom);
-    
 }
 
 /*
@@ -1860,7 +1832,6 @@ export function hmon_hitmon(mon, obj, thrown, dieroll)
     return hmd.destroyed ? 0 : 1;
 }
 
-
 /* joust or martial arts punch is knocking the target back; that might
    kill 'mon' (via trap) before known_hitum() has a chance to do so;
    return True if we kill mon, False otherwise */
@@ -1912,7 +1883,6 @@ export function first_weapon_hit(weapon)
                    "hit with a wielded weapon (%s) for the first time", buf);
 }
 
-
 export function shade_aware(obj)
 {
     if (!obj)
@@ -1940,8 +1910,11 @@ export function shade_aware(obj)
 export function shade_miss(magr, mdef, obj, thrown, verbose)
 {
     const combat = combatFieldsFor(C);
-     let what; let whose; let target;
-     let youagr = (magr == C.gy.youmonst); let youdef = (mdef == C.gy.youmonst);
+     let what;
+     let whose;
+     let target;
+     let youagr = (magr == C.gy.youmonst);
+     let youdef = (mdef == C.gy.youmonst);
 
     /* we're using dmgval() for zero/not-zero, not for actual damage amount */
     if (mdef.data != C.mons[C.PM_SHADE] || (obj && C.dmgval(obj, mdef)))
@@ -2018,7 +1991,8 @@ export function m_slips_free(mdef, mattk)
 export function joust(mon, obj)
 /* weapon */
 {
-     let skill_rating; let joust_dieroll;
+     let skill_rating;
+     let joust_dieroll;
 
     if (C.Fumbling || C.Stunned)
         return 0;
@@ -2064,7 +2038,6 @@ export function demonpet()
     C.exercise(C.A_WIS, 1);
 }
 
-
 export function theft_petrifies(otmp)
 {
     if (C.uarmg || otmp.otyp != C.CORPSE
@@ -2090,7 +2063,10 @@ export function theft_petrifies(otmp)
 export function steal_it(mdef, mattk)
 {
     const combat = combatFieldsFor(C);
-     let otmp; let gold = 0; let ustealo; let minvent_ptr;
+     let otmp;
+     let gold = 0;
+     let ustealo;
+     let minvent_ptr;
      let unwornmask;
 
     otmp = mdef.minvent;
@@ -2194,7 +2170,6 @@ export function steal_it(mdef, mattk)
         C.mpickobj(mdef, gold);
 }
 
-
 export function mhitm_ad_rust(magr, mattk, mdef, mhm)
 {
     const combat = combatFieldsFor(C);
@@ -2250,7 +2225,6 @@ export function mhitm_ad_rust(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_corr(magr, mattk, mdef, mhm)
 {
     const combat = combatFieldsFor(C);
@@ -2273,7 +2247,6 @@ export function mhitm_ad_corr(magr, mattk, mdef, mhm)
         mhm.damage = 0;
     }
 }
-
 
 export function mhitm_ad_dcay(magr, mattk, mdef, mhm)
 {
@@ -2328,7 +2301,6 @@ export function mhitm_ad_dcay(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_dren(magr, mattk, mdef, mhm)
 {
      let negated = C.callLocal(mhitm_mgc_atk_negated, magr, mdef, 0);
@@ -2352,7 +2324,6 @@ export function mhitm_ad_dren(magr, mattk, mdef, mhm)
         mhm.damage = 0;
     }
 }
-
 
 export function mhitm_ad_drli(magr, mattk, mdef, mhm)
 {
@@ -2427,7 +2398,6 @@ export function mhitm_ad_drli(magr, mattk, mdef, mhm)
         }
     }
 }
-
 
 export function mhitm_ad_fire(magr, mattk, mdef, mhm)
 {
@@ -2532,7 +2502,6 @@ export function mhitm_ad_fire(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_cold(magr, mattk, mdef, mhm)
 {
     const combat = combatFieldsFor(C);
@@ -2589,7 +2558,6 @@ export function mhitm_ad_cold(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_elec(magr, mattk, mdef, mhm)
 {
     const combat = combatFieldsFor(C);
@@ -2645,7 +2613,6 @@ export function mhitm_ad_elec(magr, mattk, mdef, mhm)
         mhm.damage += C.destroy_items(mdef, C.AD_ELEC, orig_dmg);
     }
 }
-
 
 export function mhitm_ad_acid(magr, mattk, mdef, mhm)
 {
@@ -2759,8 +2726,6 @@ export function mhitm_ad_sgld(magr, mattk, mdef, mhm)
         }
     }
 }
-
-
 
 export function mhitm_ad_tlpt(magr, mattk, mdef, mhm)
 {
@@ -2914,7 +2879,6 @@ export function mhitm_ad_blnd(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_curs(magr, mattk, mdef, mhm)
 {
     const combat = combatFieldsFor(C);
@@ -3019,7 +2983,6 @@ export function mhitm_really_poison(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_drst(magr, mattk, mdef, mhm)
 {
      let negated = C.callLocal(mhitm_mgc_atk_negated, magr, mdef, 0);
@@ -3062,7 +3025,6 @@ export function mhitm_ad_drst(magr, mattk, mdef, mhm)
         }
     }
 }
-
 
 export function mhitm_ad_drin(magr, mattk, mdef, mhm)
 {
@@ -3143,7 +3105,8 @@ export function mhitm_ad_drin(magr, mattk, mdef, mhm)
         mhm.damage = 0; /* don't inflict a second dose below */
 
         if (!C.uarmh || C.uarmh.otyp != C.DUNCE_CAP) {
-             let oldmort = C.u.umortality; let mhitu = C.eat_brains(magr, mdef, 1, 0);
+             let oldmort = C.u.umortality;
+             let mhitu = C.eat_brains(magr, mdef, 1, 0);
 
             /* skip further AD_DRIN if hero's number of deaths went up */
             if (C.u.umortality > oldmort)
@@ -3199,7 +3162,6 @@ export function mhitm_ad_drin(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_stck(magr, mattk, mdef, mhm)
 {
      let negated = C.callLocal(mhitm_mgc_atk_negated, magr, mdef, 0);
@@ -3228,11 +3190,11 @@ export function mhitm_ad_stck(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_wrap(magr, mattk, mdef, mhm)
 {
     const combat = combatFieldsFor(C);
-     let pd = mdef.data; let pa = magr.data;
+     let pd = mdef.data;
+     let pa = magr.data;
      let coil = Number(Boolean(C.slithy(pa) && (pa.mlet == C.S_SNAKE || pa.mlet == C.S_NAGA)));
 
     if (magr == C.gy.youmonst) {
@@ -3321,7 +3283,6 @@ export function mhitm_ad_wrap(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_plys(magr, mattk, mdef, mhm)
 {
     const combat = combatFieldsFor(C);
@@ -3367,7 +3328,6 @@ export function mhitm_ad_plys(magr, mattk, mdef, mhm)
         }
     }
 }
-
 
 export function mhitm_ad_slee(magr, mattk, mdef, mhm)
 {
@@ -3489,7 +3449,6 @@ export function mhitm_ad_slim(magr, mattk, mdef, mhm)
     C.nhUse(pd);
 }
 
-
 export function mhitm_ad_ench(magr, mattk, mdef, mhm)
 {
     if (magr == C.gy.youmonst) {
@@ -3535,7 +3494,6 @@ export function mhitm_ad_ench(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_slow(magr, mattk, mdef, mhm)
 {
     const combat = combatFieldsFor(C);
@@ -3570,7 +3528,6 @@ export function mhitm_ad_slow(magr, mattk, mdef, mhm)
         }
     }
 }
-
 
 export function mhitm_ad_conf(magr, mattk, mdef, mhm)
 {
@@ -3608,7 +3565,6 @@ export function mhitm_ad_conf(magr, mattk, mdef, mhm)
         }
     }
 }
-
 
 export function mhitm_ad_poly(magr, mattk, mdef, mhm)
 {
@@ -3656,7 +3612,6 @@ export function mhitm_ad_poly(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_famn(magr, mattk, mdef, mhm)
 {
     let mhitm_famn_target = 0;
@@ -3687,7 +3642,6 @@ export function mhitm_ad_famn(magr, mattk, mdef, mhm)
         }
 }
 
-
 export function mhitm_ad_pest(magr, mattk, mdef, mhm)
 {
     let mhitm_pest_target = 0;
@@ -3717,7 +3671,6 @@ export function mhitm_ad_pest(magr, mattk, mdef, mhm)
         }
 }
 
-
 export function mhitm_ad_deth(magr, mattk, mdef, mhm)
 {
     let mhitm_deth_target = 0;
@@ -3746,7 +3699,7 @@ export function mhitm_ad_deth(magr, mattk, mdef, mhm)
                 mhm.damage = 0;
                 return;
             }
-            
+
             /*FALLTHRU*/
         default: /* case 16: ... case 5: */
             C.You_feel("your life force draining away...");
@@ -3777,7 +3730,6 @@ export function mhitm_ad_deth(magr, mattk, mdef, mhm)
         }
 }
 
-
 export function mhitm_ad_halu(magr, mattk, mdef, mhm)
 {
     const combat = combatFieldsFor(C);
@@ -3802,7 +3754,6 @@ export function mhitm_ad_halu(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function do_stone_u(mtmp)
 {
     if (!C.Stoned && !C.Stone_resistance
@@ -3822,7 +3773,6 @@ export function do_stone_u(mtmp)
     }
     return 0;
 }
-
 
 export function do_stone_mon(magr, mattk, mdef, mhm)
 {
@@ -3860,7 +3810,6 @@ export function do_stone_mon(magr, mattk, mdef, mhm)
         }
     mhm.damage = (mattk.adtyp == C.AD_STON ? 0 : 1);
 }
-
 
 export function mhitm_ad_phys(magr, mattk, mdef, mhm)
 {
@@ -4081,7 +4030,6 @@ export function mhitm_ad_phys(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_ston(magr, mattk, mdef, mhm)
 {
     const combat = combatFieldsFor(C);
@@ -4142,7 +4090,6 @@ export function mhitm_ad_ston(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_were(magr, mattk, mdef, mhm)
 {
      let pa = magr.data;
@@ -4170,7 +4117,6 @@ export function mhitm_ad_were(magr, mattk, mdef, mhm)
             return;
     }
 }
-
 
 export function mhitm_ad_heal(magr, mattk, mdef, mhm)
 {
@@ -4262,7 +4208,6 @@ export function mhitm_ad_heal(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_stun(magr, mattk, mdef, mhm)
 {
     const combat = combatFieldsFor(C);
@@ -4298,7 +4243,6 @@ export function mhitm_ad_stun(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_legs(magr, mattk, mdef, mhm)
 {
     const combat = combatFieldsFor(C);
@@ -4310,7 +4254,9 @@ export function mhitm_ad_legs(magr, mattk, mdef, mhm)
     } else if (mdef == C.gy.youmonst) {
         /* mhitu */
          let side = (C.rngSource(4442, 77), C.rn2(2)) ? C.RIGHT_SIDE : C.LEFT_SIDE;
-         let sidestr = (side == C.RIGHT_SIDE) ? "right" : "left"; let Monst_name = C.Monnam(magr); let leg = C.body_part(C.LEG);
+         let sidestr = (side == C.RIGHT_SIDE) ? "right" : "left";
+         let Monst_name = C.Monnam(magr);
+         let leg = C.body_part(C.LEG);
 
         /* This case is too obvious to ignore, but Nethack is not in
          * general very good at considering height--most short monsters
@@ -4356,7 +4302,6 @@ export function mhitm_ad_legs(magr, mattk, mdef, mhm)
             return;
     }
 }
-
 
 export function mhitm_ad_dgst(magr, mattk, mdef, mhm)
 {
@@ -4433,7 +4378,6 @@ export function mhitm_ad_dgst(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_samu(magr, mattk, mdef, mhm)
 {
     if (magr == C.gy.youmonst) {
@@ -4458,7 +4402,8 @@ export function mhitm_ad_samu(magr, mattk, mdef, mhm)
 export function mhitm_ad_dise(magr, mattk, mdef, mhm)
 {
     let mhitm_dise_target = 0;
-     let pa = magr.data; let pd = mdef.data;
+     let pa = magr.data;
+     let pd = mdef.data;
 
     if (magr == C.gy.youmonst) {
         /* uhitm; hero can't polymorph into anything with this attack so
@@ -4569,7 +4514,8 @@ export function mhitm_ad_sedu(magr, mattk, mdef, mhm)
 
         if (obj) {
              let buf = C.stackAlloc(256);
-             let onambuf = C.stackAlloc(256); let mdefnambuf = C.stackAlloc(256);
+             let onambuf = C.stackAlloc(256);
+             let mdefnambuf = C.stackAlloc(256);
 
             /* make a special x_monnam() call that never omits
                the saddle, and save it for later messages */
@@ -4612,7 +4558,6 @@ export function mhitm_ad_sedu(magr, mattk, mdef, mhm)
     }
 }
 
-
 export function mhitm_ad_ssex(magr, mattk, mdef, mhm)
 {
     const combat = combatFieldsFor(C);
@@ -4642,7 +4587,6 @@ export function mhitm_ad_ssex(magr, mattk, mdef, mhm)
             return;
     }
 }
-
 
 export function mhitm_adtyping(magr, mattk, mdef, mhm)
 {
@@ -4790,10 +4734,10 @@ export function explum(mdef, mattk)
     return C.M_ATTK_HIT;
 }
 
-
 export function start_engulf(mdef)
 {
-     let u_digest = C.digests(C.gy.youmonst.data); let u_enfold = C.enfolds(C.gy.youmonst.data);
+     let u_digest = C.digests(C.gy.youmonst.data);
+     let u_enfold = C.enfolds(C.gy.youmonst.data);
 
     if (!C.Invisible) {
         C.map_location(C.u.ux, C.u.uy, 1);
@@ -4807,7 +4751,6 @@ export function start_engulf(mdef)
     C.nh_delay_output();
 }
 
-
 export function end_engulf()
 {
     if (!C.Invisible) {
@@ -4816,14 +4759,15 @@ export function end_engulf()
     }
 }
 
-
 export function gulpum(mdef, mattk)
 {
     const combat = combatFieldsFor(C);
     const msgbuf = C.gulpum_msgbuf; /* for gn.nomovemsg */
      let tmp;
      let dam = (C.rngSource(4962, 88), C.d(C.int(mattk.damn), C.int(mattk.damd)));
-     let fatal_gulp; let u_digest = C.digests(C.gy.youmonst.data); let u_enfold = C.enfolds(C.gy.youmonst.data);
+     let fatal_gulp;
+     let u_digest = C.digests(C.gy.youmonst.data);
+     let u_enfold = C.enfolds(C.gy.youmonst.data);
      let otmp;
      let pd = mdef.data;
      let expel_verb = u_digest ? "regurgitate"
@@ -5055,7 +4999,6 @@ export function gulpum(mdef, mattk)
     return C.M_ATTK_MISS;
 }
 
-
 export function missum(mdef, mattk, wouldhavehit)
 {
     if (wouldhavehit) /* monk is missing due to penalty for wearing suit */
@@ -5106,15 +5049,20 @@ export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used)
 /* True: via weapon hit */
 {
     const combat = combatFieldsFor(C);
-     let magrbuf = C.stackAlloc(256); let mdefbuf = C.stackAlloc(256);
+     let magrbuf = C.stackAlloc(256);
+     let mdefbuf = C.stackAlloc(256);
      let otmp;
      let knockedhow;
-     let dx; let dy; let defx; let defy;
+     let dx;
+     let dy;
+     let defx;
+     let defy;
      let knockdistance = (C.rngSource(5258, 91), C.rn2(3)) ? 1 : 2; /* 67%: 1 step, 33%: 2 steps */
      let chance = 6; /* 1/6 chance of attack knocking back a monster */
      let u_agr = (magr == C.gy.youmonst);
      let u_def = (mdef == C.gy.youmonst);
-     let was_u = 0; let dismount = 0;
+     let was_u = 0;
+     let dismount = 0;
      let wep = weapon_used ? (u_agr ? C.uwep : C.MON_WEP(magr))
                                   : 0;
 
@@ -5279,10 +5227,22 @@ export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used)
 export function hmonas(mon)
 {
     const combat = combatFieldsFor(C);
-     let mattk; const alt_attk = C.localRecord("struct attack");
-     let weapon; let originalweapon;
-     let altwep = 0; let weapon_used = 0; let odd_claw = 1;
-     let i; let tmp; let dieroll; const armorpenalty = C.localScalar("int", 0); let sum = C.localArray("int", 6); const dhit = C.localScalar("int", 0); const attknum = C.localScalar("int", 0); let multi_claw = 0; let multi_weap = 0;
+     let mattk;
+     const alt_attk = C.localRecord("struct attack");
+     let weapon;
+     let originalweapon;
+     let altwep = 0;
+     let weapon_used = 0;
+     let odd_claw = 1;
+     let i;
+     let tmp;
+     let dieroll;
+     const armorpenalty = C.localScalar("int", 0);
+     let sum = C.localArray("int", 6);
+     const dhit = C.localScalar("int", 0);
+     const attknum = C.localScalar("int", 0);
+     let multi_claw = 0;
+     let multi_weap = 0;
      let monster_survived;
 
     /* not used here but umpteen mhitm_ad_xxxx() need this */
@@ -5406,17 +5366,17 @@ export function hmonas(mon)
         case C.AT_CLAW:
             if (C.uwep && !C.cantwield(C.gy.youmonst.data) && !weapon_used)
                 { attack_case = C.AT_WEAP; continue attack_dispatch; }
-            
+
             /*FALLTHRU*/
         case C.AT_TUCH:
             if (C.uwep && C.gy.youmonst.data.mlet == C.S_LICH && !weapon_used)
                 { attack_case = C.AT_WEAP; continue attack_dispatch; }
-            
+
             /*FALLTHRU*/
         case C.AT_KICK:
             if (mattk.aatyp == C.AT_KICK && C.mtrapped_in_pit(C.gy.youmonst))
                 continue attack_loop;
-            
+
             /*FALLTHRU*/
         case C.AT_BITE:
         case C.AT_STNG:
@@ -5429,7 +5389,8 @@ export function hmonas(mon)
             dieroll = (C.rngSource(5571, 92), C.rnd(20));
             dhit.value = (Number(Boolean(tmp > dieroll || C.u.uswallow)));
             if (dhit.value) {
-                 let compat; let specialdmg;
+                 let compat;
+                 let specialdmg;
                  const silverhit = C.localScalar("long", 0n);
                  let verb = 0; /* verb or body part */
 
@@ -5529,7 +5490,8 @@ export function hmonas(mon)
         case C.AT_HUGS: {
              let specialdmg;
              const silverhit = C.localScalar("long", 0n);
-             let byhand = C.hug_throttles(C.mons[C.u.umonnum]);/* rope golem */ let unconcerned = (Number(Boolean(byhand && !C.can_be_strangled(mon))));
+             let byhand = C.hug_throttles(C.mons[C.u.umonnum]);/* rope golem */ let unconcerned = (Number(Boolean(byhand
+                 && !C.can_be_strangled(mon))));
 
             if (C.sticks(mon.data) || C.u.uswallow || C.gn.notonhead
                 || (byhand && (C.uwep || !C.has_head(mon.data)))) {
@@ -5658,7 +5620,7 @@ export function hmonas(mon)
                  || C.gy.youmonst.data.mlet == C.S_ORC
                  || C.gy.youmonst.data.mlet == C.S_GNOME) && !weapon_used)
                 { attack_case = C.AT_WEAP; continue attack_dispatch; }
-            
+
             /*FALLTHRU*/
 
         case C.AT_NONE:
@@ -5726,7 +5688,8 @@ export function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destroyed)
 {
     const combat = combatFieldsFor(C);
      let ptr = mon.data;
-     let i; let tmp;
+     let i;
+     let tmp;
      let mhit = mhitb ? C.M_ATTK_HIT : C.M_ATTK_MISS;
      let malive = maliveb ? C.M_ATTK_HIT : C.M_ATTK_MISS;
 
@@ -6038,7 +6001,7 @@ export function passive_obj(mon, obj, mattk)
             }
             break;
         }
-        
+
         /* FALLTHRU */
     default:
         break;
@@ -6047,8 +6010,6 @@ export function passive_obj(mon, obj, mattk)
     if (C.carried(obj))
         C.update_inventory();
 }
-
-
 
 /* used by stumble_onto_mimic() and bhitm() cases WAN_LOCKING, WAN_OPENING */
 /* a hidden mimic (nonnull) */
@@ -6059,7 +6020,8 @@ export function that_is_a_mimic(mtmp, mimic_flags)
     const generic = C.mimic_generic;
      let fmtbuf = C.stackAlloc(256);
      let what = 0;
-     let reveal_it = (mimic_flags & C.MIM_REVEAL) != 0; let omit_wait = (mimic_flags & C.MIM_OMIT_WAIT) != 0;
+     let reveal_it = (mimic_flags & C.MIM_REVEAL) != 0;
+     let omit_wait = (mimic_flags & C.MIM_OMIT_WAIT) != 0;
 
     C.Strcpy(fmtbuf, "Wait!  That's %s!");
     if (C.Blind) {
@@ -6068,7 +6030,8 @@ export function that_is_a_mimic(mtmp, mimic_flags)
         else if (C.M_AP_TYPE(mtmp) == C.M_AP_MONSTER)
             what = C.a_monnam(mtmp); /* differs from what was sensed */
     } else {
-         let x = monsterX(C, mtmp); let y = monsterY(C, mtmp);
+         let x = monsterX(C, mtmp);
+         let y = monsterY(C, mtmp);
          let glyph = C.glyph_at(x, y);
 
         if (C.glyph_is_cmap(glyph)) {
@@ -6128,8 +6091,6 @@ export function that_is_a_mimic(mtmp, mimic_flags)
         C.seemimic(mtmp);
 }
 
-
-
 /* Note: caller must ascertain mtmp is mimicking... */
 
 export function stumble_onto_mimic(mtmp)
@@ -6150,7 +6111,6 @@ export function stumble_onto_mimic(mtmp)
         C.map_invisible(monsterX(C, mtmp), monsterY(C, mtmp));
 }
 
-
 export function disguised_as_non_mon(mtmp)
 {
     return (Number(Boolean(!C.sensemon(mtmp)
@@ -6158,13 +6118,11 @@ export function disguised_as_non_mon(mtmp)
             && C.M_AP_TYPE(mtmp) != C.M_AP_MONSTER)));
 }
 
-
 export function disguised_as_mon(mtmp)
 {
     return (Number(Boolean(C.M_AP_TYPE(mtmp)
             && C.M_AP_TYPE(mtmp) == C.M_AP_MONSTER)));
 }
-
 
 export function nohandglow(mon)
 {
@@ -6198,8 +6156,12 @@ export function flash_hits_mon(mtmp, otmp)
 {
     const combat = combatFieldsFor(C);
      let lev;
-     let mx = monsterX(C, mtmp); let my = monsterY(C, mtmp);
-     let tmp; let amt; let useeit; let res = 0;
+     let mx = monsterX(C, mtmp);
+     let my = monsterY(C, mtmp);
+     let tmp;
+     let amt;
+     let useeit;
+     let res = 0;
 
     if (C.gn.notonhead)
         return 0;
@@ -6275,7 +6237,6 @@ export function flash_hits_mon(mtmp, otmp)
     }
     return res;
 }
-
 
 export function light_hits_gremlin(mon, dmg)
 {

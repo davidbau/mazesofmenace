@@ -72,8 +72,10 @@ export function enableSaveLifecycle(environment,layouts){
    const capacity=owner.chronicle.reduce((size,event)=>Math.max(size,event.text.length+1),1);
    const text=transport.stackAlloc(capacity);
    return {store(event){
-    row.turn=event.turn;
-    row.flags=event.flags;
+    // The SAVE view exposes the two pointers. Write the event values into
+    // the same record so the struct serializer includes them in the save.
+    ctypes.setField('struct gamelog_line',at,'turn','long',event.turn);
+    ctypes.setField('struct gamelog_line',at,'flags','long',event.flags);
     row.text=memory.writeString(text,event.text);
     row.next=0;
     return row;

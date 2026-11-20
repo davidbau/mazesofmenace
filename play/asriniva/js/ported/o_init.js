@@ -5,18 +5,6 @@
 
 import { C } from '../c-runtime/context.js';
 
-
-
-
-
-
-
-
-
-
-
-
-
 /* Shuffle tile assignments to match descriptions, so a red potion isn't
  * displayed with a blue tile and so on.
  *
@@ -569,7 +557,6 @@ export const disco_orders_descr = [
     "alphabetical across all classes",
     0
 ];
-
 
 export function choose_disco_sort(mode)
 /* 0 => 'O' cmd, 1 => full discoveries; 2 => class disco */

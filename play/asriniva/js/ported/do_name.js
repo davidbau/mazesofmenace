@@ -5,7 +5,6 @@
 
 import { C } from '../c-runtime/context.js';
 
-
 export const NUMMBUF = 5;
 
 /* manage a pool of BUFSZ buffers, so callers don't have to */
@@ -90,7 +89,9 @@ export function name_from_player(outbuf, prompt, defres) /* output buffer, assum
                          * anything longer than PL_PSIZ will be truncated */ /* only used if EDIT_GETLIN is enabled; only useful
                          * if windowport xxx's xxx_getlin() supports that */
 {
-    outbuf = C.charPointer(outbuf);prompt = C.charPointer(prompt);defres = C.charPointer(defres);
+    outbuf = C.charPointer(outbuf);
+    prompt = C.charPointer(prompt);
+    defres = C.charPointer(defres);
     C.storeChar(outbuf + (0), 0);
 // #ifdef EDIT_GETLIN
 //     if (defres && *defres)
@@ -138,8 +139,10 @@ export function christen_monst(mtmp, name)
    alternate reject message for do_mgivenname() */
 export function alreadynamed(mtmp, monnambuf, usrbuf)
 {
-    monnambuf = C.charPointer(monnambuf);usrbuf = C.charPointer(usrbuf);
-    const pronounbuf = C.stackAlloc(10); let p;
+    monnambuf = C.charPointer(monnambuf);
+    usrbuf = C.charPointer(usrbuf);
+    const pronounbuf = C.stackAlloc(10);
+    let p;
 
     if (!C.loadChar(usrbuf)) { /* attempt to erase existing name */
         let name_not_title = (C.has_mgivenname(mtmp)
@@ -223,7 +226,6 @@ export function do_mgivenname()
                 || mtmp.mundetected || C.M_AP_TYPE(mtmp) == C.M_AP_FURNITURE
                 || C.M_AP_TYPE(mtmp) == C.M_AP_OBJECT
                 || (mtmp.minvis && !C.See_invisible))))) {
-
         C.pline("I see no monster there.");
         return;
     }
@@ -269,7 +271,8 @@ export function do_mgivenname()
  */
 export function do_oname(obj)
 {
-    let bufp; const buf = C.stackAlloc(C.BUFSZ), bufcpy = C.stackAlloc(C.BUFSZ), qbuf = C.stackAlloc(C.QBUFSZ);
+    let bufp;
+    const buf = C.stackAlloc(C.BUFSZ), bufcpy = C.stackAlloc(C.BUFSZ), qbuf = C.stackAlloc(C.QBUFSZ);
     let aname;
     const objtyp = C.shortLocal(C.STRANGE_OBJECT);
 
@@ -350,7 +353,8 @@ export function do_oname(obj)
 
 export function oname(obj, name, oflgs) /* item to assign name to */ /* name to assign */   /* flags, mostly for artifact creation */
 {
-    name = C.charPointer(name);oflgs = C.uint(oflgs);
+    name = C.charPointer(name);
+    oflgs = C.uint(oflgs);
     let lth;
     const buf = C.stackAlloc(C.PL_PSIZ);
     let via_naming = (oflgs & C.ONAME_VIA_NAMING) != 0,
@@ -408,7 +412,7 @@ export function objtyp_is_callable(i)
     if (C.objects[i].oc_uname)
         return 1;
 
-    switch(C.objects[i].oc_class) {
+    switch (C.objects[i].oc_class) {
     case C.AMULET_CLASS:
         /* 5.0: calling these used to be allowed but that enabled the
            player to tell whether two unID'd amulets of yendor were both
@@ -419,7 +423,7 @@ export function objtyp_is_callable(i)
            determine which one was the real one */
         if (i == C.AMULET_OF_YENDOR || i == C.FAKE_AMULET_OF_YENDOR)
             break; /* return FALSE */
-        
+
         /*FALLTHRU*/
     case C.SCROLL_CLASS:
     case C.POTION_CLASS:
@@ -798,7 +802,10 @@ export function rndghostname()
  */
 export function x_monnam(mtmp, article, adjective, suppress, called)
 {
-    article = C.int(article);adjective = C.charPointer(adjective);suppress = C.int(suppress);called = C.boolean(called);
+    article = C.int(article);
+    adjective = C.charPointer(adjective);
+    suppress = C.int(suppress);
+    called = C.boolean(called);
     let buf = nextmbuf();
     let mdat = mtmp.data;
     let pm_name;
@@ -806,7 +813,8 @@ export function x_monnam(mtmp, article, adjective, suppress, called)
             do_exact, do_name, augment_it;
     let name_at_start, has_adjectives, insertbuf2,
             mappear_as_mon = (C.M_AP_TYPE(mtmp) == C.M_AP_MONSTER);
-    let bp; const buf2 = C.stackAlloc(C.BUFSZ);
+    let bp;
+    const buf2 = C.stackAlloc(C.BUFSZ);
 
     if (C.samePtr(mtmp, C.gy.youmonst))
         return C.strcpy(buf, "you"); /* ignore article, "invisible", &c */
@@ -950,7 +958,7 @@ export function x_monnam(mtmp, article, adjective, suppress, called)
             C.Strcat(buf, name);
             name_at_start = 1;
         }
-// #if 0 
+// #if 0
 /* hardfought */
 //       }
 // #endif
@@ -1125,7 +1133,8 @@ export function Amonnam(mtmp)
    identification of the endgame altars via their attending priests */
 export function distant_monnam(mon, article, outbuf) /* only ARTICLE_NONE and ARTICLE_THE are handled here */
 {
-    article = C.int(article);outbuf = C.charPointer(outbuf);
+    article = C.int(article);
+    outbuf = C.charPointer(outbuf);
     /* high priest(ess)'s identity is concealed on the Astral Plane,
        unless you're adjacent (overridden for hallucination which does
        its own obfuscation) */
@@ -1172,8 +1181,11 @@ export function mon_nam_too(mon, other_mon)
    be distorted by Hallu; if that's plural, adjust monnamtext and verb */
 export function monverbself(mon, monnamtext, verb, othertext) /* modifiable 'mbuf' with adequate room at end */
 {
-    monnamtext = C.charPointer(monnamtext);verb = C.charPointer(verb);othertext = C.charPointer(othertext);
-    let verbs; const selfbuf = C.stackAlloc(40); /* sizeof "themselves" suffices */
+    monnamtext = C.charPointer(monnamtext);
+    verb = C.charPointer(verb);
+    othertext = C.charPointer(othertext);
+    let verbs;
+    const selfbuf = C.stackAlloc(40); /* sizeof "themselves" suffices */
 
     /* "himself"/"herself"/"itself", maybe "themselves" if hallucinating */
     C.Strcpy(selfbuf, mon_nam_too(mon, mon));
@@ -1254,7 +1266,7 @@ export function pmname(pm, mgender)
         mgender = C.NEUTRAL;
     return pm.pmnames[mgender];
 }
-// #endif 
+// #endif
 /* PMNAME_MACROS */
 
 /* mons[]->pmname for a monster */
@@ -1267,7 +1279,7 @@ export function mon_pmname(mon)
 /* mons[]->pmname for a corpse or statue or figurine */
 export function obj_pmname(obj)
 {
-// #if 0   
+// #if 0
 /* ignore saved montraits even when they're available; they determine
          * what a corpse would revive as if resurrected (human corpse from
          * slain vampire revives as vampire rather than as human, for example)
@@ -1315,7 +1327,8 @@ export const bogon_codes = "-_+|="; /* see dat/bonusmon.txt */
 /* fake monsters used to be in a hard-coded array, now in a data file */
 export function bogusmon(buf, code)
 {
-    buf = C.charPointer(buf);code = C.charPointer(code);
+    buf = C.charPointer(buf);
+    code = C.charPointer(code);
     let mnam = buf;
 
     if (code)
@@ -1484,7 +1497,7 @@ export function rndorcname(s)
     s = C.charPointer(s);
     const v = [ "a", "ai", "og", "u" ];
     const snd = [ "gor", "gris", "un", "bane", "ruk",
-                                 "oth","ul", "z", "thos","akh","hai" ];
+                                 "oth", "ul", "z", "thos", "akh", "hai" ];
     let i, iend = C.rn1(2, 3, 1543, 'rndorcname'), vstart = C.rn2(2, 1543, 'rndorcname');
 
     if (s) {
@@ -1500,9 +1513,11 @@ export function rndorcname(s)
 
 export function christen_orc(mtmp, gang, other)
 {
-    gang = C.charPointer(gang);other = C.charPointer(other);
+    gang = C.charPointer(gang);
+    other = C.charPointer(other);
     let sz = 0;
-    const buf = C.stackAlloc(C.BUFSZ), buf2 = C.stackAlloc(C.BUFSZ); let orcname;
+    const buf = C.stackAlloc(C.BUFSZ), buf2 = C.stackAlloc(C.BUFSZ);
+    let orcname;
 
     orcname = rndorcname(buf2);
     /* rndorcname() won't return NULL */

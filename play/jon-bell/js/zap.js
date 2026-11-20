@@ -1218,7 +1218,7 @@ export async function montraits(obj, cc, adjacentok) {
     if (game.svc?.context?.polearm?.hitmon === fresh) game.svc.context.polearm.hitmon = saved;
     await relmon(fresh, null);
     if (fresh !== game.u.usteed) place_monster(saved, saved.mx, saved.my);
-    if (saved.wormno) place_wsegs(saved, fresh);
+    if (saved.wormno) await place_wsegs(saved, fresh);
     const light = emits_light(saved.data);
     if (light) {
         new_light_source(saved.mx, saved.my, light, LS_MONSTER, monst_to_any(saved));
@@ -7684,7 +7684,10 @@ function _wish_prinv_flush_record(head, prinvLine) {
      * flush_screen, so a wished lit candle/lamp (begin_burn set
      * vision_full_recalc) lights its surroundings in the --More-- frame. */
     if (game.vision_full_recalc) vision_recalc(0);
-    if (!before)
+    /* C win/tty/topl.c:138-140 redotoplin() also pages a single over-wide prinv
+     * line. Freeze that page before the next hallucination redraw, using
+     * the same -2 boundary as an ordinary lone, wrapped pline. */
+    if (!before && String(prinvLine).length < 80)
         return;
     pline_flush_point();
     _pline_flush_frame_record(before - 2, prinvLine);

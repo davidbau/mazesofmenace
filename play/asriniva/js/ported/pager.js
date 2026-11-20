@@ -8,7 +8,6 @@
  * a few other help related facilities such as data.base lookup.
  */
 
-
 import { C } from '../c-runtime/context.js';
 
 const checkfileflags = {
@@ -17,7 +16,7 @@ const checkfileflags = {
     chkfilDontAsk: 2,
     chkfilIaCheck: 4,
 };
-const {chkfilNone,chkfilUsrTyped,chkfilDontAsk,chkfilIaCheck}=checkfileflags;
+const {chkfilNone, chkfilUsrTyped, chkfilDontAsk, chkfilIaCheck} = checkfileflags;
 
  /* for clairvoyance */
 
@@ -62,7 +61,8 @@ export function append_str(buf, new_str)
 /* shared by monster probing (via query_objlist!) as well as lookat() */
 export function self_lookat(outbuf)
 {
-    const race = C.automaticBuffer("self_lookat.race", C.QBUFSZ); const trapbuf = C.automaticBuffer("self_lookat.trapbuf", C.QBUFSZ);
+    const race = C.automaticBuffer("self_lookat.race", C.QBUFSZ);
+    const trapbuf = C.automaticBuffer("self_lookat.trapbuf", C.QBUFSZ);
 
     /* include race with role unless polymorphed */
     C.storeCharAt(race, 0, 0);
@@ -91,24 +91,6 @@ export function self_lookat(outbuf)
    result isn't Healer-specific (not trained for arbitrary creatures) */
 export function monhealthdescr(mon, addspace, outbuf)
 {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     C.nhUse(mon);
     C.nhUse(addspace);
     C.storeCharAt(outbuf, 0);
@@ -330,7 +312,7 @@ export function object_from_map(glyph, x, y, obj_p)
 export function look_at_object(buf, x, y, glyph)
 /* output buffer */
 {
-    const otmp = C.cell("object",0);
+    const otmp = C.cell("object", 0);
     let fakeobj = C.callLocal(object_from_map, glyph, x, y, otmp);
 
     if (otmp.value) {
@@ -369,7 +351,9 @@ export function look_at_object(buf, x, y, glyph)
 export function look_at_monster(buf, monbuf, mtmp, x, y)
 /* buf: output, monbuf: optional output */
 {
-    let name; const monnambuf = C.automaticBuffer("look_at_monster.monnambuf", C.BUFSZ); const healthbuf = C.automaticBuffer("look_at_monster.healthbuf", C.BUFSZ);
+    let name;
+    const monnambuf = C.automaticBuffer("look_at_monster.monnambuf", C.BUFSZ);
+    const healthbuf = C.automaticBuffer("look_at_monster.healthbuf", C.BUFSZ);
     let accurate = !C.Hallucination;
 
     name = (mtmp.data == C.mons[C.PM_COYOTE] && accurate)
@@ -731,7 +715,7 @@ export function lookat(x, y, buf, monbuf)
                 C.Strcpy(buf, "stone");
                 break;
             }
-            
+
             /*FALLTHRU*/
         default:
             C.Strcpy(buf, C.defsyms[symidx].explanation);
@@ -772,12 +756,14 @@ export function checkfile(inp, pm, chkflags, supplemental_name)
 /* monster type to look up (overrides 'inp') */
 {
     let fp;
-    const buf = C.automaticBuffer("checkfile.buf", C.BUFSZ); const newstr = C.automaticBuffer("checkfile.newstr", C.BUFSZ); const givenname = C.automaticBuffer("checkfile.givenname", C.BUFSZ);
+    const buf = C.automaticBuffer("checkfile.buf", C.BUFSZ);
+    const newstr = C.automaticBuffer("checkfile.newstr", C.BUFSZ);
+    const givenname = C.automaticBuffer("checkfile.givenname", C.BUFSZ);
     let ep, dbase_str;
     let user_typed_name = (chkflags & chkfilUsrTyped) != 0,
             without_asking = (chkflags & chkfilDontAsk) != 0,
             ia_checking = (chkflags & chkfilIaCheck) != 0;
-    const txt_offset = C.cell("ulong",0n);
+    const txt_offset = C.cell("ulong", 0n);
     let datawin = C.WIN_ERR;
     let res = C.FALSE;
 
@@ -976,7 +962,8 @@ export function checkfile(inp, pm, chkflags, supplemental_name)
                 }
             }
             if (found_in_file) {
-                const entry_offset = C.cell("long"); let  fseekoffset;
+                const entry_offset = C.cell("long");
+                let  fseekoffset;
                 const entry_count = C.cell("int");
                 let i;
 
@@ -1020,7 +1007,8 @@ export function checkfile(inp, pm, chkflags, supplemental_name)
                     datawin = C.create_nhwindow(C.NHW_MENU);
                     for (i = 0; i < entry_count.value; i++) {
                         /* room for 1-tab or 8-space prefix + BUFSZ-1 + \0 */
-                        const tabbuf = C.automaticBuffer("checkfile.tabbuf", C.BUFSZ + 8); let tp;
+                        const tabbuf = C.automaticBuffer("checkfile.tabbuf", C.BUFSZ + 8);
+                        let tp;
 
                         if (!C.dlb_fgets(tabbuf, C.BUFSZ, fp))
                             break bad_data_file;
@@ -1058,7 +1046,6 @@ export function checkfile(inp, pm, chkflags, supplemental_name)
         }
     }
     break checkfile_done; /* skip error feedback */
-
     }
     C.impossible("'data' file in wrong format or corrupted");
     }
@@ -1190,12 +1177,14 @@ export function do_screen_description(cc, looked, sym, out_str, firstmatch, for_
     const prefix = C.automaticBuffer("do_screen_description.prefix", C.BUFSZ);
     let i, j, alt_i, glyph = C.NO_GLYPH,
         skipped_venom = 0, found = 0; /* count of matching syms found */
-    const hit_trap = C.cell("boolean"); let  need_to_look = C.FALSE,
+    const hit_trap = C.cell("boolean");
+    let  need_to_look = C.FALSE,
             submerged = (C.Underwater && !C.Is_waterlevel(C.u.uz)),
             hallucinate = (C.Hallucination && !C.program_state.gameover);
     let x_str;
     let tmpsym;
-    const glyphinfo = C.localGlyphInfo(); C.copyGlyphInfo(glyphinfo, C.nul_glyphinfo);
+    const glyphinfo = C.localGlyphInfo();
+    C.copyGlyphInfo(glyphinfo, C.nul_glyphinfo);
 
     if (looked) {
         glyph = C.glyph_at(cc.x, cc.y);
@@ -1449,7 +1438,8 @@ export function do_screen_description(cc, looked, sym, out_str, firstmatch, for_
         if (sym == (looked ? C.gw.warnsyms[i] : C.def_warnsyms[i].sym)) {
             if (!found) {
                 C.Sprintf(out_str, "%s%s", prefix, x_str);
-                firstmatch.value = x_str;;
+                firstmatch.value = x_str;
+                ;
                 found++;
             } else {
                 found += C.callLocal(append_str, out_str, x_str);
@@ -1482,20 +1472,6 @@ export function do_screen_description(cc, looked, sym, out_str, firstmatch, for_
                                        : C.go.ov_primary_syms[j];
         if (tmpsym && sym == tmpsym) {
             switch (j) {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
             case C.SYM_PET_OVERRIDE + C.SYM_OFF_X:
                 if (looked) {
                     /* convert to symbol without override in effect */
@@ -1607,10 +1583,13 @@ export function do_look(mode, click_cc)
 {
     let quick = (mode == 1); /* use cursor; don't search for "more info" */
     let clicklook = (mode == 2); /* right mouse-click method */
-    const out_str = C.automaticBuffer("do_look.out_str", C.BUFSZ); C.zeroBuffer(out_str, C.BUFSZ);
-    const cq = C.localCommandQueue(); let cmdq;
-    const firstmatch = C.cell("pointer",0);
-    let pm = 0; const supplemental_pm = C.cell("permonst",0);
+    const out_str = C.automaticBuffer("do_look.out_str", C.BUFSZ);
+    C.zeroBuffer(out_str, C.BUFSZ);
+    const cq = C.localCommandQueue();
+    let cmdq;
+    const firstmatch = C.cell("pointer", 0);
+    let pm = 0;
+    const supplemental_pm = C.cell("permonst", 0);
     let i = 0, ans = 0;
     let sym;              /* typed symbol or converted glyph */
     let found;            /* count of matching syms found */
@@ -1637,7 +1616,7 @@ export function do_look(mode, click_cc)
         if (quick) {
             i = 121;
         } else {
-            const pick_list = C.cell("menu",0);
+            const pick_list = C.cell("menu", 0);
             let win;
             const any = C.localAnything();
 
@@ -1741,7 +1720,6 @@ export function do_look(mode, click_cc)
             }
             C.destroy_nhwindow(win);
         }
-
     }
     }
     if (!clicklook || cmdq) {
@@ -1857,7 +1835,6 @@ export function do_look(mode, click_cc)
         if (found) {
             /* use putmixed() because there may be an encoded glyph present */
             C.putmixed(C.WIN_MESSAGE, 0, out_str);
-
             {
                 const dmpbuf = C.automaticBuffer("do_look.dmpbuf", C.BUFSZ);
 
@@ -1872,12 +1849,12 @@ export function do_look(mode, click_cc)
                 C.dumplogmsg(dmpbuf);
             }
 
-
             /* check the data file for information about this thing */
             if (found == 1 && ans != C.LOOK_QUICK && ans != C.LOOK_ONCE
                 && (ans == C.LOOK_VERBOSE || (C.flags.help && !quick))
                 && !clicklook) {
-                const temp_buf = C.automaticBuffer("do_look.temp_buf", C.BUFSZ); const supplemental_name = C.automaticBuffer("do_look.supplemental_name", C.BUFSZ);
+                const temp_buf = C.automaticBuffer("do_look.temp_buf", C.BUFSZ);
+                const supplemental_name = C.automaticBuffer("do_look.supplemental_name", C.BUFSZ);
 
                 C.storeCharAt(supplemental_name, 0, 0);
                 C.Strcpy(temp_buf, firstmatch.value);
@@ -1914,8 +1891,13 @@ export function look_all(nearby, do_mons)
 {
     let win;
     let glyph, count = 0;
-    let x, y; const lo_x = C.cell("coord"); const lo_y = C.cell("coord"); const hi_x = C.cell("coord"); const hi_y = C.cell("coord");
-    const lookbuf = C.automaticBuffer("look_all.lookbuf", C.BUFSZ); const outbuf = C.automaticBuffer("look_all.outbuf", C.BUFSZ);
+    let x, y;
+    const lo_x = C.cell("coord");
+    const lo_y = C.cell("coord");
+    const hi_x = C.cell("coord");
+    const hi_y = C.cell("coord");
+    const lookbuf = C.automaticBuffer("look_all.lookbuf", C.BUFSZ);
+    const outbuf = C.automaticBuffer("look_all.outbuf", C.BUFSZ);
 
     win = C.create_nhwindow(C.NHW_TEXT);
     C.callLocal(look_region_nearby, lo_x, lo_y, hi_x, hi_y, nearby);
@@ -1951,7 +1933,9 @@ export function look_all(nearby, do_mons)
                 }
             }
             if (C.loadChar(lookbuf)) {
-                const coordbuf = C.automaticBuffer("look_all.coordbuf", 20); const which = C.automaticBuffer("look_all.which", 12); let cmode;
+                const coordbuf = C.automaticBuffer("look_all.coordbuf", 20);
+                const which = C.automaticBuffer("look_all.which", 12);
+                let cmode;
 
                 cmode = C.char((C.iflags.getpos_coords != C.GPCOORDS_NONE)
                            ? C.iflags.getpos_coords : C.GPCOORDS_MAP);
@@ -2011,8 +1995,13 @@ export function look_traps(nearby)
     let win;
     let t;
     let glyph, tnum, count = 0;
-    let x, y; const lo_x = C.cell("coord"); const lo_y = C.cell("coord"); const hi_x = C.cell("coord"); const hi_y = C.cell("coord");
-    const lookbuf = C.automaticBuffer("look_traps.lookbuf", C.BUFSZ); const outbuf = C.automaticBuffer("look_traps.outbuf", C.BUFSZ);
+    let x, y;
+    const lo_x = C.cell("coord");
+    const lo_y = C.cell("coord");
+    const hi_x = C.cell("coord");
+    const hi_y = C.cell("coord");
+    const lookbuf = C.automaticBuffer("look_traps.lookbuf", C.BUFSZ);
+    const outbuf = C.automaticBuffer("look_traps.outbuf", C.BUFSZ);
 
     win = C.create_nhwindow(C.NHW_TEXT);
     C.callLocal(look_region_nearby, lo_x, lo_y, hi_x, hi_y, nearby);
@@ -2035,7 +2024,8 @@ export function look_traps(nearby)
                 ++count;
             }
             if (C.loadChar(lookbuf)) {
-                const coordbuf = C.automaticBuffer("look_traps.coordbuf", 20); let cmode;
+                const coordbuf = C.automaticBuffer("look_traps.coordbuf", 20);
+                let cmode;
 
                 cmode = C.char((C.iflags.getpos_coords != C.GPCOORDS_NONE)
                            ? C.iflags.getpos_coords : C.GPCOORDS_MAP);
@@ -2075,8 +2065,13 @@ export function look_engrs(nearby)
 {
     let win;
     let e;
-    const lookbuf = C.automaticBuffer("look_engrs.lookbuf", C.BUFSZ); const outbuf = C.automaticBuffer("look_engrs.outbuf", C.BUFSZ);
-    let x, y; const lo_x = C.cell("coord"); const lo_y = C.cell("coord"); const hi_x = C.cell("coord"); const hi_y = C.cell("coord");
+    const lookbuf = C.automaticBuffer("look_engrs.lookbuf", C.BUFSZ);
+    const outbuf = C.automaticBuffer("look_engrs.outbuf", C.BUFSZ);
+    let x, y;
+    const lo_x = C.cell("coord");
+    const lo_y = C.cell("coord");
+    const hi_x = C.cell("coord");
+    const hi_y = C.cell("coord");
     let is_headstone;
     let sym;
     let glyph, count = 0;
@@ -2123,7 +2118,8 @@ export function look_engrs(nearby)
                 ++count;
             }
             if (C.loadChar(lookbuf)) { /* (redundant) */
-                const coordbuf = C.automaticBuffer("look_engrs.coordbuf", 20); let cmode;
+                const coordbuf = C.automaticBuffer("look_engrs.coordbuf", 20);
+                let cmode;
 
                 cmode = C.char((C.iflags.getpos_coords != C.GPCOORDS_NONE)
                            ? C.iflags.getpos_coords : C.GPCOORDS_MAP);
@@ -2208,7 +2204,7 @@ export function do_supplemental_info(name, pm, without_asking)
                         ((C.QBUFSZ) - 1 - (C.strlen(question) + 2)));
                 C.Strcat(question, "\"?");
                 if (C.y_n(question) == 121)
-                yes_to_moreinfo = C.TRUE;
+                    yes_to_moreinfo = C.TRUE;
             }
             if (yes_to_moreinfo) {
                 let i, subs = 0;
@@ -2240,8 +2236,6 @@ export function do_supplemental_info(name, pm, without_asking)
         }
     }
 }
-
-
 
 /* the #whatis command */
 export function dowhatis()
@@ -2343,7 +2337,8 @@ export function doidtrap()
 export function whatdoes_help()
 {
     let fp;
-    let p; const buf = C.automaticBuffer("whatdoes_help.buf", C.BUFSZ);
+    let p;
+    const buf = C.automaticBuffer("whatdoes_help.buf", C.BUFSZ);
     let tmpwin;
 
     fp = C.dlb_fopen(C.KEYHELP, "r");
@@ -2366,143 +2361,9 @@ export function whatdoes_help()
     C.destroy_nhwindow(tmpwin);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export function dowhatdoes_core(q, cbuf)
 {
     const buf = C.automaticBuffer("dowhatdoes_core.buf", C.BUFSZ);
-
-
-
-
-
 
     let ec_desc;
 
@@ -2516,69 +2377,11 @@ export function dowhatdoes_core(q, cbuf)
         return cbuf;
     }
     return 0;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 }
 
 /* the whatdoes command */
 export function dowhatdoes()
 {
-    
     const bufr = C.automaticBuffer("dowhatdoes.bufr", C.BUFSZ);
     let q, reslt;
 
@@ -2604,7 +2407,6 @@ export function dowhatdoes()
         if (q != 27)
             q = C.char(C.char(C.unsignedChar(q) | 128));
     }
-
 
     C.intron(); /* reenables ^C */
 
@@ -2749,20 +2551,16 @@ const help_menu_items = [
     { f: "dispfile_usagehelp", text: "Description of NetHack's command line." },
     { f: "dispfile_license", text: "The NetHack license." },
     { f: "docontact", text: "Support information." },
-
-
-
     { f: "dispfile_debughelp", text: "List of wizard-mode commands." },
     { f: 0, text: 0 }
 ];
-
-
 
 /* the #help command */
 export function dohelp()
 {
     let tmpwin = C.create_nhwindow(C.NHW_MENU);
-    const helpbuf = C.automaticBuffer("dohelp.helpbuf", C.QBUFSZ); const tmpbuf = C.automaticBuffer("dohelp.tmpbuf", C.QBUFSZ);
+    const helpbuf = C.automaticBuffer("dohelp.helpbuf", C.QBUFSZ);
+    const tmpbuf = C.automaticBuffer("dohelp.tmpbuf", C.QBUFSZ);
     let i, n;
     const selected = C.cell("menu");
     const any = C.localAnything();
@@ -2799,8 +2597,6 @@ export function dohelp()
     }
     return C.ECMD_OK;
 }
-
-
 
 /* format the key or extended command name of command used to set options;
    normally 'O' but could be bound to something else, or not bound at all;

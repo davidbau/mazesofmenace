@@ -153,5 +153,4 @@ export function pmatchi(patrn, strng)
     return pmatch_internal(patrn, strng, 1, 0);
 }
 
-
 /*strutil.c*/

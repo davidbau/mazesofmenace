@@ -47,10 +47,11 @@ import { gr as roleGlobals } from './roles.js';
 import { PORT_ID } from './platform_identity.js';
 import { game } from './gstate.js';
 import { menu_heading_text } from './tty_menu.js'; // wintty.c:2688
-import { tty_menu_overlay, tty_base_window_prompt, tty_base_window_messages, tty_getlin_prompt, putmsghistory } from './display.js';
+import { tty_menu_overlay, tty_base_window_prompt, tty_base_window_messages, tty_getlin_prompt, putmsghistory, asknameRowText } from './display.js';
 import { pmatchi } from './strutil.js';
 import { visctrl } from './hacklib.js';
 import { map_menu_cmd } from './options.js';
+import { menucolor_row } from './coloratt.js'; // windows.c:1796-1809 add_menu menucolor
 import { str2role, str2race, str2gend, str2align, pick_role, pick_race, pick_gend, pick_align, randrole, setrolefilter as setrolefilter_shared, ok_role as ok_role_shared, ok_align as ok_align_shared, ok_race as ok_race_shared, ok_gend as ok_gend_shared, validrace, validgend, validalign, randrace, randgend, randalign } from './role.js';
 import { clearrolefilter, gotrolefilter, ok_align, ok_gend, ok_race, ok_role, plnamesuffix, rigid_role_checks, rigid_role_checks_replay, setrolefilter } from './role.js'; // relocate-fns
 export { ALIGNS, GENDERS, RACES, ROLES, ROLE_ALIGNMASK, ROLE_GENDMASK, ROLE_NONE, ROLE_RACEMASK, RSF_ALGNMNT, RSF_GENDER, RSF_RACE, RSF_ROLE, RSF_filter, rfilter }; // relocate-fns
@@ -403,7 +404,16 @@ function renderMenuAt(title, lines, indent) {
             cursorCol = 0;
         } else {
             const colStart = indent + pad;
-            out += emitLeading(colStart, 0) + content;
+            /* C windows.c:1803-1807: add_menu() runs get_menu_coloring() on
+             * EVERY entry's raw str — plsel_startmenu's add_menu_str info
+             * line, the setup_*menu bodies and role_menu_extra entries alike
+             * (none carries MENU_ITEMFLAGS_SKIPMENUCOLORS); wintty.c:1449
+             * then paints the colour from char 4, after the "x - " prefix.
+             * menucolor_row models both shapes; the title/morestr row and
+             * the "(end)" footer are not menu entries and stay plain.
+             * Cursor/width math stays on the plain text — C computes
+             * cw->offx/maxrow from the un-colored str. */
+            out += emitLeading(colStart, 0) + menucolor_row(content);
             cursorCol = colStart + content.length;
         }
         cursorRow = i + 1;  // 0-indexed
@@ -801,7 +811,7 @@ function renderFilterPage(pageItems, morestr) {
                                       : it.text;
         if (!content) { rows.push(''); continue; }
         rows.push(emitLeading(INDENT, 0)
-                  + (it.prompt ? menu_heading_text(content) : content));
+                  + (it.prompt ? menu_heading_text(content) : menucolor_row(content)));
     }
     rows.push(emitLeading(INDENT, 0) + morestr.replace(/\s+$/, ''));
     return {
@@ -887,8 +897,14 @@ function buildIsThisOkFrame(name, infoLine, opts = {}) {
     for (let r = 0; r < winRows; r++)
         for (let c = offx; c < COLNO; c++) grid[r][c] = ' ';
     paint(0, indent, title);                    // reverse-video applied at serialize
+    // menuLines[i] occupies row i+1 at `indent` alone (the window cleared
+    // offx..79 first); remember it so serialization can wrap the WHOLE line
+    // in its MENUCOLOR pair — interior spaces must stay inside the SGR span
+    // like the tty's coloured putstr (C windows.c:1803 colors the info line
+    // and every confirm entry alike; role.c:2654-2679 uses plain add_menu).
+    const lineAtRow = new Array(ROWNO).fill(null);
     for (let i = 0; i < menuLines.length; i++)
-        if (menuLines[i].length) paint(i + 1, indent, menuLines[i]);
+        if (menuLines[i].length) { lineAtRow[i + 1] = menuLines[i]; paint(i + 1, indent, menuLines[i]); }
 
     // The rename re-prompt askname() left at row 10, still visible below the
     // window (the window spans rows 0..winRows-1 only).
@@ -913,6 +929,13 @@ function buildIsThisOkFrame(name, infoLine, opts = {}) {
                 s += g > 4 ? `\x1b[${g}C` : ' '.repeat(Math.max(0, g));
                 col += g;
             } else {
+                const ln = lineAtRow[r];
+                if (ln && col === indent
+                    && grid[r].slice(col, col + ln.length).join('') === ln) {
+                    s += menucolor_row(ln);
+                    col += ln.length;
+                    continue;
+                }
                 let run = '';
                 while (col <= last && grid[r][col] !== ' ') { run += grid[r][col]; col++; }
                 s += run;
@@ -956,6 +979,8 @@ function buildAsknameOverBanner(typed, row12Name, bannerClip, retried = false) {
     if (bannerClip < COLNO)
         for (let r = 0; r < 9; r++)
             for (let c = bannerClip; c < COLNO; c++) grid[r][c] = ' ';
+    // TODO(askname-residue): overlay rule of playChargen's rename arm —
+    // route through display.js asknameRowText (wintty.c:2349).
     paint(10, 0, ASKNAME_TEXT + (typed ? ' ' + typed : ''));
     if (retried) paint(11, 0, ASKNAME_RETRY_TEXT);
     paint(12, 0, ASKNAME_TEXT + (row12Name ? ' ' + row12Name : ''));
@@ -1751,18 +1776,20 @@ export async function playChargen(ctx) {
     const ASKNAME_BAIL = 'Giving up after 10 tries.';   // wintty.c:674
 
     // ── askname ──────────────────────────────────────────────────────────
-    // frameFor(typedSoFar) -> {screen, cursor}; supplied by the caller of
-    // doAskname because the first prompt sits at row 12 over the copyright
-    // banner while the rename re-prompt sits at row 10 over whatever the
-    // dismissed confirm window left behind.
+    // frameFor(typedSoFar, echoHigh, cleared) -> {screen, cursor}; supplied
+    // by the caller of doAskname because the first prompt sits at row 12
+    // over the copyright banner while the rename re-prompt sits at row 10
+    // over whatever the dismissed confirm window left behind (echoHigh and
+    // cleared model the echo cell writes — asknameRowText, display.js).
     // C wintty.c:672-680: every try after the first paints "Enter a name
     // for your character..." on the row above the prompt (tty_putstr on the
     // base window overwrites, it does not clear) and gives up after 10.
     async function doAskname(frameFor, background = null) {
         let ct = '';
         let tryct = 1;
+        let echoHigh = 0;
         for (;;) {
-            const f = frameFor(ct);
+            const f = frameFor(ct, echoHigh, tryct > 1);
             const key = await read(tryct > 1 ? withAsknameRetryLine(f.screen, f.cursor[1], background) : f.screen,
                                    f.cursor);
             if (key === K_LF || key === K_CR || key === K_ESC) {
@@ -1770,6 +1797,7 @@ export async function playChargen(ctx) {
                 // C: `while (ct == 0)` re-prompts on an empty name.
                 if (ct.length === 0) {
                     if (++tryct > 10) return null;   // bail("Giving up after 10 tries.")
+                    echoHigh = 0;
                     continue;
                 }
                 if (tryct > 1) asknameRetried = true;
@@ -1780,7 +1808,10 @@ export async function playChargen(ctx) {
                 continue;
             }
             // C wintty.c:729: sizeof svp.plname - 1 == PL_NSIZ - 1 == 31.
-            if (ct.length < 31) ct += asknameFilter(String.fromCharCode(key), ct.length);
+            if (ct.length < 31) {
+                ct += asknameFilter(String.fromCharCode(key), ct.length);
+                if (ct.length > echoHigh) echoHigh = ct.length;
+            }
         }
     }
 
@@ -2376,9 +2407,18 @@ export async function playChargen(ctx) {
                 const askRow = fullScreen ? 1 : 10;
                 if (fullScreen) menuBackground.fill('');
                 do {
-                    renameResidual = await doAskname(typed => (overlayBanner && !fullScreen)
-                        ? buildAsknameOverBanner(typed, asknameResidual, bannerClip, asknameRetried)
-                        : tty_base_window_prompt(menuBackground, askRow, ASKNAME_TEXT + (typed ? ' ' + typed : ''), cursorForAsknameAtRow(askRow, typed)),
+                    // The row before this askname paints its prompt — putstr
+                    // clears nothing past it, so the residue survives
+                    // (wintty.c:2349, asknameRowText).
+                    const askResidual = (overlayBanner && !fullScreen)
+                        ? (renameRow10 || '')
+                        : (menuBackground[askRow] || '');
+                    renameResidual = await doAskname((typed, echoHigh, cleared) => (overlayBanner && !fullScreen)
+                        ? buildAsknameOverBanner(typed, asknameResidual, bannerClip,
+                                                 asknameRetried, echoHigh, cleared, askResidual)
+                        : tty_base_window_prompt(menuBackground, askRow,
+                                                 asknameRowText(typed, echoHigh, cleared, askResidual),
+                                                 cursorForAsknameAtRow(askRow, typed)),
                         (overlayBanner && !fullScreen) ? null : menuBackground);
                     if (renameResidual === null) return quit(ASKNAME_BAIL);
                     renameRow10 = ASKNAME_TEXT + (renameResidual ? ' ' + renameResidual : '');

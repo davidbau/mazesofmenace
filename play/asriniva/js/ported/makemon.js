@@ -4,25 +4,9 @@ import {C} from '../c-runtime/context.js';
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 /* this assumes that a human quest leader or nemesis is an archetype
    of the corresponding role; that isn't so for some roles (tourist
    for instance) but is for the priests and monks we use it for... */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export function is_home_elemental(ptr)
 {
@@ -116,7 +100,6 @@ export function m_initgrp(mtmp, x, y, n, mmflags)
     }
 }
 
-
 export function m_initthrow(mtmp, otyp, oquan)
 {
     let otmp;
@@ -128,7 +111,6 @@ export function m_initthrow(mtmp, otyp, oquan)
         otmp.opoisoned = 1;
     C.mpickobj(mtmp, otmp);
 }
-
 
 export function m_initweap(mtmp)
 {
@@ -493,7 +475,7 @@ export function m_initweap(mtmp)
          */
         if (!C.is_demon(ptr))
             break;
-        
+
         /*FALLTHRU*/
     default:
         /*
@@ -557,7 +539,6 @@ export function mkmonmoney(mtmp, amount)
     }
 }
 
-
 export function m_initinv(mtmp)
 {
     let cnt;
@@ -603,7 +584,6 @@ export function m_initinv(mtmp)
                 break;
             }
 
-
             /* round 1: give them body armor */
             if (mac < -1 && (C.rngSource(639, "m_initinv"), C.rn2(5)))
                 otmp = C.callLocal(mongets, mtmp, ((C.rngSource(640, "m_initinv"), C.rn2(5))) ? C.PLATE_MAIL
@@ -615,35 +595,40 @@ export function m_initinv(mtmp)
                                               : C.STUDDED_LEATHER_ARMOR);
             else
                 otmp = C.callLocal(mongets, mtmp, C.LEATHER_ARMOR);
-            if (otmp) { mac += C.ARM_BONUS(otmp); } otmp = 0;
+            if (otmp) { mac += C.ARM_BONUS(otmp); }
+            otmp = 0;
 
             /* round 2: helmets */
             if (mac < 10 && (C.rngSource(652, "m_initinv"), C.rn2(3)))
                 otmp = C.callLocal(mongets, mtmp, C.HELMET);
             else if (mac < 10 && (C.rngSource(654, "m_initinv"), C.rn2(2)))
                 otmp = C.callLocal(mongets, mtmp, C.DENTED_POT);
-            if (otmp) { mac += C.ARM_BONUS(otmp); } otmp = 0;
+            if (otmp) { mac += C.ARM_BONUS(otmp); }
+            otmp = 0;
 
             /* round 3: shields */
             if (mac < 10 && (C.rngSource(659, "m_initinv"), C.rn2(3)))
                 otmp = C.callLocal(mongets, mtmp, C.SMALL_SHIELD);
             else if (mac < 10 && (C.rngSource(661, "m_initinv"), C.rn2(2)))
                 otmp = C.callLocal(mongets, mtmp, C.LARGE_SHIELD);
-            if (otmp) { mac += C.ARM_BONUS(otmp); } otmp = 0;
+            if (otmp) { mac += C.ARM_BONUS(otmp); }
+            otmp = 0;
 
             /* round 4: boots */
             if (mac < 10 && (C.rngSource(666, "m_initinv"), C.rn2(3)))
                 otmp = C.callLocal(mongets, mtmp, C.LOW_BOOTS);
             else if (mac < 10 && (C.rngSource(668, "m_initinv"), C.rn2(2)))
                 otmp = C.callLocal(mongets, mtmp, C.HIGH_BOOTS);
-            if (otmp) { mac += C.ARM_BONUS(otmp); } otmp = 0;
+            if (otmp) { mac += C.ARM_BONUS(otmp); }
+            otmp = 0;
 
             /* round 5: gloves + cloak */
             if (mac < 10 && (C.rngSource(673, "m_initinv"), C.rn2(3)))
                 otmp = C.callLocal(mongets, mtmp, C.LEATHER_GLOVES);
             else if (mac < 10 && (C.rngSource(675, "m_initinv"), C.rn2(2)))
                 otmp = C.callLocal(mongets, mtmp, C.LEATHER_CLOAK);
-            if (otmp) { mac += C.ARM_BONUS(otmp); } otmp = 0; /* not technically needed */
+            if (otmp) { mac += C.ARM_BONUS(otmp); }
+            otmp = 0; /* not technically needed */
 
             C.nhUse(mac); /* suppress 'dead increment' from static analyzer */
 
@@ -673,15 +658,15 @@ export function m_initinv(mtmp)
             /* MAJOR fall through ... */
             case 0:
                 C.callLocal(mongets, mtmp, C.WAN_MAGIC_MISSILE);
-                
+
                 /*FALLTHRU*/
             case 1:
                 C.callLocal(mongets, mtmp, C.POT_EXTRA_HEALING);
-                
+
                 /*FALLTHRU*/
             case 2:
                 C.callLocal(mongets, mtmp, C.POT_HEALING);
-                
+
                 /*FALLTHRU*/
             case 3:
                 C.callLocal(mongets, mtmp, C.WAN_STRIKING);
@@ -940,8 +925,10 @@ export function propagate(mndx, tally, ghostly)
         && !(C.mons[mndx].geno & C.G_NOGEN)
         && !(C.svm.mvitals[mndx].mvflags & C.G_EXTINCT)) {
         if (C.wizard) {
-            do { if (C.showdebug("makemon.c")) { let save_plnmsg = C.iflags.last_msg; C.pline("Automatically extinguished %s.",
-                        C.makeplural(C.mons[mndx].pmnames[C.NEUTRAL])); C.iflags.last_msg = save_plnmsg; } } while (0);
+            do { if (C.showdebug("makemon.c")) { let save_plnmsg = C.iflags.last_msg;
+            C.pline("Automatically extinguished %s.",
+                        C.makeplural(C.mons[mndx].pmnames[C.NEUTRAL]));
+                        C.iflags.last_msg = save_plnmsg; } } while (0);
         }
         C.svm.mvitals[mndx].mvflags |= C.G_EXTINCT;
     }
@@ -1020,15 +1007,11 @@ export function newmonhp(mon, mndx)
     }
 }
 
-
-
-
 export function init_mextra(mex)
 {
     C.copyRecord(mex, C.zeromextra, C.mextraSize);
     mex.mcorpsenm = C.NON_PM;
 }
-
 
 export function newmextra()
 {
@@ -1038,7 +1021,6 @@ export function newmextra()
     C.callLocal(init_mextra, mextra);
     return mextra;
 }
-
 
 export function makemon_rnd_goodpos(mon, gpflags, cc)
 /* output */
@@ -1051,7 +1033,7 @@ export function makemon_rnd_goodpos(mon, gpflags, cc)
     do {
         nx = (C.rngSource(1087, "makemon_rnd_goodpos"), C.rn1(C.COLNO - 3, 2));
         ny = (C.rngSource(1088, "makemon_rnd_goodpos"), C.rn2(C.ROWNO));
-        good = (!C.gi.in_mklev && C.cansee(nx,ny)) ? 0
+        good = (!C.gi.in_mklev && C.cansee(nx, ny)) ? 0
                                               : C.goodpos(nx, ny, mon, gpflags);
     } while ((++tryct < 50) && !good);
 
@@ -1062,7 +1044,7 @@ export function makemon_rnd_goodpos(mon, gpflags, cc)
            skip first round if we're in special level loader or blind */
         let xofs = nx;
         let yofs = ny;
-        let dx,dy;
+        let dx, dy;
         let bl = (C.gi.in_mklev || C.Blind) ? 1 : 0;
 
         for ( ; bl < 2; bl++) {
@@ -1072,7 +1054,7 @@ export function makemon_rnd_goodpos(mon, gpflags, cc)
                 for (dy = 0; dy < C.ROWNO; dy++) {
                     nx = ((dx + xofs) % (C.COLNO - 1)) + 1;
                     ny = ((dy + yofs) % (C.ROWNO - 1)) + 1;
-                    if (bl == 0 && C.cansee(nx,ny))
+                    if (bl == 0 && C.cansee(nx, ny))
                         continue;
                     if (C.goodpos(nx, ny, mon, gpflags))
                         break gotgood;
@@ -1102,7 +1084,6 @@ export function makemon_rnd_goodpos(mon, gpflags, cc)
         cc.x = nx;
         cc.y = ny;
         return 1;
-
 }
 
 /*
@@ -1172,8 +1153,10 @@ export function makemon(ptr, x, y, mmflags)
         if (C.svm.mvitals[mndx].mvflags & C.G_GENOD)
             return 0;
         if (C.wizard && (C.svm.mvitals[mndx].mvflags & C.G_EXTINCT)) {
-            do { if (C.showdebug("makemon.c")) { let save_plnmsg = C.iflags.last_msg; C.pline("Explicitly creating extinct monster %s.",
-                        C.mons[mndx].pmnames[C.NEUTRAL]); C.iflags.last_msg = save_plnmsg; } } while (0);
+            do { if (C.showdebug("makemon.c")) { let save_plnmsg = C.iflags.last_msg;
+            C.pline("Explicitly creating extinct monster %s.",
+                        C.mons[mndx].pmnames[C.NEUTRAL]);
+                        C.iflags.last_msg = save_plnmsg; } } while (0);
         }
     } else {
         /* make a random (common) monster that can survive here.
@@ -1502,7 +1485,6 @@ export function unmakemon(mon, mmflags)
     return 0;
 }
 
-
 export function mbirth_limit(mndx)
 {
     /* There is an implicit limit of 4 for "high priest of <deity>",
@@ -1550,7 +1532,6 @@ export function create_critters(cnt, mptr, neverask)
     return known;
 }
 
-
 export function uncommon(mndx)
 {
     if (C.mons[mndx].geno & (C.G_NOGEN | C.G_UNIQ))
@@ -1572,7 +1553,7 @@ export function uncommon(mndx)
 export function align_shift(ptr)
 {
      /* != 1, starting value of moves */
-    
+
     let alshift;
 
     if (C.oldmoves != C.svm.moves) {
@@ -1685,8 +1666,10 @@ export function rndmonst_adj(minadj, maxadj)
     if (selected_mndx == C.NON_PM || C.callLocal(uncommon, selected_mndx)) {
         /* maybe no common monsters left, or all are too weak or too strong */
         if (selected_mndx != C.NON_PM)
-            do { if (C.showdebug("makemon.c")) { let save_plnmsg = C.iflags.last_msg; C.pline("rndmonst returning Null [uncommon 'mndx'=#%d]",
-                        selected_mndx); C.iflags.last_msg = save_plnmsg; } } while (0);
+            do { if (C.showdebug("makemon.c")) { let save_plnmsg = C.iflags.last_msg;
+            C.pline("rndmonst returning Null [uncommon 'mndx'=#%d]",
+                        selected_mndx);
+                        C.iflags.last_msg = save_plnmsg; } } while (0);
         return 0;
     }
     return C.mons[selected_mndx];
@@ -1711,10 +1694,6 @@ export function mk_gen_ok(mndx, mvflagsmask, genomask)
 }
 
 /* monsters in order by mlet & difficulty for mkclass() */
-
-
-
-
 
 export function cmp_init_mongen_order(p1, p2)
 {
@@ -1752,7 +1731,6 @@ export function init_mongen_order()
 }
   /* allmain.c */
 
-
 export function dump_mongen()
 {
     let mlet, prev_mlet = 0;
@@ -1776,8 +1754,8 @@ export function dump_mongen()
                    C.int((C.mons[C.mongenOrderAt(i)].geno & C.G_FREQ)),
                    C.int(C.mclass_maxf[C.int(C.mons[C.mongenOrderAt(i)].mlet)]),
                    (special == (C.G_NOGEN | C.G_UNIQ)) ? "(G_NOGEN | G_UNIQ)"
-                   : (special == C.G_NOGEN)          ? "(G_NOGEN)"
-                   : (special == C.G_UNIQ)           ? "(G_UNIQ)"
+                   : (special == C.G_NOGEN) ? "(G_NOGEN)"
+                   : (special == C.G_UNIQ) ? "(G_UNIQ)"
                                                    : "");
         prev_mlet = mlet;
     }
@@ -1892,7 +1870,6 @@ export function mkclass_aligned(class_, spc, atyp)
 
     return nums[C.mongenOrderAt(first)] ? C.mons[C.mongenOrderAt(first)] : 0;
 }
-
 
 /* like mkclass(), but excludes difficulty considerations; used when
    player with polycontrol picks a class instead of a specific type;
@@ -2092,7 +2069,6 @@ export function grow_up(mtmp, victim)
     return ptr;
 }
 
-
 export function mongets(mtmp, otyp)
 {
     let otmp;
@@ -2143,7 +2119,6 @@ export function mongets(mtmp, otyp)
     }
     return otmp;
 }
-
 
 export function golemhp(type)
 {
@@ -2303,7 +2278,6 @@ export const syms = [
     "AMULET_CLASS", "TOOL_CLASS",      "ROCK_CLASS",   "GEM_CLASS",    "SPBOOK_CLASS",
     "S_MIMIC_DEF",  "S_MIMIC_DEF",
 ];
-
 
 export function set_mimic_sym(mtmp)
 {

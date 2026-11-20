@@ -217,7 +217,6 @@ export const tty_procs_initial = {
 
 export const winpanicstr_initial = "Bad window Id %d (%s)";
 
-
 export const defmorestr_initial = "--More--";
 
 /* clipping on? */
@@ -228,12 +227,9 @@ export const clipping_initial = "FALSE";
 
 export const clipx_initial = 0;
 
-
 export const clipxmax_initial = 0;
 
-
 export const clipy_initial = 0;
-
 
 export const clipymax_initial = 0;
 
@@ -287,7 +283,6 @@ export function bail(mesg) {
 /*NOTREACHED*/
 }
 
-
 export const resize_mesg_initial = 0;
 
 /* signal handler is called with at least 1 arg */
@@ -324,7 +319,9 @@ export function resize_tty() {
     (C.resize_mesg = 0);
     C.getwindowsz();
 /* update LI and CO */
-    if (Number(!!(Number(!(C.ttyDisplay)) || (Number(!!(Number(((C.gt).tc_gbl_data).tc_LI == oldLI) && Number(((C.gt).tc_gbl_data).tc_CO == oldCO))))))) return;
+    if (Number(!!(Number(!(C.ttyDisplay))
+        || (Number(!!(Number(((C.gt).tc_gbl_data).tc_LI == oldLI)
+        && Number(((C.gt).tc_gbl_data).tc_CO == oldCO))))))) return;
     ((C.ttyDisplay).rows = C.short(((C.gt).tc_gbl_data).tc_LI));
     ((C.ttyDisplay).cols = C.short(((C.gt).tc_gbl_data).tc_CO));
     (cw = C.deref(C.ptrAdd(C.wins, C.BASE_WINDOW, "struct WinDesc *"), "struct WinDesc *"));
@@ -336,7 +333,7 @@ export function resize_tty() {
     (map_active = C.char((Number(!!(cw && (cw).active)))));
     if (Number(!(map_active))) ((mapx = 1), (mapy = 0));
     else if (Number((C.gg).getposx < 1)) ((mapx = (C.u).ux), (mapy = (C.u).uy));
-    else ((mapx = (C.gg).getposx), (mapy = (C.gg).getposy));
+        else ((mapx = (C.gg).getposx), (mapy = (C.gg).getposy));
     (oldtoplin = (C.ttyDisplay).toplin);
     ((C.ttyDisplay).toplin = C.TOPLINE_EMPTY);
 /* (before term_clear_screen()) */
@@ -350,12 +347,16 @@ export function resize_tty() {
         C.bot();
 /* context.botlx=1 gets set by docrt() */
         for ((i = 0); Number(i < C.MAXWIN); (i = C.int((i + 1)))) {
-            if (Number(!!(Number(!!(Number(!!(Number(i == C.BASE_WINDOW) || Number(i == C.WIN_MAP))) || Number(i == C.WIN_STATUS))) || Number(i == C.WIN_MESSAGE)))) /* docrt() updates it */
+            if (Number(!!(Number(!!(Number(!!(Number(i == C.BASE_WINDOW)
+                || Number(i == C.WIN_MAP)))
+                || Number(i == C.WIN_STATUS)))
+                || Number(i == C.WIN_MESSAGE)))) /* docrt() updates it */
 /* docrt()+bot() updates it */
 /* docrt() again */
 /* we fake it here */
-            continue;
-            if (Number(!!(C.deref(C.ptrAdd(C.wins, i, "struct WinDesc *"), "struct WinDesc *") && (C.deref(C.ptrAdd(C.wins, i, "struct WinDesc *"), "struct WinDesc *")).active))) {
+                continue;
+            if (Number(!!(C.deref(C.ptrAdd(C.wins, i, "struct WinDesc *"), "struct WinDesc *")
+                && (C.deref(C.ptrAdd(C.wins, i, "struct WinDesc *"), "struct WinDesc *")).active))) {
 /* cop-out */
                 (oldtoplin = C.TOPLINE_EMPTY);
 /* don't restore it below */
@@ -384,7 +385,8 @@ export function resize_tty() {
 export function newclipping(x, y) {
     x = C.argument(x, "coordxy");
     y = C.argument(y, "coordxy");
-    if (Number(!!(Number(((C.gt).tc_gbl_data).tc_CO < C.COLNO) || Number(((C.gt).tc_gbl_data).tc_LI < C.int((C.int((1 + C.ROWNO)) + (C.iflags).wc2_statuslines)))))) {
+    if (Number(!!(Number(((C.gt).tc_gbl_data).tc_CO < C.COLNO)
+        || Number(((C.gt).tc_gbl_data).tc_LI < C.int((C.int((1 + C.ROWNO)) + (C.iflags).wc2_statuslines)))))) {
         setclipped();
 /* sets clipping=TRUE */
         if (x) tty_cliparound(x, y);
@@ -582,10 +584,17 @@ export function tty_askname() {
                 }
                 continue;
             }
-            if (Number(!!(Number(c != 45) && Number(c != 64)))) if (Number(!!(Number(!!(Number(!((Number(!!(Number(c >= 97) && Number(c <= 122)))))) && Number(!((Number(!!(Number(c >= 65) && Number(c <= 90)))))))) && Number(!((Number(!!(Number(!!(Number(c >= 48) && Number(c <= 57))) && Number(ct > 0))))))))) /* reject leading digit but allow digits elsewhere
+            if (Number(!!(Number(c != 45)
+                && Number(c != 64)))) if (Number(!!(Number(!!(Number(!((Number(!!(Number(c >= 97)
+                && Number(c <= 122))))))
+                && Number(!((Number(!!(Number(c >= 65)
+                && Number(c <= 90))))))))
+                && Number(!((Number(!!(Number(!!(Number(c >= 48)
+                && Number(c <= 57)))
+                && Number(ct > 0))))))))) /* reject leading digit but allow digits elsewhere
                        (avoids ambiguity when character name gets
                        appended to uid to construct save file name) */
-            (c = 95);
+                (c = 95);
             if (Number(ct < C.int((C.int((BigInt(C.sizeof("char[32]")))) - 1)))) {
                 C.putchar(c);
                 C.nomux_putch(c);
@@ -802,7 +811,9 @@ export function free_window_info(cw, free_data) {
     free_data = C.argument(free_data, "boolean");
     let i;
     if ((cw).data) {
-        if (Number(!!(Number(!!(Number(C.WIN_MESSAGE != (C.int((-1)))) && C.ptrCompare(cw, C.deref(C.ptrAdd(C.wins, C.WIN_MESSAGE, "struct WinDesc *"), "struct WinDesc *"), "=="))) && Number((cw).rows > (cw).maxrow)))) ((cw).maxrow = (cw).rows);
+        if (Number(!!(Number(!!(Number(C.WIN_MESSAGE != (C.int((-1))))
+            && C.ptrCompare(cw, C.deref(C.ptrAdd(C.wins, C.WIN_MESSAGE, "struct WinDesc *"), "struct WinDesc *"), "==")))
+            && Number((cw).rows > (cw).maxrow)))) ((cw).maxrow = (cw).rows);
 /* topl data */
         for ((i = 0); Number(C.long(i) < (cw).maxrow); ((i = C.int((i + 1))), C.int((i - 1)))) if (C.deref(C.ptrAdd((cw).data, i, "char *"), "char *")) {
             C.free(C.castPointer(C.deref(C.ptrAdd((cw).data, i, "char *"), "char *"), "void *"));
@@ -851,7 +862,8 @@ export function tty_clear_nhwindow(window) {
         }
     }
     while (0);
-    if (Number(!!(Number(window == (C.int((-1)))) || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) C.panic(C.winpanicstr, window, C.literal("tty_clear_nhwindow"), "ip");
+    if (Number(!!(Number(window == (C.int((-1))))
+        || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) C.panic(C.winpanicstr, window, C.literal("tty_clear_nhwindow"), "ip");
     ((C.ttyDisplay).lastwin = window);
     ;
     switch ((cw).type) {
@@ -1011,9 +1023,11 @@ export function set_all_on_page(window, page_start, page_end) {
     let curr;
     let n;
     for (((n = 0), (curr = page_start)); C.ptrCompare(curr, page_end, "!="); (((n = C.int((n + 1))), C.int((n - 1))), (curr = (curr).next))) {
-        if (Number(!!(Number(!!(Number(!(((curr).identifier).a_void)) || (curr).selected)) || Number(!(C.menuitem_invert_test(1, (curr).itemflags, C.FALSE)))))) /* not selectable */
+        if (Number(!!(Number(!!(Number(!(((curr).identifier).a_void))
+            || (curr).selected))
+            || Number(!(C.menuitem_invert_test(1, (curr).itemflags, C.FALSE)))))) /* not selectable */
 /* already selected */
-        continue;
+            continue;
         ((curr).selected = C.TRUE);
         set_item_state(window, n, curr);
     }
@@ -1027,9 +1041,11 @@ export function unset_all_on_page(window, page_start, page_end) {
     let curr;
     let n;
     for (((n = 0), (curr = page_start)); C.ptrCompare(curr, page_end, "!="); (((n = C.int((n + 1))), C.int((n - 1))), (curr = (curr).next))) {
-        if (Number(!!(Number(!!(Number(!(((curr).identifier).a_void)) || Number(!((curr).selected)))) || Number(!(C.menuitem_invert_test(2, (curr).itemflags, C.TRUE)))))) /* skip if not selectable */
+        if (Number(!!(Number(!!(Number(!(((curr).identifier).a_void))
+            || Number(!((curr).selected))))
+            || Number(!(C.menuitem_invert_test(2, (curr).itemflags, C.TRUE)))))) /* skip if not selectable */
 /* skip if already de-selected */
-        continue;
+            continue;
         ((curr).selected = C.FALSE);
         ((curr).count = C.long((-1n)));
         set_item_state(window, n, curr);
@@ -1048,10 +1064,11 @@ export function invert_all_on_page(window, page_start, page_end, acc, count) /* 
     let curr;
     let n;
     for (((n = 0), (curr = page_start)); C.ptrCompare(curr, page_end, "!="); (((n = C.int((n + 1))), C.int((n - 1))), (curr = (curr).next))) {
-        if (Number(!!(Number(!(((curr).identifier).a_void)) || (((acc) ? Number((curr).gselector != acc) : Number(!(C.menuitem_invert_test(0, (curr).itemflags, (curr).selected)))))))) /* not selectable */
+        if (Number(!!(Number(!(((curr).identifier).a_void))
+            || (((acc) ? Number((curr).gselector != acc) : Number(!(C.menuitem_invert_test(0, (curr).itemflags, (curr).selected)))))))) /* not selectable */
 /* skip if not group 'acc' */
 /* inverting all rather than a group; skip if flagged */
-        continue;
+            continue;
         if ((curr).selected) {
             ((curr).selected = C.FALSE);
             ((curr).count = C.long((-1n)));
@@ -1088,7 +1105,9 @@ export function invert_all(window, page_start, page_end, acc, count) /* group ac
            group toggling is not taking place and this item is off
            limits to bulk toggling (assumes that an item won't be
            both in a group and also subject to bulk restrictions) */
-        if (Number(!!(Number(!!(on_curr_page || Number(!(((curr).identifier).a_void)))) || (((acc) ? Number((curr).gselector != acc) : Number(!(C.menuitem_invert_test(0, (curr).itemflags, (curr).selected)))))))) continue;
+        if (Number(!!(Number(!!(on_curr_page
+            || Number(!(((curr).identifier).a_void))))
+            || (((acc) ? Number((curr).gselector != acc) : Number(!(C.menuitem_invert_test(0, (curr).itemflags, (curr).selected)))))))) continue;
         if ((curr).selected) {
             ((curr).selected = C.FALSE);
             ((curr).count = C.long(C.int((-1))));
@@ -1160,19 +1179,25 @@ export function process_menu_window(window, cw) {
         const gcnt = C.localArray("int[128]", 0);
 /* guard against `signed char' */
         for ((i = 0); Number(i < C.int((C.ulong((BigInt(C.sizeof("int[128]")) / BigInt(C.sizeof("int"))))))); ((i = C.int((i + 1))), C.int((i - 1)))) C.store(C.ptrAdd(gcnt, i, "int"), "int", 0);
-        for (((n = 0), (curr = (cw).mlist)); curr; (curr = (curr).next)) if (Number(!!((curr).gselector && Number((curr).gselector != (curr).selector)))) {
+        for (((n = 0), (curr = (cw).mlist)); curr; (curr = (curr).next)) if (Number(!!((curr).gselector
+            && Number((curr).gselector != (curr).selector)))) {
             (n = C.int((n + 1)));
             C.bump(C.reference(C.ptrAdd(gcnt, (C.int((((curr).gselector) & 127))), "int"), "int"), 1, false, "int");
         }
         if (Number(n > 0)) /* at least one group accelerator found */
-        for (((rp = gacc), (curr = (cw).mlist)); curr; (curr = (curr).next)) if (Number(!!(Number(!!(Number(!!((curr).gselector && (Number(!!(Number((curr).gselector != (curr).selector) || Number((curr).gselector == C.GOLD_SYM)))))) && Number(!(C.strchr(gacc, (curr).gselector))))) && (Number(!!(Number((cw).how == C.PICK_ANY) || Number(C.deref(C.ptrAdd(gcnt, (C.int((((curr).gselector) & 127))), "int"), "int") == 1))))))) /* '$' is both a selector "letter" and a group
+            for (((rp = gacc), (curr = (cw).mlist)); curr; (curr = (curr).next)) if (Number(!!(Number(!!(Number(!!((curr).gselector
+                && (Number(!!(Number((curr).gselector != (curr).selector)
+                || Number((curr).gselector == C.GOLD_SYM))))))
+                && Number(!(C.strchr(gacc, (curr).gselector)))))
+                && (Number(!!(Number((cw).how == C.PICK_ANY)
+                || Number(C.deref(C.ptrAdd(gcnt, (C.int((((curr).gselector) & 127))), "int"), "int") == 1))))))) /* '$' is both a selector "letter" and a group
                            accelerator; including it in gacc allows gold to
                            be selected via group when not on current page */
-{
-            C.store(((rp = C.ptrAdd(rp, 1, "char")), C.ptrAdd(rp, -1, "char")), "char", (curr).gselector);
-            C.store(rp, "char", C.char(0));
-/* re-terminate for strchr() */
-        }
+    {
+                C.store(((rp = C.ptrAdd(rp, 1, "char")), C.ptrAdd(rp, -1, "char")), "char", (curr).gselector);
+                C.store(rp, "char", C.char(0));
+    /* re-terminate for strchr() */
+            }
     }
     (resp_len = 0);
 /* lint suppression */
@@ -1196,10 +1221,12 @@ export function process_menu_window(window, cw) {
             (counting = C.FALSE);
             (count = 0n);
         }
-        else (reset_count = C.TRUE);
+            else (reset_count = C.TRUE);
         if (Number(!(page_start))) {
 /* new page to be displayed */
-            if (Number(!!(Number(curr_page < 0) || (Number(!!(Number((cw).npages > C.long(0)) && Number(C.long(curr_page) >= (cw).npages))))))) C.panic(C.literal("bad menu screen page #%d"), curr_page, "i");
+            if (Number(!!(Number(curr_page < 0)
+                || (Number(!!(Number((cw).npages > C.long(0))
+                && Number(C.long(curr_page) >= (cw).npages))))))) C.panic(C.literal("bad menu screen page #%d"), curr_page, "i");
 /* clear screen */
             if (Number(!((cw).offx))) {
 /* if not corner, do clearscreen */
@@ -1207,7 +1234,7 @@ export function process_menu_window(window, cw) {
                     tty_curs(window, 1, 0);
                     C.cl_eos();
                 }
-                else C.term_clear_screen();
+                    else C.term_clear_screen();
             }
             (rp = resp);
             if (Number((cw).npages > C.long(0))) {
@@ -1231,8 +1258,12 @@ export function process_menu_window(window, cw) {
                        entries, so we don't rely on curr->identifier here) */
                     (attr_n = 0);
 /* whole line */
-                    if (Number(!!(Number(!!(Number(!!(Number(!!(C.deref(C.ptrAdd((curr).str, 0, "char"), "char") && Number(C.deref(C.ptrAdd((curr).str, 1, "char"), "char") == 32))) && C.deref(C.ptrAdd((curr).str, 2, "char"), "char"))) && C.strchr(C.literal("-+#"), C.deref(C.ptrAdd((curr).str, 2, "char"), "char")))) && Number(C.deref(C.ptrAdd((curr).str, 3, "char"), "char") == 32)))) /* [0]=letter, [1]=space, [2]=[-+#], [3]=space */
-                    (attr_n = 4);
+                    if (Number(!!(Number(!!(Number(!!(Number(!!(C.deref(C.ptrAdd((curr).str, 0, "char"), "char")
+                        && Number(C.deref(C.ptrAdd((curr).str, 1, "char"), "char") == 32)))
+                        && C.deref(C.ptrAdd((curr).str, 2, "char"), "char")))
+                        && C.strchr(C.literal("-+#"), C.deref(C.ptrAdd((curr).str, 2, "char"), "char"))))
+                        && Number(C.deref(C.ptrAdd((curr).str, 3, "char"), "char") == 32)))) /* [0]=letter, [1]=space, [2]=[-+#], [3]=space */
+                        (attr_n = 4);
 /* [4:N]=entry description */
 /*
                      * Don't use xputs() because (1) under unix it calls
@@ -1241,8 +1272,11 @@ export function process_menu_window(window, cw) {
                      * actually output the character.  We're faster doing
                      * this.
                      */
-                    for (((n = 0), (cp = (curr).str)); Number(!!(C.deref(cp, "char") && Number(C.int(C.bump(C.fieldRef(C.ttyDisplay, "curx"), 1, false, "short")) < C.int((C.ttyDisplay).cols)))); (((cp = C.ptrAdd(cp, 1, "char")), C.ptrAdd(cp, -1, "char")), ((n = C.int((n + 1))), C.int((n - 1))))) {
-                        if (Number(!!(Number(n == attr_n) && (Number(!!(Number(color != C.NO_COLOR) || Number(attr != C.ATR_NONE))))))) toggle_menu_attr(C.TRUE, color, attr);
+                    for (((n = 0), (cp = (curr).str)); Number(!!(C.deref(cp, "char")
+                        && Number(C.int(C.bump(C.fieldRef(C.ttyDisplay, "curx"), 1, false, "short")) < C.int((C.ttyDisplay).cols)))); (((cp = C.ptrAdd(cp, 1, "char")), C.ptrAdd(cp, -1, "char")), ((n = C.int((n + 1))), C.int((n - 1))))) {
+                        if (Number(!!(Number(n == attr_n)
+                            && (Number(!!(Number(color != C.NO_COLOR)
+                            || Number(attr != C.ATR_NONE))))))) toggle_menu_attr(C.TRUE, color, attr);
                         if (Number(!!(Number(!!(Number(n == 2) && C.ptrCompare(((curr).identifier).a_void, 0, "!="))) && (curr).selected))) {
                             let c = C.char((((Number((curr).count == C.long((-1n))))) ? 42 : 35));
 {
@@ -1254,7 +1288,10 @@ export function process_menu_window(window, cw) {
 /* all selected: '*' vs count selected: '#' */
                             C.putchar(c);
                         }
-                        else if (Number(!!(Number(!!(Number(!!(Number(n == 2) && C.ptrCompare(((curr).identifier).a_void, 0, "!="))) && show_obj_syms)) && Number(((curr).glyphinfo).glyph != C.MAX_GLYPH)))) {
+                        else if (Number(!!(Number(!!(Number(!!(Number(n == 2)
+                            && C.ptrCompare(((curr).identifier).a_void, 0, "!=")))
+                            && show_obj_syms))
+                            && Number(((curr).glyphinfo).glyph != C.MAX_GLYPH)))) {
                             let gcolor = ((((curr).glyphinfo).gm).sym).color;
 /* tty_print_glyph could be used, but is overkill
                                and requires referencing the cursor location */
@@ -1279,7 +1316,9 @@ export function process_menu_window(window, cw) {
                         }
                     }
 /* for *cp */
-                    if (Number(!!(Number(n > attr_n) && (Number(!!(Number(color != C.NO_COLOR) || Number(attr != C.ATR_NONE))))))) toggle_menu_attr(C.FALSE, color, attr);
+                    if (Number(!!(Number(n > attr_n)
+                        && (Number(!!(Number(color != C.NO_COLOR)
+                        || Number(attr != C.ATR_NONE))))))) toggle_menu_attr(C.FALSE, color, attr);
                 }
 /* if npages > 0 */
             }
@@ -1328,7 +1367,7 @@ export function process_menu_window(window, cw) {
             C.strcat(resp, C.default_menu_cmds);
             if (Number((cw).npages > C.long(1))) C.sprintf((cw).morestr, C.literal("(%d of %d)"), C.int((curr_page + 1)), C.int((cw).npages), "ii");
             else if (msave) C.strcpy((cw).morestr, msave);
-            else C.strcpy((cw).morestr, C.defmorestr);
+                else C.strcpy((cw).morestr, C.defmorestr);
             tty_curs(window, 1, page_lines);
             C.cl_end();
             dmore(cw, resp);
@@ -1340,11 +1379,12 @@ export function process_menu_window(window, cw) {
         }
         (really_morc = C.morc);
 /* (only used with MENU_EXPLICIT_CHOICE) */
-        if (Number(!!(C.ptrCompare(((rp = C.strchr(resp, C.morc))), 0, "!=") && C.ptrCompare(rp, C.ptrAdd(resp, resp_len, "char"), "<")))) /* explicit menu selection; don't override it if it also
+        if (Number(!!(C.ptrCompare(((rp = C.strchr(resp, C.morc))), 0, "!=")
+            && C.ptrCompare(rp, C.ptrAdd(resp, resp_len, "char"), "<")))) /* explicit menu selection; don't override it if it also
                happens to match a mapped menu command (such as ':' to
                look inside a container vs ':' to search) */
-        (C.morc = C.char(127));
-        else (C.morc = C.map_menu_cmd(C.morc));
+            (C.morc = C.char(127));
+            else (C.morc = C.map_menu_cmd(C.morc));
         let group_entry = false;
         menu_dispatch: for (;;) {
         switch (group_entry ? -1000 : C.morc) {
@@ -1361,13 +1401,16 @@ export function process_menu_window(window, cw) {
 /* special case: '0' is also the default ball class;
                some menus use digits as potential group accelerators
                but their entries don't rely on counts */
-                                                    if (Number(!!(Number(!(counting)) && C.strchr(gacc, C.morc)))) { group_entry = true; continue menu_dispatch; }
+                                                    if (Number(!!(Number(!(counting))
+                                                        && C.strchr(gacc, C.morc)))) { group_entry = true; continue menu_dispatch; }
 {
                 let dgt = C.long((C.int((C.morc - 48))));
 /* count = (10 * count) + (morc - '0'); */
-                (count = ((((Number(!!(Number((count) < C.long((9223372036854775807n / 10n))) || (Number(!!(Number((count) == C.long((9223372036854775807n / 10n))) && Number((dgt) <= C.long((9223372036854775807n % 10n)))))))))) ? C.long((C.long(((count) * 10n)) + (dgt))) : C.long((-1n)))));
+                (count = ((((Number(!!(Number((count) < C.long((9223372036854775807n / 10n)))
+                    || (Number(!!(Number((count) == C.long((9223372036854775807n / 10n)))
+                    && Number((dgt) <= C.long((9223372036854775807n % 10n)))))))))) ? C.long((C.long(((count) * 10n)) + (dgt))) : C.long((-1n)))));
                 if (Number(count < 0n)) /* overflow */
-                continue;
+                    continue;
 /* reset_count is True */
             }
 /*
@@ -1454,10 +1497,12 @@ export function process_menu_window(window, cw) {
                    (some won't be if they failed menuitem_invert_test()
                    in set_all_on_page() but those will fail it again here) */
                     for ((curr = (cw).mlist); curr; (curr = (curr).next)) {
-                        if (Number(!!(Number(!!(Number(!(((curr).identifier).a_void)) || (curr).selected)) || Number(!(C.menuitem_invert_test(1, (curr).itemflags, C.FALSE)))))) /* not selectable */
+                        if (Number(!!(Number(!!(Number(!(((curr).identifier).a_void))
+                            || (curr).selected))
+                            || Number(!(C.menuitem_invert_test(1, (curr).itemflags, C.FALSE)))))) /* not selectable */
 /* already selected */
 /* FALSE: not currently selected */
-                        continue;
+                            continue;
                         ((curr).selected = C.TRUE);
                     }
                 }
@@ -1471,10 +1516,12 @@ export function process_menu_window(window, cw) {
                (unless they failed the menuitem_invert_test() in
                unset_all_on_page() but those will fail it again here) */
             for ((curr = (cw).mlist); curr; (curr = (curr).next)) {
-                if (Number(!!(Number(!!(Number(!(((curr).identifier).a_void)) || Number(!((curr).selected)))) || Number(!(C.menuitem_invert_test(2, (curr).itemflags, C.TRUE)))))) /* not selectable */
+                if (Number(!!(Number(!!(Number(!(((curr).identifier).a_void))
+                    || Number(!((curr).selected))))
+                    || Number(!(C.menuitem_invert_test(2, (curr).itemflags, C.TRUE)))))) /* not selectable */
 /* already de-selected */
 /* TRUE: currently selected */
-                continue;
+                    continue;
                 ((curr).selected = C.FALSE);
                 ((curr).count = C.long(C.int((-1))));
             }
@@ -1493,7 +1540,8 @@ export function process_menu_window(window, cw) {
                     let on_curr_page = C.FALSE;
                     let lineno = 0;
                     C.tty_getlin(C.literal("Search for:"), tmpbuf);
-                    if (Number(!!(Number(!(C.deref(C.ptrAdd(tmpbuf, 0, "char"), "char"))) || Number(C.deref(C.ptrAdd(tmpbuf, 0, "char"), "char") == 27)))) break;
+                    if (Number(!!(Number(!(C.deref(C.ptrAdd(tmpbuf, 0, "char"), "char")))
+                        || Number(C.deref(C.ptrAdd(tmpbuf, 0, "char"), "char") == 27)))) break;
                     C.sprintf(searchbuf, C.literal("*%s*"), tmpbuf, "p");
                     for ((curr = (cw).mlist); curr; (curr = (curr).next)) {
                         if (on_curr_page) ((lineno = C.int((lineno + 1))), C.int((lineno - 1)));
@@ -1571,7 +1619,7 @@ export function process_text_window(window, cw) {
                 tty_curs(window, 1, 0);
                 C.cl_eos();
             }
-            else C.term_clear_screen();
+                else C.term_clear_screen();
             (n = 0);
         }
         tty_curs(window, 1, ((n = C.int((n + 1))), C.int((n - 1))));
@@ -1584,7 +1632,8 @@ export function process_text_window(window, cw) {
                 C.bump(C.fieldRef(C.ttyDisplay, "curx"), 1, false, "short");
             }
             C.term_start_attr(attr);
-            for (((cp = C.ptrAdd(C.deref(C.ptrAdd((cw).data, i, "char *"), "char *"), 1, "char")), (linestart = C.TRUE)); Number(!!(C.deref(cp, "char") && Number(C.int(C.bump(C.fieldRef(C.ttyDisplay, "curx"), 1, false, "short")) < C.int((C.ttyDisplay).cols)))); ((cp = C.ptrAdd(cp, 1, "char")), C.ptrAdd(cp, -1, "char"))) {
+            for (((cp = C.ptrAdd(C.deref(C.ptrAdd((cw).data, i, "char *"), "char *"), 1, "char")), (linestart = C.TRUE)); Number(!!(C.deref(cp, "char")
+                && Number(C.int(C.bump(C.fieldRef(C.ttyDisplay, "curx"), 1, false, "short")) < C.int((C.ttyDisplay).cols)))); ((cp = C.ptrAdd(cp, 1, "char")), C.ptrAdd(cp, -1, "char"))) {
 /* message recall for msg_window:full/combination/reverse
                    might have output from '/' in it (see redotoplin()) */
                 if (linestart) {
@@ -1646,7 +1695,8 @@ export function tty_display_nhwindow(window, blocking) /* with ttys, all windows
         }
     }
     while (0);
-    if (Number(!!(Number(window == (C.int((-1)))) || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) C.panic(C.winpanicstr, window, C.literal("tty_display_nhwindow"), "ip");
+    if (Number(!!(Number(window == (C.int((-1))))
+        || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) C.panic(C.winpanicstr, window, C.literal("tty_display_nhwindow"), "ip");
     if (C.int(((cw).flags & C.WIN_CANCELLED))) return;
     ((C.ttyDisplay).lastwin = window);
     ((C.ttyDisplay).rawprint = 0);
@@ -1658,9 +1708,10 @@ export function tty_display_nhwindow(window, blocking) /* with ttys, all windows
                 ((C.ttyDisplay).toplin = C.TOPLINE_NEED_MORE);
 /* more resets this */
                 tty_clear_nhwindow(window);
-                (Number(!!((Number(!(Number(!((Number((C.ttyDisplay).toplin == 0))))))) || ((C.nhassert_failed(C.literal("ttyDisplay->toplin == TOPLINE_EMPTY"), C.literal("../win/tty/wintty.c"), 1926), 0)))));
+                (Number(!!((Number(!(Number(!((Number((C.ttyDisplay).toplin == 0)))))))
+                    || ((C.nhassert_failed(C.literal("ttyDisplay->toplin == TOPLINE_EMPTY"), C.literal("../win/tty/wintty.c"), 1926), 0)))));
             }
-            else ((C.ttyDisplay).toplin = C.TOPLINE_EMPTY);
+                else ((C.ttyDisplay).toplin = C.TOPLINE_EMPTY);
         ((cw).curx = ((cw).cury = C.long(0)));
         if (Number(!((cw).active))) ((C.iflags).window_inited = C.TRUE);
         break;
@@ -1697,14 +1748,14 @@ export function tty_display_nhwindow(window, blocking) /* with ttys, all windows
                 tty_curs(window, 1, 0);
                 C.cl_eos();
             }
-            else C.term_clear_screen();
+                else C.term_clear_screen();
             ((C.ttyDisplay).toplin = C.TOPLINE_EMPTY);
         }
         else {
             if (Number(C.WIN_MESSAGE != (C.int((-1))))) tty_clear_nhwindow(C.WIN_MESSAGE);
         }
         if (Number(!!((cw).data || Number(!((cw).maxrow))))) C.callLocal(process_text_window, window, cw);
-        else C.callLocal(process_menu_window, window, cw);
+            else C.callLocal(process_menu_window, window, cw);
         break;
     }
     ((cw).active = C.char(1));
@@ -1720,12 +1771,14 @@ export function tty_dismiss_nhwindow(window) {
         }
     }
     while (0);
-    if (Number(!!(Number(window == (C.int((-1)))) || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) C.panic(C.winpanicstr, window, C.literal("tty_dismiss_nhwindow"), "ip");
+    if (Number(!!(Number(window == (C.int((-1))))
+        || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) C.panic(C.winpanicstr, window, C.literal("tty_dismiss_nhwindow"), "ip");
     ;
     switch ((cw).type) {
         case C.NHW_MESSAGE:
             if (Number((C.ttyDisplay).toplin != C.TOPLINE_EMPTY)) tty_display_nhwindow(C.WIN_MESSAGE, C.TRUE);
-        (Number(!!((Number(!(Number(!((Number((C.ttyDisplay).toplin == 0))))))) || ((C.nhassert_failed(C.literal("ttyDisplay->toplin == TOPLINE_EMPTY"), C.literal("../win/tty/wintty.c"), 2015), 0)))));
+        (Number(!!((Number(!(Number(!((Number((C.ttyDisplay).toplin == 0)))))))
+            || ((C.nhassert_failed(C.literal("ttyDisplay->toplin == TOPLINE_EMPTY"), C.literal("../win/tty/wintty.c"), 2015), 0)))));
         ;
 /*FALLTHRU*/
         case C.NHW_STATUS:
@@ -1767,9 +1820,10 @@ export function tty_dismiss_nhwindow(window) {
 export function tty_destroy_nhwindow(window) {
     window = C.argument(window, "winid");
     let cw = 0;
-    if (Number(!!(Number(window == (C.int((-1)))) || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) {
+    if (Number(!!(Number(window == (C.int((-1))))
+        || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) {
         if (Number(window == C.WIN_INVEN)) /* Null wins[WIN_INVEN] is tolerated */
-        return;
+            return;
         C.panic(C.winpanicstr, window, C.literal("tty_destroy_nhwindow"), "ip");
     }
     if ((cw).active) tty_dismiss_nhwindow(window);
@@ -1891,7 +1945,7 @@ export function tty_curs(window, x, y) /* coordinates (and curx-x) must be signe
     else if (Number(!((C.tc_lcl_data).tc_CM))) {
         C.nocmov(x, y);
     }
-    else C.cmov(x, y);
+        else C.cmov(x, y);
     ((C.ttyDisplay).curx = C.short(x));
     ((C.ttyDisplay).cury = C.short(y));
 }
@@ -1910,13 +1964,16 @@ export function compress_str(str) {
         let was_space = C.TRUE;
 /* True discards all leading spaces;
                                      False would retain one if present */
-        while (Number(!!(Number(((c = C.deref(((in_str = C.ptrAdd(in_str, 1, "char")), C.ptrAdd(in_str, -1, "char")), "const char"))) != 0) && C.ptrCompare(outstr, outend, "<")))) {
+        while (Number(!!(Number(((c = C.deref(((in_str = C.ptrAdd(in_str, 1, "char")), C.ptrAdd(in_str, -1, "char")), "const char"))) != 0)
+            && C.ptrCompare(outstr, outend, "<")))) {
             if (Number(c == 10)) (c = C.char(32));
             if (Number(!!(was_space && Number(c == 32)))) continue;
             C.store(((outstr = C.ptrAdd(outstr, 1, "char")), C.ptrAdd(outstr, -1, "char")), "char", c);
             (was_space = C.char((Number(c == 32))));
         }
-        if (Number(!!((Number(!!(was_space && C.ptrCompare(outstr, C.staticCell("compress_str.cbuf").value, ">")))) || C.ptrCompare(outstr, outend, "==")))) (outstr = C.ptrAdd(outstr, -1, "char"));
+        if (Number(!!((Number(!!(was_space
+            && C.ptrCompare(outstr, C.staticCell("compress_str.cbuf").value, ">"))))
+            || C.ptrCompare(outstr, outend, "==")))) (outstr = C.ptrAdd(outstr, -1, "char"));
 /* remove trailing space or make room for terminator */
         C.store(outstr, "char", C.char(0));
         (str = C.staticCell("compress_str.cbuf").value);
@@ -1942,11 +1999,14 @@ export function tty_putstr(window, attr, str) {
 /* Assume there's a real problem if the window is missing --
      * probably a panic message
      */
-    if (Number(!!(Number(window == (C.int((-1)))) || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) {
+    if (Number(!!(Number(window == (C.int((-1))))
+        || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) {
         tty_raw_print(str);
         return;
     }
-    if (Number(!!(C.ptrCompare(str, 0, "==") || (Number(!!((C.int(((cw).flags & C.WIN_CANCELLED))) && (Number((cw).type != C.NHW_MESSAGE)))))))) return;
+    if (Number(!!(C.ptrCompare(str, 0, "==")
+        || (Number(!!((C.int(((cw).flags & C.WIN_CANCELLED)))
+        && (Number((cw).type != C.NHW_MESSAGE)))))))) return;
     if (Number((cw).type != C.NHW_MESSAGE)) (str = C.callLocal(compress_str, str));
     ((C.ttyDisplay).lastwin = window);
     ;
@@ -2028,7 +2088,8 @@ export function tty_putstr(window, attr, str) {
         break;
         case C.NHW_MENU:
             case C.NHW_TEXT:
-                if (Number(!!(Number((cw).type == C.NHW_TEXT) && Number((C.long(((cw).cury + C.long((cw).offy)))) == C.long(C.int(((C.ttyDisplay).rows - 1))))))) {
+                if (Number(!!(Number((cw).type == C.NHW_TEXT)
+                    && Number((C.long(((cw).cury + C.long((cw).offy)))) == C.long(C.int(((C.ttyDisplay).rows - 1))))))) {
 /* not a menu, so save memory and output 1 page at a time */
                     ((cw).maxcol = C.long((C.ttyDisplay).cols));
 /* force full-screen mode */
@@ -2059,7 +2120,9 @@ export function tty_putstr(window, attr, str) {
         if (Number(C.bump(C.fieldRef(cw, "cury"), 1, false, "long") > (cw).maxrow)) ((cw).maxrow = (cw).cury);
         if (Number(n0 > C.long(((C.gt).tc_gbl_data).tc_CO))) {
 /* attempt to break the line */
-            for ((i = C.long(C.int((((C.gt).tc_gbl_data).tc_CO - 1)))); Number(!!(Number(!!(i && Number(C.deref(C.ptrAdd(str, i, "const char"), "const char") != 32))) && Number(C.deref(C.ptrAdd(str, i, "const char"), "const char") != 10))); ) ((i = C.long((i - 1n))), C.long((i + 1n)));
+            for ((i = C.long(C.int((((C.gt).tc_gbl_data).tc_CO - 1)))); Number(!!(Number(!!(i
+                && Number(C.deref(C.ptrAdd(str, i, "const char"), "const char") != 32)))
+                && Number(C.deref(C.ptrAdd(str, i, "const char"), "const char") != 10))); ) ((i = C.long((i - 1n))), C.long((i + 1n)));
             if (i) {
                 C.store(C.ptrAdd(C.deref(C.ptrAdd((cw).data, C.long(((cw).cury - C.long(1))), "char *"), "char *"), (i = C.long((i + 1n))), "char"), "char", C.char(0));
                 C.callLocal(tty_putstr, window, attr, C.ptrAdd(str, i, "const char"));
@@ -2099,7 +2162,7 @@ export function tty_display_file(fname, complain) /* name of file to display */
                 tty_wait_synch();
 /* "Hit <space> to continue: " */
                 if ((C.u).ux) /* if hero is on map, refresh the screen */
-                C.docrt();
+                    C.docrt();
                 C.pline(C.literal("Cannot open \"%s\"."), fname, "p");
             }
         }
@@ -2131,7 +2194,8 @@ export function tty_start_menu(window, mbehavior) {
     window = C.argument(window, "winid");
     mbehavior = C.argument(mbehavior, "unsigned long");
     let cw = 0;
-    if (Number(!!(Number(window == (C.int((-1)))) || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) C.panic(C.winpanicstr, window, C.literal("tty_start_menu"), "ip");
+    if (Number(!!(Number(window == (C.int((-1))))
+        || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) C.panic(C.winpanicstr, window, C.literal("tty_start_menu"), "ip");
 /* PERMINV is ready to go already; not much to do here */
 /* something went wrong, so add clean up code here */
     ((mbehavior));
@@ -2177,7 +2241,9 @@ export function tty_add_menu(window, glyphinfo, identifier, ch, gch, attr, clr, 
     }
     while (0);
     if (C.ptrCompare(str, 0, "==")) return;
-    if (Number(!!(Number(!!(Number(window == (C.int((-1)))) || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "=="))) || Number((cw).type != C.NHW_MENU)))) C.panic(C.winpanicstr, window, C.literal("tty_add_menu"), "ip");
+    if (Number(!!(Number(!!(Number(window == (C.int((-1))))
+        || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))
+        || Number((cw).type != C.NHW_MENU)))) C.panic(C.winpanicstr, window, C.literal("tty_add_menu"), "ip");
     C.bump(C.fieldRef(cw, "nitems"), 1, true, "long");
     if ((identifier).a_void) {
         let len = C.int(C.strlen(str));
@@ -2191,7 +2257,7 @@ export function tty_add_menu(window, glyphinfo, identifier, ch, gch, attr, clr, 
         C.store(C.ptrAdd(buf, C.int((4 + len)), "char"), "char", C.char(0));
         (newstr = buf);
     }
-    else (newstr = str);
+        else (newstr = str);
     (item = C.castPointer(C.alloc(C.uint(BigInt(C.sizeof("tty_menu_item")))), "tty_menu_item *"));
     ((item).identifier = C.deref(identifier, "const anything"));
     ((item).count = C.long((-1n)));
@@ -2221,7 +2287,6 @@ export function reverse(curr) {
     return head;
 }
 
-
 export const tty_menu_promptstyle_initial = {
     "color": "NO_COLOR",
     "attr": "ATR_NONE"
@@ -2245,7 +2310,9 @@ export function tty_end_menu(window, prompt) /* menu to use */
     let n;
     let menu_ch;
     let clr = C.NO_COLOR;
-    if (Number(!!(Number(!!(Number(window == (C.int((-1)))) || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "=="))) || Number((cw).type != C.NHW_MENU)))) {
+    if (Number(!!(Number(!!(Number(window == (C.int((-1))))
+        || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))
+        || Number((cw).type != C.NHW_MENU)))) {
 /* this can happen if start_menu failed due to size requirements
            for the tty perm inventory window. It isn't a situation that
            requires a panic, just an early return. */
@@ -2326,7 +2393,7 @@ export function tty_end_menu(window, prompt) /* menu to use */
     if (Number(len > C.int((C.ttyDisplay).cols))) {
 /* truncate the prompt if it's too long for the screen */
         if (Number((cw).npages <= C.long(1))) /* only str in single page case */
-        C.store(C.ptrAdd((cw).morestr, (C.ttyDisplay).cols, "char"), "char", C.char(0));
+            C.store(C.ptrAdd((cw).morestr, (C.ttyDisplay).cols, "char"), "char", C.char(0));
         (len = (C.ttyDisplay).cols);
     }
     if (Number(C.long(len) > (cw).cols)) ((cw).cols = C.long(len));
@@ -2336,7 +2403,7 @@ export function tty_end_menu(window, prompt) /* menu to use */
      * maximum size of the window.
      */
     if (Number((cw).npages > C.long(1))) ((cw).maxrow = ((cw).rows = C.long(C.int((lmax + 1)))));
-    else ((cw).maxrow = ((cw).rows = C.long(((cw).nitems + C.long(1)))));
+        else ((cw).maxrow = ((cw).rows = C.long(((cw).nitems + C.long(1)))));
 }
 
 export function tty_select_menu(window, how, menu_list) {
@@ -2348,7 +2415,9 @@ export function tty_select_menu(window, how, menu_list) {
     let mi;
     let n;
     let cancelled;
-    if (Number(!!(Number(!!(Number(window == (C.int((-1)))) || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "=="))) || Number((cw).type != C.NHW_MENU)))) C.panic(C.winpanicstr, window, C.literal("tty_select_menu"), "ip");
+    if (Number(!!(Number(!!(Number(window == (C.int((-1))))
+        || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))
+        || Number((cw).type != C.NHW_MENU)))) C.panic(C.winpanicstr, window, C.literal("tty_select_menu"), "ip");
     if (Number((cw).mbehavior == C.MENU_BEHAVE_PERMINV)) {
         return 0;
     }
@@ -2401,7 +2470,8 @@ export function tty_message_menu(let_, how, mesg) {
         ((C.ttyDisplay).toplin = C.TOPLINE_NEED_MORE);
 /* more resets this */
         tty_clear_nhwindow(C.WIN_MESSAGE);
-        (Number(!!((Number(!(Number(!((Number((C.ttyDisplay).toplin == 0))))))) || ((C.nhassert_failed(C.literal("ttyDisplay->toplin == TOPLINE_EMPTY"), C.literal("../win/tty/wintty.c"), 2895), 0)))));
+        (Number(!!((Number(!(Number(!((Number((C.ttyDisplay).toplin == 0)))))))
+            || ((C.nhassert_failed(C.literal("ttyDisplay->toplin == TOPLINE_EMPTY"), C.literal("../win/tty/wintty.c"), 2895), 0)))));
     }
 /* normally <ESC> means skip further messages, but in this case
        it means cancel the current prompt; any other messages should
@@ -2695,7 +2765,8 @@ export function docorner(xmin, ymax, ystart_between_menu_pages) {
 /* only refresh board  */
     }
     end_glyphout();
-    if (Number(!!(Number(ymax >= C.int((C.deref(C.ptrAdd(C.wins, C.WIN_STATUS, "struct WinDesc *"), "struct WinDesc *")).offy)) && Number(!(ystart_between_menu_pages))))) {
+    if (Number(!!(Number(ymax >= C.int((C.deref(C.ptrAdd(C.wins, C.WIN_STATUS, "struct WinDesc *"), "struct WinDesc *")).offy))
+        && Number(!(ystart_between_menu_pages))))) {
 /* we have wrecked the bottom line */
         ((C.disp).botlx = C.TRUE);
         C.bot();
@@ -2734,7 +2805,10 @@ export function g_putch(in_ch) {
     if (handling === C.H_UTF8) {
         C.putchar(ch);
     }
-    else if (handling === C.H_IBM || (C.iflags.eight_bit_tty && (handling !== C.H_DEC || (in_ch & 127) < 96))) /* for DECgraphics, lower-case letters with high bit set mean
+    else if (handling === C.H_IBM
+        || (C.iflags.eight_bit_tty
+        && (handling !== C.H_DEC
+        || (in_ch & 127) < 96))) /* for DECgraphics, lower-case letters with high bit set mean
            switch character set and render with high bit clear;
            user might want 8-bits for other characters */
 {
@@ -2860,7 +2934,10 @@ export function tty_print_glyph(window, x, y, glyphinfo, bkglyphinfo, frameColor
     }
     while (0);
     if (C.clipping) {
-        if (Number(!!(Number(!!(Number(!!(Number(x <= C.clipx) || Number(y < C.clipy))) || Number(x >= C.clipxmax))) || Number(y >= C.clipymax)))) return;
+        if (Number(!!(Number(!!(Number(!!(Number(x <= C.clipx)
+            || Number(y < C.clipy)))
+            || Number(x >= C.clipxmax)))
+            || Number(y >= C.clipymax)))) return;
     }
 /* get glyph ttychar, color, and special flags */
     ch = C.glyphChar(glyphinfo);
@@ -2913,7 +2990,13 @@ export function tty_print_glyph(window, x, y, glyphinfo, bkglyphinfo, frameColor
         C.term_start_attr((C.iflags).wc2_petattr);
         (petattr = C.TRUE);
     }
-    else if (Number(!!((Number(!!(Number(!!((Number(!!(Number((C.uint((special & C.MG_OBJPILE))) != C.uint(0)) && (C.iflags).hilite_pile))) || (Number(!!(Number(!!(Number((C.uint((special & C.MG_FEMALE))) != C.uint(0)) && (C.flags).debug)) && (C.iflags).wizmgender))))) || (Number((C.uint((special & C.uint((C.int((C.int((C.int((C.int((C.MG_DETECT | C.MG_BW_LAVA)) | C.MG_BW_ICE)) | C.MG_BW_SINK)) | C.MG_BW_ENGR))))))) != C.uint(0)))))) && (C.iflags).use_inverse))) {
+    else if (Number(!!((Number(!!(Number(!!((Number(!!(Number((C.uint((special & C.MG_OBJPILE))) != C.uint(0))
+        && (C.iflags).hilite_pile)))
+        || (Number(!!(Number(!!(Number((C.uint((special & C.MG_FEMALE))) != C.uint(0))
+        && (C.flags).debug))
+        && (C.iflags).wizmgender)))))
+        || (Number((C.uint((special & C.uint((C.int((C.int((C.int((C.int((C.MG_DETECT | C.MG_BW_LAVA)) | C.MG_BW_ICE)) | C.MG_BW_SINK)) | C.MG_BW_ENGR))))))) != C.uint(0))))))
+        && (C.iflags).use_inverse))) {
         C.term_start_attr(C.ATR_INVERSE);
         (inverse_on = C.TRUE);
     }
@@ -3009,7 +3092,8 @@ export function tty_nhgetch() {
      * available yet.  Such problems will probably be fatal before we get
      * here, but validate those pointers just in case...
      */
-    if (Number(!!(Number(C.WIN_MESSAGE != (C.int((-1)))) && C.deref(C.ptrAdd(C.wins, C.WIN_MESSAGE, "struct WinDesc *"), "struct WinDesc *")))) ((C.deref(C.ptrAdd(C.wins, C.WIN_MESSAGE, "struct WinDesc *"), "struct WinDesc *")).flags = C.int(C.int(((C.deref(C.ptrAdd(C.wins, C.WIN_MESSAGE, "struct WinDesc *"), "struct WinDesc *")).flags & C.int((~C.WIN_STOP))))));
+    if (Number(!!(Number(C.WIN_MESSAGE != (C.int((-1))))
+        && C.deref(C.ptrAdd(C.wins, C.WIN_MESSAGE, "struct WinDesc *"), "struct WinDesc *")))) ((C.deref(C.ptrAdd(C.wins, C.WIN_MESSAGE, "struct WinDesc *"), "struct WinDesc *")).flags = C.int(C.int(((C.deref(C.ptrAdd(C.wins, C.WIN_MESSAGE, "struct WinDesc *"), "struct WinDesc *")).flags & C.int((~C.WIN_STOP))))));
     if ((C.iflags).debug_fuzzer) {
         (i = C.randomkey());
     }
@@ -3081,16 +3165,18 @@ export function tty_putmixed(window, attr, str) {
     let cw;
     const buf = C.localArray("char[256]", 0);
     const utf8flag = C.scalarLocal("int", 0);
-    if (Number(!!(Number(window == (C.int((-1)))) || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) {
+    if (Number(!!(Number(window == (C.int((-1))))
+        || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, window, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) {
         tty_raw_print(str);
         return;
     }
     ((C.ttyDisplay).mixed = 1);
-    if (Number(!!((C.ulong(((C.windowprocs).wincap2 & C.WC2_U_UTF8STR))) && (Number(C.uint((C.deref(C.ptrAdd((C.gs).symset, (C.gc).currentgraphics, "struct symsetentry"), "struct symsetentry")).handling) == C.uint((C.H_UTF8))))))) {
+    if (Number(!!((C.ulong(((C.windowprocs).wincap2 & C.WC2_U_UTF8STR)))
+        && (Number(C.uint((C.deref(C.ptrAdd((C.gs).symset, (C.gc).currentgraphics, "struct symsetentry"), "struct symsetentry")).handling) == C.uint((C.H_UTF8))))))) {
         C.mixed_to_utf8(buf, BigInt(C.sizeof("char[256]")), str, utf8flag);
         if (Number((cw).type == C.NHW_MESSAGE)) ((C.ttyDisplay).topl_utf8 = utf8flag.value);
     }
-    else C.decode_mixed(buf, str);
+        else C.decode_mixed(buf, str);
 /* now send it to the normal tty_putstr */
     C.callLocal(tty_putstr, window, attr, buf);
     ((C.ttyDisplay).topl_utf8 = 0);
@@ -3156,30 +3242,9 @@ export function tty_putmixed(window, attr, str) {
 /* 2: NOW,BEFORE */
 
 export const encvals_initial = [
-    [
-        "",
-        "Burdened",
-        "Stressed",
-        "Strained",
-        "Overtaxed",
-        "Overloaded"
-    ],
-    [
-        "",
-        "Burden",
-        "Stress",
-        "Strain",
-        "Overtax",
-        "Overload"
-    ],
-    [
-        "",
-        "Brd",
-        "Strs",
-        "Strn",
-        "Ovtx",
-        "Ovld"
-    ]
+    ["", "Burdened", "Stressed", "Strained", "Overtaxed", "Overloaded"],
+    ["", "Burden", "Stress", "Strain", "Overtax", "Overload"],
+    ["", "Brd", "Strs", "Strn", "Ovtx", "Ovld"]
 ];
 
 /* 2 or 3 status lines */
@@ -3322,18 +3387,13 @@ export const threelineorder_initial = [
 
 export const windowdata_init_initial = "FALSE";
 
-
 export const cond_shrinklvl_initial = 0;
-
 
 export const enclev_initial = 0;
 
-
 export const enc_shrinklvl_initial = 0;
 
-
 export const dlvl_shrinklvl_initial = 0;
-
 
 export const truncation_expected_initial = "FALSE";
 
@@ -3478,7 +3538,9 @@ export function tty_status_update(fldidx, ptr, chg, percent, color, colormasks) 
     let fmt;
     let reset_state = C.char(0);
     if (Number(!!((Number(fldidx < C.BL_RESET)) || (Number(fldidx >= C.MAXBLSTATS))))) return;
-    if (Number(!!((Number(!!(Number(fldidx >= 0) && Number(fldidx < C.MAXBLSTATS)))) && Number(!(C.deref(C.ptrAdd(C.status_activefields, fldidx, "boolean"), "boolean")))))) return;
+    if (Number(!!((Number(!!(Number(fldidx >= 0)
+        && Number(fldidx < C.MAXBLSTATS))))
+        && Number(!(C.deref(C.ptrAdd(C.status_activefields, fldidx, "boolean"), "boolean")))))) return;
     switch (fldidx) {
         case (C.BL_RESET):
             (reset_state = C.char(1));
@@ -3509,7 +3571,10 @@ export function tty_status_update(fldidx, ptr, chg, percent, color, colormasks) 
 /* should be checking for first enabled field here rather than
            just first field, but 'fieldorder' doesn't start any rows
            with fields which can be disabled so [any_row][0] suffices */
-        if (Number(!!(Number(C.deref(fmt, "const char") == 32) && (Number(!!(Number(!!(Number(fldidx == C.int(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.fieldorder, 0, "const enum statusfields[19]"), "const enum statusfields[19]"), 0, "const enum statusfields"), "const enum statusfields"))) || Number(fldidx == C.int(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.fieldorder, 1, "const enum statusfields[19]"), "const enum statusfields[19]"), 0, "const enum statusfields"), "const enum statusfields"))))) || Number(fldidx == C.int(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.fieldorder, 2, "const enum statusfields[19]"), "const enum statusfields[19]"), 0, "const enum statusfields"), "const enum statusfields"))))))))) (fmt = C.ptrAdd(fmt, 1, "char"));
+        if (Number(!!(Number(C.deref(fmt, "const char") == 32)
+            && (Number(!!(Number(!!(Number(fldidx == C.int(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.fieldorder, 0, "const enum statusfields[19]"), "const enum statusfields[19]"), 0, "const enum statusfields"), "const enum statusfields")))
+            || Number(fldidx == C.int(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.fieldorder, 1, "const enum statusfields[19]"), "const enum statusfields[19]"), 0, "const enum statusfields"), "const enum statusfields")))))
+            || Number(fldidx == C.int(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.fieldorder, 2, "const enum statusfields[19]"), "const enum statusfields[19]"), 0, "const enum statusfields"), "const enum statusfields"))))))))) (fmt = C.ptrAdd(fmt, 1, "char"));
 /* skip leading space for first field on line */
         C.sprintf(C.deref(C.ptrAdd(C.status_vals, fldidx, "char *"), "char *"), fmt, text, "p");
         ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), fldidx, "struct tty_status_fields"), "struct tty_status_fields")).idx = fldidx);
@@ -3523,7 +3588,10 @@ export function tty_status_update(fldidx, ptr, chg, percent, color, colormasks) 
     }
 /* The core botl engine sends a single blank to the window port
        for carrying-capacity when it's unused. Let's suppress that */
-    if (Number(!!(Number(!!(Number(!!(Number(fldidx >= 0) && Number(fldidx < C.MAXBLSTATS))) && Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), fldidx, "struct tty_status_fields"), "struct tty_status_fields")).lth == C.ulong(1)))) && Number(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.status_vals, fldidx, "char *"), "char *"), 0, "char"), "char") == 32)))) {
+    if (Number(!!(Number(!!(Number(!!(Number(fldidx >= 0)
+        && Number(fldidx < C.MAXBLSTATS)))
+        && Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), fldidx, "struct tty_status_fields"), "struct tty_status_fields")).lth == C.ulong(1))))
+        && Number(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.status_vals, fldidx, "char *"), "char *"), 0, "char"), "char") == 32)))) {
         C.store(C.ptrAdd(C.deref(C.ptrAdd(C.status_vals, fldidx, "char *"), "char *"), 0, "char"), "char", C.char(0));
         ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), fldidx, "struct tty_status_fields"), "struct tty_status_fields")).lth = C.ulong(0));
     }
@@ -3550,7 +3618,8 @@ export function tty_status_update(fldidx, ptr, chg, percent, color, colormasks) 
            Let's suppress the trailing blanks */
             if (Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), fldidx, "struct tty_status_fields"), "struct tty_status_fields")).lth > C.ulong(0))) {
                 (p = C.deref(C.ptrAdd(C.status_vals, fldidx, "char *"), "char *"));
-                for ((lastchar = C.eos(p)); Number(!!(C.ptrCompare(lastchar, p, ">") && Number(C.deref((lastchar = C.ptrAdd(lastchar, -1, "char")), "char") == 32))); ) {
+                for ((lastchar = C.eos(p)); Number(!!(C.ptrCompare(lastchar, p, ">")
+                    && Number(C.deref((lastchar = C.ptrAdd(lastchar, -1, "char")), "char") == 32))); ) {
                     C.store(lastchar, "char", C.char(0));
                     C.bump(C.fieldRef(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), fldidx, "struct tty_status_fields"), "struct tty_status_fields"), "lth"), -1, true, "unsigned long");
                 }
@@ -3564,7 +3633,8 @@ export function tty_status_update(fldidx, ptr, chg, percent, color, colormasks) 
         break;
         case (C.BL_GOLD):
 /* \GXXXXNNNN counts as 1 [moot since we use decode_mixed() above] */
-            if (Number(!!(C.ptrCompare(((p = C.strchr(C.deref(C.ptrAdd(C.status_vals, fldidx, "char *"), "char *"), 92))), 0, "!=") && Number(C.deref(C.ptrAdd(p, 1, "char"), "char") == 71)))) ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), fldidx, "struct tty_status_fields"), "struct tty_status_fields")).lth = C.ulong(C.ulong(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), fldidx, "struct tty_status_fields"), "struct tty_status_fields")).lth - C.ulong((C.int((10 - 1))))))));
+            if (Number(!!(C.ptrCompare(((p = C.strchr(C.deref(C.ptrAdd(C.status_vals, fldidx, "char *"), "char *"), 92))), 0, "!=")
+                && Number(C.deref(C.ptrAdd(p, 1, "char"), "char") == 71)))) ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), fldidx, "struct tty_status_fields"), "struct tty_status_fields")).lth = C.ulong(C.ulong(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), fldidx, "struct tty_status_fields"), "struct tty_status_fields")).lth - C.ulong((C.int((10 - 1))))))));
         break;
         case (C.BL_CAP):
             (C.enc_shrinklvl = 0);
@@ -3674,17 +3744,24 @@ export function check_fields(forcefields, sz) {
                everything; it's possible for complementary changes across
                multiple fields to put stuff further right back in sync.) */
             if (Number(C.ulong((C.ulong((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).x) + (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).lth)) != C.ulong((C.ulong((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).x) + (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).lth)))) (update_right = C.TRUE);
-            else if (Number(!!(Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).lth != (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).lth) || Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).x != (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).x)))) ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).redraw = C.TRUE);
+            else if (Number(!!(Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).lth != (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).lth)
+                || Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).x != (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).x)))) ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).redraw = C.TRUE);
             else /* in case update_right is set, we're back in sync now */
-            (update_right = C.FALSE);
+                (update_right = C.FALSE);
             (matchprev = C.FALSE);
 /* assume failure */
-            if (Number(!!(Number(!!(Number(!!(valid && Number(!(update_right)))) && Number(!(forcefields)))) && Number(!((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).redraw))))) {
+            if (Number(!!(Number(!!(Number(!!(valid
+                && Number(!(update_right))))
+                && Number(!(forcefields))))
+                && Number(!((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).redraw))))) {
 /*
                  * Check values against those already on the display.
                  *  - Is the additional processing time for this worth it?
                  */
-                if (Number(!!(Number(!!(Number(!!(C.do_field_opt && Number(idx != C.BL_CONDITION))) && (Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).color == (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).color)))) && (Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).attr == (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).attr))))) /* color/attr checks aren't right for 'condition'
+                if (Number(!!(Number(!!(Number(!!(C.do_field_opt
+                    && Number(idx != C.BL_CONDITION)))
+                    && (Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).color == (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).color))))
+                    && (Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).attr == (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).attr))))) /* color/attr checks aren't right for 'condition'
                        and neither is examining status_vals[BL_CONDITION]
                        so skip same-contents optimization for conditions */
 {
@@ -3714,7 +3791,10 @@ export function check_fields(forcefields, sz) {
                     }
                 }
             }
-            if (Number(!!(Number(!!(forcefields || update_right)) || (Number(!!((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).dirty && Number(!(matchprev)))))))) ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).redraw = C.TRUE);
+            if (Number(!!(Number(!!(forcefields
+                || update_right))
+                || (Number(!!((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).dirty
+                && Number(!(matchprev)))))))) ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).redraw = C.TRUE);
             (col = C.int(C.ulong((C.ulong(col) + (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).lth))));
         }
         C.store(C.ptrAdd(sz, row, "int"), "int", col);
@@ -3762,7 +3842,8 @@ export function tty_putstatusfield(text, x, y) {
     let nrows;
     let lth = 0;
     let cw = 0;
-    if (Number(!!(Number(C.WIN_STATUS == (C.int((-1)))) || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, C.WIN_STATUS, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) C.panic(C.literal("tty_putstatusfield: Invalid WinDesc\n"), "");
+    if (Number(!!(Number(C.WIN_STATUS == (C.int((-1))))
+        || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, C.WIN_STATUS, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) C.panic(C.literal("tty_putstatusfield: Invalid WinDesc\n"), "");
     (ncols = C.int((cw).cols));
     (nrows = C.int((cw).maxrow));
     (lth = C.int(C.strlen(text)));
@@ -3828,7 +3909,8 @@ export function shrink_dlvl(lvl) {
  * blank and null-terminated.
  */
 export function check_windowdata() {
-    if (Number(!!(Number(C.WIN_STATUS == (C.int((-1)))) || C.ptrCompare(C.deref(C.ptrAdd(C.wins, C.WIN_STATUS, "struct WinDesc *"), "struct WinDesc *"), 0, "==")))) {
+    if (Number(!!(Number(C.WIN_STATUS == (C.int((-1))))
+        || C.ptrCompare(C.deref(C.ptrAdd(C.wins, C.WIN_STATUS, "struct WinDesc *"), "struct WinDesc *"), 0, "==")))) {
         C.paniclog(C.literal("check_windowdata"), C.literal(" null status window."));
         return C.FALSE;
     }
@@ -3904,7 +3986,8 @@ export function render_status() {
     let attrmask = 0;
     let text;
     let cw = 0;
-    if (Number(!!(Number(C.WIN_STATUS == (C.int((-1)))) || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, C.WIN_STATUS, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) {
+    if (Number(!!(Number(C.WIN_STATUS == (C.int((-1))))
+        || C.ptrCompare(((cw = C.deref(C.ptrAdd(C.wins, C.WIN_STATUS, "struct WinDesc *"), "struct WinDesc *"))), 0, "==")))) {
         C.paniclog(C.literal("render_status"), C.literal("WIN_ERR on status window."));
         return;
     }
@@ -3927,7 +4010,8 @@ export function render_status() {
 /* always "" for BL_CONDITION */
             (tlth = C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).lth));
 /* valid for BL_CONDITION */
-            if (Number(!!((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).redraw || Number(!(C.do_field_opt))))) {
+            if (Number(!!((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), idx, "struct tty_status_fields"), "struct tty_status_fields")).redraw
+                || Number(!(C.do_field_opt))))) {
                 let hitpointbar = C.char((Number(!!(Number(idx == C.BL_TITLE) && (C.iflags).wc2_hitpointbar))));
                 if (Number(idx == C.BL_CONDITION)) {
 /*
@@ -3951,16 +4035,19 @@ export function render_status() {
 /* 'version' might follow conditions; if so, adjust
                            expectations for where conditions should end;
                            only matters when conditions are being indented */
-                        if (Number(!!(C.deref(C.ptrAdd(C.status_activefields, C.BL_VERS, "boolean"), "boolean") && Number(C.int(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.fieldorder, row, "const enum statusfields[19]"), "const enum statusfields[19]"), C.int((i + 1)), "const enum statusfields"), "const enum statusfields")) == C.BL_VERS)))) (last_col = C.int(C.int((last_col - C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), C.BL_VERS, "struct tty_status_fields"), "struct tty_status_fields")).lth)))));
+                        if (Number(!!(C.deref(C.ptrAdd(C.status_activefields, C.BL_VERS, "boolean"), "boolean")
+                            && Number(C.int(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.fieldorder, row, "const enum statusfields[19]"), "const enum statusfields[19]"), C.int((i + 1)), "const enum statusfields"), "const enum statusfields")) == C.BL_VERS)))) (last_col = C.int(C.int((last_col - C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.NOW, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), C.BL_VERS, "struct tty_status_fields"), "struct tty_status_fields")).lth)))));
 /* line up with hunger (or where it would have
                            been when currently omitted); if there isn't
                            enough room for that, right justify; or place
                            as-is if not even enough room for /that/; we
                            expect hunger to be on preceding row, in which
                            case its current data has been moved to [BEFORE] */
-                        if (Number(!!(Number(!!(Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), C.BL_HUNGER, "struct tty_status_fields"), "struct tty_status_fields")).y < row) && Number(x < (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), C.BL_HUNGER, "struct tty_status_fields"), "struct tty_status_fields")).x))) && (Number(C.int(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), C.BL_HUNGER, "struct tty_status_fields"), "struct tty_status_fields")).x + tlth)) < C.int((last_col - 1))))))) (cstart = (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), C.BL_HUNGER, "struct tty_status_fields"), "struct tty_status_fields")).x);
+                        if (Number(!!(Number(!!(Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), C.BL_HUNGER, "struct tty_status_fields"), "struct tty_status_fields")).y < row)
+                            && Number(x < (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), C.BL_HUNGER, "struct tty_status_fields"), "struct tty_status_fields")).x)))
+                            && (Number(C.int(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), C.BL_HUNGER, "struct tty_status_fields"), "struct tty_status_fields")).x + tlth)) < C.int((last_col - 1))))))) (cstart = (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), C.BL_HUNGER, "struct tty_status_fields"), "struct tty_status_fields")).x);
                         else if (Number(C.long(C.int((x + tlth))) < C.long(((cw).cols - C.long(1))))) (cstart = C.int((last_col - tlth)));
-                        else (cstart = x);
+                            else (cstart = x);
 /* indent conditions to line them up with 2nd row */
                         if (Number(x < cstart)) {
                             do {
@@ -3972,7 +4059,8 @@ export function render_status() {
                         }
                     }
 /* actually draw condition words */
-                    for ((c = 0); Number(!!(Number(c < C.int((C.ulong((BigInt(C.sizeof("const struct conditions_t[30]")) / BigInt(C.sizeof("const struct conditions_t"))))))) && Number(bits != 0n))); (c = C.int((c + 1)))) {
+                    for ((c = 0); Number(!!(Number(c < C.int((C.ulong((BigInt(C.sizeof("const struct conditions_t[30]")) / BigInt(C.sizeof("const struct conditions_t")))))))
+                        && Number(bits != 0n))); (c = C.int((c + 1)))) {
                         (ci = C.deref(C.ptrAdd(C.cond_idx, c, "int"), "int"));
                         (mask = (C.deref(C.ptrAdd(C.conditions, ci, "const struct conditions_t"), "const struct conditions_t")).mask);
                         if (C.long((bits & mask))) {
@@ -4026,7 +4114,8 @@ export function render_status() {
                        that's ok as long as we don't write there */
                     if (Number(C.long(x) > (cw).cols)) {
                         C.declareStatic("render_status.once_only", "unsigned int", C.uint(0));
-                        if (Number(!!(Number(!(C.truncation_expected)) && Number(!(((C.staticCell("render_status.once_only").value = C.uint((C.staticCell("render_status.once_only").value + 1))), C.uint((C.staticCell("render_status.once_only").value - 1)))))))) C.paniclog(C.literal("render_status()"), C.literal(" unexpected truncation."));
+                        if (Number(!!(Number(!(C.truncation_expected))
+                            && Number(!(((C.staticCell("render_status.once_only").value = C.uint((C.staticCell("render_status.once_only").value + 1))), C.uint((C.staticCell("render_status.once_only").value - 1)))))))) C.paniclog(C.literal("render_status()"), C.literal(" unexpected truncation."));
                         (x = C.int((cw).cols));
                     }
                 }
@@ -4118,7 +4207,8 @@ export function render_status() {
                      * |   in a special case above   |
                      * +-----------------------------+
                      */
-                    if (Number(!!(Number(idx == C.BL_VERS) && Number(C.int(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.fieldorder, row, "const enum statusfields[19]"), "const enum statusfields[19]"), C.int((i + 1)), "const enum statusfields"), "const enum statusfields")) == C.BL_FLUSH)))) /* if 'version' is the last field in its row, right
+                    if (Number(!!(Number(idx == C.BL_VERS)
+                        && Number(C.int(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.fieldorder, row, "const enum statusfields[19]"), "const enum statusfields[19]"), C.int((i + 1)), "const enum statusfields"), "const enum statusfields")) == C.BL_FLUSH)))) /* if 'version' is the last field in its row, right
                            justify it (otherwise just treat it as ordinary) */
 {
                         let vstart;
@@ -4128,7 +4218,9 @@ export function render_status() {
                            3rd row indentation and the indenting of version
                            overwrites them with spaces; this hides that */
                         let vx = C.int(C.ulong((C.ulong((C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), C.BL_CONDITION, "struct tty_status_fields"), "struct tty_status_fields")).x) + (C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.tty_status, C.BEFORE, "struct tty_status_fields[27]"), "struct tty_status_fields[27]"), C.BL_CONDITION, "struct tty_status_fields"), "struct tty_status_fields")).lth)));
-                        if (Number(!!(Number(!!(Number(i > 0) && Number(C.int(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.fieldorder, row, "const enum statusfields[19]"), "const enum statusfields[19]"), C.int((i - 1)), "const enum statusfields"), "const enum statusfields")) == C.BL_CONDITION))) && Number(x != vx)))) {
+                        if (Number(!!(Number(!!(Number(i > 0)
+                            && Number(C.int(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.fieldorder, row, "const enum statusfields[19]"), "const enum statusfields[19]"), C.int((i - 1)), "const enum statusfields"), "const enum statusfields")) == C.BL_CONDITION)))
+                            && Number(x != vx)))) {
                             (x = vx);
                             tty_curs(C.WIN_STATUS, x, y);
                         }
@@ -4201,7 +4293,9 @@ export function render_status() {
         }
 /* for i=..., idx=fieldorder[][i] */
         (x = C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.finalx, row, "int[2]"), "int[2]"), C.NOW, "int"), "int"));
-        if (Number(!!((Number(!!(Number(x < C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.finalx, row, "int[2]"), "int[2]"), C.BEFORE, "int"), "int")) || Number(!(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.finalx, row, "int[2]"), "int[2]"), C.BEFORE, "int"), "int")))))) && Number(C.long(C.int((x + 1))) < (cw).cols)))) {
+        if (Number(!!((Number(!!(Number(x < C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.finalx, row, "int[2]"), "int[2]"), C.BEFORE, "int"), "int"))
+            || Number(!(C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.finalx, row, "int[2]"), "int[2]"), C.BEFORE, "int"), "int"))))))
+            && Number(C.long(C.int((x + 1))) < (cw).cols)))) {
             tty_curs(C.WIN_STATUS, C.int((x + 1)), y);
             C.cl_end();
         }

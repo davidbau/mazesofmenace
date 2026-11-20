@@ -14,7 +14,6 @@
 
 import { C } from '../c-runtime/context.js';
 
-
   /* hunger status from eat.c */
  /* encumbrance status from botl.c */
 
@@ -46,10 +45,10 @@ export const achieve_msg = [
     {llflag: ["LL_ACHIEVE", "LL_SPOILER"], msg: "acquired the Mines' End"}, /* " luckstone" */
     {llflag: ["LL_ACHIEVE", "LL_SPOILER"], msg: "acquired the Sokoban"}, /* " <item>" */
     {llflag: ["LL_ACHIEVE", "LL_UMONST"], msg: "killed Medusa"},
-     /* these two are not logged */
+    /* these two are not logged */
     {llflag: [], msg: "hero was always blond, no, blind"},
     {llflag: [], msg: "hero never wore armor"},
-     /* */
+    /* */
     {llflag: ["LL_MINORAC", "LL_DUMP"], msg: "entered the Gnomish Mines"},
     {llflag: ["LL_ACHIEVE"], msg: "reached Mine Town"}, /* probably minor, but dnh logs it */
     {llflag: ["LL_MINORAC"], msg: "entered a shop"},
@@ -77,7 +76,6 @@ export const achieve_msg = [
 /* macros to simplify output of enlightenment messages; also used by
    conduct and achievements */
 // Source output convenience macros expand inline at their original uses.
-
 
 export function enlght_out(buf)
 {
@@ -116,7 +114,8 @@ export function enlght_line(start, middle, end, ps)
 /* format increased chance to hit or damage or defense (Protection) */
 export function enlght_combatinc(inctyp, incamt, final, outbuf) /* "to hit" or "damage" or "defense" */ /* amount of increment (negative if decrement) */ /* ENL_{GAMEINPROGRESS,GAMEOVERALIVE,GAMEOVERDEAD} */
 {
-    incamt=C.int(incamt);final=C.int(final);
+    incamt = C.int(incamt);
+    final = C.int(final);
     let modif, bonus;
     let invrt;
     let absamt;
@@ -153,7 +152,8 @@ export function enlght_combatinc(inctyp, incamt, final, outbuf) /* "to hit" or "
 /* report half physical or half spell damage */
 export function enlght_halfdmg(category, final)
 {
-    category=C.int(category);final=C.int(final);
+    category = C.int(category);
+    final = C.int(final);
     let category_name;
     const buf = C.stackAlloc(C.BUFSZ);
 
@@ -184,7 +184,8 @@ export function walking_on_water()
 /* describe u.utraptype; used by status_enlightenment() and self_lookat() */
 export function trap_predicament(outbuf, final, wizxtra)
 {
-    final=C.int(final);wizxtra=C.schar(wizxtra);
+    final = C.int(final);
+    wizxtra = C.schar(wizxtra);
     let t;
 
     /* caller has verified u.utrap */
@@ -218,7 +219,7 @@ export function trap_predicament(outbuf, final, wizxtra)
    discovered but it doesn't necessarily have to be fully identified */
 export function cause_known(propindx) /* index of a property which can be conveyed by worn item */
 {
-    propindx=C.int(propindx);
+    propindx = C.int(propindx);
     let o;
     let mask = C.long(C.W_ARMOR | C.W_AMUL | C.W_RING | C.W_TOOL);
 
@@ -237,7 +238,8 @@ export function cause_known(propindx) /* index of a property which can be convey
 /* format a characteristic value, accommodating Strength's strangeness */
 export function attrval(attrindx, attrvalue, resultbuf) /* should be at least [7] to hold "18/100\0" */
 {
-    attrindx=C.int(attrindx);attrvalue=C.int(attrvalue);
+    attrindx = C.int(attrindx);
+    attrvalue = C.int(attrvalue);
     if (attrindx != C.A_STR || attrvalue <= 18)
         C.Sprintf(resultbuf, "%d", attrvalue);
     else if (attrvalue > C.STR18(100)) /* 19 to 25 */
@@ -261,7 +263,7 @@ export function attrval(attrindx, attrvalue, resultbuf) /* should be at least [7
  */
 export function fmt_elapsed_time(outbuf, final)
 {
-    final=C.int(final);
+    final = C.int(final);
     let fieldcnt;
     let edays, ehours, eminutes, eseconds;
     /* for a game that's over, reallydone() has updated urealtime.realtime
@@ -309,7 +311,7 @@ export function fmt_elapsed_time(outbuf, final)
 /* "once" vs "twice" vs "17 times", used in several places */
 export function N_times(n, outbuf)
 {
-    n=C.long(n);
+    n = C.long(n);
     switch (n) {
     case 0n:
     default:
@@ -330,7 +332,8 @@ export function N_times(n, outbuf)
 
 export function enlightenment(mode, final) /* BASICENLIGHTENMENT | MAGICENLIGHTENMENT (| both) */ /* ENL_GAMEINPROGRESS:0, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD */
 {
-    mode=C.int(mode);final=C.int(final);
+    mode = C.int(mode);
+    final = C.int(final);
     const buf = C.stackAlloc(C.BUFSZ);
     const tmpbuf = C.stackAlloc(C.BUFSZ);
 
@@ -413,7 +416,8 @@ export function enlightenment(mode, final) /* BASICENLIGHTENMENT | MAGICENLIGHTE
 /* display role, race, alignment and such to en_win */
 export function background_enlightenment(unused_mode, final)
 {
-    unused_mode=C.int(unused_mode);final=C.int(final);
+    unused_mode = C.int(unused_mode);
+    final = C.int(final);
     let role_titl, rank_titl;
     let innategend, difgend, difalgn;
     const buf = C.stackAlloc(C.BUFSZ);
@@ -674,7 +678,8 @@ export function background_enlightenment(unused_mode, final)
 /*ARGSUSED*/
 export function basics_enlightenment(mode, final)
 {
-    mode=C.int(mode);final=C.int(final);
+    mode = C.int(mode);
+    final = C.int(final);
     const Power = "energy points (spell power)";
     const buf = C.stackAlloc(C.BUFSZ);
     let pw = C.int(C.u.uen), hp = (C.int(C.Upolyd ? C.u.mh : C.u.uhp)),
@@ -758,8 +763,10 @@ export function basics_enlightenment(mode, final)
             C.Strcat(buf, ", but temporarily disabled while inside the shop");
         } else {
             C.oc_to_str(C.flags.pickup_types, ocl);
-            C.Sprintf(C.eos(buf), " for %s%s%s", ocl ? "'" : "", ocl ? ocl : "all types", ocl ? "'" : "");
-            if (C.flags.pickup_thrown && C.loadChar(ocl))
+            const hasPickupTypes = C.loadChar(ocl);
+            C.Sprintf(C.eos(buf), " for %s%s%s", hasPickupTypes ? "'" : "",
+                      hasPickupTypes ? ocl : "all types", hasPickupTypes ? "'" : "");
+            if (C.flags.pickup_thrown && hasPickupTypes)
                 C.Strcat(buf, " plus thrown"); /* show when not 'all types' */
             if (C.ga.apelist)
                 C.Strcat(buf, ", with exceptions");
@@ -772,7 +779,8 @@ export function basics_enlightenment(mode, final)
 /* characteristics: expanded version of bottom line strength, dexterity, &c */
 export function characteristics_enlightenment(mode, final)
 {
-    mode=C.int(mode);final=C.int(final);
+    mode = C.int(mode);
+    final = C.int(final);
     const buf = C.stackAlloc(C.BUFSZ);
 
     C.callLocal(enlght_out, "");
@@ -791,7 +799,9 @@ export function characteristics_enlightenment(mode, final)
 /* display one attribute value for characteristics_enlightenment() */
 export function one_characteristic(mode, final, attrindx)
 {
-    mode=C.int(mode);final=C.int(final);attrindx=C.int(attrindx);
+    mode = C.int(mode);
+    final = C.int(final);
+    attrindx = C.int(attrindx);
      /* attrib.c */
     let hide_innate_value = C.schar(0), interesting_alimit;
     let acurrent, abase, apeak, alimit;
@@ -836,7 +846,8 @@ export function one_characteristic(mode, final, attrindx)
         break;
     default:
         return; /* impossible */
-    };
+    }
+    ;
     /* note: final disclosure includes MAGICENLIGHTENTMENT */
     if ((mode & C.MAGICENLIGHTENMENT) && !C.Upolyd)
         hide_innate_value = C.schar(0);
@@ -887,7 +898,8 @@ export function one_characteristic(mode, final, attrindx)
 /* status: selected obvious capabilities, assorted troubles */
 export function status_enlightenment(mode, final)
 {
-    mode=C.int(mode);final=C.int(final);
+    mode = C.int(mode);
+    final = C.int(final);
     let magic = C.schar((mode & C.MAGICENLIGHTENMENT) ? 1 : 0);
     let cap;
     const buf = C.stackAlloc(C.BUFSZ);
@@ -1216,7 +1228,7 @@ export function status_enlightenment(mode, final)
 /* extracted from status_enlightenment() to reduce clutter there */
 export function weapon_insight(final)
 {
-    final=C.int(final);
+    final = C.int(final);
     const buf = C.stackAlloc(C.BUFSZ);
     let wtype;
 
@@ -1416,7 +1428,8 @@ export function weapon_insight(final)
 
 export function item_resistance_message(adtyp, prot_message, final)
 {
-    adtyp=C.int(adtyp);final=C.int(final);
+    adtyp = C.int(adtyp);
+    final = C.int(final);
     let protection = C.int(C.u_adtyp_resistance_obj(adtyp));
 
     if (protection) {
@@ -1429,7 +1442,8 @@ export function item_resistance_message(adtyp, prot_message, final)
 /* attributes: intrinsics and the like, other non-obvious capabilities */
 export function attributes_enlightenment(unused_mode, final)
 {
-    unused_mode=C.int(unused_mode);final=C.int(final);
+    unused_mode = C.int(unused_mode);
+    final = C.int(final);
     const if_surroundings_permitted = " if surroundings permitted";
     let ltmp, armpro, warnspecies;
     const buf = C.stackAlloc(C.BUFSZ);
@@ -1538,7 +1552,7 @@ export function attributes_enlightenment(unused_mode, final)
                             : "certain monsters");
         C.callLocal(enlght_line, You_, final ? were : are, buf, "");
     }
-    warnspecies =  C.int(C.svc.context.warntype.speciesidx);
+    warnspecies = C.int(C.svc.context.warntype.speciesidx);
     if (C.Warn_of_mon && C.ismnum(warnspecies)) {
         C.Sprintf(buf, "aware of the presence of %s",
                 C.makeplural(C.mons[warnspecies].pmnames[C.NEUTRAL]));
@@ -1873,7 +1887,7 @@ export function attributes_enlightenment(unused_mode, final)
          */
         if (!final) {
 // #if 0
-            
+
 /* "can [not] safely pray" vs "could [not] have safely prayed" */
 //             Sprintf(buf, "%s%ssafely pray%s", can_pray(FALSE) ? "" : "not ",
 //                     final ? "have " : "", final ? "ed" : "");
@@ -1905,7 +1919,6 @@ export function attributes_enlightenment(unused_mode, final)
         C.callLocal(enlght_line, "The made fruit flag ", final ? "was " : "is ", buf, "");
     }
 // #endif
-
     {
         let p;
 
@@ -1921,7 +1934,7 @@ export function attributes_enlightenment(unused_mode, final)
             switch (C.u.umortality) {
             case 0:
                 C.impossible("dead without dying?");
-                
+
                 /* FALLTHRU */
             case 1:
                 break; /* just "are dead" */
@@ -1951,7 +1964,8 @@ export function doattributes()
 
 export function youhiding(via_enlghtmt, msgflag) /* enlightenment line vs topl message */          /* for variant message phrasing */
 {
-    via_enlghtmt=C.schar(via_enlghtmt);msgflag=C.int(msgflag);
+    via_enlghtmt = C.schar(via_enlghtmt);
+    msgflag = C.int(msgflag);
     let bp;
     const buf = C.stackAlloc(C.BUFSZ);
 
@@ -2017,7 +2031,7 @@ export function doconduct()
 /* display conducts; for doconduct(), also disclose() and dump_everything() */
 export function show_conduct(final)
 {
-    final=C.int(final);
+    final = C.int(final);
     const buf = C.stackAlloc(C.BUFSZ);
     const bufN = C.stackAlloc(40);
     let ngenocided;
@@ -2170,7 +2184,7 @@ export function show_conduct(final)
 
 export function show_achievements(final) /* 'final' is used "behind the curtain" by enl_foo() macros */
 {
-    final=C.int(final);
+    final = C.int(final);
     let i, achidx, absidx, acnt;
     const title = C.stackAlloc(C.QBUFSZ);
     const buf = C.stackAlloc(C.QBUFSZ);
@@ -2320,7 +2334,7 @@ export function show_achievements(final) /* 'final' is used "behind the curtain"
 /* record an achievement (add at end of list unless already present) */
 export function record_achievement(achidx)
 {
-    achidx=C.schar(achidx);
+    achidx = C.schar(achidx);
     let i, absidx;
     let repeat_achievement = C.int(0);
 
@@ -2389,7 +2403,7 @@ export function record_achievement(achidx)
 /* discard a recorded achievement; return True if removed, False otherwise */
 export function remove_achievement(achidx)
 {
-    achidx=C.schar(achidx);
+    achidx = C.schar(achidx);
     let i;
 
     for (i = C.int(0); C.u.uachieved[i]; ++i)
@@ -2418,7 +2432,7 @@ export function count_achievements()
    in order to subsequently report gender-specific ranks accurately */
 export function achieve_rank(rank) /* 1..8 */
 {
-    rank=C.int(rank);
+    rank = C.int(rank);
     let achidx = C.schar(C.schar(((rank - 1) + C.ACH_RNK1)));
 
     if (C.flags.female)
@@ -2451,7 +2465,7 @@ export function do_gamelog()
     }
 // #else
 //     pline("Chronicle was turned off during compile-time.");
-// #endif 
+// #endif
 /* !CHRONICLE */
     return C.ECMD_OK;
 }
@@ -2468,11 +2482,10 @@ function* chronicleEvents()
 /* 'major' events for dumplog; inclusion or exclusion here may need tuning */
 /* explicitly for dumplog */
 
-
 /* #chronicle details */
 export function show_gamelog(final)
 {
-    final=C.int(final);
+    final = C.int(final);
 // #ifdef CHRONICLE
     let win;
     const buf = C.stackAlloc(C.BUFSZ);
@@ -2482,7 +2495,8 @@ export function show_gamelog(final)
     C.Sprintf(buf, "%s events:", final ? "Major" : "Logged");
     C.putstr(win, 0, buf);
     for (const llmsg of chronicleEvents()) {
-        if (final && !(((llmsg).flags & (0n | C.LL_WISH | C.LL_ACHIEVE | C.LL_UMONST | C.LL_DIVINEGIFT | C.LL_LIFESAVE | C.LL_ARTIFACT | C.LL_GENOCIDE | C.LL_DUMP)) != 0))
+        if (final
+            && !(((llmsg).flags & (0n | C.LL_WISH | C.LL_ACHIEVE | C.LL_UMONST | C.LL_DIVINEGIFT | C.LL_LIFESAVE | C.LL_ARTIFACT | C.LL_GENOCIDE | C.LL_DUMP)) != 0))
             continue;
         if (!final && !C.wizard && (((llmsg).flags & C.LL_SPOILER) != 0))
             continue;
@@ -2500,7 +2514,7 @@ export function show_gamelog(final)
     C.destroy_nhwindow(win);
 // #else
 //     nhUse(final);
-// #endif 
+// #endif
 /* !CHRONICLE */
     return;
 }
@@ -2512,22 +2526,30 @@ export function show_gamelog(final)
 /* the two uppercase choices are implemented but suppressed from menu.
    also used in options.c */
 export const vanqorders = [
-    [ "t", "traditional: by monster level",
-           "traditional: by monster level, by internal monster index" ],
-    [ "d", "by monster difficulty rating",
-           "by monster difficulty rating, by internal monster index" ],
-    [ "a", "alphabetically, unique monsters separate",
-           "alphabetically, first unique monsters, then others" ],
-    [ "A", "alphabetically, unique monsters intermixed",
-           "alphabetically, unique monsters and others intermixed" ],
-    [ "C", "by monster class, high to low level in class",
-           "by monster class, high to low level within class" ],
-    [ "c", "by monster class, low to high level in class",
-           "by monster class, low to high level within class" ],
-    [ "n", "by count, high to low",
-           "by count, high to low, by internal index within tied count" ],
-    [ "z", "by count, low to high",
-           "by count, low to high, by internal index within tied count" ],
+    ["t", "traditional: by monster level", "traditional: by monster level, by internal monster index"],
+    ["d", "by monster difficulty rating", "by monster difficulty rating, by internal monster index"],
+    [
+        "a",
+        "alphabetically, unique monsters separate",
+        "alphabetically, first unique monsters, then others"
+    ],
+    [
+        "A",
+        "alphabetically, unique monsters intermixed",
+        "alphabetically, unique monsters and others intermixed"
+    ],
+    [
+        "C",
+        "by monster class, high to low level in class",
+        "by monster class, high to low level within class"
+    ],
+    [
+        "c",
+        "by monster class, low to high level in class",
+        "by monster class, low to high level within class"
+    ],
+    ["n", "by count, high to low", "by count, high to low, by internal index within tied count"],
+    ["z", "by count, low to high", "by count, low to high, by internal index within tied count"],
 ];
 
 export function vanqsort_cmp(vptr1, vptr2)
@@ -2558,7 +2580,7 @@ export function vanqsort_cmp(vptr1, vptr2)
             res = C.int(uniq2 - uniq1);
             break;
         } /* else both unique or neither unique */
-        
+
         /*FALLTHRU*/
     case C.VANQ_ALPHA_MIX:
         name1 = C.mons[indx1].pmnames[C.NEUTRAL];
@@ -2624,7 +2646,7 @@ export function vanqsort_cmp(vptr1, vptr2)
 /* returns -1 if cancelled via ESC */
 export function set_vanq_order(for_vanq)
 {
-    for_vanq=C.schar(for_vanq);
+    for_vanq = C.schar(for_vanq);
     let tmpwin;
     const selected = C.menuPointerLocal();
     const any = C.anyLocal();
@@ -2635,7 +2657,7 @@ export function set_vanq_order(for_vanq)
 
     tmpwin = C.int(C.create_nhwindow(C.NHW_MENU));
     C.start_menu(tmpwin, C.MENU_BEHAVE_STANDARD);
-    C.copyAnything(any,C.cg.zeroany); /* zero out all bits */
+    C.copyAnything(any, C.cg.zeroany); /* zero out all bits */
     for (i = C.int(0); i < C.vanqorders.length; i++) {
         if (i == C.VANQ_ALPHA_MIX || i == C.VANQ_MCLS_HTOL) /* skip these */
             continue;
@@ -2688,7 +2710,8 @@ export function dovanquished()
 /* used for #vanquished and end of game disclosure and end of game dumplog */
 export function list_vanquished(defquery, ask)
 {
-    defquery=C.char(defquery);ask=C.schar(ask);
+    defquery = C.char(defquery);
+    ask = C.schar(ask);
     let i;
     let pfx, nkilled;
     let ntypes, ni;
@@ -2851,7 +2874,7 @@ export function list_vanquished(defquery, ask)
         C.pline("No creatures have been vanquished.");
 // #ifdef DUMPLOG
 //     } else if (dumping) {
-//         putstr(0, 0, "No creatures were vanquished."); 
+//         putstr(0, 0, "No creatures were vanquished.");
 /* not pline() */
 // #endif
     }
@@ -2890,7 +2913,8 @@ export function num_extinct()
 /* collect both genocides and extinctions, skipping uniques */
 export function num_gone(mvflags, mindx)
 {
-    mvflags=C.int(mvflags);mindx=C.intArray(mindx);
+    mvflags = C.int(mvflags);
+    mindx = C.intArray(mindx);
     let mflg = C.uchar(C.uchar(mvflags));
     let i, n = C.int(0);
 
@@ -2912,7 +2936,8 @@ export function num_gone(mvflags, mindx)
    or for the #genocided command */
 export function list_genocided(defquery, ask)
 {
-    defquery=C.char(defquery);ask=C.schar(ask);
+    defquery = C.char(defquery);
+    ask = C.schar(ask);
     let i, mndx;
     let ngenocided, nextinct, ngone, mvflags;
     const mindx = C.intArrayLocal(C.NUMMONS);
@@ -3032,7 +3057,7 @@ export function list_genocided(defquery, ask)
            extinction has been ignored */
         C.pline("No creatures have been genocided%s.", genoing ? " yet" : "");
 // #ifdef DUMPLOG
-//     } else if (dumping) { 
+//     } else if (dumping) {
 /* 'gameover' is True if we make it here */
 //         putstr(0, 0, "No species were genocided or became extinct.");
 // #endif
@@ -3045,8 +3070,6 @@ export function dogenocided()
     C.callLocal(list_genocided, C.iflags.menu_requested ? 97 : 121, 0);
     return C.ECMD_OK;
 }
-
-
 
 /* #wizborn extended command */
 export function doborn()
@@ -3082,8 +3105,6 @@ export function doborn()
     return C.ECMD_OK;
 }
 
-
-
 /*
  * align_str(), piousness(), mstatusline() and ustatusline() once resided
  * in pline.c, then got moved to priest.c just to be out of there.  They
@@ -3092,7 +3113,7 @@ export function doborn()
 
 export function align_str(alignment)
 {
-    alignment=C.schar(alignment);
+    alignment = C.schar(alignment);
     switch (C.int(alignment)) {
     case C.A_CHAOTIC:
         return "chaotic";
@@ -3108,7 +3129,7 @@ export function align_str(alignment)
 
 export function size_str(msize)
 {
-    msize=C.int(msize);
+    msize = C.int(msize);
     const outbuf = C.storage(1);
 
     switch (msize) {
@@ -3140,7 +3161,7 @@ export function size_str(msize)
 /* used for self-probing */
 export function piousness(showneg, suffix)
 {
-    showneg=C.schar(showneg);
+    showneg = C.schar(showneg);
     const buf = C.storage(2); /* bigger than "insufficiently neutral" */
     let pio;
 
@@ -3236,7 +3257,7 @@ export function mstatusline(mtmp)
         C.Strcat(info, ", stunned");
     if (mtmp.msleeping)
         C.Strcat(info, ", asleep");
-// #if 0 
+// #if 0
 /* unfortunately mfrozen covers temporary sleep and being busy
        * (donning armor, for instance) as well as paralysis */
 //     else if (mtmp->mfrozen)

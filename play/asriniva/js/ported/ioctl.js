@@ -6,11 +6,9 @@
 
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 /* This cannot be part of hack.tty.c (as it was earlier) since on some
    systems (e.g. MUNIX) the include files <termio.h> and <sgtty.h>
    define the same constants, and the C preprocessor complains. */
-
 
 import { C } from '../c-runtime/context.js';
 
@@ -31,7 +29,7 @@ import { C } from '../c-runtime/context.js';
 // #include <bsdtty.h>
 // #else
 // #if defined(AIX_31) && !defined(_ALL_SOURCE)
-// #define _ALL_SOURCE 
+// #define _ALL_SOURCE
 /* causes struct winsize to be present */
 
 // #ifdef _AIX32
@@ -41,16 +39,16 @@ import { C } from '../c-runtime/context.js';
 // #if defined(_BULL_SOURCE)
 // #include <termios.h>
 // struct termios termio;
-// #undef TIMEOUT            
+// #undef TIMEOUT
 /* defined in you.h and sys/tty.h */
 
-// #include <sys/tty.h>      
+// #include <sys/tty.h>
 /* define winsize */
 
-// #include <sys/ttold.h>    
+// #include <sys/ttold.h>
 /* define struct ltchars */
 
-// #include <sys/bsdioctl.h> 
+// #include <sys/bsdioctl.h>
 /* define TIOGWINSZ */
 
 // #else
@@ -62,7 +60,7 @@ import { C } from '../c-runtime/context.js';
 // #endif
 // #endif
 // struct ltchars ltchars;
-// struct ltchars ltchars0 = { -1, -1, -1, -1, -1, -1 }; 
+// struct ltchars ltchars0 = { -1, -1, -1, -1, -1, -1 };
 /* turn all off */
 
 // #else
@@ -77,7 +75,7 @@ import { C } from '../c-runtime/context.js';
 // #include <sys/ioctl.h>
 // #endif
 // #else
-// #include <termio.h> 
+// #include <termio.h>
 /* also includes part of <sgtty.h> */
 
 // #if defined(TCSETS) && !defined(AIX_31)
@@ -88,12 +86,12 @@ import { C } from '../c-runtime/context.js';
 // #endif
 // #if defined(AMIX) || defined(__APPLE__)
 // #include <sys/ioctl.h>
-// #endif 
+// #endif
 /* AMIX */
 
 // #endif
 
-// #ifdef SUSPEND 
+// #ifdef SUSPEND
 /* BSD isn't alone anymore... */
 
 // #include <signal.h>
@@ -107,7 +105,7 @@ import { C } from '../c-runtime/context.js';
 
 // #if defined(TIOCGWINSZ) && !defined(AVOID_WIN_IOCTL)
 // #define USE_WIN_IOCTL
-// #include "tcap.h" 
+// #include "tcap.h"
 /* for LI and CO */
 
 // #endif
@@ -128,30 +126,28 @@ import { C } from '../c-runtime/context.js';
 //     signal(SIGTSTP, SIG_DFL);
 //     dosuspend();
 // }
-// #endif 
+// #endif
 /* AUX */
-
 
 export function getwindowsz()
 {
 // #ifdef USE_WIN_IOCTL
-    
+
 /*
      * ttysize is found on Suns and BSD
      * winsize is found on Suns, BSD, and Ultrix
      */
 
-    const ttsz=C.winsizeLocal();
+    const ttsz = C.winsizeLocal();
 
-    if (C.ioctl(C.fileno(C.stdin),C.TIOCGWINSZ,ttsz) != -1) {
-        
+    if (C.ioctl(C.fileno(C.stdin), C.TIOCGWINSZ, ttsz) != -1) {
 /*
          * Use the kernel's values for lines and columns if it has
          * any idea.
          */
 
-        if(C.windowRow(ttsz))C.LI=C.windowRow(ttsz);
-        if(C.windowColumn(ttsz))C.CO=C.windowColumn(ttsz);
+        if (C.windowRow(ttsz))C.LI = C.windowRow(ttsz);
+        if (C.windowColumn(ttsz))C.CO = C.windowColumn(ttsz);
     }
 // #endif
 }
@@ -195,13 +191,13 @@ export function setioctls()
 // #endif
 }
 
-// #ifdef SUSPEND 
+// #ifdef SUSPEND
 /* No longer implies BSD */
 
 export function dosuspend()
 {
 // #ifdef SYSCF
-    
+
 /* NB: check_user_string() is port-specific. */
 
     if (!C.sysopt.shellers || !C.HEAP8[C.sysopt.shellers]
@@ -240,6 +236,5 @@ export function dosuspend()
 // #endif
     return (0);
 }
-// #endif 
+// #endif
 /* SUSPEND */
-

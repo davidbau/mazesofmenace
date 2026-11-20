@@ -5,51 +5,8 @@
 import {C} from '../c-runtime/context.js';
 
 export const winchoices = [
-
-    [ "tty_procs", "win_tty_init" ],
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    [ 0, 0 ] /* must be last */
+    ["tty_procs", "win_tty_init"],
+    [0, 0] /* must be last */
 ];
 
 export function genl_can_suspend_no()
@@ -83,7 +40,6 @@ export function def_wait_synch()
      return;
 }
 
-
 export function check_tty_wincap(wincap)
 {
     let wc = win_choices_find("tty");
@@ -102,8 +58,6 @@ export function check_tty_wincap2(wincap2)
     return C.FALSE;
 }
 
-
-
 export function win_choices_find(s)
 {
     let i;
@@ -115,7 +69,6 @@ export function win_choices_find(s)
     }
     return 0;
 }
-
 
 export function choose_windows(s)
 {
@@ -188,111 +141,6 @@ export function choose_windows(s)
         C.nh_terminate(C.EXIT_SUCCESS);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*
  * tty_message_menu() provides a means to get feedback from the
  * --More-- prompt; other interfaces generally don't need that.
@@ -359,108 +207,91 @@ export function genl_putmsghistory(msg, is_restoring)
     return;
 }
 
-
 /*
  * Dummy windowing scheme used to replace current one with no-ops
  * in order to avoid all terminal I/O after hangup/disconnect.
  */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export const hup_procs = [
-    "hup", {c:"wp_hup"}, 0n, 0n,
-    [ false, false, false, false, false, false, false, false,
-      false, false, false, false, false, false, false, false ], /* colors */
+    "hup",
+    {c:"wp_hup"},
+    0n,
+    0n,
+    [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+    ], /* colors */
     hup_init_nhwindows,
-    hup_void_ndecl,                                    /* player_selection */
-    hup_void_ndecl,                                    /* askname */
-    hup_void_ndecl,                                    /* get_nh_event */
-    hup_exit_nhwindows, hup_void_fdecl_constchar_p,    /* suspend_nhwindows */
-    hup_void_ndecl,                                    /* resume_nhwindows */
-    hup_create_nhwindow, hup_void_fdecl_winid,         /* clear_nhwindow */
-    hup_display_nhwindow, hup_void_fdecl_winid,        /* destroy_nhwindow */
-    hup_curs, hup_putstr, hup_putstr,                  /* putmixed */
-    hup_display_file, hup_void_fdecl_winid_ulong,      /* start_menu */
-    hup_add_menu, hup_end_menu, hup_select_menu, genl_message_menu,
-    hup_void_ndecl,                                    /* mark_synch */
-    hup_void_ndecl,                                    /* wait_synch */
-
+    hup_void_ndecl, /* player_selection */
+    hup_void_ndecl, /* askname */
+    hup_void_ndecl, /* get_nh_event */
+    hup_exit_nhwindows,
+    hup_void_fdecl_constchar_p, /* suspend_nhwindows */
+    hup_void_ndecl, /* resume_nhwindows */
+    hup_create_nhwindow,
+    hup_void_fdecl_winid, /* clear_nhwindow */
+    hup_display_nhwindow,
+    hup_void_fdecl_winid, /* destroy_nhwindow */
+    hup_curs,
+    hup_putstr,
+    hup_putstr, /* putmixed */
+    hup_display_file,
+    hup_void_fdecl_winid_ulong, /* start_menu */
+    hup_add_menu,
+    hup_end_menu,
+    hup_select_menu,
+    genl_message_menu,
+    hup_void_ndecl, /* mark_synch */
+    hup_void_ndecl, /* wait_synch */
     hup_cliparound,
-
-
-
-
     hup_print_glyph,
-    hup_void_fdecl_constchar_p,                       /* raw_print */
-    hup_void_fdecl_constchar_p,                       /* raw_print_bold */
-    hup_nhgetch, hup_nh_poskey, hup_void_ndecl,       /* nhbell  */
-    hup_int_ndecl,                                    /* doprev_message */
-    hup_yn_function, hup_getlin, hup_int_ndecl,       /* get_ext_cmd */
-    hup_void_fdecl_int,                               /* number_pad */
-    hup_void_ndecl,                                   /* nh_delay_output  */
-
-
-
-
-
-
-
-
-    hup_outrip, genl_preference_update, genl_getmsghistory,
+    hup_void_fdecl_constchar_p, /* raw_print */
+    hup_void_fdecl_constchar_p, /* raw_print_bold */
+    hup_nhgetch,
+    hup_nh_poskey,
+    hup_void_ndecl, /* nhbell  */
+    hup_int_ndecl, /* doprev_message */
+    hup_yn_function,
+    hup_getlin,
+    hup_int_ndecl, /* get_ext_cmd */
+    hup_void_fdecl_int, /* number_pad */
+    hup_void_ndecl, /* nh_delay_output  */
+    hup_outrip,
+    genl_preference_update,
+    genl_getmsghistory,
     genl_putmsghistory,
-    hup_void_ndecl,                                   /* status_init */
-    hup_void_ndecl,                                   /* status_finish */
-    genl_status_enablefield, hup_status_update,
+    hup_void_ndecl, /* status_init */
+    hup_void_ndecl, /* status_finish */
+    genl_status_enablefield,
+    hup_status_update,
     genl_can_suspend_no,
-    hup_void_fdecl_int,                               /* update_inventory */
+    hup_void_fdecl_int, /* update_inventory */
     hup_ctrl_nhwindow,
 ];
 
-export const previnterface_exit_nhwindows=0;
+export const previnterface_exit_nhwindows = 0;
 
 /* hangup has occurred; switch to no-op user interface */
 export function nhwindows_hangup()
 {
     let previnterface_getmsghistory = 0;
 
-
     /* command processor shouldn't look for 2nd char after seeing ESC */
     C.iflags.altmeta = C.FALSE;
-
 
     /* don't call exit_nhwindows() directly here; if a hangup occurs
        while interface code is executing, exit_nhwindows could knock
@@ -584,37 +415,11 @@ export function hup_display_file(fname, complain)
     return;
 }
 
-
 /*ARGSUSED*/
 export function hup_cliparound(x, y)
 {
     return;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*ARGSUSED*/
 export function hup_status_update(idx, ptr, chg, pc, color, colormasks)
@@ -667,17 +472,9 @@ export function hup_ctrl_nhwindow(window, request, wri)
     return 0;
 }
 
-
-
-
 /****************************************************************************/
 /* genl backward compat stuff                                               */
 /****************************************************************************/
-
-
-
-
-
 
 export function genl_status_init()
 {
@@ -713,7 +510,6 @@ export function genl_status_enablefield(fieldidx, nm, fmt, enable)
     C.status_activefields[fieldidx] = enable;
 }
 
-
 /* call once for each field, then call with BL_FLUSH to output the result */
 export function genl_status_update(idx, ptr, chg, percent, color, colormasks)
 {
@@ -724,7 +520,7 @@ export function genl_status_update(idx, ptr, chg, percent, color, colormasks)
     let idx1, idx2, fieldlist;
     let nb, text = ptr;
 
-    const fieldorder = C.staticData("genl_status_update.fieldorder", ()=>[
+    const fieldorder = C.staticData("genl_status_update.fieldorder", () => [
         /* line one */
         [ C.BL_TITLE, C.BL_STR, C.BL_DX, C.BL_CO, C.BL_IN, C.BL_WI, C.BL_CH, C.BL_ALIGN,
           C.BL_SCORE, C.BL_FLUSH, C.BL_FLUSH, C.BL_FLUSH, C.BL_FLUSH, C.BL_FLUSH,
@@ -891,151 +687,11 @@ export function genl_status_update(idx, ptr, chg, percent, color, colormasks)
     C.putmixed(C.WIN_STATUS, 0, newbot2); /* putmixed() due to GOLD glyph */
 }
 
-
-
-export const dumplog_file=0;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+export const dumplog_file = 0;
 
 export function dump_open_log(now)
 {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     C.nhUse(now);
-
 }
 
 export function dump_close_log()
@@ -1140,22 +796,10 @@ export function dump_redirect(onoff_flag)
     }
 }
 
-
-
-
-
-
-
-
-
 export function has_color(color)
 {
     return !!(C.iflags.use_color && C.windowprocs.name
             && (C.windowprocs.wincap & C.WC_COLOR) && C.windowprocs.has_color[color]
-
-
-
-
 
     );
 }
@@ -1222,7 +866,8 @@ export function decode_mixed(buf, str)
 
     while (C.loadChar(str)) {
         if (C.loadChar(str) == 92) {
-            let dcount, so; const ggv = C.intLocal(0);
+            let dcount, so;
+            const ggv = C.intLocal(0);
             let save_str;
 
             save_str = str++;
@@ -1259,7 +904,6 @@ export function decode_mixed(buf, str)
     C.storeChar(put, 0);
     return buf;
 }
-
 
 /*
  * This differs from putstr() because the str parameter can
@@ -1344,7 +988,8 @@ export function menuitem_invert_test(mode, itemflags, is_selected)
  */
 export function mixed_to_glyphinfo(str, gip)
 {
-    let dcount; const ggv = C.intLocal(0);
+    let dcount;
+    const ggv = C.intLocal(0);
 
     if (!str || !gip)
         return " ";
@@ -1502,7 +1147,7 @@ export function choose_classes_menu(prompt, category, way, class_list, class_sel
 
 /* enum and structs are defined in wintype.h */
 
-export const zerowri = [[0n,0,0,0,0,0,0,0],[0,0,[{c:"NO_COLOR"},{c:"ATR_NONE"}]]];
+export const zerowri = [[0n, 0, 0, 0, 0, 0, 0, 0], [0, 0, [{c:"NO_COLOR"}, {c:"ATR_NONE"}]]];
 
 export function adjust_menu_promptstyle(window, style)
 {
@@ -1531,7 +1176,8 @@ export function add_menu(window, glyphinfo, identifier, ch, gch, attr, color, st
 /* menu text */
 /* itemflags such as MENU_ITEMFLAGS_SELECTED */
 {
-    attr = C.intLocal(attr); color = C.intLocal(color);
+    attr = C.intLocal(attr);
+    color = C.intLocal(color);
     if (!str) {
         /* if 'str' is Null, just return without adding any menu entry */
         C.debugpline0("add_menu(Null)");

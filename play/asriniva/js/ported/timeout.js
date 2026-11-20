@@ -10,7 +10,6 @@ import { C } from '../c-runtime/context.js';
 /* used by wizard mode #timeout and #wizintrinsic; order by 'interest'
    for timeout countdown, where most won't occur in normal play */
 export const propertynames = [
-
     {prop_num: "INVULNERABLE", prop_name: "invulnerable"},
     {prop_num: "STONED", prop_name: "petrifying"},
     {prop_num: "SLIMED", prop_name: "becoming slime"},
@@ -98,7 +97,7 @@ export const propertynames = [
 
 export function property_by_index(idx, propertynum)
 {
-    idx=C.int(idx);
+    idx = C.int(idx);
     if (!(idx >= 0 && idx < C.propertynames.length))
         idx = C.propertynames.length - 1;
 
@@ -109,11 +108,11 @@ export function property_by_index(idx, propertynum)
 
 /* He is being petrified - dialogue by inmet!tower */
 export const stoned_texts = [
-    "You are slowing down.",            /* 5 */
-    "Your limbs are stiffening.",       /* 4 */
+    "You are slowing down.", /* 5 */
+    "Your limbs are stiffening.", /* 4 */
     "Your limbs have turned to stone.", /* 3 */
-    "You have turned to stone.",        /* 2 */
-    "You are a statue."                 /* 1 */
+    "You have turned to stone.", /* 2 */
+    "You are a statue." /* 1 */
 ];
 
 export function stoned_dialogue()
@@ -169,10 +168,10 @@ export function stoned_dialogue()
 /* hero is getting sicker and sicker prior to vomiting */
 export const vomiting_texts = [
     "are feeling mildly nauseated.", /* 14 */
-    "feel slightly confused.",       /* 11 */
+    "feel slightly confused.", /* 11 */
     "can't seem to think straight.", /* 8 */
-    "feel incredibly sick.",         /* 5 */
-    "are about to vomit."            /* 2 */
+    "feel incredibly sick.", /* 5 */
+    "are about to vomit." /* 2 */
 ];
 
 export function vomiting_dialogue()
@@ -196,7 +195,7 @@ export function vomiting_dialogue()
         C.make_stunned((C.long(C.HStun) & C.TIMEOUT) + C.long((C.rngCaller(215, "vomiting_dialogue"), C.d(2, 4, 215, "vomiting_dialogue", 1))), 0);
         if (!C.Popeye(C.VOMITING))
             C.stop_occupation();
-        
+
     /*FALLTHRU*/
     case 9:
         C.make_confused((C.long(C.HConfusion) & C.TIMEOUT) + C.long((C.rngCaller(221, "vomiting_dialogue"), C.d(2, 4, 221, "vomiting_dialogue", 1))), 0);
@@ -292,11 +291,7 @@ export function choke_dialogue()
     C.exercise(C.A_STR, 0);
 }
 
-export const sickness_texts = [
-    "Your illness feels worse.",
-    "Your illness is severe.",
-    "You are at Death's door.",
-];
+export const sickness_texts = ["Your illness feels worse.", "Your illness is severe.", "You are at Death's door.",];
 
 export function sickness_dialogue()
 {
@@ -322,10 +317,7 @@ export function sickness_dialogue()
     C.exercise(C.A_CON, 0);
 }
 
-export const levi_texts = [
-    "You float slightly lower.",
-    "You wobble unsteadily %s the %s."
-];
+export const levi_texts = ["You float slightly lower.", "You wobble unsteadily %s the %s."];
 
 export function levitation_dialogue()
 {
@@ -336,7 +328,7 @@ export function levitation_dialogue()
         return;
 
     if (!C.ACCESSIBLE(C.levl[C.u.ux][C.u.uy].typ)
-        && !C.is_pool_or_lava(C.u.ux,C.u.uy))
+        && !C.is_pool_or_lava(C.u.ux, C.u.uy))
         return;
 
     if (((C.long(C.HLevitation) & C.TIMEOUT) % 2n) && i > 0n && i <= C.levi_texts.length) {
@@ -355,11 +347,11 @@ export function levitation_dialogue()
 }
 
 export const slime_texts = [
-    "You are turning a little %s.",   /* 5 */
-    "Your limbs are getting oozy.",   /* 4 */
+    "You are turning a little %s.", /* 5 */
+    "Your limbs are getting oozy.", /* 4 */
     "Your skin begins to peel away.", /* 3 */
-    "You are turning into %s.",       /* 2 */
-    "You have become %s."             /* 1 */
+    "You are turning into %s.", /* 2 */
+    "You have become %s." /* 1 */
 ];
 
 export function slime_dialogue()
@@ -417,8 +409,6 @@ export function slime_dialogue()
     }
     C.exercise(C.A_DEX, 0);
 }
-
-
 
 export function burn_away_slime()
 {
@@ -499,10 +489,7 @@ export function slimed_to_death(kptr)
    Message given is "you feel much slimmer" as a joke hint that you can
    move between things which are closely packed--like the substance of
    solid rock! */
-export const phaze_texts = [
-    "You start to feel bloated.",
-    "You are feeling rather flabby.",
-];
+export const phaze_texts = ["You start to feel bloated.", "You are feeling rather flabby.",];
 
 export function phaze_dialogue()
 {
@@ -518,10 +505,7 @@ export function phaze_dialogue()
 /* Similar to Passes_walls, if prayer tries to save hero from a poison
    gas region but can't, (HMagical_breathing & TIMEOUT) will be set to
    a small value.  Unlike Passes_walls, there's no joke message. */
-export const region_texts = [
-    "You seem to have some trouble breathing.",
-    "The air here seems foul.",
-];
+export const region_texts = ["You seem to have some trouble breathing.", "The air here seems foul.",];
 
 export function region_dialogue()
 {
@@ -545,7 +529,8 @@ export function region_dialogue()
    timeout has already counted down to 0 by the time we get here */
 export function done_timeout(how, which)
 {
-    how=C.int(how);which=C.int(which);
+    how = C.int(how);
+    which = C.int(which);
     const intrinsic_p = C.propRef(which);
 
     intrinsic_p.value |= C.I_SPECIAL; /* affects final disclosure */
@@ -921,7 +906,6 @@ export function nh_timeout()
                 break;
             }
         }
-
     }
 
     C.callLocal(run_timers);
@@ -929,27 +913,28 @@ export function nh_timeout()
 
 export function fall_asleep(how_long, wakeup_msg)
 {
-    how_long=C.int(how_long);wakeup_msg=C.boolean(wakeup_msg);
+    how_long = C.int(how_long);
+    wakeup_msg = C.boolean(wakeup_msg);
     C.stop_occupation();
     C.nomul(how_long);
     C.gm.multi_reason = "sleeping";
-// #if 0   
+// #if 0
 /* this was broken; the fix for 'how_long' will result in changed
          * behavior for sounds that don't go through You_hear() so needs
          * testing */
-//     
+//
 /* You_hear() produces "You dream that you hear ..." when sleeping;
        other sound messages will either honor or ignore Deaf */
 //     if (wakeup_msg && gm.multi == how_long) {
-//         
+//
 /* caller can follow with a direct call to Hear_again() if
            there's a need to override this when wakeup_msg is true */
-//         
+//
 /* 5.0: how_long is negative so wasn't actually incrementing the
            deafness timeout when it used to be passed as-is */
 //         incr_itimeout(&HDeaf, abs(how_long));
 //         disp.botl = TRUE;
-//         ga.afternmv = Hear_again; 
+//         ga.afternmv = Hear_again;
 /* this won't give any messages */
 //     }
 // #endif
@@ -964,7 +949,7 @@ export function fall_asleep(how_long, wakeup_msg)
  */
 export function attach_egg_hatch_timeout(egg, when)
 {
-    when=C.long(when);
+    when = C.long(when);
     let i;
 
     /* stop previous timer, if any */
@@ -999,7 +984,7 @@ export function kill_egg(egg)
 /* timer callback routine: hatch the given egg */
 export function hatch_egg(arg, timeout)
 {
-    timeout=C.long(timeout);
+    timeout = C.long(timeout);
     let egg;
     let mon, mon2;
     const cc = C.coordLocal();
@@ -1052,13 +1037,13 @@ export function hatch_egg(arg, timeout)
             egg.quan -= C.long(hatchcount);
         }
 // #if 0
-//     
+//
 /*
      * We could possibly hatch while migrating, but the code isn't
      * set up for it...
      */
 //     } else if (obj->where == OBJ_MIGRATING) {
-//         
+//
 /*
          * We can do several things.  The first ones that come to
          * mind are:
@@ -1166,7 +1151,7 @@ export function hatch_egg(arg, timeout)
             /* free egg here because we use it above */
             C.obj_extract_self(egg);
             C.obfree(egg, 0);
-            if ((mon = C.m_at(x.value,y.value)) && !C.hideunder(mon) && C.cansee(x.value, y.value))
+            if ((mon = C.m_at(x.value, y.value)) && !C.hideunder(mon) && C.cansee(x.value, y.value))
                 redraw = 1;
         }
         if (redraw)
@@ -1177,7 +1162,7 @@ export function hatch_egg(arg, timeout)
 /* Learn to recognize eggs of the given type. */
 export function learn_egg_type(mnum)
 {
-    mnum=C.int(mnum);
+    mnum = C.int(mnum);
     /* baby monsters hatch from grown-up eggs */
     mnum = C.little_to_big(mnum);
     C.svm.mvitals[mnum].mvflags |= C.MV_KNOWS_EGG;
@@ -1243,7 +1228,9 @@ export function slip_or_trip()
                     C.an(C.mons[otmp.corpsenm].pmnames[C.NEUTRAL]));
             C.instapetrify(C.svk.killer.name);
         }
-    } else if ((C.long(C.HFumbling) & C.FROMOUTSIDE) || (C.is_ice(C.u.ux, C.u.uy) && !(C.rngCaller(1262, "slip_or_trip"), C.rn2(3, 1262, "slip_or_trip", 1)))) {
+    } else if ((C.long(C.HFumbling) & C.FROMOUTSIDE)
+        || (C.is_ice(C.u.ux, C.u.uy)
+        && !(C.rngCaller(1262, "slip_or_trip"), C.rn2(3, 1262, "slip_or_trip", 1)))) {
         /* is fumbling from ice alone? */
         let ice_only = !(C.EFumbling || (C.long(C.HFumbling) & ~C.FROMOUTSIDE));
 
@@ -1363,7 +1350,7 @@ export function lantern_message(obj)
  */
 export function burn_object(arg, timeout)
 {
-    timeout=C.long(timeout);
+    timeout = C.long(timeout);
     let obj = arg.a_obj;
     let canseeit, many, menorah, need_newsym, need_invupdate, bytouch;
     const x = C.coordxyLocal(), y = C.coordxyLocal();
@@ -1428,7 +1415,7 @@ export function burn_object(arg, timeout)
             switch (obj.where) {
             case C.OBJ_INVENT:
                 need_invupdate = 1;
-                
+
                 /*FALLTHRU*/
             case C.OBJ_MINVENT:
                 C.pline("%spotion of oil has burnt away.", whose);
@@ -1492,7 +1479,7 @@ export function burn_object(arg, timeout)
                 switch (obj.where) {
                 case C.OBJ_INVENT:
                     need_invupdate = 1;
-                    
+
                     /*FALLTHRU*/
                 case C.OBJ_MINVENT:
                     if (obj.otyp == C.BRASS_LANTERN)
@@ -1572,7 +1559,7 @@ export function burn_object(arg, timeout)
                     switch (obj.where) {
                     case C.OBJ_INVENT:
                         need_invupdate = 1;
-                        
+
                         /*FALLTHRU*/
                     case C.OBJ_MINVENT:
                         C.pline("%scandelabrum's flame%s.", whose,
@@ -1588,7 +1575,7 @@ export function burn_object(arg, timeout)
                     case C.OBJ_INVENT:
                         /* no need_invupdate for update_inventory() necessary;
                            useupall() -> freeinv() handles it */
-                           
+
                         /*FALLTHRU*/
                     case C.OBJ_MINVENT:
                         C.pline("%s %s consumed!", C.Yname2(obj),
@@ -1692,7 +1679,7 @@ export function burn_object(arg, timeout)
  */
 export function begin_burn(obj, already_lit)
 {
-    already_lit=C.boolean(already_lit);
+    already_lit = C.boolean(already_lit);
     let radius = 3;
     let turns = C.long(0);
     let do_timer = 1;
@@ -1784,7 +1771,7 @@ export function begin_burn(obj, already_lit)
  */
 export function end_burn(obj, timer_attached)
 {
-    timer_attached=C.boolean(timer_attached);
+    timer_attached = C.boolean(timer_attached);
     if (!obj.lamplit) {
         C.impossible("end_burn: obj %s not lit", C.xname(obj));
         return;
@@ -1808,7 +1795,7 @@ export function end_burn(obj, timer_attached)
  */
 export function cleanup_burn(arg, expire_time)
 {
-    expire_time=C.long(expire_time);
+    expire_time = C.long(expire_time);
     let obj = arg.a_obj;
 
     if (!obj.lamplit) {
@@ -1931,7 +1918,6 @@ export function do_storms()
  *      Check whether object has a timer of type timer_type.
  */
 
-
 /* If defined, then include names when printing out the timer queue */
 // #define VERBOSE_TIMER
 
@@ -1953,13 +1939,13 @@ export const timeout_funcs = [
     {f: "shrink_glob", cleanup: 0, name: "shrink_glob"},
     /* level timers */
     {f: "melt_ice_away", cleanup: 0, name: "melt_ice_away"},
-    /* currently no monster or global timers */
+/* currently no monster or global timers */
 ];
 // #undef TTAB
 
 export function kind_name(kind)
 {
-    kind=C.short(kind);
+    kind = C.short(kind);
     switch (kind) {
     case C.TIMER_NONE:
         C.impossible("no timer type");
@@ -2206,7 +2192,9 @@ export function run_timers()
  */
 export function start_timer(when, kind, func_index, arg)
 {
-    when=C.long(when);kind=C.short(kind);func_index=C.short(func_index);
+    when = C.long(when);
+    kind = C.short(kind);
+    func_index = C.short(func_index);
     let gnu, dup;
 
     if (kind <= C.TIMER_NONE || kind >= C.NUM_TIMER_KINDS
@@ -2253,7 +2241,7 @@ export function start_timer(when, kind, func_index, arg)
  */
 export function stop_timer(func_index, arg)
 {
-    func_index=C.short(func_index);
+    func_index = C.short(func_index);
     let cleanup_func;
     let doomed;
     let timeout;
@@ -2278,7 +2266,7 @@ export function stop_timer(func_index, arg)
  */
 export function peek_timer(type, arg)
 {
-    type=C.short(type);
+    type = C.short(type);
     let curr;
 
     for (curr = C.gt.timer_base; curr; curr = curr.next) {
@@ -2355,7 +2343,7 @@ export function obj_stop_timers(obj)
  */
 export function obj_has_timer(object, timer_type)
 {
-    timer_type=C.short(timer_type);
+    timer_type = C.short(timer_type);
     let timeout = C.long(C.callLocal(peek_timer, timer_type, C.obj_to_any(object)));
 
     return C.boolean((timeout != 0n));
@@ -2367,7 +2355,9 @@ export function obj_has_timer(object, timer_type)
  */
 export function spot_stop_timers(x, y, func_index)
 {
-    x=C.coordxy(x);y=C.coordxy(y);func_index=C.short(func_index);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    func_index = C.short(func_index);
     let cleanup_func;
     let curr, prev, next_timer = 0;
     let where = (C.long((C.long(x) << C.long(16)) | (C.long(y))));
@@ -2396,7 +2386,9 @@ export function spot_stop_timers(x, y, func_index)
  */
 export function spot_time_expires(x, y, func_index)
 {
-    x=C.coordxy(x);y=C.coordxy(y);func_index=C.short(func_index);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    func_index = C.short(func_index);
     let curr;
     let where = (C.long((C.long(x) << C.long(16)) | (C.long(y))));
 
@@ -2410,7 +2402,9 @@ export function spot_time_expires(x, y, func_index)
 
 export function spot_time_left(x, y, func_index)
 {
-    x=C.coordxy(x);y=C.coordxy(y);func_index=C.short(func_index);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    func_index = C.short(func_index);
     let expires = C.long(C.callLocal(spot_time_expires, x, y, func_index));
     return C.long((expires > 0n) ? expires - C.svm.moves : 0n);
 }
@@ -2433,7 +2427,7 @@ export function insert_timer(gnu)
 
 export function remove_timer(base, func_index, arg)
 {
-    func_index=C.short(func_index);
+    func_index = C.short(func_index);
     let prev, curr;
 
     for (prev = 0, curr = base.value; curr; prev = curr, curr = curr.next)
@@ -2498,8 +2492,6 @@ export function write_timer(nhfp, timer)
     }
 }
 
-
-
 /*
  * Return TRUE if the object will stay on the level when the level is
  * saved.
@@ -2562,15 +2554,14 @@ export function timer_is_local(timer)
     return 0;
 }
 
-
-
 /*
  * Part of the save routine.  Count up the number of timers that would
  * be written.  If write_it is true, actually write the timer.
  */
 export function maybe_write_timer(nhfp, range, write_it)
 {
-    range=C.int(range);write_it=C.boolean(write_it);
+    range = C.int(range);
+    write_it = C.boolean(write_it);
     let count = 0;
     let curr;
 
@@ -2595,7 +2586,6 @@ export function maybe_write_timer(nhfp, range, write_it)
     return count;
 }
 
-
 /*
  * Save part of the timer list.  The parameter 'range' specifies either
  * global or level timers to save.  The timer ID is saved with the global
@@ -2611,7 +2601,7 @@ export function maybe_write_timer(nhfp, range, write_it)
  */
 export function save_timers(nhfp, range)
 {
-    range=C.int(range);
+    range = C.int(range);
     let curr, prev, next_timer = 0;
     const count = C.intLocal();
 
@@ -2650,7 +2640,8 @@ export function save_timers(nhfp, range)
  */
 export function restore_timers(nhfp, range, adjust)
 {
-    range=C.int(range);adjust=C.long(adjust);
+    range = C.int(range);
+    adjust = C.long(adjust);
     const count = C.intLocal(0);
     let curr;
     let ghostly = (nhfp.ftype == C.NHF_BONESFILE); /* from a ghost level */
@@ -2674,7 +2665,6 @@ export function restore_timers(nhfp, range, adjust)
 
 // #ifndef SFCTOOL
 
-
 /* to support '#stats' wizard-mode command */
 export function timer_stats(hdrfmt, hdrbuf, count, size)
 {
@@ -2688,12 +2678,10 @@ export function timer_stats(hdrfmt, hdrbuf, count, size)
     }
 }
 
-
-
 /* reset all timers that are marked for resetting */
 export function relink_timers(ghostly)
 {
-    ghostly=C.boolean(ghostly);
+    ghostly = C.boolean(ghostly);
     let curr;
     const nid = C.uintLocal();
 

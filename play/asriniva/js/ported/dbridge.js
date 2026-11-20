@@ -19,23 +19,6 @@ import { C } from '../c-runtime/context.js';
  * seems like an awful lot of effort for very little gain.)
  */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export function is_waterwall(x, y)
 {
     x = C.coordxy(x);
@@ -1112,4 +1095,3 @@ export function destroy_drawbridge(x, y)
 }
 
 /*dbridge.c*/
-

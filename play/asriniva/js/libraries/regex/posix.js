@@ -50,6 +50,7 @@ const messages = ['No error', 'No match', 'Invalid regexp',
   "Missing '}'", 'Invalid contents of {}', 'Invalid character range',
   'Out of memory', 'Repetition not preceded by valid expression'];
 export function posixRegexError(code) { return messages[code] ?? 'Unknown error'; }
+const DARWIN_REG_BADMAX = 18;
 const nativeMessages = ['no explanation','regexec() failed to match','invalid regular expression',
   'invalid collating element','invalid character class','trailing backslash (\\)',
   'invalid backreference number','brackets ([ ]) not balanced','parentheses not balanced',
@@ -147,6 +148,7 @@ class Parser {
   peek(n = 0) { return this.bytes[this.at + n] || 0; }
   bracketElement() {
     const delimiter = this.peek(1);
+    if (this.native && this.peek() === 91 && !delimiter) fail(REG_EBRACK);
     if (this.peek() !== 91 || delimiter !== 46 && delimiter !== 61)
       return { value: codeUnit(this.bytes[this.at++]), equivalent: false };
     if (!this.native) fail(REG_ECOLLATE);
@@ -158,7 +160,10 @@ class Parser {
       ? codeUnit(name.charCodeAt(0)) : nativeCollatingElements.get(name);
     if (!this.peek() || value === undefined) fail(REG_ECOLLATE);
     this.at += 2;
-    return { value, equivalent: delimiter === 61, collating: delimiter === 46 };
+    // Darwin treats a named element such as [=space=] as its collating
+    // character when it starts a range. A one-byte equivalence class
+    // such as [=a=] cannot start one.
+    return { value, equivalent: delimiter === 61 && name.length === 1 };
   }
   bracket() {
     let negate = false;
@@ -168,8 +173,11 @@ class Parser {
       const b = this.peek();
       if (!b) fail(REG_EBRACK);
       if (b === 93 && this.at !== start) { ++this.at; return character(ranges, classes, negate); }
-      if (b === 45 && this.at !== start && this.peek(1) !== 93
-          && (this.peek(1) !== 45 || this.peek(2) === 93)) fail(REG_ERANGE);
+      if (b === 45 && this.at !== start && this.peek(1) !== 93) {
+        // A character class or a completed range cannot start a new range.
+        if (this.native && !this.peek(1)) fail(REG_EBRACK);
+        if (this.native || this.peek(1) !== 45 || this.peek(2) === 93) fail(REG_ERANGE);
+      }
       if (b === 91 && this.peek(1) === 58) {
         this.at += 2;
         let name = '';
@@ -185,11 +193,13 @@ class Parser {
         let max = min;
         if (this.peek() === 45 && this.peek(1) !== 93) {
           ++this.at;
-          if (!this.peek()) fail(REG_ERANGE);
-          const last = this.native ? this.bracketElement()
-            : { value: codeUnit(this.bytes[this.at++]), equivalent: false };
-          max = last.value;
-          if (first.equivalent && !last.collating || last.equivalent || min > max) fail(REG_ERANGE);
+          if (!this.peek()) fail(this.native ? REG_EBRACK : REG_ERANGE);
+          if (first.equivalent) fail(REG_ERANGE);
+          // A range must end in a character or a collating element.
+          if (this.native && this.peek() === 91 && (this.peek(1) === 58 || this.peek(1) === 61))
+            fail(REG_ERANGE);
+          max = this.native ? this.bracketElement().value : codeUnit(this.bytes[this.at++]);
+          if (min > max) fail(REG_ERANGE);
         }
         ranges.push([min, max]);
       }
@@ -208,7 +218,12 @@ class Parser {
     if (b === 91) return this.bracket();
     if (b === 46) return character([[0, 0x10ffff]]);
     if (b === 94 || b === 36) return { kind: 'assert', assertion: b === 94 ? 'bol' : 'eol' };
-    if (b === 42 || b === 43 || b === 63 || b === 123 && (!this.native || digit(this.peek()))) fail(REG_BADRPT);
+    if (b === 123 && this.native && digit(this.peek())) {
+      // Darwin diagnoses the interval itself before checking for a preceding atom.
+      this.interval();
+      fail(REG_BADRPT);
+    }
+    if (b === 42 || b === 43 || b === 63 || b === 123 && !this.native) fail(REG_BADRPT);
     if (b !== 92) return literal(codeUnit(b));
     const escaped = this.bytes[this.at++];
     if (!escaped) fail(REG_EESCAPE);
@@ -235,28 +250,31 @@ class Parser {
     }
     return literal(codeUnit(escaped));
   }
+  interval() {
+    const count = () => {
+      if (!digit(this.peek())) return -1;
+      let value = 0;
+      while (digit(this.peek())) {
+        value = 10 * value + this.bytes[this.at++] - 48;
+        if (value > 255) break;
+      }
+      return value;
+    };
+    const min = count();
+    const max = this.peek() === 44 ? (++this.at, count()) : min;
+    if (this.native && (min > 255 || max > 255)) fail(DARWIN_REG_BADMAX);
+    if (min < 0 || min > 255 || max > 255 || max >= 0 && max < min) fail(REG_BADBR);
+    if (this.native && !this.peek()) fail(REG_EBRACE);
+    if (this.bytes[this.at++] !== 125) fail(REG_BADBR);
+    return [min, max];
+  }
   repetitions(node, assertionAtom = false) {
     let repeated = false;
     while ([42, 43, 63, 123].includes(this.peek())) {
       if (this.native && this.peek() === 123 && !digit(this.peek(1))) break;
       const b = this.bytes[this.at++];
       let min = b === 43 ? 1 : 0, max = b === 63 ? 1 : -1;
-      if (b === 123) {
-        const count = () => {
-          if (!digit(this.peek())) return -1;
-          let value = 0;
-          while (digit(this.peek())) {
-            value = 10 * value + this.bytes[this.at++] - 48;
-            if (value > 255) break;
-          }
-          return value;
-        };
-        min = count(); max = this.peek() === 44 ? (++this.at, count()) : min;
-        if (this.native && (min > 255 || max > 255)) fail(18);
-        if (min < 0 || min > 255 || max > 255 || max >= 0 && max < min) fail(REG_BADBR);
-        if (this.native && !this.peek()) fail(REG_EBRACE);
-        if (this.bytes[this.at++] !== 125) fail(REG_BADBR);
-      }
+      if (b === 123) [min, max] = this.interval();
       if (this.native && (assertionAtom || repeated)) fail(REG_BADRPT);
       node = max === 0 ? EMPTY : { kind: 'repeat', child: node, min, max };
       repeated = true;

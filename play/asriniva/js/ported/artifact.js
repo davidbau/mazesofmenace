@@ -10,10 +10,7 @@ const FATAL_DAMAGE_MODIFIER = 200;
 const MB_MAX_DIEROLL = 8;
 const MB_INDEX_PROBE = 0, MB_INDEX_STUN = 1, MB_INDEX_SCARE = 2, MB_INDEX_CANCEL = 3;
 
-const mb_verb = [
-    ['probe', 'stun', 'scare', 'cancel'],
-    ['prod', 'amaze', 'tickle', 'purge'],
-];
+const mb_verb = [['probe', 'stun', 'scare', 'cancel'], ['prod', 'amaze', 'tickle', 'purge'],];
 const glow_verbs = ['quiver', 'flicker', 'glimmer', 'gleam'];
 
 /* Once-per-Module native backing initialized from the actual configured artilist.h. */
@@ -22,41 +19,41 @@ export function initializeArtifactData(C)
     if (C.state.initialized)
         return;
     const artilist = [
-    [ C.STRANGE_OBJECT, "", 0, 0, 0, [0,0,0,0], [0,0,0,0], [0,0,0,0], 0, (-128), C.NON_PM, C.NON_PM, 0, 0, 0n, 8 ],
-    [ C.LONG_SWORD, "Excalibur", (0x00000001n | 0x00000002n | 0x00000010n | 0x00000080n | 0x00000004n | 0x00000200n), 0, 0, [0,0,5,10], [0,15,0,0], [0,0,0,0], 0, 1, C.PM_KNIGHT, C.NON_PM, 0, 10, 4000n, 8 ],
-    [ C.RUNESWORD, "Stormbringer", (0x00000002n | 0x00000040n | 0x00000080n | 0x00000004n | 0x00000100n), 0, 0, [0,15,5,2], [0,15,0,0], [0,0,0,0], 0, (-1), C.NON_PM, C.NON_PM, 0, 9, 8000n, 8 ],
-    [ C.WAR_HAMMER, "Mjollnir", (0x00000002n | 0x00000040n), 0, 0, [0,6,5,24], [0,0,0,0], [0,0,0,0], 0, 0, C.PM_VALKYRIE, C.NON_PM, 0, 8, 4000n, 8 ],
-    [ C.BATTLE_AXE, "Cleaver", 0x00000002n, 0, 0, [0,0,3,6], [0,0,0,0], [0,0,0,0], 0, 0, C.PM_BARBARIAN, C.NON_PM, 0, 8, 1500n, 8 ],
-    [ C.ORCISH_DAGGER, "Grimtooth", (0x00000002n | 0x00000020n | 0x00800000n), 0, 0x00000010n, [0,0,2,6], [0,7,0,0], [0,0,0,0], C.FLING_POISON, (-1), C.NON_PM, C.PM_ORC, 0, 5, 1200n, 1 ],
-    [ C.ELVEN_BROADSWORD, "Orcrist", (0x00000020n | 0x00800000n), 0, 0x00000080n, [0,0,5,0], [0,0,0,0], [0,0,0,0], 0, (-1), C.NON_PM, C.PM_ELF, 3, 4, 2000n, 12 ],
-    [ C.ELVEN_DAGGER, "Sting", (0x00000020n | 0x00800000n), 0, 0x00000080n, [0,0,5,0], [0,0,0,0], [0,0,0,0], 0, (-1), C.NON_PM, C.PM_ELF, 3, 1, 800n, 12 ],
-    [ C.ATHAME, "Magicbane", (0x00000002n | 0x00000040n | 0x00000080n), 0, 0, [0,12,3,4], [0,1,0,0], [0,0,0,0], 0, 0, C.PM_WIZARD, C.NON_PM, 0, 7, 3500n, 8 ],
-    [ C.LONG_SWORD, "Frost Brand", (0x00000002n | 0x00000040n | 0x00000080n), 0, 0, [0,3,5,0], [0,3,0,0], [0,0,0,0], C.SNOWSTORM, (-128), C.NON_PM, C.NON_PM, 0, 9, 3000n, 8 ],
-    [ C.LONG_SWORD, "Fire Brand", (0x00000002n | 0x00000040n | 0x00000080n), 0, 0, [0,2,5,0], [0,2,0,0], [0,0,0,0], C.FIRESTORM, (-128), C.NON_PM, C.NON_PM, 0, 5, 3000n, 8 ],
-    [ C.BROADSWORD, "Dragonbane", (0x00000002n | 0x00200000n | 0x04000000n), 0, C.S_DRAGON, [0,0,5,0], [0,0,0,0], [0,0,0,0], 0, (-128), C.NON_PM, C.NON_PM, 2, 5, 500n, 8 ],
-    [ C.SILVER_MACE, "Demonbane", (0x00000002n | 0x00800000n), 0, 0x00000100n, [0,0,5,0], [0,0,0,0], [0,0,0,0], C.BANISH, 1, C.PM_CLERIC, C.NON_PM, 1, 3, 2500n, 8 ],
-    [ C.SILVER_SABER, "Werebane", (0x00000002n | 0x00800000n), 0, 0x00000004n, [0,0,5,0], [0,29,0,0], [0,0,0,0], 0, (-128), C.NON_PM, C.NON_PM, 1, 4, 1500n, 8 ],
-    [ C.SILVER_SABER, "Grayswandir", (0x00000002n | 0x00000800n), 0, 0, [0,0,5,0], [0,0,0,0], [0,0,0,0], 0, 1, C.NON_PM, C.NON_PM, 0, 10, 8000n, 8 ],
-    [ C.LONG_SWORD, "Giantslayer", (0x00000002n | 0x00800000n), 0, 0x00002000n, [0,0,5,0], [0,0,0,0], [0,0,0,0], 0, 0, C.NON_PM, C.NON_PM, 2, 4, 200n, 8 ],
-    [ C.WAR_HAMMER, "Ogresmasher", (0x00000002n | 0x00200000n), 0, C.S_OGRE, [0,0,5,0], [0,0,0,0], [0,0,0,0], 0, (-128), C.NON_PM, C.NON_PM, 2, 1, 200n, 8 ],
-    [ C.MORNING_STAR, "Trollsbane", (0x00000002n | 0x00200000n | 0x00004000n), 0, C.S_TROLL, [0,0,5,0], [0,0,0,0], [0,0,0,0], 0, (-128), C.NON_PM, C.NON_PM, 2, 1, 200n, 8 ],
-    [ C.LONG_SWORD, "Vorpal Blade", (0x00000002n | 0x00000400n), 0, 0, [0,0,5,1], [0,0,0,0], [0,0,0,0], 0, 0, C.NON_PM, C.NON_PM, 1, 5, 4000n, 8 ],
-    [ C.KATANA, "Snickersnee", 0x00000002n, 0, 0, [0,0,0,8], [0,0,0,0], [0,0,0,0], 0, 1, C.PM_SAMURAI, C.NON_PM, 0, 8, 1200n, 8 ],
-    [ C.LONG_SWORD, "Sunsword", (0x00000002n | 0x00800000n), 0, 0x00000002n, [0,0,5,0], [0,11,0,0], [0,0,0,0], C.BLINDING_RAY, 1, C.NON_PM, C.NON_PM, 0, 6, 1500n, 8 ],
-    [ C.CRYSTAL_BALL, "The Orb of Detection", (0x00000001n | 0x00000002n | 0x00000004n), (0x00001000n | 0x00010000n), 0, [0,0,0,0], [0,0,0,0], [0,1,0,0], C.INVIS, 1, C.PM_ARCHEOLOGIST, C.NON_PM, 0, 12, 2500n, 8 ],
-    [ C.LUCKSTONE, "The Heart of Ahriman", (0x00000001n | 0x00000002n | 0x00000004n), 0x00002000n, 0, [0,0,5,0], [0,0,0,0], [0,0,0,0], C.LEVITATION, 0, C.PM_BARBARIAN, C.NON_PM, 0, 12, 2500n, 8 ],
-    [ C.MACE, "The Sceptre of Might", (0x00000001n | 0x00000002n | 0x00000004n | 0x01000000n), 0, 0, [0,0,5,0], [0,1,0,0], [0,0,0,0], C.CONFLICT, 1, C.PM_CAVE_DWELLER, C.NON_PM, 0, 12, 2500n, 8 ],
-    [ C.QUARTERSTAFF, "The Staff of Aesculapius", (0x00000001n | 0x00000002n | 0x00000040n | 0x00000004n | 0x00000100n | 0x00004000n), 0, 0, [0,15,0,0], [0,15,0,0], [0,0,0,0], C.HEALING, 0, C.PM_HEALER, C.NON_PM, 0, 12, 5000n, 8 ],
-    [ C.MIRROR, "The Magic Mirror of Merlin", (0x00000001n | 0x00000002n | 0x00000004n | 0x00000008n), 0x00001000n, 0, [0,0,0,0], [0,0,0,0], [0,1,0,0], 0, 1, C.PM_KNIGHT, C.NON_PM, 0, 12, 1500n, 8 ],
-    [ C.LENSES, "The Eyes of the Overworld", (0x00000001n | 0x00000002n | 0x00000004n | 0x02000000n), 0, 0, [0,0,0,0], [0,1,0,0], [0,0,0,0], C.ENLIGHTENING, 0, C.PM_MONK, C.NON_PM, 0, 12, 2500n, 8 ],
-    [ C.HELM_OF_BRILLIANCE, "The Mitre of Holiness", (0x00000001n | 0x00000002n | 0x00800000n | 0x00000004n | 0x08000000n), 0, 0x00000002n, [0,0,0,0], [0,0,0,0], [0,2,0,0], C.ENERGY_BOOST, 1, C.PM_CLERIC, C.NON_PM, 0, 12, 2000n, 8 ],
-    [ C.BOW, "The Longbow of Diana", (0x00000001n | 0x00000002n | 0x00000004n | 0x04000000n), 0x00001000n, 0, [0,0,5,0], [0,0,0,0], [0,0,0,0], C.CREATE_AMMO, (-1), C.PM_RANGER, C.NON_PM, 0, 12, 4000n, 8 ],
-    [ C.SKELETON_KEY, "The Master Key of Thievery", (0x00000001n | 0x00000002n | 0x00000004n | 0x00000008n), (0x00000020n | 0x00040000n | 0x00020000n), 0, [0,0,0,0], [0,0,0,0], [0,0,0,0], C.UNTRAP, (-1), C.PM_ROGUE, C.NON_PM, 0, 12, 3500n, 8 ],
-    [ C.TSURUGI, "The Tsurugi of Muramasa", (0x00000001n | 0x00000002n | 0x00000004n | 0x00000400n | 0x00080000n | 0x08000000n), 0, 0, [0,0,0,8], [0,0,0,0], [0,0,0,0], 0, 1, C.PM_SAMURAI, C.NON_PM, 0, 12, 4500n, 8 ],
-    [ C.CREDIT_CARD, "The Platinum Yendorian Express Card", (0x00000001n | 0x00000002n | 0x00000004n | 0x00000080n), (0x00001000n | 0x00010000n), 0, [0,0,0,0], [0,0,0,0], [0,1,0,0], C.CHARGE_OBJ, 0, C.PM_TOURIST, C.NON_PM, 0, 12, 7000n, 8 ],
-    [ C.CRYSTAL_BALL, "The Orb of Fate", (0x00000001n | 0x00000002n | 0x00000004n | 0x00080000n), (0x00000020n | 0x00010000n | 0x00020000n), 0, [0,0,0,0], [0,0,0,0], [0,0,0,0], C.LEV_TELE, 0, C.PM_VALKYRIE, C.NON_PM, 0, 12, 3500n, 8 ],
-    [ C.AMULET_OF_ESP, "The Eye of the Aethiopica", (0x00000001n | 0x00000002n | 0x00000004n), (0x00008000n | 0x00010000n), 0, [0,0,0,0], [0,1,0,0], [0,0,0,0], C.CREATE_PORTAL, 0, C.PM_WIZARD, C.NON_PM, 0, 12, 4000n, 8 ],
-    [ 0, 0, 0, 0, 0, [0,0,0,0], [0,0,0,0], [0,0,0,0], 0, (-128), C.NON_PM, C.NON_PM, 0, 0, 0n, 8 ]
+    [ C.STRANGE_OBJECT, "", 0, 0, 0, [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, (-128), C.NON_PM, C.NON_PM, 0, 0, 0n, 8 ],
+    [ C.LONG_SWORD, "Excalibur", (0x00000001n | 0x00000002n | 0x00000010n | 0x00000080n | 0x00000004n | 0x00000200n), 0, 0, [0, 0, 5, 10], [0, 15, 0, 0], [0, 0, 0, 0], 0, 1, C.PM_KNIGHT, C.NON_PM, 0, 10, 4000n, 8 ],
+    [ C.RUNESWORD, "Stormbringer", (0x00000002n | 0x00000040n | 0x00000080n | 0x00000004n | 0x00000100n), 0, 0, [0, 15, 5, 2], [0, 15, 0, 0], [0, 0, 0, 0], 0, (-1), C.NON_PM, C.NON_PM, 0, 9, 8000n, 8 ],
+    [ C.WAR_HAMMER, "Mjollnir", (0x00000002n | 0x00000040n), 0, 0, [0, 6, 5, 24], [0, 0, 0, 0], [0, 0, 0, 0], 0, 0, C.PM_VALKYRIE, C.NON_PM, 0, 8, 4000n, 8 ],
+    [ C.BATTLE_AXE, "Cleaver", 0x00000002n, 0, 0, [0, 0, 3, 6], [0, 0, 0, 0], [0, 0, 0, 0], 0, 0, C.PM_BARBARIAN, C.NON_PM, 0, 8, 1500n, 8 ],
+    [ C.ORCISH_DAGGER, "Grimtooth", (0x00000002n | 0x00000020n | 0x00800000n), 0, 0x00000010n, [0, 0, 2, 6], [0, 7, 0, 0], [0, 0, 0, 0], C.FLING_POISON, (-1), C.NON_PM, C.PM_ORC, 0, 5, 1200n, 1 ],
+    [ C.ELVEN_BROADSWORD, "Orcrist", (0x00000020n | 0x00800000n), 0, 0x00000080n, [0, 0, 5, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, (-1), C.NON_PM, C.PM_ELF, 3, 4, 2000n, 12 ],
+    [ C.ELVEN_DAGGER, "Sting", (0x00000020n | 0x00800000n), 0, 0x00000080n, [0, 0, 5, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, (-1), C.NON_PM, C.PM_ELF, 3, 1, 800n, 12 ],
+    [ C.ATHAME, "Magicbane", (0x00000002n | 0x00000040n | 0x00000080n), 0, 0, [0, 12, 3, 4], [0, 1, 0, 0], [0, 0, 0, 0], 0, 0, C.PM_WIZARD, C.NON_PM, 0, 7, 3500n, 8 ],
+    [ C.LONG_SWORD, "Frost Brand", (0x00000002n | 0x00000040n | 0x00000080n), 0, 0, [0, 3, 5, 0], [0, 3, 0, 0], [0, 0, 0, 0], C.SNOWSTORM, (-128), C.NON_PM, C.NON_PM, 0, 9, 3000n, 8 ],
+    [ C.LONG_SWORD, "Fire Brand", (0x00000002n | 0x00000040n | 0x00000080n), 0, 0, [0, 2, 5, 0], [0, 2, 0, 0], [0, 0, 0, 0], C.FIRESTORM, (-128), C.NON_PM, C.NON_PM, 0, 5, 3000n, 8 ],
+    [ C.BROADSWORD, "Dragonbane", (0x00000002n | 0x00200000n | 0x04000000n), 0, C.S_DRAGON, [0, 0, 5, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, (-128), C.NON_PM, C.NON_PM, 2, 5, 500n, 8 ],
+    [ C.SILVER_MACE, "Demonbane", (0x00000002n | 0x00800000n), 0, 0x00000100n, [0, 0, 5, 0], [0, 0, 0, 0], [0, 0, 0, 0], C.BANISH, 1, C.PM_CLERIC, C.NON_PM, 1, 3, 2500n, 8 ],
+    [ C.SILVER_SABER, "Werebane", (0x00000002n | 0x00800000n), 0, 0x00000004n, [0, 0, 5, 0], [0, 29, 0, 0], [0, 0, 0, 0], 0, (-128), C.NON_PM, C.NON_PM, 1, 4, 1500n, 8 ],
+    [ C.SILVER_SABER, "Grayswandir", (0x00000002n | 0x00000800n), 0, 0, [0, 0, 5, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, 1, C.NON_PM, C.NON_PM, 0, 10, 8000n, 8 ],
+    [ C.LONG_SWORD, "Giantslayer", (0x00000002n | 0x00800000n), 0, 0x00002000n, [0, 0, 5, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, 0, C.NON_PM, C.NON_PM, 2, 4, 200n, 8 ],
+    [ C.WAR_HAMMER, "Ogresmasher", (0x00000002n | 0x00200000n), 0, C.S_OGRE, [0, 0, 5, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, (-128), C.NON_PM, C.NON_PM, 2, 1, 200n, 8 ],
+    [ C.MORNING_STAR, "Trollsbane", (0x00000002n | 0x00200000n | 0x00004000n), 0, C.S_TROLL, [0, 0, 5, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, (-128), C.NON_PM, C.NON_PM, 2, 1, 200n, 8 ],
+    [ C.LONG_SWORD, "Vorpal Blade", (0x00000002n | 0x00000400n), 0, 0, [0, 0, 5, 1], [0, 0, 0, 0], [0, 0, 0, 0], 0, 0, C.NON_PM, C.NON_PM, 1, 5, 4000n, 8 ],
+    [ C.KATANA, "Snickersnee", 0x00000002n, 0, 0, [0, 0, 0, 8], [0, 0, 0, 0], [0, 0, 0, 0], 0, 1, C.PM_SAMURAI, C.NON_PM, 0, 8, 1200n, 8 ],
+    [ C.LONG_SWORD, "Sunsword", (0x00000002n | 0x00800000n), 0, 0x00000002n, [0, 0, 5, 0], [0, 11, 0, 0], [0, 0, 0, 0], C.BLINDING_RAY, 1, C.NON_PM, C.NON_PM, 0, 6, 1500n, 8 ],
+    [ C.CRYSTAL_BALL, "The Orb of Detection", (0x00000001n | 0x00000002n | 0x00000004n), (0x00001000n | 0x00010000n), 0, [0, 0, 0, 0], [0, 0, 0, 0], [0, 1, 0, 0], C.INVIS, 1, C.PM_ARCHEOLOGIST, C.NON_PM, 0, 12, 2500n, 8 ],
+    [ C.LUCKSTONE, "The Heart of Ahriman", (0x00000001n | 0x00000002n | 0x00000004n), 0x00002000n, 0, [0, 0, 5, 0], [0, 0, 0, 0], [0, 0, 0, 0], C.LEVITATION, 0, C.PM_BARBARIAN, C.NON_PM, 0, 12, 2500n, 8 ],
+    [ C.MACE, "The Sceptre of Might", (0x00000001n | 0x00000002n | 0x00000004n | 0x01000000n), 0, 0, [0, 0, 5, 0], [0, 1, 0, 0], [0, 0, 0, 0], C.CONFLICT, 1, C.PM_CAVE_DWELLER, C.NON_PM, 0, 12, 2500n, 8 ],
+    [ C.QUARTERSTAFF, "The Staff of Aesculapius", (0x00000001n | 0x00000002n | 0x00000040n | 0x00000004n | 0x00000100n | 0x00004000n), 0, 0, [0, 15, 0, 0], [0, 15, 0, 0], [0, 0, 0, 0], C.HEALING, 0, C.PM_HEALER, C.NON_PM, 0, 12, 5000n, 8 ],
+    [ C.MIRROR, "The Magic Mirror of Merlin", (0x00000001n | 0x00000002n | 0x00000004n | 0x00000008n), 0x00001000n, 0, [0, 0, 0, 0], [0, 0, 0, 0], [0, 1, 0, 0], 0, 1, C.PM_KNIGHT, C.NON_PM, 0, 12, 1500n, 8 ],
+    [ C.LENSES, "The Eyes of the Overworld", (0x00000001n | 0x00000002n | 0x00000004n | 0x02000000n), 0, 0, [0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], C.ENLIGHTENING, 0, C.PM_MONK, C.NON_PM, 0, 12, 2500n, 8 ],
+    [ C.HELM_OF_BRILLIANCE, "The Mitre of Holiness", (0x00000001n | 0x00000002n | 0x00800000n | 0x00000004n | 0x08000000n), 0, 0x00000002n, [0, 0, 0, 0], [0, 0, 0, 0], [0, 2, 0, 0], C.ENERGY_BOOST, 1, C.PM_CLERIC, C.NON_PM, 0, 12, 2000n, 8 ],
+    [ C.BOW, "The Longbow of Diana", (0x00000001n | 0x00000002n | 0x00000004n | 0x04000000n), 0x00001000n, 0, [0, 0, 5, 0], [0, 0, 0, 0], [0, 0, 0, 0], C.CREATE_AMMO, (-1), C.PM_RANGER, C.NON_PM, 0, 12, 4000n, 8 ],
+    [ C.SKELETON_KEY, "The Master Key of Thievery", (0x00000001n | 0x00000002n | 0x00000004n | 0x00000008n), (0x00000020n | 0x00040000n | 0x00020000n), 0, [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], C.UNTRAP, (-1), C.PM_ROGUE, C.NON_PM, 0, 12, 3500n, 8 ],
+    [ C.TSURUGI, "The Tsurugi of Muramasa", (0x00000001n | 0x00000002n | 0x00000004n | 0x00000400n | 0x00080000n | 0x08000000n), 0, 0, [0, 0, 0, 8], [0, 0, 0, 0], [0, 0, 0, 0], 0, 1, C.PM_SAMURAI, C.NON_PM, 0, 12, 4500n, 8 ],
+    [ C.CREDIT_CARD, "The Platinum Yendorian Express Card", (0x00000001n | 0x00000002n | 0x00000004n | 0x00000080n), (0x00001000n | 0x00010000n), 0, [0, 0, 0, 0], [0, 0, 0, 0], [0, 1, 0, 0], C.CHARGE_OBJ, 0, C.PM_TOURIST, C.NON_PM, 0, 12, 7000n, 8 ],
+    [ C.CRYSTAL_BALL, "The Orb of Fate", (0x00000001n | 0x00000002n | 0x00000004n | 0x00080000n), (0x00000020n | 0x00010000n | 0x00020000n), 0, [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], C.LEV_TELE, 0, C.PM_VALKYRIE, C.NON_PM, 0, 12, 3500n, 8 ],
+    [ C.AMULET_OF_ESP, "The Eye of the Aethiopica", (0x00000001n | 0x00000002n | 0x00000004n), (0x00008000n | 0x00010000n), 0, [0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], C.CREATE_PORTAL, 0, C.PM_WIZARD, C.NON_PM, 0, 12, 4000n, 8 ],
+    [ 0, 0, 0, 0, 0, [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, (-128), C.NON_PM, C.NON_PM, 0, 0, 0n, 8 ]
 ];
     if (artilist.length !== 35)
         throw Error('Review changed original artifact initializer count');
@@ -1339,7 +1336,7 @@ export function Mb_hit(magr, mdef, mb, dmgptr, dieroll, vis, hittee)
         } else {
             if ((C.rngCaller(1368, 'Mb_hit'), C.rn2(2)) && C.resist(mdef, C.WEAPON_CLASS, 0, C.NOTELL))
                 resisted = 1;
-            else C.monflee(mdef, 3, 0, Number(mdef.mhp > dmgptr.value));
+                else C.monflee(mdef, 3, 0, Number(mdef.mhp > dmgptr.value));
         }
         if (!resisted) do_stun = 0;
         break;
@@ -1353,13 +1350,13 @@ export function Mb_hit(magr, mdef, mb, dmgptr, dieroll, vis, hittee)
     }
     if (do_stun) {
         if (youdefend) C.make_stunned((C.HStun & C.TIMEOUT) + 3n, 0);
-        else mdef.mstun = 1;
+            else mdef.mstun = 1;
         if (attack_indx == MB_INDEX_STUN) do_stun = 0;
     }
     do_confuse = Number(!(C.rngCaller(1400, 'Mb_hit'), C.rn2(12)));
     if (do_confuse) {
         if (youdefend) C.make_confused((C.HConfusion & C.TIMEOUT) + 4n, 0);
-        else mdef.mconf = 1;
+            else mdef.mconf = 1;
     }
     fakeidx = youdefend ? 1 : 0;
     if (youattack || youdefend || vis) {
@@ -1567,7 +1564,7 @@ export function artifact_hit(magr, mdef, otmp, dmgptr, dieroll)
                 let otmpname = C.distant_name(otmp, C.xname);
                 if (C.callLocal(is_art, otmp, C.ART_STORMBRINGER))
                     C.pline_The('%s blade draws the %s from %s!', C.hcolor(C.NH_BLACK), life, C.mon_nam(mdef));
-                else C.pline('%s draws the %s from %s!', C.The(otmpname), life, C.mon_nam(mdef));
+                    else C.pline('%s draws the %s from %s!', C.The(otmpname), life, C.mon_nam(mdef));
             }
             if (mdef.m_lev == 0) dmgptr.value = 2 * mdef.mhp + FATAL_DAMAGE_MODIFIER;
             else { dmgptr.value += drain; mdef.mhpmax -= drain; mdef.m_lev--; }
@@ -1588,7 +1585,7 @@ export function artifact_hit(magr, mdef, otmp, dmgptr, dieroll)
                 let otmpname = C.distant_name(otmp, C.xname);
                 if (C.callLocal(is_art, otmp, C.ART_STORMBRINGER))
                     C.pline_The('%s blade drains your %s!', C.hcolor(C.NH_BLACK), life);
-                else C.pline('%s drains your %s!', C.The(otmpname), life);
+                    else C.pline('%s drains your %s!', C.The(otmpname), life);
             }
             C.losexp('life drainage');
             if (magr && magr.mhp < magr.mhpmax) C.healmon(magr, Math.trunc((C.abs(oldhpmax - C.u.uhpmax) + 1) / 2), 0);
@@ -1654,7 +1651,7 @@ export function invoke_healing(obj)
     else { C.callLocal(nothing_special, obj); return C.ECMD_TIME; }
     if (healamt > 0) {
         if (C.Upolyd) C.u.mh += healamt;
-        else C.u.uhp += healamt;
+            else C.u.uhp += healamt;
     }
     if (C.Sick) C.make_sick(0n, 0, 0, C.SICK_ALL);
     if (C.Slimed) C.make_slimed(0n, 0);
@@ -1741,13 +1738,13 @@ export function invoke_create_portal(obj)
     newlev.dnum = i;
     if (C.svd.dungeons[i].depth_start >= C.depth(C.u.uz))
         newlev.dlevel = C.svd.dungeons[i].entry_lev;
-    else newlev.dlevel = C.svd.dungeons[i].dunlev_ureached;
+        else newlev.dlevel = C.svd.dungeons[i].dunlev_ureached;
     if (C.u.uhave.amulet || C.In_endgame(C.u.uz) || C.In_endgame(newlev)
         || newlev.dnum == C.u.uz.dnum || !C.next_to_u()) {
         C.You_feel('very disoriented for a moment.');
     } else {
         if (!C.Blind) C.You('are surrounded by a shimmering sphere!');
-        else C.You_feel('weightless for a moment.');
+            else C.You_feel('weightless for a moment.');
         C.goto_level(newlev, 0, 0, 0);
     }
     return C.ECMD_TIME;
@@ -1918,7 +1915,7 @@ export function arti_invoke(obj)
     if (oart == C.artilist[C.ART_NONARTIFACT] || !oart.inv_prop) {
         if (obj.otyp == C.CRYSTAL_BALL)
             C.use_crystal_ball(C.localPointer('struct obj *', () => obj, v => obj = v));
-        else C.pline1(C.nothing_happens);
+            else C.pline1(C.nothing_happens);
         return C.ECMD_TIME;
     }
     if (oart.inv_prop > C.LAST_PROP) {
@@ -1955,17 +1952,17 @@ export function arti_invoke(obj)
         switch (oart.inv_prop) {
         case C.CONFLICT:
             if (on) C.You_feel('like a rabble-rouser.');
-            else C.You_feel('the tension decrease around you.');
+                else C.You_feel('the tension decrease around you.');
             break;
         case C.LEVITATION:
             if (on) { C.float_up(); C.spoteffects(0); }
-            else C.float_down(C.I_SPECIAL | C.TIMEOUT, C.W_ARTI);
+                else C.float_down(C.I_SPECIAL | C.TIMEOUT, C.W_ARTI);
             break;
         case C.INVIS:
             if (C.BInvis || C.Blind) { C.callLocal(nothing_special, obj); return C.ECMD_TIME; }
             C.newsym(C.u.ux, C.u.uy);
             if (on) C.Your('body takes on a %s transparency...', C.Hallucination ? 'normal' : 'strange');
-            else C.Your('body seems to unfade...');
+                else C.Your('body seems to unfade...');
             break;
         }
     }
@@ -2494,4 +2491,3 @@ export function permapoisoned(obj)
 {
     return Number(Boolean(obj && C.callLocal(is_art, obj, C.ART_GRIMTOOTH)));
 }
-

@@ -649,7 +649,7 @@ export function wiz_map_levltyp()
         for (x = 1; x < C.COLNO; x++) {
             terrain = C.levl[x][y].typ;
             /* assumes there aren't more than 10+26+26 terrain types */
-            C.HEAP8[row + (x - 1)] =  ((terrain == C.STONE && !C.may_dig(x, y))
+            C.HEAP8[row + (x - 1)] = ((terrain == C.STONE && !C.may_dig(x, y))
                                     ? 42
                                     : (terrain < 10)
                                        ? 48 + terrain
@@ -663,7 +663,6 @@ export function wiz_map_levltyp()
         C.HEAP8[row + (x)] = 0;
         C.putstr(win, 0, row);
     }
-
     {
         let dsc = C.stackAlloc(C.COLBUFSZ);
         let slev = C.Is_special(C.u.uz);
@@ -1429,7 +1428,8 @@ export function list_migrating_mons(nextlevl) /* default destination for wiz_mig
         C.pline(
       '%d mon%s pending for current level, %d for next level, %d for others.',
               here, C.plur(here), nxtlv, other);
-        C.storeChar(prmpt, 0); C.storeChar(xtra, 0);
+        C.storeChar(prmpt, 0);
+        C.storeChar(xtra, 0);
         C.strkitten(here ? prmpt : xtra, 99);
         C.strkitten(nxtlv ? prmpt : xtra, 110);
         C.strkitten(other ? prmpt : xtra, 111);
@@ -1505,7 +1505,6 @@ export function list_migrating_mons(nextlevl) /* default destination for wiz_mig
         } else if (c != 113) {
             C.pline('None.');
         }
-
     }
 }
 
@@ -1780,7 +1779,8 @@ export function wiz_migrate_mons()
 
     C.callLocal(list_migrating_mons, tolevel);
 
-    C.storeChar(inbuf, 0); C.storeChar(inbuf + 1, 0);
+    C.storeChar(inbuf, 0);
+    C.storeChar(inbuf + 1, 0);
     if (tolevel.dnum || tolevel.dlevel)
         C.getlin('How many random monsters to migrate to next level? [0]', inbuf);
     else

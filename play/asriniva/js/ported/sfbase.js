@@ -4,8 +4,6 @@ import { C } from '../c-runtime/context.js';
 /* Copyright (c) Michael Allison, 2025. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
 //#include "sfproto.h"
 
 /* #define DO_DEBUG */
@@ -17,7 +15,7 @@ import { C } from '../c-runtime/context.js';
 /* struct sf_fieldlevel_procs sfoflprocs[NUM_SAVEFORMATS], sfiflprocs[NUM_SAVEFORMATS],
                 zerosfoflprocs = {0}, zerosfiflprocs = {0}; */
 
-/* not in _Generic */ 
+/* not in _Generic */
 
 /*
 #define SF_A(dtyp) \
@@ -153,2576 +151,2574 @@ void sfi_##dtyp(NHFILE *nhfp, xxx *d_##dtyp, const char *myname, int bfsz)      
 
 */
 
-
 /* NetHack 5.0	sfmacros.h $NHDT-Date$  $NHDT-Branch$:$NHDT-Revision$ */
 /* Copyright (c) Michael Allison, 2025. */
 /* NetHack may be freely redistributed.  See license for details. */
 
 /* This file is included by sfbase.c, sfstruct.c */
 
-
 export function sfo_arti_info(nhfp, d_arti_info, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.arti_info, 1,                               
-               complex_dump(d_arti_info));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_arti_info(nhfp, d_arti_info, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_arti_info(nhfp, d_arti_info, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.arti_info, 1,
+               complex_dump(d_arti_info));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_arti_info(nhfp, d_arti_info, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_arti_info(nhfp, d_arti_info, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_arti_info(nhfp, d_arti_info, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_arti_info(nhfp, d_arti_info, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_arti_info(nhfp, d_arti_info, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_arti_info(nhfp.nhfpconvert, d_arti_info, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.arti_info, 1,                           
-                       complex_dump(d_arti_info));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_arti_info(nhfp, d_arti_info, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_arti_info(nhfp, d_arti_info, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_arti_info(nhfp.nhfpconvert, d_arti_info, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.arti_info, 1,
+                       complex_dump(d_arti_info));
+    }
 }
 
 export function sfo_nhrect(nhfp, d_nhrect, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.nhrect, 1,                               
-               complex_dump(d_nhrect));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_nhrect(nhfp, d_nhrect, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_nhrect(nhfp, d_nhrect, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.nhrect, 1,
+               complex_dump(d_nhrect));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_nhrect(nhfp, d_nhrect, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_nhrect(nhfp, d_nhrect, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_nhrect(nhfp, d_nhrect, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_nhrect(nhfp, d_nhrect, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_nhrect(nhfp, d_nhrect, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_nhrect(nhfp.nhfpconvert, d_nhrect, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.nhrect, 1,                           
-                       complex_dump(d_nhrect));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_nhrect(nhfp, d_nhrect, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_nhrect(nhfp, d_nhrect, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_nhrect(nhfp.nhfpconvert, d_nhrect, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.nhrect, 1,
+                       complex_dump(d_nhrect));
+    }
 }
 
 export function sfo_branch(nhfp, d_branch, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.branch, 1,                               
-               complex_dump(d_branch));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_branch(nhfp, d_branch, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_branch(nhfp, d_branch, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.branch, 1,
+               complex_dump(d_branch));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_branch(nhfp, d_branch, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_branch(nhfp, d_branch, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_branch(nhfp, d_branch, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_branch(nhfp, d_branch, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_branch(nhfp, d_branch, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_branch(nhfp.nhfpconvert, d_branch, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.branch, 1,                           
-                       complex_dump(d_branch));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_branch(nhfp, d_branch, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_branch(nhfp, d_branch, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_branch(nhfp.nhfpconvert, d_branch, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.branch, 1,
+                       complex_dump(d_branch));
+    }
 }
 
 export function sfo_bubble(nhfp, d_bubble, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.bubble, 1,                               
-               complex_dump(d_bubble));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_bubble(nhfp, d_bubble, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_bubble(nhfp, d_bubble, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.bubble, 1,
+               complex_dump(d_bubble));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_bubble(nhfp, d_bubble, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_bubble(nhfp, d_bubble, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_bubble(nhfp, d_bubble, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_bubble(nhfp, d_bubble, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_bubble(nhfp, d_bubble, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_bubble(nhfp.nhfpconvert, d_bubble, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.bubble, 1,                           
-                       complex_dump(d_bubble));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_bubble(nhfp, d_bubble, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_bubble(nhfp, d_bubble, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_bubble(nhfp.nhfpconvert, d_bubble, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.bubble, 1,
+                       complex_dump(d_bubble));
+    }
 }
 
 export function sfo_cemetery(nhfp, d_cemetery, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.cemetery, 1,                               
-               complex_dump(d_cemetery));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_cemetery(nhfp, d_cemetery, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_cemetery(nhfp, d_cemetery, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.cemetery, 1,
+               complex_dump(d_cemetery));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_cemetery(nhfp, d_cemetery, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_cemetery(nhfp, d_cemetery, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_cemetery(nhfp, d_cemetery, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_cemetery(nhfp, d_cemetery, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_cemetery(nhfp, d_cemetery, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_cemetery(nhfp.nhfpconvert, d_cemetery, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.cemetery, 1,                           
-                       complex_dump(d_cemetery));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_cemetery(nhfp, d_cemetery, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_cemetery(nhfp, d_cemetery, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_cemetery(nhfp.nhfpconvert, d_cemetery, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.cemetery, 1,
+                       complex_dump(d_cemetery));
+    }
 }
 
 export function sfo_context_info(nhfp, d_context_info, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.context_info, 1,                               
-               complex_dump(d_context_info));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_context_info(nhfp, d_context_info, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_context_info(nhfp, d_context_info, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.context_info, 1,
+               complex_dump(d_context_info));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_context_info(nhfp, d_context_info, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_context_info(nhfp, d_context_info, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_context_info(nhfp, d_context_info, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_context_info(nhfp, d_context_info, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_context_info(nhfp, d_context_info, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_context_info(nhfp.nhfpconvert, d_context_info, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.context_info, 1,                           
-                       complex_dump(d_context_info));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_context_info(nhfp, d_context_info, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_context_info(nhfp, d_context_info, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_context_info(nhfp.nhfpconvert, d_context_info, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.context_info, 1,
+                       complex_dump(d_context_info));
+    }
 }
 
 export function sfo_nhcoord(nhfp, d_nhcoord, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.nhcoord, 1,                               
-               complex_dump(d_nhcoord));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_nhcoord(nhfp, d_nhcoord, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_nhcoord(nhfp, d_nhcoord, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.nhcoord, 1,
+               complex_dump(d_nhcoord));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_nhcoord(nhfp, d_nhcoord, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_nhcoord(nhfp, d_nhcoord, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_nhcoord(nhfp, d_nhcoord, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_nhcoord(nhfp, d_nhcoord, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_nhcoord(nhfp, d_nhcoord, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_nhcoord(nhfp.nhfpconvert, d_nhcoord, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.nhcoord, 1,                           
-                       complex_dump(d_nhcoord));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_nhcoord(nhfp, d_nhcoord, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_nhcoord(nhfp, d_nhcoord, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_nhcoord(nhfp.nhfpconvert, d_nhcoord, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.nhcoord, 1,
+                       complex_dump(d_nhcoord));
+    }
 }
 
 export function sfo_damage(nhfp, d_damage, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.damage, 1,                               
-               complex_dump(d_damage));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_damage(nhfp, d_damage, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_damage(nhfp, d_damage, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.damage, 1,
+               complex_dump(d_damage));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_damage(nhfp, d_damage, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_damage(nhfp, d_damage, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_damage(nhfp, d_damage, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_damage(nhfp, d_damage, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_damage(nhfp, d_damage, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_damage(nhfp.nhfpconvert, d_damage, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.damage, 1,                           
-                       complex_dump(d_damage));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_damage(nhfp, d_damage, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_damage(nhfp, d_damage, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_damage(nhfp.nhfpconvert, d_damage, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.damage, 1,
+                       complex_dump(d_damage));
+    }
 }
 
 export function sfo_dest_area(nhfp, d_dest_area, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.dest_area, 1,                               
-               complex_dump(d_dest_area));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_dest_area(nhfp, d_dest_area, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_dest_area(nhfp, d_dest_area, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.dest_area, 1,
+               complex_dump(d_dest_area));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_dest_area(nhfp, d_dest_area, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_dest_area(nhfp, d_dest_area, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_dest_area(nhfp, d_dest_area, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_dest_area(nhfp, d_dest_area, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_dest_area(nhfp, d_dest_area, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_dest_area(nhfp.nhfpconvert, d_dest_area, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.dest_area, 1,                           
-                       complex_dump(d_dest_area));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_dest_area(nhfp, d_dest_area, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_dest_area(nhfp, d_dest_area, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_dest_area(nhfp.nhfpconvert, d_dest_area, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.dest_area, 1,
+                       complex_dump(d_dest_area));
+    }
 }
 
 export function sfo_dgn_topology(nhfp, d_dgn_topology, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.dgn_topology, 1,                               
-               complex_dump(d_dgn_topology));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_dgn_topology(nhfp, d_dgn_topology, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_dgn_topology(nhfp, d_dgn_topology, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.dgn_topology, 1,
+               complex_dump(d_dgn_topology));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_dgn_topology(nhfp, d_dgn_topology, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_dgn_topology(nhfp, d_dgn_topology, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_dgn_topology(nhfp, d_dgn_topology, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_dgn_topology(nhfp, d_dgn_topology, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_dgn_topology(nhfp, d_dgn_topology, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_dgn_topology(nhfp.nhfpconvert, d_dgn_topology, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.dgn_topology, 1,                           
-                       complex_dump(d_dgn_topology));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_dgn_topology(nhfp, d_dgn_topology, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_dgn_topology(nhfp, d_dgn_topology, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_dgn_topology(nhfp.nhfpconvert, d_dgn_topology, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.dgn_topology, 1,
+                       complex_dump(d_dgn_topology));
+    }
 }
 
 export function sfo_dungeon(nhfp, d_dungeon, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.dungeon, 1,                               
-               complex_dump(d_dungeon));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_dungeon(nhfp, d_dungeon, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_dungeon(nhfp, d_dungeon, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.dungeon, 1,
+               complex_dump(d_dungeon));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_dungeon(nhfp, d_dungeon, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_dungeon(nhfp, d_dungeon, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_dungeon(nhfp, d_dungeon, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_dungeon(nhfp, d_dungeon, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_dungeon(nhfp, d_dungeon, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_dungeon(nhfp.nhfpconvert, d_dungeon, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.dungeon, 1,                           
-                       complex_dump(d_dungeon));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_dungeon(nhfp, d_dungeon, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_dungeon(nhfp, d_dungeon, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_dungeon(nhfp.nhfpconvert, d_dungeon, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.dungeon, 1,
+                       complex_dump(d_dungeon));
+    }
 }
 
 export function sfo_d_level(nhfp, d_d_level, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.d_level, 1,                               
-               complex_dump(d_d_level));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_d_level(nhfp, d_d_level, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_d_level(nhfp, d_d_level, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.d_level, 1,
+               complex_dump(d_d_level));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_d_level(nhfp, d_d_level, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_d_level(nhfp, d_d_level, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_d_level(nhfp, d_d_level, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_d_level(nhfp, d_d_level, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_d_level(nhfp, d_d_level, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_d_level(nhfp.nhfpconvert, d_d_level, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.d_level, 1,                           
-                       complex_dump(d_d_level));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_d_level(nhfp, d_d_level, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_d_level(nhfp, d_d_level, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_d_level(nhfp.nhfpconvert, d_d_level, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.d_level, 1,
+                       complex_dump(d_d_level));
+    }
 }
 
 export function sfo_ebones(nhfp, d_ebones, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.ebones, 1,                               
-               complex_dump(d_ebones));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_ebones(nhfp, d_ebones, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_ebones(nhfp, d_ebones, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.ebones, 1,
+               complex_dump(d_ebones));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_ebones(nhfp, d_ebones, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_ebones(nhfp, d_ebones, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_ebones(nhfp, d_ebones, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_ebones(nhfp, d_ebones, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_ebones(nhfp, d_ebones, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_ebones(nhfp.nhfpconvert, d_ebones, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.ebones, 1,                           
-                       complex_dump(d_ebones));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_ebones(nhfp, d_ebones, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_ebones(nhfp, d_ebones, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_ebones(nhfp.nhfpconvert, d_ebones, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.ebones, 1,
+                       complex_dump(d_ebones));
+    }
 }
 
 export function sfo_edog(nhfp, d_edog, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.edog, 1,                               
-               complex_dump(d_edog));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_edog(nhfp, d_edog, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_edog(nhfp, d_edog, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.edog, 1,
+               complex_dump(d_edog));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_edog(nhfp, d_edog, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_edog(nhfp, d_edog, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_edog(nhfp, d_edog, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_edog(nhfp, d_edog, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_edog(nhfp, d_edog, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_edog(nhfp.nhfpconvert, d_edog, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.edog, 1,                           
-                       complex_dump(d_edog));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_edog(nhfp, d_edog, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_edog(nhfp, d_edog, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_edog(nhfp.nhfpconvert, d_edog, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.edog, 1,
+                       complex_dump(d_edog));
+    }
 }
 
 export function sfo_egd(nhfp, d_egd, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.egd, 1,                               
-               complex_dump(d_egd));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_egd(nhfp, d_egd, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_egd(nhfp, d_egd, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.egd, 1,
+               complex_dump(d_egd));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_egd(nhfp, d_egd, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_egd(nhfp, d_egd, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_egd(nhfp, d_egd, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_egd(nhfp, d_egd, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_egd(nhfp, d_egd, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_egd(nhfp.nhfpconvert, d_egd, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.egd, 1,                           
-                       complex_dump(d_egd));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_egd(nhfp, d_egd, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_egd(nhfp, d_egd, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_egd(nhfp.nhfpconvert, d_egd, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.egd, 1,
+                       complex_dump(d_egd));
+    }
 }
 
 export function sfo_emin(nhfp, d_emin, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.emin, 1,                               
-               complex_dump(d_emin));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_emin(nhfp, d_emin, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_emin(nhfp, d_emin, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.emin, 1,
+               complex_dump(d_emin));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_emin(nhfp, d_emin, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_emin(nhfp, d_emin, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_emin(nhfp, d_emin, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_emin(nhfp, d_emin, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_emin(nhfp, d_emin, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_emin(nhfp.nhfpconvert, d_emin, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.emin, 1,                           
-                       complex_dump(d_emin));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_emin(nhfp, d_emin, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_emin(nhfp, d_emin, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_emin(nhfp.nhfpconvert, d_emin, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.emin, 1,
+                       complex_dump(d_emin));
+    }
 }
 
 export function sfo_engr(nhfp, d_engr, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.engr, 1,                               
-               complex_dump(d_engr));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_engr(nhfp, d_engr, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_engr(nhfp, d_engr, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.engr, 1,
+               complex_dump(d_engr));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_engr(nhfp, d_engr, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_engr(nhfp, d_engr, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_engr(nhfp, d_engr, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_engr(nhfp, d_engr, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_engr(nhfp, d_engr, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_engr(nhfp.nhfpconvert, d_engr, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.engr, 1,                           
-                       complex_dump(d_engr));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_engr(nhfp, d_engr, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_engr(nhfp, d_engr, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_engr(nhfp.nhfpconvert, d_engr, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.engr, 1,
+                       complex_dump(d_engr));
+    }
 }
 
 export function sfo_epri(nhfp, d_epri, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.epri, 1,                               
-               complex_dump(d_epri));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_epri(nhfp, d_epri, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_epri(nhfp, d_epri, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.epri, 1,
+               complex_dump(d_epri));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_epri(nhfp, d_epri, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_epri(nhfp, d_epri, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_epri(nhfp, d_epri, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_epri(nhfp, d_epri, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_epri(nhfp, d_epri, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_epri(nhfp.nhfpconvert, d_epri, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.epri, 1,                           
-                       complex_dump(d_epri));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_epri(nhfp, d_epri, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_epri(nhfp, d_epri, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_epri(nhfp.nhfpconvert, d_epri, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.epri, 1,
+                       complex_dump(d_epri));
+    }
 }
 
 export function sfo_eshk(nhfp, d_eshk, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.eshk, 1,                               
-               complex_dump(d_eshk));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_eshk(nhfp, d_eshk, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_eshk(nhfp, d_eshk, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.eshk, 1,
+               complex_dump(d_eshk));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_eshk(nhfp, d_eshk, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_eshk(nhfp, d_eshk, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_eshk(nhfp, d_eshk, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_eshk(nhfp, d_eshk, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_eshk(nhfp, d_eshk, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_eshk(nhfp.nhfpconvert, d_eshk, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.eshk, 1,                           
-                       complex_dump(d_eshk));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_eshk(nhfp, d_eshk, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_eshk(nhfp, d_eshk, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_eshk(nhfp.nhfpconvert, d_eshk, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.eshk, 1,
+                       complex_dump(d_eshk));
+    }
 }
 
 export function sfo_fe(nhfp, d_fe, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.fe, 1,                               
-               complex_dump(d_fe));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_fe(nhfp, d_fe, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_fe(nhfp, d_fe, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.fe, 1,
+               complex_dump(d_fe));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_fe(nhfp, d_fe, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_fe(nhfp, d_fe, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_fe(nhfp, d_fe, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_fe(nhfp, d_fe, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_fe(nhfp, d_fe, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_fe(nhfp.nhfpconvert, d_fe, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.fe, 1,                           
-                       complex_dump(d_fe));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_fe(nhfp, d_fe, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_fe(nhfp, d_fe, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_fe(nhfp.nhfpconvert, d_fe, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.fe, 1,
+                       complex_dump(d_fe));
+    }
 }
 
 export function sfo_flag(nhfp, d_flag, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.flag, 1,                               
-               complex_dump(d_flag));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_flag(nhfp, d_flag, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_flag(nhfp, d_flag, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.flag, 1,
+               complex_dump(d_flag));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_flag(nhfp, d_flag, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_flag(nhfp, d_flag, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_flag(nhfp, d_flag, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_flag(nhfp, d_flag, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_flag(nhfp, d_flag, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_flag(nhfp.nhfpconvert, d_flag, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.flag, 1,                           
-                       complex_dump(d_flag));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_flag(nhfp, d_flag, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_flag(nhfp, d_flag, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_flag(nhfp.nhfpconvert, d_flag, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.flag, 1,
+                       complex_dump(d_flag));
+    }
 }
 
 export function sfo_fruit(nhfp, d_fruit, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.fruit, 1,                               
-               complex_dump(d_fruit));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_fruit(nhfp, d_fruit, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_fruit(nhfp, d_fruit, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.fruit, 1,
+               complex_dump(d_fruit));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_fruit(nhfp, d_fruit, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_fruit(nhfp, d_fruit, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_fruit(nhfp, d_fruit, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_fruit(nhfp, d_fruit, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_fruit(nhfp, d_fruit, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_fruit(nhfp.nhfpconvert, d_fruit, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.fruit, 1,                           
-                       complex_dump(d_fruit));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_fruit(nhfp, d_fruit, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_fruit(nhfp, d_fruit, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_fruit(nhfp.nhfpconvert, d_fruit, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.fruit, 1,
+                       complex_dump(d_fruit));
+    }
 }
 
 export function sfo_gamelog_line(nhfp, d_gamelog_line, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.gamelog_line, 1,                               
-               complex_dump(d_gamelog_line));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_gamelog_line(nhfp, d_gamelog_line, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_gamelog_line(nhfp, d_gamelog_line, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.gamelog_line, 1,
+               complex_dump(d_gamelog_line));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_gamelog_line(nhfp, d_gamelog_line, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_gamelog_line(nhfp, d_gamelog_line, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_gamelog_line(nhfp, d_gamelog_line, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_gamelog_line(nhfp, d_gamelog_line, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_gamelog_line(nhfp, d_gamelog_line, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_gamelog_line(nhfp.nhfpconvert, d_gamelog_line, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.gamelog_line, 1,                           
-                       complex_dump(d_gamelog_line));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_gamelog_line(nhfp, d_gamelog_line, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_gamelog_line(nhfp, d_gamelog_line, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_gamelog_line(nhfp.nhfpconvert, d_gamelog_line, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.gamelog_line, 1,
+                       complex_dump(d_gamelog_line));
+    }
 }
 
 export function sfo_kinfo(nhfp, d_kinfo, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.kinfo, 1,                               
-               complex_dump(d_kinfo));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_kinfo(nhfp, d_kinfo, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_kinfo(nhfp, d_kinfo, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.kinfo, 1,
+               complex_dump(d_kinfo));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_kinfo(nhfp, d_kinfo, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_kinfo(nhfp, d_kinfo, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_kinfo(nhfp, d_kinfo, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_kinfo(nhfp, d_kinfo, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_kinfo(nhfp, d_kinfo, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_kinfo(nhfp.nhfpconvert, d_kinfo, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.kinfo, 1,                           
-                       complex_dump(d_kinfo));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_kinfo(nhfp, d_kinfo, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_kinfo(nhfp, d_kinfo, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_kinfo(nhfp.nhfpconvert, d_kinfo, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.kinfo, 1,
+                       complex_dump(d_kinfo));
+    }
 }
 
 export function sfo_levelflags(nhfp, d_levelflags, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.levelflags, 1,                               
-               complex_dump(d_levelflags));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_levelflags(nhfp, d_levelflags, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_levelflags(nhfp, d_levelflags, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.levelflags, 1,
+               complex_dump(d_levelflags));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_levelflags(nhfp, d_levelflags, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_levelflags(nhfp, d_levelflags, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_levelflags(nhfp, d_levelflags, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_levelflags(nhfp, d_levelflags, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_levelflags(nhfp, d_levelflags, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_levelflags(nhfp.nhfpconvert, d_levelflags, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.levelflags, 1,                           
-                       complex_dump(d_levelflags));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_levelflags(nhfp, d_levelflags, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_levelflags(nhfp, d_levelflags, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_levelflags(nhfp.nhfpconvert, d_levelflags, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.levelflags, 1,
+                       complex_dump(d_levelflags));
+    }
 }
 
 export function sfo_ls_t(nhfp, d_ls_t, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.ls_t, 1,                               
-               complex_dump(d_ls_t));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_ls_t(nhfp, d_ls_t, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_ls_t(nhfp, d_ls_t, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.ls_t, 1,
+               complex_dump(d_ls_t));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_ls_t(nhfp, d_ls_t, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_ls_t(nhfp, d_ls_t, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_ls_t(nhfp, d_ls_t, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_ls_t(nhfp, d_ls_t, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_ls_t(nhfp, d_ls_t, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_ls_t(nhfp.nhfpconvert, d_ls_t, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.ls_t, 1,                           
-                       complex_dump(d_ls_t));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_ls_t(nhfp, d_ls_t, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_ls_t(nhfp, d_ls_t, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_ls_t(nhfp.nhfpconvert, d_ls_t, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.ls_t, 1,
+                       complex_dump(d_ls_t));
+    }
 }
 
 export function sfo_linfo(nhfp, d_linfo, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.linfo, 1,                               
-               complex_dump(d_linfo));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_linfo(nhfp, d_linfo, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_linfo(nhfp, d_linfo, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.linfo, 1,
+               complex_dump(d_linfo));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_linfo(nhfp, d_linfo, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_linfo(nhfp, d_linfo, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_linfo(nhfp, d_linfo, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_linfo(nhfp, d_linfo, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_linfo(nhfp, d_linfo, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_linfo(nhfp.nhfpconvert, d_linfo, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.linfo, 1,                           
-                       complex_dump(d_linfo));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_linfo(nhfp, d_linfo, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_linfo(nhfp, d_linfo, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_linfo(nhfp.nhfpconvert, d_linfo, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.linfo, 1,
+                       complex_dump(d_linfo));
+    }
 }
 
 export function sfo_mapseen_feat(nhfp, d_mapseen_feat, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.mapseen_feat, 1,                               
-               complex_dump(d_mapseen_feat));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_mapseen_feat(nhfp, d_mapseen_feat, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_mapseen_feat(nhfp, d_mapseen_feat, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.mapseen_feat, 1,
+               complex_dump(d_mapseen_feat));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_mapseen_feat(nhfp, d_mapseen_feat, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_mapseen_feat(nhfp, d_mapseen_feat, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_mapseen_feat(nhfp, d_mapseen_feat, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_mapseen_feat(nhfp, d_mapseen_feat, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_mapseen_feat(nhfp, d_mapseen_feat, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_mapseen_feat(nhfp.nhfpconvert, d_mapseen_feat, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.mapseen_feat, 1,                           
-                       complex_dump(d_mapseen_feat));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_mapseen_feat(nhfp, d_mapseen_feat, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_mapseen_feat(nhfp, d_mapseen_feat, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_mapseen_feat(nhfp.nhfpconvert, d_mapseen_feat, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.mapseen_feat, 1,
+                       complex_dump(d_mapseen_feat));
+    }
 }
 
 export function sfo_mapseen_flags(nhfp, d_mapseen_flags, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.mapseen_flags, 1,                               
-               complex_dump(d_mapseen_flags));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_mapseen_flags(nhfp, d_mapseen_flags, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_mapseen_flags(nhfp, d_mapseen_flags, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.mapseen_flags, 1,
+               complex_dump(d_mapseen_flags));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_mapseen_flags(nhfp, d_mapseen_flags, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_mapseen_flags(nhfp, d_mapseen_flags, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_mapseen_flags(nhfp, d_mapseen_flags, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_mapseen_flags(nhfp, d_mapseen_flags, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_mapseen_flags(nhfp, d_mapseen_flags, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_mapseen_flags(nhfp.nhfpconvert, d_mapseen_flags, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.mapseen_flags, 1,                           
-                       complex_dump(d_mapseen_flags));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_mapseen_flags(nhfp, d_mapseen_flags, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_mapseen_flags(nhfp, d_mapseen_flags, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_mapseen_flags(nhfp.nhfpconvert, d_mapseen_flags, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.mapseen_flags, 1,
+                       complex_dump(d_mapseen_flags));
+    }
 }
 
 export function sfo_mapseen_rooms(nhfp, d_mapseen_rooms, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.mapseen_rooms, 1,                               
-               complex_dump(d_mapseen_rooms));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_mapseen_rooms(nhfp, d_mapseen_rooms, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_mapseen_rooms(nhfp, d_mapseen_rooms, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.mapseen_rooms, 1,
+               complex_dump(d_mapseen_rooms));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_mapseen_rooms(nhfp, d_mapseen_rooms, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_mapseen_rooms(nhfp, d_mapseen_rooms, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_mapseen_rooms(nhfp, d_mapseen_rooms, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_mapseen_rooms(nhfp, d_mapseen_rooms, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_mapseen_rooms(nhfp, d_mapseen_rooms, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_mapseen_rooms(nhfp.nhfpconvert, d_mapseen_rooms, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.mapseen_rooms, 1,                           
-                       complex_dump(d_mapseen_rooms));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_mapseen_rooms(nhfp, d_mapseen_rooms, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_mapseen_rooms(nhfp, d_mapseen_rooms, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_mapseen_rooms(nhfp.nhfpconvert, d_mapseen_rooms, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.mapseen_rooms, 1,
+                       complex_dump(d_mapseen_rooms));
+    }
 }
 
 export function sfo_mkroom(nhfp, d_mkroom, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.mkroom, 1,                               
-               complex_dump(d_mkroom));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_mkroom(nhfp, d_mkroom, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_mkroom(nhfp, d_mkroom, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.mkroom, 1,
+               complex_dump(d_mkroom));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_mkroom(nhfp, d_mkroom, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_mkroom(nhfp, d_mkroom, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_mkroom(nhfp, d_mkroom, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_mkroom(nhfp, d_mkroom, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_mkroom(nhfp, d_mkroom, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_mkroom(nhfp.nhfpconvert, d_mkroom, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.mkroom, 1,                           
-                       complex_dump(d_mkroom));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_mkroom(nhfp, d_mkroom, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_mkroom(nhfp, d_mkroom, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_mkroom(nhfp.nhfpconvert, d_mkroom, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.mkroom, 1,
+                       complex_dump(d_mkroom));
+    }
 }
 
 export function sfo_monst(nhfp, d_monst, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.monst, 1,                               
-               complex_dump(d_monst));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_monst(nhfp, d_monst, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_monst(nhfp, d_monst, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.monst, 1,
+               complex_dump(d_monst));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_monst(nhfp, d_monst, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_monst(nhfp, d_monst, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_monst(nhfp, d_monst, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_monst(nhfp, d_monst, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_monst(nhfp, d_monst, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_monst(nhfp.nhfpconvert, d_monst, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.monst, 1,                           
-                       complex_dump(d_monst));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_monst(nhfp, d_monst, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_monst(nhfp, d_monst, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_monst(nhfp.nhfpconvert, d_monst, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.monst, 1,
+                       complex_dump(d_monst));
+    }
 }
 
 export function sfo_mvitals(nhfp, d_mvitals, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.mvitals, 1,                               
-               complex_dump(d_mvitals));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_mvitals(nhfp, d_mvitals, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_mvitals(nhfp, d_mvitals, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.mvitals, 1,
+               complex_dump(d_mvitals));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_mvitals(nhfp, d_mvitals, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_mvitals(nhfp, d_mvitals, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_mvitals(nhfp, d_mvitals, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_mvitals(nhfp, d_mvitals, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_mvitals(nhfp, d_mvitals, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_mvitals(nhfp.nhfpconvert, d_mvitals, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.mvitals, 1,                           
-                       complex_dump(d_mvitals));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_mvitals(nhfp, d_mvitals, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_mvitals(nhfp, d_mvitals, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_mvitals(nhfp.nhfpconvert, d_mvitals, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.mvitals, 1,
+                       complex_dump(d_mvitals));
+    }
 }
 
 export function sfo_obj(nhfp, d_obj, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.obj, 1,                               
-               complex_dump(d_obj));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_obj(nhfp, d_obj, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_obj(nhfp, d_obj, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.obj, 1,
+               complex_dump(d_obj));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_obj(nhfp, d_obj, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_obj(nhfp, d_obj, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_obj(nhfp, d_obj, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_obj(nhfp, d_obj, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_obj(nhfp, d_obj, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_obj(nhfp.nhfpconvert, d_obj, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.obj, 1,                           
-                       complex_dump(d_obj));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_obj(nhfp, d_obj, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_obj(nhfp, d_obj, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_obj(nhfp.nhfpconvert, d_obj, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.obj, 1,
+                       complex_dump(d_obj));
+    }
 }
 
 export function sfo_objclass(nhfp, d_objclass, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.objclass, 1,                               
-               complex_dump(d_objclass));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_objclass(nhfp, d_objclass, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_objclass(nhfp, d_objclass, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.objclass, 1,
+               complex_dump(d_objclass));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_objclass(nhfp, d_objclass, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_objclass(nhfp, d_objclass, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_objclass(nhfp, d_objclass, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_objclass(nhfp, d_objclass, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_objclass(nhfp, d_objclass, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_objclass(nhfp.nhfpconvert, d_objclass, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.objclass, 1,                           
-                       complex_dump(d_objclass));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_objclass(nhfp, d_objclass, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_objclass(nhfp, d_objclass, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_objclass(nhfp.nhfpconvert, d_objclass, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.objclass, 1,
+                       complex_dump(d_objclass));
+    }
 }
 
 export function sfo_q_score(nhfp, d_q_score, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.q_score, 1,                               
-               complex_dump(d_q_score));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_q_score(nhfp, d_q_score, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_q_score(nhfp, d_q_score, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.q_score, 1,
+               complex_dump(d_q_score));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_q_score(nhfp, d_q_score, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_q_score(nhfp, d_q_score, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_q_score(nhfp, d_q_score, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_q_score(nhfp, d_q_score, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_q_score(nhfp, d_q_score, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_q_score(nhfp.nhfpconvert, d_q_score, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.q_score, 1,                           
-                       complex_dump(d_q_score));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_q_score(nhfp, d_q_score, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_q_score(nhfp, d_q_score, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_q_score(nhfp.nhfpconvert, d_q_score, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.q_score, 1,
+                       complex_dump(d_q_score));
+    }
 }
 
 export function sfo_rm(nhfp, d_rm, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.rm, 1,                               
-               complex_dump(d_rm));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_rm(nhfp, d_rm, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_rm(nhfp, d_rm, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.rm, 1,
+               complex_dump(d_rm));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_rm(nhfp, d_rm, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_rm(nhfp, d_rm, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_rm(nhfp, d_rm, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_rm(nhfp, d_rm, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_rm(nhfp, d_rm, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_rm(nhfp.nhfpconvert, d_rm, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.rm, 1,                           
-                       complex_dump(d_rm));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_rm(nhfp, d_rm, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_rm(nhfp, d_rm, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_rm(nhfp.nhfpconvert, d_rm, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.rm, 1,
+                       complex_dump(d_rm));
+    }
 }
 
 export function sfo_spell(nhfp, d_spell, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.spell, 1,                               
-               complex_dump(d_spell));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_spell(nhfp, d_spell, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_spell(nhfp, d_spell, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.spell, 1,
+               complex_dump(d_spell));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_spell(nhfp, d_spell, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_spell(nhfp, d_spell, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_spell(nhfp, d_spell, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_spell(nhfp, d_spell, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_spell(nhfp, d_spell, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_spell(nhfp.nhfpconvert, d_spell, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.spell, 1,                           
-                       complex_dump(d_spell));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_spell(nhfp, d_spell, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_spell(nhfp, d_spell, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_spell(nhfp.nhfpconvert, d_spell, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.spell, 1,
+                       complex_dump(d_spell));
+    }
 }
 
 export function sfo_stairway(nhfp, d_stairway, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.stairway, 1,                               
-               complex_dump(d_stairway));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_stairway(nhfp, d_stairway, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_stairway(nhfp, d_stairway, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.stairway, 1,
+               complex_dump(d_stairway));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_stairway(nhfp, d_stairway, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_stairway(nhfp, d_stairway, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_stairway(nhfp, d_stairway, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_stairway(nhfp, d_stairway, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_stairway(nhfp, d_stairway, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_stairway(nhfp.nhfpconvert, d_stairway, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.stairway, 1,                           
-                       complex_dump(d_stairway));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_stairway(nhfp, d_stairway, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_stairway(nhfp, d_stairway, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_stairway(nhfp.nhfpconvert, d_stairway, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.stairway, 1,
+                       complex_dump(d_stairway));
+    }
 }
 
 export function sfo_s_level(nhfp, d_s_level, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.s_level, 1,                               
-               complex_dump(d_s_level));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_s_level(nhfp, d_s_level, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_s_level(nhfp, d_s_level, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.s_level, 1,
+               complex_dump(d_s_level));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_s_level(nhfp, d_s_level, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_s_level(nhfp, d_s_level, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_s_level(nhfp, d_s_level, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_s_level(nhfp, d_s_level, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_s_level(nhfp, d_s_level, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_s_level(nhfp.nhfpconvert, d_s_level, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.s_level, 1,                           
-                       complex_dump(d_s_level));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_s_level(nhfp, d_s_level, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_s_level(nhfp, d_s_level, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_s_level(nhfp.nhfpconvert, d_s_level, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.s_level, 1,
+                       complex_dump(d_s_level));
+    }
 }
 
 export function sfo_trap(nhfp, d_trap, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.trap, 1,                               
-               complex_dump(d_trap));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_trap(nhfp, d_trap, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_trap(nhfp, d_trap, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.trap, 1,
+               complex_dump(d_trap));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_trap(nhfp, d_trap, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_trap(nhfp, d_trap, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_trap(nhfp, d_trap, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_trap(nhfp, d_trap, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_trap(nhfp, d_trap, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_trap(nhfp.nhfpconvert, d_trap, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.trap, 1,                           
-                       complex_dump(d_trap));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_trap(nhfp, d_trap, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_trap(nhfp, d_trap, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_trap(nhfp.nhfpconvert, d_trap, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.trap, 1,
+                       complex_dump(d_trap));
+    }
 }
 
 export function sfo_you(nhfp, d_you, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.you, 1,                               
-               complex_dump(d_you));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_you(nhfp, d_you, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_you(nhfp, d_you, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.you, 1,
+               complex_dump(d_you));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_you(nhfp, d_you, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_you(nhfp, d_you, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_you(nhfp, d_you, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_you(nhfp, d_you, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_you(nhfp, d_you, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_you(nhfp.nhfpconvert, d_you, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.you, 1,                           
-                       complex_dump(d_you));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_you(nhfp, d_you, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_you(nhfp, d_you, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_you(nhfp.nhfpconvert, d_you, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.you, 1,
+                       complex_dump(d_you));
+    }
 }
 
 export function sfo_any(nhfp, d_any, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.any, 1,                               
-               complex_dump(d_any));                               
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_any(nhfp, d_any, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_any(nhfp, d_any, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.any, 1,
+               complex_dump(d_any));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_any(nhfp, d_any, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_any(nhfp, d_any, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_any(nhfp, d_any, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_any(nhfp, d_any, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_any(nhfp, d_any, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-            && nhfp.nhfpconvert) {                                             
-            sfo_any(nhfp.nhfpconvert, d_any, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.any, 1,                           
-                       complex_dump(d_any));                       
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_any(nhfp, d_any, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_any(nhfp, d_any, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+            && nhfp.nhfpconvert) {
+            sfo_any(nhfp.nhfpconvert, d_any, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.any, 1,
+                       complex_dump(d_any));
+    }
 }
 
 export function sfo_aligntyp(nhfp, d_aligntyp, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.aligntyp, 1, sfvalue_aligntyp(d_aligntyp));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_aligntyp(nhfp, d_aligntyp, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_aligntyp(nhfp, d_aligntyp, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.aligntyp, 1, sfvalue_aligntyp(d_aligntyp));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_aligntyp(nhfp, d_aligntyp, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_aligntyp(nhfp, d_aligntyp, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_aligntyp(nhfp, d_aligntyp, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_aligntyp(nhfp, d_aligntyp, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_aligntyp(nhfp, d_aligntyp, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_aligntyp(nhfp.nhfpconvert, d_aligntyp, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.aligntyp, 1,                           
-                   sfvalue_aligntyp(d_aligntyp));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_aligntyp(nhfp, d_aligntyp, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_aligntyp(nhfp, d_aligntyp, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_aligntyp(nhfp.nhfpconvert, d_aligntyp, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.aligntyp, 1,
+                   sfvalue_aligntyp(d_aligntyp));
+    }
 }
 
 export function sfo_boolean(nhfp, d_boolean, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.boolean, 1, sfvalue_boolean(d_boolean));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_boolean(nhfp, d_boolean, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_boolean(nhfp, d_boolean, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.boolean, 1, sfvalue_boolean(d_boolean));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_boolean(nhfp, d_boolean, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_boolean(nhfp, d_boolean, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_boolean(nhfp, d_boolean, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_boolean(nhfp, d_boolean, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_boolean(nhfp, d_boolean, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_boolean(nhfp.nhfpconvert, d_boolean, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.boolean, 1,                           
-                   sfvalue_boolean(d_boolean));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_boolean(nhfp, d_boolean, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_boolean(nhfp, d_boolean, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_boolean(nhfp.nhfpconvert, d_boolean, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.boolean, 1,
+                   sfvalue_boolean(d_boolean));
+    }
 }
 
 export function sfo_coordxy(nhfp, d_coordxy, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.coordxy, 1, sfvalue_int16(d_coordxy));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_coordxy(nhfp, d_coordxy, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_coordxy(nhfp, d_coordxy, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.coordxy, 1, sfvalue_int16(d_coordxy));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_coordxy(nhfp, d_coordxy, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_coordxy(nhfp, d_coordxy, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_coordxy(nhfp, d_coordxy, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_coordxy(nhfp, d_coordxy, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_coordxy(nhfp, d_coordxy, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_coordxy(nhfp.nhfpconvert, d_coordxy, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.coordxy, 1,                           
-                   sfvalue_int16(d_coordxy));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_coordxy(nhfp, d_coordxy, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_coordxy(nhfp, d_coordxy, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_coordxy(nhfp.nhfpconvert, d_coordxy, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.coordxy, 1,
+                   sfvalue_int16(d_coordxy));
+    }
 }
 
 export function sfo_int(nhfp, d_int, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.int, 1, sfvalue_int(d_int));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_int(nhfp, d_int, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_int(nhfp, d_int, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.int, 1, sfvalue_int(d_int));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_int(nhfp, d_int, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_int(nhfp, d_int, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_int(nhfp, d_int, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_int(nhfp, d_int, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_int(nhfp, d_int, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_int(nhfp.nhfpconvert, d_int, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.int, 1,                           
-                   sfvalue_int(d_int));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_int(nhfp, d_int, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_int(nhfp, d_int, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_int(nhfp.nhfpconvert, d_int, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.int, 1,
+                   sfvalue_int(d_int));
+    }
 }
 
 export function sfo_int16(nhfp, d_int16, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.int16, 1, sfvalue_int16(d_int16));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_int16(nhfp, d_int16, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_int16(nhfp, d_int16, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.int16, 1, sfvalue_int16(d_int16));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_int16(nhfp, d_int16, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_int16(nhfp, d_int16, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_int16(nhfp, d_int16, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_int16(nhfp, d_int16, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_int16(nhfp, d_int16, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_int16(nhfp.nhfpconvert, d_int16, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.int16, 1,                           
-                   sfvalue_int16(d_int16));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_int16(nhfp, d_int16, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_int16(nhfp, d_int16, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_int16(nhfp.nhfpconvert, d_int16, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.int16, 1,
+                   sfvalue_int16(d_int16));
+    }
 }
 
 export function sfo_int32(nhfp, d_int32, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.int32, 1, sfvalue_int32(d_int32));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_int32(nhfp, d_int32, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_int32(nhfp, d_int32, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.int32, 1, sfvalue_int32(d_int32));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_int32(nhfp, d_int32, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_int32(nhfp, d_int32, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_int32(nhfp, d_int32, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_int32(nhfp, d_int32, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_int32(nhfp, d_int32, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_int32(nhfp.nhfpconvert, d_int32, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.int32, 1,                           
-                   sfvalue_int32(d_int32));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_int32(nhfp, d_int32, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_int32(nhfp, d_int32, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_int32(nhfp.nhfpconvert, d_int32, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.int32, 1,
+                   sfvalue_int32(d_int32));
+    }
 }
 
 export function sfo_int64(nhfp, d_int64, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.int64, 1, sfvalue_int64(d_int64));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_int64(nhfp, d_int64, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_int64(nhfp, d_int64, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.int64, 1, sfvalue_int64(d_int64));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_int64(nhfp, d_int64, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_int64(nhfp, d_int64, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_int64(nhfp, d_int64, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_int64(nhfp, d_int64, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_int64(nhfp, d_int64, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_int64(nhfp.nhfpconvert, d_int64, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.int64, 1,                           
-                   sfvalue_int64(d_int64));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_int64(nhfp, d_int64, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_int64(nhfp, d_int64, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_int64(nhfp.nhfpconvert, d_int64, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.int64, 1,
+                   sfvalue_int64(d_int64));
+    }
 }
 
 export function sfo_long(nhfp, d_long, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.long, 1, sfvalue_long(d_long));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_long(nhfp, d_long, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_long(nhfp, d_long, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.long, 1, sfvalue_long(d_long));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_long(nhfp, d_long, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_long(nhfp, d_long, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_long(nhfp, d_long, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_long(nhfp, d_long, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_long(nhfp, d_long, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_long(nhfp.nhfpconvert, d_long, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.long, 1,                           
-                   sfvalue_long(d_long));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_long(nhfp, d_long, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_long(nhfp, d_long, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_long(nhfp.nhfpconvert, d_long, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.long, 1,
+                   sfvalue_long(d_long));
+    }
 }
 
 export function sfo_schar(nhfp, d_schar, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.schar, 1, sfvalue_schar(d_schar));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_schar(nhfp, d_schar, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_schar(nhfp, d_schar, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.schar, 1, sfvalue_schar(d_schar));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_schar(nhfp, d_schar, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_schar(nhfp, d_schar, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_schar(nhfp, d_schar, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_schar(nhfp, d_schar, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_schar(nhfp, d_schar, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_schar(nhfp.nhfpconvert, d_schar, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.schar, 1,                           
-                   sfvalue_schar(d_schar));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_schar(nhfp, d_schar, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_schar(nhfp, d_schar, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_schar(nhfp.nhfpconvert, d_schar, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.schar, 1,
+                   sfvalue_schar(d_schar));
+    }
 }
 
 export function sfo_short(nhfp, d_short, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.short, 1, sfvalue_short(d_short));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_short(nhfp, d_short, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_short(nhfp, d_short, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.short, 1, sfvalue_short(d_short));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_short(nhfp, d_short, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_short(nhfp, d_short, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_short(nhfp, d_short, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_short(nhfp, d_short, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_short(nhfp, d_short, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_short(nhfp.nhfpconvert, d_short, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.short, 1,                           
-                   sfvalue_short(d_short));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_short(nhfp, d_short, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_short(nhfp, d_short, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_short(nhfp.nhfpconvert, d_short, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.short, 1,
+                   sfvalue_short(d_short));
+    }
 }
 
 export function sfo_size_t(nhfp, d_size_t, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.size_t, 1, sfvalue_size_t(d_size_t));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_size_t(nhfp, d_size_t, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_size_t(nhfp, d_size_t, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.size_t, 1, sfvalue_size_t(d_size_t));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_size_t(nhfp, d_size_t, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_size_t(nhfp, d_size_t, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_size_t(nhfp, d_size_t, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_size_t(nhfp, d_size_t, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_size_t(nhfp, d_size_t, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_size_t(nhfp.nhfpconvert, d_size_t, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.size_t, 1,                           
-                   sfvalue_size_t(d_size_t));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_size_t(nhfp, d_size_t, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_size_t(nhfp, d_size_t, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_size_t(nhfp.nhfpconvert, d_size_t, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.size_t, 1,
+                   sfvalue_size_t(d_size_t));
+    }
 }
 
 export function sfo_time_t(nhfp, d_time_t, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.time_t, 1, sfvalue_time_t(d_time_t));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_time_t(nhfp, d_time_t, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_time_t(nhfp, d_time_t, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.time_t, 1, sfvalue_time_t(d_time_t));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_time_t(nhfp, d_time_t, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_time_t(nhfp, d_time_t, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_time_t(nhfp, d_time_t, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_time_t(nhfp, d_time_t, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_time_t(nhfp, d_time_t, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_time_t(nhfp.nhfpconvert, d_time_t, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.time_t, 1,                           
-                   sfvalue_time_t(d_time_t));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_time_t(nhfp, d_time_t, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_time_t(nhfp, d_time_t, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_time_t(nhfp.nhfpconvert, d_time_t, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.time_t, 1,
+                   sfvalue_time_t(d_time_t));
+    }
 }
 
 export function sfo_uchar(nhfp, d_uchar, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.uchar, 1, sfvalue_uchar(d_uchar));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_uchar(nhfp, d_uchar, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_uchar(nhfp, d_uchar, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.uchar, 1, sfvalue_uchar(d_uchar));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_uchar(nhfp, d_uchar, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_uchar(nhfp, d_uchar, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_uchar(nhfp, d_uchar, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_uchar(nhfp, d_uchar, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_uchar(nhfp, d_uchar, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_uchar(nhfp.nhfpconvert, d_uchar, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.uchar, 1,                           
-                   sfvalue_uchar(d_uchar));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_uchar(nhfp, d_uchar, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_uchar(nhfp, d_uchar, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_uchar(nhfp.nhfpconvert, d_uchar, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.uchar, 1,
+                   sfvalue_uchar(d_uchar));
+    }
 }
 
 export function sfo_uint16(nhfp, d_uint16, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.uint16, 1, sfvalue_uint16(d_uint16));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_uint16(nhfp, d_uint16, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_uint16(nhfp, d_uint16, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.uint16, 1, sfvalue_uint16(d_uint16));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_uint16(nhfp, d_uint16, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_uint16(nhfp, d_uint16, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_uint16(nhfp, d_uint16, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_uint16(nhfp, d_uint16, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_uint16(nhfp, d_uint16, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_uint16(nhfp.nhfpconvert, d_uint16, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.uint16, 1,                           
-                   sfvalue_uint16(d_uint16));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_uint16(nhfp, d_uint16, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_uint16(nhfp, d_uint16, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_uint16(nhfp.nhfpconvert, d_uint16, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.uint16, 1,
+                   sfvalue_uint16(d_uint16));
+    }
 }
 
 export function sfo_uint32(nhfp, d_uint32, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.uint32, 1, sfvalue_uint32(d_uint32));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_uint32(nhfp, d_uint32, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_uint32(nhfp, d_uint32, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.uint32, 1, sfvalue_uint32(d_uint32));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_uint32(nhfp, d_uint32, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_uint32(nhfp, d_uint32, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_uint32(nhfp, d_uint32, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_uint32(nhfp, d_uint32, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_uint32(nhfp, d_uint32, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_uint32(nhfp.nhfpconvert, d_uint32, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.uint32, 1,                           
-                   sfvalue_uint32(d_uint32));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_uint32(nhfp, d_uint32, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_uint32(nhfp, d_uint32, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_uint32(nhfp.nhfpconvert, d_uint32, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.uint32, 1,
+                   sfvalue_uint32(d_uint32));
+    }
 }
 
 export function sfo_uint64(nhfp, d_uint64, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.uint64, 1, sfvalue_uint64(d_uint64));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_uint64(nhfp, d_uint64, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_uint64(nhfp, d_uint64, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.uint64, 1, sfvalue_uint64(d_uint64));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_uint64(nhfp, d_uint64, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_uint64(nhfp, d_uint64, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_uint64(nhfp, d_uint64, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_uint64(nhfp, d_uint64, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_uint64(nhfp, d_uint64, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_uint64(nhfp.nhfpconvert, d_uint64, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.uint64, 1,                           
-                   sfvalue_uint64(d_uint64));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_uint64(nhfp, d_uint64, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_uint64(nhfp, d_uint64, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_uint64(nhfp.nhfpconvert, d_uint64, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.uint64, 1,
+                   sfvalue_uint64(d_uint64));
+    }
 }
 
 export function sfo_ulong(nhfp, d_ulong, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.ulong, 1, sfvalue_ulong(d_ulong));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_ulong(nhfp, d_ulong, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_ulong(nhfp, d_ulong, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.ulong, 1, sfvalue_ulong(d_ulong));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_ulong(nhfp, d_ulong, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_ulong(nhfp, d_ulong, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_ulong(nhfp, d_ulong, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_ulong(nhfp, d_ulong, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_ulong(nhfp, d_ulong, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_ulong(nhfp.nhfpconvert, d_ulong, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.ulong, 1,                           
-                   sfvalue_ulong(d_ulong));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_ulong(nhfp, d_ulong, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_ulong(nhfp, d_ulong, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_ulong(nhfp.nhfpconvert, d_ulong, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.ulong, 1,
+                   sfvalue_ulong(d_ulong));
+    }
 }
 
 export function sfo_unsigned(nhfp, d_unsigned, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.unsigned, 1, sfvalue_unsigned(d_unsigned));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_unsigned(nhfp, d_unsigned, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_unsigned(nhfp, d_unsigned, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.unsigned, 1, sfvalue_unsigned(d_unsigned));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_unsigned(nhfp, d_unsigned, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_unsigned(nhfp, d_unsigned, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_unsigned(nhfp, d_unsigned, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_unsigned(nhfp, d_unsigned, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_unsigned(nhfp, d_unsigned, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_unsigned(nhfp.nhfpconvert, d_unsigned, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.unsigned, 1,                           
-                   sfvalue_unsigned(d_unsigned));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_unsigned(nhfp, d_unsigned, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_unsigned(nhfp, d_unsigned, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_unsigned(nhfp.nhfpconvert, d_unsigned, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.unsigned, 1,
+                   sfvalue_unsigned(d_unsigned));
+    }
 }
 
 export function sfo_ushort(nhfp, d_ushort, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.ushort, 1, sfvalue_ushort(d_ushort));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_ushort(nhfp, d_ushort, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_ushort(nhfp, d_ushort, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.ushort, 1, sfvalue_ushort(d_ushort));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_ushort(nhfp, d_ushort, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_ushort(nhfp, d_ushort, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_ushort(nhfp, d_ushort, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_ushort(nhfp, d_ushort, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_ushort(nhfp, d_ushort, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_ushort(nhfp.nhfpconvert, d_ushort, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.ushort, 1,                           
-                   sfvalue_ushort(d_ushort));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_ushort(nhfp, d_ushort, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_ushort(nhfp, d_ushort, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_ushort(nhfp.nhfpconvert, d_ushort, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.ushort, 1,
+                   sfvalue_ushort(d_ushort));
+    }
 }
 
 export function sfo_xint16(nhfp, d_xint16, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.xint16, 1, sfvalue_xint16(d_xint16));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_xint16(nhfp, d_xint16, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_xint16(nhfp, d_xint16, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.xint16, 1, sfvalue_xint16(d_xint16));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_xint16(nhfp, d_xint16, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_xint16(nhfp, d_xint16, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_xint16(nhfp, d_xint16, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_xint16(nhfp, d_xint16, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_xint16(nhfp, d_xint16, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_xint16(nhfp.nhfpconvert, d_xint16, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.xint16, 1,                           
-                   sfvalue_xint16(d_xint16));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_xint16(nhfp, d_xint16, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_xint16(nhfp, d_xint16, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_xint16(nhfp.nhfpconvert, d_xint16, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.xint16, 1,
+                   sfvalue_xint16(d_xint16));
+    }
 }
 
 export function sfo_xint8(nhfp, d_xint8, myname)
-{                                                                               
-    if (nhfp.fplog)                                                            
-        sf_log(nhfp, myname, C.sizes.xint8, 1, sfvalue_xint8(d_xint8));    
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_xint8(nhfp, d_xint8, myname);          
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_xint8(nhfp, d_xint8, myname);      
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+        sf_log(nhfp, myname, C.sizes.xint8, 1, sfvalue_xint8(d_xint8));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_xint8(nhfp, d_xint8, myname);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_xint8(nhfp, d_xint8, myname);
+        nhfp.fplog = save_fplog;
+    }
+}
+
 export function sfi_xint8(nhfp, d_xint8, myname)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_xint8(nhfp, d_xint8, myname);          
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_xint8(nhfp, d_xint8, myname);      
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {     
-            sfo_xint8(nhfp.nhfpconvert, d_xint8, myname);                    
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.xint8, 1,                           
-                   sfvalue_xint8(d_xint8));                                   
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_xint8(nhfp, d_xint8, myname);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_xint8(nhfp, d_xint8, myname);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0)) && nhfp.nhfpconvert)  {
+            sfo_xint8(nhfp.nhfpconvert, d_xint8, myname);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.xint8, 1,
+                   sfvalue_xint8(d_xint8));
+    }
 }
 
 /* SF_C && SF_A */
 
 export function sfo_bitfield(nhfp, d_bitfield, myname, bfsz)
-{                                                                               
-    if (nhfp.fplog)                                                            
-            sf_log(nhfp, myname, C.sizes.bitfield, 1,                           
-                   sfvalue_bitfield(d_bitfield));                                   
-    if (nhfp.structlevel) {                                                    
-        C.sfoprocs[nhfp.fnidx].fn.sf_bitfield(nhfp, d_bitfield, myname, bfsz);    
-    } else {                                                                    
-        let save_fplog = nhfp.fplog;                                         
-                                                                                
-        nhfp.fplog = 0;                                                        
-        C.sfoflprocs[nhfp.fnidx].fn_x.sf_bitfield(nhfp, d_bitfield,               
-                                                  myname, bfsz);                
-        nhfp.fplog = save_fplog;                                               
-    }                                                                           
-    if (nhfp.fplog && !nhfp.eof)                                              
-        sf_log(nhfp, myname, C.sizes.bitfield, 1, sfvalue_bitfield(d_bitfield));    
-}                                                                               
-                                                                                
+{
+    if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.bitfield, 1,
+                   sfvalue_bitfield(d_bitfield));
+    if (nhfp.structlevel) {
+        C.sfoprocs[nhfp.fnidx].fn.sf_bitfield(nhfp, d_bitfield, myname, bfsz);
+    } else {
+        let save_fplog = nhfp.fplog;
+
+        nhfp.fplog = 0;
+        C.sfoflprocs[nhfp.fnidx].fn_x.sf_bitfield(nhfp, d_bitfield,
+                                                  myname, bfsz);
+        nhfp.fplog = save_fplog;
+    }
+    if (nhfp.fplog && !nhfp.eof)
+        sf_log(nhfp, myname, C.sizes.bitfield, 1, sfvalue_bitfield(d_bitfield));
+}
+
 export function sfi_bitfield(nhfp, d_bitfield, myname, bfsz)
-{                                                                               
-    if (nhfp.structlevel) {                                                    
-        C.sfiprocs[nhfp.fnidx].fn.sf_bitfield(nhfp, d_bitfield, myname, bfsz);    
-    } else {                                                                    
-        let save_mode = nhfp.mode;                                             
-                                                                                
-        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);                             
-        nhfp.mode |= C.TURN_OFF_LOGGING;                                         
-        C.sfiflprocs[nhfp.fnidx].fn_x.sf_bitfield(nhfp, d_bitfield,               
-                                                  myname, bfsz);                
-        nhfp.mode = save_mode;                                                 
-    }                                                                           
-    if (!nhfp.eof) {                                                           
-        if ((((nhfp.mode & C.CONVERTING) != 0)                                   
-            || ((nhfp.mode & C.UNCONVERTING) != 0))                              
-                       && nhfp.nhfpconvert) {                                  
-            sfo_bitfield(nhfp.nhfpconvert, d_bitfield, myname, bfsz);              
-        }                                                                       
-        if (nhfp.fplog)                                                        
-            sf_log(nhfp, myname, C.sizes.bitfield, 1,                           
-                   bitfield_dump(d_bitfield));                                      
-    }                                                                           
+{
+    if (nhfp.structlevel) {
+        C.sfiprocs[nhfp.fnidx].fn.sf_bitfield(nhfp, d_bitfield, myname, bfsz);
+    } else {
+        let save_mode = nhfp.mode;
+
+        nhfp.mode &= ~(C.CONVERTING | C.UNCONVERTING);
+        nhfp.mode |= C.TURN_OFF_LOGGING;
+        C.sfiflprocs[nhfp.fnidx].fn_x.sf_bitfield(nhfp, d_bitfield,
+                                                  myname, bfsz);
+        nhfp.mode = save_mode;
+    }
+    if (!nhfp.eof) {
+        if ((((nhfp.mode & C.CONVERTING) != 0)
+            || ((nhfp.mode & C.UNCONVERTING) != 0))
+                       && nhfp.nhfpconvert) {
+            sfo_bitfield(nhfp.nhfpconvert, d_bitfield, myname, bfsz);
+        }
+        if (nhfp.fplog)
+            sf_log(nhfp, myname, C.sizes.bitfield, 1,
+                   bitfield_dump(d_bitfield));
+    }
 }
 
 export function sfo_char(nhfp, d_char, myname, cnt)
@@ -2924,7 +2920,7 @@ export function sfvalue_genericptr(a)
 {
     const buf = C.buffers.sfvalue_genericptr;
 
-    C.Snprintf(buf, C.bufferSizes.sfvalue_genericptr, "%s", 
+    C.Snprintf(buf, C.bufferSizes.sfvalue_genericptr, "%s",
              (a == 0) ? "0" : "glorkum", 4);
     return buf;
 }
@@ -3062,7 +3058,6 @@ export function sfvalue_xint16(a)
 {
     const buf = C.buffers.sfvalue_xint16;
 
-
     C.Snprintf(buf, C.bufferSizes.sfvalue_xint16, "%d", C.load("xint16", a), 21);
     return buf;
 }
@@ -3092,7 +3087,7 @@ export function complex_dump(a)
     for (i = 0; i < x.length; ++i) {
         x[i] = C.load("uchar", uc++);
     }
-    C.Snprintf(buf, C.bufferSizes.complex_dump, "%03x %03x %03x %03x %03x %03x %03x %03x %03x %03x", 
+    C.Snprintf(buf, C.bufferSizes.complex_dump, "%03x %03x %03x %03x %03x %03x %03x %03x %03x %03x",
              x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], 24);
     C.storeChar(buf + 40, 0);
     return buf;
@@ -3123,7 +3118,6 @@ export function sf_setflprocs(idx, flsfi, flsfo)
     C.sfoflprocs[idx] = C.fieldlevel(flsfo);
     C.sfiflprocs[idx] = C.fieldlevel(flsfi);
 }
-
 
 export function norm_ptrs_any(d_any)
 {
@@ -3416,8 +3410,6 @@ export function norm_ptrs_you(d_you)
 {
 }
 
-
 /* SFCTOOL */
 
 /* end of sfbase.c */
-

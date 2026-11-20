@@ -922,7 +922,6 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
                          * (rndmonnam), whether or not anyone sees it. */
                         const _gaze_fmt = `${s_suffix(Monnam_dm(mdef)).replace(/%/g, '%%')} gaze is reflected by %s %s.`;
                         if (await mon_reflects_dm(magr, canseemon(magr) ? _gaze_fmt : null)) {
-                            if (game._blockingPline) await game._blockingPline;
                             return mdead | mhit;
                         }
                         const _magr_name = Monnam_dm(magr);

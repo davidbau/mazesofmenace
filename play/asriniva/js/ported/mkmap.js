@@ -333,7 +333,6 @@ export function join_map(bg_typ, fg_typ)
                 }
             }
         }
-
     }
 // joinm:
     /*
@@ -385,7 +384,7 @@ export function finish_map(
     let x, y;
 
     if (walled)
-        C.wallify_map(1, 0, C.COLNO-1, C.ROWNO-1);
+        C.wallify_map(1, 0, C.COLNO - 1, C.ROWNO - 1);
 
     if (lit) {
         for (x = C.coordxy(1); x < C.COLNO; x = C.coordxy(x + 1))

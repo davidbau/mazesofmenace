@@ -3,36 +3,13 @@ import {C} from '../c-runtime/context.js';
 /* Copyright (c) 1996 by Jean-Christophe Collet  */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 /*
  * This should really go into the level structure, but
  * I'll start here for ease. It *WILL* move into the level
  * structure eventually.
  */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export const callbacks = [
-    inside_gas_cloud,
-    expire_gas_cloud
-];
+export const callbacks = [inside_gas_cloud, expire_gas_cloud];
 
 /* Should be inlined. */
 export function inside_rect(r, x, y)
@@ -303,7 +280,7 @@ export function remove_region(reg)
                 for (y = reg.bounding_box.ly; y <= reg.bounding_box.hy; y++)
                     if (C.isok(x, y) && inside_region(reg, x, y)) {
                         if (pass == 1) {
-                            if (!C.does_block(x, y, C.terrain(x,y)))
+                            if (!C.does_block(x, y, C.terrain(x, y)))
                                 C.unblock_point(x, y);
                         } else { /* pass==2 */
                             if (C.cansee(x, y))
@@ -667,13 +644,12 @@ export function save_regions(nhfp)
         C.Sfo_short(nhfp, C.addressOf(r, "n_monst"), "region-monster_count");
 
         for (j = 0; j < r.n_monst; j++) {
-            C.Sfo_unsigned(nhfp, C.elementAddress(r.monsters,j), "region-monster");
+            C.Sfo_unsigned(nhfp, C.elementAddress(r.monsters, j), "region-monster");
         }
         C.Sfo_boolean(nhfp, C.addressOf(r, "visible"), "region-visible");
         C.Sfo_int(nhfp, C.addressOf(r, "glyph"), "region-glyph");
         C.Sfo_any(nhfp, C.addressOf(r, "arg"), "region-arg");
     }
-
  }
     if (C.release_data(nhfp))
         clear_regions();
@@ -757,7 +733,7 @@ export function rest_regions(nhfp)
             r.monsters = 0;
         r.max_monst = r.n_monst;
         for (j = 0; j < r.n_monst; j++) {
-            C.Sfi_unsigned(nhfp, C.elementAddress(r.monsters,j), "region-monster");
+            C.Sfi_unsigned(nhfp, C.elementAddress(r.monsters, j), "region-monster");
         }
         C.Sfi_boolean(nhfp, C.addressOf(r, "visible"), "region-visible");
         C.Sfi_int(nhfp, C.addressOf(r, "glyph"), "region-glyph");
@@ -774,8 +750,6 @@ export function rest_regions(nhfp)
     }
 /* !SFCTOOL */
 }
-
-
 
 /* to support '#stats' wizard-mode command */
 export function region_stats(hdrfmt, hdrbuf, count, size)
@@ -799,8 +773,6 @@ export function region_stats(hdrfmt, hdrbuf, count, size)
     /* ? */
 }
 
-
-
 /* update monster IDs for region being loaded from bones; `ghostly' implied */
 export function reset_region_mids(reg)
 {
@@ -808,7 +780,7 @@ export function reset_region_mids(reg)
     let mid_list = reg.monsters;
 
     while (i < n)
-        if (!C.lookup_id_mapping(mid_list[i], C.elementAddress(mid_list,i))) {
+        if (!C.lookup_id_mapping(mid_list[i], C.elementAddress(mid_list, i))) {
             /* shrink list to remove missing monster; order doesn't matter */
             mid_list[i] = mid_list[--n];
         } else {
@@ -857,7 +829,7 @@ export function expire_gas_cloud(p1, p2)
             for (y = reg.bounding_box.ly; y <= reg.bounding_box.hy; y++) {
                 if (inside_region(reg, x, y)) {
                     if (pass == 1) {
-                        if (!C.does_block(x, y, C.terrain(x,y)))
+                        if (!C.does_block(x, y, C.terrain(x, y)))
                             C.unblock_point(x, y);
                     } else { /* pass==2 */
                         if (!C.u.uswallow) {
@@ -907,7 +879,7 @@ export function inside_gas_cloud(p1, p2)
                   C.makeplural(C.body_part(C.LUNG)));
             C.You("cough and spit blood!");
             C.wake_nearto(C.u.ux, C.u.uy, 2);
-            dam = C.Half_physical_damage ? Math.trunc((C.rnd(dam,1122) + 5 + 1) / 2) : C.rnd(dam,1122) + 5;
+            dam = C.Half_physical_damage ? Math.trunc((C.rnd(dam, 1122) + 5 + 1) / 2) : C.rnd(dam, 1122) + 5;
             if (C.Half_gas_damage) /* worn towel */
                 dam = Math.trunc((dam + 1) / 2);
             C.losehp(dam, "gas cloud", C.KILLED_BY_AN);
@@ -937,7 +909,7 @@ export function inside_gas_cloud(p1, p2)
             }
             if (C.resists_poison(mtmp))
                 return 0;
-            mtmp.mhp -= C.rnd(dam,1152) + 5;
+            mtmp.mhp -= C.rnd(dam, 1152) + 5;
             if (C.DEADMONSTER(mtmp)) {
                 if (C.heros_fault(reg))
                     C.killed(mtmp);
@@ -1028,9 +1000,9 @@ export function create_gas_cloud(x, y, cloudsize, damage)
 
         /* Primitive Fisher-Yates-Knuth shuffle to randomize the order of
          * directions chosen. */
-        const dirs = [ {x:0,y:-1}, {x:0,y:1}, {x:-1,y:0}, {x:1,y:0} ];
+        const dirs = [ {x:0, y:-1}, {x:0, y:1}, {x:-1, y:0}, {x:1, y:0} ];
         for (i = 4; i > 0; --i) {
-    let swapidx = C.rn2(i,1255);
+    let swapidx = C.rn2(i, 1255);
             let tmp = dirs[swapidx];
 
             dirs[swapidx] = dirs[i - 1];
@@ -1054,7 +1026,7 @@ export function create_gas_cloud(x, y, cloudsize, damage)
                 /* randomly disrupt the natural breadth-first search, so that
                  * clouds released in open spaces don't always tend towards a
                  * rhombus shape */
-                if (nvalid == 4 && !C.rn2(2,1279))
+                if (nvalid == 4 && !C.rn2(2, 1279))
                     continue;
 
                 if (isunpicked) {
@@ -1078,7 +1050,7 @@ export function create_gas_cloud(x, y, cloudsize, damage)
         tmprect.ly = tmprect.hy = ycoords[i];
         add_rect_to_reg(cloud, tmprect);
     }
-    cloud.ttl = BigInt(C.rn1(3, 4,1303));
+    cloud.ttl = BigInt(C.rn1(3, 4, 1303));
     /* If cloud was constrained in small space, give it more time to live. */
     cloud.ttl = C.long(cloud.ttl * BigInt(cloudsize)) / BigInt(newidx);
 
@@ -1109,7 +1081,6 @@ export function create_gas_cloud_selection(sel, damage)
     make_gas_cloud(cloud, damage, inside_cloud);
     return cloud;
 }
-
 
 /* for checking troubles during prayer; is hero at risk? */
 export function region_danger()
@@ -1161,7 +1132,7 @@ export function region_safety()
         /* maybe there's no safe place available; must get hero out of danger
            or prayer's "fix all troubles" result will get stuck in a loop */
         if (region_danger()) {
-            C.set_itimeout(C.magicalBreathingAddress(), BigInt(C.d(4, 4,1391) + 4));
+            C.set_itimeout(C.magicalBreathingAddress(), BigInt(C.d(4, 4, 1391) + 4));
             /* not already Breathless or wouldn't be in region danger */
             C.You_feel("able to breathe.");
         }

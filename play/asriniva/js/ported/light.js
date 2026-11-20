@@ -4,7 +4,6 @@
 
 import { C } from '../c-runtime/context.js';
 
-
 /*
  * Mobile light sources.
  *
@@ -46,17 +45,7 @@ export const LSF_NEEDS_FIXUP = 0x2;
 export const LSF_IS_PROBLEMATIC = 0x4;
 /* impossible situation encountered */
 
-
-
-
-
-
-
-
 /* imported from vision.c, for small circles */
-
-
-
 
 /* Create a new light source.  Caller (and extern.h) doesn't need to know
    anything about type 'light_source'. */
@@ -496,9 +485,6 @@ export function restore_light_sources(nhfp)
     }
 }
 
-
-
-
 /* to support '#stats' wizard-mode command */
 export function light_stats(hdrfmt, hdrbuf, count, size)
 {
@@ -511,8 +497,6 @@ export function light_stats(hdrfmt, hdrbuf, count, size)
         size.value = C.long(size.value + C.long(C.lightSourceSize));
     }
 }
-
-
 
 /* Relink all lights that are so marked. */
 export function relink_light_sources(ghostly)
@@ -860,7 +844,7 @@ export function candle_light_range(obj)
         let n = obj.quan;
 
         radius = 1; /* always incremented at least once */
-        while(radius*radius <= n && radius < C.MAX_RADIUS) {
+        while (radius * radius <= n && radius < C.MAX_RADIUS) {
             radius++;
         }
     } else {

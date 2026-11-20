@@ -9,10 +9,6 @@ const constants = { ...layouts.shknam, VEGETARIAN_CLASS: layouts.shknam.MAXOCLAS
 
 /* shknam.c -- initialize a shop */
 
-
-
-
-
 /*
  *  Name prefix codes:
  *      dash          -  female, personal name
@@ -223,7 +219,7 @@ export const shtypes = [
       symb: constants.FOOD_CLASS, prob: 2, shdist: constants.D_SHOP,
       iprobs: [{ iprob: 70, itype: constants.VEGETARIAN_CLASS }, { iprob: 20, itype: -constants.POT_FRUIT_JUICE }, { iprob: 4, itype: -constants.POT_HEALING }, { iprob: 3, itype: -constants.POT_FULL_HEALING }, { iprob: 2, itype: -constants.SCR_FOOD_DETECTION }, { iprob: 1, itype: -constants.LUMP_OF_ROYAL_JELLY }, { iprob: 0, itype: 0 }, { iprob: 0, itype: 0 }, { iprob: 0, itype: 0 }],
       shknms: shkhealthfoods },
-/* Shops below this point are "unique".  That is they must all have a
+    /* Shops below this point are "unique".  That is they must all have a
      * probability of zero.  They are only created via the special level
      * loader.
      */
@@ -231,7 +227,7 @@ export const shtypes = [
       symb: constants.TOOL_CLASS, prob: 0, shdist: constants.D_SHOP,
       iprobs: [{ iprob: 30, itype: -constants.WAX_CANDLE }, { iprob: 44, itype: -constants.TALLOW_CANDLE }, { iprob: 5, itype: -constants.BRASS_LANTERN }, { iprob: 9, itype: -constants.OIL_LAMP }, { iprob: 3, itype: -constants.MAGIC_LAMP }, { iprob: 5, itype: -constants.POT_OIL }, { iprob: 2, itype: -constants.WAN_LIGHT }, { iprob: 1, itype: -constants.SCR_LIGHT }, { iprob: 1, itype: -constants.SPE_LIGHT }],
       shknms: shklight },
-/* sentinel */
+    /* sentinel */
     { name: 0, annotation: 0,
       symb: 0, prob: 0, shdist: 0,
       iprobs: [{ iprob: 0, itype: 0 }, { iprob: 0, itype: 0 }, { iprob: 0, itype: 0 }, { iprob: 0, itype: 0 }, { iprob: 0, itype: 0 }, { iprob: 0, itype: 0 }, { iprob: 0, itype: 0 }, { iprob: 0, itype: 0 }, { iprob: 0, itype: 0 }],
@@ -638,7 +634,7 @@ export function stock_room(shp_indx, sroom)
          */
         for (sx = sroom.lx; sx <= sroom.hx; sx++)
             for (sy = sroom.ly; sy <= sroom.hy; sy++)
-                if (stock_room_goodpos(sroom, rmno, sh, sx,sy))
+                if (stock_room_goodpos(sroom, rmno, sh, sx, sy))
                     stockcount++;
         specialspot = C.rnd(stockcount, 777, 4);
         stockcount = 0;
@@ -646,7 +642,7 @@ export function stock_room(shp_indx, sroom)
 
     for (sx = sroom.lx; sx <= sroom.hx; sx++)
         for (sy = sroom.ly; sy <= sroom.hy; sy++)
-            if (stock_room_goodpos(sroom, rmno, sh, sx,sy)) {
+            if (stock_room_goodpos(sroom, rmno, sh, sx, sy)) {
                 stockcount++;
                 mkshobj_at(shp, sx, sy,
                            ((stockcount) && (stockcount == specialspot)));
@@ -784,7 +780,5 @@ export function is_izchak(shkp, override_hallucination)
         ++shknm;
     return !C.strcmp(shknm, "Izchak");
 }
-
-
 
 /*shknam.c*/

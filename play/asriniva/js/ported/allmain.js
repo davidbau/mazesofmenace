@@ -5,9 +5,6 @@
 
 /* various code that was replicated in *main.c */
 
-
-
-
 import { C } from '../c-runtime/context.js';
 import { turnStateFor } from './turn-state.js';
 
@@ -54,14 +51,14 @@ export function moveloop_preamble(resuming, C = activeContext())
 
     if (!resuming) { /* new game */
         C.program_state.beyond_savefile_load = 1; /* for TTY_PERM_INVENT */
-        C.svc.context.rndencode = C.rnd(()=>(9000), 72, "moveloop_preamble");
+        C.svc.context.rndencode = C.rnd(() => (9000), 72, "moveloop_preamble");
         C.set_wear(0); /* for side-effects of starting gear */
         C.reset_justpicked(C.gi.invent);
         C.pickup(1);      /* autopickup at initial location */
         /* only matters if someday a character is able to start with
            clairvoyance (wizard with cornuthaum perhaps?); without this,
            first "random" occurrence would always kick in on turn 1 */
-        C.svc.context.seer_turn = BigInt(C.rnd(()=>(30), 79, "moveloop_preamble"));
+        C.svc.context.seer_turn = BigInt(C.rnd(() => (30), 79, "moveloop_preamble"));
         /* give hero initial movement points; new game only--for restore,
            pending movement points were included in the save file */
         state.setMovement(C.NORMAL_SPEED);
@@ -109,11 +106,11 @@ export function u_calc_moveamt(wtcap, C = activeContext())
 
         if (C.Very_fast) { /* speed boots, potion, or spell */
             /* gain a free action on 2/3 of turns */
-            if (C.rn2(()=>(3), 127, "u_calc_moveamt") != 0)
+            if (C.rn2(() => (3), 127, "u_calc_moveamt") != 0)
                 moveamt += C.NORMAL_SPEED;
         } else if (C.Fast) { /* intrinsic */
             /* gain a free action on 1/3 of turns */
-            if (C.rn2(()=>(3), 131, "u_calc_moveamt") == 0)
+            if (C.rn2(() => (3), 131, "u_calc_moveamt") == 0)
                 moveamt += C.NORMAL_SPEED;
         }
     }
@@ -145,14 +142,11 @@ export function u_calc_moveamt(wtcap, C = activeContext())
 /* small chance of generating a new random monster */
 export function maybe_generate_rnd_mon(C = activeContext())
 {
-    if (!C.rn2(()=>(C.u.uevent.udemigod ? 25
+    if (!C.rn2(() => (C.u.uevent.udemigod ? 25
              : (C.depth(C.u.uz) > C.depth(C.stronghold_level)) ? 50
              : 70), 166, "maybe_generate_rnd_mon"))
         C.makemon(0, 0, 0, C.NO_MM_FLAGS);
 }
-
-
-
 
 export const mvl_wtcap = 0;
 export const mvl_change = 0;
@@ -162,13 +156,10 @@ export function moveloop_core(C = activeContext())
     const state = turnStateFor(C);
     let monscanmove = C.FALSE;
 
-
     if (C.program_state.done_hup)
         C.end_of_input();
 
     C.get_nh_event();
-
-
 
     if (C.iflags.pending_customizations)
         C.maybe_shuffle_customizations();
@@ -293,7 +284,7 @@ export function moveloop_core(C = activeContext())
                 regen_pw(C.allmainState.mvl_wtcap, C);
 
                 if (!C.u.uinvulnerable) {
-                    if (C.Teleportation && !C.rn2(()=>(85), 308, "moveloop_core")) {
+                    if (C.Teleportation && !C.rn2(() => (85), 308, "moveloop_core")) {
                         let old_ux = C.u.ux, old_uy = C.u.uy;
 
                         C.tele();
@@ -310,10 +301,10 @@ export function moveloop_core(C = activeContext())
                     if ((C.allmainState.mvl_change == 1 && !C.Polymorph)
                         || (C.allmainState.mvl_change == 2 && C.u.ulycn == C.NON_PM))
                         C.allmainState.mvl_change = 0;
-                    if (C.Polymorph && !C.rn2(()=>(100), 325, "moveloop_core"))
+                    if (C.Polymorph && !C.rn2(() => (100), 325, "moveloop_core"))
                         C.allmainState.mvl_change = 1;
                     else if (C.ismnum(C.u.ulycn) && !C.Upolyd
-                             && !C.rn2(()=>(80 - (20 * C.night())), 328, "moveloop_core"))
+                             && !C.rn2(() => (80 - (20 * C.night())), 328, "moveloop_core"))
                         C.allmainState.mvl_change = 2;
                     if (C.allmainState.mvl_change && !C.Unchanging) {
                         if (C.gm.multi >= 0) {
@@ -345,14 +336,14 @@ export function moveloop_core(C = activeContext())
                 C.invault();
                 if (C.u.uhave.amulet)
                     C.amulet();
-                if (!C.rn2(()=>(40 + (C.ACURR(C.A_DEX) * 3)), 360, "moveloop_core"))
-                    C.u_wipe_engr(C.rnd(()=>(3), 361, "moveloop_core"));
+                if (!C.rn2(() => (40 + (C.ACURR(C.A_DEX) * 3)), 360, "moveloop_core"))
+                    C.u_wipe_engr(C.rnd(() => (3), 361, "moveloop_core"));
                 if (C.u.uevent.udemigod && !C.u.uinvulnerable) {
                     if (C.u.udg_cnt)
                         C.u.udg_cnt--;
                     if (!C.u.udg_cnt) {
                         C.intervene();
-                        C.u.udg_cnt = C.rn1(()=>[200, 50], 367, "moveloop_core");
+                        C.u.udg_cnt = C.rn1(() => [200, 50], 367, "moveloop_core");
                     }
                 }
 /* XXX This should be recoded to use something like regions - a list of
@@ -390,7 +381,6 @@ export function moveloop_core(C = activeContext())
            immediately if their own action encumbered them */
         C.encumber_msg();
 
-
         if (C.iflags.hilite_delta)
             C.status_eval_next_unhilite();
 
@@ -400,7 +390,7 @@ export function moveloop_core(C = activeContext())
                 C.do_vicinity_map(0);
             /* we maintain this counter even when clairvoyance isn't
                taking place; on average, go again 30 turns from now */
-            C.svc.context.seer_turn = C.svm.moves + BigInt(C.rn1(()=>[31, 15], 415, "moveloop_core")); /*15..45*/
+            C.svc.context.seer_turn = C.svm.moves + BigInt(C.rn1(() => [31, 15], 415, "moveloop_core")); /*15..45*/
             /* [it used to be that on every 15th turn, there was a 50%
                chance of farsight, so it could happen as often as every
                15 turns or theoretically never happen at all; but when
@@ -471,24 +461,10 @@ export function moveloop_core(C = activeContext())
     state.setTurnTaken(1);
 
     if (C.gm.multi >= 0 && C.go.occupation) {
-
-
-
-
-
-
-
-
-
-
-
-
             if (C.callOccupation(C.go.occupation) == 0)
 
                 C.go.occupation = 0;
         if (
-
-
 
             C.monster_nearby()) {
             stop_occupation(C);
@@ -518,7 +494,6 @@ export function moveloop_core(C = activeContext())
             C.rhack(C.gc.cmd_key);
         }
     } else if (C.gm.multi == 0) {
-
         C.ckmailstatus();
 
         C.rhack(0);
@@ -598,7 +573,7 @@ export function regen_pw(wtcap, C = activeContext())
         if (C.EMagical_breathing)
             upper += 2;
 
-        C.u.uen += C.rn1(()=>[upper, 1], 612, "regen_pw");
+        C.u.uen += C.rn1(() => [upper, 1], 612, "regen_pw");
         if (C.u.uen > C.u.uenmax)
             C.u.uen = C.u.uenmax;
         C.disp.botl = C.TRUE;
@@ -606,7 +581,6 @@ export function regen_pw(wtcap, C = activeContext())
             interrupt_multi("You feel full of energy.", C);
     }
 }
-
 
 /* maybe recover some lost health (or lose some when an eel out of water) */
 export function regen_hp(wtcap, C = activeContext())
@@ -624,7 +598,7 @@ export function regen_hp(wtcap, C = activeContext())
                    && !C.Breathless) {
             /* eel out of water loses hp, similar to monster eels;
                as hp gets lower, rate of further loss slows down */
-            if (C.u.mh > 1 && !C.Regeneration && C.rn2(()=>(C.u.mh), 639, "regen_hp") > C.rn2(()=>(8), 639, "regen_hp")
+            if (C.u.mh > 1 && !C.Regeneration && C.rn2(() => (C.u.mh), 639, "regen_hp") > C.rn2(() => (8), 639, "regen_hp")
                 && (!C.Half_physical_damage || !(C.svm.moves % 2n)))
                 heal = -1;
         } else if (C.u.mh < C.u.mhmax) {
@@ -644,7 +618,7 @@ export function regen_hp(wtcap, C = activeContext())
            once u.mh reached u.mhmax; that may have been convenient
            for the player, but it didn't make sense for gameplay...] */
         if (C.u.uhp < C.u.uhpmax && (encumbrance_ok || (C.Regeneration || (C.Sleepy && C.u.usleep)))) {
-            heal = (C.u.ulevel + C.ACURR(C.A_CON)) > C.rn2(()=>(100), 659, "regen_hp");
+            heal = (C.u.ulevel + C.ACURR(C.A_CON)) > C.rn2(() => (100), 659, "regen_hp");
 
             if ((C.Regeneration || (C.Sleepy && C.u.usleep)))
                 heal += 1;
@@ -665,7 +639,6 @@ export function regen_hp(wtcap, C = activeContext())
     if (reached_full)
         interrupt_multi("You are in full health.", C);
 }
-
 
 export function stop_occupation(C = activeContext())
 {
@@ -694,13 +667,6 @@ export function init_sound_disp_gamewindows()
         C.SoundAchievement(0, C.sa2_newgame_nosplash, 0);
     }
 
-
-
-
-
-
-
-
     C.WIN_MESSAGE = C.create_nhwindow(C.NHW_MESSAGE);
     if (C.VIA_WINDOWPORT()) {
         C.status_initialize(C.FALSE);
@@ -712,39 +678,18 @@ export function init_sound_disp_gamewindows()
     if (C.WIN_INVEN != C.WIN_ERR)
         C.adjust_menu_promptstyle(C.WIN_INVEN, C.menuHeadingsAddress);
 
-
-
-
-
-
-
     /* in case of early quit where WIN_INVEN could be destroyed before
        ever having been used, use it here to pacify the Qt interface */
     C.start_menu(C.WIN_INVEN, menu_behavior), C.end_menu(C.WIN_INVEN, 0);
-
-
-
-
-
-
-
-
-
 
     /*
      * The mac port is not DEPENDENT on the order of these
      * displays, but it looks a lot better this way...
      */
 
-
-
     C.display_nhwindow(C.WIN_MESSAGE, C.FALSE);
     C.clear_glyph_buffer();
     C.display_nhwindow(C.WIN_MAP, C.FALSE);
-
-
-
-
 }
 
 export function newgame()
@@ -781,7 +726,6 @@ export function newgame()
     C.reset_glyphmap(C.gm_newgame);
 
     C.signal(C.SIGINT, C.done1Pointer);
-
 
     if (C.iflags.news)
         C.display_file(C.NEWS, C.FALSE);
@@ -862,9 +806,6 @@ export function welcome(new_game) /* false => restoring an old game */
      */
     C.storeChar(buf, 0);
 
-
-
-
     /*
      * 2026-04-24
      * GitHub issue https://github.com/NetHack/NetHack/issues/537
@@ -910,50 +851,6 @@ export function welcome(new_game) /* false => restoring an old game */
         C.print_level_annotation();
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export function interrupt_multi(msg, C = activeContext())
 {

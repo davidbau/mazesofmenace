@@ -2,7 +2,6 @@
 /*      Copyright 1991, M. Stephenson             */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 import { C } from '../c-runtime/context.js';
 
 /* C structs remain live views, and Qstat retains native bitfield narrowing.
@@ -10,9 +9,6 @@ import { C } from '../c-runtime/context.js';
  * and C logical results are normalized where stored in a one-bit field. */
 
 /*  quest dungeon branch routines. */
-
-
-
 
 export function on_start()
 {
@@ -394,7 +390,7 @@ export function nemesis_speaks()
         C.Qstat.met_nemesis = 1;
     } else /* he will spit out random maledictions */
         if (!C.rn2(5, 420, 'nemesis_speaks'))
-        C.qt_pager("discourage");
+            C.qt_pager("discourage");
 }
 
 /* create cloud of stinking gas around dying nemesis */
@@ -486,6 +482,5 @@ export function quest_stat_check(mtmp)
     if (mtmp.data.msound == C.MS_NEMESIS)
         C.Qstat.in_battle = Number(!!(!C.helpless(mtmp) && C.monnear(mtmp, C.u.ux, C.u.uy)));
 }
-
 
 /*quest.c*/

@@ -5,12 +5,6 @@
 
 import { C } from '../c-runtime/context.js';
 
-
-
-
-
-
-
 /* fill buffer with short version (so caller can avoid including date.h)
  * buf cannot be NULL */
 export function version_string(buf, bufsz)
@@ -30,7 +24,6 @@ export function getversionstring(buf, bufsz)
 {
     bufsz = C.size_t(bufsz);
     C.Strcpy(buf, C.nomakedefs.version_id);
-
     {
         let c = 0;
         let p = C.eos(buf);
@@ -257,7 +250,7 @@ export function early_version_info(pastebuf)
     if (tmp) {
         /* retain one buffer so that it all goes into the paste buffer */
         C.storeChar(tmp++, '\0'.charCodeAt(0));
-        C.Snprintf(buf2, C.BUFSZ,"%s\n%s", buf1, tmp, 11);
+        C.Snprintf(buf2, C.BUFSZ, "%s\n%s", buf1, tmp, 11);
         buf = buf2;
     } else {
         buf = buf1;
@@ -274,8 +267,6 @@ export function early_version_info(pastebuf)
         C.port_insert_pastebuf(buf);
     }
 }
-
-
 
 /*
  * makedefs should put the first token into dat/options; we'll substitute
@@ -354,7 +345,6 @@ export function check_version(version_data, filename, complain, utdflags)
     }
     return 1;
 }
-
 
 export function get_feature_notice_ver(str)
 {
@@ -453,8 +443,6 @@ export function store_version(nhfp)
 /* !SFCTOOL */
 /* MINIMAL_FOR_RECOVER */
 
-
-
 export const critical_sizes = [
     { ucsize: 0, nm: "unused" },
     /* simple types, that don't have subfields */
@@ -529,11 +517,11 @@ export const critical_sizes = [
     /* struct you requires 2 bytes */
     { ucsize: "you_LO", nm: "you_LO" },
     { ucsize: "you_HI", nm: "you_HI" },
-/*
+    /*
      * the ones below are substructures of the ones
      * above, so there is no need to check these directly.
      */
-/* SF_INCLUDE_SUBSTRUCTS */
+    /* SF_INCLUDE_SUBSTRUCTS */
     /* 10 for future expansion without changing array size */
     { ucsize: 0, nm: "" },
     { ucsize: 0, nm: "" },
@@ -546,8 +534,6 @@ export const critical_sizes = [
     { ucsize: 0, nm: "" },
     { ucsize: 0, nm: "" },
 ];
-
-
 
 export function get_critical_size_count()
 {

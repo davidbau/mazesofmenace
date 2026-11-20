@@ -1,15 +1,10 @@
 import {C} from '../c-runtime/context.js';
 
-export const Before_you=0, With_you=1, After_you=2, Wiz_arrive=-1;
+export const Before_you = 0, With_you = 1, After_you = 2, Wiz_arrive = -1;
 /* NetHack 5.0	dog.c	$NHDT-Date: 1753856387 2025/07/29 22:19:47 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.190 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
-
-
-
-
-
 
 export function newedog(mtmp)
 {
@@ -125,7 +120,9 @@ export function pick_familiar_pm(otmp, quietly)
 
 export function make_familiar(otmp, x, y, quietly)
 {
-    x = C.coordxy(x); y = C.coordxy(y); quietly = C.boolean(quietly);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    quietly = C.boolean(quietly);
     let pm;
     let mtmp = 0;
     let chance, trycnt = 100;
@@ -284,7 +281,6 @@ export function update_mlstmv()
 }
 
 /* note: always reset when used so doesn't need to be part of struct 'g' */
-
 
 export function losedogs()
 {
@@ -550,7 +546,7 @@ export function mon_arrive(mtmp, when)
                      && (C.Is_qstart(C.u.uz0) || C.Is_qstart(C.u.uz)))) {
             C.impossible("mon_arrive: no corresponding portal?");
         }
-        
+
         /*FALLTHRU*/
     default:
     case C.MIGR_RANDOM:
@@ -614,8 +610,6 @@ export function mon_catchup_elapsed_time(mtmp, nmv)
     nmv = C.long(nmv);
     let imv = 0; /* avoid zillions of casts and lint warnings */
 
-
-
     if (nmv < 0n) { /* crash likely... */
         C.panic("catchup from future time?");
         /*NOTREACHED*/
@@ -625,9 +619,9 @@ export function mon_catchup_elapsed_time(mtmp, nmv)
     } else
 
         if (nmv >= C.LARGEST_INT) /* paranoia */
-        imv = C.LARGEST_INT - 1;
+            imv = C.LARGEST_INT - 1;
     else
-        imv = C.int(nmv);
+            imv = C.int(nmv);
 
     /* might stop being afraid, blind or frozen */
     /* set to 1 and allow final decrement in movemon() */
@@ -868,7 +862,8 @@ export function keepdogs(pets_only)
 export function migrate_to_level(mtmp, tolev, xyloc, cc)
 /* destination level */ /* MIGR_xxx destination xy location: */ /* optional destination coordinates */
 {
-    tolev = C.short(tolev); xyloc = C.short(xyloc);
+    tolev = C.short(tolev);
+    xyloc = C.short(xyloc);
     const new_lev = C.levelLocal();
     let xyflags;
     let mx = mtmp.mx, my = mtmp.my; /* <mx,my> needed below */
@@ -1103,7 +1098,7 @@ export function dogfood(mon, obj)
             && obj.oclass != C.BALL_CLASS
             && obj.oclass != C.CHAIN_CLASS)
             return C.APPORT;
-        
+
         /*FALLTHRU*/
     case C.ROCK_CLASS:
         return C.UNDEF;

@@ -29,8 +29,6 @@ export const my_goto_song_initial = [67, 0];
  *                      called here chasms.
  */
 
-
-
 /* wake up monster, possibly scare it */
 export function awaken_scare(mtmp, scary)
 {
@@ -792,7 +790,6 @@ export function do_play_instrument(instr)
               : "can feel %s emitting vibrations.", C.the(C.xname(instr)));
     // Hero_playnotes(obj_to_instr(instr), buf, 50); (inactive configured macro)
 
-
     /* Check if there was the Stronghold drawbridge near
      * and if the tune conforms to what we're waiting for.
      */
@@ -877,7 +874,6 @@ export function do_play_instrument(instr)
         }
     }
     return C.ECMD_TIME;
-
     }
     C.pline1(C.Never_mind);
     return C.ECMD_OK;
@@ -886,7 +882,6 @@ export function do_play_instrument(instr)
 export function obj_to_instr(obj)
 {
     let ret_instr = C.ins_no_instrument;
-
 
     return ret_instr;
 }

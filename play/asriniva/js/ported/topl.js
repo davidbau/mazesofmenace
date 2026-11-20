@@ -4,16 +4,6 @@ import {C} from '../c-runtime/context.js';
 /*-Copyright (c) Michael Allison, 2009. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
-
-
-
-
 export function tty_doprev_message()
 {
     let cw = C.wins[C.WIN_MESSAGE];
@@ -115,7 +105,6 @@ export function tty_doprev_message()
     return 0;
 }
 
-
 export function redotoplin(str)
 {
     let otoplin = C.int(C.ttyDisplay.toplin);
@@ -188,7 +177,6 @@ export function remember_topl()
     }
 }
 
-
 export function addtopl(s)
 {
     let cw = C.wins[C.WIN_MESSAGE];
@@ -198,7 +186,6 @@ export function addtopl(s)
     C.cl_end();
     C.ttyDisplay.toplin = C.TOPLINE_NEED_MORE;
 }
-
 
 export function more()
 {
@@ -245,7 +232,6 @@ export function more()
     C.ttyDisplay.inmore = 0;
 }
 
-
 export function update_topl(bp)
 {
     let tl, otl;
@@ -277,7 +263,7 @@ export function update_topl(bp)
     }
     C.callLocal(remember_topl);
     C.strncpy(C.gt.toplines, bp, C.TBUFSZ);
-    C.byte(C.gt.toplines+C.TBUFSZ-1).value = 0;
+    C.byte(C.gt.toplines + C.TBUFSZ - 1).value = 0;
 
     for (tl = C.gt.toplines; n0 >= C.CO; ) {
         otl = tl;
@@ -298,7 +284,6 @@ export function update_topl(bp)
     if (!skip)
         C.callLocal(redotoplin, C.gt.toplines);
 }
-
 
 export function topl_putsym(c)
 {
@@ -339,13 +324,11 @@ export function topl_putsym(c)
     { let svx = C.int(C.ttyDisplay.curx); C.ttyDisplay.curx--; C.nomux_putch(c); C.ttyDisplay.curx = svx; }
 }
 
-
 export function putsyms(str)
 {
     while (C.byte(str).value)
         C.callLocal(topl_putsym, C.byte(str++).value);
 }
-
 
 export function removetopl(n)
 {
@@ -404,7 +387,7 @@ export function tty_yn_function(query, resp, def)
         if ((rb = C.strchr(respbuf, 27)) != 0)
             C.byte(rb).value = 0;
         C.strncpy(prompt, query, C.QBUFSZ - 1);
-        C.byte(prompt+(C.QBUFSZ - 1)).value = 0;
+        C.byte(prompt + (C.QBUFSZ - 1)).value = 0;
         C.Sprintf(C.eos(prompt), " [%s]", respbuf);
         if (def)
             C.Sprintf(C.eos(prompt), " (%c)", def);
@@ -475,9 +458,9 @@ export function tty_yn_function(query, resp, def)
             let value = C.long(0);
 
             C.callLocal(addtopl, "#"), n_len++;
-            C.byte(digit_string+(1)).value = 0;
+            C.byte(digit_string + (1)).value = 0;
             if (q != 35) {
-                C.byte(digit_string+(0)).value = q;
+                C.byte(digit_string + (0)).value = q;
                 C.callLocal(addtopl, digit_string), n_len++;
                 value = C.long(q - 48);
                 q = C.char(35);
@@ -493,7 +476,7 @@ export function tty_yn_function(query, resp, def)
                     value = C.long(C.AppendLongDigit(value, dgt));
                     if (value < 0)
                         break; /* overflow: try again */
-                    C.byte(digit_string+(0)).value = z;
+                    C.byte(digit_string + (0)).value = z;
                     C.callLocal(addtopl, digit_string), n_len++;
                 } else if (z == 121 || C.strchr(C.quitchars, z)) {
                     if (z == 27)
@@ -523,7 +506,6 @@ export function tty_yn_function(query, resp, def)
             }
         }
     } while (!q);
-
     }
     if (C.yn_number)
         C.Sprintf(rtmp, "#%ld", C.yn_number);
@@ -543,7 +525,6 @@ export function tty_yn_function(query, resp, def)
 }
 
 /* shared by tty_getmsghistory() and tty_putmsghistory() */
-
 
 /* collect currently available message history data into a sequential array;
    optionally, purge that data from the active circular buffer set as we go */
@@ -630,7 +611,6 @@ export function free_msghistory_snapshot(purged)
 
 export function tty_getmsghistory(init)
 {
-
     let nextmesg;
     let result = 0;
 
@@ -670,7 +650,6 @@ export function tty_getmsghistory(init)
 
 export function tty_putmsghistory(msg, restoring_msghist)
 {
-
     let idx;
 
     if (restoring_msghist && !C.initd) {

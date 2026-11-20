@@ -4,8 +4,6 @@
 
 import { C } from '../c-runtime/context.js';
 
-
-
 /* selection */
 export function selection_new()
 {
@@ -114,7 +112,7 @@ export function selection_recalc_bounds(sel)
 
     if (r.lx > -1) {
         /* right */
-        for (x = sel.wid-1; x >= r.lx; x--) {
+        for (x = sel.wid - 1; x >= r.lx; x--) {
             for (y = 0; y < sel.hei; y++) {
                 if (selection_getpoint(x, y, sel)) {
                     r.hx = x;
@@ -138,7 +136,7 @@ export function selection_recalc_bounds(sel)
         }
 
         /* bottom */
-        for (y = sel.hei-1; y >= r.ly; y--) {
+        for (y = sel.hei - 1; y >= r.ly; y--) {
             for (x = r.lx; x <= r.hx; x++) {
                 if (selection_getpoint(x, y, sel)) {
                     r.hy = y;
@@ -156,7 +154,8 @@ export function selection_recalc_bounds(sel)
 
 export function selection_getpoint(x, y, sel)
 {
-    x = C.coordxy(x); y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     const map = sel && sel.map;
     if (!map)
         return 0;
@@ -169,7 +168,9 @@ export function selection_getpoint(x, y, sel)
 
 export function selection_setpoint(x, y, sel, c)
 {
-    x = C.coordxy(x); y = C.coordxy(y); c = C.int(c);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    c = C.int(c);
     const map = sel && sel.map;
     if (!map)
         return;
@@ -316,8 +317,8 @@ export function selection_do_grow(ov, dir)
 
     selection_getbounds(ov, rect);
 
-    for (x = C.max(0, rect.lx-1); x <= C.min(C.COLNO-1, rect.hx+1); x++)
-        for (y = C.max(0, rect.ly-1); y <= C.min(C.ROWNO-1, rect.hy+1); y++) {
+    for (x = C.max(0, rect.lx - 1); x <= C.min(C.COLNO - 1, rect.hx + 1); x++)
+        for (y = C.max(0, rect.ly - 1); y <= C.min(C.ROWNO - 1, rect.hy + 1); y++) {
             /* note:  dir is a mask of multiple directions, but the only
                way to specify diagonals is by including the two adjacent
                orthogonal directions, which effectively specifies three-
@@ -332,7 +333,7 @@ export function selection_do_grow(ov, dir)
                 || (((dir & (C.W_EAST | C.W_SOUTH)) == (C.W_EAST | C.W_SOUTH))
                     && selection_getpoint(x - 1, y - 1, ov))
                 || ((dir & C.W_SOUTH) && selection_getpoint(x, y - 1, ov))
-                ||  (((dir & (C.W_SOUTH | C.W_WEST)) == (C.W_SOUTH | C.W_WEST))
+                || (((dir & (C.W_SOUTH | C.W_WEST)) == (C.W_SOUTH | C.W_WEST))
                      && selection_getpoint(x + 1, y - 1, ov))) {
                 selection_setpoint(x, y, tmp, 1);
             }
@@ -348,7 +349,6 @@ export function selection_do_grow(ov, dir)
     selection_free(tmp, 1);
 }
 
-
 export function set_selection_floodfillchk(f)
 {
     C.selvarState.selection_flood_check_func = f;
@@ -357,7 +357,8 @@ export function set_selection_floodfillchk(f)
 /* check whethere <x,y> is already in xs[],ys[] */
 export function sel_flood_havepoint(x, y, xs, ys, n)
 {
-    x = C.coordxy(x); y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     let xx = x, yy = y;
 
     while (n > 0) {
@@ -370,7 +371,8 @@ export function sel_flood_havepoint(x, y, xs, ys, n)
 
 export function selection_floodfill(ov, x, y, diagonals)
 {
-    x = C.coordxy(x); y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     let tmp = selection_new();
 // SEL_FLOOD_STACK is COLNO * ROWNO; local flood macros expand below.
     const floodfill_stack_overrun = "floodfill stack overrun";
@@ -595,7 +597,12 @@ export function selection_do_ellipse(ov, xc, yc, a, b, filled)
 /* square of distance from line segment (x1,y1, x2,y2) to point (x3,y3) */
 export function line_dist_coord(x1, y1, x2, y2, x3, y3)
 {
-    x1 = C.long(x1); y1 = C.long(y1); x2 = C.long(x2); y2 = C.long(y2); x3 = C.long(x3); y3 = C.long(y3);
+    x1 = C.long(x1);
+    y1 = C.long(y1);
+    x2 = C.long(x2);
+    y2 = C.long(y2);
+    x3 = C.long(x3);
+    y3 = C.long(y3);
     let px = C.long(x2 - x1);
     let py = C.long(y2 - y1);
     let s = C.long(px * px + py * py);
@@ -623,8 +630,13 @@ export function line_dist_coord(x1, y1, x2, y2, x3, y3)
 /* guts of l_selection_gradient */
 export function selection_do_gradient(ov, x, y, x2, y2, gtyp, mind, maxd)
 {
-    x = C.long(x); y = C.long(y); x2 = C.long(x2); y2 = C.long(y2);
-    gtyp = C.long(gtyp); mind = C.long(mind); maxd = C.long(maxd);
+    x = C.long(x);
+    y = C.long(y);
+    x2 = C.long(x2);
+    y2 = C.long(y2);
+    gtyp = C.long(gtyp);
+    mind = C.long(mind);
+    maxd = C.long(maxd);
     let dx, dy, dofs;
 
     if (mind > maxd) {
@@ -675,7 +687,10 @@ export function selection_do_gradient(ov, x, y, x2, y2, gtyp, mind, maxd)
 /* bresenham line algo */
 export function selection_do_line(x1, y1, x2, y2, ov)
 {
-    x1 = C.coordxy(x1); y1 = C.coordxy(y1); x2 = C.coordxy(x2); y2 = C.coordxy(y2);
+    x1 = C.coordxy(x1);
+    y1 = C.coordxy(y1);
+    x2 = C.coordxy(x2);
+    y2 = C.coordxy(y2);
     let d0, dx, dy, ai, bi, xi, yi;
 
     if (x1 < x2) {
@@ -729,8 +744,12 @@ export function selection_do_line(x1, y1, x2, y2, ov)
 
 export function selection_do_randline(x1, y1, x2, y2, rough, rec, ov)
 {
-    x1 = C.coordxy(x1); y1 = C.coordxy(y1); x2 = C.coordxy(x2); y2 = C.coordxy(y2);
-    rough = C.char(rough); rec = C.char(rec);
+    x1 = C.coordxy(x1);
+    y1 = C.coordxy(y1);
+    x2 = C.coordxy(x2);
+    y2 = C.coordxy(y2);
+    rough = C.char(rough);
+    rec = C.char(rec);
     let mx, my;
     let dx, dy;
 
@@ -778,7 +797,7 @@ export function selection_iterate(ov, func, arg)
 
     for (x = rect.lx; x <= rect.hx; x++)
         for (y = rect.ly; y <= rect.hy; y++)
-            if (C.isok(x,y) && selection_getpoint(x, y, ov))
+            if (C.isok(x, y) && selection_getpoint(x, y, ov))
                 C.iterate(func, x, y, arg);
 }
 
@@ -792,7 +811,7 @@ export function selection_is_irregular(sel)
 
     for (x = rect.lx; x <= rect.hx; x++)
         for (y = rect.ly; y <= rect.hy; y++)
-            if (C.isok(x,y) && !selection_getpoint(x, y, sel))
+            if (C.isok(x, y) && !selection_getpoint(x, y, sel))
                 return 1;
 
     return 0;

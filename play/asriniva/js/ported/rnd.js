@@ -4,7 +4,6 @@
 
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 /* Suppress rng logging macros inside this file -- we define the real
    functions here, and add logging directly in each function body.
    Internal calls (e.g. rnz calling rn2) inherit the outer caller's
@@ -132,10 +131,10 @@ function rng_log_write(func, args, result)
 // enum { CORE = 0, DISP = 1 };
 
 // static struct rnglist_t rnglist[] = {
-//     { rn2, FALSE, { 0 } },                      
+//     { rn2, FALSE, { 0 } },
 /* CORE */
 
-//     { rn2_on_display_rng, FALSE, { 0 } },       
+//     { rn2_on_display_rng, FALSE, { 0 } },
 /* DISP */
 
 // };
@@ -201,9 +200,8 @@ export function rn2_on_display_rng(x)
     return result;
 }
 
-// #else   
+// #else
 /* USE_ISAAC64 */
-
 
 /* "Rand()"s definition is determined by [OS]conf.h */
 
@@ -221,9 +219,8 @@ export function rn2_on_display_rng(x)
 //     seed *= 2739110765;
 //     return (int) ((seed >> 16) % (unsigned) x);
 // }
-// #endif  
+// #endif
 /* USE_ISAAC64 */
-
 
 /* 0 <= rn2(x) < x */
 
@@ -414,9 +411,8 @@ function set_random(seed, fn)
     init_isaac64(seed, fn);
 }
 
-// #else 
+// #else
 /* USE_ISAAC64 */
-
 
 /*ARGSUSED*/
 
@@ -424,19 +420,18 @@ function set_random(seed, fn)
 // set_random(unsigned long seed,
 //            int (*fn)(int) UNUSED)
 // {
-    
 /*
      * The types are different enough here that sweeping the different
      * routine names into one via #defines is even more confusing.
      */
 
-// # ifdef RANDOM 
+// # ifdef RANDOM
 /* srandom() from sys/share/random.c */
 
 //     srandom((unsigned int) seed);
 // # else
 // #  if defined(__APPLE__) || defined(BSD) || defined(LINUX) \
-//     || defined(ULTRIX) || defined(CYGWIN32) 
+//     || defined(ULTRIX) || defined(CYGWIN32)
 /* system srandom() */
 
 // #   if defined(BSD) && !defined(POSIX_TYPES) && defined(SUNOS4)
@@ -444,11 +439,11 @@ function set_random(seed, fn)
 // #   endif
 //         srandom((int) seed);
 // #  else
-// #   ifdef UNIX 
+// #   ifdef UNIX
 /* system srand48() */
 
 //     srand48((long) seed);
-// #   else       
+// #   else
 /* poor quality system routine */
 
 //     srand((int) seed);
@@ -456,9 +451,8 @@ function set_random(seed, fn)
 // #  endif
 // # endif
 // }
-// #endif 
+// #endif
 /* USE_ISAAC64 */
-
 
 /* An appropriate version of this must always be provided in
    port-specific code somewhere. It returns a number suitable
@@ -502,4 +496,3 @@ export function shuffle_int_array(indices, count)
 }
 
 /*rnd.c*/
-

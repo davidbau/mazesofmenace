@@ -21,7 +21,6 @@
 
 import { C } from '../c-runtime/context.js';
 
-
 export const no_longer_petrify_resistant =
     "No longer petrify-resistant, you";
 
@@ -42,8 +41,6 @@ export function set_uasmon()
     else if (!was_vampshifter)
         C.gy.youmonst.cham = C.NON_PM;
     C.u.mcham = C.gy.youmonst.cham; /* for save/restore since youmonst isn't */
-
-
 
     if (((C.gy.youmonst.data.mresists & (C.MR_FIRE)) != 0)) C.u.uprops[C.FIRE_RES].intrinsic |= C.FROMFORM; else C.u.uprops[C.FIRE_RES].intrinsic &= ~C.FROMFORM;
     if (((C.gy.youmonst.data.mresists & ( C.MR_COLD)) != 0)) C.u.uprops[C.COLD_RES].intrinsic |= C.FROMFORM; else C.u.uprops[C.COLD_RES].intrinsic &= ~C.FROMFORM;
@@ -66,9 +63,11 @@ export function set_uasmon()
     if ((C.dmgtype(mdat, C.AD_MAGM)
                         || mdat == C.mons[C.PM_BABY_GRAY_DRAGON]
                         || C.dmgtype(mdat, C.AD_RBRE))) C.u.uprops[C.ANTIMAGIC].intrinsic |= C.FROMFORM; else C.u.uprops[C.ANTIMAGIC].intrinsic &= ~C.FROMFORM;
-    if ((mdat.mlet == C.S_FUNGUS || mdat == C.mons[C.PM_GHOUL])) C.u.uprops[C.SICK_RES].intrinsic |= C.FROMFORM; else C.u.uprops[C.SICK_RES].intrinsic &= ~C.FROMFORM;
+    if ((mdat.mlet == C.S_FUNGUS
+        || mdat == C.mons[C.PM_GHOUL])) C.u.uprops[C.SICK_RES].intrinsic |= C.FROMFORM; else C.u.uprops[C.SICK_RES].intrinsic &= ~C.FROMFORM;
 
-    if ((mdat == C.mons[C.PM_STALKER] || C.is_bat(mdat))) C.u.uprops[C.STUNNED].intrinsic |= C.FROMFORM; else C.u.uprops[C.STUNNED].intrinsic &= ~C.FROMFORM;
+    if ((mdat == C.mons[C.PM_STALKER]
+        || C.is_bat(mdat))) C.u.uprops[C.STUNNED].intrinsic |= C.FROMFORM; else C.u.uprops[C.STUNNED].intrinsic &= ~C.FROMFORM;
     if (C.dmgtype(mdat, C.AD_HALU)) C.u.uprops[C.HALLUC_RES].intrinsic |= C.FROMFORM; else C.u.uprops[C.HALLUC_RES].intrinsic &= ~C.FROMFORM;
     if (C.perceives(mdat)) C.u.uprops[C.SEE_INVIS].intrinsic |= C.FROMFORM; else C.u.uprops[C.SEE_INVIS].intrinsic &= ~C.FROMFORM;
     if (C.telepathic(mdat)) C.u.uprops[C.TELEPAT].intrinsic |= C.FROMFORM; else C.u.uprops[C.TELEPAT].intrinsic &= ~C.FROMFORM;
@@ -173,12 +172,11 @@ export function check_strangling(on)
     }
 }
 
-
-
 /* make a (new) human out of the player */
 export function polyman(fmt, arg)
 {
-    fmt = C.charPointer(fmt);arg = C.charPointer(arg);
+    fmt = C.charPointer(fmt);
+    arg = C.charPointer(arg);
     let sticking = (Number(Boolean(C.sticks(C.gy.youmonst.data) && C.u.ustuck && !C.u.uswallow))),
             was_mimicking = (C.U_AP_TYPE != C.M_AP_NOTHING);
     let was_blind = !!C.Blind,
@@ -247,8 +245,6 @@ export function polyman(fmt, arg)
     C.see_monsters();
 }
 
-
-
 export function change_sex()
 {
     /* Some monsters are always of one sex and their sex can't be changed;
@@ -284,7 +280,9 @@ export function change_sex()
 /* log a message if non-poly'd hero's gender has changed */
 export function livelog_newform(viapoly, oldgend, newgend)
 {
-    viapoly = C.boolean(viapoly);oldgend = C.int(oldgend);newgend = C.int(newgend);
+    viapoly = C.boolean(viapoly);
+    oldgend = C.int(oldgend);
+    newgend = C.int(newgend);
     const buf = C.stackAlloc(C.BUFSZ);
     let oldrole, oldrank, newrole, newrank;
 
@@ -314,7 +312,6 @@ export function livelog_newform(viapoly, oldgend, newgend)
 export function newman()
 {
     dead: {
-
     let newform;
     let i, oldlvl, newlvl, oldgend, newgend, hpmax, enmax;
 
@@ -685,7 +682,6 @@ export function polyself(psflags)
         _polyself_target = 'made_change'; /* maybe not, but this is right anyway */
     }
     if (_polyself_target !== 'made_change') {
-
     if (mntmp < C.LOW_PM) {
         tryct = 200;
         do {
@@ -1081,7 +1077,7 @@ export function uasmon_maxStr()
         mndx = C.PM_DWARF;
     } else if (C.is_gnome(ptr)) {
         mndx = C.PM_GNOME;
-// #if 0   
+// #if 0
 /* use the mons[] value for humans */
 //     } else if (is_human(ptr)) {
 //         mndx = PM_HUMAN;
@@ -1452,7 +1448,7 @@ export function dospit()
             break;
         default:
             C.impossible("bad attack type in dospit");
-            
+
             /*FALLTHRU*/
         case C.AD_ACID:
             otmp = C.mksobj(C.ACID_VENOM, 1, 0);
@@ -2135,7 +2131,8 @@ export function poly_gender()
 
 export function ugolemeffects(damtype, dam)
 {
-    damtype = C.int(damtype);dam = C.int(dam);
+    damtype = C.int(damtype);
+    dam = C.int(dam);
     let heal = 0;
 
     /* We won't bother with "slow"/"haste" since players do not
@@ -2177,7 +2174,7 @@ export function armor_to_dragon(atyp)
     case C.GOLD_DRAGON_SCALE_MAIL:
     case C.GOLD_DRAGON_SCALES:
         return C.PM_GOLD_DRAGON;
-// #if 0 
+// #if 0
 /* DEFERRED */
 //     case SHIMMERING_DRAGON_SCALE_MAIL:
 //     case SHIMMERING_DRAGON_SCALES:

@@ -259,7 +259,7 @@ import { erosion_matters } from './objnam.js'; // relocate-fns
 import { MKOBJ_OCLASS_PROB_TOTALS, MKOBJ_OC_CLASS, MKOBJ_OC_PROB, MKOBJ_SVB_BASES } from './mkobj_data.js'; // relocate-fns
 import { MKOBJ_OC_OPROP, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js'; // relocate-fns
 import { can_be_hatched, dealloc_mextra, undead_to_corpse, zombie_form } from './mon.js'; // relocate-fns
-import { isWanNothingNodir, oinit } from './o_init.js'; // relocate-fns
+import { isWanNothingNodir } from './o_init.js'; // relocate-fns
 import { objName } from './objnam.js'; // relocate-fns
 import { init_fruit_chain } from './options.js'; // relocate-fns
 import { impossible as lifecycle_impossible } from './pline.js'; // relocate-fns
@@ -2497,16 +2497,8 @@ export async function mkobj(oclass, artif) {
     let tprob;
     let i;
     let prob;
-    // C invariant: objects[].oc_prob for GEM_CLASS is level-dependent --
-    // mklev.c:1264 calls oinit()->setgemprobs(&u.uz) as the FIRST thing
-    // the shared table already reflects the current dungeon level. This
-    // function's own makelevel() (below) already calls oinit() the same
-    // way, so this is a no-op RNG-free recompute in ordinary play -- but a
-    // game.u.uz from state_before without re-running that level-entry step,
-    // so MKOBJ_OC_PROB can still hold a stale (level-0 default) gem
-    // distribution. Refresh it here so the GEM_CLASS walk below sees the
-    // were __return__.otyp landing one GEM_CLASS slot off (e.g. obsidian
-    await oinit();
+    // C mkobj.c:270-302 uses the existing probabilities. Level creation,
+    // entry, and loading special levels update them through oinit().
     if (oclass == RANDOM_CLASS) {
         const uz = game.u?.uz;
         const iprobs = Is_rogue_level(uz)

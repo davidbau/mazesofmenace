@@ -5,15 +5,11 @@
 
 import { C } from '../c-runtime/context.js';
 
-
 // #define C.newseg() (struct wseg *) C.alloc(C.segmentSize)
 // #define C.dealloc_seg(wseg) C.free((wseg))
 
 /* worm segment structure */
 /* the segment's position */
-
-
-
 
  /* may return NULL */
 /* !SFCTOOL */
@@ -528,8 +524,8 @@ export function save_worm(nhfp)
             /* Save segment locations of the monster. */
             if (count.value) {
                 for (curr = C.wtails[i]; curr; curr = curr.nseg) {
-                    C.Sfo_coordxy(nhfp, C.coordRef(curr,"wx"), "worm-wx");
-                    C.Sfo_coordxy(nhfp, C.coordRef(curr,"wy"), "worm-wy");
+                    C.Sfo_coordxy(nhfp, C.coordRef(curr, "wx"), "worm-wx");
+                    C.Sfo_coordxy(nhfp, C.coordRef(curr, "wy"), "worm-wy");
                 }
             }
         }
@@ -575,8 +571,8 @@ export function rest_worm(nhfp)
         for (curr = 0, j = 0; j < count.value; j++) {
             temp = C.newseg();
             temp.nseg = 0;
-            C.Sfi_coordxy(nhfp, C.coordRef(temp,"wx"), "worm-wx");
-            C.Sfi_coordxy(nhfp, C.coordRef(temp,"wy"), "worm-wy");
+            C.Sfi_coordxy(nhfp, C.coordRef(temp, "wx"), "worm-wx");
+            C.Sfi_coordxy(nhfp, C.coordRef(temp, "wy"), "worm-wy");
             if (curr)
                 curr.nseg = temp;
             else

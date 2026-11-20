@@ -3,7 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 import { C } from '../c-runtime/context.js';
 
 /* does monster block others from teleporting? */
@@ -126,7 +125,7 @@ export function goodpos(x, y, mtmp, gpflags)
                         || (!C.Is_waterlevel(C.u.uz)
                             && !C.is_waterwall(x, y)
                             && C.m_in_air(mtmp)))));
-        } else if (mdat.mlet == C.S_EEL && C.rn2(()=>(13), 148, "goodpos") && !ignorewater) {
+        } else if (mdat.mlet == C.S_EEL && C.rn2(() => (13), 148, "goodpos") && !ignorewater) {
             return C.FALSE;
         } else if (C.is_lava(x, y) && !ignorelava) {
             /* 3.6.3: floating eye can levitate over lava but it avoids
@@ -185,8 +184,6 @@ export function enexto_gpflags(cc, xx, yy, mdat, entflags)
             || C.callLocal(enexto_core, cc, xx, yy, mdat, entflags))));
 }
 
-
-
 export function enexto_core(cc, xx, yy, mdat, entflags)
 /* output; <cc.x,cc.y> as close as feasible to <xx,yy> */
 /* input coordinates */
@@ -240,113 +237,11 @@ export function enexto_core(cc, xx, yy, mdat, entflags)
         return C.TRUE;
 
     /* failed to find any acceptable spot */
-    C.debugpline4(()=>["enexto(\"%s\",%d,%d,0x%08lx) failed",
+    C.debugpline4(() => ["enexto(\"%s\",%d,%d,0x%08lx) failed",
                 mdat.pmnames[C.NEUTRAL], xx, yy,
                 BigInt(entflags >>> 0)]);
     return C.FALSE;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
  * Check for restricted areas present in some special levels.  (This might
@@ -558,7 +453,8 @@ export function collect_coords(ccc, cx, cy, maxradius, cc_flags, filter)
 {
     let x, y, lox, hix, loy, hiy;
     let radius, rowrange, colrange, k, n = 0;
-    const cc = C.localCoord(); let passcc = 0;
+    const cc = C.localCoord();
+    let passcc = 0;
     let newpass, passend,
             /* is <cx,cy> a candidate? */
             include_cxcy = (cc_flags & C.CC_INCL_CENTER) != 0,
@@ -656,7 +552,8 @@ export function collect_coords(ccc, cx, cy, maxradius, cc_flags, filter)
                 if (filter && !C.callFilter(filter, x, y))
                     continue;
                 cc.x = x, cc.y = y;
-                C.copyCoord(C.coordAt(ccc), cc); ccc = C.coordOffset(ccc, 1);
+                C.copyCoord(C.coordAt(ccc), cc);
+                ccc = C.coordOffset(ccc, 1);
                 ++n;
                 ++result;
             }
@@ -664,7 +561,7 @@ export function collect_coords(ccc, cx, cy, maxradius, cc_flags, filter)
         if (scramble && passend) {
             /* shuffle entries gathered for current radius (or pair) */
             while (n > 1) {
-                k = C.rn2(()=>(n), 700, "collect_coords"); /* 0..n-1 */
+                k = C.rn2(() => (n), 700, "collect_coords"); /* 0..n-1 */
                 if (k) { /* swap [k] with [0] when k is 1..n-1 */
                     C.copyCoord(cc, C.coordAt(passcc));
                     C.copyCoord(C.coordAt(passcc), C.coordAt(passcc, k));
@@ -675,7 +572,7 @@ export function collect_coords(ccc, cx, cy, maxradius, cc_flags, filter)
             }
         }
     } /* radius loop */
-    C.debugpline4(()=>["collect_coords(,%d,%d,%d,,)=%d", cx, cy, maxradius, result]);
+    C.debugpline4(() => ["collect_coords(,%d,%d,%d,,)=%d", cx, cy, maxradius, result]);
     return result;
 }
 
@@ -700,8 +597,8 @@ export function safe_teleds(teleds_flags)
      * first trap spot is used.
      */
     for (tcnt = 0; tcnt < 40; ++tcnt) {
-        nux = C.short(C.rnd(()=>(C.COLNO - 1), 737, "safe_teleds"));
-        nuy = C.short(C.rn2(()=>(C.ROWNO), 738, "safe_teleds"));
+        nux = C.short(C.rnd(() => (C.COLNO - 1), 737, "safe_teleds"));
+        nuy = C.short(C.rn2(() => (C.ROWNO), 738, "safe_teleds"));
         if (C.callLocal(teleok, nux, nuy, C.FALSE)) {
             C.callLocal(teleds, nux, nuy, teleds_flags);
             return C.TRUE;
@@ -788,12 +685,12 @@ export function tele_to_rnd_pet()
     for (mtmp = C.fmon; mtmp; mtmp = mtmp.nmon)
         if (!C.DEADMONSTER(mtmp) && mtmp.mtame && !C.mon_offmap(mtmp)) {
             cnt++;
-            if (!C.rn2(()=>(cnt), 828, "tele_to_rnd_pet"))
+            if (!C.rn2(() => (cnt), 828, "tele_to_rnd_pet"))
                 pet = mtmp;
         }
     if (pet && !C.m_next2u(pet)) {
-        let tx = C.short(pet.mx + C.rn2(()=>(3), 832, "tele_to_rnd_pet") - 1),
-                ty = C.short(pet.my + C.rn2(()=>(3), 833, "tele_to_rnd_pet") - 1);
+        let tx = C.short(pet.mx + C.rn2(() => (3), 832, "tele_to_rnd_pet") - 1),
+                ty = C.short(pet.my + C.rn2(() => (3), 833, "tele_to_rnd_pet") - 1);
 
         if (C.isok(tx, ty) && C.callLocal(teleok, tx, ty, C.FALSE))
             C.callLocal(teleds, tx, ty, C.TELEDS_TELEPORT);
@@ -823,7 +720,7 @@ export function scrolltele(scroll)
     if (!C.Blinded)
         C.make_blinded(0n, C.FALSE);
 
-    if ((C.u.uhave.amulet || C.On_W_tower_level(C.u.uz)) && !C.rn2(()=>(3), 865, "scrolltele")) {
+    if ((C.u.uhave.amulet || C.On_W_tower_level(C.u.uz)) && !C.rn2(() => (3), 865, "scrolltele")) {
         C.You_feel("disoriented for a moment.");
         /* don't discover the scroll [at least not yet for wizard override];
            disorientation doesn't reveal that this is a teleport attempt */
@@ -896,7 +793,7 @@ export function dotelecmd()
     if (!C.iflags.menu_requested) {
         ignore_restrictions = C.TRUE;
     } else {
-        const tports = C.staticData("dotelecmd.tports", ()=>[
+        const tports = C.staticData("dotelecmd.tports", () => [
             /*
              * Potential combinations:
              *  1) attempt ^T without intrinsic, not know spell;
@@ -979,11 +876,6 @@ export function dotelecmd()
         C.tport_spell(added + hidden - NOOP_SPELL);
 
     return res ? C.ECMD_TIME : C.ECMD_OK;
-
-
-
-
-
 }
 
 export function dotele(break_the_rules)
@@ -1051,20 +943,6 @@ export function dotele(break_the_rules)
            but they both yield the same result.] */
         energy = 5 * C.objects[C.SPE_TELEPORT_AWAY].oc_level;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         if (C.u.uhunger <= 10) {
             cantdoit = "are too weak from hunger";
         } else if (C.ACURR(C.A_STR) < 4) {
@@ -1125,11 +1003,11 @@ export function level_tele()
 
     if (C.iflags.debug_fuzzer) {
         do {
-            newlevel.dnum = C.rn2(()=>(C.svn.n_dgns), 1176, "level_tele");
+            newlevel.dnum = C.rn2(() => (C.svn.n_dgns), 1176, "level_tele");
         } while (newlevel.dnum == C.astral_level.dnum
                  || C.svd.dungeons[newlevel.dnum].flags.unconnected
                  || !C.svd.dungeons[newlevel.dnum].num_dunlevs);
-        newlevel.dlevel = 1 + C.rn2(()=>(C.dunlevs_in_dungeon(newlevel)), 1180, "level_tele");
+        newlevel.dlevel = 1 + C.rn2(() => (C.dunlevs_in_dungeon(newlevel)), 1180, "level_tele");
         C.assign_level(C.u.ucamefrom, C.u.uz);
         C.schedule_goto(newlevel, C.UTOTYPE_NONE, 0, 0);
         return;
@@ -1167,7 +1045,7 @@ export function level_tele()
             C.getlin(qbuf, buf);
             if (!C.strcmp(buf, "*")) {
                 continue random_levtport;
-            } else if (C.Confusion && C.rnl(()=>(5), 1215, "level_tele")) {
+            } else if (C.Confusion && C.rnl(() => (5), 1215, "level_tele")) {
                 C.pline("Oops...");
                 continue random_levtport;
             } else if (!C.strcmp(buf, "\x1b")) { /* cancelled */
@@ -1282,7 +1160,8 @@ export function level_tele()
             C.gi.in_mklev = C.TRUE; /* suppress map update */
             C.u_left_shop(C.u.ushops0, C.TRUE);
             /* you're now effectively out of the shop */
-            C.storeChar(C.u.ushops, 0); C.storeChar(C.u.ushops0, 0);
+            C.storeChar(C.u.ushops, 0);
+            C.storeChar(C.u.ushops0, 0);
             C.gi.in_mklev = C.FALSE;
         }
         if (newlev <= -10) {
@@ -1381,17 +1260,6 @@ export function level_tele()
                   C.flags.verbose ? "You materialize on a different level!"
                                 : 0);
 
-
-
-
-
-
-
-
-
-
-
-
     break;
     }
 }
@@ -1448,7 +1316,7 @@ export function tele_trap(trap)
     /* a fixed-destination teleport trap could theoretically place hero onto a
      * second teleport trap; prevent the recursive call from spoteffects() from
      * triggering the trap at the destination */
-    
+
     if (C.teleportState.in_tele_trap)
         return;
 
@@ -1572,7 +1440,7 @@ export function rloc_pos_ok(x, y, mtmp)
             if (C.levl[x][y].roomno != C.unsignedChar(C.ESHK(mtmp).shoproom))
                 return C.FALSE;
         } else if (mtmp.ispriest && C.inhistemple(mtmp)) {
-            if (C.levl[x][y].roomno !=  C.unsignedChar(C.EPRI(mtmp).shroom))
+            if (C.levl[x][y].roomno != C.unsignedChar(C.EPRI(mtmp).shroom))
                 return C.FALSE;
         }
         /* current location is <xx,yy> */
@@ -1787,8 +1655,8 @@ export function rloc(mtmp, rlocflags)
        on levels with lots of available space, random can find a spot more
        quickly but might fail to find one no matter how many tries it makes */
     for (trycount = 0; trycount < 50; ++trycount) {
-        x = C.short(C.rnd(()=>(C.COLNO - 1), 1850, "rloc")); /* 1..COLNO-1 */
-        y = C.short(C.rn2(()=>(C.ROWNO), 1851, "rloc")); /* 0..ROWNO-1 */
+        x = C.short(C.rnd(() => (C.COLNO - 1), 1850, "rloc")); /* 1..COLNO-1 */
+        y = C.short(C.rn2(() => (C.ROWNO), 1851, "rloc")); /* 0..ROWNO-1 */
         if (C.callLocal(rloc_pos_ok, x, y, mtmp)) /* rejects 'onscary' */
             break found_xy;
     }
@@ -1805,7 +1673,7 @@ export function rloc(mtmp, rlocflags)
                                 0);
     backupcc.x = backupcc.y = 0;
     for (i = 0; i < candycount; ++i) {
-        if ((j = C.rn2(()=>(candycount - i), 1868, "rloc")) > 0) {
+        if ((j = C.rn2(() => (candycount - i), 1868, "rloc")) > 0) {
             C.copyCoord(cc, candy[i]);
             C.copyCoord(candy[i], candy[i + j]);
             C.copyCoord(candy[i + j], cc);
@@ -1961,7 +1829,7 @@ export function mlevel_tele_trap(mtmp, trap, force_it, in_sight)
         } else if (tt == C.MAGIC_PORTAL) {
             if (C.In_endgame(C.u.uz) && (C.mon_has_amulet(mtmp)
                                       || C.is_home_elemental(mtmp.data)
-                                      || C.rn2(()=>(7), 2036, "mlevel_tele_trap"))) {
+                                      || C.rn2(() => (7), 2036, "mlevel_tele_trap"))) {
                 if (in_sight && mtmp.data.mlet != C.S_ELEMENTAL) {
                     C.pline_mon(mtmp,
                               "%s seems to shimmer for a moment.",
@@ -2042,8 +1910,8 @@ export function rloco(obj)
     oty = C.short(obj.oy);
     restricted_fall = Number(Boolean((otx == 0 && C.svd.dndest.lx)));
     do {
-        tx = C.short(C.rn1(()=>(C.COLNO - 3), ()=>(2), 2118, "rloco"));
-        ty = C.short(C.rn2(()=>(C.ROWNO), 2119, "rloco"));
+        tx = C.short(C.rn1(() => (C.COLNO - 3), () => (2), 2118, "rloco"));
+        ty = C.short(C.rn2(() => (C.ROWNO), 2119, "rloco"));
         if (!--try_limit)
             break;
     } while (!C.callLocal(goodpos, tx, ty, 0, 0)
@@ -2119,7 +1987,7 @@ export function random_teleport_level()
     let nlev, max_depth, min_depth, cur_depth = C.depth(C.u.uz);
 
     /* [the endgame case can only occur in wizard mode] */
-    if (!C.rn2(()=>(5), 2196, "random_teleport_level") || C.single_level_branch(C.u.uz) || C.In_endgame(C.u.uz))
+    if (!C.rn2(() => (5), 2196, "random_teleport_level") || C.single_level_branch(C.u.uz) || C.In_endgame(C.u.uz))
         return cur_depth;
 
     /* What I really want to do is as follows:
@@ -2162,7 +2030,7 @@ export function random_teleport_level()
 
     /* Get a random value relative to the current dungeon */
     /* Range is 1 to current+3, current not counting */
-    nlev = C.rn2(()=>(cur_depth + 3 - min_depth), 2239, "random_teleport_level") + min_depth;
+    nlev = C.rn2(() => (cur_depth + 3 - min_depth), 2239, "random_teleport_level") + min_depth;
     if (nlev >= cur_depth)
         nlev++;
 
@@ -2170,12 +2038,12 @@ export function random_teleport_level()
         nlev = max_depth;
         /* teleport up if already on bottom */
         if (C.Is_botlevel(C.u.uz))
-            nlev -= C.rnd(()=>(3), 2247, "random_teleport_level");
+            nlev -= C.rnd(() => (3), 2247, "random_teleport_level");
     }
     if (nlev < min_depth) {
         nlev = min_depth;
         if (nlev == cur_depth) {
-            nlev += C.rnd(()=>(3), 2252, "random_teleport_level");
+            nlev += C.rnd(() => (3), 2252, "random_teleport_level");
             if (nlev > max_depth)
                 nlev = max_depth;
         }
@@ -2205,7 +2073,7 @@ export function u_teleport_mon(mtmp, give_feedback)
         if (!C.callLocal(rloc, mtmp, C.RLOC_MSG))
             C.m_into_limbo(mtmp);
     } else if ((C.is_rider(mtmp.data) || C.control_teleport(mtmp.data))
-               && C.rn2(()=>(13), 2285, "u_teleport_mon") && C.callLocal(enexto, cc, C.u.ux, C.u.uy, mtmp.data)) {
+               && C.rn2(() => (13), 2285, "u_teleport_mon") && C.callLocal(enexto, cc, C.u.ux, C.u.uy, mtmp.data)) {
         C.callLocal(rloc_to, mtmp, cc.x, cc.y);
     } else {
         if (!C.callLocal(rloc, mtmp, C.RLOC_MSG))

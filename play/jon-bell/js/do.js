@@ -1315,6 +1315,11 @@ export async function doddrop() {
         g._screen_output = ddBuild(ddropPaintedLines());
         set_cursor(endCursorCol, endRow);
     };
+    /* wintty.c:1921 process_menu_window entry: `if (ttyDisplay->toplin ==
+     * TOPLINE_NEED_MORE) tty_display_nhwindow(WIN_MESSAGE, TRUE);` — addtopl
+     * (topl.c:196) leaves a standing message NEED_MORE, so it pages first. */
+    if (g._pending_message && !g._topl_win_stop)
+        await force_more(g._pending_message);
     await showDdropMenu();
     const ddropSelectors = ddropRows.map((r) => r.selector).join('');
     const ddropGacc = ddropRows.map((r) => r.gsym).join('');

@@ -6,7 +6,7 @@ import { clearMessageWindow, flushPendingTopline } from './topl.js';
 import { docrt, flush_screen } from './display.js';
 import { NO_COLOR } from './terminal.js';
 import { C_ATR_INVERSE, terminalAttrFromCAttr } from './color_attr.js';
-import { NHW_MENU, PICK_NONE, PICK_ONE, PICK_ANY, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPMENUCOLORS, MENU_ITEMFLAGS_SKIPINVERT, CMDQ_KEY } from './const.js';
+import { NHW_MENU, PICK_NONE, PICK_ONE, PICK_ANY, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPMENUCOLORS, MENU_ITEMFLAGS_SKIPINVERT, CMDQ_KEY, ROWNO } from './const.js';
 import { pline } from './pline.js';
 import { cmdq_pop } from './cmd.js';
 import { tty_getlin } from './query.js';
@@ -96,7 +96,9 @@ export function getMenuColoring(text) {
     return null;
 }
 // C windows.c:getlin(): core line input; owns the command queue.
-export async function getLine(prompt, accepts = ch => /^[0-9+-]$/.test(ch), options = {}) {
+// getlin() passes no acceptance rule to the tty: every caller's bytes are
+// filtered only by hooked_tty_getlin() itself (getline.c:166-169).
+export async function getLine(prompt, options = {}) {
     // C windows.c:getlin(): queued CMDQ_KEY entries answer without any tty
     // prompt and are echoed as pline("%s %s", query, buf). The first
     // non-key entry stops the drain and is discarded; '\n' ends the
@@ -126,7 +128,7 @@ export async function getLine(prompt, accepts = ch => /^[0-9+-]$/.test(ch), opti
     const statusUpdatesDisabled = game._statusUpdatesDisabled ?? false;
     game._statusUpdatesDisabled = true;
     try {
-        return await tty_getlin(prompt, accepts, options);
+        return await tty_getlin(prompt, options);
     }
     finally {
         game._statusUpdatesDisabled = statusUpdatesDisabled;
@@ -246,6 +248,29 @@ export async function showDisclosureOverlay(lines, { marker = '--More--', restor
         }
         // docorner() leaves the covered message columns blank.
         clearRect(Math.max(0, cornerOffset - 1), 0, d.cols, 1);
+        // docorner() cl_end()s every covered row from its xmin and then
+        // repaints only the wrecked status lines through bot():
+        //
+        //     if (ymax >= (int) wins[WIN_STATUS]->offy
+        //         && !ystart_between_menu_pages) {
+        //         /* we have wrecked the bottom line */
+        //         disp.botlx = TRUE;
+        //         bot();
+        //     }
+        //
+        // windows.c getlin()/select_menu() run that bot() disabled
+        // (gb.bot_disabled), so the covered columns stay blank and the
+        // queued full repaint waits for the first status update after the
+        // prompt. tty_create_nhwindow() anchors the status window at
+        // min(rows - 2, ROWNO + 1), which stays row 22 on taller
+        // terminals (wintty.c:934-935).
+        const firstStatusRow = Math.min(d.rows - 2, ROWNO + 1);
+        if (game._statusUpdatesDisabled && content.length >= firstStatusRow) {
+            const coveredStatusRows = Math.min(2, content.length + 1 - firstStatusRow);
+            clearRect(Math.max(0, cornerOffset - 1), firstStatusRow, d.cols, firstStatusRow + coveredStatusRows);
+            game.context.botl = true;
+            d.statusVisible = false;
+        }
         d.setCursor(underlayCursor.col, underlayCursor.row);
         d.cursorVisible = underlayCursor.visible;
     }

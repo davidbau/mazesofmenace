@@ -406,8 +406,6 @@ export function ranged_attk(ptr)
  * modify the 'mstrength()' algorithm to generate the guessed one).
  */
 
-
-
 /* This routine is designed to return an integer value which represents
    an approximation of monster strength.  It uses a similar method of
    determination as "experience()" to arrive at the strength. */
@@ -841,7 +839,6 @@ export function same_race(pm1, pm2)
 
 /* for handling alternate spellings */
 
-
 /* figure out what type of monster a user-supplied string is specifying;
    ignore anything past the monster name */
 export function name_to_mon(in_str, gender_name_var)
@@ -903,7 +900,6 @@ export function name_to_monplus(in_str, remainder_p, gender_name_var)
         C.Strcpy(term - 3, "f");
 
     slen = C.strlen(str); /* length possibly needs recomputing */
-
     {
         const names = [
             /* Alternate spellings */
@@ -987,7 +983,9 @@ export function name_to_monplus(in_str, remainder_p, gender_name_var)
             len.value = C.int(C.strlen(names[namep].name));
             if (!C.strncmpi(str, names[namep].name, len.value)
                 /* force full word (which could conceivably be possessive) */
-                && (!C.loadChar(C.ptrAdd(str, len.value)) || C.loadChar(C.ptrAdd(str, len.value)) == ' '.charCodeAt(0) || C.loadChar(C.ptrAdd(str, len.value)) == '\''.charCodeAt(0))) {
+                && (!C.loadChar(C.ptrAdd(str, len.value))
+                    || C.loadChar(C.ptrAdd(str, len.value)) == ' '.charCodeAt(0)
+                    || C.loadChar(C.ptrAdd(str, len.value)) == '\''.charCodeAt(0))) {
                 if (remainder_p)
                     remainder_p.value = C.ptrAdd(in_str, C.ptrDiff(C.ptrAdd(str, len.value), buf));
                 if (gender_name_var)
@@ -1030,7 +1028,7 @@ export function name_to_monplus(in_str, remainder_p, gender_name_var)
         }
       }
       if (exact_match)
-        break;
+          break;
     }
     /* FIXME: some titles have gender; title_to_mon() doesn't propagate it */
     if (mntmp == C.NON_PM)
@@ -1222,7 +1220,7 @@ export const grownups = [
     ['PM_BABY_GRAY_DRAGON', 'PM_GRAY_DRAGON'],
     ['PM_BABY_GOLD_DRAGON', 'PM_GOLD_DRAGON'],
     ['PM_BABY_SILVER_DRAGON', 'PM_SILVER_DRAGON'],
-/* DEFERRED */
+    /* DEFERRED */
     ['PM_BABY_RED_DRAGON', 'PM_RED_DRAGON'],
     ['PM_BABY_WHITE_DRAGON', 'PM_WHITE_DRAGON'],
     ['PM_BABY_ORANGE_DRAGON', 'PM_ORANGE_DRAGON'],
@@ -1319,7 +1317,6 @@ export function raceptr(mtmp)
         return C.mons[C.gu.urace.mnum];
     return mtmp.data;
 }
-
 
 export const levitate = [ "float", "Float", "wobble", "Wobble" ],
                  flys = [ "fly", "Fly", "flutter", "Flutter" ],
@@ -1594,7 +1591,7 @@ export function mons_see_trap(ttmp)
 {
     let mtmp;
     let tx = ttmp.tx, ty = ttmp.ty;
-    let maxdist = C.levl[tx][ty].lit ? 7*7 : 2;
+    let maxdist = C.levl[tx][ty].lit ? 7 * 7 : 2;
 
     for (mtmp = C.fmon; mtmp; mtmp = mtmp.nmon) {
         if (C.is_animal(mtmp.data) || C.mindless(mtmp.data)
@@ -1621,4 +1618,3 @@ export function get_atkdam_type(adtyp)
 }
 
 /*mondata.c*/
-

@@ -1,14 +1,7 @@
 // Original configured BOTL initializers; no runtime C catalogue mirror.
-export const enc_stat_initial = [
-  "",
-  "Burdened",
-  "Stressed",
-  "Strained",
-  "Overtaxed",
-  "Overloaded"
-];
+export const enc_stat_initial = ["", "Burdened", "Stressed", "Strained", "Overtaxed", "Overloaded"];
 export const initblstats_initial = [
-  {
+    {
     "fldname": "title",
     "fldfmt": "%s",
     "time": 0,
@@ -36,7 +29,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "strength",
     "fldfmt": " St:%s",
     "time": 0,
@@ -64,7 +57,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "dexterity",
     "fldfmt": " Dx:%s",
     "time": 0,
@@ -92,7 +85,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "constitution",
     "fldfmt": " Co:%s",
     "time": 0,
@@ -120,7 +113,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "intelligence",
     "fldfmt": " In:%s",
     "time": 0,
@@ -148,7 +141,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "wisdom",
     "fldfmt": " Wi:%s",
     "time": 0,
@@ -176,7 +169,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "charisma",
     "fldfmt": " Ch:%s",
     "time": 0,
@@ -204,7 +197,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "alignment",
     "fldfmt": " %s",
     "time": 0,
@@ -232,7 +225,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "score",
     "fldfmt": " S:%s",
     "time": 0,
@@ -260,7 +253,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "carrying-capacity",
     "fldfmt": " %s",
     "time": 0,
@@ -288,7 +281,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "gold",
     "fldfmt": " %s",
     "time": 0,
@@ -316,7 +309,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "power",
     "fldfmt": " Pw:%s",
     "time": 0,
@@ -343,7 +336,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "power-max",
     "fldfmt": "(%s)",
     "time": 0,
@@ -371,7 +364,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "experience-level",
     "fldfmt": " Xp:%s",
     "time": 0,
@@ -398,7 +391,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "armor-class",
     "fldfmt": " AC:%s",
     "time": 0,
@@ -426,7 +419,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "HD",
     "fldfmt": " HD:%s",
     "time": 0,
@@ -454,7 +447,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "time",
     "fldfmt": " T:%s",
     "time": 0,
@@ -482,7 +475,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "hunger",
     "fldfmt": " %s",
     "time": 0,
@@ -510,7 +503,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "hitpoints",
     "fldfmt": " HP:%s",
     "time": 0,
@@ -537,7 +530,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "hitpoints-max",
     "fldfmt": "(%s)",
     "time": 0,
@@ -565,7 +558,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "dungeon-level",
     "fldfmt": "%s",
     "time": 0,
@@ -593,7 +586,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "experience",
     "fldfmt": "/%s",
     "time": 0,
@@ -620,7 +613,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "condition",
     "fldfmt": "%s",
     "time": 0,
@@ -648,7 +641,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "version",
     "fldfmt": " %s",
     "time": 0,
@@ -676,7 +669,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "weapon",
     "fldfmt": " %s",
     "time": 0,
@@ -704,7 +697,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "armor",
     "fldfmt": " %s",
     "time": 0,
@@ -732,7 +725,7 @@ export const initblstats_initial = [
     "hilite_rule": 0,
     "thresholds": 0
   },
-  {
+    {
     "fldname": "terrain",
     "fldfmt": " %s",
     "time": 0,
@@ -762,11 +755,11 @@ export const initblstats_initial = [
   }
 ];
 export const condition_aliases_initial = [
-  {
+    {
     "id": "strangled",
     "bitmask": 2097152
   },
-  {
+    {
     "id": "all",
     "bitmask": {
       "operator": "|",
@@ -886,7 +879,7 @@ export const condition_aliases_initial = [
       "right": 536870912
     }
   },
-  {
+    {
     "id": "major_troubles",
     "bitmask": {
       "operator": "|",
@@ -914,7 +907,7 @@ export const condition_aliases_initial = [
       "right": 16777216
     }
   },
-  {
+    {
     "id": "minor_troubles",
     "bitmask": {
       "operator": "|",
@@ -942,7 +935,7 @@ export const condition_aliases_initial = [
       "right": 4194304
     }
   },
-  {
+    {
     "id": "movement",
     "bitmask": {
       "operator": "|",
@@ -954,7 +947,7 @@ export const condition_aliases_initial = [
       "right": 65536
     }
   },
-  {
+    {
     "id": "opt_in",
     "bitmask": {
       "operator": "|",
@@ -1012,7 +1005,7 @@ export const condition_aliases_initial = [
   }
 ];
 export const conditions_initial = [
-  {
+    {
     "ranking": 20,
     "mask": 1,
     "c": {
@@ -1024,7 +1017,7 @@ export const conditions_initial = [
       "Bh"
     ]
   },
-  {
+    {
     "ranking": 10,
     "mask": 2,
     "c": {
@@ -1036,7 +1029,7 @@ export const conditions_initial = [
       "Bl"
     ]
   },
-  {
+    {
     "ranking": 20,
     "mask": 4,
     "c": {
@@ -1048,7 +1041,7 @@ export const conditions_initial = [
       "By"
     ]
   },
-  {
+    {
     "ranking": 10,
     "mask": 8,
     "c": {
@@ -1060,7 +1053,7 @@ export const conditions_initial = [
       "Cf"
     ]
   },
-  {
+    {
     "ranking": 10,
     "mask": 16,
     "c": {
@@ -1072,7 +1065,7 @@ export const conditions_initial = [
       "Df"
     ]
   },
-  {
+    {
     "ranking": 15,
     "mask": 32,
     "c": {
@@ -1084,7 +1077,7 @@ export const conditions_initial = [
       "Fe"
     ]
   },
-  {
+    {
     "ranking": 10,
     "mask": 64,
     "c": {
@@ -1096,7 +1089,7 @@ export const conditions_initial = [
       "Fl"
     ]
   },
-  {
+    {
     "ranking": 6,
     "mask": 128,
     "c": {
@@ -1108,7 +1101,7 @@ export const conditions_initial = [
       "Poi"
     ]
   },
-  {
+    {
     "ranking": 20,
     "mask": 256,
     "c": {
@@ -1120,7 +1113,7 @@ export const conditions_initial = [
       "Gl"
     ]
   },
-  {
+    {
     "ranking": 2,
     "mask": 512,
     "c": {
@@ -1132,7 +1125,7 @@ export const conditions_initial = [
       "Gr"
     ]
   },
-  {
+    {
     "ranking": 10,
     "mask": 1024,
     "c": {
@@ -1144,7 +1137,7 @@ export const conditions_initial = [
       "Hl"
     ]
   },
-  {
+    {
     "ranking": 20,
     "mask": 2048,
     "c": {
@@ -1156,7 +1149,7 @@ export const conditions_initial = [
       "Hd"
     ]
   },
-  {
+    {
     "ranking": 20,
     "mask": 4096,
     "c": {
@@ -1168,7 +1161,7 @@ export const conditions_initial = [
       "Ic"
     ]
   },
-  {
+    {
     "ranking": 8,
     "mask": 8192,
     "c": {
@@ -1180,7 +1173,7 @@ export const conditions_initial = [
       "La"
     ]
   },
-  {
+    {
     "ranking": 10,
     "mask": 16384,
     "c": {
@@ -1192,7 +1185,7 @@ export const conditions_initial = [
       "Lv"
     ]
   },
-  {
+    {
     "ranking": 20,
     "mask": 32768,
     "c": {
@@ -1204,7 +1197,7 @@ export const conditions_initial = [
       "Par"
     ]
   },
-  {
+    {
     "ranking": 10,
     "mask": 65536,
     "c": {
@@ -1216,7 +1209,7 @@ export const conditions_initial = [
       "Rd"
     ]
   },
-  {
+    {
     "ranking": 20,
     "mask": 131072,
     "c": {
@@ -1228,7 +1221,7 @@ export const conditions_initial = [
       "Zz"
     ]
   },
-  {
+    {
     "ranking": 6,
     "mask": 262144,
     "c": {
@@ -1240,7 +1233,7 @@ export const conditions_initial = [
       "Slm"
     ]
   },
-  {
+    {
     "ranking": 20,
     "mask": 524288,
     "c": {
@@ -1252,7 +1245,7 @@ export const conditions_initial = [
       "Sl"
     ]
   },
-  {
+    {
     "ranking": 6,
     "mask": 1048576,
     "c": {
@@ -1264,7 +1257,7 @@ export const conditions_initial = [
       "Sto"
     ]
   },
-  {
+    {
     "ranking": 4,
     "mask": 2097152,
     "c": {
@@ -1276,7 +1269,7 @@ export const conditions_initial = [
       "Str"
     ]
   },
-  {
+    {
     "ranking": 10,
     "mask": 4194304,
     "c": {
@@ -1288,7 +1281,7 @@ export const conditions_initial = [
       "St"
     ]
   },
-  {
+    {
     "ranking": 15,
     "mask": 8388608,
     "c": {
@@ -1300,7 +1293,7 @@ export const conditions_initial = [
       "Sm"
     ]
   },
-  {
+    {
     "ranking": 6,
     "mask": 16777216,
     "c": {
@@ -1312,7 +1305,7 @@ export const conditions_initial = [
       "Ill"
     ]
   },
-  {
+    {
     "ranking": 20,
     "mask": 33554432,
     "c": {
@@ -1324,7 +1317,7 @@ export const conditions_initial = [
       "Te"
     ]
   },
-  {
+    {
     "ranking": 20,
     "mask": 67108864,
     "c": {
@@ -1336,7 +1329,7 @@ export const conditions_initial = [
       "Tr"
     ]
   },
-  {
+    {
     "ranking": 20,
     "mask": 134217728,
     "c": {
@@ -1348,7 +1341,7 @@ export const conditions_initial = [
       "KO"
     ]
   },
-  {
+    {
     "ranking": 20,
     "mask": 268435456,
     "c": {
@@ -1360,7 +1353,7 @@ export const conditions_initial = [
       "Lg"
     ]
   },
-  {
+    {
     "ranking": 20,
     "mask": 536870912,
     "c": {
@@ -1374,7 +1367,7 @@ export const conditions_initial = [
   }
 ];
 export const condtests_initial = [
-  {
+    {
     "c": {
       "constant": "bl_bareh"
     },
@@ -1386,7 +1379,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_blind"
     },
@@ -1398,7 +1391,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_busy"
     },
@@ -1410,7 +1403,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_conf"
     },
@@ -1422,7 +1415,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_deaf"
     },
@@ -1434,7 +1427,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_elf_iron"
     },
@@ -1446,7 +1439,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_fly"
     },
@@ -1458,7 +1451,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_foodpois"
     },
@@ -1470,7 +1463,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_glowhands"
     },
@@ -1482,7 +1475,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_grab"
     },
@@ -1494,7 +1487,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_hallu"
     },
@@ -1506,7 +1499,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_held"
     },
@@ -1518,7 +1511,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_icy"
     },
@@ -1530,7 +1523,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_inlava"
     },
@@ -1542,7 +1535,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_lev"
     },
@@ -1554,7 +1547,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_parlyz"
     },
@@ -1566,7 +1559,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_ride"
     },
@@ -1578,7 +1571,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_sleeping"
     },
@@ -1590,7 +1583,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_slime"
     },
@@ -1602,7 +1595,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_slippery"
     },
@@ -1614,7 +1607,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_stone"
     },
@@ -1626,7 +1619,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_strngl"
     },
@@ -1638,7 +1631,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_stun"
     },
@@ -1650,7 +1643,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_submerged"
     },
@@ -1662,7 +1655,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_termill"
     },
@@ -1674,7 +1667,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_tethered"
     },
@@ -1686,7 +1679,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_trapped"
     },
@@ -1698,7 +1691,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_unconsc"
     },
@@ -1710,7 +1703,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_woundedl"
     },
@@ -1722,7 +1715,7 @@ export const condtests_initial = [
     "choice": 0,
     "test": 0
   },
-  {
+    {
     "c": {
       "constant": "bl_holding"
     },
@@ -1735,216 +1728,185 @@ export const condtests_initial = [
     "test": 0
   }
 ];
-export const cond_idx_initial = [
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0
-];
+export const cond_idx_initial = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 export const c_Wall_initial = "Wall";
 export const terrain_descr_initial = [
-  "Stone",
-  "Wall",
-  "Wall",
-  "Wall",
-  "Wall",
-  "Wall",
-  "Wall",
-  "Wall",
-  "Wall",
-  "Wall",
-  "Wall",
-  "Wall",
-  "Portcullis",
-  "Tree",
-  "Wall",
-  "Stone",
-  "Pool",
-  "Moat",
-  "Water",
-  "(gap)",
-  "Lava",
-  "LavaWall",
-  "Bars",
-  "Doorway",
-  "Corridor",
-  "Room",
-  "Stairs",
-  "Ladder",
-  "Fountain",
-  "Throne",
-  "Sink",
-  "Grave",
-  "Altar",
-  "Ice",
-  "Bridge",
-  "Air",
-  "Cloud",
-  "",
-  "Wall",
-  "Floor",
-  "Ground",
-  "Open-door",
-  "Shut-door",
-  "Swamp",
-  "Submerged",
-  "Sea",
-  "WaterWall"
+    "Stone",
+    "Wall",
+    "Wall",
+    "Wall",
+    "Wall",
+    "Wall",
+    "Wall",
+    "Wall",
+    "Wall",
+    "Wall",
+    "Wall",
+    "Wall",
+    "Portcullis",
+    "Tree",
+    "Wall",
+    "Stone",
+    "Pool",
+    "Moat",
+    "Water",
+    "(gap)",
+    "Lava",
+    "LavaWall",
+    "Bars",
+    "Doorway",
+    "Corridor",
+    "Room",
+    "Stairs",
+    "Ladder",
+    "Fountain",
+    "Throne",
+    "Sink",
+    "Grave",
+    "Altar",
+    "Ice",
+    "Bridge",
+    "Air",
+    "Cloud",
+    "",
+    "Wall",
+    "Floor",
+    "Ground",
+    "Open-door",
+    "Shut-door",
+    "Swamp",
+    "Submerged",
+    "Sea",
+    "WaterWall"
 ];
 export const fieldids_alias_initial = [
-  {
+    {
     "fieldname": "characteristics",
     "fldid": {
       "constant": "BL_CHARACTERISTICS"
     }
   },
-  {
+    {
     "fieldname": "encumbrance",
     "fldid": {
       "constant": "BL_CAP"
     }
   },
-  {
+    {
     "fieldname": "experience-points",
     "fldid": {
       "constant": "BL_EXP"
     }
   },
-  {
+    {
     "fieldname": "dx",
     "fldid": {
       "constant": "BL_DX"
     }
   },
-  {
+    {
     "fieldname": "co",
     "fldid": {
       "constant": "BL_CO"
     }
   },
-  {
+    {
     "fieldname": "con",
     "fldid": {
       "constant": "BL_CO"
     }
   },
-  {
+    {
     "fieldname": "points",
     "fldid": {
       "constant": "BL_SCORE"
     }
   },
-  {
+    {
     "fieldname": "cap",
     "fldid": {
       "constant": "BL_CAP"
     }
   },
-  {
+    {
     "fieldname": "pw",
     "fldid": {
       "constant": "BL_ENE"
     }
   },
-  {
+    {
     "fieldname": "pw-max",
     "fldid": {
       "constant": "BL_ENEMAX"
     }
   },
-  {
+    {
     "fieldname": "xl",
     "fldid": {
       "constant": "BL_XP"
     }
   },
-  {
+    {
     "fieldname": "xplvl",
     "fldid": {
       "constant": "BL_XP"
     }
   },
-  {
+    {
     "fieldname": "ac",
     "fldid": {
       "constant": "BL_AC"
     }
   },
-  {
+    {
     "fieldname": "hit-dice",
     "fldid": {
       "constant": "BL_HD"
     }
   },
-  {
+    {
     "fieldname": "turns",
     "fldid": {
       "constant": "BL_TIME"
     }
   },
-  {
+    {
     "fieldname": "hp",
     "fldid": {
       "constant": "BL_HP"
     }
   },
-  {
+    {
     "fieldname": "hp-max",
     "fldid": {
       "constant": "BL_HPMAX"
     }
   },
-  {
+    {
     "fieldname": "dgn",
     "fldid": {
       "constant": "BL_LEVELDESC"
     }
   },
-  {
+    {
     "fieldname": "xp",
     "fldid": {
       "constant": "BL_EXP"
     }
   },
-  {
+    {
     "fieldname": "exp",
     "fldid": {
       "constant": "BL_EXP"
     }
   },
-  {
+    {
     "fieldname": "flags",
     "fldid": {
       "constant": "BL_CONDITION"
     }
   },
-  {
+    {
     "fieldname": 0,
     "fldid": {
       "constant": "BL_FLUSH"

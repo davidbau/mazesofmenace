@@ -5,25 +5,12 @@
 
 import { C } from '../c-runtime/context.js';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 export function newegd(mtmp)
 {
     if (!mtmp.mextra)
         mtmp.mextra = C.newmextra();
     if (!mtmp.mextra.egd) {
-        mtmp.mextra.egd =  C.alloc(C.egdSize);
+        mtmp.mextra.egd = C.alloc(C.egdSize);
         C.memset( mtmp.mextra.egd, 0, C.egdSize);
         mtmp.mextra.egd.parentmid = mtmp.m_id;
     }
@@ -33,7 +20,7 @@ export function free_egd(mtmp)
 {
     if (mtmp.mextra && mtmp.mextra.egd) {
         C.free( mtmp.mextra.egd);
-        mtmp.mextra.egd =  0;
+        mtmp.mextra.egd = 0;
     }
     mtmp.isgd = 0;
 }
@@ -205,7 +192,7 @@ export function findgd()
     }
     /* if not on fmon, look for a guard waiting to migrate to this level */
     for (mprev = C.monsterPointer(C.migratingPointer()); (mtmp = mprev.value) != 0;
-         mprev = C.monsterPointer(C.address(mtmp)+C.mon_nmon)) {
+         mprev = C.monsterPointer(C.address(mtmp) + C.mon_nmon)) {
         if (mtmp.isgd && C.on_level(mtmp.mextra.egd.gdlevel, C.u.uz)) {
             /* take out of migrating_mons and place at <0,0>;
                simplified mon_arrive(); avoid that because it would
@@ -291,7 +278,6 @@ export function find_guard_dest(guard, rx, ry)
                 }
             }
         }
-
     }
     C.impossible("Not a single corridor on this level?");
     C.tele();
@@ -810,7 +796,6 @@ export function gd_pick_corridor_gold(grd, goldx, goldy)
     return;
 }
 
-
 /* return 1: guard moved, -2: died  */
 export function gd_move_cleanup(grd, semi_dead, disappear_msg_seen)
 {
@@ -1083,7 +1068,6 @@ export function gd_move(grd)
                     break proceed;
                 }
             }
-
         }
     }
     nx = x;

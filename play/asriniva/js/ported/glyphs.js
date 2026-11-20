@@ -4,19 +4,18 @@
 
 import { C } from '../c-runtime/context.js';
 
-export const res_nothing=0, res_dump_glyphids=1, res_fill_cache=2;
-export const find_nothing=0, find_pm=1, find_oc=2, find_cmap=3, find_glyph=4;
-export const zero_find={findtype:0,val:0,loadsyms_offset:0,loadsyms_count:0,extraval:0,color:0,unicode_val:0,callback:0,restype:0,reserved:0};
-export const glyphid_cache=0, glyphid_cache_lsize=0, glyphid_cache_size=0n;
-export const nonzero_black=["CLR_BLACK","NH_BASIC_COLOR"];
+export const res_nothing = 0, res_dump_glyphids = 1, res_fill_cache = 2;
+export const find_nothing = 0, find_pm = 1, find_oc = 2, find_cmap = 3, find_glyph = 4;
+export const zero_find = {findtype:0, val:0, loadsyms_offset:0, loadsyms_count:0, extraval:0, color:0, unicode_val:0, callback:0, restype:0, reserved:0};
+export const glyphid_cache = 0, glyphid_cache_lsize = 0, glyphid_cache_size = 0n;
+export const nonzero_black = ["CLR_BLACK", "NH_BASIC_COLOR"];
 
 export function to_custom_symset_entry_callback(glyph, findwhat)
 {
     let idx = C.gs.symset_which_set;
 
-    const utf8str = C.byteArray([0,0,0,0,0,0]);
+    const utf8str = C.byteArray([0, 0, 0, 0, 0, 0]);
     let uval = 0;
-
 
     if (findwhat.extraval)
         C.storeInt(findwhat.extraval, glyph);
@@ -247,7 +246,6 @@ export function glyph_find_core(id, findwhat)
  over with.
 */
 
-
 export function fill_glyphid_cache()
 {
     let reslt = 0;
@@ -293,7 +291,7 @@ export function init_glyph_cache()
     /* Cache size of power of 2 not less than 2*MAX_GLYPH */
     C.glyphsState.glyphid_cache_lsize = 0;
     C.glyphsState.glyphid_cache_size = 1n;
-    while (C.glyphsState.glyphid_cache_size < 2*C.MAX_GLYPH) {
+    while (C.glyphsState.glyphid_cache_size < 2 * C.MAX_GLYPH) {
         ++C.glyphsState.glyphid_cache_lsize;
         C.glyphsState.glyphid_cache_size <<= 1n;
     }
@@ -353,7 +351,7 @@ export function add_glyph_to_cache(glyphnum, id)
     }
     let hash = glyph_hash(id);
     let hash1 = (BigInt(hash) & (C.glyphsState.glyphid_cache_size - 1n));
-    let hash2 = 
+    let hash2 =
             ((BigInt(hash >>> C.glyphsState.glyphid_cache_lsize) & (C.glyphsState.glyphid_cache_size - 1n)) | 1n);
     let i = hash1;
 
@@ -386,7 +384,7 @@ export function find_glyph_in_cache(id)
     }
     let hash = glyph_hash(id);
     let hash1 = (BigInt(hash) & (C.glyphsState.glyphid_cache_size - 1n));
-    let hash2 = 
+    let hash2 =
             ((BigInt(hash >>> C.glyphsState.glyphid_cache_lsize) & (C.glyphsState.glyphid_cache_size - 1n)) | 1n);
     let i = hash1;
 
@@ -482,7 +480,8 @@ export function match_glyph(buf)
 
 export function glyphrep(op)
 {
-    let reslt = 0; const glyph = C.intLocal(C.NO_GLYPH);
+    let reslt = 0;
+    const glyph = C.intLocal(C.NO_GLYPH);
 
     if (!glyphid_cache_status())
         reslt = 1;      /* for debugger use only; no cache available */
@@ -498,10 +497,6 @@ export function add_custom_nhcolor_entry(customization_name, glyphidx, nhcolor, 
     let gdc
                         = C.gs.sym_customizations[which_set][C.custom_nhcolor];
     let details, newdetails = 0;
-
-
-
-
 
     if (!gdc.details) {
         gdc.customization_name = C.dupstr(customization_name);
@@ -553,7 +548,6 @@ export function apply_customizations(which_set, docustomize)
                not to symset entries */
             details = sc.details;
             while (details) {
-
                 if (C.iflags.customsymbols && do_symbols) {
                     if (sc.custtype == C.custom_ureps) {
                         gmap = C.glyphmap[details.content.urep.glyphidx];
@@ -590,62 +584,6 @@ export function maybe_shuffle_customizations()
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export function shuffle_customizations()
 {
     const offsets = [ C.GLYPH_OBJ_OFF, C.GLYPH_OBJ_PILETOP_OFF ];
@@ -679,7 +617,6 @@ export function shuffle_customizations()
              * each pointer points to a unique allocation.
              */
             if (duplicate[idx] >= 0) {
-
                 /* Current structure already appears in tmp_u */
                 let other = tmp_u[duplicate[idx]];
 
@@ -732,7 +669,6 @@ export function shuffle_customizations()
         }
     }
 }
-
 
 export function find_matching_customization(customization_name, custtype, which_set)
 {
@@ -881,7 +817,10 @@ export function parse_id(id, findwhat, fillingOwnedCache = false)
             for (glyph = 0; glyph < C.MAX_GLYPH; ++glyph) {
                 skip_base = C.FALSE;
                 skip_this_one = C.FALSE;
-                C.storeChar(buf[0], 0); C.storeChar(buf[1], 0); C.storeChar(buf[2], 0); C.storeChar(buf[3], 0);
+                C.storeChar(buf[0], 0);
+                C.storeChar(buf[1], 0);
+                C.storeChar(buf[2], 0);
+                C.storeChar(buf[3], 0);
                 if (C.glyph_is_monster(glyph)) {
                     /* buf2 will hold the distinguishing prefix */
                     /* buf3 will hold the base name */
@@ -1099,7 +1038,7 @@ export function parse_id(id, findwhat, fillingOwnedCache = false)
                 if (C.memchr(buf[0], 0, C.QBUFSZ) == C.NULL)
                     C.panic("parse_id: buf[0] overflowed");
                 if (!skip_this_one) {
-                    fix_glyphname(buf[0]+2);
+                    fix_glyphname(buf[0] + 2);
                     if (dump_ids) {
                         C.Fprintf(fp, "(%04d) %s\n", glyph, buf[0]);
                     } else if (filling_cache) {
@@ -1173,144 +1112,7 @@ export function reset_customcolors()
 
 /* not used yet */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* glyphs.c */
-
-
-
 
 /* U+NNNN format */
 

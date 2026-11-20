@@ -1790,8 +1790,11 @@ export function parseNethackrc(rc) {
                         result.iflags.msg_history = negated ? 0 : (parseInt(val, 10) || 0);
                 }
                 /* C options.c:3627-3656 optfn_runmode().  str_start_is()
-                 * accepts abbreviations; invalid or empty values leave the
-                 * initialized default unchanged after C reports an error. */
+                 * accepts abbreviations; an unknown value (:3646-3649) or a
+                 * missing one (:3651-3654) is a config error (optn_err) that
+                 * leaves the initialized default unchanged.  optlist.h gives
+                 * runmode pfx=No (NHOPTC), so parseoptions' "bad option suffix
+                 * variation" arm (:674-682) never follows it up. */
                 else if (key === 'runmode') {
                     const mode = val.toLowerCase();
                     if (negated || (mode && 'teleport'.startsWith(mode)))
@@ -1802,6 +1805,10 @@ export function parseNethackrc(rc) {
                         result.flags.runmode = RUN_STEP;
                     else if (mode && 'crawl'.startsWith(mode))
                         result.flags.runmode = RUN_CRAWL;
+                    else if (mode)
+                        config_error_add("Unknown %s parameter '%s'", 'runmode', val);
+                    else
+                        config_error_add("Value is mandatory for %s", 'runmode');
                 }
                 else if (key === 'sortloot') {
                     /* C ref: options.c:3943 sortltype[] = none/loot/full;
@@ -1913,6 +1920,8 @@ export function parseNethackrc(rc) {
                 else if (lname === 'runmode') {
                     if (negated)
                         result.flags.runmode = RUN_TPORT;
+                    else
+                        config_error_add("Value is mandatory for %s", 'runmode');
                 }
                 else if (lname === 'color')
                     result.flags.color = value;

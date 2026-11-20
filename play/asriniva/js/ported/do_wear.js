@@ -4,7 +4,6 @@ import {C} from '../c-runtime/context.js';
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 const see_yourself = "see yourself";
 const unknown_type = "Unknown type of %s (%d)";
 const c_armor = "armor", c_suit = "suit",
@@ -20,39 +19,9 @@ export const takeoff_order = [
     "WORN_SHIRT",  "WORN_BOOTS", "W_SWAPWEP",   "W_QUIVER",    0
 ];
 
-
-
-
 /* int Boots_on(void); -- moved to extern.h */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* maybe_destroy_armor() may return NULL */
-
-
-
 
 /* plural "fingers" or optionally "gloves" */
 
@@ -62,7 +31,6 @@ export function fingers_or_gloves(check_gloves)
             ? C.gloves_simple_name(C.uarmg) /* "gloves" or "gauntlets" */
             : C.makeplural(C.body_part(C.FINGER))); /* "fingers" */
 }
-
 
 export function off_msg(otmp)
 {
@@ -175,7 +143,6 @@ export function toggle_displacement(obj, oldprop, on)
  * [Blindf_on() is an exception and calls setworn() itself.]
  */
 
-
 export function Boots_on()
 {
     let oldprop =
@@ -250,7 +217,6 @@ export function Boots_on()
     return 0;
 }
 
-
 export function Boots_off()
 {
     let otmp = C.uarmf;
@@ -314,7 +280,6 @@ export function Boots_off()
     return 0;
 }
 
-
 export function Cloak_on()
 {
     let oldprop =
@@ -371,7 +336,6 @@ export function Cloak_on()
     return 0;
 }
 
-
 export function Cloak_off()
 {
     let otmp = C.uarmc;
@@ -421,7 +385,6 @@ export function Cloak_off()
     }
     return 0;
 }
-
 
 export function Helmet_on()
 {
@@ -506,7 +469,6 @@ export function Helmet_on()
     return 0;
 }
 
-
 export function Helmet_off()
 {
     C.svc.context.takeoff.mask &= ~C.W_ARMH;
@@ -563,7 +525,6 @@ export function hard_helmet(obj)
         return 0;
     return (C.is_metallic(obj) || C.is_crackable(obj)) ? 1 : 0;
 }
-
 
 export function Gloves_on()
 {
@@ -632,7 +593,6 @@ export function wielding_corpse(obj, how, voluntary)
     }
 }
 
-
 export function Gloves_off()
 {
     let gloves = C.uarmg; /* needed after uarmg has been set to Null */
@@ -691,7 +651,6 @@ export function Gloves_off()
     return 0;
 }
 
-
 export function Shield_on()
 {
     /* no shield currently requires special handling when put on, but we
@@ -719,7 +678,6 @@ export function Shield_on()
     return 0;
 }
 
-
 export function Shield_off()
 {
     C.svc.context.takeoff.mask &= ~C.W_ARMS;
@@ -745,7 +703,6 @@ export function Shield_off()
     return 0;
 }
 
-
 export function Shirt_on()
 {
     /* no shirt currently requires special handling when put on, but we
@@ -763,7 +720,6 @@ export function Shirt_on()
     }
     return 0;
 }
-
 
 export function Shirt_off()
 {
@@ -870,7 +826,6 @@ export function dragon_armor_handling(otmp, puton, on_purpose)
     }
 }
 
-
 export function Armor_on()
 {
     if (!C.uarm) /* no known instances of !uarm here but play it safe */
@@ -891,7 +846,6 @@ export function Armor_on()
     }
     return 0;
 }
-
 
 export function Armor_off()
 {
@@ -945,7 +899,6 @@ export function Armor_gone()
 
     return 0;
 }
-
 
 export function Amulet_on(amul)
 {
@@ -1072,7 +1025,6 @@ export function Amulet_on(amul)
     if (!on_msg_done)
         C.callLocal(on_msg, C.uamul);
 }
-
 
 export function Amulet_off()
 {
@@ -1203,7 +1155,6 @@ export function learnring(ring, observed)
     }
 }
 
-
 export function adjust_attrib(obj, which, val)
 {
     let old_attrib;
@@ -1221,7 +1172,6 @@ export function adjust_attrib(obj, which, val)
         C.callLocal(learnring, obj, observable);
     C.disp.botl = 1;
 }
-
 
 export function Ring_on(obj)
 {
@@ -1327,7 +1277,6 @@ export function Ring_on(obj)
     }
 }
 
-
 export function Ring_off_or_gone(obj, gone)
 {
     let mask = (obj.owornmask & C.W_RING);
@@ -1429,18 +1378,15 @@ export function Ring_off_or_gone(obj, gone)
     }
 }
 
-
 export function Ring_off(obj)
 {
     C.callLocal(Ring_off_or_gone, obj, 0);
 }
 
-
 export function Ring_gone(obj)
 {
     C.callLocal(Ring_off_or_gone, obj, 1);
 }
-
 
 export function Blindf_on(otmp)
 {
@@ -1474,7 +1420,6 @@ export function Blindf_on(otmp)
         C.toggle_blindness(); /* potion.c */
     }
 }
-
 
 export function Blindf_off(otmp)
 {
@@ -1659,7 +1604,7 @@ export function cancel_don()
                                         || C.ga.afternmv == Gloves_on
                                         || C.ga.afternmv == Boots_on
                                         || C.ga.afternmv == Shield_on);
-    C.ga.afternmv =  0;
+    C.ga.afternmv = 0;
     C.gn.nomovemsg = 0;
     C.gm.multi = 0;
     C.svc.context.takeoff.delay = 0;
@@ -1688,7 +1633,7 @@ export function stop_donning(stolenobj)
     C.callLocal(cancel_don);
     /* don't want <armor>_on() or <armor>_off() being called
        by unmul() since the on or off action isn't completing */
-    C.ga.afternmv =  0;
+    C.ga.afternmv = 0;
     if (putting_on || otmp != stolenobj) {
         C.Sprintf(buf, "You stop %s %s.",
                 putting_on ? "putting on" : "taking off",
@@ -1707,8 +1652,6 @@ export function stop_donning(stolenobj)
 
     return result;
 }
-
-
 
 /* assign values to Narmorpieces and Naccessories */
 /* caller wants this when count is 1 */
@@ -1895,7 +1838,6 @@ export function cursed(otmp)
     return 0;
 }
 
-
 export function armoroff(otmp)
 {
     const offdelaybuf = C.staticBuffer(60);
@@ -1986,12 +1928,10 @@ export function armoroff(otmp)
     return 1;
 }
 
-
 export function already_wearing(cc)
 {
     C.You("are already wearing %s%c", cc, (cc == c_that_) ? 33 : 46, C.varargs(75));
 }
-
 
 export function already_wearing2(cc1, cc2)
 {
@@ -2184,7 +2124,6 @@ export function canwearobj(otmp, mask, noisy)
     return !err;
 }
 
-
 export function accessory_or_armor_on(obj)
 {
     let mask = 0n;
@@ -2227,7 +2166,8 @@ export function accessory_or_armor_on(obj)
 
         /* accessory */
         if (ring) {
-            let answer; const qbuf = C.charArray(C.QBUFSZ);
+            let answer;
+            const qbuf = C.charArray(C.QBUFSZ);
             let res = 0;
 
             if (C.nolimbs(C.gy.youmonst.data)) {
@@ -2281,7 +2221,7 @@ export function accessory_or_armor_on(obj)
             if (C.uwep) {
                 res = !C.uwep.bknown; /* check this before calling welded() */
                 if (((mask == C.RIGHT_RING && C.URIGHTY)
-                     || (mask == C.LEFT_RING  && C.ULEFTY)
+                     || (mask == C.LEFT_RING && C.ULEFTY)
                      || C.bimanual(C.uwep)) && C.welded(C.uwep)) {
                     let hand = C.body_part(C.HAND);
 
@@ -2495,13 +2435,12 @@ export function find_ac()
     }
 }
 
-
 export function glibr()
 {
     let otmp;
     let xfl = 0;
     let leftfall, rightfall, wastwoweap = 0;
-    let otherwep = 0,thiswep,which,hand;
+    let otherwep = 0, thiswep, which, hand;
 
     leftfall = (C.uleft && !C.uleft.cursed
                 && (!C.uwep || !(C.welded(C.uwep) && C.ULEFTY)
@@ -2597,10 +2536,9 @@ export function glibr()
     }
 }
 
-
 export function some_armor(victim)
 {
-    let otmph,otmp;
+    let otmph, otmp;
 
     otmph = (victim == C.addressOf(C.gy, "youmonst")) ? C.uarmc : C.which_armor(victim, C.W_ARMC);
     if (!otmph)
@@ -2661,7 +2599,6 @@ export function unchanger()
         return C.uamul;
     return 0;
 }
-
 
 export function select_off(otmp)
 {
@@ -2789,7 +2726,6 @@ export function select_off(otmp)
 
     return 0;
 }
-
 
 export function do_takeoff()
 {
@@ -2956,7 +2892,6 @@ export function take_off()
     return 1; /* get busy */
 }
 
-
 export function better_not_take_that_off(otmp)
 {
     let corpse = C.carrying_stoning_corpse();
@@ -3031,7 +2966,8 @@ export function doddoremarm()
 
 export function remarm_swapwep()
 {
-    const cq = C.localStruct("_cmd_queue"); let cmdq;
+    const cq = C.localStruct("_cmd_queue");
+    let cmdq;
     let oldbknown;
 
     if ((cmdq = C.cmdq_pop()) != 0) {
@@ -3055,7 +2991,6 @@ export function remarm_swapwep()
     C.callLocal(do_takeoff);
     return (!C.uswapwep || C.uswapwep.bknown != oldbknown) ? C.ECMD_TIME : C.ECMD_OK;
 }
-
 
 export function menu_remarm(retry)
 {
@@ -3113,7 +3048,7 @@ export function menu_remarm(retry)
 
 export function wornarm_destroyed(wornarm)
 {
-    let invobj,nextobj;
+    let invobj, nextobj;
     let wornoid = wornarm.o_id;
 
     /* cancel_don() resets 'afternmv' when appropriate but doesn't reset
@@ -3270,7 +3205,7 @@ export function destroy_arm()
             let erosion = C.callLocal(obj_erode_type, otmp);
 
             if (erosion != C.ERODE_NONE) {
-                let r = C.erode_obj(otmp, C.xname(otmp), erosion, C.EF_PAY|C.EF_DESTROY);
+                let r = C.erode_obj(otmp, C.xname(otmp), erosion, C.EF_PAY | C.EF_DESTROY);
 
                 if (r != C.ER_NOTHING)
                     ret = 1;
@@ -3284,7 +3219,6 @@ export function destroy_arm()
         C.stop_occupation();
     return ret;
 }
-
 
 export function adj_abon(otmp, delta)
 {
@@ -3330,7 +3264,14 @@ export function inaccessible_equipment(obj, verb, only_if_known_cursed)
     }
     /* check for shirt covered by suit and/or cloak */
     if (obj == C.uarmu
-        && ((C.uarm && (anycovering || ((C.uarm).cursed && (C.uarm).bknown))) || (C.uarmc && (anycovering || ((C.uarmc).cursed && (C.uarmc).bknown))))) {
+        && ((C.uarm
+            && (anycovering
+            || ((C.uarm).cursed
+            && (C.uarm).bknown)))
+            || (C.uarmc
+            && (anycovering
+            || ((C.uarmc).cursed
+            && (C.uarmc).bknown))))) {
         if (verb) {
             const cloaktmp = C.charArray(C.QBUFSZ);
         const suittmp = C.charArray(C.QBUFSZ);
@@ -3362,7 +3303,6 @@ export function inaccessible_equipment(obj, verb, only_if_known_cursed)
     }
     /* item is not inaccessible */
     return 0;
-
 }
 
 /* not a getobj callback - unifies code among the other 4 getobj callbacks */

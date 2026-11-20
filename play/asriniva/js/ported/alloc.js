@@ -29,7 +29,6 @@ import { C } from '../c-runtime/context.js';
 // #include "nhlua.h"
 // #endif
 
-
 /*#define FITSint(x) FITSint_(x, __func__, __LINE__)*/
 // extern int FITSint_(LUA_INTEGER, const char *, int) NONNULLARG2;
 /*#define FITSuint(x) FITSuint_(x, __func__, __LINE__)*/

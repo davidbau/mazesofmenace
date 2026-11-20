@@ -9,102 +9,119 @@ import { C } from '../c-runtime/context.js';
 /* part of the output on gain or loss of attribute */
 export const plusattr = [ "strong", "smart", "wise",
                           "agile",  "tough", "charismatic" ],
-    minusattr = [ "weak",    "stupid",
-                           "foolish", "clumsy",
-                           "fragile", "repulsive" ];
+    minusattr = ["weak", "stupid", "foolish", "clumsy", "fragile", "repulsive"];
 /* also used by enlightenment in insight.c for non-abbreviated status info */
-
 
 export const attrname = [ "strength", "intelligence", "wisdom",
                           "dexterity", "constitution", "charisma" ];
 
-export const arc_abil = [ [ 1, "HSearching", "", "" ],
-                 [ 5, "HStealth", "stealthy", "" ],
-                 [ 10, "HFast", "quick", "slow" ],
-                 [ 0, 0, 0, 0 ] ];
+export const arc_abil = [
+    [1, "HSearching", "", ""],
+    [5, "HStealth", "stealthy", ""],
+    [10, "HFast", "quick", "slow"],
+    [0, 0, 0, 0]
+];
 
-  export const bar_abil = [ [ 1, "HPoison_resistance", "", "" ],
-                 [ 7, "HFast", "quick", "slow" ],
-                 [ 15, "HStealth", "stealthy", "" ],
-                 [ 0, 0, 0, 0 ] ];
+  export const bar_abil = [
+    [1, "HPoison_resistance", "", ""],
+    [7, "HFast", "quick", "slow"],
+    [15, "HStealth", "stealthy", ""],
+    [0, 0, 0, 0]
+];
 
-  export const cav_abil = [ [ 7, "HFast", "quick", "slow" ],
-                 [ 15, "HWarning", "sensitive", "" ],
-                 [ 0, 0, 0, 0 ] ];
+  export const cav_abil = [
+    [7, "HFast", "quick", "slow"],
+    [15, "HWarning", "sensitive", ""],
+    [0, 0, 0, 0]
+];
 
-  export const hea_abil = [ [ 1, "HPoison_resistance", "", "" ],
-                 [ 15, "HWarning", "sensitive", "" ],
-                 [ 0, 0, 0, 0 ] ];
+  export const hea_abil = [
+    [1, "HPoison_resistance", "", ""],
+    [15, "HWarning", "sensitive", ""],
+    [0, 0, 0, 0]
+];
 
   export const kni_abil = [ [ 7, "HFast", "quick", "slow" ], [ 0, 0, 0, 0 ] ];
 
-  export const mon_abil = [ [ 1, "HFast", "", "" ],
-                 [ 1, "HSleep_resistance", "", "" ],
-                 [ 1, "HSee_invisible", "", "" ],
-                 [ 3, "HPoison_resistance", "healthy", "" ],
-                 [ 5, "HStealth", "stealthy", "" ],
-                 [ 7, "HWarning", "sensitive", "" ],
-                 [ 9, "HSearching", "perceptive", "unaware" ],
-                 [ 11, "HFire_resistance", "cool", "warmer" ],
-                 [ 13, "HCold_resistance", "warm", "cooler" ],
-                 [ 15, "HShock_resistance", "insulated", "conductive" ],
-                 [ 17, "HTeleport_control", "controlled", "uncontrolled" ],
-                 [ 0, 0, 0, 0 ] ];
+  export const mon_abil = [
+    [1, "HFast", "", ""],
+    [1, "HSleep_resistance", "", ""],
+    [1, "HSee_invisible", "", ""],
+    [3, "HPoison_resistance", "healthy", ""],
+    [5, "HStealth", "stealthy", ""],
+    [7, "HWarning", "sensitive", ""],
+    [9, "HSearching", "perceptive", "unaware"],
+    [11, "HFire_resistance", "cool", "warmer"],
+    [13, "HCold_resistance", "warm", "cooler"],
+    [15, "HShock_resistance", "insulated", "conductive"],
+    [17, "HTeleport_control", "controlled", "uncontrolled"],
+    [0, 0, 0, 0]
+];
 
-  export const pri_abil = [ [ 15, "HWarning", "sensitive", "" ],
-                 [ 20, "HFire_resistance", "cool", "warmer" ],
-                 [ 0, 0, 0, 0 ] ];
+  export const pri_abil = [
+    [15, "HWarning", "sensitive", ""],
+    [20, "HFire_resistance", "cool", "warmer"],
+    [0, 0, 0, 0]
+];
 
-  export const ran_abil = [ [ 1, "HSearching", "", "" ],
-                 [ 7, "HStealth", "stealthy", "" ],
-                 [ 15, "HSee_invisible", "", "" ],
-                 [ 0, 0, 0, 0 ] ];
+  export const ran_abil = [
+    [1, "HSearching", "", ""],
+    [7, "HStealth", "stealthy", ""],
+    [15, "HSee_invisible", "", ""],
+    [0, 0, 0, 0]
+];
 
-  export const rog_abil = [ [ 1, "HStealth", "", "" ],
-                 [ 10, "HSearching", "perceptive", "" ],
-                 [ 0, 0, 0, 0 ] ];
+  export const rog_abil = [
+    [1, "HStealth", "", ""],
+    [10, "HSearching", "perceptive", ""],
+    [0, 0, 0, 0]
+];
 
-  export const sam_abil = [ [ 1, "HFast", "", "" ],
-                 [ 15, "HStealth", "stealthy", "" ],
-                 [ 0, 0, 0, 0 ] ];
+  export const sam_abil = [
+    [1, "HFast", "", ""],
+    [15, "HStealth", "stealthy", ""],
+    [0, 0, 0, 0]
+];
 
-  export const tou_abil = [ [ 10, "HSearching", "perceptive", "" ],
-                 [ 20, "HPoison_resistance", "hardy", "" ],
-                 [ 0, 0, 0, 0 ] ];
+  export const tou_abil = [
+    [10, "HSearching", "perceptive", ""],
+    [20, "HPoison_resistance", "hardy", ""],
+    [0, 0, 0, 0]
+];
 
-  export const val_abil = [ [ 1, "HCold_resistance", "", "" ],
-                 [ 3, "HStealth", "stealthy", "" ],
-                 [ 7, "HFast", "quick", "slow" ],
-                 [ 0, 0, 0, 0 ] ];
+  export const val_abil = [
+    [1, "HCold_resistance", "", ""],
+    [3, "HStealth", "stealthy", ""],
+    [7, "HFast", "quick", "slow"],
+    [0, 0, 0, 0]
+];
 
-  export const wiz_abil = [ [ 15, "HWarning", "sensitive", "" ],
-                 [ 17, "HTeleport_control", "controlled", "uncontrolled" ],
-                 [ 0, 0, 0, 0 ] ];
+  export const wiz_abil = [
+    [15, "HWarning", "sensitive", ""],
+    [17, "HTeleport_control", "controlled", "uncontrolled"],
+    [0, 0, 0, 0]
+];
 
   /* Intrinsics conferred by race */
   export const dwa_abil = [ [ 1, "HInfravision", "", "" ],
                  [ 0, 0, 0, 0 ] ];
 
-  export const elf_abil = [ [ 1, "HInfravision", "", "" ],
-                 [ 4, "HSleep_resistance", "awake", "tired" ],
-                 [ 0, 0, 0, 0 ] ];
+  export const elf_abil = [
+    [1, "HInfravision", "", ""],
+    [4, "HSleep_resistance", "awake", "tired"],
+    [0, 0, 0, 0]
+];
 
   export const gno_abil = [ [ 1, "HInfravision", "", "" ],
                  [ 0, 0, 0, 0 ] ];
 
-  export const orc_abil = [ [ 1, "HInfravision", "", "" ],
-                 [ 1, "HPoison_resistance", "", "" ],
-                 [ 0, 0, 0, 0 ] ];
+  export const orc_abil = [
+    [1, "HInfravision", "", ""],
+    [1, "HPoison_resistance", "", ""],
+    [0, 0, 0, 0]
+];
 
   export const hum_abil = [ [ 0, 0, 0, 0 ] ];
-
-
-
-
-
-
-
-
 
 /* adjust an attribute; return TRUE if change is made, FALSE otherwise */
 export function adjattrib(ndx, incr, msgflg)
@@ -264,12 +281,12 @@ export function poison_strdmg(strloss, dmg, knam, k_format)
 }
 
 const poiseff = [
-    { delivery_func: "You_feel", effect_msg: "weaker" },             /* A_STR */
-    { delivery_func: "Your", effect_msg: "brain is on fire" },       /* A_INT */
-    { delivery_func: "Your", effect_msg: "judgement is impaired" },  /* A_WIS */
+    { delivery_func: "You_feel", effect_msg: "weaker" }, /* A_STR */
+    { delivery_func: "Your", effect_msg: "brain is on fire" }, /* A_INT */
+    { delivery_func: "Your", effect_msg: "judgement is impaired" }, /* A_WIS */
     { delivery_func: "Your", effect_msg: "muscles won't obey you" }, /* A_DEX */
-    { delivery_func: "You_feel", effect_msg: "very sick" },          /* A_CON */
-    { delivery_func: "You", effect_msg: "break out in hives" }       /* A_CHA */
+    { delivery_func: "You_feel", effect_msg: "very sick" }, /* A_CON */
+    { delivery_func: "You", effect_msg: "break out in hives" } /* A_CHA */
 ];
 
 /* feedback for attribute loss due to poisoning */
@@ -431,7 +448,8 @@ export function set_moreluck()
 /* (not used) */
 export function restore_attrib()
 {
-    let i, equilibrium;;
+    let i, equilibrium;
+    ;
 
     /*
      * Note:  this used to get called by moveloop() on every turn but
@@ -561,12 +579,12 @@ export function exerper()
 /* exercise/abuse text (must be in attribute order, not botl order);
    phrased as "You must have been [][0]." or "You haven't been [][1]." */
 export const exertext = [
-    [ "exercising diligently", "exercising properly" ],           /* Str */
-    [ 0, 0 ],                                                     /* Int */
-    [ "very observant", "paying attention" ],                     /* Wis */
-    [ "working on your reflexes", "working on reflexes lately" ], /* Dex */
-    [ "leading a healthy life-style", "watching your health" ],   /* Con */
-    [ 0, 0 ],                                                     /* Cha */
+    ["exercising diligently", "exercising properly"], /* Str */
+    [0, 0], /* Int */
+    ["very observant", "paying attention"], /* Wis */
+    ["working on your reflexes", "working on reflexes lately"], /* Dex */
+    ["leading a healthy life-style", "watching your health"], /* Con */
+    [0, 0], /* Cha */
 ];
 
 export function exerchk()
@@ -860,8 +878,6 @@ export function is_innate(propidx)
     return FROM_NONE;
 }
 
-
-
 export function from_what(propidx)
 /* special cases can have negative values */
 {
@@ -922,7 +938,7 @@ export function from_what(propidx)
             else if (propidx == C.BLINDED && C.Blindfolded_only)
                 C.Sprintf(buf, because_of, C.ysimple_name(C.ublindf));
             else if (propidx == C.BLINDED && C.u.ucreamed
-                     && C.BlindedTimeout ==  C.u.ucreamed
+                     && C.BlindedTimeout == C.u.ucreamed
                      && !C.EBlinded && !(C.HBlinded & ~C.TIMEOUT))
                 C.Sprintf(buf, "due to goop covering your %s",
                         C.body_part(C.FACE));
@@ -959,8 +975,6 @@ export function from_what(propidx)
     } /*wizard*/
     return buf;
 }
-
-
 
 export function adjabil(oldlevel, newlevel)
 {
@@ -1086,7 +1100,7 @@ export function newhp()
         hp = 1;
     if (C.u.ulevel < C.MAXULEV) {
         /* remember increment; future level drain could take it away again */
-        C.u.uhpinc[C.u.ulevel] =  hp;
+        C.u.uhpinc[C.u.ulevel] = hp;
     } else {
         /* after level 30, throttle hit point gains from extra experience;
            once max reaches 1200, further increments will be just 1 more */

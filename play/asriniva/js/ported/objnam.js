@@ -56,8 +56,9 @@ export function releaseobuf(bufp) {
        obscure PREFIX handling for object name formatting by xname(),
        the pointer our caller has and is passing to us might be into the
        middle of an obuf rather than the address returned by nextobuf() */
-    if (Number(!!(C.ptrCompare(bufp, C.deref(C.ptrAdd(C.obufs, C.objnamState.obufidx, "char[256]"), "char[256]"), ">=") && C.ptrCompare(bufp, C.ptrAdd(C.deref(C.ptrAdd(C.obufs, C.objnamState.obufidx, "char[256]"), "char[256]"), BigInt(C.sizeof("char[256]")), "char"), "<")))) /* obufs[][BUFSZ] */
-    (C.objnamState.obufidx = C.int(((C.int((C.int((C.objnamState.obufidx - 1)) + C.NUMOBUF))) % C.NUMOBUF)));
+    if (Number(!!(C.ptrCompare(bufp, C.deref(C.ptrAdd(C.obufs, C.objnamState.obufidx, "char[256]"), "char[256]"), ">=")
+        && C.ptrCompare(bufp, C.ptrAdd(C.deref(C.ptrAdd(C.obufs, C.objnamState.obufidx, "char[256]"), "char[256]"), BigInt(C.sizeof("char[256]")), "char"), "<")))) /* obufs[][BUFSZ] */
+        (C.objnamState.obufidx = C.int(((C.int((C.int((C.objnamState.obufidx - 1)) + C.NUMOBUF))) % C.NUMOBUF)));
 }
 
 /* used by display_pickinv (invent.c, main whole-inventory routine) to
@@ -110,7 +111,8 @@ export function obj_typename(otyp) {
     }
 /* generic items don't have an actual-name; we shouldn't ever be called
        for those; pacify static analyzer without resorting to impossible() */
-    if (Number(!(actualn))) (actualn = (((Number(!!(Number(otyp > 0) && Number(otyp < C.MAXOCLASSES))))) ? C.literal("generic") : C.literal("object?")));
+    if (Number(!(actualn))) (actualn = (((Number(!!(Number(otyp > 0)
+        && Number(otyp < C.MAXOCLASSES))))) ? C.literal("generic") : C.literal("object?")));
     C.store(C.ptrAdd(buf, 0, "char"), "char", C.char(0));
 /* redundant */
     switch ((ocl).oc_class) {
@@ -140,21 +142,30 @@ export function obj_typename(otyp) {
         break;
         case (C.AMULET_CLASS):
             if (nn) C.strcpy(buf, actualn);
-            else C.strcpy(buf, C.literal("amulet"));
+                else C.strcpy(buf, C.literal("amulet"));
         if (un) xcalled(buf, C.int((C.BUFSZ - (((dn) ? C.int((C.int(C.strlen(dn)) + 3)) : 0)))), C.literal(""), un);
         if (dn) C.sprintf(C.eos(buf), C.literal(" (%s)"), dn, "p");
         return buf;
         case (C.ARMOR_CLASS):
-            if (Number(!!(Number((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_armcat == C.ARM_GLOVES) || Number((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_armcat == C.ARM_BOOTS)))) C.strcpy(buf, C.literal("pair of "));
+            if (Number(!!(Number((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_armcat == C.ARM_GLOVES)
+                || Number((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_armcat == C.ARM_BOOTS)))) C.strcpy(buf, C.literal("pair of "));
             else if (Number(!!(Number(otyp >= C.GRAY_DRAGON_SCALES) && Number(otyp <= C.YELLOW_DRAGON_SCALES)))) C.strcpy(buf, C.literal("set of "));
         ;
 /*FALLTHRU*/
         default:
             if (nn) {
                 C.strcat(buf, actualn);
-                if ((Number(!!(Number(otyp == C.FLINT) || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_material) == C.GEMSTONE) && (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(otyp != C.DILITHIUM_CRYSTAL) && Number(otyp != C.RUBY))) && Number(otyp != C.DIAMOND))) && Number(otyp != C.SAPPHIRE))) && Number(otyp != C.BLACK_OPAL))) && Number(otyp != C.EMERALD))) && Number(otyp != C.OPAL))))))))))) C.strcat(buf, C.literal(" stone"));
+                if ((Number(!!(Number(otyp == C.FLINT)
+                    || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_material) == C.GEMSTONE)
+                    && (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(otyp != C.DILITHIUM_CRYSTAL)
+                    && Number(otyp != C.RUBY)))
+                    && Number(otyp != C.DIAMOND)))
+                    && Number(otyp != C.SAPPHIRE)))
+                    && Number(otyp != C.BLACK_OPAL)))
+                    && Number(otyp != C.EMERALD)))
+                    && Number(otyp != C.OPAL))))))))))) C.strcat(buf, C.literal(" stone"));
                 if (un) /* 3: length of " (" + ")" which will enclose 'dn' */
-                xcalled(buf, C.int((C.BUFSZ - (((dn) ? C.int((C.int(C.strlen(dn)) + 3)) : 0)))), C.literal(""), un);
+                    xcalled(buf, C.int((C.BUFSZ - (((dn) ? C.int((C.int(C.strlen(dn)) + 3)) : 0)))), C.literal(""), un);
                 if (dn) C.sprintf(C.eos(buf), C.literal(" (%s)"), dn, "p");
             }
             else {
@@ -168,10 +179,10 @@ export function obj_typename(otyp) {
     if (nn) {
         if ((ocl).oc_unique) C.strcpy(buf, actualn);
         else /* avoid spellbook of Book of the Dead */
-        C.sprintf(C.eos(buf), C.literal(" of %s"), actualn, "p");
+            C.sprintf(C.eos(buf), C.literal(" of %s"), actualn, "p");
     }
     if (un) /* 3: length of " (" + ")" which will enclose 'dn' */
-    xcalled(buf, C.int((C.BUFSZ - (((dn) ? C.int((C.int(C.strlen(dn)) + 3)) : 0)))), C.literal(""), un);
+        xcalled(buf, C.int((C.BUFSZ - (((dn) ? C.int((C.int(C.strlen(dn)) + 3)) : 0)))), C.literal(""), un);
     if (dn) C.sprintf(C.eos(buf), C.literal(" (%s)"), dn, "p");
     return buf;
 }
@@ -197,7 +208,9 @@ export function safe_typename(otyp) {
     otyp = C.argument(otyp, "int");
     let save_nameknown;
     let res = 0;
-    if (Number(!!(Number(!!(Number(otyp < C.STRANGE_OBJECT) || Number(otyp >= C.NUM_OBJECTS))) || Number(!(((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass"))).oc_name_idx, "struct objdescr"), "struct objdescr")).oc_name)))))) {
+    if (Number(!!(Number(!!(Number(otyp < C.STRANGE_OBJECT)
+        || Number(otyp >= C.NUM_OBJECTS)))
+        || Number(!(((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass"))).oc_name_idx, "struct objdescr"), "struct objdescr")).oc_name)))))) {
         (res = nextobuf());
         C.sprintf(res, C.literal("glorkum[%d]"), otyp, "i");
         C.impossible(C.literal("safe_typename: %s"), res, "p");
@@ -263,7 +276,10 @@ export function distant_name(obj, func) /* object to be formatted */
     (save_oid = (obj).o_id);
     if ((C.program_state).gameover) ((obj).o_id = C.uint(0));
 /* this maybe-nearby part used to be replicated in multiple callers */
-    if (Number(!!(Number(!!(C.get_obj_location(obj, ox, oy, 0) && (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, oy.value, "seenV *"), "seenV *"), ox.value, "seenV"), "seenV") & 2))) != 0)))) && (Number(!!((obj).oartifact || Number(C.dist2((ox.value), (oy.value), (C.u).ux, (C.u).uy) <= neardist))))))) {
+    if (Number(!!(Number(!!(C.get_obj_location(obj, ox, oy, 0)
+        && (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, oy.value, "seenV *"), "seenV *"), ox.value, "seenV"), "seenV") & 2))) != 0))))
+        && (Number(!!((obj).oartifact
+        || Number(C.dist2((ox.value), (oy.value), (C.u).ux, (C.u).uy) <= neardist))))))) {
 /* side-effects:  treat as having been seen up close;
            cansee() is True hence hero isn't Blind so if 'func' is
            the usual doname or xname, obj->dknown will become set
@@ -295,7 +311,7 @@ export function fruitname(juice) /* whether or not to append " juice" to the nam
     let fruit_nam = C.strstri((C.svp).pl_fruit, C.literal(" of "));
     if (fruit_nam) (fruit_nam = C.ptrAdd(fruit_nam, 4, "const char"));
     else /* skip past " of " */
-    (fruit_nam = (C.svp).pl_fruit);
+        (fruit_nam = (C.svp).pl_fruit);
 /* use it as is */
     C.sprintf(buf, C.literal("%s%s"), makesingular(fruit_nam), ((juice) ? C.literal(" juice") : C.literal("")), "pp");
     return buf;
@@ -334,7 +350,11 @@ export function fruit_from_name(fname, exact, highest_fid) /* False: prefix or e
         (tentativef = 0);
         for ((f = (C.gf).ffruit); f; (f = (f).nextf)) {
             (k = C.Strlen_((f).fname, C.literal("fruit_from_name"), 470));
-            if (Number(!!(Number(!!(Number(!(C.strncmp((f).fname, fname, C.ulong(k)))) && (Number(!!(Number(!(C.deref(C.ptrAdd(fname, k, "const char"), "const char"))) || Number(C.deref(C.ptrAdd(fname, k, "const char"), "const char") == 32)))))) && (Number(!!(Number(!(tentativef)) || Number(C.ulong(k) > C.strlen((tentativef).fname)))))))) (tentativef = f);
+            if (Number(!!(Number(!!(Number(!(C.strncmp((f).fname, fname, C.ulong(k))))
+                && (Number(!!(Number(!(C.deref(C.ptrAdd(fname, k, "const char"), "const char")))
+                || Number(C.deref(C.ptrAdd(fname, k, "const char"), "const char") == 32))))))
+                && (Number(!!(Number(!(tentativef))
+                || Number(C.ulong(k) > C.strlen((tentativef).fname)))))))) (tentativef = f);
         }
         (f = tentativef);
     }
@@ -372,7 +392,9 @@ export function fruit_from_name(fname, exact, highest_fid) /* False: prefix or e
                 (altfname = makesingular(fnamebuf));
                 (k = C.Strlen_(altfname, C.literal("fruit_from_name"), 509));
 /* actually revised 'fname_k' */
-                if (Number(!!(Number(!(C.strcmp((f).fname, altfname))) && (Number(!!(Number(!(tentativef)) || Number(C.ulong(k) > C.strlen((tentativef).fname)))))))) (tentativef = f);
+                if (Number(!!(Number(!(C.strcmp((f).fname, altfname)))
+                    && (Number(!!(Number(!(tentativef))
+                    || Number(C.ulong(k) > C.strlen((tentativef).fname)))))))) (tentativef = f);
                 releaseobuf(altfname);
 /* avoid churning through all obufs */
             }
@@ -477,7 +499,8 @@ export function xname_flags(obj, cxn_flags) /* bitmask of CXN_xxx values */
     }
 /* generic items don't have an actual-name; we shouldn't ever be called
        for those; pacify static analyzer without resorting to impossible() */
-    if (Number(!(actualn))) (actualn = (((Number(!!(Number(typ > 0) && Number(typ < C.MAXOCLASSES))))) ? C.literal("generic") : C.literal("object?")));
+    if (Number(!(actualn))) (actualn = (((Number(!!(Number(typ > 0)
+        && Number(typ < C.MAXOCLASSES))))) ? C.literal("generic") : C.literal("object?")));
 /* 3.6.2: this used to be part of 'dn's initialization, but it
        needs to come after possibly overriding 'actualn' */
     if (Number(!(dn))) (dn = actualn);
@@ -488,7 +511,10 @@ export function xname_flags(obj, cxn_flags) /* bitmask of CXN_xxx values */
      * and printing the wrong article gives away information.
      */
     if (Number(!!(Number(!!(Number(!(nn)) && C.int((ocl).oc_uses_known))) && C.int((ocl).oc_unique)))) ((obj).known = C.uint(0));
-    if (Number(!!(Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked))))))) && Number(!((C.gd).distantname))))) C.observe_object(obj);
+    if (Number(!!(Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+        || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+        && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))
+        && Number(!((C.gd).distantname))))) C.observe_object(obj);
     if ((Number(((C.gu).urole).mnum == (C.PM_CLERIC)))) ((obj).bknown = C.uint(1));
 /* avoid set_bknown() to bypass update_inventory() */
     if ((C.iflags).override_ID) {
@@ -531,14 +557,19 @@ export function xname_flags(obj, cxn_flags) /* bitmask of CXN_xxx values */
     switch ((obj).oclass) {
         case (C.AMULET_CLASS):
             if (Number(!(dknown))) C.strcpy(buf, C.literal("amulet"));
-            else if (Number(!!(Number(typ == C.AMULET_OF_YENDOR) || Number(typ == C.FAKE_AMULET_OF_YENDOR)))) /* each must be identified individually */
-            C.strcpy(buf, ((known) ? actualn : dn));
+            else if (Number(!!(Number(typ == C.AMULET_OF_YENDOR)
+                || Number(typ == C.FAKE_AMULET_OF_YENDOR)))) /* each must be identified individually */
+                C.strcpy(buf, ((known) ? actualn : dn));
             else if (nn) C.strcpy(buf, actualn);
             else if (un) xcalled(buf, C.int((C.BUFSZ - C.PREFIX)), C.literal("amulet"), un);
-            else C.sprintf(buf, C.literal("%s amulet"), dn, "p");
+                else C.sprintf(buf, C.literal("%s amulet"), dn, "p");
         break;
         case (C.WEAPON_CLASS):
-            if (Number(!!((Number(!!((Number(!!(Number(!!(Number((obj).oclass == C.WEAPON_CLASS) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_SHURIKEN))))) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_BOW)))))) || C.permapoisoned(obj)))) && C.int((obj).opoisoned)))) C.strcpy(buf, C.literal("poisoned "));
+            if (Number(!!((Number(!!((Number(!!(Number(!!(Number((obj).oclass == C.WEAPON_CLASS)
+                && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_SHURIKEN)))))
+                && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_BOW))))))
+                || C.permapoisoned(obj))))
+                && C.int((obj).opoisoned)))) C.strcpy(buf, C.literal("poisoned "));
         ;
 /*FALLTHRU*/
         case (C.VENOM_CLASS):
@@ -546,11 +577,12 @@ export function xname_flags(obj, cxn_flags) /* bitmask of CXN_xxx values */
 /* note: lenses or towel prefix would overwrite poisoned weapon
            prefix if both were simultaneously possible, but they aren't */
                 if (Number(typ == C.LENSES)) C.strcpy(buf, C.literal("pair of "));
-                else if ((Number(!!(Number(((obj)).otyp == C.TOWEL) && Number(((obj)).spe > 0))))) C.strcpy(buf, (((Number((obj).spe < 3))) ? C.literal("moist ") : C.literal("wet ")));
+                else if ((Number(!!(Number(((obj)).otyp == C.TOWEL)
+                    && Number(((obj)).spe > 0))))) C.strcpy(buf, (((Number((obj).spe < 3))) ? C.literal("moist ") : C.literal("wet ")));
         if (Number(!(dknown))) C.strcat(buf, dn);
         else if (nn) C.strcat(buf, actualn);
         else if (un) xcalled(buf, C.int((C.BUFSZ - C.PREFIX)), dn, un);
-        else C.strcat(buf, dn);
+            else C.strcat(buf, dn);
         ((buf_eos = C.eos(buf)), (bufspaceleft = C.ulong((C.ptrDiff(buf_end, buf_eos, "char")))));
         if (Number(!!(Number(typ == C.FIGURINE) && Number(omndx != C.NON_PM)))) {
             const anbuf = C.localArray("char[10]", 0);
@@ -576,11 +608,16 @@ export function xname_flags(obj, cxn_flags) /* bitmask of CXN_xxx values */
                 C.sprintf(buf, C.literal("set of %s"), actualn, "p");
                 break;
             }
-            else if (Number(!!((Number(!!(Number((obj).oclass == C.ARMOR_CLASS) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp == C.ARM_BOOTS)))) || (Number(!!(Number((obj).oclass == C.ARMOR_CLASS) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp == C.ARM_GLOVES))))))) {
+            else if (Number(!!((Number(!!(Number((obj).oclass == C.ARMOR_CLASS)
+                && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp == C.ARM_BOOTS))))
+                || (Number(!!(Number((obj).oclass == C.ARMOR_CLASS)
+                && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp == C.ARM_GLOVES))))))) {
                 C.strcpy(buf, C.literal("pair of "));
 /*FALLTHRU*/
             }
-            else if (Number(!!((Number(!!(Number((obj).oclass == C.ARMOR_CLASS) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp == C.ARM_SHIELD)))) && Number(!(dknown))))) {
+            else if (Number(!!((Number(!!(Number((obj).oclass == C.ARMOR_CLASS)
+                && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp == C.ARM_SHIELD))))
+                && Number(!(dknown))))) {
                 if (Number(!!(Number((obj).otyp >= C.ELVEN_SHIELD) && Number((obj).otyp <= C.ORCISH_SHIELD)))) {
                     C.strcpy(buf, C.literal("shield"));
                     break;
@@ -597,11 +634,11 @@ export function xname_flags(obj, cxn_flags) /* bitmask of CXN_xxx values */
         }
         while (0);
         else if (un) xcalled(buf, C.int((C.BUFSZ - C.PREFIX)), armor_simple_name(obj), un);
-        else do {
-            C.strncat(C.ptrAdd(buf_eos, -(0), "char"), dn, C.ulong((bufspaceleft + C.ulong(0))));
-            ((buf_eos = C.eos(buf)), (bufspaceleft = C.ulong((C.ptrDiff(buf_end, buf_eos, "char")))));
-        }
-        while (0);
+            else do {
+                C.strncat(C.ptrAdd(buf_eos, -(0), "char"), dn, C.ulong((bufspaceleft + C.ulong(0))));
+                ((buf_eos = C.eos(buf)), (bufspaceleft = C.ulong((C.ptrDiff(buf_end, buf_eos, "char")))));
+            }
+            while (0);
         break;
         case (C.FOOD_CLASS):
 /* we could include partly-eaten-hack on fruit but don't need to */
@@ -668,7 +705,8 @@ export function xname_flags(obj, cxn_flags) /* bitmask of CXN_xxx values */
             if (Number(!!(Number(typ == C.STATUE) && Number(omndx != C.NON_PM)))) {
                 const anbuf = C.localArray("char[10]", 0);
                 let statue_pmname = C.obj_pmname(obj);
-                C.nh_snprintf(C.literal("xname_flags"), 813, buf, bufspaceleft, C.literal("%s%s of %s%s"), (((Number(!!((Number(((C.gu).urole).mnum == (C.PM_ARCHEOLOGIST))) && Number((C.int(((obj).spe & 4))) != 0))))) ? C.literal("historic ") : C.literal("")), actualn, (((Number((C.ulong((((C.ptrAdd(C.mons, omndx, "struct permonst"))).mflags2 & C.ulong(524288n)))) != C.ulong(0n)))) ? C.literal("") : ((C.callLocal(the_unique_pm, C.ptrAdd(C.mons, omndx, "struct permonst"))) ? C.literal("the ") : just_an(anbuf, statue_pmname))), statue_pmname, "pppp");
+                C.nh_snprintf(C.literal("xname_flags"), 813, buf, bufspaceleft, C.literal("%s%s of %s%s"), (((Number(!!((Number(((C.gu).urole).mnum == (C.PM_ARCHEOLOGIST)))
+                    && Number((C.int(((obj).spe & 4))) != 0))))) ? C.literal("historic ") : C.literal("")), actualn, (((Number((C.ulong((((C.ptrAdd(C.mons, omndx, "struct permonst"))).mflags2 & C.ulong(524288n)))) != C.ulong(0n)))) ? C.literal("") : ((C.callLocal(the_unique_pm, C.ptrAdd(C.mons, omndx, "struct permonst"))) ? C.literal("the ") : just_an(anbuf, statue_pmname))), statue_pmname, "pppp");
             }
             else if (Number(!!(Number(typ == C.BOULDER) && Number((obj).next_boulder == 1)))) {
 /* sometimes caller wants "next boulder" rather than just
@@ -734,7 +772,7 @@ export function xname_flags(obj, cxn_flags) /* bitmask of CXN_xxx values */
             if (Number(!(dknown))) C.strcpy(buf, C.literal("wand"));
             else if (nn) C.sprintf(buf, C.literal("wand of %s"), actualn, "p");
             else if (un) xcalled(buf, C.int((C.BUFSZ - C.PREFIX)), C.literal("wand"), un);
-            else C.sprintf(buf, C.literal("%s wand"), dn, "p");
+                else C.sprintf(buf, C.literal("%s wand"), dn, "p");
         break;
         case (C.SPBOOK_CLASS):
             if (Number(typ == C.SPE_NOVEL)) {
@@ -742,7 +780,7 @@ export function xname_flags(obj, cxn_flags) /* bitmask of CXN_xxx values */
                 if (Number(!(dknown))) C.strcpy(buf, C.literal("book"));
                 else if (nn) C.strcpy(buf, actualn);
                 else if (un) xcalled(buf, C.int((C.BUFSZ - C.PREFIX)), C.literal("novel"), un);
-                else C.sprintf(buf, C.literal("%s book"), dn, "p");
+                    else C.sprintf(buf, C.literal("%s book"), dn, "p");
                 break;
 /* end of tribute */
             }
@@ -756,13 +794,13 @@ export function xname_flags(obj, cxn_flags) /* bitmask of CXN_xxx values */
             else if (un) {
                 xcalled(buf, C.int((C.BUFSZ - C.PREFIX)), C.literal("spellbook"), un);
             }
-            else C.sprintf(buf, C.literal("%s spellbook"), dn, "p");
+                else C.sprintf(buf, C.literal("%s spellbook"), dn, "p");
         break;
         case (C.RING_CLASS):
             if (Number(!(dknown))) C.strcpy(buf, C.literal("ring"));
             else if (nn) C.sprintf(buf, C.literal("ring of %s"), actualn, "p");
             else if (un) xcalled(buf, C.int((C.BUFSZ - C.PREFIX)), C.literal("ring"), un);
-            else C.sprintf(buf, C.literal("%s ring"), dn, "p");
+                else C.sprintf(buf, C.literal("%s ring"), dn, "p");
         break;
         case (C.GEM_CLASS):
 {
@@ -772,11 +810,19 @@ export function xname_flags(obj, cxn_flags) /* bitmask of CXN_xxx values */
                 }
                 else if (Number(!(nn))) {
                     if (un) xcalled(buf, C.int((C.BUFSZ - C.PREFIX)), rock, un);
-                    else C.sprintf(buf, C.literal("%s %s"), dn, rock, "pp");
+                        else C.sprintf(buf, C.literal("%s %s"), dn, rock, "pp");
                 }
                 else {
                     C.strcpy(buf, actualn);
-                    if ((Number(!!(Number(typ == C.FLINT) || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, typ, "struct objclass"), "struct objclass")).oc_material) == C.GEMSTONE) && (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(typ != C.DILITHIUM_CRYSTAL) && Number(typ != C.RUBY))) && Number(typ != C.DIAMOND))) && Number(typ != C.SAPPHIRE))) && Number(typ != C.BLACK_OPAL))) && Number(typ != C.EMERALD))) && Number(typ != C.OPAL))))))))))) C.strcat(buf, C.literal(" stone"));
+                    if ((Number(!!(Number(typ == C.FLINT)
+                        || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, typ, "struct objclass"), "struct objclass")).oc_material) == C.GEMSTONE)
+                        && (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(typ != C.DILITHIUM_CRYSTAL)
+                        && Number(typ != C.RUBY)))
+                        && Number(typ != C.DIAMOND)))
+                        && Number(typ != C.SAPPHIRE)))
+                        && Number(typ != C.BLACK_OPAL)))
+                        && Number(typ != C.EMERALD)))
+                        && Number(typ != C.OPAL))))))))))) C.strcat(buf, C.literal(" stone"));
                 }
                 break;
             }
@@ -876,7 +922,8 @@ export function xname_flags(obj, cxn_flags) /* bitmask of CXN_xxx values */
         }
         while (0);
 /* downcase "The" in "<quest-artifact-item> named The ..." */
-        if (Number(!!((obj).oartifact && Number(!(C.strncmp(obufp, C.literal("The "), C.ulong(4))))))) C.store(obufp, "char", C.lowc(C.deref(obufp, "char")));
+        if (Number(!!((obj).oartifact
+            && Number(!(C.strncmp(obufp, C.literal("The "), C.ulong(4))))))) C.store(obufp, "char", C.lowc(C.deref(obufp, "char")));
 /* change 'T' in "The " to 't' */
     }
     if (Object.hasOwn(C, "startsWithArticle") ? C.startsWithArticle(buf)
@@ -966,7 +1013,9 @@ export function the_unique_obj(obj) {
     if (Number(!!(Number(!((obj).dknown)) && Number(!((C.iflags).override_ID))))) return (C.char(0));
     else if (Number(!!(Number((obj).otyp == C.FAKE_AMULET_OF_YENDOR) && Number(!(known))))) return (C.char(1));
     else /* lie */
-    return C.char((Number(!!(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_unique) && (Number(!!(known || Number((obj).otyp == C.AMULET_OF_YENDOR))))))));
+        return C.char((Number(!!(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_unique)
+            && (Number(!!(known
+            || Number((obj).otyp == C.AMULET_OF_YENDOR))))))));
 }
 
 /* should monster type be prefixed with "the"? (mostly used for corpses) */
@@ -980,7 +1029,8 @@ export function the_unique_pm(ptr) {
 /* high priest is unique if it includes "of <deity>", otherwise not
        (caller needs to handle the 1st possibility; we assume the 2nd);
        worm tail should be irrelevant but is included for completeness */
-    if (Number(!!(C.ptrCompare(ptr, C.ptrAdd(C.mons, C.PM_HIGH_CLERIC, "struct permonst"), "==") || C.ptrCompare(ptr, C.ptrAdd(C.mons, C.PM_LONG_WORM_TAIL, "struct permonst"), "==")))) (uniq = (C.char(0)));
+    if (Number(!!(C.ptrCompare(ptr, C.ptrAdd(C.mons, C.PM_HIGH_CLERIC, "struct permonst"), "==")
+        || C.ptrCompare(ptr, C.ptrAdd(C.mons, C.PM_LONG_WORM_TAIL, "struct permonst"), "==")))) (uniq = (C.char(0)));
 /* Wizard no longer needs this; he's flagged as unique these days */
     if (C.ptrCompare(ptr, C.ptrAdd(C.mons, C.PM_WIZARD_OF_YENDOR, "struct permonst"), "==")) (uniq = (C.char(1)));
     return uniq;
@@ -992,7 +1042,14 @@ export function add_erosion_words(obj, prefix) {
     let iscrys = C.char((Number((obj).otyp == C.CRYSKNIFE)));
     let rknown;
     (rknown = C.char((((Number((C.iflags).override_ID == 0))) ? C.int((obj).rknown) : (C.char(1)))));
-    if (Number(!!(Number(!((Number(!!(Number(!!(Number(!!(Number(!!((Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON)) || C.is_flammable(obj))) || C.is_rottable(obj))) || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER) || Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON)))))) || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS) && Number(((obj)).oclass == C.ARMOR_CLASS))))))))) && Number(!(iscrys))))) return;
+    if (Number(!!(Number(!((Number(!!(Number(!!(Number(!!(Number(!!((Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))
+        || C.is_flammable(obj)))
+        || C.is_rottable(obj)))
+        || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER)
+        || Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))))))
+        || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS)
+        && Number(((obj)).oclass == C.ARMOR_CLASS)))))))))
+        && Number(!(iscrys))))) return;
 /* The only cases where any of these bits do double duty are for
      * rotted food and diluted potions, which are all not is_damageable().
      */
@@ -1005,7 +1062,8 @@ export function add_erosion_words(obj, prefix) {
                 C.strcat(prefix, C.literal("thoroughly "));
             break;
         }
-        C.strcat(prefix, (((Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))) ? C.literal("rusty ") : (((Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS) && Number(((obj)).oclass == C.ARMOR_CLASS))))) ? C.literal("cracked ") : C.literal("burnt "))));
+        C.strcat(prefix, (((Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))) ? C.literal("rusty ") : (((Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS)
+            && Number(((obj)).oclass == C.ARMOR_CLASS))))) ? C.literal("cracked ") : C.literal("burnt "))));
     }
     if (Number(!!(C.int((obj).oeroded2) && Number(!(iscrys))))) {
         switch (C.int((obj).oeroded2)) {
@@ -1016,12 +1074,16 @@ export function add_erosion_words(obj, prefix) {
                 C.strcat(prefix, C.literal("thoroughly "));
             break;
         }
-        C.strcat(prefix, (((Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER) || Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))))) ? C.literal("corroded ") : C.literal("rotted ")));
+        C.strcat(prefix, (((Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER)
+            || Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))))) ? C.literal("corroded ") : C.literal("rotted ")));
     }
 /* note: it is possible for an item to be both eroded and erodeproof
        (cursed scroll of destroy armor read while confused erodeproofs an
        item of armor without repairing existing erosion) */
-    if (Number(!!(rknown && C.int((obj).oerodeproof)))) C.strcat(prefix, ((iscrys) ? C.literal("fixed ") : (((Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))) ? C.literal("rustproof ") : (((Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER) || Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))))) ? C.literal("corrodeproof ") : ((C.is_flammable(obj)) ? C.literal("fireproof ") : (((Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS) && Number(((obj)).oclass == C.ARMOR_CLASS))))) ? C.literal("tempered ") : ((C.is_rottable(obj)) ? C.literal("rotproof ") : C.literal(""))))))));
+    if (Number(!!(rknown
+        && C.int((obj).oerodeproof)))) C.strcat(prefix, ((iscrys) ? C.literal("fixed ") : (((Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))) ? C.literal("rustproof ") : (((Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER)
+        || Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))))) ? C.literal("corrodeproof ") : ((C.is_flammable(obj)) ? C.literal("fireproof ") : (((Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS)
+        && Number(((obj)).oclass == C.ARMOR_CLASS))))) ? C.literal("tempered ") : ((C.is_rottable(obj)) ? C.literal("rotproof ") : C.literal(""))))))));
 /* hardened */
 }
 
@@ -1036,7 +1098,8 @@ export function erosion_matters(obj) {
            non-iron tool, in which case rust also implicitly goes away,
            so there's no particular reason to try to handle the first
            instance differently [this comment belongs in poly_obj()...] */
-            return C.char((((Number(!!(Number(((obj)).oclass == C.TOOL_CLASS) && Number((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE))))) ? (C.char(1)) : (C.char(0))));
+            return C.char((((Number(!!(Number(((obj)).oclass == C.TOOL_CLASS)
+                && Number((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE))))) ? (C.char(1)) : (C.char(0))));
         case (C.WEAPON_CLASS):
             case (C.ARMOR_CLASS):
                 case (C.BALL_CLASS):
@@ -1084,7 +1147,8 @@ export function doname_base(obj, doname_flags) /* object to format */
     (bp = xname(obj));
     (bp_end = C.ptrAdd(C.ptrAdd((C.gx).xnamep, C.BUFSZ, "char"), -(1), "char"));
     (bp_eos.value = C.eos(bp));
-    ((Number(!!((C.ptrCompare(bp_end, bp_eos.value, ">=")) || ((C.__assert_fail(C.literal("bp_end >= bp_eos"), C.literal("objnam.c"), 1250, C.literal("doname_base")), 0))))));
+    ((Number(!!((C.ptrCompare(bp_end, bp_eos.value, ">="))
+        || ((C.__assert_fail(C.literal("bp_end >= bp_eos"), C.literal("objnam.c"), 1250, C.literal("doname_base")), 0))))));
 /* ok provided xname() bounds checking works */
 /* size_t cast: convert signed ptrdiff_t to unsigned size_t */
     (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char"))));
@@ -1117,7 +1181,7 @@ export function doname_base(obj, doname_flags) /* object to format */
     C.store(C.ptrAdd(prefix, 0, "char"), "char", C.char(0));
     if (Number((obj).quan != 1n)) {
         if (Number(!!(dknown || Number(!(vague_quan))))) C.sprintf(prefix, C.literal("%ld "), (obj).quan, "l");
-        else C.strcpy(prefix, C.literal("some "));
+            else C.strcpy(prefix, C.literal("some "));
     }
     else if (Number((obj).otyp == C.CORPSE)) {
 /* skip article prefix for corpses [else corpse_xname()
@@ -1134,7 +1198,13 @@ export function doname_base(obj, doname_flags) /* object to format */
         C.strcpy(prefix, C.literal("a "));
     }
 /* "empty" goes at the beginning, but item count goes at the end */
-    if (Number(!!(cknown && ((((Number(!!(Number((obj).otyp == C.BAG_OF_TRICKS) || Number((obj).otyp == C.HORN_OF_PLENTY))))) ? (Number(!!(Number((obj).spe == 0) && Number(!(known))))) : (Number(!!((Number(!!((Number(!!(Number(((obj)).otyp >= C.LARGE_BOX) && Number(((obj)).otyp <= C.BAG_OF_TRICKS)))) || Number((obj).otyp == C.STATUE)))) && Number(!((C.ptrCompare(((obj)).cobj, 0, "!=")))))))))))) /* bag of tricks: include "empty" prefix if it's known to
+    if (Number(!!(cknown
+        && ((((Number(!!(Number((obj).otyp == C.BAG_OF_TRICKS)
+        || Number((obj).otyp == C.HORN_OF_PLENTY))))) ? (Number(!!(Number((obj).spe == 0)
+        && Number(!(known))))) : (Number(!!((Number(!!((Number(!!(Number(((obj)).otyp >= C.LARGE_BOX)
+        && Number(((obj)).otyp <= C.BAG_OF_TRICKS))))
+        || Number((obj).otyp == C.STATUE))))
+        && Number(!((C.ptrCompare(((obj)).cobj, 0, "!=")))))))))))) /* bag of tricks: include "empty" prefix if it's known to
            be empty but its precise number of charges isn't known
            (when that is known, suffix of "(n:0)" will be appended,
            making the prefix be redundant; note that 'known' flag
@@ -1143,14 +1213,27 @@ export function doname_base(obj, doname_flags) /* object to format */
            horn of plenty isn't a container but is close enough */
 /* not a bag of tricks or horn of plenty: it's empty if
                 it is a container that has no contents */
-    C.strcat(prefix, C.literal("empty "));
-    if (Number(!!(Number(!!(bknown && Number((obj).oclass != C.COIN_CLASS))) && (Number(!!(Number(!!(Number((obj).otyp != C.POT_WATER) || Number(!((C.deref(C.ptrAdd(C.objects, C.POT_WATER, "struct objclass"), "struct objclass")).oc_name_known)))) || (Number(!!(Number(!((obj).cursed)) && Number(!((obj).blessed))))))))))) {
+        C.strcat(prefix, C.literal("empty "));
+    if (Number(!!(Number(!!(bknown
+        && Number((obj).oclass != C.COIN_CLASS)))
+        && (Number(!!(Number(!!(Number((obj).otyp != C.POT_WATER)
+        || Number(!((C.deref(C.ptrAdd(C.objects, C.POT_WATER, "struct objclass"), "struct objclass")).oc_name_known))))
+        || (Number(!!(Number(!((obj).cursed))
+        && Number(!((obj).blessed))))))))))) {
 /* allow 'blessed clear potion' if we don't know it's holy water;
          * always allow "uncursed potion of water"
          */
         if ((obj).cursed) C.strcat(prefix, C.literal("cursed "));
         else if ((obj).blessed) C.strcat(prefix, C.literal("blessed "));
-        else if (Number(!!(Number(!((C.flags).implicit_uncursed)) || (Number(!!(Number(!!(Number(!!(Number(!!((Number(!!(Number(!!(Number(!!(Number(!(known)) || Number(!((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_charged)))) || Number((obj).oclass == C.ARMOR_CLASS))) || Number((obj).oclass == C.RING_CLASS)))) && Number((obj).otyp != C.SCR_MAIL))) && Number((obj).otyp != C.FAKE_AMULET_OF_YENDOR))) && Number((obj).otyp != C.AMULET_OF_YENDOR))) && Number(!((Number(((C.gu).urole).mnum == (C.PM_CLERIC))))))))))) /* For most items with charges or +/-, if you know how many
+        else if (Number(!!(Number(!((C.flags).implicit_uncursed))
+            || (Number(!!(Number(!!(Number(!!(Number(!!((Number(!!(Number(!!(Number(!!(Number(!(known))
+            || Number(!((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_charged))))
+            || Number((obj).oclass == C.ARMOR_CLASS)))
+            || Number((obj).oclass == C.RING_CLASS))))
+            && Number((obj).otyp != C.SCR_MAIL)))
+            && Number((obj).otyp != C.FAKE_AMULET_OF_YENDOR)))
+            && Number((obj).otyp != C.AMULET_OF_YENDOR)))
+            && Number(!((Number(((C.gu).urole).mnum == (C.PM_CLERIC))))))))))) /* For most items with charges or +/-, if you know how many
              * charges are left or what the +/- is, then you must have
              * totally identified the item, so "uncursed" is unnecessary,
              * because an identified object not described as "blessed" or
@@ -1160,21 +1243,25 @@ export function doname_base(obj, doname_flags) /* object to format */
              * printed to avoid ambiguity between an item whose curse
              * status is unknown, and an item known to be uncursed.
              */
-        C.strcat(prefix, C.literal("uncursed "));
+            C.strcat(prefix, C.literal("uncursed "));
     }
 /* "a large trapped box" would perhaps be more correct; [no!]
        what about ``(obj->tknown && !obj->otrapped)''? shouldn't that
        yield "a non-trapped large box"? (not "an untrapped large box");
        TODO: this should be ``(Is_box(obj) || obj->otyp == TIN) && ...''
        but at present there's no way to set obj->tknown for tins */
-    if (Number(!!(Number(!!(Number(!!((Number(!!(Number(((obj)).otyp == C.LARGE_BOX) || Number(((obj)).otyp == C.CHEST)))) && C.int((obj).otrapped))) && C.int((obj).tknown))) && C.int((obj).dknown)))) C.strcat(prefix, C.literal("trapped "));
+    if (Number(!!(Number(!!(Number(!!((Number(!!(Number(((obj)).otyp == C.LARGE_BOX)
+        || Number(((obj)).otyp == C.CHEST))))
+        && C.int((obj).otrapped)))
+        && C.int((obj).tknown)))
+        && C.int((obj).dknown)))) C.strcat(prefix, C.literal("trapped "));
     if (Number(!!(lknown && (Number(!!(Number(((obj)).otyp == C.LARGE_BOX) || Number(((obj)).otyp == C.CHEST))))))) {
         if ((obj).obroken) /* 3.6.0 used "unlockable" here but that could be misunderstood
                to mean "capable of being unlocked" rather than the intended
                "not capable of being locked" */
-        C.strcat(prefix, C.literal("broken "));
+            C.strcat(prefix, C.literal("broken "));
         else if ((obj).olocked) C.strcat(prefix, C.literal("locked "));
-        else C.strcat(prefix, C.literal("unlocked "));
+            else C.strcat(prefix, C.literal("unlocked "));
     }
     if ((obj).greased) C.strcat(prefix, C.literal("greased "));
     if (Number(!!(Number(!!(cknown && (C.ptrCompare(((obj)).cobj, 0, "!=")))) && Number(bpspaceleft > C.ulong(0))))) {
@@ -1188,7 +1275,8 @@ export function doname_base(obj, doname_flags) /* object to format */
         }
         while (0);
     }
-    let switch_class = (((Number(!!(Number(((obj)).oclass == C.TOOL_CLASS) && Number((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE))))) ? C.WEAPON_CLASS : (obj).oclass);
+    let switch_class = (((Number(!!(Number(((obj)).oclass == C.TOOL_CLASS)
+        && Number((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE))))) ? C.WEAPON_CLASS : (obj).oclass);
     class_dispatch: for (;;) {
     switch (switch_class) {
         case (C.AMULET_CLASS):
@@ -1214,20 +1302,25 @@ export function doname_base(obj, doname_flags) /* object to format */
 /* slippery fingers is an intrinsic condition of the hero
                    rather than extrinsic condition of objects, but gloves
                    are described as slippery when hero has slippery fingers */
-                    if (Number(!!(C.ptrCompare(obj, C.uarmg, "==") && (C.deref(C.ptrAdd((C.u).uprops, C.GLIB, "struct prop"), "struct prop")).intrinsic))) /* just appended "(something)",
+                    if (Number(!!(C.ptrCompare(obj, C.uarmg, "==")
+                        && (C.deref(C.ptrAdd((C.u).uprops, C.GLIB, "struct prop"), "struct prop")).intrinsic))) /* just appended "(something)",
                                            * replace paren, changing that
                                            * to be "(something; slippery)" */
-                    do {
-                        C.strncat(C.ptrAdd(bp_eos.value, -(1), "char"), C.literal("; slippery)"), C.ulong((bpspaceleft + C.ulong(1))));
-                        ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
-                    }
-                    while (0);
+                        do {
+                            C.strncat(C.ptrAdd(bp_eos.value, -(1), "char"), C.literal("; slippery)"), C.ulong((bpspaceleft + C.ulong(1))));
+                            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
+                        }
+                        while (0);
                 }
                 if (Number(C.deref(C.ptrAdd(bp_eos.value, C.int((-1)), "char"), "char") == 41)) {
 /* there could be light-emitting artifact gloves someday,
                    so add 'lit' separately from 'slippery' rather than via
                    'else if' after uarmg+Glib */
-                    if (Number(!!(Number(!!(Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked))))))) && C.int((obj).lamplit))) && C.artifact_light(obj)))) do {
+                    if (Number(!!(Number(!!(Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                        || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                        && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))
+                        && C.int((obj).lamplit)))
+                        && C.artifact_light(obj)))) do {
                         C.nh_snprintf(C.literal("doname_base"), 1413, C.ptrAdd(bp_eos.value, -(1), "char"), C.ulong((bpspaceleft + C.ulong(1))), C.literal(", %s lit)"), C.arti_light_description(obj), "p");
                         ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
                     }
@@ -1265,8 +1358,8 @@ export function doname_base(obj, doname_flags) /* object to format */
             }
             else {
                 if (mlsh) /*&& DEADMONSTER(mlsh)*/
-                C.impossible(C.literal("leashed %s #%u is dead"), C.mon_pmname(mlsh), C.uint((obj).leashmon), "pu");
-                else C.impossible(C.literal("leashed monster #%u not found"), C.uint((obj).leashmon), "u");
+                    C.impossible(C.literal("leashed %s #%u is dead"), C.mon_pmname(mlsh), C.uint((obj).leashmon), "pu");
+                    else C.impossible(C.literal("leashed monster #%u not found"), C.uint((obj).leashmon), "u");
                 ((obj).leashmon = 0);
             }
             break;
@@ -1283,7 +1376,11 @@ export function doname_base(obj, doname_flags) /* object to format */
             while (0);
             break;
         }
-        else if (Number(!!(Number(!!(Number(!!(Number((obj).otyp == C.OIL_LAMP) || Number((obj).otyp == C.MAGIC_LAMP))) || Number((obj).otyp == C.BRASS_LANTERN))) || (Number(!!(Number((obj).otyp == C.TALLOW_CANDLE) || Number((obj).otyp == C.WAX_CANDLE))))))) {
+        else if (Number(!!(Number(!!(Number(!!(Number((obj).otyp == C.OIL_LAMP)
+            || Number((obj).otyp == C.MAGIC_LAMP)))
+            || Number((obj).otyp == C.BRASS_LANTERN)))
+            || (Number(!!(Number((obj).otyp == C.TALLOW_CANDLE)
+            || Number((obj).otyp == C.WAX_CANDLE))))))) {
             if ((Number(!!(Number((obj).otyp == C.TALLOW_CANDLE) || Number((obj).otyp == C.WAX_CANDLE))))) {
                 const timer = C.recordLocal("anything", 0);
                 let full_burn_time = C.long((20n * C.long((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_cost)));
@@ -1339,11 +1436,11 @@ export function doname_base(obj, doname_flags) /* object to format */
         }
         while (0);
         if (C.long(((obj).owornmask & C.W_RING))) /* either left or right */
-        do {
-            C.nh_snprintf(C.literal("doname_base"), 1499, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal("%s)"), C.body_part(C.HAND), "p");
-            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
-        }
-        while (0);
+            do {
+                C.nh_snprintf(C.literal("doname_base"), 1499, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal("%s)"), C.body_part(C.HAND), "p");
+                ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
+            }
+            while (0);
         if (Number(!!(known && C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_charged)))) {
             C.sprintf(C.eos(prefix), C.literal("%+d "), (obj).spe, "i");
 /* sitoa(obj->spe)+" " */
@@ -1372,7 +1469,10 @@ export function doname_base(obj, doname_flags) /* object to format */
 /* corpses don't tell if they're stale either */
 // Configured-inactive #if 0 source:
 // if (known && stale_egg(obj)) Strcat(prefix, "stale ");
-            if (Number(!!((Number(!!(Number((omndx) >= C.LOW_PM) && Number((omndx) < C.NUMMONS)))) && (Number(!!(known || (C.int(((C.deref(C.ptrAdd((C.svm).mvitals, omndx, "struct mvitals"), "struct mvitals")).mvflags & C.MV_KNOWS_EGG))))))))) {
+            if (Number(!!((Number(!!(Number((omndx) >= C.LOW_PM)
+                && Number((omndx) < C.NUMMONS))))
+                && (Number(!!(known
+                || (C.int(((C.deref(C.ptrAdd((C.svm).mvitals, omndx, "struct mvitals"), "struct mvitals")).mvflags & C.MV_KNOWS_EGG))))))))) {
                 C.strcat(prefix, C.deref(C.ptrAdd((C.deref(C.ptrAdd(C.mons, omndx, "struct permonst"), "struct permonst")).pmnames, C.NEUTRAL, "const char *"), "const char *"));
                 C.strcat(prefix, C.literal(" "));
                 if (Number((obj).spe == 1)) do {
@@ -1399,7 +1499,11 @@ export function doname_base(obj, doname_flags) /* object to format */
     break class_dispatch;
     }
 
-    if (Number(!!(Number(!!((Number(!!(Number(!!(Number((obj).otyp == C.STATUE) || Number((obj).otyp == C.CORPSE))) || Number((obj).otyp == C.FIGURINE)))) && (C.flags).debug)) && (C.iflags).wizmgender))) {
+    if (Number(!!(Number(!!((Number(!!(Number(!!(Number((obj).otyp == C.STATUE)
+        || Number((obj).otyp == C.CORPSE)))
+        || Number((obj).otyp == C.FIGURINE))))
+        && (C.flags).debug))
+        && (C.iflags).wizmgender))) {
         let cgend = (C.int(((obj).spe & C.CORPSTAT_GENDER)));
         let mgend = ((((Number(cgend == C.CORPSTAT_MALE))) ? C.MALE : (((Number(cgend == C.CORPSTAT_FEMALE))) ? C.FEMALE : C.NEUTRAL)));
         do {
@@ -1416,7 +1520,17 @@ export function doname_base(obj, doname_flags) /* object to format */
            except when those are being actively dual-wielded where the
            regular phrasing will list them as "in right hand" to
            contrast with secondary weapon's "in left hand" */
-        if (Number(!!((Number(!!(Number((obj).quan != 1n) || ((((Number((obj).oclass == C.WEAPON_CLASS))) ? (Number(!!((Number(!!(Number(!!((Number(!!(Number((obj).oclass == C.WEAPON_CLASS) || Number((obj).oclass == C.GEM_CLASS)))) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_CROSSBOW))))) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_BOW)))))) || (Number(!!(Number(!!((Number(!!(Number((obj).oclass == C.WEAPON_CLASS) || Number((obj).oclass == C.TOOL_CLASS)))) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_BOOMERANG))))) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_DART))))))))) : Number(!((Number(!!(Number(((obj)).oclass == C.TOOL_CLASS) && Number((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE))))))))))) && Number(!(twoweap_primary))))) {
+        if (Number(!!((Number(!!(Number((obj).quan != 1n)
+            || ((((Number((obj).oclass == C.WEAPON_CLASS))) ? (Number(!!((Number(!!(Number(!!((Number(!!(Number((obj).oclass == C.WEAPON_CLASS)
+            || Number((obj).oclass == C.GEM_CLASS))))
+            && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_CROSSBOW)))))
+            && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_BOW))))))
+            || (Number(!!(Number(!!((Number(!!(Number((obj).oclass == C.WEAPON_CLASS)
+            || Number((obj).oclass == C.TOOL_CLASS))))
+            && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_BOOMERANG)))))
+            && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_DART))))))))) : Number(!((Number(!!(Number(((obj)).oclass == C.TOOL_CLASS)
+            && Number((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE)))))))))))
+            && Number(!(twoweap_primary))))) {
             do {
                 C.strncat(C.ptrAdd(bp_eos.value, -(0), "char"), C.literal(" (wielded)"), C.ulong((bpspaceleft + C.ulong(0))));
                 ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
@@ -1427,7 +1541,9 @@ export function doname_base(obj, doname_flags) /* object to format */
             let hand_s = C.body_part(C.HAND);
             let obufp;
             const handsbuf = C.localArray("char[40]", 0);
-            if ((Number(!!((Number(!!(Number((obj).oclass == C.WEAPON_CLASS) || Number((obj).oclass == C.TOOL_CLASS)))) && C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_big))))) {
+            if ((Number(!!((Number(!!(Number((obj).oclass == C.WEAPON_CLASS)
+                || Number((obj).oclass == C.TOOL_CLASS))))
+                && C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_big))))) {
 /* "hands" */
                 (hand_s = C.strcpy(handsbuf, (obufp = makeplural(hand_s))));
                 releaseobuf(obufp);
@@ -1446,19 +1562,25 @@ export function doname_base(obj, doname_flags) /* object to format */
             while (0);
 /* we just added a parenthesized phrase, but the right paren
                might be absent if the appended string got truncated */
-            if (Number(!!(Number(!!(Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked))))))) && bpspaceleft)) && Number(C.deref(C.ptrAdd(bp_eos.value, C.int((-1)), "char"), "char") == 41)))) {
-                if (Number(!!(Number(!!((C.gw).warn_obj_cnt && C.ptrCompare(obj, C.uwep, "=="))) && Number((C.long(((C.deref(C.ptrAdd((C.u).uprops, C.WARN_OF_MON, "struct prop"), "struct prop")).extrinsic & C.W_WEP))) != 0n)))) /* we know bp[] ends with ')'; overwrite that */
-                do {
-                    C.nh_snprintf(C.literal("doname_base"), 1605, C.ptrAdd(bp_eos.value, -(1), "char"), C.ulong((bpspaceleft + C.ulong(1))), C.literal(", %s %s)"), C.glow_verb((C.gw).warn_obj_cnt, (C.char(1))), C.glow_color((obj).oartifact), "pp");
-                    ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
-                }
-                while (0);
+            if (Number(!!(Number(!!(Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))
+                && bpspaceleft))
+                && Number(C.deref(C.ptrAdd(bp_eos.value, C.int((-1)), "char"), "char") == 41)))) {
+                if (Number(!!(Number(!!((C.gw).warn_obj_cnt
+                    && C.ptrCompare(obj, C.uwep, "==")))
+                    && Number((C.long(((C.deref(C.ptrAdd((C.u).uprops, C.WARN_OF_MON, "struct prop"), "struct prop")).extrinsic & C.W_WEP))) != 0n)))) /* we know bp[] ends with ')'; overwrite that */
+                    do {
+                        C.nh_snprintf(C.literal("doname_base"), 1605, C.ptrAdd(bp_eos.value, -(1), "char"), C.ulong((bpspaceleft + C.ulong(1))), C.literal(", %s %s)"), C.glow_verb((C.gw).warn_obj_cnt, (C.char(1))), C.glow_color((obj).oartifact), "pp");
+                        ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
+                    }
+                    while (0);
                 else if (Number(!!(C.int((obj).lamplit) && C.artifact_light(obj)))) /* as above, overwrite known closing paren */
-                do {
-                    C.nh_snprintf(C.literal("doname_base"), 1609, C.ptrAdd(bp_eos.value, -(1), "char"), C.ulong((bpspaceleft + C.ulong(1))), C.literal(", %s lit)"), C.arti_light_description(obj), "p");
-                    ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
-                }
-                while (0);
+                    do {
+                        C.nh_snprintf(C.literal("doname_base"), 1609, C.ptrAdd(bp_eos.value, -(1), "char"), C.ulong((bpspaceleft + C.ulong(1))), C.literal(", %s lit)"), C.arti_light_description(obj), "p");
+                        ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
+                    }
+                    while (0);
             }
         }
     }
@@ -1469,17 +1591,20 @@ export function doname_base(obj, doname_flags) /* object to format */
         }
         while (0);
         else /* TODO: rephrase this when obj isn't a weapon or weptool */
-        do {
-            C.nh_snprintf(C.literal("doname_base"), 1620, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (alternate weapon%s; not wielded)"), ((((Number(((obj).quan) == C.long(1)))) ? C.literal("") : C.literal("s"))), "p");
-            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
-        }
-        while (0);
+            do {
+                C.nh_snprintf(C.literal("doname_base"), 1620, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (alternate weapon%s; not wielded)"), ((((Number(((obj).quan) == C.long(1)))) ? C.literal("") : C.literal("s"))), "p");
+                ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
+            }
+            while (0);
     }
     if (C.long(((obj).owornmask & C.W_QUIVER))) {
         let Qtyp;
         switch ((obj).oclass) {
             case (C.WEAPON_CLASS):
-                (Qtyp = ((Number(!((Number(!!(Number(!!((Number(!!(Number((obj).oclass == C.WEAPON_CLASS) || Number((obj).oclass == C.GEM_CLASS)))) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_CROSSBOW))))) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_BOW))))))))) ? 3 : (((Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_skill != C.int((-C.P_BOW))))) ? 2 : 1)));
+                (Qtyp = ((Number(!((Number(!!(Number(!!((Number(!!(Number((obj).oclass == C.WEAPON_CLASS)
+                    || Number((obj).oclass == C.GEM_CLASS))))
+                    && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_CROSSBOW)))))
+                    && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_BOW))))))))) ? 3 : (((Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_skill != C.int((-C.P_BOW))))) ? 2 : 1)));
 /* not ammo: "at the ready" */
 /* non-bow */
 /* ammo for a bow: "in quiver" */
@@ -1545,12 +1670,14 @@ export function doname_base(obj, doname_flags) /* object to format */
             }
             while (0);
         }
-        else if (Number(!!((C.iflags).pricequotes && Number(!((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_name_known))))) {
+        else if (Number(!!((C.iflags).pricequotes
+            && Number(!((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_name_known))))) {
             C.append_price_quote(bp, bp_eos, (obj).otyp);
         }
         if (Number(price > 0n)) C.record_price_quote((obj).otyp, C.ulong(C.long((price / (obj).quan))), (C.char(1)));
     }
-    else if (Number(!!((C.iflags).pricequotes && Number(!((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_name_known))))) {
+    else if (Number(!!((C.iflags).pricequotes
+        && Number(!((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_name_known))))) {
         C.append_price_quote(bp, bp_eos, (obj).otyp);
     }
     if (Number(!(C.strncmp(prefix, C.literal("a "), C.ulong(2))))) {
@@ -1570,11 +1697,11 @@ export function doname_base(obj, doname_flags) /* object to format */
             ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
         }
         while (0);
-        else do {
-            C.nh_snprintf(C.literal("doname_base"), 1702, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%u aum)"), (obj).owt, "u");
-            ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
-        }
-        while (0);
+            else do {
+                C.nh_snprintf(C.literal("doname_base"), 1702, C.ptrAdd(bp_eos.value, -(0), "char"), C.ulong((bpspaceleft + C.ulong(0))), C.literal(" (%u aum)"), (obj).owt, "u");
+                ((bp_eos.value = C.eos(bp)), (bpspaceleft = C.ulong((C.ptrDiff(bp_end, bp_eos.value, "char")))));
+            }
+            while (0);
 /* ConcatF1(bp) updates bp_eos and bpspaceleft but we're done
            with them now; add a fake use so compiler won't complain
            about a variable assignment that won't be subsequently used */
@@ -1656,8 +1783,18 @@ export function not_fully_identified(otmp) {
     if (Number((otmp).oclass == C.COIN_CLASS)) return (C.char(0));
 /* always fully ID'd */
 /* check fundamental ID hallmarks first */
-    if (Number(!!(Number(!!(Number(!!(Number(!((otmp).known)) || Number(!((otmp).dknown)))) || (Number(!!(Number(!((otmp).bknown)) && Number((otmp).otyp != C.SCR_MAIL)))))) || Number(!((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_name_known))))) return (C.char(1));
-    if (Number(!!((Number(!!(Number(!((otmp).cknown)) && (Number(!!((Number(!!(Number(((otmp)).otyp >= C.LARGE_BOX) && Number(((otmp)).otyp <= C.BAG_OF_TRICKS)))) || Number((otmp).otyp == C.STATUE))))))) || (Number(!!(Number(!((otmp).lknown)) && (Number(!!(Number(((otmp)).otyp == C.LARGE_BOX) || Number(((otmp)).otyp == C.CHEST)))))))))) return (C.char(1));
+    if (Number(!!(Number(!!(Number(!!(Number(!((otmp).known))
+        || Number(!((otmp).dknown))))
+        || (Number(!!(Number(!((otmp).bknown))
+        && Number((otmp).otyp != C.SCR_MAIL))))))
+        || Number(!((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_name_known))))) return (C.char(1));
+    if (Number(!!((Number(!!(Number(!((otmp).cknown))
+        && (Number(!!((Number(!!(Number(((otmp)).otyp >= C.LARGE_BOX)
+        && Number(((otmp)).otyp <= C.BAG_OF_TRICKS))))
+        || Number((otmp).otyp == C.STATUE)))))))
+        || (Number(!!(Number(!((otmp).lknown))
+        && (Number(!!(Number(((otmp)).otyp == C.LARGE_BOX)
+        || Number(((otmp)).otyp == C.CHEST)))))))))) return (C.char(1));
     if (Number(!!((otmp).oartifact && C.undiscovered_artifact(C.short((otmp).oartifact))))) return (C.char(1));
 /* otmp->rknown is the only item of interest if we reach here */
 /*
@@ -1665,11 +1802,22 @@ export function not_fully_identified(otmp) {
      *  rings to become shockproof, this checking will need to be revised.
      *  `rknown' ID only matters if xname() will provide the info about it.
      */
-    if (Number(!!(C.int((otmp).rknown) || (Number(!!(Number(!!(Number(!!(Number((otmp).oclass != C.ARMOR_CLASS) && Number((otmp).oclass != C.WEAPON_CLASS))) && Number(!((Number(!!(Number(((otmp)).oclass == C.TOOL_CLASS) && Number((C.deref(C.ptrAdd(C.objects, ((otmp)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE)))))))) && Number((otmp).oclass != C.BALL_CLASS))))))) /* (redundant) */
+    if (Number(!!(C.int((otmp).rknown)
+        || (Number(!!(Number(!!(Number(!!(Number((otmp).oclass != C.ARMOR_CLASS)
+        && Number((otmp).oclass != C.WEAPON_CLASS)))
+        && Number(!((Number(!!(Number(((otmp)).oclass == C.TOOL_CLASS)
+        && Number((C.deref(C.ptrAdd(C.objects, ((otmp)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE))))))))
+        && Number((otmp).oclass != C.BALL_CLASS))))))) /* (redundant) */
 /* (useless) */
-    return (C.char(0));
+        return (C.char(0));
     else /* lack of `rknown' only matters for vulnerable objects */
-    return C.char((Number(!!(Number(!!(Number(!!(Number(!!((Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON)) || C.is_flammable(otmp))) || C.is_rottable(otmp))) || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER) || Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON)))))) || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((otmp)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS) && Number(((otmp)).oclass == C.ARMOR_CLASS))))))));
+        return C.char((Number(!!(Number(!!(Number(!!(Number(!!((Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))
+            || C.is_flammable(otmp)))
+            || C.is_rottable(otmp)))
+            || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER)
+            || Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))))))
+            || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((otmp)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS)
+            && Number(((otmp)).oclass == C.ARMOR_CLASS))))))));
 }
 
 /* format a corpse name (xname() omits monster type; doname() calls us);
@@ -1706,14 +1854,16 @@ export function corpse_xname(otmp, adjective, cxn_flags) /* bitmask of CXN_xxx v
     }
     else {
         (mnam = C.obj_pmname(otmp));
-        if (Number(!!(C.callLocal(the_unique_pm, C.ptrAdd(C.mons, omndx, "struct permonst")) || (Number((C.ulong((((C.ptrAdd(C.mons, omndx, "struct permonst"))).mflags2 & C.ulong(524288n)))) != C.ulong(0n)))))) {
+        if (Number(!!(C.callLocal(the_unique_pm, C.ptrAdd(C.mons, omndx, "struct permonst"))
+            || (Number((C.ulong((((C.ptrAdd(C.mons, omndx, "struct permonst"))).mflags2 & C.ulong(524288n)))) != C.ulong(0n)))))) {
             (mnam = C.s_suffix(mnam));
             (possessive = (C.char(1)));
 /* don't precede personal name like "Medusa" with an article */
             if ((Number((C.ulong((((C.ptrAdd(C.mons, omndx, "struct permonst"))).mflags2 & C.ulong(524288n)))) != C.ulong(0n)))) (no_prefix = (C.char(1)));
             else /* always precede non-personal unique monster name like
                "Oracle" with "the" unless explicitly overridden */
-            if (Number(!!(C.callLocal(the_unique_pm, C.ptrAdd(C.mons, omndx, "struct permonst")) && Number(!(no_prefix))))) (the_prefix = (C.char(1)));
+            if (Number(!!(C.callLocal(the_unique_pm, C.ptrAdd(C.mons, omndx, "struct permonst"))
+                && Number(!(no_prefix))))) (the_prefix = (C.char(1)));
         }
     }
     if (no_prefix) (the_prefix = (any_prefix = (C.char(0))));
@@ -1735,9 +1885,9 @@ export function corpse_xname(otmp, adjective, cxn_flags) /* bitmask of CXN_xxx v
     else {
 /* adjective positioning depends upon format of monster name */
         if (possessive) /* Medusa's cursed partly eaten corpse */
-        C.sprintf(C.eos(nambuf), C.literal("%s %s"), mnam, adjective, "pp");
+            C.sprintf(C.eos(nambuf), C.literal("%s %s"), mnam, adjective, "pp");
         else /* cursed partly eaten troll corpse */
-        C.sprintf(C.eos(nambuf), C.literal("%s %s"), adjective, mnam, "pp");
+            C.sprintf(C.eos(nambuf), C.literal("%s %s"), adjective, mnam, "pp");
 /* in case adjective has a trailing space, squeeze it out */
         C.mungspaces(nambuf);
 /* doname() might include a count in the adjective argument;
@@ -1804,7 +1954,7 @@ export function killer_xname(obj) {
     ((obj).bknown = ((obj).rknown = ((obj).greased = C.uint(0))));
 /* if character is a priest[ess], bknown will get toggled back on */
     if (Number((obj).otyp != C.POT_WATER)) ((obj).blessed = ((obj).cursed = C.uint(0)));
-    else ((obj).bknown = C.uint(1));
+        else ((obj).bknown = C.uint(1));
 /* describe holy/unholy water as such */
 /* "killed by poisoned <obj>" would be misleading when poison is
        not the cause of death and "poisoned by poisoned <obj>" would
@@ -1833,7 +1983,10 @@ export function killer_xname(obj) {
         (buf = xname(obj));
     }
 /* apply an article if appropriate; caller should always use KILLED_BY */
-    if (Number(!!(Number(!!(Number((obj).quan == 1n) && Number(!(C.strstri(buf, C.literal("'s ")))))) && Number(!(C.strstri(buf, C.literal("s' "))))))) (buf = (((Number(!!(obj_is_pname(obj) || the_unique_obj(obj))))) ? C.callLocal(the, buf) : an(buf)));
+    if (Number(!!(Number(!!(Number((obj).quan == 1n)
+        && Number(!(C.strstri(buf, C.literal("'s "))))))
+        && Number(!(C.strstri(buf, C.literal("s' "))))))) (buf = (((Number(!!(obj_is_pname(obj)
+        || the_unique_obj(obj))))) ? C.callLocal(the, buf) : an(buf)));
     ((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_name_known = save_ocknown);
     ((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_uname = save_ocuname);
     C.store(obj, "struct obj", save_obj);
@@ -1884,7 +2037,10 @@ export function short_oname(obj, func, altfunc, lenlimit) /* main formatting rou
     }
 /* shorten both called and named strings;
        unamebuf and onamebuf have both already been populated */
-    if (Number(!!(Number(!!(Number(!!(save_uname && Number(C.strlen(save_uname) >= BigInt(C.sizeof("char[12]"))))) && save_oname)) && Number(C.strlen(save_oname) >= BigInt(C.sizeof("char[12]")))))) {
+    if (Number(!!(Number(!!(Number(!!(save_uname
+        && Number(C.strlen(save_uname) >= BigInt(C.sizeof("char[12]")))))
+        && save_oname))
+        && Number(C.strlen(save_oname) >= BigInt(C.sizeof("char[12]")))))) {
         ((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_uname = unamebuf);
         ((((obj)).oextra).oname = onamebuf);
         releaseobuf(outbuf);
@@ -1940,11 +2096,15 @@ export function just_an(outbuf, str) {
     let c0;
     C.store(outbuf, "char", C.char(0));
     (c0 = C.lowc(C.deref(str, "const char")));
-    if (Number(!!(Number(!(C.deref(C.ptrAdd(str, 1, "const char"), "const char"))) || Number(C.deref(C.ptrAdd(str, 1, "const char"), "const char") == 32)))) {
+    if (Number(!!(Number(!(C.deref(C.ptrAdd(str, 1, "const char"), "const char")))
+        || Number(C.deref(C.ptrAdd(str, 1, "const char"), "const char") == 32)))) {
 /* single letter; might be used for named fruit or a musical note */
         C.strcpy(outbuf, ((C.strchr(C.literal("aefhilmnosx"), c0)) ? C.literal("an ") : C.literal("a ")));
     }
-    else if (Number(!!(Number(!!(Number(!!(Number(!(C.strncmpi(str, C.literal("the "), 4))) || Number(!(C.strncmpi((str), (C.literal("molten lava")), C.int((-1))))))) || Number(!(C.strncmpi((str), (C.literal("iron bars")), C.int((-1))))))) || Number(!(C.strncmpi((str), (C.literal("ice")), C.int((-1)))))))) /* these probably shouldn't be handled here because doing so
+    else if (Number(!!(Number(!!(Number(!!(Number(!(C.strncmpi(str, C.literal("the "), 4)))
+        || Number(!(C.strncmpi((str), (C.literal("molten lava")), C.int((-1)))))))
+        || Number(!(C.strncmpi((str), (C.literal("iron bars")), C.int((-1)))))))
+        || Number(!(C.strncmpi((str), (C.literal("ice")), C.int((-1)))))))) /* these probably shouldn't be handled here because doing so
                   impacts inventory when using them for named fruit */
 {
         ;
@@ -1952,13 +2112,24 @@ export function just_an(outbuf, str) {
     }
     else {
 /* normal case is "an <vowel>" or "a <consonant>" */
-        if (Number(!!((Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.strchr(C.vowels, c0) && (Number(!!(C.strncmpi(str, C.literal("one"), 3) || (Number(!!(C.deref(C.ptrAdd(str, 3, "const char"), "const char") && Number(!(C.strchr(C.literal("-_ "), C.deref(C.ptrAdd(str, 3, "const char"), "const char")))))))))))) && C.strncmpi(str, C.literal("eu"), 2))) && C.strncmpi(str, C.literal("uke"), 3))) && C.strncmpi(str, C.literal("ukulele"), 7))) && C.strncmpi(str, C.literal("unicorn"), 7))) && C.strncmpi(str, C.literal("uranium"), 7))) && C.strncmpi(str, C.literal("useful"), 6)))) || (Number(!!(Number(c0 == 120) && Number(!(C.strchr(C.vowels, C.lowc(C.deref(C.ptrAdd(str, 1, "const char"), "const char"))))))))))) /* some exceptions warranting "a <vowel>" */
+        if (Number(!!((Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.strchr(C.vowels, c0)
+            && (Number(!!(C.strncmpi(str, C.literal("one"), 3)
+            || (Number(!!(C.deref(C.ptrAdd(str, 3, "const char"), "const char")
+            && Number(!(C.strchr(C.literal("-_ "), C.deref(C.ptrAdd(str, 3, "const char"), "const char"))))))))))))
+            && C.strncmpi(str, C.literal("eu"), 2)))
+            && C.strncmpi(str, C.literal("uke"), 3)))
+            && C.strncmpi(str, C.literal("ukulele"), 7)))
+            && C.strncmpi(str, C.literal("unicorn"), 7)))
+            && C.strncmpi(str, C.literal("uranium"), 7)))
+            && C.strncmpi(str, C.literal("useful"), 6))))
+            || (Number(!!(Number(c0 == 120)
+            && Number(!(C.strchr(C.vowels, C.lowc(C.deref(C.ptrAdd(str, 1, "const char"), "const char"))))))))))) /* some exceptions warranting "a <vowel>" */
 /* 'wun' initial sound */
 /* long 'u' initial sound */
 /* "eucalyptus leaf" */
 /* "useful tool" */
-        C.strcpy(outbuf, C.literal("an "));
-        else C.strcpy(outbuf, C.literal("a "));
+            C.strcpy(outbuf, C.literal("an "));
+            else C.strcpy(outbuf, C.literal("a "));
     }
     return outbuf;
 }
@@ -1999,7 +2170,12 @@ export function the(str) {
         C.strcpy(C.ptrAdd(buf, 1, "char"), C.ptrAdd(str, 1, "const char"));
         return buf;
     }
-    else if (Number(!!(Number(!!(Number(!!(Number(C.deref(str, "const char") < 65) || Number(C.deref(str, "const char") > 90))) || C.CapitalMon(str))) || (Number(!!(C.callLocal(fruit_from_name, str, (C.char(1)), 0) && (Number(!!(C.ptrCompare(((aname = C.artifact_name(str, 0, (C.char(0))))), 0, "==") || Number(C.strncmpi(aname, C.literal("the "), 4) == 0)))))))))) /* some capitalized monster names want "the", others don't */
+    else if (Number(!!(Number(!!(Number(!!(Number(C.deref(str, "const char") < 65)
+        || Number(C.deref(str, "const char") > 90)))
+        || C.CapitalMon(str)))
+        || (Number(!!(C.callLocal(fruit_from_name, str, (C.char(1)), 0)
+        && (Number(!!(C.ptrCompare(((aname = C.artifact_name(str, 0, (C.char(0))))), 0, "==")
+        || Number(C.strncmpi(aname, C.literal("the "), 4) == 0)))))))))) /* some capitalized monster names want "the", others don't */
 /* treat named fruit as not a proper name, even if player
                   has assigned a capitalized proper name as his/her fruit,
                   unless it matches an artifact name */
@@ -2014,7 +2190,10 @@ export function the(str) {
         let tmp;
         let l;
 /* some objects have capitalized adjectives in their names */
-        if (Number(!!((Number(!!(C.ptrCompare(((tmp = C.strrchr(str, 32))), 0, "!=") || C.ptrCompare(((tmp = C.strrchr(str, 45))), 0, "!=")))) && (Number(!!(Number(C.deref(C.ptrAdd(tmp, 1, "const char"), "const char") < 65) || Number(C.deref(C.ptrAdd(tmp, 1, "const char"), "const char") > 90))))))) {
+        if (Number(!!((Number(!!(C.ptrCompare(((tmp = C.strrchr(str, 32))), 0, "!=")
+            || C.ptrCompare(((tmp = C.strrchr(str, 45))), 0, "!="))))
+            && (Number(!!(Number(C.deref(C.ptrAdd(tmp, 1, "const char"), "const char") < 65)
+            || Number(C.deref(C.ptrAdd(tmp, 1, "const char"), "const char") > 90))))))) {
 /* insert "the" unless we have an apostrophe (where we assume
                we're dealing with "Unique's corpse" when "Unique" wasn't
                caught by CapitalMon() above) */
@@ -2028,13 +2207,15 @@ export function the(str) {
             (called = C.strstri(str, C.literal(" called ")));
             if (Number(!!(called && (Number(!!(Number(!(named)) || C.ptrCompare(called, named, "<"))))))) (named = called);
             if (Number(!!(tmp && (Number(!!(Number(!(named)) || C.ptrCompare(tmp, C.castPointer(named, "char *"), "<"))))))) /* found an "of" */
-            (insert_the = (C.char(1)));
+                (insert_the = (C.char(1)));
             else /* stupid special case: lacks "of" but needs "the" */
-            if (Number(!!(Number(!!(Number(!(named)) && Number(((l = C.int(C.Strlen_(str, C.literal("the"), 2220)))) >= 31))) && Number(!(C.strcmp(C.ptrAdd(str, C.int((l - 31)), "const char"), C.literal("Platinum Yendorian Express Card"))))))) (insert_the = (C.char(1)));
+            if (Number(!!(Number(!!(Number(!(named))
+                && Number(((l = C.int(C.Strlen_(str, C.literal("the"), 2220)))) >= 31)))
+                && Number(!(C.strcmp(C.ptrAdd(str, C.int((l - 31)), "const char"), C.literal("Platinum Yendorian Express Card"))))))) (insert_the = (C.char(1)));
         }
     }
     if (insert_the) C.strcpy(buf, C.literal("the "));
-    else C.store(C.ptrAdd(buf, 0, "char"), "char", C.char(0));
+        else C.store(C.ptrAdd(buf, 0, "char"), "char", C.char(0));
     return C.strncat(buf, str, C.ulong(C.uint((C.uint(C.int((C.BUFSZ - 1))) - C.Strlen_(buf, C.literal("the"), 2230)))));
 }
 
@@ -2069,7 +2250,9 @@ export function yobjnam(obj, verb) {
     let s = C.callLocal(aobjnam, obj, verb);
 /* leave off "your" for most of your artifacts, but prepend
      * "your" for unique objects and "foo of bar" quest artifacts */
-    if (Number(!!(Number(!!(Number(!((Number(((obj)).where == 3)))) || Number(!(obj_is_pname(obj))))) || Number((obj).oartifact >= C.ART_ORB_OF_DETECTION)))) {
+    if (Number(!!(Number(!!(Number(!((Number(((obj)).where == 3))))
+        || Number(!(obj_is_pname(obj)))))
+        || Number((obj).oartifact >= C.ART_ORB_OF_DETECTION)))) {
         let outbuf = C.shk_your(nextobuf(), obj);
         let space_left = C.int(C.uint((C.uint(C.int((C.BUFSZ - 1))) - C.Strlen_(outbuf, C.literal("yobjnam"), 2271))));
         (s = C.strncat(outbuf, s, C.ulong(space_left)));
@@ -2150,7 +2333,9 @@ export function yname(obj) {
     let s = cxname(obj);
 /* leave off "your" for most of your artifacts, but prepend
      * "your" for unique objects and "foo of bar" quest artifacts */
-    if (Number(!!(Number(!!(Number(!((Number(((obj)).where == 3)))) || Number(!(obj_is_pname(obj))))) || Number((obj).oartifact >= C.ART_ORB_OF_DETECTION)))) {
+    if (Number(!!(Number(!!(Number(!((Number(((obj)).where == 3))))
+        || Number(!(obj_is_pname(obj)))))
+        || Number((obj).oartifact >= C.ART_ORB_OF_DETECTION)))) {
         let outbuf = C.shk_your(nextobuf(), obj);
         let space_left = C.int(C.uint((C.uint(C.int((C.BUFSZ - 1))) - C.Strlen_(outbuf, C.literal("yname"), 2368))));
         (s = C.strncat(outbuf, s, C.ulong(space_left)));
@@ -2229,7 +2414,9 @@ export function ansimpleoname(obj) {
        has been formatted with its actual name (we let minimal_xname() handle
        any `known' and `dknown' checking necessary) */
     if (Number(otyp == C.FAKE_AMULET_OF_YENDOR)) (otyp = C.AMULET_OF_YENDOR);
-    if (Number(!!(Number(!!(C.int((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_unique) && ((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass"))).oc_name_idx, "struct objdescr"), "struct objdescr")).oc_name))) && Number(!(C.strcmp(simpleoname, ((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass"))).oc_name_idx, "struct objdescr"), "struct objdescr")).oc_name))))))) {
+    if (Number(!!(Number(!!(C.int((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_unique)
+        && ((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass"))).oc_name_idx, "struct objdescr"), "struct objdescr")).oc_name)))
+        && Number(!(C.strcmp(simpleoname, ((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass"))).oc_name_idx, "struct objdescr"), "struct objdescr")).oc_name))))))) {
 /* the() will allocate another obuf[]; we want to avoid using two */
         (obufp = C.callLocal(the, simpleoname));
         C.strcpy(simpleoname, obufp);
@@ -2308,7 +2495,9 @@ export function otense(otmp, verb) {
      * if the result of xname(otmp) would be plural.  Don't bother
      * recomputing xname(otmp) at this time.
      */
-    if (Number(!((Number(!!(Number(((otmp)).quan != 1n) || (Number(!!(Number(((otmp)).oartifact == C.ART_EYES_OF_THE_OVERWORLD) && Number(!(C.undiscovered_artifact(C.short(C.ART_EYES_OF_THE_OVERWORLD))))))))))))) return vtense(0, verb);
+    if (Number(!((Number(!!(Number(((otmp)).quan != 1n)
+        || (Number(!!(Number(((otmp)).oartifact == C.ART_EYES_OF_THE_OVERWORLD)
+        && Number(!(C.undiscovered_artifact(C.short(C.ART_EYES_OF_THE_OVERWORLD))))))))))))) return vtense(0, verb);
     (buf = nextobuf());
     C.strcpy(buf, verb);
     return buf;
@@ -2360,7 +2549,11 @@ export function vtense(subj, verb) {
         if (Number(!!(Number(!(C.strncmpi(subj, C.literal("a "), 2))) || Number(!(C.strncmpi(subj, C.literal("an "), 3)))))) break sing;
         (spot = 0);
         for ((sp = subj); C.ptrCompare(((sp = C.strchr(sp, 32))), 0, "!="); (sp = C.ptrAdd(sp, 1, "char"))) {
-            if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!(C.strncmpi(sp, C.literal(" of "), 4))) || Number(!(C.strncmpi(sp, C.literal(" from "), 6))))) || Number(!(C.strncmpi(sp, C.literal(" called "), 8))))) || Number(!(C.strncmpi(sp, C.literal(" named "), 7))))) || Number(!(C.strncmpi(sp, C.literal(" labeled "), 9)))))) {
+            if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!(C.strncmpi(sp, C.literal(" of "), 4)))
+                || Number(!(C.strncmpi(sp, C.literal(" from "), 6)))))
+                || Number(!(C.strncmpi(sp, C.literal(" called "), 8)))))
+                || Number(!(C.strncmpi(sp, C.literal(" named "), 7)))))
+                || Number(!(C.strncmpi(sp, C.literal(" labeled "), 9)))))) {
                 if (C.ptrCompare(sp, subj, "!=")) (spot = C.ptrAdd(sp, -(1), "const char"));
                 break;
             }
@@ -2371,7 +2564,17 @@ export function vtense(subj, verb) {
          * plural: anything that ends in 's', but not '*us' or '*ss'.
          * Guess at a few other special cases that makeplural creates.
          */
-        if (Number(!!(Number(!!(Number(!!(Number(!!((Number(!!(Number(!!(Number(C.lowc(C.deref(spot, "const char")) == 115) && C.ptrCompare(spot, subj, "!="))) && Number(!(C.strchr(C.literal("us"), C.lowc(C.deref((C.ptrAdd(spot, -(1), "const char")), "const char")))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(spot, -(3), "const char")), subj, "<") || C.strncmpi((C.ptrAdd(spot, -(3), "const char")), C.literal("eeth"), 4)))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(spot, -(3), "const char")), subj, "<") || C.strncmpi((C.ptrAdd(spot, -(3), "const char")), C.literal("feet"), 4)))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(spot, -(1), "const char")), subj, "<") || C.strncmpi((C.ptrAdd(spot, -(1), "const char")), C.literal("ia"), 2)))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(spot, -(1), "const char")), subj, "<") || C.strncmpi((C.ptrAdd(spot, -(1), "const char")), C.literal("ae"), 2))))))))) {
+        if (Number(!!(Number(!!(Number(!!(Number(!!((Number(!!(Number(!!(Number(C.lowc(C.deref(spot, "const char")) == 115)
+            && C.ptrCompare(spot, subj, "!=")))
+            && Number(!(C.strchr(C.literal("us"), C.lowc(C.deref((C.ptrAdd(spot, -(1), "const char")), "const char"))))))))
+            || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(spot, -(3), "const char")), subj, "<")
+            || C.strncmpi((C.ptrAdd(spot, -(3), "const char")), C.literal("eeth"), 4))))))))
+            || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(spot, -(3), "const char")), subj, "<")
+            || C.strncmpi((C.ptrAdd(spot, -(3), "const char")), C.literal("feet"), 4))))))))
+            || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(spot, -(1), "const char")), subj, "<")
+            || C.strncmpi((C.ptrAdd(spot, -(1), "const char")), C.literal("ia"), 2))))))))
+            || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(spot, -(1), "const char")), subj, "<")
+            || C.strncmpi((C.ptrAdd(spot, -(1), "const char")), C.literal("ae"), 2))))))))) {
 /* check for special cases to avoid false matches */
             (len = C.int((C.int((C.ptrDiff(spot, subj, "const char"))) + 1)));
             for ((spec = C.special_subjs); C.deref(spec, "const char *const"); ((spec = C.ptrAdd(spec, 1, "char *")), C.ptrAdd(spec, -1, "char *"))) {
@@ -2379,7 +2582,9 @@ export function vtense(subj, verb) {
                 if (Number(!!(Number(len == ltmp) && Number(!(C.strncmpi(C.deref(spec, "const char *const"), subj, len)))))) break sing;
 /* also check for <prefix><space><special_subj>
                    to catch things like "the invisible erinys" */
-                if (Number(!!(Number(!!(Number(len > ltmp) && Number(C.deref((C.ptrAdd(spot, -(ltmp), "const char")), "const char") == 32))) && Number(!(C.strncmpi(C.deref(spec, "const char *const"), C.ptrAdd(C.ptrAdd(spot, -(ltmp), "const char"), 1, "const char"), ltmp)))))) break sing;
+                if (Number(!!(Number(!!(Number(len > ltmp)
+                    && Number(C.deref((C.ptrAdd(spot, -(ltmp), "const char")), "const char") == 32)))
+                    && Number(!(C.strncmpi(C.deref(spec, "const char *const"), C.ptrAdd(C.ptrAdd(spot, -(ltmp), "const char"), 1, "const char"), ltmp)))))) break sing;
             }
             return C.strcpy(buf, verb);
         }
@@ -2387,7 +2592,8 @@ export function vtense(subj, verb) {
          * 3rd person plural doesn't end in telltale 's';
          * 2nd person singular behaves as if plural.
          */
-        if (Number(!!(Number(!(C.strncmpi((subj), (C.literal("they")), C.int((-1))))) || Number(!(C.strncmpi((subj), (C.literal("you")), C.int((-1)))))))) return C.strcpy(buf, verb);
+        if (Number(!!(Number(!(C.strncmpi((subj), (C.literal("they")), C.int((-1)))))
+            || Number(!(C.strncmpi((subj), (C.literal("you")), C.int((-1)))))))) return C.strcpy(buf, verb);
     }
     } // sing
     C.strcpy(buf, verb);
@@ -2399,11 +2605,17 @@ export function vtense(subj, verb) {
     else if (Number(!(C.strncmpi((buf), (C.literal("have")), C.int((-1)))))) {
         C.strcasecpy(C.ptrAdd(bspot, -(1), "char"), C.literal("s"));
     }
-    else if (Number(!!(Number(!!(C.strchr(C.literal("zxs"), C.lowc(C.deref(bspot, "char"))) || (Number(!!(Number(!!(Number(len >= 2) && Number(C.lowc(C.deref(bspot, "char")) == 104))) && C.strchr(C.literal("cs"), C.lowc(C.deref((C.ptrAdd(bspot, -(1), "char")), "char")))))))) || (Number(!!(Number(len == 2) && Number(C.lowc(C.deref(bspot, "char")) == 111))))))) {
+    else if (Number(!!(Number(!!(C.strchr(C.literal("zxs"), C.lowc(C.deref(bspot, "char")))
+        || (Number(!!(Number(!!(Number(len >= 2)
+        && Number(C.lowc(C.deref(bspot, "char")) == 104)))
+        && C.strchr(C.literal("cs"), C.lowc(C.deref((C.ptrAdd(bspot, -(1), "char")), "char"))))))))
+        || (Number(!!(Number(len == 2)
+        && Number(C.lowc(C.deref(bspot, "char")) == 111))))))) {
 /* Ends in z, x, s, ch, sh; add an "es" */
         C.strcasecpy(C.ptrAdd(bspot, 1, "char"), C.literal("es"));
     }
-    else if (Number(!!(Number(C.lowc(C.deref(bspot, "char")) == 121) && Number(!(C.strchr(C.vowels, C.lowc(C.deref((C.ptrAdd(bspot, -(1), "char")), "char")))))))) {
+    else if (Number(!!(Number(C.lowc(C.deref(bspot, "char")) == 121)
+        && Number(!(C.strchr(C.vowels, C.lowc(C.deref((C.ptrAdd(bspot, -(1), "char")), "char")))))))) {
 /* like "y" case in makeplural */
         C.strcasecpy(bspot, C.literal("ies"));
     }
@@ -2460,7 +2672,7 @@ function verbForSubject(subject, verb) {
    also some suffices which have very few--often one--matches or
    which aren't systematically reversible (knives, staves) */
 export const one_off = [
-    {sing: "child", plur: "children"},      /* (for wise guys who give their food funny names) */
+    {sing: "child", plur: "children"}, /* (for wise guys who give their food funny names) */
     {sing: "cubus", plur: "cubi"}, /* in-/suc-cubus */
     {sing: "culus", plur: "culi"}, /* homunculus */
     {sing: "Cyclops", plur: "Cyclopes"},
@@ -2519,51 +2731,66 @@ export function singplur_lookup(basestr, endstring, to_plural, alt_as_is) /* bas
     let baselen = C.int(C.Strlen_(basestr, C.literal("singplur_lookup"), 2716));
     for ((as = C.as_is); C.deref(as, "const char *const"); (as = C.ptrAdd(as, 1, "char *"))) {
         (al = C.int(C.strlen(C.deref(as, "const char *const"))));
-        if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(endstring, -(al), "char")), basestr, "<") || C.strncmpi(((C.ptrAdd(endstring, -(al), "char"))), (C.deref(as, "const char *const")), C.int((-1))))))))) return (C.char(1));
+        if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(endstring, -(al), "char")), basestr, "<")
+            || C.strncmpi(((C.ptrAdd(endstring, -(al), "char"))), (C.deref(as, "const char *const")), C.int((-1))))))))) return (C.char(1));
     }
     if (alt_as_is) {
         for ((as = alt_as_is); C.deref(as, "const char *const"); (as = C.ptrAdd(as, 1, "char *"))) {
             (al = C.int(C.strlen(C.deref(as, "const char *const"))));
-            if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(endstring, -(al), "char")), basestr, "<") || C.strncmpi(((C.ptrAdd(endstring, -(al), "char"))), (C.deref(as, "const char *const")), C.int((-1))))))))) return (C.char(1));
+            if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(endstring, -(al), "char")), basestr, "<")
+                || C.strncmpi(((C.ptrAdd(endstring, -(al), "char"))), (C.deref(as, "const char *const")), C.int((-1))))))))) return (C.char(1));
         }
     }
 /* Leave "craft" as a suffix as-is (aircraft, hovercraft);
       "craft" itself is (arguably) not included in our likely context */
-    if (Number(!!((Number(baselen > 5)) && (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(endstring, -(5), "char")), basestr, "<") || C.strncmpi(((C.ptrAdd(endstring, -(5), "char"))), (C.literal("craft")), C.int((-1)))))))))))) return (C.char(1));
+    if (Number(!!((Number(baselen > 5))
+        && (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(endstring, -(5), "char")), basestr, "<")
+        || C.strncmpi(((C.ptrAdd(endstring, -(5), "char"))), (C.literal("craft")), C.int((-1)))))))))))) return (C.char(1));
 /* avoid false hit on one_off[].plur == "lice" or .sing == "goose";
        if more of these turn up, one_off[] entries will need to flagged
        as to which are whole words and which are matchable as suffices
        then matching in the loop below will end up becoming more complex */
-    if (Number(!!(Number(!(C.strncmpi((basestr), (C.literal("slice")), C.int((-1))))) || Number(!(C.strncmpi((basestr), (C.literal("mongoose")), C.int((-1)))))))) {
+    if (Number(!!(Number(!(C.strncmpi((basestr), (C.literal("slice")), C.int((-1)))))
+        || Number(!(C.strncmpi((basestr), (C.literal("mongoose")), C.int((-1)))))))) {
         if (to_plural) C.strcasecpy(endstring, C.literal("s"));
         return (C.char(1));
     }
 /* skip "ox" -> "oxen" entry when pluralizing "<something>ox"
        unless it is muskox */
-    if (Number(!!(Number(!!(Number(!!(to_plural && Number(baselen > 2))) && Number(!(C.strncmpi((C.ptrAdd(endstring, -(2), "char")), (C.literal("ox")), C.int((-1))))))) && Number(!((Number(!!(Number(baselen > 5) && Number(!(C.strncmpi((C.ptrAdd(endstring, -(6), "char")), (C.literal("muskox")), C.int((-1))))))))))))) {
+    if (Number(!!(Number(!!(Number(!!(to_plural
+        && Number(baselen > 2)))
+        && Number(!(C.strncmpi((C.ptrAdd(endstring, -(2), "char")), (C.literal("ox")), C.int((-1)))))))
+        && Number(!((Number(!!(Number(baselen > 5)
+        && Number(!(C.strncmpi((C.ptrAdd(endstring, -(6), "char")), (C.literal("muskox")), C.int((-1))))))))))))) {
 /* "fox" -> "foxes" */
         C.strcasecpy(endstring, C.literal("es"));
         return (C.char(1));
     }
     if (to_plural) {
-        if (Number(!!(Number(!!(Number(baselen > 2) && Number(!(C.strncmpi((C.ptrAdd(endstring, -(3), "char")), (C.literal("man")), C.int((-1))))))) && badman(basestr, to_plural)))) {
+        if (Number(!!(Number(!!(Number(baselen > 2)
+            && Number(!(C.strncmpi((C.ptrAdd(endstring, -(3), "char")), (C.literal("man")), C.int((-1)))))))
+            && badman(basestr, to_plural)))) {
             C.strcasecpy(endstring, C.literal("s"));
             return (C.char(1));
         }
     }
     else {
-        if (Number(!!(Number(!!(Number(baselen > 2) && Number(!(C.strncmpi((C.ptrAdd(endstring, -(3), "char")), (C.literal("men")), C.int((-1))))))) && badman(basestr, to_plural)))) return (C.char(1));
+        if (Number(!!(Number(!!(Number(baselen > 2)
+            && Number(!(C.strncmpi((C.ptrAdd(endstring, -(3), "char")), (C.literal("men")), C.int((-1)))))))
+            && badman(basestr, to_plural)))) return (C.char(1));
     }
     for ((sp = C.one_off); (sp).sing; ((sp = C.ptrAdd(sp, 1, "struct sing_plur")), C.ptrAdd(sp, -1, "struct sing_plur"))) {
 /* check whether endstring already matches */
         (same = ((to_plural) ? (sp).plur : (sp).sing));
         (al = C.int(C.strlen(same)));
-        if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(endstring, -(al), "char")), basestr, "<") || C.strncmpi(((C.ptrAdd(endstring, -(al), "char"))), (same), C.int((-1))))))))) return (C.char(1));
+        if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(endstring, -(al), "char")), basestr, "<")
+            || C.strncmpi(((C.ptrAdd(endstring, -(al), "char"))), (same), C.int((-1))))))))) return (C.char(1));
 /* use as-is */
 /* check whether it matches the inverse; if so, transform it */
         (other = ((to_plural) ? (sp).sing : (sp).plur));
         (al = C.int(C.strlen(other)));
-        if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(endstring, -(al), "char")), basestr, "<") || C.strncmpi(((C.ptrAdd(endstring, -(al), "char"))), (other), C.int((-1))))))))) {
+        if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(endstring, -(al), "char")), basestr, "<")
+            || C.strncmpi(((C.ptrAdd(endstring, -(al), "char"))), (other), C.int((-1))))))))) {
             C.strcasecpy(C.ptrAdd(endstring, -(al), "char"), same);
             return (C.char(1));
 /* one_off[] transformation */
@@ -2659,9 +2886,10 @@ export function makeplural(oldstr) {
         (excess = C.ptrAdd(oldstr, C.int((C.ptrDiff(spot, str, "char"))), "const char"));
         C.store(spot, "char", C.char(0));
     }
-    else (spot = C.eos(str));
+        else (spot = C.eos(str));
     ((spot = C.ptrAdd(spot, -1, "char")), C.ptrAdd(spot, 1, "char"));
-    while (Number(!!(C.ptrCompare(spot, str, ">") && Number(C.deref(spot, "char") == 32)))) ((spot = C.ptrAdd(spot, -1, "char")), C.ptrAdd(spot, 1, "char"));
+    while (Number(!!(C.ptrCompare(spot, str, ">")
+        && Number(C.deref(spot, "char") == 32)))) ((spot = C.ptrAdd(spot, -1, "char")), C.ptrAdd(spot, 1, "char"));
 /* Strip blanks from end */
     C.store((C.ptrAdd(spot, 1, "char")), "char", C.char(0));
 /* Now spot is the last character of the string */
@@ -2679,10 +2907,15 @@ export function makeplural(oldstr) {
 /* spot+1: synch up with makesingular's usage */
         if (singplur_lookup(str, C.ptrAdd(spot, 1, "char"), (C.char(1)), C.staticCell("makeplural.already_plural").value)) break bottom;
 /* more of same, but not suitable for blanket loop checking */
-        if (Number(!!((Number(!!(Number(len == 2) && Number(!(C.strncmpi((str), (C.literal("ya")), C.int((-1)))))))) || (Number(!!(Number(len >= 3) && Number(!(C.strncmpi((C.ptrAdd(spot, -(2), "char")), (C.literal(" ya")), C.int((-1))))))))))) break bottom;
+        if (Number(!!((Number(!!(Number(len == 2)
+            && Number(!(C.strncmpi((str), (C.literal("ya")), C.int((-1))))))))
+            || (Number(!!(Number(len >= 3)
+            && Number(!(C.strncmpi((C.ptrAdd(spot, -(2), "char")), (C.literal(" ya")), C.int((-1))))))))))) break bottom;
     }
 /* man/men ("Wiped out all cavemen.") */
-    if (Number(!!(Number(!!(Number(len >= 3) && Number(!(C.strncmpi((C.ptrAdd(spot, -(2), "char")), (C.literal("man")), C.int((-1))))))) && Number(!(badman(str, (C.char(1)))))))) /* exclude shamans and humans etc */
+    if (Number(!!(Number(!!(Number(len >= 3)
+        && Number(!(C.strncmpi((C.ptrAdd(spot, -(2), "char")), (C.literal("man")), C.int((-1)))))))
+        && Number(!(badman(str, (C.char(1)))))))) /* exclude shamans and humans etc */
 {
         C.strcasecpy(C.ptrAdd(spot, -(1), "char"), C.literal("en"));
         break bottom;
@@ -2707,13 +2940,26 @@ export function makeplural(oldstr) {
         break bottom;
     }
 /* algae, larvae, hyphae (another fungus part) */
-    if (Number(!!(Number(!!(Number(!!((Number(!!(Number(len >= 4) && Number(!(C.strncmpi((C.ptrAdd(spot, -(3), "char")), (C.literal("alga")), C.int((-1)))))))) || (Number(!!(Number(len >= 5) && (Number(!!(Number(!(C.strncmpi((C.ptrAdd(spot, -(4), "char")), (C.literal("hypha")), C.int((-1))))) || Number(!(C.strncmpi((C.ptrAdd(spot, -(4), "char")), (C.literal("larva")), C.int((-1))))))))))))) || (Number(!!(Number(len >= 6) && Number(!(C.strncmpi((C.ptrAdd(spot, -(5), "char")), (C.literal("amoeba")), C.int((-1)))))))))) || (Number(!!(Number(len >= 8) && (Number(!(C.strncmpi((C.ptrAdd(spot, -(7), "char")), (C.literal("vertebra")), C.int((-1)))))))))))) {
+    if (Number(!!(Number(!!(Number(!!((Number(!!(Number(len >= 4)
+        && Number(!(C.strncmpi((C.ptrAdd(spot, -(3), "char")), (C.literal("alga")), C.int((-1))))))))
+        || (Number(!!(Number(len >= 5)
+        && (Number(!!(Number(!(C.strncmpi((C.ptrAdd(spot, -(4), "char")), (C.literal("hypha")), C.int((-1)))))
+        || Number(!(C.strncmpi((C.ptrAdd(spot, -(4), "char")), (C.literal("larva")), C.int((-1)))))))))))))
+        || (Number(!!(Number(len >= 6)
+        && Number(!(C.strncmpi((C.ptrAdd(spot, -(5), "char")), (C.literal("amoeba")), C.int((-1))))))))))
+        || (Number(!!(Number(len >= 8)
+        && (Number(!(C.strncmpi((C.ptrAdd(spot, -(7), "char")), (C.literal("vertebra")), C.int((-1)))))))))))) {
 /* a to ae */
         C.strcasecpy(C.ptrAdd(spot, 1, "char"), C.literal("e"));
         break bottom;
     }
 /* fungus/fungi, homunculus/homunculi, but buses, lotuses, wumpuses */
-    if (Number(!!(Number(!!(Number(len > 3) && Number(!(C.strncmpi((C.ptrAdd(spot, -(1), "char")), (C.literal("us")), C.int((-1))))))) && Number(!((Number(!!((Number(!!(Number(len >= 5) && Number(!(C.strncmpi((C.ptrAdd(spot, -(4), "char")), (C.literal("lotus")), C.int((-1)))))))) || (Number(!!(Number(len >= 6) && Number(!(C.strncmpi((C.ptrAdd(spot, -(5), "char")), (C.literal("wumpus")), C.int((-1)))))))))))))))) {
+    if (Number(!!(Number(!!(Number(len > 3)
+        && Number(!(C.strncmpi((C.ptrAdd(spot, -(1), "char")), (C.literal("us")), C.int((-1)))))))
+        && Number(!((Number(!!((Number(!!(Number(len >= 5)
+        && Number(!(C.strncmpi((C.ptrAdd(spot, -(4), "char")), (C.literal("lotus")), C.int((-1))))))))
+        || (Number(!!(Number(len >= 6)
+        && Number(!(C.strncmpi((C.ptrAdd(spot, -(5), "char")), (C.literal("wumpus")), C.int((-1)))))))))))))))) {
         C.strcasecpy(C.ptrAdd(spot, -(1), "char"), C.literal("i"));
         break bottom;
     }
@@ -2723,18 +2969,25 @@ export function makeplural(oldstr) {
         break bottom;
     }
 /* -eau/-eaux (gateau, chapeau...) */
-    if (Number(!!(Number(!!(Number(len >= 3) && Number(!(C.strncmpi((C.ptrAdd(spot, -(2), "char")), (C.literal("eau")), C.int((-1))))))) && (Number(!!(C.ptrCompare((C.ptrAdd(spot, -(5), "char")), str, "<") || C.strncmpi(((C.ptrAdd(spot, -(5), "char"))), (C.literal("bureau")), C.int((-1))))))))) /* 'bureaus' is the more common plural of 'bureau' */
+    if (Number(!!(Number(!!(Number(len >= 3)
+        && Number(!(C.strncmpi((C.ptrAdd(spot, -(2), "char")), (C.literal("eau")), C.int((-1)))))))
+        && (Number(!!(C.ptrCompare((C.ptrAdd(spot, -(5), "char")), str, "<")
+        || C.strncmpi(((C.ptrAdd(spot, -(5), "char"))), (C.literal("bureau")), C.int((-1))))))))) /* 'bureaus' is the more common plural of 'bureau' */
 {
         C.strcasecpy(C.ptrAdd(spot, 1, "char"), C.literal("x"));
         break bottom;
     }
 /* matzoh/matzot, possible food name */
-    if (Number(!!(Number(len >= 6) && (Number(!!(Number(!(C.strncmpi((C.ptrAdd(spot, -(5), "char")), (C.literal("matzoh")), C.int((-1))))) || Number(!(C.strncmpi((C.ptrAdd(spot, -(5), "char")), (C.literal("matzah")), C.int((-1))))))))))) {
+    if (Number(!!(Number(len >= 6)
+        && (Number(!!(Number(!(C.strncmpi((C.ptrAdd(spot, -(5), "char")), (C.literal("matzoh")), C.int((-1)))))
+        || Number(!(C.strncmpi((C.ptrAdd(spot, -(5), "char")), (C.literal("matzah")), C.int((-1))))))))))) {
         C.strcasecpy(C.ptrAdd(spot, -(1), "char"), C.literal("ot"));
 /* oh/ah -> ot */
         break bottom;
     }
-    if (Number(!!(Number(len >= 5) && (Number(!!(Number(!(C.strncmpi((C.ptrAdd(spot, -(4), "char")), (C.literal("matzo")), C.int((-1))))) || Number(!(C.strncmpi((C.ptrAdd(spot, -(4), "char")), (C.literal("matza")), C.int((-1))))))))))) {
+    if (Number(!!(Number(len >= 5)
+        && (Number(!!(Number(!(C.strncmpi((C.ptrAdd(spot, -(4), "char")), (C.literal("matzo")), C.int((-1)))))
+        || Number(!(C.strncmpi((C.ptrAdd(spot, -(4), "char")), (C.literal("matza")), C.int((-1))))))))))) {
         C.strcasecpy(spot, C.literal("ot"));
 /* o/a -> ot */
         break bottom;
@@ -2742,14 +2995,28 @@ export function makeplural(oldstr) {
 /* note: ox/oxen, VAX/VAXen, goose/geese */
     (lo_c = C.lowc(C.deref(spot, "char")));
 /* codex/spadix/neocortex and the like */
-    if (Number(!!(Number(!!(Number(len >= 5) && (Number(!!(Number(!!(Number(!(C.strncmpi((C.ptrAdd(spot, -(2), "char")), (C.literal("dex")), C.int((-1))))) || Number(!(C.strncmpi((C.ptrAdd(spot, -(2), "char")), (C.literal("dix")), C.int((-1))))))) || Number(!(C.strncmpi((C.ptrAdd(spot, -(2), "char")), (C.literal("tex")), C.int((-1)))))))))) && (Number(C.strncmpi((C.ptrAdd(spot, -(4), "char")), (C.literal("index")), C.int((-1))) != 0))))) /* indices would have been ok too, but stick with indexes */
+    if (Number(!!(Number(!!(Number(len >= 5)
+        && (Number(!!(Number(!!(Number(!(C.strncmpi((C.ptrAdd(spot, -(2), "char")), (C.literal("dex")), C.int((-1)))))
+        || Number(!(C.strncmpi((C.ptrAdd(spot, -(2), "char")), (C.literal("dix")), C.int((-1)))))))
+        || Number(!(C.strncmpi((C.ptrAdd(spot, -(2), "char")), (C.literal("tex")), C.int((-1))))))))))
+        && (Number(C.strncmpi((C.ptrAdd(spot, -(4), "char")), (C.literal("index")), C.int((-1))) != 0))))) /* indices would have been ok too, but stick with indexes */
 {
         C.strcasecpy(C.ptrAdd(spot, -(1), "char"), C.literal("ices"));
 /* ex|ix -> ices */
         break bottom;
     }
 /* Ends in z, x, s, ch, sh; add an "es" */
-    if (Number(!!(Number(!!(Number(!!(C.strchr(C.literal("zxs"), lo_c) || (Number(!!(Number(!!(Number(!!(Number(len >= 2) && Number(lo_c == 104))) && C.strchr(C.literal("cs"), C.lowc(C.deref((C.ptrAdd(spot, -(1), "char")), "char"))))) && Number(!((Number(!!(Number(!!(Number(len >= 4) && Number(C.lowc(C.deref((C.ptrAdd(spot, -(1), "char")), "char")) == 99))) && ch_ksound(str))))))))))) || (Number(!!(Number(len >= 4) && Number(!(C.strncmpi((C.ptrAdd(spot, -(2), "char")), (C.literal("ato")), C.int((-1)))))))))) || (Number(!!(Number(len >= 5) && Number(!(C.strncmpi((C.ptrAdd(spot, -(4), "char")), (C.literal("dingo")), C.int((-1))))))))))) /* 21st century k-sound */
+    if (Number(!!(Number(!!(Number(!!(C.strchr(C.literal("zxs"), lo_c)
+        || (Number(!!(Number(!!(Number(!!(Number(len >= 2)
+        && Number(lo_c == 104)))
+        && C.strchr(C.literal("cs"), C.lowc(C.deref((C.ptrAdd(spot, -(1), "char")), "char")))))
+        && Number(!((Number(!!(Number(!!(Number(len >= 4)
+        && Number(C.lowc(C.deref((C.ptrAdd(spot, -(1), "char")), "char")) == 99)))
+        && ch_ksound(str)))))))))))
+        || (Number(!!(Number(len >= 4)
+        && Number(!(C.strncmpi((C.ptrAdd(spot, -(2), "char")), (C.literal("ato")), C.int((-1))))))))))
+        || (Number(!!(Number(len >= 5)
+        && Number(!(C.strncmpi((C.ptrAdd(spot, -(4), "char")), (C.literal("dingo")), C.int((-1))))))))))) /* 21st century k-sound */
 /* Kludge to get "tomatoes" and "potatoes" right */
 {
         C.strcasecpy(C.ptrAdd(spot, 1, "char"), C.literal("es"));
@@ -2798,13 +3065,13 @@ export function makesingular(oldstr) {
        force a singular value */
     C.store(str, "char", C.char(0));
     if (Number(!(C.strncmpi(((C.deref(C.ptrAdd(C.genders, 3, "const struct Gender"), "const struct Gender")).he), (oldstr), C.int((-1)))))) /* "they" */
-    C.strcpy(str, (C.deref(C.ptrAdd(C.genders, 2, "const struct Gender"), "const struct Gender")).he);
+        C.strcpy(str, (C.deref(C.ptrAdd(C.genders, 2, "const struct Gender"), "const struct Gender")).he);
     else /* "it" */
     if (Number(!(C.strncmpi(((C.deref(C.ptrAdd(C.genders, 3, "const struct Gender"), "const struct Gender")).him), (oldstr), C.int((-1)))))) /* "them" */
-    C.strcpy(str, (C.deref(C.ptrAdd(C.genders, 2, "const struct Gender"), "const struct Gender")).him);
+        C.strcpy(str, (C.deref(C.ptrAdd(C.genders, 2, "const struct Gender"), "const struct Gender")).him);
     else /* also "it" */
     if (Number(!(C.strncmpi(((C.deref(C.ptrAdd(C.genders, 3, "const struct Gender"), "const struct Gender")).his), (oldstr), C.int((-1)))))) /* "their" */
-    C.strcpy(str, (C.deref(C.ptrAdd(C.genders, 2, "const struct Gender"), "const struct Gender")).his);
+        C.strcpy(str, (C.deref(C.ptrAdd(C.genders, 2, "const struct Gender"), "const struct Gender")).his);
 /* "its" */
     if (C.deref(str, "char")) {
         if (Number(C.deref(C.ptrAdd(oldstr, 0, "const char"), "const char") == C.highc(C.deref(C.ptrAdd(oldstr, 0, "const char"), "const char")))) C.store(C.ptrAdd(str, 0, "char"), "char", C.highc(C.deref(C.ptrAdd(str, 0, "char"), "char")));
@@ -2816,34 +3083,74 @@ export function makesingular(oldstr) {
         (excess = C.ptrAdd(oldstr, C.int((C.ptrDiff(p, bp, "char"))), "const char"));
         C.store(p, "char", C.char(0));
     }
-    else (p = C.eos(bp));
+        else (p = C.eos(bp));
 /* dispense with some words which don't need singularization */
     if (singplur_lookup(bp, p, (C.char(0)), C.special_subjs)) break bottom;
 /* remove -s or -es (boxes) or -ies (rubies) */
     if (Number(!!(C.ptrCompare(p, C.ptrAdd(bp, 1, "char"), ">=") && Number(C.lowc(C.deref(C.ptrAdd(p, C.int((-1)), "char"), "char")) == 115)))) {
         mins: {
         if (Number(!!(C.ptrCompare(p, C.ptrAdd(bp, 2, "char"), ">=") && Number(C.lowc(C.deref(C.ptrAdd(p, C.int((-2)), "char"), "char")) == 101)))) {
-            if (Number(!!(C.ptrCompare(p, C.ptrAdd(bp, 3, "char"), ">=") && Number(C.lowc(C.deref(C.ptrAdd(p, C.int((-3)), "char"), "char")) == 105)))) {
+            if (Number(!!(C.ptrCompare(p, C.ptrAdd(bp, 3, "char"), ">=")
+                && Number(C.lowc(C.deref(C.ptrAdd(p, C.int((-3)), "char"), "char")) == 105)))) {
 /* "ies" */
-                if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(7), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(7), "char"))), (C.literal("cookies")), C.int((-1)))))))) || (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("pies")), C.int((-1)))))))) && (Number(!!(C.ptrCompare(C.ptrAdd(p, -(4), "char"), bp, "==") || Number(C.deref(C.ptrAdd(p, C.int((-5)), "char"), "char") == 32))))))))) || (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(6), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(6), "char"))), (C.literal("genies")), C.int((-1)))))))) && (Number(!!(C.ptrCompare(C.ptrAdd(p, -(6), "char"), bp, "==") || Number(C.deref(C.ptrAdd(p, C.int((-7)), "char"), "char") == 32))))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal("mbies")), C.int((-1)))))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal("yries")), C.int((-1))))))))))) /* avoid false match for "harpies" */
+                if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(7), "char")), bp, "<")
+                    || C.strncmpi(((C.ptrAdd(p, -(7), "char"))), (C.literal("cookies")), C.int((-1))))))))
+                    || (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+                    || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("pies")), C.int((-1))))))))
+                    && (Number(!!(C.ptrCompare(C.ptrAdd(p, -(4), "char"), bp, "==")
+                    || Number(C.deref(C.ptrAdd(p, C.int((-5)), "char"), "char") == 32)))))))))
+                    || (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(6), "char")), bp, "<")
+                    || C.strncmpi(((C.ptrAdd(p, -(6), "char"))), (C.literal("genies")), C.int((-1))))))))
+                    && (Number(!!(C.ptrCompare(C.ptrAdd(p, -(6), "char"), bp, "==")
+                    || Number(C.deref(C.ptrAdd(p, C.int((-7)), "char"), "char") == 32)))))))))
+                    || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<")
+                    || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal("mbies")), C.int((-1))))))))))
+                    || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<")
+                    || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal("yries")), C.int((-1))))))))))) /* avoid false match for "harpies" */
 /* alternate djinni/djinn spelling; not really needed */
 /* avoid false match for "progenies" */
 /* zombie */
 /* valkyrie */
-                break mins;
+                    break mins;
                 C.strcasecpy(C.ptrAdd(p, -(3), "char"), C.literal("y"));
 /* ies -> y */
                 break bottom;
             }
 /* wolves, but f to ves isn't fully reversible */
-            if (Number(!!(Number(!!(C.ptrCompare(C.ptrAdd(p, -(4), "char"), bp, ">=") && (Number(!!(C.strchr(C.literal("lr"), C.lowc(C.deref((C.ptrAdd(p, -(4), "char")), "char"))) || C.strchr(C.vowels, C.lowc(C.deref((C.ptrAdd(p, -(4), "char")), "char")))))))) && Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(3), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(3), "char"))), (C.literal("ves")), C.int((-1))))))))))) {
-                if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(6), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(6), "char"))), (C.literal("cloves")), C.int((-1)))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(6), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(6), "char"))), (C.literal("nerves")), C.int((-1))))))))))) break mins;
+            if (Number(!!(Number(!!(C.ptrCompare(C.ptrAdd(p, -(4), "char"), bp, ">=")
+                && (Number(!!(C.strchr(C.literal("lr"), C.lowc(C.deref((C.ptrAdd(p, -(4), "char")), "char")))
+                || C.strchr(C.vowels, C.lowc(C.deref((C.ptrAdd(p, -(4), "char")), "char"))))))))
+                && Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(3), "char")), bp, "<")
+                || C.strncmpi(((C.ptrAdd(p, -(3), "char"))), (C.literal("ves")), C.int((-1))))))))))) {
+                if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(6), "char")), bp, "<")
+                    || C.strncmpi(((C.ptrAdd(p, -(6), "char"))), (C.literal("cloves")), C.int((-1))))))))
+                    || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(6), "char")), bp, "<")
+                    || C.strncmpi(((C.ptrAdd(p, -(6), "char"))), (C.literal("nerves")), C.int((-1))))))))))) break mins;
                 C.strcasecpy(C.ptrAdd(p, -(3), "char"), C.literal("f"));
 /* ves -> f */
                 break bottom;
             }
 /* note: nurses, axes but boxes, wumpuses */
-            if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("eses")), C.int((-1)))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("oxes")), C.int((-1)))))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("nxes")), C.int((-1)))))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("ches")), C.int((-1)))))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("uses")), C.int((-1)))))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("shes")), C.int((-1)))))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("sses")), C.int((-1)))))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal("atoes")), C.int((-1)))))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(7), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(7), "char"))), (C.literal("dingoes")), C.int((-1)))))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(7), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(7), "char"))), (C.literal("Aleaxes")), C.int((-1))))))))))) /* boxes, foxes */
+            if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+                || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("eses")), C.int((-1))))))))
+                || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+                || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("oxes")), C.int((-1))))))))))
+                || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+                || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("nxes")), C.int((-1))))))))))
+                || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+                || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("ches")), C.int((-1))))))))))
+                || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+                || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("uses")), C.int((-1))))))))))
+                || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+                || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("shes")), C.int((-1))))))))))
+                || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+                || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("sses")), C.int((-1))))))))))
+                || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<")
+                || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal("atoes")), C.int((-1))))))))))
+                || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(7), "char")), bp, "<")
+                || C.strncmpi(((C.ptrAdd(p, -(7), "char"))), (C.literal("dingoes")), C.int((-1))))))))))
+                || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(7), "char")), bp, "<")
+                || C.strncmpi(((C.ptrAdd(p, -(7), "char"))), (C.literal("Aleaxes")), C.int((-1))))))))))) /* boxes, foxes */
 /* lynxes */
 /* lotuses */
 /* splashes [of venom] */
@@ -2857,12 +3164,21 @@ export function makesingular(oldstr) {
 /* else fall through to mins */
 /* ends in 's' but not 'es' */
         }
-        else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(2), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(2), "char"))), (C.literal("us")), C.int((-1))))))))) {
+        else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(2), "char")), bp, "<")
+            || C.strncmpi(((C.ptrAdd(p, -(2), "char"))), (C.literal("us")), C.int((-1))))))))) {
 /* lotus, fungus... */
-            if (Number(!!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(6), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(6), "char"))), (C.literal("tengus")), C.int((-1)))))) && (Number(!!(C.ptrCompare((C.ptrAdd(p, -(7), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(7), "char"))), (C.literal("hezrous")), C.int((-1))))))))) /* but not these... */
-            break bottom;
+            if (Number(!!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(6), "char")), bp, "<")
+                || C.strncmpi(((C.ptrAdd(p, -(6), "char"))), (C.literal("tengus")), C.int((-1))))))
+                && (Number(!!(C.ptrCompare((C.ptrAdd(p, -(7), "char")), bp, "<")
+                || C.strncmpi(((C.ptrAdd(p, -(7), "char"))), (C.literal("hezrous")), C.int((-1))))))))) /* but not these... */
+                break bottom;
         }
-        else if (Number(!!(Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(2), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(2), "char"))), (C.literal("ss")), C.int((-1)))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal(" lens")), C.int((-1)))))))))) || (Number(!!(C.ptrCompare(C.ptrAdd(p, -(4), "char"), bp, "==") && Number(!(C.strncmpi((C.ptrAdd(p, -(4), "char")), (C.literal("lens")), C.int((-1))))))))))) {
+        else if (Number(!!(Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(2), "char")), bp, "<")
+            || C.strncmpi(((C.ptrAdd(p, -(2), "char"))), (C.literal("ss")), C.int((-1))))))))
+            || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<")
+            || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal(" lens")), C.int((-1))))))))))
+            || (Number(!!(C.ptrCompare(C.ptrAdd(p, -(4), "char"), bp, "==")
+            && Number(!(C.strncmpi((C.ptrAdd(p, -(4), "char")), (C.literal("lens")), C.int((-1))))))))))) {
             break bottom;
         }
         } // mins
@@ -2871,18 +3187,28 @@ export function makesingular(oldstr) {
     }
     else {
 /* input doesn't end in 's' */
-        if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(3), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(3), "char"))), (C.literal("men")), C.int((-1)))))))) && Number(!(badman(bp, (C.char(0)))))))) {
+        if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(3), "char")), bp, "<")
+            || C.strncmpi(((C.ptrAdd(p, -(3), "char"))), (C.literal("men")), C.int((-1))))))))
+            && Number(!(badman(bp, (C.char(0)))))))) {
             C.strcasecpy(C.ptrAdd(p, -(2), "char"), C.literal("an"));
             break bottom;
         }
 /* matzot -> matzo, algae -> alga */
-        if (Number(!!(Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(6), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(6), "char"))), (C.literal("matzot")), C.int((-1)))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(2), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(2), "char"))), (C.literal("ae")), C.int((-1)))))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("eaux")), C.int((-1))))))))))) {
+        if (Number(!!(Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(6), "char")), bp, "<")
+            || C.strncmpi(((C.ptrAdd(p, -(6), "char"))), (C.literal("matzot")), C.int((-1))))))))
+            || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(2), "char")), bp, "<")
+            || C.strncmpi(((C.ptrAdd(p, -(2), "char"))), (C.literal("ae")), C.int((-1))))))))))
+            || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+            || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("eaux")), C.int((-1))))))))))) {
             C.store((C.ptrAdd(p, -(1), "char")), "char", C.char(0));
 /* drop t/e/x */
             break bottom;
         }
 /* balactheria -> balactherium */
-        if (Number(!!(Number(!!(Number(!!(C.ptrCompare(C.ptrAdd(p, -(4), "char"), bp, ">=") && Number(!(C.strncmpi((C.ptrAdd(p, -(2), "char")), (C.literal("ia")), C.int((-1))))))) && C.strchr(C.literal("lr"), C.lowc(C.deref((C.ptrAdd(p, -(3), "char")), "char"))))) && Number(C.lowc(C.deref((C.ptrAdd(p, -(4), "char")), "char")) == 101)))) {
+        if (Number(!!(Number(!!(Number(!!(C.ptrCompare(C.ptrAdd(p, -(4), "char"), bp, ">=")
+            && Number(!(C.strncmpi((C.ptrAdd(p, -(2), "char")), (C.literal("ia")), C.int((-1)))))))
+            && C.strchr(C.literal("lr"), C.lowc(C.deref((C.ptrAdd(p, -(3), "char")), "char")))))
+            && Number(C.lowc(C.deref((C.ptrAdd(p, -(4), "char")), "char")) == 101)))) {
             C.strcasecpy(C.ptrAdd(p, -(1), "char"), C.literal("um"));
 /* a -> um */
         }
@@ -2907,7 +3233,8 @@ export function ch_ksound(basestr) {
     (endstr = C.eos(basestr));
     for ((i = 0); Number(i < C.int((C.ulong((BigInt(C.sizeof("const char *const[19]")) / BigInt(C.sizeof("const char *const"))))))); (i++)) {
         (al = C.int(C.strlen(C.deref(C.ptrAdd(C.staticCell("ch_ksound.ch_k").value, i, "const char *const"), "const char *const"))));
-        if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(endstr, -(al), "const char")), basestr, "<") || C.strncmpi(((C.ptrAdd(endstr, -(al), "const char"))), (C.deref(C.ptrAdd(C.staticCell("ch_ksound.ch_k").value, i, "const char *const"), "const char *const")), C.int((-1))))))))) return (C.char(1));
+        if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(endstr, -(al), "const char")), basestr, "<")
+            || C.strncmpi(((C.ptrAdd(endstr, -(al), "const char"))), (C.deref(C.ptrAdd(C.staticCell("ch_ksound.ch_k").value, i, "const char *const"), "const char *const")), C.int((-1))))))))) return (C.char(1));
     }
     return (C.char(0));
 }
@@ -2930,14 +3257,20 @@ export function badman(basestr, to_plural) /* True: makeplural, False: makesingu
         for ((i = 0); Number(i < C.int((C.ulong((BigInt(C.sizeof("const char *const[36]")) / BigInt(C.sizeof("const char *const"))))))); (i++)) {
             (al = C.int(C.strlen(C.deref(C.ptrAdd(C.staticCell("badman.no_men").value, i, "const char *const"), "const char *const"))));
             (spot = C.ptrAdd(endstr, -((C.int((al + 3)))), "const char"));
-            if (Number(!!(Number(!((Number(!!(C.ptrCompare((spot), basestr, "<") || C.strncmpi((spot), C.deref(C.ptrAdd(C.staticCell("badman.no_men").value, i, "const char *const"), "const char *const"), al)))))) && (Number(!!(C.ptrCompare(spot, basestr, "==") || Number(C.deref((C.ptrAdd(spot, -(1), "const char")), "const char") == 32))))))) return (C.char(1));
+            if (Number(!!(Number(!((Number(!!(C.ptrCompare((spot), basestr, "<")
+                || C.strncmpi((spot), C.deref(C.ptrAdd(C.staticCell("badman.no_men").value, i, "const char *const"), "const char *const"), al))))))
+                && (Number(!!(C.ptrCompare(spot, basestr, "==")
+                || Number(C.deref((C.ptrAdd(spot, -(1), "const char")), "const char") == 32))))))) return (C.char(1));
         }
     }
     else {
         for ((i = 0); Number(i < C.int((C.ulong((BigInt(C.sizeof("const char *const[31]")) / BigInt(C.sizeof("const char *const"))))))); (i++)) {
             (al = C.int(C.strlen(C.deref(C.ptrAdd(C.staticCell("badman.no_man").value, i, "const char *const"), "const char *const"))));
             (spot = C.ptrAdd(endstr, -((C.int((al + 3)))), "const char"));
-            if (Number(!!(Number(!((Number(!!(C.ptrCompare((spot), basestr, "<") || C.strncmpi((spot), C.deref(C.ptrAdd(C.staticCell("badman.no_man").value, i, "const char *const"), "const char *const"), al)))))) && (Number(!!(C.ptrCompare(spot, basestr, "==") || Number(C.deref((C.ptrAdd(spot, -(1), "const char")), "const char") == 32))))))) return (C.char(1));
+            if (Number(!!(Number(!((Number(!!(C.ptrCompare((spot), basestr, "<")
+                || C.strncmpi((spot), C.deref(C.ptrAdd(C.staticCell("badman.no_man").value, i, "const char *const"), "const char *const"), al))))))
+                && (Number(!!(C.ptrCompare(spot, basestr, "==")
+                || Number(C.deref((C.ptrAdd(spot, -(1), "const char")), "const char") == 32))))))) return (C.char(1));
         }
     }
     return (C.char(0));
@@ -2998,7 +3331,8 @@ export function wishymatch(u_str, o_str, retry_inverted) /* from user, so might 
     }
     else if (Number(!(C.strncmp(o_str, C.staticCell("wishymatch.detect_SP").value, C.ulong((BigInt(C.sizeof("const char[8]")) - C.ulong(1))))))) {
 /* check for "detect <foo>" vs "<foo> detection" */
-        if (Number(!!(C.ptrCompare(((p = C.strstri(u_str, C.staticCell("wishymatch.SP_detection").value))), 0, "!=") && Number(!(C.deref((C.ptrAdd(C.ptrAdd(p, BigInt(C.sizeof("const char[11]")), "char"), -(1), "char")), "char")))))) {
+        if (Number(!!(C.ptrCompare(((p = C.strstri(u_str, C.staticCell("wishymatch.SP_detection").value))), 0, "!=")
+            && Number(!(C.deref((C.ptrAdd(C.ptrAdd(p, BigInt(C.sizeof("const char[11]")), "char"), -(1), "char")), "char")))))) {
 /* convert "<foo> detection" into "detect <foo>" */
             C.store(p, "char", C.char(0));
             C.strcat(C.strcpy(buf, C.staticCell("wishymatch.detect_SP").value), u_str);
@@ -3024,7 +3358,8 @@ export function wishymatch(u_str, o_str, retry_inverted) /* from user, so might 
 /* when presented with "foo of bar", makesingular() used to
            singularize both foo & bar, but now only does so for foo */
 /* catch "{potion(s),ring} of {gain,restore,sustain} abilities" */
-        if (Number(!!(C.ptrCompare(((p = C.strstri(u_str, C.literal("abilities")))), 0, "!=") && Number(!(C.deref((C.ptrAdd(C.ptrAdd(p, BigInt(C.sizeof("char[10]")), "char"), -(1), "char")), "char")))))) {
+        if (Number(!!(C.ptrCompare(((p = C.strstri(u_str, C.literal("abilities")))), 0, "!=")
+            && Number(!(C.deref((C.ptrAdd(C.ptrAdd(p, BigInt(C.sizeof("char[10]")), "char"), -(1), "char")), "char")))))) {
             C.strncpy(buf, u_str, C.ulong(C.uint((C.ptrDiff(p, u_str, "char")))));
             C.strcpy(C.ptrAdd(buf, (C.ptrDiff(p, u_str, "char")), "char"), C.literal("ability"));
             return C.fuzzymatch(buf, o_str, C.literal(" -"), (C.char(1)));
@@ -3124,13 +3459,15 @@ export function rnd_otyp_by_wpnskill(skill) {
     let i;
     let n = 0;
     let otyp = C.short(C.STRANGE_OBJECT);
-    for ((i = C.deref(C.ptrAdd((C.svb).bases, C.WEAPON_CLASS, "int"), "int")); Number(!!(Number(i < C.NUM_OBJECTS) && Number((C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass")).oc_class == C.WEAPON_CLASS))); (i++)) if (Number((C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass")).oc_skill == skill)) {
+    for ((i = C.deref(C.ptrAdd((C.svb).bases, C.WEAPON_CLASS, "int"), "int")); Number(!!(Number(i < C.NUM_OBJECTS)
+        && Number((C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass")).oc_class == C.WEAPON_CLASS))); (i++)) if (Number((C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass")).oc_skill == skill)) {
         (n++);
         (otyp = C.short(i));
     }
     if (Number(n > 0)) {
         (n = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 3444, C.literal("rnd_otyp_by_wpnskill")), C.rn2(n))) : C.rn2(n))));
-        for ((i = C.deref(C.ptrAdd((C.svb).bases, C.WEAPON_CLASS, "int"), "int")); Number(!!(Number(i < C.NUM_OBJECTS) && Number((C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass")).oc_class == C.WEAPON_CLASS))); (i++)) if (Number((C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass")).oc_skill == skill)) if (Number((--n) < 0)) return C.short(i);
+        for ((i = C.deref(C.ptrAdd((C.svb).bases, C.WEAPON_CLASS, "int"), "int")); Number(!!(Number(i < C.NUM_OBJECTS)
+            && Number((C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass")).oc_class == C.WEAPON_CLASS))); (i++)) if (Number((C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass")).oc_skill == skill)) if (Number((--n) < 0)) return C.short(i);
     }
     return otyp;
 }
@@ -3179,7 +3516,21 @@ export function rnd_otyp_by_namedesc(name, oclass, xtra_prob) /* add to item's c
     for ((i = lo); Number(i <= hi); (++i)) {
 /* don't match extra descriptions (w/o real name) */
         if (C.ptrCompare(((zn = ((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass"))).oc_name_idx, "struct objdescr"), "struct objdescr")).oc_name))), 0, "==")) continue;
-        if (Number(!!(Number(!!(Number(!!(Number(!!(C.callLocal(wishymatch, name, zn, (C.char(1))) || (Number(!!(Number(!!(Number(!!(Number(!!(check_of && Number(i != C.BELL_OF_OPENING))) && (Number(!!(Number(i < minglob) || Number(i > maxglob)))))) && C.ptrCompare(((of = C.strstri(zn, C.literal(" of ")))), 0, "!="))) && C.callLocal(wishymatch, name, C.ptrAdd(of, 4, "const char"), (C.char(0)))))))) || (Number(!!(C.ptrCompare(((zn = ((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass"))).oc_descr_idx, "struct objdescr"), "struct objdescr")).oc_descr))), 0, "!=") && C.callLocal(wishymatch, name, zn, (C.char(0)))))))) || (Number(!!(Number(!!(Number(!!(zn && check_of)) && C.ptrCompare(((of = C.strstri(zn, C.literal(" of ")))), 0, "!="))) && C.callLocal(wishymatch, name, C.ptrAdd(of, 4, "const char"), (C.char(0)))))))) || (Number(!!(C.ptrCompare(((zn = (C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass")).oc_uname)), 0, "!=") && C.callLocal(wishymatch, name, zn, (C.char(0))))))))) /* objects[] name */
+        if (Number(!!(Number(!!(Number(!!(Number(!!(C.callLocal(wishymatch, name, zn, (C.char(1)))
+            || (Number(!!(Number(!!(Number(!!(Number(!!(check_of
+            && Number(i != C.BELL_OF_OPENING)))
+            && (Number(!!(Number(i < minglob)
+            || Number(i > maxglob))))))
+            && C.ptrCompare(((of = C.strstri(zn, C.literal(" of ")))), 0, "!=")))
+            && C.callLocal(wishymatch, name, C.ptrAdd(of, 4, "const char"), (C.char(0))))))))
+            || (Number(!!(C.ptrCompare(((zn = ((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass"))).oc_descr_idx, "struct objdescr"), "struct objdescr")).oc_descr))), 0, "!=")
+            && C.callLocal(wishymatch, name, zn, (C.char(0))))))))
+            || (Number(!!(Number(!!(Number(!!(zn
+            && check_of))
+            && C.ptrCompare(((of = C.strstri(zn, C.literal(" of ")))), 0, "!=")))
+            && C.callLocal(wishymatch, name, C.ptrAdd(of, 4, "const char"), (C.char(0))))))))
+            || (Number(!!(C.ptrCompare(((zn = (C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass")).oc_uname)), 0, "!=")
+            && C.callLocal(wishymatch, name, zn, (C.char(0))))))))) /* objects[] name */
 /* let "<bar>" match "<foo> of <bar>" (already does if foo is
                an object class, but this is for lump of royal jelly,
                clove of garlic, bag of tricks, &c) with a few exceptions:
@@ -3214,8 +3565,10 @@ export function shiny_obj(oclass) {
 export function set_wallprop_from_str(bp) {
     bp = C.argument(bp, "char *");
     let wall_prop = 0;
-    if (Number(!!(C.strstr(bp, C.literal("undiggable ")) || C.strstr(bp, C.literal("nondiggable "))))) (wall_prop = C.int((wall_prop | C.W_NONDIGGABLE)));
-    if (Number(!!(C.strstr(bp, C.literal("unphaseable ")) || C.strstr(bp, C.literal("nonpasswall "))))) (wall_prop = C.int((wall_prop | C.W_NONPASSWALL)));
+    if (Number(!!(C.strstr(bp, C.literal("undiggable "))
+        || C.strstr(bp, C.literal("nondiggable "))))) (wall_prop = C.int((wall_prop | C.W_NONDIGGABLE)));
+    if (Number(!!(C.strstr(bp, C.literal("unphaseable "))
+        || C.strstr(bp, C.literal("nonpasswall "))))) (wall_prop = C.int((wall_prop | C.W_NONPASSWALL)));
 /* |= because wall_info (aka flags) is overloaded with other stuff */
     if (wall_prop) ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, (C.u).ux, "struct rm[21]"), "struct rm[21]"), (C.u).uy, "struct rm"), "struct rm")).wall_info = C.uint(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, (C.u).ux, "struct rm[21]"), "struct rm[21]"), (C.u).uy, "struct rm"), "struct rm")).wall_info | wall_prop)));
 }
@@ -3240,7 +3593,9 @@ export function wizterrainwish(d) {
         (tname = C.trapname(trap, (C.char(1))));
         if (Number(!(C.str_start_is(bp, tname, (C.char(1)))))) continue;
 /* found it; avoid stupid mistakes */
-        if (Number(!!((Number(!!(Number((trap) == C.HOLE) || Number((trap) == C.TRAPDOOR)))) && Number(!(C.Can_fall_thru(C.fieldRef(C.u, "uz"))))))) (trap = C.ROCKTRAP);
+        if (Number(!!((Number(!!(Number((trap) == C.HOLE)
+            || Number((trap) == C.TRAPDOOR))))
+            && Number(!(C.Can_fall_thru(C.fieldRef(C.u, "uz"))))))) (trap = C.ROCKTRAP);
         if (C.ptrCompare(((t = C.maketrap(x, y, trap))), 0, "!=")) {
             (trap = C.int((t).ttyp));
             (tname = C.trapname(trap, (C.char(1))));
@@ -3257,7 +3612,8 @@ export function wizterrainwish(d) {
     (oldtyp = C.uint((lev).typ));
     (is_dbridge = C.char((Number(!!(Number(oldtyp == C.uint(C.DRAWBRIDGE_DOWN)) || Number(oldtyp == C.uint(C.DRAWBRIDGE_UP)))))));
     (p = C.eos(bp));
-    if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(8), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(8), "char"))), (C.literal("fountain")), C.int((-1))))))))) {
+    if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(8), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(8), "char"))), (C.literal("fountain")), C.int((-1))))))))) {
         ((lev).typ = C.char(C.FOUNTAIN));
         if (Number(oldtyp != C.uint(C.FOUNTAIN))) C.bump(C.fieldRef(((C.svl).level).flags, "nfountains"), 1, true, "unsigned char");
         ((lev).looted = C.uint((((d).looted) ? C.F_LOOTED : 0)));
@@ -3266,14 +3622,16 @@ export function wizterrainwish(d) {
         C.pline(C.literal("A %sfountain."), ((C.int((lev).blessedftn)) ? C.literal("magic ") : C.literal("")), "p");
         (madeterrain = (C.char(1)));
     }
-    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(6), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(6), "char"))), (C.literal("throne")), C.int((-1))))))))) {
+    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(6), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(6), "char"))), (C.literal("throne")), C.int((-1))))))))) {
         ((lev).typ = C.char(C.THRONE));
         ((lev).looted = C.uint((((d).looted) ? C.T_LOOTED : 0)));
 /* overlays 'flags' */
         C.pline(C.literal("A throne."), "");
         (madeterrain = (C.char(1)));
     }
-    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("sink")), C.int((-1))))))))) {
+    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("sink")), C.int((-1))))))))) {
         ((lev).typ = C.char(C.SINK));
         if (Number(oldtyp != C.uint(C.SINK))) C.bump(C.fieldRef(((C.svl).level).flags, "nsinks"), 1, true, "unsigned char");
         ((lev).looted = C.uint((((d).looted) ? (C.int((C.int((C.S_LPUDDING | C.S_LDWASHER)) | C.S_LRING))) : 0)));
@@ -3281,10 +3639,17 @@ export function wizterrainwish(d) {
         (madeterrain = (C.char(1)));
 /* ("water" matches "potion of water" rather than terrain) */
     }
-    else if (Number(!!(Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("pool")), C.int((-1)))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("moat")), C.int((-1)))))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(13), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(13), "char"))), (C.literal("wall of water")), C.int((-1))))))))))) {
+    else if (Number(!!(Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("pool")), C.int((-1))))))))
+        || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("moat")), C.int((-1))))))))))
+        || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(13), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(13), "char"))), (C.literal("wall of water")), C.int((-1))))))))))) {
         let save_prop;
         let new_water;
-        (ltyp = C.uint(((Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("pool")), C.int((-1))))))))) ? C.POOL : ((Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("moat")), C.int((-1))))))))) ? C.MOAT : C.WATER))));
+        (ltyp = C.uint(((Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+            || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("pool")), C.int((-1))))))))) ? C.POOL : ((Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+            || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("moat")), C.int((-1))))))))) ? C.MOAT : C.WATER))));
         if (Number(!(is_dbridge))) {
             ((lev).typ = C.char(ltyp));
             ((lev).flags = C.uint(0));
@@ -3310,8 +3675,12 @@ export function wizterrainwish(d) {
         (madeterrain = (C.char(1)));
 /* also matches "molten lava" */
     }
-    else if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("lava")), C.int((-1)))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(12), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(12), "char"))), (C.literal("wall of lava")), C.int((-1))))))))))) {
-        (ltyp = C.uint(((Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(12), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(12), "char"))), (C.literal("wall of lava")), C.int((-1))))))))) ? C.LAVAWALL : C.LAVAPOOL)));
+    else if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("lava")), C.int((-1))))))))
+        || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(12), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(12), "char"))), (C.literal("wall of lava")), C.int((-1))))))))))) {
+        (ltyp = C.uint(((Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(12), "char")), bp, "<")
+            || C.strncmpi(((C.ptrAdd(p, -(12), "char"))), (C.literal("wall of lava")), C.int((-1))))))))) ? C.LAVAWALL : C.LAVAPOOL)));
         if (Number(!(is_dbridge))) {
             ((lev).typ = C.char(ltyp));
             ((lev).flags = C.uint(0));
@@ -3324,7 +3693,15 @@ export function wizterrainwish(d) {
         C.del_engr_at(x, y);
         if (Number(!(is_dbridge))) {
             C.pline(C.literal("A %s of molten lava."), (((Number((lev).typ == C.LAVAPOOL))) ? C.literal("pool") : C.literal("wall")), "p");
-            if (Number(!!(Number(!((Number(!!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.LEVITATION, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.LEVITATION, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.LEVITATION, "struct prop"), "struct prop")).blocked))))) || (Number(!!((Number(!!(Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.FLYING, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.FLYING, "struct prop"), "struct prop")).extrinsic)) || (Number(!!((C.u).usteed && (Number((C.ulong((((((C.u).usteed).data)).mflags1 & C.ulong(1n)))) != C.ulong(0n))))))))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.FLYING, "struct prop"), "struct prop")).blocked)))))))))) || Number((lev).typ == C.LAVAWALL)))) C.pooleffects((C.char(0)));
+            if (Number(!!(Number(!((Number(!!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.LEVITATION, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.LEVITATION, "struct prop"), "struct prop")).extrinsic)))
+                && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.LEVITATION, "struct prop"), "struct prop")).blocked)))))
+                || (Number(!!((Number(!!(Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.FLYING, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.FLYING, "struct prop"), "struct prop")).extrinsic))
+                || (Number(!!((C.u).usteed
+                && (Number((C.ulong((((((C.u).usteed).data)).mflags1 & C.ulong(1n)))) != C.ulong(0n)))))))))
+                && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.FLYING, "struct prop"), "struct prop")).blocked))))))))))
+                || Number((lev).typ == C.LAVAWALL)))) C.pooleffects((C.char(0)));
         }
         else {
             dbterrainmesg(C.literal("Lava"), x, y);
@@ -3332,7 +3709,8 @@ export function wizterrainwish(d) {
         C.fire_damage_chain(C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, x, "struct obj *[21]"), "struct obj *[21]"), y, "struct obj *"), "struct obj *"), (C.char(1)), (C.char(1)), x, y);
         (madeterrain = (C.char(1)));
     }
-    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(3), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(3), "char"))), (C.literal("ice")), C.int((-1))))))))) {
+    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(3), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(3), "char"))), (C.literal("ice")), C.int((-1))))))))) {
         if (Number(!(is_dbridge))) {
             ((lev).typ = C.char(C.ICE));
 /* icedpool overloads flags; specifies what ice will melt into */
@@ -3354,7 +3732,8 @@ export function wizterrainwish(d) {
         }
         (madeterrain = (C.char(1)));
     }
-    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal("altar")), C.int((-1))))))))) {
+    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal("altar")), C.int((-1))))))))) {
         let al;
         ((lev).typ = C.char(C.ALTAR));
         if (Number(!(C.strncmpi(bp, C.literal("chaotic "), 8)))) (al = C.A_CHAOTIC);
@@ -3362,13 +3741,16 @@ export function wizterrainwish(d) {
         else if (Number(!(C.strncmpi(bp, C.literal("lawful "), 7)))) (al = C.A_LAWFUL);
         else if (Number(!(C.strncmpi(bp, C.literal("unaligned "), 10)))) (al = C.A_NONE);
         else /* -1 - A_CHAOTIC, 0 - A_NEUTRAL, 1 - A_LAWFUL */
-        (al = C.char(((Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 3702, C.literal("wizterrainwish")), C.rn2(6))) : C.rn2(6)))))) ? C.A_NONE : (C.int(((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 3702, C.literal("wizterrainwish")), C.rn2(C.int((1 + 2))))) : C.rn2(C.int((1 + 2))))) - 1))))));
+            (al = C.char(((Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 3702, C.literal("wizterrainwish")), C.rn2(6))) : C.rn2(6)))))) ? C.A_NONE : (C.int(((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 3702, C.literal("wizterrainwish")), C.rn2(C.int((1 + 2))))) : C.rn2(C.int((1 + 2))))) - 1))))));
         ((lev).altarmask = (C.uint(((((Number((al) == (C.int((-128)))))) ? 0 : (((Number((al) == 1))) ? 4 : (C.int(((al) + 2)))))))));
 /* overlays 'flags' */
         C.pline(C.literal("%s altar."), An(C.align_str(al)), "p");
         (madeterrain = (C.char(1)));
     }
-    else if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal("grave")), C.int((-1)))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(9), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(9), "char"))), (C.literal("headstone")), C.int((-1))))))))))) {
+    else if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal("grave")), C.int((-1))))))))
+        || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(9), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(9), "char"))), (C.literal("headstone")), C.int((-1))))))))))) {
         C.make_grave(x, y, 0);
         if ((Number(((lev).typ) == C.GRAVE))) {
             ((lev).looted = C.uint(0));
@@ -3382,14 +3764,16 @@ export function wizterrainwish(d) {
             (badterrain = (C.char(1)));
         }
     }
-    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("tree")), C.int((-1))))))))) {
+    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("tree")), C.int((-1))))))))) {
         ((lev).typ = C.char(C.TREE));
         ((lev).looted = C.uint((((d).looted) ? (C.int((C.TREE_LOOTED | C.TREE_SWARM))) : 0)));
         set_wallprop_from_str(bp);
         C.pline(C.literal("A tree."), "");
         (madeterrain = (C.char(1)));
     }
-    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("bars")), C.int((-1))))))))) {
+    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("bars")), C.int((-1))))))))) {
         ((lev).typ = C.char(C.IRONBARS));
         ((lev).flags = C.uint(0));
         set_wallprop_from_str(bp);
@@ -3400,24 +3784,35 @@ export function wizterrainwish(d) {
         C.pline(C.literal("Iron bars."), "");
         (madeterrain = (C.char(1)));
     }
-    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal("cloud")), C.int((-1))))))))) {
+    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal("cloud")), C.int((-1))))))))) {
         ((lev).typ = C.char(C.CLOUD));
         ((lev).flags = C.uint(0));
         C.pline(C.literal("A cloud."), "");
         C.del_engr_at(x, y);
         (madeterrain = (C.char(1)));
     }
-    else if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("door")), C.int((-1)))))))) || (Number(!!((d).doorless && Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(7), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(7), "char"))), (C.literal("doorway")), C.int((-1)))))))))))))) {
+    else if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("door")), C.int((-1))))))))
+        || (Number(!!((d).doorless
+        && Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(7), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(7), "char"))), (C.literal("doorway")), C.int((-1)))))))))))))) {
         const dbuf = C.localArray("char[40]", 0);
         let old_wall_info;
-        let secret = C.char(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(11), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(11), "char"))), (C.literal("secret door")), C.int((-1)))))))));
+        let secret = C.char(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(11), "char")), bp, "<")
+            || C.strncmpi(((C.ptrAdd(p, -(11), "char"))), (C.literal("secret door")), C.int((-1)))))))));
 /* require door or wall so that the 'horizontal' flag will
            already have the correct value; player might choose to put
            DOOR on top of existing DOOR or SDOOR on top of existing SDOOR
            to control its trapped state; iron bars are surrogate walls;
            a previously dug wall looks like corridor but is actually a
            doorless doorway so will be acceptable here */
-        if (Number(!!(Number(!!(Number(!!(Number((lev).typ == C.DOOR) || Number((lev).typ == C.SDOOR))) || (Number(!!((Number(!!(((lev).typ) && Number(((lev).typ) <= C.DBWALL)))) && Number((lev).typ != C.DBWALL)))))) || Number((lev).typ == C.IRONBARS)))) {
+        if (Number(!!(Number(!!(Number(!!(Number((lev).typ == C.DOOR)
+            || Number((lev).typ == C.SDOOR)))
+            || (Number(!!((Number(!!(((lev).typ)
+            && Number(((lev).typ) <= C.DBWALL))))
+            && Number((lev).typ != C.DBWALL))))))
+            || Number((lev).typ == C.IRONBARS)))) {
 /* remember previous wall info [is this right for iron bars?] */
             (old_wall_info = C.uint((((Number((lev).typ != C.DOOR))) ? C.int((lev).wall_info) : 0)));
 /* set the new terrain type */
@@ -3425,7 +3820,9 @@ export function wizterrainwish(d) {
             ((lev).wall_info = C.uint(0));
 /* overlays 'flags' */
 /* lev->horizontal stays as-is */
-            if (((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))))))) {
+            if (((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))).dlevel
+                || ((C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))).dnum)))
+                && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))))))) {
 /* all doors on the rogue level are doorless; locking magic
                    there converts them into walls rather than closed doors */
                 ((d).doorless = 1);
@@ -3436,7 +3833,8 @@ export function wizterrainwish(d) {
                doormask and wall_info which both overload rm[x][y].flags
                (CLOSED overlaps wall_info bits, LOCKED and TRAPPED don't);
                conversion from SDOOR to DOOR changes NODOOR to CLOSED */
-            ((lev).doormask = C.uint((((d).locked) ? C.D_LOCKED : (((Number(!!((d).doorless || secret)))) ? C.D_NODOOR : (((d).open) ? C.D_ISOPEN : (((d).broken) ? C.D_BROKEN : C.D_CLOSED))))));
+            ((lev).doormask = C.uint((((d).locked) ? C.D_LOCKED : (((Number(!!((d).doorless
+                || secret)))) ? C.D_NODOOR : (((d).open) ? C.D_ISOPEN : (((d).broken) ? C.D_BROKEN : C.D_CLOSED))))));
 /* SDOOR uses wall_info, restore relevant bits.
              * FIXME? if we're changing a regular door into a secret door,
              * old_wall_info bits will be 0 instead of being set properly.
@@ -3445,9 +3843,11 @@ export function wizterrainwish(d) {
              * and then another wish to turn that door into a secret door. */
             if (secret) ((lev).wall_info = C.uint(((lev).wall_info | (C.uint((old_wall_info & C.WM_MASK))))));
 /* set up trapped flag; open door states aren't eligible */
-            if (Number(!!(Number((d).trapped == 2) || (Number(!!(Number((C.int((C.int((lev).doormask) & (C.int((C.D_LOCKED | C.D_CLOSED)))))) == 0) && Number(!(secret)))))))) /* 2: wish includes explicit "untrapped" */
+            if (Number(!!(Number((d).trapped == 2)
+                || (Number(!!(Number((C.int((C.int((lev).doormask) & (C.int((C.D_LOCKED | C.D_CLOSED)))))) == 0)
+                && Number(!(secret)))))))) /* 2: wish includes explicit "untrapped" */
 /* D_CLOSED is implicit for secret doors */
-            ((d).trapped = 0);
+                ((d).trapped = 0);
             if ((d).trapped) ((lev).doormask = C.uint(((lev).doormask | C.D_TRAPPED)));
 /* feedback */
             C.store(C.ptrAdd(dbuf, 0, "char"), "char", C.char(0));
@@ -3463,7 +3863,7 @@ export function wizterrainwish(d) {
                 if (C.int((C.int((lev).doormask) & C.D_ISOPEN))) C.strcat(dbuf, C.literal("open "));
                 if (C.int((C.int((lev).doormask) & C.D_BROKEN))) C.strcat(dbuf, C.literal("broken "));
                 if (Number((C.int((C.int((lev).doormask) & C.int((~C.D_TRAPPED))))) == C.D_NODOOR)) C.strcat(dbuf, C.literal("doorless doorway"));
-                else C.strcat(dbuf, C.literal("door"));
+                    else C.strcat(dbuf, C.literal("door"));
             }
             C.pline(C.literal("%s."), C.upstart(an(dbuf)), "p");
             (madeterrain = (C.char(1)));
@@ -3474,9 +3874,17 @@ export function wizterrainwish(d) {
             (badterrain = (C.char(1)));
         }
     }
-    else if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("wall")), C.int((-1)))))))) && (Number(!!(C.ptrCompare(bp, C.ptrAdd(p, -(4), "char"), "==") || Number(C.deref(C.ptrAdd(p, C.int((-5)), "char"), "char") == 32))))))) {
+    else if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("wall")), C.int((-1))))))))
+        && (Number(!!(C.ptrCompare(bp, C.ptrAdd(p, -(4), "char"), "==")
+        || Number(C.deref(C.ptrAdd(p, C.int((-5)), "char"), "char") == 32))))))) {
         let wall = C.char(C.HWALL);
-        if (Number(!!((Number(!!(C.isok((C.u).ux, C.short(C.int(((C.u).uy - 1)))) && (Number(!!(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, (C.u).ux, "struct rm[21]"), "struct rm[21]"), C.int(((C.u).uy - 1)), "struct rm"), "struct rm")).typ) && Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, (C.u).ux, "struct rm[21]"), "struct rm[21]"), C.int(((C.u).uy - 1)), "struct rm"), "struct rm")).typ) <= C.DBWALL))))))) || (Number(!!(C.isok((C.u).ux, C.short(C.int(((C.u).uy + 1)))) && (Number(!!(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, (C.u).ux, "struct rm[21]"), "struct rm[21]"), C.int(((C.u).uy + 1)), "struct rm"), "struct rm")).typ) && Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, (C.u).ux, "struct rm[21]"), "struct rm[21]"), C.int(((C.u).uy + 1)), "struct rm"), "struct rm")).typ) <= C.DBWALL)))))))))) (wall = C.char(C.VWALL));
+        if (Number(!!((Number(!!(C.isok((C.u).ux, C.short(C.int(((C.u).uy - 1))))
+            && (Number(!!(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, (C.u).ux, "struct rm[21]"), "struct rm[21]"), C.int(((C.u).uy - 1)), "struct rm"), "struct rm")).typ)
+            && Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, (C.u).ux, "struct rm[21]"), "struct rm[21]"), C.int(((C.u).uy - 1)), "struct rm"), "struct rm")).typ) <= C.DBWALL)))))))
+            || (Number(!!(C.isok((C.u).ux, C.short(C.int(((C.u).uy + 1))))
+            && (Number(!!(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, (C.u).ux, "struct rm[21]"), "struct rm[21]"), C.int(((C.u).uy + 1)), "struct rm"), "struct rm")).typ)
+            && Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, (C.u).ux, "struct rm[21]"), "struct rm[21]"), C.int(((C.u).uy + 1)), "struct rm"), "struct rm")).typ) <= C.DBWALL)))))))))) (wall = C.char(C.VWALL));
         (madeterrain = (C.char(1)));
         ((lev).typ = wall);
         ((lev).flags = C.uint(0));
@@ -3484,7 +3892,8 @@ export function wizterrainwish(d) {
         C.fix_wall_spines(C.short((((Number((0) > (C.int(((C.u).ux - 1))))) ? (0) : (C.int(((C.u).ux - 1)))))), C.short((((Number((0) > (C.int(((C.u).uy - 1))))) ? (0) : (C.int(((C.u).uy - 1)))))), C.short((((Number((80) < (C.int(((C.u).ux + 1))))) ? (80) : (C.int(((C.u).ux + 1)))))), C.short((((Number((21) < (C.int(((C.u).uy + 1))))) ? (21) : (C.int(((C.u).uy + 1)))))));
         C.pline(C.literal("A wall."), "");
     }
-    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(15), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(15), "char"))), (C.literal("secret corridor")), C.int((-1))))))))) {
+    else if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(15), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(15), "char"))), (C.literal("secret corridor")), C.int((-1))))))))) {
         if (Number((lev).typ == C.CORR)) {
             ((lev).typ = C.char(C.SCORR));
 /* neither CORR nor SCORR uses 'flags' or 'horizontal' */
@@ -3496,8 +3905,20 @@ export function wizterrainwish(d) {
             (badterrain = (C.char(1)));
         }
     }
-    else if (Number(!!(Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("room")), C.int((-1)))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal("floor")), C.int((-1)))))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(6), "char")), bp, "<") || C.strncmpi(((C.ptrAdd(p, -(6), "char"))), (C.literal("ground")), C.int((-1))))))))))) {
-        if (Number(!!(Number(!!(Number(!!(Number(oldtyp == C.uint(C.ROOM)) || (Number(!!((Number(!!(Number((oldtyp) >= C.uint(C.STAIRS)) && Number((oldtyp) <= C.uint(C.ALTAR))))) && (Number(!!((C.iflags).debug_overwrite_stairs || Number(!((Number(!!(Number((oldtyp) == C.uint(C.LADDER)) || Number((oldtyp) == C.uint(C.STAIRS))))))))))))))) || Number(oldtyp == C.uint(C.ICE)))) || C.is_pool_or_lava(x, y)))) {
+    else if (Number(!!(Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(4), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(4), "char"))), (C.literal("room")), C.int((-1))))))))
+        || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(5), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(5), "char"))), (C.literal("floor")), C.int((-1))))))))))
+        || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(p, -(6), "char")), bp, "<")
+        || C.strncmpi(((C.ptrAdd(p, -(6), "char"))), (C.literal("ground")), C.int((-1))))))))))) {
+        if (Number(!!(Number(!!(Number(!!(Number(oldtyp == C.uint(C.ROOM))
+            || (Number(!!((Number(!!(Number((oldtyp) >= C.uint(C.STAIRS))
+            && Number((oldtyp) <= C.uint(C.ALTAR)))))
+            && (Number(!!((C.iflags).debug_overwrite_stairs
+            || Number(!((Number(!!(Number((oldtyp) == C.uint(C.LADDER))
+            || Number((oldtyp) == C.uint(C.STAIRS)))))))))))))))
+            || Number(oldtyp == C.uint(C.ICE))))
+            || C.is_pool_or_lava(x, y)))) {
             let t;
             ((lev).typ = C.char(C.ROOM));
             C.pline(C.literal("Room floor."), "");
@@ -3528,7 +3949,9 @@ export function wizterrainwish(d) {
 /* [block/unblock_point handled by docrt -> vision_recalc] */
         }
         else {
-            if (Number(!!(Number(!!((C.u).utrap && Number((C.u).utraptype == C.uint(C.TT_LAVA)))) && Number(!(C.is_lava((C.u).ux, (C.u).uy)))))) C.reset_utrap((C.char(0)));
+            if (Number(!!(Number(!!((C.u).utrap
+                && Number((C.u).utraptype == C.uint(C.TT_LAVA))))
+                && Number(!(C.is_lava((C.u).ux, (C.u).uy)))))) C.reset_utrap((C.char(0)));
             C.recalc_block_point(x, y);
         }
 /* fixups for replaced terrain that aren't handled above */
@@ -3536,12 +3959,21 @@ export function wizterrainwish(d) {
 /* update level.flags.nfountains,nsinks */
         if (Number(!(C.is_ice(x, y)))) C.spot_stop_timers(x, y, C.short(C.MELT_ICE_AWAY));
 /* horizontal is overlaid by fountain->blessedftn, grave->disturbed */
-        if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!((Number((oldtyp) == C.uint(C.FOUNTAIN))) || (Number((oldtyp) == C.uint(C.GRAVE))))) || (Number(!!((oldtyp) && Number((oldtyp) <= C.uint(C.DBWALL))))))) || Number(oldtyp == C.uint(C.IRONBARS)))) || (Number((oldtyp) == C.uint(C.DOOR))))) || Number(oldtyp == C.uint(C.SDOOR))))) {
+        if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!((Number((oldtyp) == C.uint(C.FOUNTAIN)))
+            || (Number((oldtyp) == C.uint(C.GRAVE)))))
+            || (Number(!!((oldtyp)
+            && Number((oldtyp) <= C.uint(C.DBWALL)))))))
+            || Number(oldtyp == C.uint(C.IRONBARS))))
+            || (Number((oldtyp) == C.uint(C.DOOR)))))
+            || Number(oldtyp == C.uint(C.SDOOR))))) {
 /* when new terrain is a fountain, 'blessedftn' was explicitly
                set above; likewise for grave and 'disturbed'; when it's a
                door, the old type was a wall or a door and we retain the
                'horizontal' value from those */
-            if (Number(!!(Number(!!(Number(!!(Number(!((Number(((lev).typ) == C.FOUNTAIN)))) && Number(!((Number(((lev).typ) == C.GRAVE)))))) && Number(!((Number(((lev).typ) == C.DOOR)))))) && Number((lev).typ != C.SDOOR)))) ((lev).horizontal = C.uint(0));
+            if (Number(!!(Number(!!(Number(!!(Number(!((Number(((lev).typ) == C.FOUNTAIN))))
+                && Number(!((Number(((lev).typ) == C.GRAVE))))))
+                && Number(!((Number(((lev).typ) == C.DOOR))))))
+                && Number((lev).typ != C.SDOOR)))) ((lev).horizontal = C.uint(0));
 /* also clears blessedftn, disturbed */
         }
 /* note: lev->lit and lev->nondiggable retain their values even
@@ -3623,33 +4055,47 @@ export function readobjnam_preparse(d) {
             while (Number(C.deref((d).bp, "char") == 32)) C.bump(C.fieldRef(d, "bp"), 1, true, "char *");
             (l = 0);
         }
-        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("blessed "), (l = 8)))) || Number(!(C.strncmpi((d).bp, C.literal("holy "), (l = 5))))))) {
+        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("blessed "), (l = 8))))
+            || Number(!(C.strncmpi((d).bp, C.literal("holy "), (l = 5))))))) {
             (((d).blessed = 1), ((d).uncursed = ((d).iscursed = 0)));
         }
-        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("cursed "), (l = 7)))) || Number(!(C.strncmpi((d).bp, C.literal("unholy "), (l = 7))))))) {
+        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("cursed "), (l = 7))))
+            || Number(!(C.strncmpi((d).bp, C.literal("unholy "), (l = 7))))))) {
             (((d).iscursed = 1), ((d).blessed = ((d).uncursed = 0)));
         }
         else if (Number(!(C.strncmpi((d).bp, C.literal("uncursed "), (l = 9))))) {
             (((d).uncursed = 1), ((d).blessed = ((d).iscursed = 0)));
         }
-        else if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!(C.strncmpi((d).bp, C.literal("rustproof "), (l = 10)))) || Number(!(C.strncmpi((d).bp, C.literal("erodeproof "), (l = 11)))))) || Number(!(C.strncmpi((d).bp, C.literal("corrodeproof "), (l = 13)))))) || Number(!(C.strncmpi((d).bp, C.literal("fixed "), (l = 6)))))) || Number(!(C.strncmpi((d).bp, C.literal("fireproof "), (l = 10)))))) || Number(!(C.strncmpi((d).bp, C.literal("rotproof "), (l = 9)))))) || Number(!(C.strncmpi((d).bp, C.literal("tempered "), (l = 9)))))) || Number(!(C.strncmpi((d).bp, C.literal("crackproof "), (l = 11))))))) {
+        else if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!(C.strncmpi((d).bp, C.literal("rustproof "), (l = 10))))
+            || Number(!(C.strncmpi((d).bp, C.literal("erodeproof "), (l = 11))))))
+            || Number(!(C.strncmpi((d).bp, C.literal("corrodeproof "), (l = 13))))))
+            || Number(!(C.strncmpi((d).bp, C.literal("fixed "), (l = 6))))))
+            || Number(!(C.strncmpi((d).bp, C.literal("fireproof "), (l = 10))))))
+            || Number(!(C.strncmpi((d).bp, C.literal("rotproof "), (l = 9))))))
+            || Number(!(C.strncmpi((d).bp, C.literal("tempered "), (l = 9))))))
+            || Number(!(C.strncmpi((d).bp, C.literal("crackproof "), (l = 11))))))) {
             ((d).erodeproof = 1);
         }
-        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("lit "), (l = 4)))) || Number(!(C.strncmpi((d).bp, C.literal("burning "), (l = 8))))))) {
+        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("lit "), (l = 4))))
+            || Number(!(C.strncmpi((d).bp, C.literal("burning "), (l = 8))))))) {
             ((d).islit = 1);
         }
-        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("unlit "), (l = 6)))) || Number(!(C.strncmpi((d).bp, C.literal("extinguished "), (l = 13))))))) {
+        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("unlit "), (l = 6))))
+            || Number(!(C.strncmpi((d).bp, C.literal("extinguished "), (l = 13))))))) {
             ((d).islit = 0);
 /* "wet" and "moist" are only applicable for towels */
         }
-        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("moist "), (l = 6)))) || Number(!(C.strncmpi((d).bp, C.literal("wet "), (l = 4))))))) {
+        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("moist "), (l = 6))))
+            || Number(!(C.strncmpi((d).bp, C.literal("wet "), (l = 4))))))) {
             if (Number(!(C.strncmpi((d).bp, C.literal("wet "), 4)))) ((d).wetness = C.int((3 + (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 4025, C.literal("readobjnam_preparse")), C.rn2(3))) : C.rn2(3))))));
             else /* 3..5 */
-            ((d).wetness = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 4027, C.literal("readobjnam_preparse")), C.rnd(2))) : C.rnd(2))));
+                ((d).wetness = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 4027, C.literal("readobjnam_preparse")), C.rnd(2))) : C.rnd(2))));
 /* 1..2 */
 /* "unlabeled" and "blank" are synonymous */
         }
-        else if (Number(!!(Number(!!(Number(!(C.strncmpi((d).bp, C.literal("unlabeled "), (l = 10)))) || Number(!(C.strncmpi((d).bp, C.literal("unlabelled "), (l = 11)))))) || Number(!(C.strncmpi((d).bp, C.literal("blank "), (l = 6))))))) {
+        else if (Number(!!(Number(!!(Number(!(C.strncmpi((d).bp, C.literal("unlabeled "), (l = 10))))
+            || Number(!(C.strncmpi((d).bp, C.literal("unlabelled "), (l = 11))))))
+            || Number(!(C.strncmpi((d).bp, C.literal("blank "), (l = 6))))))) {
             ((d).unlabeled = 1);
         }
         else if (Number(!(C.strncmpi((d).bp, C.literal("poisoned "), (l = 9))))) {
@@ -3686,7 +4132,8 @@ export function readobjnam_preparse(d) {
             (((d).doorless = 1), ((d).open = ((d).closed = ((d).locked = ((d).unlocked = ((d).broken = 0))))));
 /* looted: fountain/sink/throne/tree; disturbed: grave */
         }
-        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("looted "), (l = 7)))) || Number(!(C.strncmpi((d).bp, C.literal("disturbed "), (l = 10))))))) /* overload disturbed grave with looted fountain here
+        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("looted "), (l = 7))))
+            || Number(!(C.strncmpi((d).bp, C.literal("disturbed "), (l = 10))))))) /* overload disturbed grave with looted fountain here
                       even though they're separate in struct rm */
 {
             ((d).looted = 1);
@@ -3704,15 +4151,21 @@ export function readobjnam_preparse(d) {
         else if (Number(!(C.strncmpi((d).bp, C.literal("thoroughly "), (l = 11))))) {
             ((d).very = 2);
         }
-        else if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!(C.strncmpi((d).bp, C.literal("rusty "), (l = 6)))) || Number(!(C.strncmpi((d).bp, C.literal("rusted "), (l = 7)))))) || Number(!(C.strncmpi((d).bp, C.literal("burnt "), (l = 6)))))) || Number(!(C.strncmpi((d).bp, C.literal("burned "), (l = 7)))))) || Number(!(C.strncmpi((d).bp, C.literal("cracked "), (l = 8))))))) {
+        else if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!(C.strncmpi((d).bp, C.literal("rusty "), (l = 6))))
+            || Number(!(C.strncmpi((d).bp, C.literal("rusted "), (l = 7))))))
+            || Number(!(C.strncmpi((d).bp, C.literal("burnt "), (l = 6))))))
+            || Number(!(C.strncmpi((d).bp, C.literal("burned "), (l = 7))))))
+            || Number(!(C.strncmpi((d).bp, C.literal("cracked "), (l = 8))))))) {
             ((d).eroded = C.int((1 + (d).very)));
             ((d).very = 0);
         }
-        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("corroded "), (l = 9)))) || Number(!(C.strncmpi((d).bp, C.literal("rotted "), (l = 7))))))) {
+        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("corroded "), (l = 9))))
+            || Number(!(C.strncmpi((d).bp, C.literal("rotted "), (l = 7))))))) {
             ((d).eroded2 = C.int((1 + (d).very)));
             ((d).very = 0);
         }
-        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("partly eaten "), (l = 13)))) || Number(!(C.strncmpi((d).bp, C.literal("partially eaten "), (l = 16))))))) {
+        else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("partly eaten "), (l = 13))))
+            || Number(!(C.strncmpi((d).bp, C.literal("partially eaten "), (l = 16))))))) {
             ((d).halfeaten = 1);
         }
         else if (Number(!(C.strncmpi((d).bp, C.literal("historic "), (l = 9))))) {
@@ -3731,7 +4184,8 @@ export function readobjnam_preparse(d) {
                used for globs, it might be either "small glob of <foo>" or
                "small <foo> glob" and user might add 's' even though plural
                doesn't accomplish anything because globs don't stack */
-            if (Number(!!(C.strncmpi(C.ptrAdd((d).bp, l, "char"), C.literal("glob"), 4) && Number(!(C.strstri(C.ptrAdd((d).bp, l, "char"), C.literal(" glob"))))))) break;
+            if (Number(!!(C.strncmpi(C.ptrAdd((d).bp, l, "char"), C.literal("glob"), 4)
+                && Number(!(C.strstri(C.ptrAdd((d).bp, l, "char"), C.literal(" glob"))))))) break;
             ((d).gsize = 1);
         }
         else if (Number(!(C.strncmpi((d).bp, C.literal("medium "), (l = 7))))) {
@@ -3746,7 +4200,8 @@ export function readobjnam_preparse(d) {
 /* "large" might be part of monster name (dog, cat, kobold,
                mimic) or object name (box, round shield) rather than
                prefix for glob size */
-            if (Number(!!(C.strncmpi(C.ptrAdd((d).bp, l, "char"), C.literal("glob"), 4) && Number(!(C.strstri(C.ptrAdd((d).bp, l, "char"), C.literal(" glob"))))))) break;
+            if (Number(!!(C.strncmpi(C.ptrAdd((d).bp, l, "char"), C.literal("glob"), 4)
+                && Number(!(C.strstri(C.ptrAdd((d).bp, l, "char"), C.literal(" glob"))))))) break;
 /* "very large " had "very " peeled off on previous iteration */
             ((d).gsize = (((Number((d).very != 1))) ? 3 : 4));
         }
@@ -3784,11 +4239,16 @@ export function readobjnam_preparse(d) {
          * viable but silly "female statue of a gnome ruler".
          */
         }
-        else if (Number(!!((Number(!!(Number(!!(Number(!(C.strncmpi((d).bp, C.literal("corpse "), (l = 7)))) || Number(!(C.strncmpi((d).bp, C.literal("statue "), (l = 7)))))) || Number(!(C.strncmpi((d).bp, C.literal("figurine "), (l = 9))))))) && Number(!(C.strncmpi(C.ptrAdd((d).bp, l, "char"), C.literal("of "), (more_l = 3))))))) {
+        else if (Number(!!((Number(!!(Number(!!(Number(!(C.strncmpi((d).bp, C.literal("corpse "), (l = 7))))
+            || Number(!(C.strncmpi((d).bp, C.literal("statue "), (l = 7))))))
+            || Number(!(C.strncmpi((d).bp, C.literal("figurine "), (l = 9)))))))
+            && Number(!(C.strncmpi(C.ptrAdd((d).bp, l, "char"), C.literal("of "), (more_l = 3))))))) {
             (save_bp = (d).bp);
 /* we'll backtrack to here later */
             ((l = C.int((l + more_l))), (more_l = 0));
-            if (Number(!!(Number(!!(Number(!(C.strncmpi(C.ptrAdd((d).bp, l, "char"), C.literal("a "), (more_l = 2)))) || Number(!(C.strncmpi(C.ptrAdd((d).bp, l, "char"), C.literal("an "), (more_l = 3)))))) || Number(!(C.strncmpi(C.ptrAdd((d).bp, l, "char"), C.literal("the "), (more_l = 4))))))) (l = C.int((l + more_l)));
+            if (Number(!!(Number(!!(Number(!(C.strncmpi(C.ptrAdd((d).bp, l, "char"), C.literal("a "), (more_l = 2))))
+                || Number(!(C.strncmpi(C.ptrAdd((d).bp, l, "char"), C.literal("an "), (more_l = 3))))))
+                || Number(!(C.strncmpi(C.ptrAdd((d).bp, l, "char"), C.literal("the "), (more_l = 4))))))) (l = C.int((l + more_l)));
         }
         else {
             break;
@@ -3906,7 +4366,9 @@ export function readobjnam_postparse1(d) {
     }
 /* real vs fake is only useful for wizard mode but we'll accept its
        parsing in normal play (result is never real Amulet for that case) */
-    if (Number(!!(C.ptrCompare((((d).p = C.strstri((d).bp, ((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(C.ptrAdd(C.objects, C.AMULET_OF_YENDOR, "struct objclass"), "struct objclass"))).oc_descr_idx, "struct objdescr"), "struct objdescr")).oc_descr)))), 0, "!=") && (Number(!!(C.ptrCompare((d).p, (d).bp, "==") || Number(C.deref(C.ptrAdd((d).p, C.int((-1)), "char"), "char") == 32))))))) {
+    if (Number(!!(C.ptrCompare((((d).p = C.strstri((d).bp, ((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(C.ptrAdd(C.objects, C.AMULET_OF_YENDOR, "struct objclass"), "struct objclass"))).oc_descr_idx, "struct objdescr"), "struct objdescr")).oc_descr)))), 0, "!=")
+        && (Number(!!(C.ptrCompare((d).p, (d).bp, "==")
+        || Number(C.deref(C.ptrAdd((d).p, C.int((-1)), "char"), "char") == 32))))))) {
         let s = (d).bp;
 /* "Amulet of Yendor" matches two items, name of real Amulet
            and description of fake one; player can explicitly specify
@@ -3964,7 +4426,14 @@ export function readobjnam_postparse1(d) {
     (i = C.int(C.strlen((d).bp)));
     ((d).p = 0);
 /* check for "glob", "<foo> glob", and "glob of <foo>" */
-    if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!(C.strncmpi(((d).bp), (C.literal("glob")), C.int((-1))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(C.ptrAdd((d).bp, i, "char"), -(5), "char")), (d).bp, "<") || C.strncmpi(((C.ptrAdd(C.ptrAdd((d).bp, i, "char"), -(5), "char"))), (C.literal(" glob")), C.int((-1)))))))))) || Number(!(C.strncmpi(((d).bp), (C.literal("globs")), C.int((-1))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(C.ptrAdd((d).bp, i, "char"), -(6), "char")), (d).bp, "<") || C.strncmpi(((C.ptrAdd(C.ptrAdd((d).bp, i, "char"), -(6), "char"))), (C.literal(" globs")), C.int((-1)))))))))) || C.ptrCompare((((d).p = C.strstri((d).bp, C.literal("glob of ")))), 0, "!="))) || C.ptrCompare((((d).p = C.strstri((d).bp, C.literal("globs of ")))), 0, "!=")))) {
+    if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!(C.strncmpi(((d).bp), (C.literal("glob")), C.int((-1)))))
+        || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(C.ptrAdd((d).bp, i, "char"), -(5), "char")), (d).bp, "<")
+        || C.strncmpi(((C.ptrAdd(C.ptrAdd((d).bp, i, "char"), -(5), "char"))), (C.literal(" glob")), C.int((-1))))))))))
+        || Number(!(C.strncmpi(((d).bp), (C.literal("globs")), C.int((-1)))))))
+        || Number(!((Number(!!(C.ptrCompare((C.ptrAdd(C.ptrAdd((d).bp, i, "char"), -(6), "char")), (d).bp, "<")
+        || C.strncmpi(((C.ptrAdd(C.ptrAdd((d).bp, i, "char"), -(6), "char"))), (C.literal(" globs")), C.int((-1))))))))))
+        || C.ptrCompare((((d).p = C.strstri((d).bp, C.literal("glob of ")))), 0, "!=")))
+        || C.ptrCompare((((d).p = C.strstri((d).bp, C.literal("globs of ")))), 0, "!=")))) {
         ((d).mntmp = C.name_to_mon(((Number(!((d).p))) ? (d).bp : (C.ptrAdd(C.strstri((d).p, C.literal(" of ")), 4, "char"))), 0));
 /* if we didn't recognize monster type, pick a valid one at random */
         if (Number((d).mntmp == C.NON_PM)) ((d).mntmp = (C.int(((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 4354, C.literal("readobjnam_postparse1")), C.rn2(C.int((C.PM_BLACK_PUDDING - C.PM_GRAY_OOZE))))) : C.rn2(C.int((C.PM_BLACK_PUDDING - C.PM_GRAY_OOZE))))) + (C.PM_GRAY_OOZE)))));
@@ -3994,7 +4463,11 @@ export function readobjnam_postparse1(d) {
          * names "gauntlets of ogre power" and "gauntlets of giant strength"
          * (or the alternate spelling of those, "gloves of ...").
          */
-        if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!(C.strstri((d).bp, C.literal("wand ")))) && Number(!(C.strstri((d).bp, C.literal("spellbook ")))))) && Number(!(C.strstri((d).bp, C.literal("gauntlets ")))))) && Number(!(C.strstri((d).bp, C.literal("gloves ")))))) && Number(!(C.strstri((d).bp, C.literal("finger "))))))) {
+        if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!(C.strstri((d).bp, C.literal("wand "))))
+            && Number(!(C.strstri((d).bp, C.literal("spellbook "))))))
+            && Number(!(C.strstri((d).bp, C.literal("gauntlets "))))))
+            && Number(!(C.strstri((d).bp, C.literal("gloves "))))))
+            && Number(!(C.strstri((d).bp, C.literal("finger "))))))) {
             if (C.ptrCompare((((d).p = C.strstri((d).bp, C.literal("tin of ")))), 0, "!=")) {
                 if (Number(!(C.strncmpi((C.ptrAdd((d).p, 7, "char")), (C.literal("spinach")), C.int((-1)))))) {
                     ((d).contents = C.TIN_SPINACH);
@@ -4009,11 +4482,17 @@ export function readobjnam_postparse1(d) {
                 return 2;
 /*goto typfnd;*/
             }
-            else if (Number(!!(C.ptrCompare((((d).p = C.strstri((d).bp, C.literal(" of ")))), 0, "!=") && (Number((((d).mntmp = C.name_to_mon(C.ptrAdd((d).p, 4, "char"), C.fieldRef(d, "mgend")))) >= C.LOW_PM))))) C.store((d).p, "char", C.char(0));
+            else if (Number(!!(C.ptrCompare((((d).p = C.strstri((d).bp, C.literal(" of ")))), 0, "!=")
+                && (Number((((d).mntmp = C.name_to_mon(C.ptrAdd((d).p, 4, "char"), C.fieldRef(d, "mgend")))) >= C.LOW_PM))))) C.store((d).p, "char", C.char(0));
         }
     }
 /* Find corpse type w/o "of" (red dragon scale mail, yeti corpse) */
-    if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.strncmpi((d).bp, C.literal("samurai sword"), 13) && C.strncmpi((d).bp, C.literal("wizard lock"), 11))) && C.strncmpi((d).bp, C.literal("death wand"), 10))) && C.strncmpi((d).bp, C.literal("master key"), 10))) && C.strncmpi((d).bp, C.literal("ninja-to"), 8))) && C.strncmpi((d).bp, C.literal("magenta"), 7)))) /* not the "samurai" monster! */
+    if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.strncmpi((d).bp, C.literal("samurai sword"), 13)
+        && C.strncmpi((d).bp, C.literal("wizard lock"), 11)))
+        && C.strncmpi((d).bp, C.literal("death wand"), 10)))
+        && C.strncmpi((d).bp, C.literal("master key"), 10)))
+        && C.strncmpi((d).bp, C.literal("ninja-to"), 8)))
+        && C.strncmpi((d).bp, C.literal("magenta"), 7)))) /* not the "samurai" monster! */
 /* not the "wizard" monster! */
 /* 'of inversion', not Rider */
 /* not the "master" rank */
@@ -4021,7 +4500,9 @@ export function readobjnam_postparse1(d) {
 {
 /* not the "mage" rank */
         const rest = C.scalarLocal("const char *", 0);
-        if (Number(!!(Number(!!(Number((d).mntmp < C.LOW_PM) && Number(C.strlen((d).bp) > C.ulong(2)))) && (Number((((d).mntmp = C.name_to_monplus((d).bp, rest, C.fieldRef(d, "mgend")))) >= C.LOW_PM))))) {
+        if (Number(!!(Number(!!(Number((d).mntmp < C.LOW_PM)
+            && Number(C.strlen((d).bp) > C.ulong(2))))
+            && (Number((((d).mntmp = C.name_to_monplus((d).bp, rest, C.fieldRef(d, "mgend")))) >= C.LOW_PM))))) {
             let obp = (d).bp;
 /* 'rest' is a pointer past the matching portion; if that was
                an alternate name or a rank title rather than the canonical
@@ -4031,13 +4512,19 @@ export function readobjnam_postparse1(d) {
             if (Number(C.deref((d).bp, "char") == 32)) {
                 C.bump(C.fieldRef(d, "bp"), 1, true, "char *");
             }
-            else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("s "), 2))) || (Number(!!(C.ptrCompare((d).bp, (d).origbp, ">") && Number(!(C.strncmpi(C.ptrAdd((d).bp, -(1), "char"), C.literal("s' "), 3))))))))) {
+            else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("s "), 2)))
+                || (Number(!!(C.ptrCompare((d).bp, (d).origbp, ">")
+                && Number(!(C.strncmpi(C.ptrAdd((d).bp, -(1), "char"), C.literal("s' "), 3))))))))) {
                 ((d).bp = C.ptrAdd((d).bp, 2, "char"));
             }
             else if (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("es "), 3))) || Number(!(C.strncmpi((d).bp, C.literal("'s "), 3)))))) {
                 ((d).bp = C.ptrAdd((d).bp, 3, "char"));
             }
-            else if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!(C.deref((d).bp, "char"))) && Number(!((d).actualn)))) && Number(!((d).dn)))) && Number(!((d).un)))) && Number(!((d).oclass))))) {
+            else if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!(C.deref((d).bp, "char")))
+                && Number(!((d).actualn))))
+                && Number(!((d).dn))))
+                && Number(!((d).un))))
+                && Number(!((d).oclass))))) {
 /* no referent; they don't really mean a monster type */
                 ((d).bp = obp);
                 ((d).mntmp = C.NON_PM);
@@ -4045,7 +4532,9 @@ export function readobjnam_postparse1(d) {
         }
     }
 /* first change to singular if necessary */
-    if (Number(!!(Number(!!(C.deref((d).bp, "char") && C.strncmpi(((d).bp), (C.literal("tricks")), C.int((-1))))) && C.strncmpi(((d).bp), (C.literal("clothes")), C.int((-1)))))) /* we want "tricks" to match "bag of tricks" [rnd_otyp_by_namedesc()]
+    if (Number(!!(Number(!!(C.deref((d).bp, "char")
+        && C.strncmpi(((d).bp), (C.literal("tricks")), C.int((-1)))))
+        && C.strncmpi(((d).bp), (C.literal("clothes")), C.int((-1)))))) /* we want "tricks" to match "bag of tricks" [rnd_otyp_by_namedesc()]
            but that wouldn't work if it gets singularized to "trick"
            ["tricks bag" matches whether or not this exception is present
            because singularize operates on "bag" and wishymatch()'s
@@ -4081,7 +4570,9 @@ export function readobjnam_postparse1(d) {
         }
     }
 /* dragon scales - assumes order of dragons */
-    if (Number(!!(Number(!!(Number(!(C.strncmpi(((d).bp), (C.literal("scales")), C.int((-1))))) && Number((d).mntmp >= C.PM_GRAY_DRAGON))) && Number((d).mntmp <= C.PM_YELLOW_DRAGON)))) {
+    if (Number(!!(Number(!!(Number(!(C.strncmpi(((d).bp), (C.literal("scales")), C.int((-1)))))
+        && Number((d).mntmp >= C.PM_GRAY_DRAGON)))
+        && Number((d).mntmp <= C.PM_YELLOW_DRAGON)))) {
         ((d).typ = C.int((C.int((C.GRAY_DRAGON_SCALES + (d).mntmp)) - C.PM_GRAY_DRAGON)));
         ((d).mntmp = C.NON_PM);
 /* no monster */
@@ -4089,15 +4580,17 @@ export function readobjnam_postparse1(d) {
 /*goto typfnd;*/
     }
     ((d).p = C.eos((d).bp));
-    if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(10), "char")), (d).bp, "<") || C.strncmpi(((C.ptrAdd((d).p, -(10), "char"))), (C.literal("holy water")), C.int((-1))))))))) {
+    if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(10), "char")), (d).bp, "<")
+        || C.strncmpi(((C.ptrAdd((d).p, -(10), "char"))), (C.literal("holy water")), C.int((-1))))))))) {
 /* this isn't needed for "[un]holy water" because adjective parsing
            handles holy==blessed and unholy==cursed and leaves "water" for
            the object type, but it is needed for "potion of [un]holy water"
            since that parsing stops when it reaches "potion"; also, neither
            "holy water" nor "unholy water" is an actual type of potion */
-        if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(C.ptrAdd((d).p, -(10), "char"), -(2), "char")), (d).bp, "<") || C.strncmpi((C.ptrAdd(C.ptrAdd((d).p, -(10), "char"), -(2), "char")), C.literal("un"), 2))))))) (((d).iscursed = 1), ((d).blessed = ((d).uncursed = 0)));
+        if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd(C.ptrAdd((d).p, -(10), "char"), -(2), "char")), (d).bp, "<")
+            || C.strncmpi((C.ptrAdd(C.ptrAdd((d).p, -(10), "char"), -(2), "char")), C.literal("un"), 2))))))) (((d).iscursed = 1), ((d).blessed = ((d).uncursed = 0)));
         else /* unholy water */
-        (((d).blessed = 1), ((d).iscursed = ((d).uncursed = 0)));
+            (((d).blessed = 1), ((d).iscursed = ((d).uncursed = 0)));
 /* holy water */
         ((d).typ = C.POT_WATER);
         return 2;
@@ -4117,18 +4610,24 @@ export function readobjnam_postparse1(d) {
             return 3;
         }
     }
-    if (Number(!!((d).unlabeled && Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(6), "char")), (d).bp, "<") || C.strncmpi(((C.ptrAdd((d).p, -(6), "char"))), (C.literal("scroll")), C.int((-1))))))))))) {
+    if (Number(!!((d).unlabeled
+        && Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(6), "char")), (d).bp, "<")
+        || C.strncmpi(((C.ptrAdd((d).p, -(6), "char"))), (C.literal("scroll")), C.int((-1))))))))))) {
         ((d).typ = C.SCR_BLANK_PAPER);
         return 2;
 /*goto typfnd;*/
     }
-    if (Number(!!((d).unlabeled && Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(9), "char")), (d).bp, "<") || C.strncmpi(((C.ptrAdd((d).p, -(9), "char"))), (C.literal("spellbook")), C.int((-1))))))))))) {
+    if (Number(!!((d).unlabeled
+        && Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(9), "char")), (d).bp, "<")
+        || C.strncmpi(((C.ptrAdd((d).p, -(9), "char"))), (C.literal("spellbook")), C.int((-1))))))))))) {
         ((d).typ = C.SPE_BLANK_PAPER);
         return 2;
 /*goto typfnd;*/
     }
 /* specific food rather than color of gem/potion/spellbook[/scales] */
-    if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(6), "char")), (d).bp, "<") || C.strncmpi(((C.ptrAdd((d).p, -(6), "char"))), (C.literal("orange")), C.int((-1)))))))) && Number((d).mntmp == C.NON_PM)))) {
+    if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(6), "char")), (d).bp, "<")
+        || C.strncmpi(((C.ptrAdd((d).p, -(6), "char"))), (C.literal("orange")), C.int((-1))))))))
+        && Number((d).mntmp == C.NON_PM)))) {
         ((d).typ = C.ORANGE);
         return 2;
 /*goto typfnd;*/
@@ -4139,7 +4638,14 @@ export function readobjnam_postparse1(d) {
      * gold/money concept.  Maybe we want to add other monetary units as
      * well in the future. (TH)
      */
-    if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(10), "char")), (d).bp, "<") || C.strncmpi(((C.ptrAdd((d).p, -(10), "char"))), (C.literal("gold piece")), C.int((-1)))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(7), "char")), (d).bp, "<") || C.strncmpi(((C.ptrAdd((d).p, -(7), "char"))), (C.literal("zorkmid")), C.int((-1)))))))))) || Number(!(C.strncmpi(((d).bp), (C.literal("gold")), C.int((-1))))))) || Number(!(C.strncmpi(((d).bp), (C.literal("money")), C.int((-1))))))) || Number(!(C.strncmpi(((d).bp), (C.literal("coin")), C.int((-1))))))) || Number(C.deref((d).bp, "char") == C.GOLD_SYM)))) {
+    if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(10), "char")), (d).bp, "<")
+        || C.strncmpi(((C.ptrAdd((d).p, -(10), "char"))), (C.literal("gold piece")), C.int((-1))))))))
+        || Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(7), "char")), (d).bp, "<")
+        || C.strncmpi(((C.ptrAdd((d).p, -(7), "char"))), (C.literal("zorkmid")), C.int((-1))))))))))
+        || Number(!(C.strncmpi(((d).bp), (C.literal("gold")), C.int((-1)))))))
+        || Number(!(C.strncmpi(((d).bp), (C.literal("money")), C.int((-1)))))))
+        || Number(!(C.strncmpi(((d).bp), (C.literal("coin")), C.int((-1)))))))
+        || Number(C.deref((d).bp, "char") == C.GOLD_SYM)))) {
         if (Number(!!(Number((d).cnt > 5000) && Number(!((C.flags).debug))))) ((d).cnt = 5000);
         else if (Number((d).cnt < 1)) ((d).cnt = 1);
         ((d).otmp = C.mksobj(C.GOLD_PIECE, (C.char(0)), (C.char(0))));
@@ -4150,14 +4656,27 @@ export function readobjnam_postparse1(d) {
 /*return otmp;*/
     }
 /* check for single character object class code ("/" for wand, &c) */
-    if (Number(!!(Number(!!(Number(!!(Number(C.strlen((d).bp) == C.ulong(1)) && Number(((i = C.def_char_to_objclass(C.deref((d).bp, "char")))) < C.MAXOCLASSES))) && Number(i > C.ILLOBJ_CLASS))) && (Number(!!(Number(i != C.VENOM_CLASS) || (C.flags).debug)))))) {
+    if (Number(!!(Number(!!(Number(!!(Number(C.strlen((d).bp) == C.ulong(1))
+        && Number(((i = C.def_char_to_objclass(C.deref((d).bp, "char")))) < C.MAXOCLASSES)))
+        && Number(i > C.ILLOBJ_CLASS)))
+        && (Number(!!(Number(i != C.VENOM_CLASS)
+        || (C.flags).debug)))))) {
         ((d).oclass = C.char(i));
         return 4;
 /*goto any;*/
     }
 /* Search for class names: XXXXX potion, scroll of XXXXX.
        Avoid false hits on, e.g., rings for "ring mail". */
-    if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.strncmpi((d).bp, C.literal("enchant "), 8) && C.strncmpi((d).bp, C.literal("destroy "), 8))) && C.strncmpi((d).bp, C.literal("detect food"), 11))) && C.strncmpi((d).bp, C.literal("food detection"), 14))) && C.strncmpi((d).bp, C.literal("ring mail"), 9))) && C.strncmpi((d).bp, C.literal("studded leather armor"), 21))) && C.strncmpi((d).bp, C.literal("leather armor"), 13))) && C.strncmpi((d).bp, C.literal("tooled horn"), 11))) && C.strncmpi((d).bp, C.literal("food ration"), 11))) && C.strncmpi((d).bp, C.literal("meat ring"), 9)))) for ((i = 0); Number(i < C.int((BigInt(C.sizeof("const char[13]"))))); (i++)) {
+    if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.strncmpi((d).bp, C.literal("enchant "), 8)
+        && C.strncmpi((d).bp, C.literal("destroy "), 8)))
+        && C.strncmpi((d).bp, C.literal("detect food"), 11)))
+        && C.strncmpi((d).bp, C.literal("food detection"), 14)))
+        && C.strncmpi((d).bp, C.literal("ring mail"), 9)))
+        && C.strncmpi((d).bp, C.literal("studded leather armor"), 21)))
+        && C.strncmpi((d).bp, C.literal("leather armor"), 13)))
+        && C.strncmpi((d).bp, C.literal("tooled horn"), 11)))
+        && C.strncmpi((d).bp, C.literal("food ration"), 11)))
+        && C.strncmpi((d).bp, C.literal("meat ring"), 9)))) for ((i = 0); Number(i < C.int((BigInt(C.sizeof("const char[13]"))))); (i++)) {
         let j = C.int(C.Strlen_(C.deref(C.ptrAdd(C.wrp, i, "const char *const"), "const char *const"), C.literal("readobjnam_postparse1"), 4568));
 /* check for "<class> [ of ] something" */
         if (Number(!(C.strncmpi((d).bp, C.deref(C.ptrAdd(C.wrp, i, "const char *const"), "const char *const"), j)))) {
@@ -4167,12 +4686,13 @@ export function readobjnam_postparse1(d) {
                 if (Number(!(C.strncmpi((d).bp, C.literal(" of "), 4)))) ((d).actualn = C.ptrAdd((d).bp, 4, "char"));
 /* else if(*bp) ?? */
             }
-            else ((d).actualn = (d).bp);
+                else ((d).actualn = (d).bp);
             return 1;
 /*goto srch;*/
         }
 /* check for "something <class>" */
-        if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(j), "char")), (d).bp, "<") || C.strncmpi(((C.ptrAdd((d).p, -(j), "char"))), (C.deref(C.ptrAdd(C.wrp, i, "const char *const"), "const char *const")), C.int((-1))))))))) {
+        if (Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(j), "char")), (d).bp, "<")
+            || C.strncmpi(((C.ptrAdd((d).p, -(j), "char"))), (C.deref(C.ptrAdd(C.wrp, i, "const char *const"), "const char *const")), C.int((-1))))))))) {
             ((d).oclass = C.deref(C.ptrAdd(C.wrpsym, i, "const char"), "const char"));
 /* for "foo amulet", leave the class name so that
                    wishymatch() can do "of inversion" to try matching
@@ -4182,7 +4702,8 @@ export function readobjnam_postparse1(d) {
             if (Number((d).oclass != C.AMULET_CLASS)) {
                 ((d).p = C.ptrAdd((d).p, -(j), "char"));
                 C.store((d).p, "char", C.char(0));
-                if (Number(!!(C.ptrCompare((d).p, (d).bp, ">") && Number(C.deref(C.ptrAdd((d).p, C.int((-1)), "char"), "char") == 32)))) C.store(C.ptrAdd((d).p, C.int((-1)), "char"), "char", C.char(0));
+                if (Number(!!(C.ptrCompare((d).p, (d).bp, ">")
+                    && Number(C.deref(C.ptrAdd((d).p, C.int((-1)), "char"), "char") == 32)))) C.store(C.ptrAdd((d).p, C.int((-1)), "char"), "char", C.char(0));
             }
             else {
                 let k;
@@ -4228,7 +4749,9 @@ export function readobjnam_postparse1(d) {
      * " object", but " trap" is suggested--to either the trap
      * name or the object name.
      */
-    if (Number(!!((C.flags).debug && (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("bear"), 4))) || Number(!(C.strncmpi((d).bp, C.literal("land"), 4))))))))) {
+    if (Number(!!((C.flags).debug
+        && (Number(!!(Number(!(C.strncmpi((d).bp, C.literal("bear"), 4)))
+        || Number(!(C.strncmpi((d).bp, C.literal("land"), 4))))))))) {
         let beartrap = C.char((Number(C.lowc(C.deref((d).bp, "char")) == 98)));
         let zp = C.ptrAdd((d).bp, 4, "char");
 /* skip "bear"/"land" */
@@ -4265,7 +4788,10 @@ export function readobjnam_postparse2(d) {
         return 2;
 /*goto typfnd;*/
     }
-    if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(6), "char")), (d).bp, "<") || C.strncmpi(((C.ptrAdd((d).p, -(6), "char"))), (C.literal(" stone")), C.int((-1)))))))) || Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(4), "char")), (d).bp, "<") || C.strncmpi(((C.ptrAdd((d).p, -(4), "char"))), (C.literal(" gem")), C.int((-1))))))))))) {
+    if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(6), "char")), (d).bp, "<")
+        || C.strncmpi(((C.ptrAdd((d).p, -(6), "char"))), (C.literal(" stone")), C.int((-1))))))))
+        || Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(4), "char")), (d).bp, "<")
+        || C.strncmpi(((C.ptrAdd((d).p, -(4), "char"))), (C.literal(" gem")), C.int((-1))))))))))) {
         C.store(C.ptrAdd((d).p, ((Number(!(C.strncmpi((C.ptrAdd((d).p, -(4), "char")), (C.literal(" gem")), C.int((-1)))))) ? C.int((-4)) : C.int((-6))), "char"), "char", C.char(0));
         ((d).oclass = C.char(C.GEM_CLASS));
         ((d).dn = ((d).actualn = (d).bp));
@@ -4276,7 +4802,9 @@ export function readobjnam_postparse2(d) {
         ;
 /* avoid false hit on "* glass" */
     }
-    else if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(6), "char")), (d).bp, "<") || C.strncmpi(((C.ptrAdd((d).p, -(6), "char"))), (C.literal(" glass")), C.int((-1)))))))) || Number(!(C.strncmpi(((d).bp), (C.literal("glass")), C.int((-1)))))))) {
+    else if (Number(!!(Number(!((Number(!!(C.ptrCompare((C.ptrAdd((d).p, -(6), "char")), (d).bp, "<")
+        || C.strncmpi(((C.ptrAdd((d).p, -(6), "char"))), (C.literal(" glass")), C.int((-1))))))))
+        || Number(!(C.strncmpi(((d).bp), (C.literal("glass")), C.int((-1)))))))) {
         let s = (d).bp;
 /* treat "broken glass" as a non-existent item; since "broken" is
            also a chest/box prefix it might have been stripped off above */
@@ -4295,7 +4823,7 @@ export function readobjnam_postparse2(d) {
             ((d).typ = C.int((C.FIRST_GLASS_GEM + (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 4705, C.literal("readobjnam_postparse2")), C.rn2(C.NUM_GLASS_GEMS))) : C.rn2(C.NUM_GLASS_GEMS))))));
             if (Number((C.deref(C.ptrAdd(C.objects, (d).typ, "struct objclass"), "struct objclass")).oc_class == C.GEM_CLASS)) return 2;
             else /*goto typfnd;*/
-            ((d).typ = 0);
+                ((d).typ = 0);
 /* somebody changed objects[]? punt */
         }
         else {
@@ -4320,7 +4848,8 @@ export function readobjnam_postparse3(d) {
     if (Number(!!(Number(!((d).oclass)) && (d).actualn))) {
         for ((i = C.deref(C.ptrAdd((C.svb).bases, C.GEM_CLASS, "int"), "int")); Number(i <= C.LAST_REAL_GEM); (i++)) {
             let zn;
-            if (Number(!!(C.ptrCompare(((zn = ((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass"))).oc_name_idx, "struct objdescr"), "struct objdescr")).oc_name))), 0, "!=") && Number(!(C.strncmpi(((d).actualn), (zn), C.int((-1)))))))) {
+            if (Number(!!(C.ptrCompare(((zn = ((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass"))).oc_name_idx, "struct objdescr"), "struct objdescr")).oc_name))), 0, "!=")
+                && Number(!(C.strncmpi(((d).actualn), (zn), C.int((-1)))))))) {
                 ((d).typ = i);
                 return 2;
 /*goto typfnd;*/
@@ -4334,7 +4863,12 @@ export function readobjnam_postparse3(d) {
 /*goto typfnd;*/
         }
     }
-    if (Number(!!(Number(!!(Number(!!((Number((((d).typ = C.callLocal(rnd_otyp_by_namedesc, (d).actualn, (d).oclass, 1))) != C.STRANGE_OBJECT)) || (Number(!!(C.ptrCompare((d).dn, (d).actualn, "!=") && (Number((((d).typ = C.callLocal(rnd_otyp_by_namedesc, (d).dn, (d).oclass, 1))) != C.STRANGE_OBJECT))))))) || (Number((((d).typ = C.callLocal(rnd_otyp_by_namedesc, (d).un, (d).oclass, 1))) != C.STRANGE_OBJECT)))) || (Number(!!(C.ptrCompare((d).origbp, (d).actualn, "!=") && (Number((((d).typ = C.callLocal(rnd_otyp_by_namedesc, (d).origbp, (d).oclass, 1))) != C.STRANGE_OBJECT)))))))) return 2;
+    if (Number(!!(Number(!!(Number(!!((Number((((d).typ = C.callLocal(rnd_otyp_by_namedesc, (d).actualn, (d).oclass, 1))) != C.STRANGE_OBJECT))
+        || (Number(!!(C.ptrCompare((d).dn, (d).actualn, "!=")
+        && (Number((((d).typ = C.callLocal(rnd_otyp_by_namedesc, (d).dn, (d).oclass, 1))) != C.STRANGE_OBJECT)))))))
+        || (Number((((d).typ = C.callLocal(rnd_otyp_by_namedesc, (d).un, (d).oclass, 1))) != C.STRANGE_OBJECT))))
+        || (Number(!!(C.ptrCompare((d).origbp, (d).actualn, "!=")
+        && (Number((((d).typ = C.callLocal(rnd_otyp_by_namedesc, (d).origbp, (d).oclass, 1))) != C.STRANGE_OBJECT)))))))) return 2;
 /*goto typfnd;*/
     ((d).typ = 0);
     if ((d).actualn) {
@@ -4414,10 +4948,11 @@ export function readobjnam_postparse3(d) {
             else if (Number(!(C.strncmpi(fp, C.literal("uncursed "), (l = 9))))) {
                 (uncursedf = 1);
             }
-            else if (Number(!!(Number(!(C.strncmpi(fp, C.literal("partly eaten "), (l = 13)))) || Number(!(C.strncmpi(fp, C.literal("partially eaten "), (l = 16))))))) {
+            else if (Number(!!(Number(!(C.strncmpi(fp, C.literal("partly eaten "), (l = 13))))
+                || Number(!(C.strncmpi(fp, C.literal("partially eaten "), (l = 16))))))) {
                 (halfeatenf = 1);
             }
-            else break;
+                else break;
             (fp = C.ptrAdd(fp, l, "char"));
         }
         for ((f = (C.gf).ffruit); f; (f = (f).nextf)) {
@@ -4460,7 +4995,8 @@ export function readobjnam_postparse3(d) {
     if (Number(!!((d).oclass && Number(!((d).typ))))) {
         let as = C.spellings;
         while ((as).sp) {
-            if (Number(!!(Number((C.deref(C.ptrAdd(C.objects, (as).ob, "struct objclass"), "struct objclass")).oc_class == (d).oclass) && C.callLocal(wishymatch, (d).bp, (as).sp, (C.char(1)))))) {
+            if (Number(!!(Number((C.deref(C.ptrAdd(C.objects, (as).ob, "struct objclass"), "struct objclass")).oc_class == (d).oclass)
+                && C.callLocal(wishymatch, (d).bp, (as).sp, (C.char(1)))))) {
                 ((d).typ = (as).ob);
                 return 2;
 /*goto typfnd;*/
@@ -4496,7 +5032,9 @@ export function readobjnam(bp, no_wish) {
     C.mungspaces(bp);
 /* allow wishing for "nothing" to preserve wishless conduct...
        [now requires "wand of nothing" if that's what was really wanted] */
-    if (Number(!!(Number(!!(Number(!(C.strncmpi((bp), (C.literal("nothing")), C.int((-1))))) || Number(!(C.strncmpi((bp), (C.literal("nil")), C.int((-1))))))) || Number(!(C.strncmpi((bp), (C.literal("none")), C.int((-1)))))))) return no_wish;
+    if (Number(!!(Number(!!(Number(!(C.strncmpi((bp), (C.literal("nothing")), C.int((-1)))))
+        || Number(!(C.strncmpi((bp), (C.literal("nil")), C.int((-1)))))))
+        || Number(!(C.strncmpi((bp), (C.literal("none")), C.int((-1)))))))) return no_wish;
 /* save the [nearly] unmodified choice string */
     C.strcpy((d).fruitbuf, bp);
     if (readobjnam_preparse(d)) break any;
@@ -4606,7 +5144,9 @@ export function readobjnam(bp, no_wish) {
     }
 /* if asking for corpse of a monster which leaves behind a glob, give
        glob instead of rejecting the monster type to create random corpse */
-    if (Number(!!(Number(!!(Number((d).typ == C.CORPSE) && Number((d).mntmp >= C.LOW_PM))) && Number((C.deref(C.ptrAdd(C.mons, (d).mntmp, "struct permonst"), "struct permonst")).mlet == C.S_PUDDING)))) {
+    if (Number(!!(Number(!!(Number((d).typ == C.CORPSE)
+        && Number((d).mntmp >= C.LOW_PM)))
+        && Number((C.deref(C.ptrAdd(C.mons, (d).mntmp, "struct permonst"), "struct permonst")).mlet == C.S_PUDDING)))) {
         ((d).typ = C.int((C.GLOB_OF_GRAY_OOZE + (C.int(((d).mntmp - C.PM_GRAY_OOZE))))));
         ((d).mntmp = C.NON_PM);
 /* not used for globs */
@@ -4639,21 +5179,47 @@ export function readobjnam(bp, no_wish) {
             let rn1cnt = (C.int(((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 5059, C.literal("readobjnam")), C.rn2(5))) : C.rn2(5))) + (2))));
 /* 2..6 */
             if (Number(rn1cnt > C.int((6 - (d).gsize)))) (rn1cnt = C.int((6 - (d).gsize)));
-            if (Number(!!(Number((d).cnt > rn1cnt) && (Number(!!(Number(!!(Number(!((C.flags).debug)) || (C.program_state).wizkit_wishing)) || Number(C.yn_function(C.literal("Override glob weight limit?"), C.ynchars, C.char(110), (C.char(1))) != 121))))))) ((d).cnt = rn1cnt);
+            if (Number(!!(Number((d).cnt > rn1cnt)
+                && (Number(!!(Number(!!(Number(!((C.flags).debug))
+                || (C.program_state).wizkit_wishing))
+                || Number(C.yn_function(C.literal("Override glob weight limit?"), C.ynchars, C.char(110), (C.char(1))) != 121))))))) ((d).cnt = rn1cnt);
             (((d).otmp).owt = C.uint((((d).otmp).owt * C.uint((d).cnt))));
         }
 /* note: the owt assignment below will not change glob's weight */
         ((d).cnt = 0);
     }
     else if (Number((d).cnt > 0)) {
-        if (Number(!!(C.int((C.deref(C.ptrAdd(C.objects, (d).typ, "struct objclass"), "struct objclass")).oc_merge) && (Number(!!(Number(!!(Number(!!((C.flags).debug || Number((d).cnt < (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 5077, C.literal("readobjnam")), C.rnd(6))) : C.rnd(6)))))) || (Number(!!(Number((d).cnt <= 7) && (Number(!!(Number(((d).otmp).otyp == C.TALLOW_CANDLE) || Number(((d).otmp).otyp == C.WAX_CANDLE))))))))) || (Number(!!(Number((d).cnt <= 20) && (Number(!!(Number(!!(Number(!!(Number((d).typ == C.ROCK) || Number((d).typ == C.FLINT))) || (Number(!!(Number(!!((Number(!!(Number(((d).otmp).oclass == C.WEAPON_CLASS) || Number(((d).otmp).oclass == C.TOOL_CLASS)))) && Number((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_BOOMERANG))))) && Number((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_DART)))))))) || (Number(!!(Number((d).oclass == C.WEAPON_CLASS) && (Number(!!(Number(!!((Number(!!(Number(((d).otmp).oclass == C.WEAPON_CLASS) || Number(((d).otmp).oclass == C.GEM_CLASS)))) && Number((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_CROSSBOW))))) && Number((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_BOW))))))))))))))))))))) /* quantity isn't restricted when debugging */
+        if (Number(!!(C.int((C.deref(C.ptrAdd(C.objects, (d).typ, "struct objclass"), "struct objclass")).oc_merge)
+            && (Number(!!(Number(!!(Number(!!((C.flags).debug
+            || Number((d).cnt < (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 5077, C.literal("readobjnam")), C.rnd(6))) : C.rnd(6))))))
+            || (Number(!!(Number((d).cnt <= 7)
+            && (Number(!!(Number(((d).otmp).otyp == C.TALLOW_CANDLE)
+            || Number(((d).otmp).otyp == C.WAX_CANDLE)))))))))
+            || (Number(!!(Number((d).cnt <= 20)
+            && (Number(!!(Number(!!(Number(!!(Number((d).typ == C.ROCK)
+            || Number((d).typ == C.FLINT)))
+            || (Number(!!(Number(!!((Number(!!(Number(((d).otmp).oclass == C.WEAPON_CLASS)
+            || Number(((d).otmp).oclass == C.TOOL_CLASS))))
+            && Number((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_BOOMERANG)))))
+            && Number((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_DART))))))))
+            || (Number(!!(Number((d).oclass == C.WEAPON_CLASS)
+            && (Number(!!(Number(!!((Number(!!(Number(((d).otmp).oclass == C.WEAPON_CLASS)
+            || Number(((d).otmp).oclass == C.GEM_CLASS))))
+            && Number((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_CROSSBOW)))))
+            && Number((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_BOW))))))))))))))))))))) /* quantity isn't restricted when debugging */
 /* note: in normal play, explicitly asking for 1 might
                    fail the 'cnt < rnd(6)' test and could produce more
                    than 1 if mksobj() creates the item that way */
 /* WEAPON_CLASS test excludes gems, gray stones */
-        (((d).otmp).quan = C.long((d).cnt));
+            (((d).otmp).quan = C.long((d).cnt));
     }
-    if (Number(!!((d).islit && (Number(!!(Number(!!(Number(!!(Number(!!(Number((d).typ == C.OIL_LAMP) || Number((d).typ == C.MAGIC_LAMP))) || Number((d).typ == C.BRASS_LANTERN))) || (Number(!!(Number(((d).otmp).otyp == C.TALLOW_CANDLE) || Number(((d).otmp).otyp == C.WAX_CANDLE)))))) || Number((d).typ == C.POT_OIL))))))) {
+    if (Number(!!((d).islit
+        && (Number(!!(Number(!!(Number(!!(Number(!!(Number((d).typ == C.OIL_LAMP)
+        || Number((d).typ == C.MAGIC_LAMP)))
+        || Number((d).typ == C.BRASS_LANTERN)))
+        || (Number(!!(Number(((d).otmp).otyp == C.TALLOW_CANDLE)
+        || Number(((d).otmp).otyp == C.WAX_CANDLE))))))
+        || Number((d).typ == C.POT_OIL))))))) {
         C.place_object((d).otmp, (C.u).ux, (C.u).uy);
 /* make it viable light source */
         C.begin_burn((d).otmp, (C.char(0)));
@@ -4668,8 +5234,14 @@ export function readobjnam(bp, no_wish) {
         ;
 /* no restrictions except SPE_LIM */
     }
-    else if (Number(!!(Number(!!(Number(!!(Number((d).oclass == C.ARMOR_CLASS) || Number((d).oclass == C.WEAPON_CLASS))) || (Number(!!(Number((((d).otmp)).oclass == C.TOOL_CLASS) && Number((C.deref(C.ptrAdd(C.objects, (((d).otmp)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE)))))) || (Number(!!(Number((d).oclass == C.RING_CLASS) && C.int((C.deref(C.ptrAdd(C.objects, (d).typ, "struct objclass"), "struct objclass")).oc_charged))))))) {
-        if (Number(!!(Number((d).spe > (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 5102, C.literal("readobjnam")), C.rnd(5))) : C.rnd(5)))) && Number((d).spe > ((d).otmp).spe)))) ((d).spe = 0);
+    else if (Number(!!(Number(!!(Number(!!(Number((d).oclass == C.ARMOR_CLASS)
+        || Number((d).oclass == C.WEAPON_CLASS)))
+        || (Number(!!(Number((((d).otmp)).oclass == C.TOOL_CLASS)
+        && Number((C.deref(C.ptrAdd(C.objects, (((d).otmp)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE))))))
+        || (Number(!!(Number((d).oclass == C.RING_CLASS)
+        && C.int((C.deref(C.ptrAdd(C.objects, (d).typ, "struct objclass"), "struct objclass")).oc_charged))))))) {
+        if (Number(!!(Number((d).spe > (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 5102, C.literal("readobjnam")), C.rnd(5))) : C.rnd(5))))
+            && Number((d).spe > ((d).otmp).spe)))) ((d).spe = 0);
         if (Number(!!(Number((d).spe > 2) && Number((C.int(((C.u).uluck + (C.u).moreluck))) < 0)))) ((d).spesgn = C.int((-1)));
     }
     else {
@@ -4715,13 +5287,18 @@ export function readobjnam(bp, no_wish) {
             case (C.FIGURINE):
                 case (C.CORPSE):
 {
-                        let P = ((((Number(!!(Number(((d).mntmp) >= C.LOW_PM) && Number(((d).mntmp) < C.NUMMONS)))))) ? C.ptrAdd(C.mons, (d).mntmp, "struct permonst") : 0);
-                        (((d).otmp).spe = C.char(((Number(!(P))) ? C.CORPSTAT_RANDOM : (((Number((C.ulong((((P)).mflags2 & C.ulong(262144n)))) != C.ulong(0n)))) ? C.CORPSTAT_NEUTER : (((Number(!!(Number((d).mgend == C.FEMALE) && Number(!((Number((C.ulong((((P)).mflags2 & C.ulong(65536n)))) != C.ulong(0n))))))))) ? C.CORPSTAT_FEMALE : (((Number(!!(Number((d).mgend == C.MALE) && Number(!((Number((C.ulong((((P)).mflags2 & C.ulong(131072n)))) != C.ulong(0n))))))))) ? C.CORPSTAT_MALE : C.CORPSTAT_RANDOM))))));
+                        let P = ((((Number(!!(Number(((d).mntmp) >= C.LOW_PM)
+                            && Number(((d).mntmp) < C.NUMMONS)))))) ? C.ptrAdd(C.mons, (d).mntmp, "struct permonst") : 0);
+                        (((d).otmp).spe = C.char(((Number(!(P))) ? C.CORPSTAT_RANDOM : (((Number((C.ulong((((P)).mflags2 & C.ulong(262144n)))) != C.ulong(0n)))) ? C.CORPSTAT_NEUTER : (((Number(!!(Number((d).mgend == C.FEMALE)
+                            && Number(!((Number((C.ulong((((P)).mflags2 & C.ulong(65536n)))) != C.ulong(0n))))))))) ? C.CORPSTAT_FEMALE : (((Number(!!(Number((d).mgend == C.MALE)
+                            && Number(!((Number((C.ulong((((P)).mflags2 & C.ulong(131072n)))) != C.ulong(0n))))))))) ? C.CORPSTAT_MALE : C.CORPSTAT_RANDOM))))));
 /* if neuter, force neuter regardless of wish request */
 /* not neuter, honor wish unless it conflicts */
 /* unspecified or wish conflicts */
-                        if (Number(!!(P && Number(((d).otmp).spe == C.CORPSTAT_RANDOM)))) (((d).otmp).spe = C.char((((Number((C.ulong((((P)).mflags2 & C.ulong(65536n)))) != C.ulong(0n)))) ? C.CORPSTAT_MALE : (((Number((C.ulong((((P)).mflags2 & C.ulong(131072n)))) != C.ulong(0n)))) ? C.CORPSTAT_FEMALE : (((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 5163, C.literal("readobjnam")), C.rn2(2))) : C.rn2(2)))) ? C.CORPSTAT_MALE : C.CORPSTAT_FEMALE)))));
-                        if (Number(!!((d).ishistoric && Number((d).typ == C.STATUE)))) (((d).otmp).spe = C.char((((d).otmp).spe | C.CORPSTAT_HISTORIC)));
+                        if (Number(!!(P
+                            && Number(((d).otmp).spe == C.CORPSTAT_RANDOM)))) (((d).otmp).spe = C.char((((Number((C.ulong((((P)).mflags2 & C.ulong(65536n)))) != C.ulong(0n)))) ? C.CORPSTAT_MALE : (((Number((C.ulong((((P)).mflags2 & C.ulong(131072n)))) != C.ulong(0n)))) ? C.CORPSTAT_FEMALE : (((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 5163, C.literal("readobjnam")), C.rn2(2))) : C.rn2(2)))) ? C.CORPSTAT_MALE : C.CORPSTAT_FEMALE)))));
+                        if (Number(!!((d).ishistoric
+                            && Number((d).typ == C.STATUE)))) (((d).otmp).spe = C.char((((d).otmp).spe | C.CORPSTAT_HISTORIC)));
                         break;
                     }
         ;
@@ -4752,19 +5329,27 @@ export function readobjnam(bp, no_wish) {
 /* werecreatures in beast form are all flagged no-corpse so for
            corpses and tins, switch to their corresponding human form;
            for figurines, override the can't-be-human restriction instead */
-        if (Number(!!(Number(!!(Number(!!(Number((d).typ != C.FIGURINE) && (Number((C.ulong((((C.ptrAdd(C.mons, (d).mntmp, "struct permonst"))).mflags2 & C.ulong(4n)))) != C.ulong(0n))))) && Number((C.int(((C.deref(C.ptrAdd((C.svm).mvitals, (d).mntmp, "struct mvitals"), "struct mvitals")).mvflags & C.G_NOCORPSE))) != 0))) && Number(((humanwere = C.counter_were((d).mntmp))) != C.NON_PM)))) ((d).mntmp = humanwere);
+        if (Number(!!(Number(!!(Number(!!(Number((d).typ != C.FIGURINE)
+            && (Number((C.ulong((((C.ptrAdd(C.mons, (d).mntmp, "struct permonst"))).mflags2 & C.ulong(4n)))) != C.ulong(0n)))))
+            && Number((C.int(((C.deref(C.ptrAdd((C.svm).mvitals, (d).mntmp, "struct mvitals"), "struct mvitals")).mvflags & C.G_NOCORPSE))) != 0)))
+            && Number(((humanwere = C.counter_were((d).mntmp))) != C.NON_PM)))) ((d).mntmp = humanwere);
         switch ((d).typ) {
             case (C.TIN):
                 if (C.dead_species((d).mntmp, (C.char(0)))) {
                     (((d).otmp).corpsenm = C.NON_PM);
 /* it's empty */
                 }
-                else if (Number(!!(Number(!!((Number(!!(Number(!((C.int(((C.deref(C.ptrAdd(C.mons, (d).mntmp, "struct permonst"), "struct permonst")).geno & C.G_UNIQ))))) || (C.flags).debug))) && Number(!((C.int(((C.deref(C.ptrAdd((C.svm).mvitals, (d).mntmp, "struct mvitals"), "struct mvitals")).mvflags & C.G_NOCORPSE))))))) && Number((C.deref(C.ptrAdd(C.mons, (d).mntmp, "struct permonst"), "struct permonst")).cnutrit != 0)))) {
+                else if (Number(!!(Number(!!((Number(!!(Number(!((C.int(((C.deref(C.ptrAdd(C.mons, (d).mntmp, "struct permonst"), "struct permonst")).geno & C.G_UNIQ)))))
+                    || (C.flags).debug)))
+                    && Number(!((C.int(((C.deref(C.ptrAdd((C.svm).mvitals, (d).mntmp, "struct mvitals"), "struct mvitals")).mvflags & C.G_NOCORPSE)))))))
+                    && Number((C.deref(C.ptrAdd(C.mons, (d).mntmp, "struct permonst"), "struct permonst")).cnutrit != 0)))) {
                     (((d).otmp).corpsenm = (d).mntmp);
                 }
             break;
             case (C.CORPSE):
-                if (Number(!!((Number(!!(Number(!((C.int(((C.deref(C.ptrAdd(C.mons, (d).mntmp, "struct permonst"), "struct permonst")).geno & C.G_UNIQ))))) || (C.flags).debug))) && Number(!((C.int(((C.deref(C.ptrAdd((C.svm).mvitals, (d).mntmp, "struct mvitals"), "struct mvitals")).mvflags & C.G_NOCORPSE)))))))) {
+                if (Number(!!((Number(!!(Number(!((C.int(((C.deref(C.ptrAdd(C.mons, (d).mntmp, "struct permonst"), "struct permonst")).geno & C.G_UNIQ)))))
+                    || (C.flags).debug)))
+                    && Number(!((C.int(((C.deref(C.ptrAdd((C.svm).mvitals, (d).mntmp, "struct mvitals"), "struct mvitals")).mvflags & C.G_NOCORPSE)))))))) {
                     if (Number((C.deref(C.ptrAdd(C.mons, (d).mntmp, "struct permonst"), "struct permonst")).msound == C.MS_GUARDIAN)) ((d).mntmp = C.genus((d).mntmp, 1));
                     C.set_corpsenm((d).otmp, (d).mntmp);
                 }
@@ -4778,16 +5363,21 @@ export function readobjnam(bp, no_wish) {
             C.set_corpsenm((d).otmp, (d).mntmp);
             break;
             case (C.FIGURINE):
-                if (Number(!!(Number(!!(Number(!((C.int(((C.deref(C.ptrAdd(C.mons, (d).mntmp, "struct permonst"), "struct permonst")).geno & C.G_UNIQ))))) && (Number(!!(Number(!((Number((C.ulong((((C.ptrAdd(C.mons, (d).mntmp, "struct permonst"))).mflags2 & C.ulong(8n)))) != C.ulong(0n))))) || (Number((C.ulong((((C.ptrAdd(C.mons, (d).mntmp, "struct permonst"))).mflags2 & C.ulong(4n)))) != C.ulong(0n)))))))) && Number((d).mntmp != C.PM_MAIL_DAEMON)))) (((d).otmp).corpsenm = (d).mntmp);
+                if (Number(!!(Number(!!(Number(!((C.int(((C.deref(C.ptrAdd(C.mons, (d).mntmp, "struct permonst"), "struct permonst")).geno & C.G_UNIQ)))))
+                    && (Number(!!(Number(!((Number((C.ulong((((C.ptrAdd(C.mons, (d).mntmp, "struct permonst"))).mflags2 & C.ulong(8n)))) != C.ulong(0n)))))
+                    || (Number((C.ulong((((C.ptrAdd(C.mons, (d).mntmp, "struct permonst"))).mflags2 & C.ulong(4n)))) != C.ulong(0n))))))))
+                    && Number((d).mntmp != C.PM_MAIL_DAEMON)))) (((d).otmp).corpsenm = (d).mntmp);
             break;
             case (C.STATUE):
                 (((d).otmp).corpsenm = (d).mntmp);
-            if (Number(!!((C.ptrCompare((((d).otmp)).cobj, 0, "!=")) && (Number(((C.ptrAdd(C.mons, (d).mntmp, "struct permonst"))).msize < 1))))) C.delete_contents((d).otmp);
+            if (Number(!!((C.ptrCompare((((d).otmp)).cobj, 0, "!="))
+                && (Number(((C.ptrAdd(C.mons, (d).mntmp, "struct permonst"))).msize < 1))))) C.delete_contents((d).otmp);
 /* no spellbook */
             break;
             case (C.SCALE_MAIL):
 /* Dragon mail - depends on the order of objects & dragons. */
-                if (Number(!!(Number((d).mntmp >= C.PM_GRAY_DRAGON) && Number((d).mntmp <= C.PM_YELLOW_DRAGON)))) (((d).otmp).otyp = C.short(C.int((C.int((C.GRAY_DRAGON_SCALE_MAIL + (d).mntmp)) - C.PM_GRAY_DRAGON))));
+                if (Number(!!(Number((d).mntmp >= C.PM_GRAY_DRAGON)
+                    && Number((d).mntmp <= C.PM_YELLOW_DRAGON)))) (((d).otmp).otyp = C.short(C.int((C.int((C.GRAY_DRAGON_SCALE_MAIL + (d).mntmp)) - C.PM_GRAY_DRAGON))));
             break;
         }
     }
@@ -4812,15 +5402,31 @@ export function readobjnam(bp, no_wish) {
     if (erosion_matters((d).otmp)) {
 /* wished-for item shouldn't be eroded unless specified */
         (((d).otmp).oeroded = (((d).otmp).oeroded2 = C.uint(0)));
-        if (Number(!!((d).eroded && (Number(!!(Number(!!(C.is_flammable((d).otmp) || (Number(C.int((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON)))) || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (((d).otmp)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS) && Number((((d).otmp)).oclass == C.ARMOR_CLASS)))))))))) (((d).otmp).oeroded = C.uint((d).eroded));
-        if (Number(!!((d).eroded2 && (Number(!!((Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER) || Number(C.int((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON)))) || C.is_rottable((d).otmp))))))) (((d).otmp).oeroded2 = C.uint((d).eroded2));
+        if (Number(!!((d).eroded
+            && (Number(!!(Number(!!(C.is_flammable((d).otmp)
+            || (Number(C.int((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))))
+            || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (((d).otmp)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS)
+            && Number((((d).otmp)).oclass == C.ARMOR_CLASS)))))))))) (((d).otmp).oeroded = C.uint((d).eroded));
+        if (Number(!!((d).eroded2
+            && (Number(!!((Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER)
+            || Number(C.int((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))))
+            || C.is_rottable((d).otmp))))))) (((d).otmp).oeroded2 = C.uint((d).eroded2));
 /*
          * 3.6.1: earlier versions included `&& !eroded && !eroded2' here,
          * but damageproof combined with damaged is feasible (eroded
          * armor modified by confused reading of cursed destroy armor)
          * so don't prevent player from wishing for such a combination.
          */
-        if (Number(!!((d).erodeproof && (Number(!!((Number(!!(Number(!!(Number(!!(Number(!!((Number(C.int((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON)) || C.is_flammable((d).otmp))) || C.is_rottable((d).otmp))) || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER) || Number(C.int((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON)))))) || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (((d).otmp)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS) && Number((((d).otmp)).oclass == C.ARMOR_CLASS))))))) || Number(((d).otmp).otyp == C.CRYSKNIFE))))))) (((d).otmp).oerodeproof = C.uint((Number(!!(Number((C.int(((C.u).uluck + (C.u).moreluck))) >= 0) || (C.flags).debug)))));
+        if (Number(!!((d).erodeproof
+            && (Number(!!((Number(!!(Number(!!(Number(!!(Number(!!((Number(C.int((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))
+            || C.is_flammable((d).otmp)))
+            || C.is_rottable((d).otmp)))
+            || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER)
+            || Number(C.int((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))))))
+            || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (((d).otmp)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS)
+            && Number((((d).otmp)).oclass == C.ARMOR_CLASS)))))))
+            || Number(((d).otmp).otyp == C.CRYSKNIFE))))))) (((d).otmp).oerodeproof = C.uint((Number(!!(Number((C.int(((C.u).uluck + (C.u).moreluck))) >= 0)
+            || (C.flags).debug)))));
     }
 /* set otmp->recharged */
     if (Number((d).oclass == C.WAND_CLASS)) {
@@ -4830,13 +5436,18 @@ export function readobjnam(bp, no_wish) {
     }
 /* set poisoned */
     if ((d).ispoisoned) {
-        if ((Number(!!((Number(!!(Number(!!(Number(((d).otmp).oclass == C.WEAPON_CLASS) && Number((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_SHURIKEN))))) && Number((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_BOW)))))) || C.permapoisoned((d).otmp))))) (((d).otmp).opoisoned = C.uint((Number((C.int(((C.u).uluck + (C.u).moreluck))) >= 0))));
+        if ((Number(!!((Number(!!(Number(!!(Number(((d).otmp).oclass == C.WEAPON_CLASS)
+            && Number((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_SHURIKEN)))))
+            && Number((C.deref(C.ptrAdd(C.objects, ((d).otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_BOW))))))
+            || C.permapoisoned((d).otmp))))) (((d).otmp).opoisoned = C.uint((Number((C.int(((C.u).uluck + (C.u).moreluck))) >= 0))));
         else if (Number((d).oclass == C.FOOD_CLASS)) /* try to taint by making it as old as possible */
-        (((d).otmp).age = 1n);
+            (((d).otmp).age = 1n);
     }
 /* and [un]trapped */
     if ((d).trapped) {
-        if (Number(!!((Number(!!(Number((((d).otmp)).otyp == C.LARGE_BOX) || Number((((d).otmp)).otyp == C.CHEST)))) || Number((d).typ == C.TIN)))) (((d).otmp).otrapped = C.uint((Number((d).trapped == 1))));
+        if (Number(!!((Number(!!(Number((((d).otmp)).otyp == C.LARGE_BOX)
+            || Number((((d).otmp)).otyp == C.CHEST))))
+            || Number((d).typ == C.TIN)))) (((d).otmp).otrapped = C.uint((Number((d).trapped == 1))));
     }
 /* empty for containers rather than for tins */
     if (Number((d).contents == C.TIN_EMPTY)) {
@@ -4864,9 +5475,13 @@ export function readobjnam(bp, no_wish) {
         if (((d).otmp).obroken) (((d).otmp).otrapped = C.uint(0));
     }
     if ((d).isgreased) (((d).otmp).greased = C.uint(1));
-    if (Number(!!((d).isdiluted && Number(((d).otmp).oclass == C.POTION_CLASS)))) (((d).otmp).odiluted = C.uint((Number(((d).otmp).otyp != C.POT_WATER))));
+    if (Number(!!((d).isdiluted
+        && Number(((d).otmp).oclass == C.POTION_CLASS)))) (((d).otmp).odiluted = C.uint((Number(((d).otmp).otyp != C.POT_WATER))));
 /* set tin variety */
-    if (Number(!!(Number(!!(Number(((d).otmp).otyp == C.TIN) && Number((d).tvariety >= 0))) && (Number(!!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 5343, C.literal("readobjnam")), C.rn2(4))) : C.rn2(4))) || (C.flags).debug)))))) C.set_tin_variety((d).otmp, (d).tvariety);
+    if (Number(!!(Number(!!(Number(((d).otmp).otyp == C.TIN)
+        && Number((d).tvariety >= 0)))
+        && (Number(!!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 5343, C.literal("readobjnam")), C.rn2(4))) : C.rn2(4)))
+        || (C.flags).debug)))))) C.set_tin_variety((d).otmp, (d).tvariety);
     if ((d).name) {
         let aname;
         let novelname;
@@ -4875,7 +5490,8 @@ export function readobjnam(bp, no_wish) {
         (aname = C.artifact_name((d).name, objtyp, (C.char(1))));
         if (Number(!!(aname && Number(objtyp.value == ((d).otmp).otyp)))) ((d).name = aname);
 /* 3.6 tribute - fix up novel */
-        if (Number(!!(Number(((d).otmp).otyp == C.SPE_NOVEL) && C.ptrCompare(((novelname = C.lookup_novel((d).name, C.fieldRef((d).otmp, "novelidx")))), 0, "!=")))) ((d).name = novelname);
+        if (Number(!!(Number(((d).otmp).otyp == C.SPE_NOVEL)
+            && C.ptrCompare(((novelname = C.lookup_novel((d).name, C.fieldRef((d).otmp, "novelidx")))), 0, "!=")))) ((d).name = novelname);
         ((d).otmp = C.oname((d).otmp, (d).name, C.ONAME_WISH));
 /* name==aname => wished for artifact (otmp->oartifact => got it) */
         if (Number(!!(((d).otmp).oartifact || C.ptrCompare((d).name, aname, "==")))) {
@@ -4887,7 +5503,10 @@ export function readobjnam(bp, no_wish) {
     if (C.permapoisoned((d).otmp)) (((d).otmp).opoisoned = C.uint(1));
 /* more wishing abuse: don't allow wishing for certain artifacts */
 /* and make them pay; charge them for the wish anyway! */
-    if (Number(!!((Number(!!(C.is_quest_artifact((d).otmp) || (Number(!!(((d).otmp).oartifact && Number((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 5374, C.literal("readobjnam")), C.rn2(C.nartifact_exist()))) : C.rn2(C.nartifact_exist()))) > 1))))))) && Number(!((C.flags).debug))))) {
+    if (Number(!!((Number(!!(C.is_quest_artifact((d).otmp)
+        || (Number(!!(((d).otmp).oartifact
+        && Number((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 5374, C.literal("readobjnam")), C.rn2(C.nartifact_exist()))) : C.rn2(C.nartifact_exist()))) > 1)))))))
+        && Number(!((C.flags).debug))))) {
         C.artifact_exists((d).otmp, C.safe_oname((d).otmp), (C.char(0)), C.ONAME_NO_FLAGS);
         C.obfree((d).otmp, 0);
         ((d).otmp = C.hands_obj);
@@ -4906,7 +5525,8 @@ export function readobjnam(bp, no_wish) {
         }
     }
     (((d).otmp).owt = C.uint(C.weight((d).otmp)));
-    if (Number(!!((d).very && Number(((d).otmp).otyp == C.HEAVY_IRON_BALL)))) (((d).otmp).owt = C.uint((((d).otmp).owt + C.uint(C.WT_IRON_BALL_INCR))));
+    if (Number(!!((d).very
+        && Number(((d).otmp).otyp == C.HEAVY_IRON_BALL)))) (((d).otmp).owt = C.uint((((d).otmp).owt + C.uint(C.WT_IRON_BALL_INCR))));
     return (d).otmp;
 }
 
@@ -4919,7 +5539,7 @@ export function rnd_class(first, last) {
     if (Number(last > first)) {
         for ((i = first); Number(i <= last); (i++)) (sum = C.int((sum + (C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass")).oc_prob)));
         if (Number(!(sum))) /* all zero, so equal probability */
-        return (C.int(((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 5411, C.literal("rnd_class")), C.rn2(C.int((C.int((last - first)) + 1))))) : C.rn2(C.int((C.int((last - first)) + 1))))) + (first))));
+            return (C.int(((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 5411, C.literal("rnd_class")), C.rn2(C.int((C.int((last - first)) + 1))))) : C.rn2(C.int((C.int((last - first)) + 1))))) + (first))));
         (x = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("objnam.c"), 5413, C.literal("rnd_class")), C.rnd(sum))) : C.rnd(sum))));
         for ((i = first); Number(i <= last); (i++)) if (Number(((x = C.int((x - (C.deref(C.ptrAdd(C.objects, i, "struct objclass"), "struct objclass")).oc_prob)))) <= 0)) return i;
     }
@@ -4976,14 +5596,18 @@ export function suit_simple_name(suit) {
     let suitnm;
     let esuitp;
     if (suit) {
-        if ((Number(!!(Number(((suit)).otyp >= C.GRAY_DRAGON_SCALE_MAIL) && Number(((suit)).otyp <= C.YELLOW_DRAGON_SCALE_MAIL))))) return C.literal("dragon mail");
+        if ((Number(!!(Number(((suit)).otyp >= C.GRAY_DRAGON_SCALE_MAIL)
+            && Number(((suit)).otyp <= C.YELLOW_DRAGON_SCALE_MAIL))))) return C.literal("dragon mail");
         else /* <color> dragon scale mail */
-        if ((Number(!!(Number(((suit)).otyp >= C.GRAY_DRAGON_SCALES) && Number(((suit)).otyp <= C.YELLOW_DRAGON_SCALES))))) return C.literal("dragon scales");
+        if ((Number(!!(Number(((suit)).otyp >= C.GRAY_DRAGON_SCALES)
+            && Number(((suit)).otyp <= C.YELLOW_DRAGON_SCALES))))) return C.literal("dragon scales");
         (suitnm = ((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(C.ptrAdd(C.objects, (suit).otyp, "struct objclass"), "struct objclass"))).oc_name_idx, "struct objdescr"), "struct objdescr")).oc_name));
         (esuitp = C.eos(suitnm));
-        if (Number(!!(Number(C.strlen(suitnm) > C.ulong(5)) && Number(!(C.strcmp(C.ptrAdd(esuitp, -(5), "const char"), C.literal(" mail"))))))) return C.literal("mail");
+        if (Number(!!(Number(C.strlen(suitnm) > C.ulong(5))
+            && Number(!(C.strcmp(C.ptrAdd(esuitp, -(5), "const char"), C.literal(" mail"))))))) return C.literal("mail");
         else /* most suits fall into this category */
-        if (Number(!!(Number(C.strlen(suitnm) > C.ulong(7)) && Number(!(C.strcmp(C.ptrAdd(esuitp, -(7), "const char"), C.literal(" jacket"))))))) return C.literal("jacket");
+        if (Number(!!(Number(C.strlen(suitnm) > C.ulong(7))
+            && Number(!(C.strcmp(C.ptrAdd(esuitp, -(7), "const char"), C.literal(" jacket"))))))) return C.literal("jacket");
 /* leather jacket */
     }
 /* "suit" is lame but "armor" is ambiguous and "body armor" is absurd */
@@ -4999,7 +5623,8 @@ export function cloak_simple_name(cloak) {
             case (C.MUMMY_WRAPPING):
                 return C.literal("wrapping");
             case (C.ALCHEMY_SMOCK):
-                return (((Number(!!(C.int((C.deref(C.ptrAdd(C.objects, (cloak).otyp, "struct objclass"), "struct objclass")).oc_name_known) && C.int((cloak).dknown))))) ? C.literal("smock") : C.literal("apron"));
+                return (((Number(!!(C.int((C.deref(C.ptrAdd(C.objects, (cloak).otyp, "struct objclass"), "struct objclass")).oc_name_known)
+                    && C.int((cloak).dknown))))) ? C.literal("smock") : C.literal("apron"));
             default:
                 break;
         }
@@ -5048,7 +5673,9 @@ export function boots_simple_name(boots) {
         let ocl = C.ptrAdd(C.objects, otyp, "struct objclass");
         let actualn = ((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(ocl, "struct objclass"))).oc_name_idx, "struct objdescr"), "struct objdescr")).oc_name);
         let descrpn = ((C.deref(C.ptrAdd(C.obj_descr, ((C.deref(ocl, "struct objclass"))).oc_descr_idx, "struct objdescr"), "struct objdescr")).oc_descr);
-        if (Number(!!(C.strstri(descrpn, C.staticCell("boots_simple_name.shoes").value) || (Number(!!(C.int((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_name_known) && C.strstri(actualn, C.staticCell("boots_simple_name.shoes").value))))))) return C.staticCell("boots_simple_name.shoes").value;
+        if (Number(!!(C.strstri(descrpn, C.staticCell("boots_simple_name.shoes").value)
+            || (Number(!!(C.int((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_name_known)
+            && C.strstri(actualn, C.staticCell("boots_simple_name.shoes").value))))))) return C.staticCell("boots_simple_name.shoes").value;
     }
     return C.literal("boots");
 }
@@ -5119,7 +5746,8 @@ export function safe_qbuf(qbuf, qprefix, qsuffix, obj, func, altfunc, lastR) /* 
     let len_lastR = C.uint(C.strlen(lastR));
     (lenlimit = C.uint(C.int((C.QBUFSZ - 1))));
     (endp = C.ptrAdd(qbuf, lenlimit, "char"));
-    ((Number(!!((C.ptrCompare(endp, C.castPointer((0), "char *"), "!=")) || ((C.__assert_fail(C.literal("endp != NULL"), C.literal("objnam.c"), 5642, C.literal("safe_qbuf")), 0))))));
+    ((Number(!!((C.ptrCompare(endp, C.castPointer((0), "char *"), "!="))
+        || ((C.__assert_fail(C.literal("endp != NULL"), C.literal("objnam.c"), 5642, C.literal("safe_qbuf")), 0))))));
 /* workaround for static analyzer issue */
 /* sanity check, aimed mainly at paniclog (it's conceivable for
        the result of short_oname() to be shorter than the length of
@@ -5164,7 +5792,7 @@ export function safe_qbuf(qbuf, qprefix, qsuffix, obj, func, altfunc, lastR) /* 
         (bufp = C.callLocal(short_oname, obj, func, altfunc, C.uint((lenlimit - len))));
         if (Number(C.ulong((C.ulong(len) + C.strlen(bufp))) <= C.ulong(lenlimit))) C.strcat(qbuf, bufp);
         else /* formatted name fits */
-        C.strcat(qbuf, lastR);
+            C.strcat(qbuf, lastR);
 /* use last resort */
         releaseobuf(bufp);
         if (qsuffix) C.strcat(qbuf, qsuffix);

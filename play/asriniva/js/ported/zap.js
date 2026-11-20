@@ -39,7 +39,7 @@ export const flash_types = [
 export function zaptype(type) {
     type = C.argument(type, "int");
     if (Number(!!(Number(type <= C.int((-30))) && Number(C.int((-39)) <= type)))) /* monster wand zap */
-    (type = C.int((type + 30)));
+        (type = C.int((type + 30)));
 /* first convert -39..-30 to -9..0 so that abs()
                      * will yield 0..9 (hero wand zap) for it */
     (type = C.abs(type));
@@ -90,7 +90,9 @@ export function learnwand(obj) {
         else {
 /* in case it was picked up while blind and then zapped without
                examining inventory after regaining sight (bypassing xname) */
-            if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) C.observe_object(obj);
+            if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) C.observe_object(obj);
 /* make the discovery iff we know what we're manipulating */
             if ((obj).dknown) C.discover_object(((obj).otyp), (C.char(1)), (C.char(1)), (C.char(1)));
         }
@@ -119,7 +121,8 @@ export function bhitm(mtmp, otmp) {
 /* otmp is not NULL */
     let zap_type_text = C.literal("spell");
     let obj;
-    let disguised_mimic = C.char((Number(!!(Number(((mtmp).data).mlet == C.S_MIMIC) && Number((C.int((((mtmp)).m_ap_type & 7))) != C.M_AP_NOTHING)))));
+    let disguised_mimic = C.char((Number(!!(Number(((mtmp).data).mlet == C.S_MIMIC)
+        && Number((C.int((((mtmp)).m_ap_type & 7))) != C.M_AP_NOTHING)))));
 /* box_or_door(): mimic appearances that have locks */
 /* is_cmap_door() tests S_symbol values, and            */
 /* mon->mappearance for furniture contains one of those */
@@ -141,7 +144,8 @@ export function bhitm(mtmp, otmp) {
             C.pline(C.literal("Boing!"), "");
 /* 5.0: used to 'break' to avoid setting learn_it here */
         }
-        else if (Number(!!(C.int((C.u).uswallow) || Number((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 202, C.literal("bhitm")), C.rnd(20))) : C.rnd(20))) < C.int((10 + C.find_mac(mtmp))))))) {
+        else if (Number(!!(C.int((C.u).uswallow)
+            || Number((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 202, C.literal("bhitm")), C.rnd(20))) : C.rnd(20))) < C.int((10 + C.find_mac(mtmp))))))) {
             if (disguised_mimic) C.seemimic(mtmp);
             (dmg = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 205, C.literal("bhitm")), C.d((2), (12)))) : C.d((2), (12)))));
             if (dbldam) (dmg = C.int(Math.imul(dmg, 2)));
@@ -161,7 +165,10 @@ export function bhitm(mtmp, otmp) {
                     C.mon_adjust_speed(mtmp, C.int((-1)), otmp);
                     C.check_gear_next_turn(mtmp);
 /* might want speed boots */
-                    if (Number(!!((Number(!!(C.int((C.u).uswallow) && (C.ptrCompare((C.u).ustuck, (mtmp), "=="))))) && (Number(!!(Number((((mtmp).data)).mlet == C.S_VORTEX) || C.ptrCompare(((mtmp).data), C.ptrAdd(C.mons, C.PM_AIR_ELEMENTAL, "struct permonst"), "=="))))))) {
+                    if (Number(!!((Number(!!(C.int((C.u).uswallow)
+                        && (C.ptrCompare((C.u).ustuck, (mtmp), "==")))))
+                        && (Number(!!(Number((((mtmp).data)).mlet == C.S_VORTEX)
+                        || C.ptrCompare(((mtmp).data), C.ptrAdd(C.mons, C.PM_AIR_ELEMENTAL, "struct permonst"), "=="))))))) {
                         C.You(C.literal("disrupt %s!"), C.mon_nam(mtmp), "p");
                         C.pline(C.literal("A huge hole opens up..."), "");
                         C.expels(mtmp, (mtmp).data, (C.char(1)));
@@ -182,7 +189,10 @@ export function bhitm(mtmp, otmp) {
             case (C.SPE_TURN_UNDEAD):
                 (wake = (C.char(0)));
         if (C.callLocal(unturn_dead, mtmp)) (wake = (C.char(1)));
-        if (Number(!!((Number((C.ulong(((((mtmp).data)).mflags2 & C.ulong(2n)))) != C.ulong(0n))) || (Number(!!(Number(!!(Number(((mtmp)).cham == C.PM_VAMPIRE) || Number(((mtmp)).cham == C.PM_VAMPIRE_LEADER))) || Number(((mtmp)).cham == C.PM_VLAD_THE_IMPALER))))))) {
+        if (Number(!!((Number((C.ulong(((((mtmp).data)).mflags2 & C.ulong(2n)))) != C.ulong(0n)))
+            || (Number(!!(Number(!!(Number(((mtmp)).cham == C.PM_VAMPIRE)
+            || Number(((mtmp)).cham == C.PM_VAMPIRE_LEADER)))
+            || Number(((mtmp)).cham == C.PM_VLAD_THE_IMPALER))))))) {
             (reveal_invis = (C.char(1)));
             (wake = (C.char(1)));
             (dmg = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 251, C.literal("bhitm")), C.rnd(8))) : C.rnd(8))));
@@ -198,7 +208,9 @@ export function bhitm(mtmp, otmp) {
         case (C.WAN_POLYMORPH):
             case (C.SPE_POLYMORPH):
                 case (C.POT_POLYMORPH):
-                    if (Number(!!(C.ptrCompare((mtmp).data, C.ptrAdd(C.mons, C.PM_LONG_WORM, "struct permonst"), "==") && (Number(!!(((mtmp)).mextra && Number(((((mtmp)).mextra).mcorpsenm) != C.NON_PM))))))) {
+                    if (Number(!!(C.ptrCompare((mtmp).data, C.ptrAdd(C.mons, C.PM_LONG_WORM, "struct permonst"), "==")
+                        && (Number(!!(((mtmp)).mextra
+                        && Number(((((mtmp)).mextra).mcorpsenm) != C.NON_PM))))))) {
 /* if a long worm has mcorpsenm set, it was polymorphed by
                the current zap and shouldn't be affected if hit again */
                         ;
@@ -210,7 +222,12 @@ export function bhitm(mtmp, otmp) {
                     }
                     else if (Number(!(C.callLocal(resist, mtmp, (otmp).oclass, 0, C.NOTELL)))) {
                         let polyspot = C.char((Number(otyp != C.POT_POLYMORPH)));
-                        let give_msg = C.char((Number(!!(Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic)))))))))) && (Number(!!(C.canseemon(mtmp) || (Number(!!(C.int((C.u).uswallow) && (C.ptrCompare((C.u).ustuck, (mtmp), "=="))))))))))));
+                        let give_msg = C.char((Number(!!(Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic
+                            && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic
+                            || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic))))))))))
+                            && (Number(!!(C.canseemon(mtmp)
+                            || (Number(!!(C.int((C.u).uswallow)
+                            && (C.ptrCompare((C.u).ustuck, (mtmp), "=="))))))))))));
 /* dropped inventory (due to death by system shock,
                or loss of wielded weapon and/or worn armor due to
                limitations of new shape) won't be hit by this zap */
@@ -218,7 +235,8 @@ export function bhitm(mtmp, otmp) {
 /* natural shapechangers aren't affected by system shock
                (unless protection from shapechangers is interfering
                with their metabolism...) */
-                        if (Number(!!(Number((mtmp).cham == C.NON_PM) && Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 290, C.literal("bhitm")), C.rn2(25))) : C.rn2(25)))))))) {
+                        if (Number(!!(Number((mtmp).cham == C.NON_PM)
+                            && Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 290, C.literal("bhitm")), C.rn2(25))) : C.rn2(25)))))))) {
                             if (C.canseemon(mtmp)) {
                                 C.pline(C.literal("%s shudders!"), C.Monnam(mtmp), "p");
                                 (learn_it.value = (C.char(1)));
@@ -231,17 +249,25 @@ export function bhitm(mtmp, otmp) {
                             let ncflags = C.NO_NC_FLAGS;
                             if (polyspot) (ncflags = C.uint((ncflags | C.NC_VIA_WAND_OR_SPELL)));
                             if (give_msg) (ncflags = C.uint((ncflags | C.NC_SHOW_MSG)));
-                            if (Number(!!(Number(C.newcham(mtmp, 0, ncflags) != 0) || (Number(!!((Number(!!(Number(((mtmp).cham) >= C.LOW_PM) && Number(((mtmp).cham) < C.NUMMONS)))) && Number(C.newcham(mtmp, C.ptrAdd(C.mons, (mtmp).cham, "struct permonst"), ncflags) != 0))))))) /* if shapechange failed because there aren't
+                            if (Number(!!(Number(C.newcham(mtmp, 0, ncflags) != 0)
+                                || (Number(!!((Number(!!(Number(((mtmp).cham) >= C.LOW_PM)
+                                && Number(((mtmp).cham) < C.NUMMONS))))
+                                && Number(C.newcham(mtmp, C.ptrAdd(C.mons, (mtmp).cham, "struct permonst"), ncflags) != 0))))))) /* if shapechange failed because there aren't
                               enough eligible candidates (most likely for
                               vampshifter), try reverting to original form */
 {
-                                if (Number(!!(give_msg && (Number(!!((Number(!!(C.canseemon(mtmp) || C.sensemon(mtmp)))) || (Number(!!(C.int((C.u).uswallow) && (C.ptrCompare((C.u).ustuck, (mtmp), "=="))))))))))) (learn_it.value = (C.char(1)));
+                                if (Number(!!(give_msg
+                                    && (Number(!!((Number(!!(C.canseemon(mtmp)
+                                    || C.sensemon(mtmp))))
+                                    || (Number(!!(C.int((C.u).uswallow)
+                                    && (C.ptrCompare((C.u).ustuck, (mtmp), "=="))))))))))) (learn_it.value = (C.char(1)));
                             }
                         }
 /* do this even if polymorphed failed (otherwise using
                flags.mon_polycontrol prompting to force mtmp to remain
                'long worm' would prompt again if zap hit another segment) */
-                        if (Number(!!(Number(!((Number(((mtmp)).mhp < 1)))) && C.ptrCompare((mtmp).data, C.ptrAdd(C.mons, C.PM_LONG_WORM, "struct permonst"), "==")))) {
+                        if (Number(!!(Number(!((Number(((mtmp)).mhp < 1))))
+                            && C.ptrCompare((mtmp).data, C.ptrAdd(C.mons, C.PM_LONG_WORM, "struct permonst"), "==")))) {
                             if (Number(!((Number(!!(((mtmp)).mextra && Number(((((mtmp)).mextra).mcorpsenm) != C.NON_PM))))))) C.newmcorpsenm(mtmp);
 /* flag to indicate that mtmp became a long worm
                    on current zap, so further hits (on mtmp's new
@@ -289,7 +315,13 @@ export function bhitm(mtmp, otmp) {
             }
         case (C.WAN_LOCKING):
             case (C.SPE_WIZARD_LOCK):
-                if (Number(!!(disguised_mimic && (Number(!!((Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_OBJECT) && (Number(!!(Number(((mtmp)).mappearance == C.uint(C.CHEST)) || Number(((mtmp)).mappearance == C.uint(C.LARGE_BOX)))))))) || (Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_FURNITURE) && (Number(!!(Number((((mtmp)).mappearance) >= C.uint(C.S_vodoor)) && Number((((mtmp)).mappearance) <= C.uint(C.S_hcdoor)))))))))))))) C.that_is_a_mimic(mtmp, C.MIM_REVEAL);
+                if (Number(!!(disguised_mimic
+                    && (Number(!!((Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_OBJECT)
+                    && (Number(!!(Number(((mtmp)).mappearance == C.uint(C.CHEST))
+                    || Number(((mtmp)).mappearance == C.uint(C.LARGE_BOX))))))))
+                    || (Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_FURNITURE)
+                    && (Number(!!(Number((((mtmp)).mappearance) >= C.uint(C.S_vodoor))
+                    && Number((((mtmp)).mappearance) <= C.uint(C.S_hcdoor)))))))))))))) C.that_is_a_mimic(mtmp, C.MIM_REVEAL);
 /*seemimic()*/
         (wake = C.closeholdingtrap(mtmp, learn_it));
         break;
@@ -301,7 +333,13 @@ export function bhitm(mtmp, otmp) {
         break;
         case (C.WAN_OPENING):
             case (C.SPE_KNOCK):
-                if (Number(!!(disguised_mimic && (Number(!!((Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_OBJECT) && (Number(!!(Number(((mtmp)).mappearance == C.uint(C.CHEST)) || Number(((mtmp)).mappearance == C.uint(C.LARGE_BOX)))))))) || (Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_FURNITURE) && (Number(!!(Number((((mtmp)).mappearance) >= C.uint(C.S_vodoor)) && Number((((mtmp)).mappearance) <= C.uint(C.S_hcdoor)))))))))))))) C.that_is_a_mimic(mtmp, C.MIM_REVEAL);
+                if (Number(!!(disguised_mimic
+                    && (Number(!!((Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_OBJECT)
+                    && (Number(!!(Number(((mtmp)).mappearance == C.uint(C.CHEST))
+                    || Number(((mtmp)).mappearance == C.uint(C.LARGE_BOX))))))))
+                    || (Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_FURNITURE)
+                    && (Number(!!(Number((((mtmp)).mappearance) >= C.uint(C.S_vodoor))
+                    && Number((((mtmp)).mappearance) <= C.uint(C.S_hcdoor)))))))))))))) C.that_is_a_mimic(mtmp, C.MIM_REVEAL);
 /*seemimic()*/
         (wake = (C.char(0)));
 /* don't want immediate counterattack */
@@ -340,7 +378,8 @@ export function bhitm(mtmp, otmp) {
             const buf = C.localArray("char[256]", 0);
             C.sprintf(buf, C.literal("%s %s"), C.s_suffix(C.Monnam(mtmp)), C.distant_name(obj, C.callback("xname", C.xname)), "pp");
             if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (mtmp).my, "seenV *"), "seenV *"), (mtmp).mx, "seenV"), "seenV") & 2))) != 0))) {
-                if (Number(!((Number(!!(C.canseemon(mtmp) || C.sensemon(mtmp))))))) C.strcpy(buf, C.An(C.distant_name(obj, C.callback("xname", C.xname))));
+                if (Number(!((Number(!!(C.canseemon(mtmp)
+                    || C.sensemon(mtmp))))))) C.strcpy(buf, C.An(C.distant_name(obj, C.callback("xname", C.xname))));
                 C.pline(C.literal("%s falls to the %s."), buf, C.surface((mtmp).mx, (mtmp).my), "pp");
             }
             else if ((Number(!!(C.canseemon(mtmp) || C.sensemon(mtmp))))) {
@@ -366,14 +405,15 @@ export function bhitm(mtmp, otmp) {
                         if (Number(!!(skilled_spell || Number(otyp == C.SPE_EXTRA_HEALING)))) C.mcureblindness(mtmp, C.char(C.canseemon(mtmp)));
                         if (C.canseemon(mtmp)) {
                             if (disguised_mimic) {
-                                if ((Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_OBJECT) && Number(((mtmp)).mappearance == C.uint((C.STRANGE_OBJECT))))))) {
+                                if ((Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_OBJECT)
+                                    && Number(((mtmp)).mappearance == C.uint((C.STRANGE_OBJECT))))))) {
 /* it can do better now */
                                     C.set_mimic_sym(mtmp);
                                     C.newsym((mtmp).mx, (mtmp).my);
                                 }
-                                else C.mimic_hit_msg(mtmp, C.short(otyp));
+                                    else C.mimic_hit_msg(mtmp, C.short(otyp));
                             }
-                            else C.pline(C.literal("%s looks%s better."), C.Monnam(mtmp), ((Number(otyp == C.SPE_EXTRA_HEALING)) ? C.literal(" much") : C.literal("")), "pp");
+                                else C.pline(C.literal("%s looks%s better."), C.Monnam(mtmp), ((Number(otyp == C.SPE_EXTRA_HEALING)) ? C.literal(" much") : C.literal("")), "pp");
                         }
                         if (Number(!!(Number(!!((mtmp).mtame && (Number(((C.gu).urole).mnum == (C.PM_HEALER))))) && (Number(delta > 0))))) {
                             C.more_experienced((((Number((delta) < (healamt))) ? (delta) : (healamt))), 0);
@@ -404,7 +444,9 @@ export function bhitm(mtmp, otmp) {
            revealing concealed mimic is handled by sleep_monst()] */
             (reveal_invis = (C.char(1)));
         if (C.sleep_monst(mtmp, (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 485, C.literal("bhitm")), C.d((C.int((1 + (otmp).spe))), (12)))) : C.d((C.int((1 + (otmp).spe))), (12)))), C.WAND_CLASS)) C.slept_monst(mtmp);
-        if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) (learn_it.value = (C.char(1)));
+        if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+            && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) (learn_it.value = (C.char(1)));
         break;
         case (C.SPE_STONE_TO_FLESH):
             if (Number(((mtmp).data).mlet == C.S_GOLEM)) {
@@ -412,12 +454,17 @@ export function bhitm(mtmp, otmp) {
                 let name = C.Monnam(mtmp);
 /* before possible polymorph */
 /* turn stone golem into flesh golem */
-                if (Number(!!(Number(C.int(((((mtmp).data)).pmidx)) == C.PM_STONE_GOLEM) && C.newcham(mtmp, C.ptrAdd(C.mons, C.PM_FLESH_GOLEM, "struct permonst"), C.NO_NC_FLAGS)))) (mesg = C.literal("turns to flesh!"));
+                if (Number(!!(Number(C.int(((((mtmp).data)).pmidx)) == C.PM_STONE_GOLEM)
+                    && C.newcham(mtmp, C.ptrAdd(C.mons, C.PM_FLESH_GOLEM, "struct permonst"), C.NO_NC_FLAGS)))) (mesg = C.literal("turns to flesh!"));
                 else if (Number(C.int(((((mtmp).data)).pmidx)) == C.PM_FLESH_GOLEM)) (mesg = C.literal("seems fleshier..."));
-                else (mesg = C.literal("looks rather fleshy for a moment."));
+                    else (mesg = C.literal("looks rather fleshy for a moment."));
                 if (C.canseemon(mtmp)) C.pline(C.literal("%s %s"), name, mesg, "pp");
             }
-            else if (Number(!!(Number(((mtmp).data).mlet == C.S_MIMIC) && (Number(!!((Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_FURNITURE) && C.stone_furniture_type((mtmp).mappearance)))) || (Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_OBJECT) && C.stone_object_type((mtmp).mappearance)))))))))) {
+            else if (Number(!!(Number(((mtmp).data).mlet == C.S_MIMIC)
+                && (Number(!!((Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_FURNITURE)
+                && C.stone_furniture_type((mtmp).mappearance))))
+                || (Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_OBJECT)
+                && C.stone_object_type((mtmp).mappearance)))))))))) {
 /* note: if that_is_a_mimic() doesn't get called to reveal the
                mimic, wakeup() below will call seemimic() */
                 if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (mtmp).my, "seenV *"), "seenV *"), (mtmp).mx, "seenV"), "seenV") & 2))) != 0))) {
@@ -468,7 +515,9 @@ export function bhitm(mtmp, otmp) {
      * might be an invisible worm hit on the tail.
      */
     if (Number(!!(reveal_invis && Number(!((Number(((mtmp)).mhp < 1))))))) {
-        if (Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, ((C.gb).bhitpos).y, "seenV *"), "seenV *"), ((C.gb).bhitpos).x, "seenV"), "seenV") & 2))) != 0)) && Number(!((Number(!!(C.canseemon(mtmp) || C.sensemon(mtmp))))))))) C.map_invisible(((C.gb).bhitpos).x, ((C.gb).bhitpos).y);
+        if (Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, ((C.gb).bhitpos).y, "seenV *"), "seenV *"), ((C.gb).bhitpos).x, "seenV"), "seenV") & 2))) != 0))
+            && Number(!((Number(!!(C.canseemon(mtmp)
+            || C.sensemon(mtmp))))))))) C.map_invisible(((C.gb).bhitpos).x, ((C.gb).bhitpos).y);
     }
 /* if effect was observable then discover the wand type provided
        that the wand itself has been seen */
@@ -486,8 +535,10 @@ export function release_hold() {
     else if ((C.u).uswallow) {
 /* possible for sticky hero to be swallowed */
         if ((C.ptrCompare(C.dmgtype_fromattack(((mtmp).data), 26, 11), 0, "!="))) {
-            if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) C.pline(C.literal("%s opens its mouth!"), C.Monnam(mtmp), "p");
-            else C.You_feel(C.literal("a sudden rush of air!"), "");
+            if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) C.pline(C.literal("%s opens its mouth!"), C.Monnam(mtmp), "p");
+                else C.You_feel(C.literal("a sudden rush of air!"), "");
         }
 /* gives "you get regurgitated" or "you get expelled from <mon>" */
         C.expels(mtmp, (mtmp).data, (C.char(1)));
@@ -504,7 +555,7 @@ export function release_hold() {
         const relbuf = C.localArray("char[256]", 0);
         C.unstuck((C.u).ustuck);
         if (Number(!((Number((C.ulong(((((mtmp).data)).mflags1 & C.ulong(8192n)))) != C.ulong(0n)))))) C.sprintf(relbuf, C.literal("from %s grasp"), C.s_suffix(C.mon_nam(mtmp)), "p");
-        else C.sprintf(relbuf, C.literal("by %s"), C.mon_nam(mtmp), "p");
+            else C.sprintf(relbuf, C.literal("by %s"), C.mon_nam(mtmp), "p");
         C.You(C.literal("are released %s."), relbuf, "p");
     }
 }
@@ -514,7 +565,9 @@ export function probe_objchain(otmp) {
     for (; otmp; (otmp = (otmp).nobj)) {
         C.observe_object(otmp);
 /* treat as "seen" */
-        if (Number(!!((Number(!!(Number(((otmp)).otyp >= C.LARGE_BOX) && Number(((otmp)).otyp <= C.BAG_OF_TRICKS)))) || Number((otmp).otyp == C.STATUE)))) {
+        if (Number(!!((Number(!!(Number(((otmp)).otyp >= C.LARGE_BOX)
+            && Number(((otmp)).otyp <= C.BAG_OF_TRICKS))))
+            || Number((otmp).otyp == C.STATUE)))) {
             ((otmp).lknown = C.uint(1));
             if (Number(!((Number(!!(Number(((otmp)).otyp == C.LARGE_BOX) && Number(((otmp)).spe == 1))))))) ((otmp).cknown = C.uint(1));
         }
@@ -532,7 +585,8 @@ export function probe_monster(mtmp) {
         C.display_minventory(mtmp, C.int((C.int((C.MINV_ALL | C.MINV_NOLET)) | C.PICK_NONE)), 0);
     }
     else {
-        C.pline(C.literal("%s is not carrying anything%s."), C.noit_Monnam(mtmp), (((Number(!!(C.int((C.u).uswallow) && (C.ptrCompare((C.u).ustuck, (mtmp), "==")))))) ? C.literal(" besides you") : C.literal("")), "pp");
+        C.pline(C.literal("%s is not carrying anything%s."), C.noit_Monnam(mtmp), (((Number(!!(C.int((C.u).uswallow)
+            && (C.ptrCompare((C.u).ustuck, (mtmp), "==")))))) ? C.literal(" besides you") : C.literal("")), "pp");
     }
 }
 
@@ -619,7 +673,10 @@ export function montraits(obj, cc, adjacentok) /* False: at obj's spot only,
     if (mtmp2) {
 /* save_mtraits() validated mtmp2->mnum */
         ((mtmp2).data = C.ptrAdd(C.mons, (mtmp2).mnum, "struct permonst"));
-        if (Number(!!(Number((mtmp2).mhpmax > 0) || (Number(!!(Number(!!(C.ptrCompare(((mtmp2).data), C.ptrAdd(C.mons, C.PM_DEATH, "struct permonst"), "==") || C.ptrCompare(((mtmp2).data), C.ptrAdd(C.mons, C.PM_FAMINE, "struct permonst"), "=="))) || C.ptrCompare(((mtmp2).data), C.ptrAdd(C.mons, C.PM_PESTILENCE, "struct permonst"), "=="))))))) {
+        if (Number(!!(Number((mtmp2).mhpmax > 0)
+            || (Number(!!(Number(!!(C.ptrCompare(((mtmp2).data), C.ptrAdd(C.mons, C.PM_DEATH, "struct permonst"), "==")
+            || C.ptrCompare(((mtmp2).data), C.ptrAdd(C.mons, C.PM_FAMINE, "struct permonst"), "==")))
+            || C.ptrCompare(((mtmp2).data), C.ptrAdd(C.mons, C.PM_PESTILENCE, "struct permonst"), "=="))))))) {
             (mtmp = C.makemon((mtmp2).data, (cc).x, (cc).y, C.uint((C.long((C.long((C.long((C.long((C.long((C.NO_MINVENT | C.MM_NOWAIT)) | C.MM_NOCOUNTBIRTH)) | C.MM_NOTAIL)) | C.MM_NOMSG)) | (((adjacentok) ? C.MM_ADJACENTOK : C.long(0)))))))));
 /* in case mtmp2 is a long worm; saved traits for
                                long worm don't include tail segments so don't
@@ -649,7 +706,7 @@ export function montraits(obj, cc, adjacentok) /* False: at obj's spot only,
             }
         }
         if (Number((mtmp).mhpmax > (mtmp2).mhpmax)) /* &&is_rider(mtmp2->data)*/
-        ((mtmp2).mhpmax = (mtmp).mhpmax);
+            ((mtmp2).mhpmax = (mtmp).mhpmax);
         ((mtmp2).mhp = (mtmp2).mhpmax);
 /* Get these ones from mtmp */
         ((mtmp2).minvent = (mtmp).minvent);
@@ -660,8 +717,9 @@ export function montraits(obj, cc, adjacentok) /* False: at obj's spot only,
         if ((mtmp).m_id) {
             ((mtmp2).m_id = (mtmp).m_id);
 /* might be bringing quest leader back to life */
-            if (Number(!!(C.int(((C.svq).quest_status).leader_is_dead) && Number((mtmp2).m_id == ((C.svq).quest_status).leader_m_id)))) /* leader_is_dead implies leader_m_id is valid */
-            (((C.svq).quest_status).leader_is_dead = C.uint((C.char(0))));
+            if (Number(!!(C.int(((C.svq).quest_status).leader_is_dead)
+                && Number((mtmp2).m_id == ((C.svq).quest_status).leader_m_id)))) /* leader_is_dead implies leader_m_id is valid */
+                (((C.svq).quest_status).leader_is_dead = C.uint((C.char(0))));
         }
         ((mtmp2).mx = (mtmp).mx);
         ((mtmp2).my = (mtmp).my);
@@ -689,7 +747,9 @@ export function montraits(obj, cc, adjacentok) /* False: at obj's spot only,
         ((mtmp2).mcanmove = C.uint(1));
 /* most cancelled monsters return to normal,
            but some need to stay cancelled */
-        if (Number(!!(Number(!(C.dmgtype((mtmp2).data, C.AD_SEDU))) && (Number(!!(Number(!((C.sysopt).seduce)) || Number(!(C.dmgtype((mtmp2).data, C.AD_SSEX))))))))) ((mtmp2).mcan = C.uint(0));
+        if (Number(!!(Number(!(C.dmgtype((mtmp2).data, C.AD_SEDU)))
+            && (Number(!!(Number(!((C.sysopt).seduce))
+            || Number(!(C.dmgtype((mtmp2).data, C.AD_SSEX))))))))) ((mtmp2).mcan = C.uint(0));
         ((mtmp2).mcansee = C.uint(1));
 /* set like in makemon */
         ((mtmp2).mblinded = C.uint(0));
@@ -700,7 +760,8 @@ export function montraits(obj, cc, adjacentok) /* False: at obj's spot only,
         if ((mtmp2).isshk) {
             C.neweshk(mtmp);
             C.store(((((mtmp)).mextra).eshk), "struct eshk", C.deref(((((mtmp2)).mextra).eshk), "struct eshk"));
-            if (Number(!!(C.ptrCompare((((((mtmp2)).mextra).eshk)).bill_p, 0, "!=") && C.ptrCompare((((((mtmp2)).mextra).eshk)).bill_p, C.castPointer(C.int((-1000)), "struct bill_x *"), "!=")))) ((((((mtmp)).mextra).eshk)).bill_p = C.ptrAdd((((((mtmp)).mextra).eshk)).bill, 0, "struct bill_x"));
+            if (Number(!!(C.ptrCompare((((((mtmp2)).mextra).eshk)).bill_p, 0, "!=")
+                && C.ptrCompare((((((mtmp2)).mextra).eshk)).bill_p, C.castPointer(C.int((-1000)), "struct bill_x *"), "!=")))) ((((((mtmp)).mextra).eshk)).bill_p = C.ptrAdd((((((mtmp)).mextra).eshk)).bill, 0, "struct bill_x"));
             ((mtmp).isshk = C.uint(1));
         }
         C.replmon(mtmp, mtmp2);
@@ -782,7 +843,12 @@ export function revive(corpse, by_hero) {
     (montype.value = (corpse).corpsenm);
 /* treat buried auto-reviver (troll, Rider?) like a zombie
        so that it can dig itself out of the ground if it revives */
-    (is_zomb = C.char(Number(!!(Number((C.deref(C.ptrAdd(C.mons, montype.value, "struct permonst"), "struct permonst")).mlet == C.S_ZOMBIE) || (Number(!!(Number((corpse).where == C.OBJ_BURIED) && (Number(!!((Number(!!(Number(!!(C.ptrCompare((C.ptrAdd(C.mons, montype.value, "struct permonst")), C.ptrAdd(C.mons, C.PM_DEATH, "struct permonst"), "==") || C.ptrCompare((C.ptrAdd(C.mons, montype.value, "struct permonst")), C.ptrAdd(C.mons, C.PM_FAMINE, "struct permonst"), "=="))) || C.ptrCompare((C.ptrAdd(C.mons, montype.value, "struct permonst")), C.ptrAdd(C.mons, C.PM_PESTILENCE, "struct permonst"), "==")))) || Number(((C.ptrAdd(C.mons, montype.value, "struct permonst"))).mlet == C.S_TROLL)))))))))));
+    (is_zomb = C.char(Number(!!(Number((C.deref(C.ptrAdd(C.mons, montype.value, "struct permonst"), "struct permonst")).mlet == C.S_ZOMBIE)
+        || (Number(!!(Number((corpse).where == C.OBJ_BURIED)
+        && (Number(!!((Number(!!(Number(!!(C.ptrCompare((C.ptrAdd(C.mons, montype.value, "struct permonst")), C.ptrAdd(C.mons, C.PM_DEATH, "struct permonst"), "==")
+        || C.ptrCompare((C.ptrAdd(C.mons, montype.value, "struct permonst")), C.ptrAdd(C.mons, C.PM_FAMINE, "struct permonst"), "==")))
+        || C.ptrCompare((C.ptrAdd(C.mons, montype.value, "struct permonst")), C.ptrAdd(C.mons, C.PM_PESTILENCE, "struct permonst"), "=="))))
+        || Number(((C.ptrAdd(C.mons, montype.value, "struct permonst"))).mlet == C.S_TROLL)))))))))));
 /* if this corpse is being eaten, stop doing that; this should be done
        after makemon() succeeds and skipped if it fails, but waiting until
        we know the result for that would be too late */
@@ -816,15 +882,24 @@ export function revive(corpse, by_hero) {
         }
     }
     if (x.value) /* update corpse's location now that we're sure where it is */
-    (((corpse).ox = x.value), ((corpse).oy = y.value));
-    if (Number(!!(Number(!!(Number(!(x.value)) || (Number(!!(container && (Number(!!(Number(!!(Number(!!(C.int((container).olocked) || Number(container_nesting.value > 2))) || Number((container).otyp == C.STATUE))) || (Number(!!(Number((container).otyp == C.BAG_OF_HOLDING) && (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 952, C.literal("revive")), C.rn2(40))) : C.rn2(40)))))))))))))) || (Number(!!(Number(!!(is_zomb && Number((corpse).where == C.OBJ_BURIED))) && Number(!(zombie_can_dig(x.value, y.value))))))))) /* Rules for revival from containers:
+        (((corpse).ox = x.value), ((corpse).oy = y.value));
+    if (Number(!!(Number(!!(Number(!(x.value))
+        || (Number(!!(container
+        && (Number(!!(Number(!!(Number(!!(C.int((container).olocked)
+        || Number(container_nesting.value > 2)))
+        || Number((container).otyp == C.STATUE)))
+        || (Number(!!(Number((container).otyp == C.BAG_OF_HOLDING)
+        && (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 952, C.literal("revive")), C.rn2(40))) : C.rn2(40))))))))))))))
+        || (Number(!!(Number(!!(is_zomb
+        && Number((corpse).where == C.OBJ_BURIED)))
+        && Number(!(zombie_can_dig(x.value, y.value))))))))) /* Rules for revival from containers:
          *  - the container cannot be locked
          *  - the container cannot be heavily nested (>2 is arbitrary)
          *  - the container cannot be a statue or bag of holding
          *    (except in very rare cases for the latter)
          */
 /* if buried zombie cannot dig itself out, do not revive */
-    return 0;
+        return 0;
 /* prepare for the monster */
     (mptr = C.ptrAdd(C.mons, montype.value, "struct permonst"));
 /* [should probably handle recorporealization first; if corpse and
@@ -833,7 +908,10 @@ export function revive(corpse, by_hero) {
     if ((C.ptrCompare(C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).monsters, x.value, "struct monst *[21]"), "struct monst *[21]"), y.value, "struct monst *"), "struct monst *"), 0, "!="))) {
         if (C.enexto(xy, x.value, y.value, mptr)) ((x.value = (xy).x), (y.value = (xy).y));
     }
-    if (Number(!!(C.int((corpse).norevive) || (Number(!!(Number((C.deref(C.ptrAdd(C.mons, montype.value, "struct permonst"), "struct permonst")).mlet == C.S_EEL) && Number(!((Number(!!(Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x.value, "struct rm[21]"), "struct rm[21]"), y.value, "struct rm"), "struct rm")).typ) >= C.POOL) && Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x.value, "struct rm[21]"), "struct rm[21]"), y.value, "struct rm"), "struct rm")).typ) <= C.DRAWBRIDGE_UP)))))))))))) {
+    if (Number(!!(C.int((corpse).norevive)
+        || (Number(!!(Number((C.deref(C.ptrAdd(C.mons, montype.value, "struct permonst"), "struct permonst")).mlet == C.S_EEL)
+        && Number(!((Number(!!(Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x.value, "struct rm[21]"), "struct rm[21]"), y.value, "struct rm"), "struct rm")).typ) >= C.POOL)
+        && Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x.value, "struct rm[21]"), "struct rm[21]"), y.value, "struct rm"), "struct rm")).typ) <= C.DRAWBRIDGE_UP)))))))))))) {
         if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y.value, "seenV *"), "seenV *"), x.value, "seenV"), "seenV") & 2))) != 0))) C.pline(C.literal("%s twitches feebly."), C.upstart(C.corpse_xname(corpse, 0, C.CXN_PFX_THE)), "p");
         return 0;
     }
@@ -883,7 +961,8 @@ export function revive(corpse, by_hero) {
     if (by_hero) {
         let shkp = 0;
         ((x.value = (corpse).ox), (y.value = (corpse).oy));
-        if (Number(!!(C.costly_spot(x.value, y.value) && ((((Number(((corpse)).where == 3))) ? C.int((corpse).unpaid) : Number(!((corpse).no_charge))))))) (shkp = C.shop_keeper(C.deref(C.in_rooms(x.value, y.value, C.SHOPBASE), "char")));
+        if (Number(!!(C.costly_spot(x.value, y.value)
+            && ((((Number(((corpse)).where == 3))) ? C.int((corpse).unpaid) : Number(!((corpse).no_charge))))))) (shkp = C.shop_keeper(C.deref(C.in_rooms(x.value, y.value, C.SHOPBASE), "char")));
         if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y.value, "seenV *"), "seenV *"), x.value, "seenV"), "seenV") & 2))) != 0))) {
             const buf = C.localArray("char[256]", 0);
             C.strcpy(buf, ((one_of) ? C.literal("one of ") : C.literal("")));
@@ -896,7 +975,7 @@ export function revive(corpse, by_hero) {
 /* force plural */
             C.strcat(buf, C.corpse_xname(corpse, 0, C.CXN_NO_PFX));
             if (one_of) /* could be simplified to ''corpse->quan = 1L;'' */
-            C.bump(C.fieldRef(corpse, "quan"), -1, true, "long");
+                C.bump(C.fieldRef(corpse, "quan"), -1, true, "long");
             C.pline(C.literal("%s glows iridescently."), C.upstart(buf), "p");
             ((C.iflags).last_msg = C.PLNMSG_OBJ_GLOWS);
 /* usually for BUC change */
@@ -940,7 +1019,9 @@ export function revive(corpse, by_hero) {
         C.free_omid(corpse);
     }
 /* monster retains its name */
-    if (Number(!!((Number(!!(((corpse)).oextra && ((((corpse)).oextra).oname)))) && Number(!((Number((C.int(((((mtmp).data)).geno & 4096))) != 0))))))) (mtmp = C.christen_monst(mtmp, ((((corpse)).oextra).oname)));
+    if (Number(!!((Number(!!(((corpse)).oextra
+        && ((((corpse)).oextra).oname))))
+        && Number(!((Number((C.int(((((mtmp).data)).geno & 4096))) != 0))))))) (mtmp = C.christen_monst(mtmp, ((((corpse)).oextra).oname)));
 /* partially eaten corpse yields wounded monster */
     if ((corpse).oeaten) ((mtmp).mhp = C.eaten_stat((mtmp).mhp, corpse));
 /* track that this monster was revived at least once */
@@ -1022,7 +1103,7 @@ export function unturn_dead(mon) {
                 C.strcpy(owner, C.literal("One of "));
                 C.shk_your(C.eos(owner), otmp);
             }
-            else C.Shk_Your(owner, otmp);
+                else C.Shk_Your(owner, otmp);
         }
 /* for a stack, only one is revived; if is_u, revive() calls
            useup() which calls update_inventory() but not encumber_msg() */
@@ -1044,7 +1125,10 @@ export function unturn_dead(mon) {
                 C.strcpy(corpse, C.literal("It"));
                 C.store(C.ptrAdd(owner, 0, "char"), "char", C.char(0));
             }
-            if (youseeit) C.pline(C.literal("%s%s suddenly %s%s%s!"), owner, corpse, (((Number(!!(Number(!!((Number((C.ulong(((((mtmp2).data)).mflags2 & C.ulong(2n)))) != C.ulong(0n))) || C.ptrCompare(((mtmp2).data), C.ptrAdd(C.mons, C.PM_MANES, "struct permonst"), "=="))) || (Number(!!((Number((((mtmp2).data)).mlet == C.S_GOLEM)) || Number((((mtmp2).data)).mlet == C.S_VORTEX)))))))) ? C.literal("reanimates") : C.literal("comes alive")), ((different_type) ? C.literal(" as ") : C.literal("")), ((different_type) ? C.an(C.mon_pmname(mtmp2)) : C.literal("")), "ppppp");
+            if (youseeit) C.pline(C.literal("%s%s suddenly %s%s%s!"), owner, corpse, (((Number(!!(Number(!!((Number((C.ulong(((((mtmp2).data)).mflags2 & C.ulong(2n)))) != C.ulong(0n)))
+                || C.ptrCompare(((mtmp2).data), C.ptrAdd(C.mons, C.PM_MANES, "struct permonst"), "==")))
+                || (Number(!!((Number((((mtmp2).data)).mlet == C.S_GOLEM))
+                || Number((((mtmp2).data)).mlet == C.S_VORTEX)))))))) ? C.literal("reanimates") : C.literal("comes alive")), ((different_type) ? C.literal(" as ") : C.literal("")), ((different_type) ? C.an(C.mon_pmname(mtmp2)) : C.literal("")), "ppppp");
             else if (C.canseemon(mtmp2)) C.pline(C.literal("%s suddenly appears!"), C.Amonnam(mtmp2), "p");
         }
         else {
@@ -1117,16 +1201,30 @@ export function cancel_item(obj) {
             break;
             default:
                 if (Number((C.long(((obj).owornmask & C.W_ARMOR))) != 0n)) /* AC */
-                ((C.disp).botl = (C.char(1)));
+                    ((C.disp).botl = (C.char(1)));
             break;
         }
     }
 /* cancelled item might not be in hero's possession but
        cancellation is presumed to be instigated by hero */
-    if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.int((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_magic) || (Number(!!((obj).spe && (Number(!!(Number(!!(Number((obj).oclass == C.ARMOR_CLASS) || Number((obj).oclass == C.WEAPON_CLASS))) || (Number(!!(Number(((obj)).oclass == C.TOOL_CLASS) && Number((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE)))))))))))) || Number(otyp == C.POT_ACID))) || Number(otyp == C.POT_SICKNESS))) || (Number(!!(Number(otyp == C.POT_WATER) && (Number(!!(C.int((obj).blessed) || C.int((obj).cursed))))))))) || Number(otyp == C.SPE_NOVEL)))) /* not magic; cancels to blank spellbook */
+    if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.int((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_magic)
+        || (Number(!!((obj).spe
+        && (Number(!!(Number(!!(Number((obj).oclass == C.ARMOR_CLASS)
+        || Number((obj).oclass == C.WEAPON_CLASS)))
+        || (Number(!!(Number(((obj)).oclass == C.TOOL_CLASS)
+        && Number((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE))))))))))))
+        || Number(otyp == C.POT_ACID)))
+        || Number(otyp == C.POT_SICKNESS)))
+        || (Number(!!(Number(otyp == C.POT_WATER)
+        && (Number(!!(C.int((obj).blessed)
+        || C.int((obj).cursed)))))))))
+        || Number(otyp == C.SPE_NOVEL)))) /* not magic; cancels to blank spellbook */
 {
         let cancelled_spe = (((Number(!!(Number((obj).oclass == C.WAND_CLASS) || Number(otyp == C.CRYSTAL_BALL))))) ? C.int((-1)) : 0);
-        if (Number(!!(Number(!!(Number(!!(Number((obj).spe != cancelled_spe) && Number(otyp != C.WAN_CANCELLATION))) && Number(otyp != C.MAGIC_LAMP))) && Number(otyp != C.CANDELABRUM_OF_INVOCATION)))) /* can't cancel cancellation */
+        if (Number(!!(Number(!!(Number(!!(Number((obj).spe != cancelled_spe)
+            && Number(otyp != C.WAN_CANCELLATION)))
+            && Number(otyp != C.MAGIC_LAMP)))
+            && Number(otyp != C.CANDELABRUM_OF_INVOCATION)))) /* can't cancel cancellation */
 /* cancelling doesn't remove djinni */
 {
             C.costly_alteration(obj, C.COST_CANCEL);
@@ -1144,7 +1242,7 @@ export function cancel_item(obj) {
                     ((obj).otyp = C.short(C.SPE_BLANK_PAPER));
 /* cancelling a novel is more involved than a spellbook */
                     if (Number(otyp == C.SPE_NOVEL)) /* old type */
-                    blank_novel(obj);
+                        blank_novel(obj);
                 }
             break;
             case (C.POTION_CLASS):
@@ -1166,7 +1264,11 @@ export function cancel_item(obj) {
     }
 /* cancelling a troll's corpse prevents it from reviving (on its own;
        does not affect undead turning induced revival) */
-    if (Number(!!(Number(!!(Number((obj).otyp == C.CORPSE) && (obj).timed)) && Number(!((Number(!!(Number(!!(C.ptrCompare((C.ptrAdd(C.mons, (obj).corpsenm, "struct permonst")), C.ptrAdd(C.mons, C.PM_DEATH, "struct permonst"), "==") || C.ptrCompare((C.ptrAdd(C.mons, (obj).corpsenm, "struct permonst")), C.ptrAdd(C.mons, C.PM_FAMINE, "struct permonst"), "=="))) || C.ptrCompare((C.ptrAdd(C.mons, (obj).corpsenm, "struct permonst")), C.ptrAdd(C.mons, C.PM_PESTILENCE, "struct permonst"), "=="))))))))) {
+    if (Number(!!(Number(!!(Number((obj).otyp == C.CORPSE)
+        && (obj).timed))
+        && Number(!((Number(!!(Number(!!(C.ptrCompare((C.ptrAdd(C.mons, (obj).corpsenm, "struct permonst")), C.ptrAdd(C.mons, C.PM_DEATH, "struct permonst"), "==")
+        || C.ptrCompare((C.ptrAdd(C.mons, (obj).corpsenm, "struct permonst")), C.ptrAdd(C.mons, C.PM_FAMINE, "struct permonst"), "==")))
+        || C.ptrCompare((C.ptrAdd(C.mons, (obj).corpsenm, "struct permonst")), C.ptrAdd(C.mons, C.PM_PESTILENCE, "struct permonst"), "=="))))))))) {
         const a = C.recordLocal("anything", C.deref(C.obj_to_any(obj), "anything"));
         let timout = C.peek_timer(C.short(C.REVIVE_MON), a);
         if (timout) {
@@ -1183,7 +1285,8 @@ export function cancel_item(obj) {
    needs more than just changing its otyp (caller is responsible for that) */
 export function blank_novel(obj) {
     obj = C.argument(obj, "struct obj *");
-    ((Number(!!((Number((obj).otyp == C.SPE_BLANK_PAPER)) || ((C.__assert_fail(C.literal("obj->otyp == SPE_BLANK_PAPER"), C.literal("zap.c"), 1369, C.literal("blank_novel")), 0))))));
+    ((Number(!!((Number((obj).otyp == C.SPE_BLANK_PAPER))
+        || ((C.__assert_fail(C.literal("obj->otyp == SPE_BLANK_PAPER"), C.literal("zap.c"), 1369, C.literal("blank_novel")), 0))))));
 /* novelidx overloads corpsenm, not used for spellbooks */
     ((obj).novelidx = 0);
     C.free_oname(obj);
@@ -1201,8 +1304,16 @@ export function drain_item(obj, by_you) {
     by_you = C.argument(by_you, "boolean");
     let u_ring;
 /* Is this a charged/enchanted object? */
-    if (Number(!!(Number(!!(Number(!(obj)) || (Number(!!(Number(!!(Number(!!(Number(!((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_charged)) && Number((obj).oclass != C.WEAPON_CLASS))) && Number((obj).oclass != C.ARMOR_CLASS))) && Number(!((Number(!!(Number(((obj)).oclass == C.TOOL_CLASS) && Number((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE))))))))))) || Number((obj).spe <= 0)))) return (C.char(0));
-    if (Number(!!(Number(!!(C.defends(C.AD_DRLI, obj) || C.defends_when_carried(C.AD_DRLI, obj))) || C.callLocal(obj_resists, obj, 10, 90)))) return (C.char(0));
+    if (Number(!!(Number(!!(Number(!(obj))
+        || (Number(!!(Number(!!(Number(!!(Number(!((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_charged))
+        && Number((obj).oclass != C.WEAPON_CLASS)))
+        && Number((obj).oclass != C.ARMOR_CLASS)))
+        && Number(!((Number(!!(Number(((obj)).oclass == C.TOOL_CLASS)
+        && Number((C.deref(C.ptrAdd(C.objects, ((obj)).otyp, "struct objclass"), "struct objclass")).oc_subtyp != C.P_NONE)))))))))))
+        || Number((obj).spe <= 0)))) return (C.char(0));
+    if (Number(!!(Number(!!(C.defends(C.AD_DRLI, obj)
+        || C.defends_when_carried(C.AD_DRLI, obj)))
+        || C.callLocal(obj_resists, obj, 10, 90)))) return (C.char(0));
 /* Charge for the cost of the object */
     if (by_you) C.costly_alteration(obj, C.COST_DRAIN);
 /* Drain the object and any implied effects */
@@ -1264,7 +1375,14 @@ export function obj_resists(obj, ochance, achance) /* percent chance for ordinar
     obj = C.argument(obj, "struct obj *");
     ochance = C.argument(ochance, "int");
     achance = C.argument(achance, "int");
-    if (Number(!!(Number(!!(Number(!!(Number(!!(Number((obj).otyp == C.AMULET_OF_YENDOR) || Number((obj).otyp == C.SPE_BOOK_OF_THE_DEAD))) || Number((obj).otyp == C.CANDELABRUM_OF_INVOCATION))) || Number((obj).otyp == C.BELL_OF_OPENING))) || (Number(!!(Number((obj).otyp == C.CORPSE) && (Number(!!(Number(!!(C.ptrCompare((C.ptrAdd(C.mons, (obj).corpsenm, "struct permonst")), C.ptrAdd(C.mons, C.PM_DEATH, "struct permonst"), "==") || C.ptrCompare((C.ptrAdd(C.mons, (obj).corpsenm, "struct permonst")), C.ptrAdd(C.mons, C.PM_FAMINE, "struct permonst"), "=="))) || C.ptrCompare((C.ptrAdd(C.mons, (obj).corpsenm, "struct permonst")), C.ptrAdd(C.mons, C.PM_PESTILENCE, "struct permonst"), "==")))))))))) {
+    if (Number(!!(Number(!!(Number(!!(Number(!!(Number((obj).otyp == C.AMULET_OF_YENDOR)
+        || Number((obj).otyp == C.SPE_BOOK_OF_THE_DEAD)))
+        || Number((obj).otyp == C.CANDELABRUM_OF_INVOCATION)))
+        || Number((obj).otyp == C.BELL_OF_OPENING)))
+        || (Number(!!(Number((obj).otyp == C.CORPSE)
+        && (Number(!!(Number(!!(C.ptrCompare((C.ptrAdd(C.mons, (obj).corpsenm, "struct permonst")), C.ptrAdd(C.mons, C.PM_DEATH, "struct permonst"), "==")
+        || C.ptrCompare((C.ptrAdd(C.mons, (obj).corpsenm, "struct permonst")), C.ptrAdd(C.mons, C.PM_FAMINE, "struct permonst"), "==")))
+        || C.ptrCompare((C.ptrAdd(C.mons, (obj).corpsenm, "struct permonst")), C.ptrAdd(C.mons, C.PM_PESTILENCE, "struct permonst"), "==")))))))))) {
         return (C.char(1));
     }
     else {
@@ -1289,7 +1407,7 @@ export function obj_shudders(obj) {
     else /* half-life = 2 zaps */
     if ((obj).blessed) (zap_odds = 12);
     else /* half-life = 8 zaps */
-    (zap_odds = 8);
+        (zap_odds = 8);
 /* half-life = 6 zaps */
 /* adjust for "large" quantities of identical things */
     if (Number((obj).quan > 4n)) (zap_odds = C.int(Math.trunc(zap_odds / 2)));
@@ -1318,10 +1436,10 @@ export function polyuse(objhdr, mat, minwt) {
 /* appropriately add damage to bill */
             if (C.costly_spot((otmp).ox, (otmp).oy)) {
                 if (C.deref((C.u).ushops, "char")) C.addtobill(otmp, (C.char(0)), (C.char(0)), (C.char(0)));
-                else C.stolen_value(otmp, (otmp).ox, (otmp).oy, (C.char(0)), (C.char(0)));
+                    else C.stolen_value(otmp, (otmp).ox, (otmp).oy, (C.char(0)), (C.char(0)));
             }
             if (Number((otmp).quan < C.LARGEST_INT)) (minwt = C.int((minwt - C.int((otmp).quan))));
-            else (minwt = 0);
+                else (minwt = 0);
             C.delobj(otmp);
         }
     }
@@ -1407,7 +1525,8 @@ export function create_polymon(obj, okind) {
     if (Number(!((C.int(((C.deref(C.ptrAdd((C.svm).mvitals, pm_index, "struct mvitals"), "struct mvitals")).mvflags & C.G_GENOD)))))) (mdat = C.ptrAdd(C.mons, pm_index, "struct permonst"));
     (mtmp = C.makemon(mdat, (obj).ox, (obj).oy, C.MM_NOMSG));
     polyuse(obj, okind, C.int((C.deref(C.ptrAdd(C.mons, pm_index, "struct permonst"), "struct permonst")).cwt));
-    if (Number(!!(mtmp && (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (mtmp).my, "seenV *"), "seenV *"), (mtmp).mx, "seenV"), "seenV") & 2))) != 0))))) {
+    if (Number(!!(mtmp
+        && (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (mtmp).my, "seenV *"), "seenV *"), (mtmp).mx, "seenV"), "seenV") & 2))) != 0))))) {
         C.pline(C.literal("Some %sobjects meld, and %s arises from the pile!"), material, C.a_monnam(mtmp), "pp");
     }
 }
@@ -1428,12 +1547,12 @@ export function do_osshock(obj) {
 /* if quan > 1 then some will survive intact */
     if (Number((obj).quan > 1n)) {
         if (Number((obj).quan > C.LARGEST_INT)) (obj = C.splitobj(obj, C.long((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 1659, C.literal("do_osshock")), C.rnd(30000))) : C.rnd(30000))))));
-        else (obj = C.splitobj(obj, C.long((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 1661, C.literal("do_osshock")), C.rnd(C.int((C.int((obj).quan) - 1))))) : C.rnd(C.int((C.int((obj).quan) - 1))))))));
+            else (obj = C.splitobj(obj, C.long((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 1661, C.literal("do_osshock")), C.rnd(C.int((C.int((obj).quan) - 1))))) : C.rnd(C.int((C.int((obj).quan) - 1))))))));
     }
 /* appropriately add damage to bill */
     if (C.costly_spot((obj).ox, (obj).oy)) {
         if (C.deref((C.u).ushops, "char")) C.addtobill(obj, (C.char(0)), (C.char(0)), (C.char(0)));
-        else C.stolen_value(obj, (obj).ox, (obj).oy, (C.char(0)), (C.char(0)));
+            else C.stolen_value(obj, (obj).ox, (obj).oy, (C.char(0)), (C.char(0)));
     }
 /* zap the object */
     C.delobj(obj);
@@ -1442,7 +1561,13 @@ export function do_osshock(obj) {
 /* Returns TRUE if obj resists polymorphing */
 export function obj_unpolyable(obj) {
     obj = C.argument(obj, "struct obj *");
-    return C.char((Number(!!(Number(!!(Number(!!((Number(!!(Number(!!(Number(!!(Number(((obj)).otyp == C.WAN_POLYMORPH) || Number(((obj)).otyp == C.SPE_POLYMORPH))) || Number(((obj)).otyp == C.POT_POLYMORPH))) || Number(((obj)).otyp == C.AMULET_OF_UNCHANGING)))) || C.ptrCompare(obj, C.uball, "=="))) || C.ptrCompare(obj, C.uskin, "=="))) || C.callLocal(obj_resists, obj, 5, 95)))));
+    return C.char((Number(!!(Number(!!(Number(!!((Number(!!(Number(!!(Number(!!(Number(((obj)).otyp == C.WAN_POLYMORPH)
+        || Number(((obj)).otyp == C.SPE_POLYMORPH)))
+        || Number(((obj)).otyp == C.POT_POLYMORPH)))
+        || Number(((obj)).otyp == C.AMULET_OF_UNCHANGING))))
+        || C.ptrCompare(obj, C.uball, "==")))
+        || C.ptrCompare(obj, C.uskin, "==")))
+        || C.callLocal(obj_resists, obj, 5, 95)))));
 }
 
 /* classes of items whose current charge count carries over across polymorph
@@ -1484,13 +1609,19 @@ export function poly_obj(obj, id) {
             if (otmp) C.delobj(otmp);
             (otmp = C.mkobj((obj).oclass, (C.char(0))));
         }
-        while (Number(!!(Number((try_limit = C.int((try_limit - 1))) > 0) && Number(C.uint((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_magic) != magic_obj))));
+        while (Number(!!(Number((try_limit = C.int((try_limit - 1))) > 0)
+            && Number(C.uint((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_magic) != magic_obj))));
     }
     else {
 /* literally replace obj with this new thing */
         (otmp = C.mksobj(id, (C.char(0)), (C.char(0))));
 /* Actually more things use corpsenm but they polymorph differently */
-        if (Number(!!((Number(!!(Number(!!(Number(((obj).otyp) == C.CORPSE) || Number(((obj).otyp) == C.STATUE))) || Number(((obj).otyp) == C.FIGURINE)))) && (Number(!!(Number(!!(Number((id) == C.CORPSE) || Number((id) == C.STATUE))) || Number((id) == C.FIGURINE))))))) C.set_corpsenm(otmp, (obj).corpsenm);
+        if (Number(!!((Number(!!(Number(!!(Number(((obj).otyp) == C.CORPSE)
+            || Number(((obj).otyp) == C.STATUE)))
+            || Number(((obj).otyp) == C.FIGURINE))))
+            && (Number(!!(Number(!!(Number((id) == C.CORPSE)
+            || Number((id) == C.STATUE)))
+            || Number((id) == C.FIGURINE))))))) C.set_corpsenm(otmp, (obj).corpsenm);
     }
 /* preserve quantity */
     ((otmp).quan = (obj).quan);
@@ -1535,13 +1666,30 @@ export function poly_obj(obj, id) {
     ((otmp).cursed = (obj).cursed);
     ((otmp).blessed = (obj).blessed);
     if (C.erosion_matters(otmp)) {
-        if (Number(!!(Number(!!(C.is_flammable(otmp) || (Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON)))) || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((otmp)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS) && Number(((otmp)).oclass == C.ARMOR_CLASS))))))) ((otmp).oeroded = (obj).oeroded);
-        if (Number(!!((Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER) || Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON)))) || C.is_rottable(otmp)))) ((otmp).oeroded2 = (obj).oeroded2);
-        if ((Number(!!(Number(!!(Number(!!(Number(!!((Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON)) || C.is_flammable(otmp))) || C.is_rottable(otmp))) || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER) || Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON)))))) || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((otmp)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS) && Number(((otmp)).oclass == C.ARMOR_CLASS)))))))) ((otmp).oerodeproof = (obj).oerodeproof);
+        if (Number(!!(Number(!!(C.is_flammable(otmp)
+            || (Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))))
+            || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((otmp)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS)
+            && Number(((otmp)).oclass == C.ARMOR_CLASS))))))) ((otmp).oeroded = (obj).oeroded);
+        if (Number(!!((Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER)
+            || Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))))
+            || C.is_rottable(otmp)))) ((otmp).oeroded2 = (obj).oeroded2);
+        if ((Number(!!(Number(!!(Number(!!(Number(!!((Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))
+            || C.is_flammable(otmp)))
+            || C.is_rottable(otmp)))
+            || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.COPPER)
+            || Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) == C.IRON))))))
+            || (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, ((otmp)).otyp, "struct objclass"), "struct objclass")).oc_material) == C.GLASS)
+            && Number(((otmp)).oclass == C.ARMOR_CLASS)))))))) ((otmp).oerodeproof = (obj).oerodeproof);
     }
 /* Keep chest/box traps and poisoned ammo if we may */
-    if (Number(!!(C.int((obj).otrapped) && (Number(!!(Number(((otmp)).otyp == C.LARGE_BOX) || Number(((otmp)).otyp == C.CHEST))))))) ((otmp).otrapped = C.uint(1));
-    if (Number(!!(C.int((obj).opoisoned) && (Number(!!((Number(!!(Number(!!(Number((otmp).oclass == C.WEAPON_CLASS) && Number((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_SHURIKEN))))) && Number((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_BOW)))))) || C.permapoisoned(otmp))))))) ((otmp).opoisoned = C.uint(1));
+    if (Number(!!(C.int((obj).otrapped)
+        && (Number(!!(Number(((otmp)).otyp == C.LARGE_BOX)
+        || Number(((otmp)).otyp == C.CHEST))))))) ((otmp).otrapped = C.uint(1));
+    if (Number(!!(C.int((obj).opoisoned)
+        && (Number(!!((Number(!!(Number(!!(Number((otmp).oclass == C.WEAPON_CLASS)
+        && Number((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp >= C.int((-C.P_SHURIKEN)))))
+        && Number((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_subtyp <= C.int((-C.P_BOW))))))
+        || C.permapoisoned(otmp))))))) ((otmp).opoisoned = C.uint(1));
     if (Number(!!(Number(id == C.STRANGE_OBJECT) && Number((obj).otyp == C.CORPSE)))) {
 /* turn crocodile corpses into shoes */
         if (Number((obj).corpsenm == C.PM_CROCODILE)) {
@@ -1568,7 +1716,10 @@ export function poly_obj(obj, id) {
 /* no box contents --KAA */
     if ((C.ptrCompare(((otmp)).cobj, 0, "!="))) C.delete_contents(otmp);
 /* 'n' merged objects may be fused into 1 object */
-    if (Number(!!(Number((otmp).quan > 1n) && (Number(!!(Number(!((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_merge)) || (Number(!!(can_merge && Number((otmp).quan > C.long((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 1833, C.literal("poly_obj")), C.rn2(1000))) : C.rn2(1000)))))))))))))) ((otmp).quan = 1n);
+    if (Number(!!(Number((otmp).quan > 1n)
+        && (Number(!!(Number(!((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_merge))
+        || (Number(!!(can_merge
+        && Number((otmp).quan > C.long((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 1833, C.literal("poly_obj")), C.rn2(1000))) : C.rn2(1000)))))))))))))) ((otmp).quan = 1n);
     switch ((otmp).oclass) {
         case (C.TOOL_CLASS):
             if (Number((otmp).otyp == C.MAGIC_LAMP)) {
@@ -1583,11 +1734,12 @@ export function poly_obj(obj, id) {
 /* don't care about the recharge count of other tools */
         break;
         case (C.WAND_CLASS):
-            while (Number(!!(Number((otmp).otyp == C.WAN_WISHING) || Number((otmp).otyp == C.WAN_POLYMORPH)))) ((otmp).otyp = C.short(C.rnd_class(C.WAN_LIGHT, C.WAN_LIGHTNING)));
+            while (Number(!!(Number((otmp).otyp == C.WAN_WISHING)
+                || Number((otmp).otyp == C.WAN_POLYMORPH)))) ((otmp).otyp = C.short(C.rnd_class(C.WAN_LIGHT, C.WAN_LIGHTNING)));
 /* altering the object tends to degrade its quality
            (analogous to spellbook `read count' handling) */
         if (Number(C.int((otmp).recharged) < (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 1852, C.literal("poly_obj")), C.rn2(7))) : C.rn2(7))))) /* recharge_limit */
-        C.bump(C.fieldRef(otmp, "recharged"), 1, true, "unsigned int");
+            C.bump(C.fieldRef(otmp, "recharged"), 1, true, "unsigned int");
         break;
         case (C.POTION_CLASS):
             while (Number((otmp).otyp == C.POT_POLYMORPH)) ((otmp).otyp = C.short(C.rnd_class(C.POT_GAIN_ABILITY, C.POT_WATER)));
@@ -1612,7 +1764,9 @@ export function poly_obj(obj, id) {
         }
         break;
         case (C.GEM_CLASS):
-            if (Number(!!(Number(!!(Number((otmp).quan > C.long((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 1884, C.literal("poly_obj")), C.rnd(4))) : C.rnd(4))))) && Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.MINERAL))) && Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) != C.MINERAL)))) {
+            if (Number(!!(Number(!!(Number((otmp).quan > C.long((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 1884, C.literal("poly_obj")), C.rnd(4))) : C.rnd(4)))))
+                && Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) == C.MINERAL)))
+                && Number(C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_material) != C.MINERAL)))) {
                 ((otmp).otyp = C.short(C.ROCK));
 /* transmutation backfired */
                 ((otmp).quan = C.long(((otmp).quan / 2n)));
@@ -1647,7 +1801,9 @@ export function poly_obj(obj, id) {
          * of sequence messages because current polymorph is finished.
          */
         if (old_wornmask) {
-            let was_twohanded = C.char((Number(!!((Number(!!(Number((obj).oclass == C.WEAPON_CLASS) || Number((obj).oclass == C.TOOL_CLASS)))) && C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_big)))));
+            let was_twohanded = C.char((Number(!!((Number(!!(Number((obj).oclass == C.WEAPON_CLASS)
+                || Number((obj).oclass == C.TOOL_CLASS))))
+                && C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_big)))));
             let was_twoweap = (C.u).twoweap;
 /* wearslot() expects us to deal with wielded/alt-wep/quivered
                items in case they're not weapons; for other slots it might
@@ -1657,12 +1813,23 @@ export function poly_obj(obj, id) {
             C.remove_worn_item(obj, (C.char(1)));
 /* if the new form can be worn in the same slot, make it so */
             if (Number((C.long((new_wornmask & C.W_WEP))) != 0n)) {
-                if (Number(!!(Number(!!(was_twohanded || Number(!((Number(!!((Number(!!(Number((otmp).oclass == C.WEAPON_CLASS) || Number((otmp).oclass == C.TOOL_CLASS)))) && C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_big)))))))) || Number(!(C.uarms))))) C.setuwep(otmp);
-                if (Number(!!(Number(!!(was_twoweap && C.uwep)) && Number(!((Number(!!((Number(!!(Number((C.uwep).oclass == C.WEAPON_CLASS) || Number((C.uwep).oclass == C.TOOL_CLASS)))) && C.int((C.deref(C.ptrAdd(C.objects, (C.uwep).otyp, "struct objclass"), "struct objclass")).oc_big))))))))) C.set_twoweap((C.char(1)));
+                if (Number(!!(Number(!!(was_twohanded
+                    || Number(!((Number(!!((Number(!!(Number((otmp).oclass == C.WEAPON_CLASS)
+                    || Number((otmp).oclass == C.TOOL_CLASS))))
+                    && C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_big))))))))
+                    || Number(!(C.uarms))))) C.setuwep(otmp);
+                if (Number(!!(Number(!!(was_twoweap
+                    && C.uwep))
+                    && Number(!((Number(!!((Number(!!(Number((C.uwep).oclass == C.WEAPON_CLASS)
+                    || Number((C.uwep).oclass == C.TOOL_CLASS))))
+                    && C.int((C.deref(C.ptrAdd(C.objects, (C.uwep).otyp, "struct objclass"), "struct objclass")).oc_big))))))))) C.set_twoweap((C.char(1)));
 /* u.twoweap = TRUE */
             }
             else if (Number((C.long((new_wornmask & C.W_SWAPWEP))) != 0n)) {
-                if (Number(!!(was_twohanded || Number(!((Number(!!((Number(!!(Number((otmp).oclass == C.WEAPON_CLASS) || Number((otmp).oclass == C.TOOL_CLASS)))) && C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_big))))))))) C.setuswapwep(otmp);
+                if (Number(!!(was_twohanded
+                    || Number(!((Number(!!((Number(!!(Number((otmp).oclass == C.WEAPON_CLASS)
+                    || Number((otmp).oclass == C.TOOL_CLASS))))
+                    && C.int((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_big))))))))) C.setuswapwep(otmp);
                 if (Number(!!(was_twoweap && C.uswapwep))) C.set_twoweap((C.char(1)));
 /* u.twoweap = TRUE */
             }
@@ -1691,11 +1858,19 @@ export function poly_obj(obj, id) {
         }
     }
 /* note: if otmp is gone, billing for it was handled by useup() */
-    if (Number(!!((Number(!!((Number(!!(otmp && Number(!((Number(((otmp)).where == 3))))))) || C.int((obj).unpaid)))) && C.costly_spot(ox.value, oy.value)))) {
+    if (Number(!!((Number(!!((Number(!!(otmp
+        && Number(!((Number(((otmp)).where == 3)))))))
+        || C.int((obj).unpaid))))
+        && C.costly_spot(ox.value, oy.value)))) {
         let shkp = C.shop_keeper(C.deref(C.in_rooms(ox.value, oy.value, C.SHOPBASE), "char"));
-        if (Number(!!((Number(!!(Number(!((obj).no_charge)) || (Number(!!((C.ptrCompare(((obj)).cobj, 0, "!=")) && (Number(C.contained_cost(obj, shkp, 0n, (C.char(0)), (C.char(0))) != 0n)))))))) && C.inhishop(shkp)))) {
+        if (Number(!!((Number(!!(Number(!((obj).no_charge))
+            || (Number(!!((C.ptrCompare(((obj)).cobj, 0, "!="))
+            && (Number(C.contained_cost(obj, shkp, 0n, (C.char(0)), (C.char(0))) != 0n))))))))
+            && C.inhishop(shkp)))) {
             if ((shkp).mpeaceful) {
-                if (Number(!!(Number(!!(C.deref((C.u).ushops, "char") && (Number(C.deref(C.in_rooms((C.u).ux, (C.u).uy, 0), "char") == C.deref(C.in_rooms((shkp).mx, (shkp).my, 0), "char"))))) && Number(!(C.costly_spot((C.u).ux, (C.u).uy)))))) {
+                if (Number(!!(Number(!!(C.deref((C.u).ushops, "char")
+                    && (Number(C.deref(C.in_rooms((C.u).ux, (C.u).uy, 0), "char") == C.deref(C.in_rooms((shkp).mx, (shkp).my, 0), "char")))))
+                    && Number(!(C.costly_spot((C.u).ux, (C.u).uy)))))) {
                     C.make_angry_shk(shkp, ox.value, oy.value);
                 }
                 else {
@@ -1703,7 +1878,7 @@ export function poly_obj(obj, id) {
                     C.hot_pursuit(shkp);
                 }
             }
-            else C.Norep(C.literal("%s is furious!"), C.Shknam(shkp), "p");
+                else C.Norep(C.literal("%s is furious!"), C.Shknam(shkp), "p");
         }
     }
     C.delobj(obj);
@@ -1724,7 +1899,8 @@ export function stone_to_flesh_obj(obj) /* nonnull */
     let golem_xform = (C.char(0));
     let res = 1;
 /* affected object by default */
-    if (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) != C.MINERAL) && Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) != C.GEMSTONE)))) return 0;
+    if (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) != C.MINERAL)
+        && Number(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_material) != C.GEMSTONE)))) return 0;
 /* Heart of Ahriman usually resists; ordinary items rarely do */
     if (C.callLocal(obj_resists, obj, 2, 98)) return 0;
     get_obj_location(obj, oox, ooy, 0);
@@ -1743,7 +1919,19 @@ export function stone_to_flesh_obj(obj) /* nonnull */
                     if ((Number(((ptr)).mlet == C.S_GOLEM))) {
                         (golem_xform = C.char((C.ptrCompare(ptr, C.ptrAdd(C.mons, C.PM_FLESH_GOLEM, "struct permonst"), "!="))));
                     }
-                    else if ((Number(!!((Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(((ptr)).mlet == C.S_BLOB) || Number(((ptr)).mlet == C.S_JELLY))) || Number(((ptr)).mlet == C.S_FUNGUS))) || Number(((ptr)).mlet == C.S_VORTEX))) || Number(((ptr)).mlet == C.S_LIGHT))) || (Number(!!(Number(((ptr)).mlet == C.S_ELEMENTAL) && C.ptrCompare((ptr), C.ptrAdd(C.mons, C.PM_STALKER, "struct permonst"), "!=")))))) || (Number(!!(Number(!!(Number(((ptr)).mlet == C.S_GOLEM) && C.ptrCompare((ptr), C.ptrAdd(C.mons, C.PM_FLESH_GOLEM, "struct permonst"), "!="))) && C.ptrCompare((ptr), C.ptrAdd(C.mons, C.PM_LEATHER_GOLEM, "struct permonst"), "!=")))))) || (Number(((ptr)).mlet == C.S_GHOST))))) || (Number(!!(Number(((ptr)).mlet == C.S_PUDDING) && C.ptrCompare((ptr), C.ptrAdd(C.mons, C.PM_BLACK_PUDDING, "struct permonst"), "!=")))))))) {
+                    else if ((Number(!!((Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(((ptr)).mlet == C.S_BLOB)
+                        || Number(((ptr)).mlet == C.S_JELLY)))
+                        || Number(((ptr)).mlet == C.S_FUNGUS)))
+                        || Number(((ptr)).mlet == C.S_VORTEX)))
+                        || Number(((ptr)).mlet == C.S_LIGHT)))
+                        || (Number(!!(Number(((ptr)).mlet == C.S_ELEMENTAL)
+                        && C.ptrCompare((ptr), C.ptrAdd(C.mons, C.PM_STALKER, "struct permonst"), "!="))))))
+                        || (Number(!!(Number(!!(Number(((ptr)).mlet == C.S_GOLEM)
+                        && C.ptrCompare((ptr), C.ptrAdd(C.mons, C.PM_FLESH_GOLEM, "struct permonst"), "!=")))
+                        && C.ptrCompare((ptr), C.ptrAdd(C.mons, C.PM_LEATHER_GOLEM, "struct permonst"), "!="))))))
+                        || (Number(((ptr)).mlet == C.S_GHOST)))))
+                        || (Number(!!(Number(((ptr)).mlet == C.S_PUDDING)
+                        && C.ptrCompare((ptr), C.ptrAdd(C.mons, C.PM_BLACK_PUDDING, "struct permonst"), "!=")))))))) {
 /* Don't animate monsters that aren't flesh */
                         (obj = C.callLocal(poly_obj, obj, C.MEATBALL));
                         (smell = (C.char(1)));
@@ -1758,20 +1946,22 @@ export function stone_to_flesh_obj(obj) /* nonnull */
                         if (golem_xform) (ptr = C.ptrAdd(C.mons, C.PM_FLESH_GOLEM, "struct permonst"));
                         (mon = C.makemon(ptr, oox.value, ooy.value, C.uint(C.long((C.NO_MINVENT | C.MM_NOMSG)))));
                         if (mon) {
-                            if (Number(!!(C.costly_spot(oox.value, ooy.value) && ((((Number(((obj)).where == 3))) ? C.int((obj).unpaid) : Number(!((obj).no_charge))))))) {
+                            if (Number(!!(C.costly_spot(oox.value, ooy.value)
+                                && ((((Number(((obj)).where == 3))) ? C.int((obj).unpaid) : Number(!((obj).no_charge))))))) {
                                 (shkp = C.shop_keeper(C.deref(C.in_rooms(oox.value, ooy.value, C.SHOPBASE), "char")));
                                 C.stolen_value(obj, oox.value, ooy.value, C.char((Number(!!(shkp && C.int((shkp).mpeaceful))))), (C.char(0)));
                             }
                             if ((obj).timed) C.obj_stop_timers(obj);
                             if ((Number(((obj)).where == 3))) C.useup(obj);
-                            else C.delobj(obj);
+                                else C.delobj(obj);
                             if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (mon).my, "seenV *"), "seenV *"), (mon).mx, "seenV"), "seenV") & 2))) != 0))) C.pline_The(C.literal("figurine %sanimates!"), ((golem_xform) ? C.literal("turns to flesh and ") : C.literal("")), "p");
                         }
                     }
                     if (mon) {
                         (ptr = (mon).data);
 /* this golem handling is redundant... */
-                        if (Number(!!((Number(((ptr)).mlet == C.S_GOLEM)) && C.ptrCompare(ptr, C.ptrAdd(C.mons, C.PM_FLESH_GOLEM, "struct permonst"), "!=")))) C.newcham(mon, C.ptrAdd(C.mons, C.PM_FLESH_GOLEM, "struct permonst"), C.NC_VIA_WAND_OR_SPELL);
+                        if (Number(!!((Number(((ptr)).mlet == C.S_GOLEM))
+                            && C.ptrCompare(ptr, C.ptrAdd(C.mons, C.PM_FLESH_GOLEM, "struct permonst"), "!=")))) C.newcham(mon, C.ptrAdd(C.mons, C.PM_FLESH_GOLEM, "struct permonst"), C.NC_VIA_WAND_OR_SPELL);
                     }
                     else if (Number((C.int(((ptr).geno & (C.int((C.G_NOCORPSE | C.G_UNIQ)))))) != 0)) {
 /* didn't revive but can't leave corpse either */
@@ -1827,8 +2017,10 @@ export function stone_to_flesh_obj(obj) /* nonnull */
            vegetarian conduct yet (or if poly'd into non-carnivorous/
            non-omnivorous form, regardless of whether it's herbivorous,
            non-eating, or something stranger) */
-        if (Number(!!(Number(!!((Number(((C.gu).urole).mnum == (C.PM_MONK))) || Number(!(((C.u).uconduct).unvegetarian)))) || Number(!((Number((C.ulong((((((C.gy).youmonst).data)).mflags1 & C.ulong(536870912n)))) != C.ulong(0n)))))))) C.Norep(C.literal("You smell the odor of meat."), "");
-        else C.Norep(C.literal("You smell a delicious smell."), "");
+        if (Number(!!(Number(!!((Number(((C.gu).urole).mnum == (C.PM_MONK)))
+            || Number(!(((C.u).uconduct).unvegetarian))))
+            || Number(!((Number((C.ulong((((((C.gy).youmonst).data)).mflags1 & C.ulong(536870912n)))) != C.ulong(0n)))))))) C.Norep(C.literal("You smell the odor of meat."), "");
+            else C.Norep(C.literal("You smell a delicious smell."), "");
     }
     C.newsym(oox.value, ooy.value);
     return res;
@@ -1904,7 +2096,8 @@ export function bhito(obj, otmp) {
      * obj->{ox,oy} to be valid.  The exception to this (so far) is
      * for the STONE_TO_FLESH spell.
      */
-    if (Number(!((Number(!!(Number((obj).where == C.OBJ_FLOOR) || Number((otmp).otyp == C.SPE_STONE_TO_FLESH))))))) C.impossible(C.literal("bhito: obj is not floor or Stone To Flesh spell"), "");
+    if (Number(!((Number(!!(Number((obj).where == C.OBJ_FLOOR)
+        || Number((otmp).otyp == C.SPE_STONE_TO_FLESH))))))) C.impossible(C.literal("bhito: obj is not floor or Stone To Flesh spell"), "");
     if (C.ptrCompare(obj, C.uball, "==")) {
         (res = 0);
     }
@@ -1913,213 +2106,233 @@ export function bhito(obj, otmp) {
             (learn_it = (C.char(1)));
             C.unpunish();
         }
-        else (res = 0);
+            else (res = 0);
     }
-    else switch ((otmp).otyp) {
-        case (C.WAN_POLYMORPH):
-            case (C.SPE_POLYMORPH):
-                if (obj_unpolyable(obj)) {
-                    (res = 0);
-                    break;
-                }
-/* KMH, conduct */
-        if (Number(!(C.bump(C.fieldRef((C.u).uconduct, "polypiles"), 1, true, "long")))) C.livelog_printf(C.LL_CONDUCT, C.literal("polymorphed %s first object"), ((C.deref(C.ptrAdd(C.genders, (((C.flags).female) ? 1 : 0), "const struct Gender"), "const struct Gender")).his), "p");
-/* any saved lock context will be dangerously obsolete */
-        if ((Number(!!(Number(((obj)).otyp == C.LARGE_BOX) || Number(((obj)).otyp == C.CHEST))))) C.boxlock(obj, otmp);
-        if (obj_shudders(obj)) {
-            let cover = C.char((Number(!!(Number(!!((C.ptrCompare(obj, C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, (C.u).ux, "struct obj *[21]"), "struct obj *[21]"), (C.u).uy, "struct obj *"), "struct obj *"), "==")) && C.int((C.u).uundetected))) && (Number((C.ulong((((((C.gy).youmonst).data)).mflags1 & C.ulong(128n)))) != C.ulong(0n)))))));
-            if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (obj).oy, "seenV *"), "seenV *"), (obj).ox, "seenV"), "seenV") & 2))) != 0))) (learn_it = (C.char(1)));
-            do_osshock(obj);
-/* eek - your cover might have been blown */
-            if (cover) C.hideunder(C.fieldRef(C.gy, "youmonst"));
+        else switch ((otmp).otyp) {
+            case (C.WAN_POLYMORPH):
+                case (C.SPE_POLYMORPH):
+                    if (obj_unpolyable(obj)) {
+                        (res = 0);
+                        break;
+                    }
+    /* KMH, conduct */
+            if (Number(!(C.bump(C.fieldRef((C.u).uconduct, "polypiles"), 1, true, "long")))) C.livelog_printf(C.LL_CONDUCT, C.literal("polymorphed %s first object"), ((C.deref(C.ptrAdd(C.genders, (((C.flags).female) ? 1 : 0), "const struct Gender"), "const struct Gender")).his), "p");
+    /* any saved lock context will be dangerously obsolete */
+            if ((Number(!!(Number(((obj)).otyp == C.LARGE_BOX) || Number(((obj)).otyp == C.CHEST))))) C.boxlock(obj, otmp);
+            if (obj_shudders(obj)) {
+                let cover = C.char((Number(!!(Number(!!((C.ptrCompare(obj, C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, (C.u).ux, "struct obj *[21]"), "struct obj *[21]"), (C.u).uy, "struct obj *"), "struct obj *"), "=="))
+                    && C.int((C.u).uundetected)))
+                    && (Number((C.ulong((((((C.gy).youmonst).data)).mflags1 & C.ulong(128n)))) != C.ulong(0n)))))));
+                if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (obj).oy, "seenV *"), "seenV *"), (obj).ox, "seenV"), "seenV") & 2))) != 0))) (learn_it = (C.char(1)));
+                do_osshock(obj);
+    /* eek - your cover might have been blown */
+                if (cover) C.hideunder(C.fieldRef(C.gy, "youmonst"));
+                break;
+            }
+            (obj = C.callLocal(poly_obj, obj, C.STRANGE_OBJECT));
+            C.newsym((obj).ox, (obj).oy);
             break;
-        }
-        (obj = C.callLocal(poly_obj, obj, C.STRANGE_OBJECT));
-        C.newsym((obj).ox, (obj).oy);
-        break;
-        case (C.WAN_PROBING):
-            (res = Number(!((obj).dknown)));
-/* target object has now been "seen (up close)" */
-        C.observe_object(obj);
-        if (Number(!!((Number(!!(Number(((obj)).otyp >= C.LARGE_BOX) && Number(((obj)).otyp <= C.BAG_OF_TRICKS)))) || Number((obj).otyp == C.STATUE)))) {
-            ((obj).cknown = ((obj).lknown = C.uint(1)));
-            if (Number(!!((Number(!!(Number(((obj)).otyp == C.LARGE_BOX) || Number(((obj)).otyp == C.CHEST)))) && Number(!((obj).tknown))))) {
-/* obj->tknown applies to boxes and chests, not bags or
+            case (C.WAN_PROBING):
+                (res = Number(!((obj).dknown)));
+    /* target object has now been "seen (up close)" */
+            C.observe_object(obj);
+            if (Number(!!((Number(!!(Number(((obj)).otyp >= C.LARGE_BOX)
+                && Number(((obj)).otyp <= C.BAG_OF_TRICKS))))
+                || Number((obj).otyp == C.STATUE)))) {
+                ((obj).cknown = ((obj).lknown = C.uint(1)));
+                if (Number(!!((Number(!!(Number(((obj)).otyp == C.LARGE_BOX) || Number(((obj)).otyp == C.CHEST)))) && Number(!((obj).tknown))))) {
+    /* obj->tknown applies to boxes and chests, not bags or
                        statues; plural handling here and the "empty" case
                        below are superfluous because containers don't stack */
-                if ((obj).otrapped) C.pline(C.literal("%s trapped!"), C.Tobjnam(obj, C.literal("are")), "p");
-                ((obj).tknown = C.uint(1));
-            }
-            if (Number(!((obj).cobj))) {
-                C.pline(C.literal("%s empty."), C.Tobjnam(obj, C.literal("are")), "p");
-            }
-            else if ((Number(!!(Number(((obj)).otyp == C.LARGE_BOX) && Number(((obj)).spe == 1))))) {
-/* we don't want to force alive vs dead
+                    if ((obj).otrapped) C.pline(C.literal("%s trapped!"), C.Tobjnam(obj, C.literal("are")), "p");
+                    ((obj).tknown = C.uint(1));
+                }
+                if (Number(!((obj).cobj))) {
+                    C.pline(C.literal("%s empty."), C.Tobjnam(obj, C.literal("are")), "p");
+                }
+                else if ((Number(!!(Number(((obj)).otyp == C.LARGE_BOX) && Number(((obj)).spe == 1))))) {
+    /* we don't want to force alive vs dead
                        determination for Schroedinger's Cat here,
                        so just make probing be inconclusive for it */
-                C.You(C.literal("aren't sure whether %s has %s or its corpse inside."), C.the(C.xname(obj)), C.an((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic))))))))) ? C.rndmonnam(0) : C.literal("cat"))), "pp");
-/* unfortunately, we can't tell whether rndmonnam()
+                    C.You(C.literal("aren't sure whether %s has %s or its corpse inside."), C.the(C.xname(obj)), C.an((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic
+                        && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic
+                        || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic))))))))) ? C.rndmonnam(0) : C.literal("cat"))), "pp");
+    /* unfortunately, we can't tell whether rndmonnam()
                            picks a form which can't leave a corpse */
-                ((obj).cknown = C.uint(0));
+                    ((obj).cknown = C.uint(0));
+                }
+                else {
+                    let o;
+    /* view contents (not recursively) */
+                    for ((o = (obj).cobj); o; (o = (o).nobj)) C.observe_object(o);
+    /* "seen", even if blind */
+                    C.display_cinventory(obj);
+                }
+                (res = 1);
+            }
+            else if (Number((obj).otyp == C.TIN)) {
+    /* don't learn wand if tin is already known */
+                if (Number(!!(Number(!((obj).known)) || Number(!((obj).cknown))))) (res = 1);
+                ((obj).known = C.uint(1));
+                C.set_cknown_lknown(obj);
+    /* if TIN obj->cknown = 1 */
+            }
+            else if (Number((obj).otyp == C.EGG)) {
+    /* if egg is unhatchable, probing it won't learn wand
+                   because even when flagged as known, it's just "an egg" */
+                if (Number(!!(Number(!((obj).known)) && Number((obj).corpsenm != C.NON_PM)))) (res = 1);
+                ((obj).known = C.uint(1));
+    /* [should this call learn_egg_type()?] */
+            }
+            if (res) (learn_it = (C.char(1)));
+            break;
+            case (C.WAN_STRIKING):
+                case (C.SPE_FORCE_BOLT):
+    /* learn the type if you see or hear something break
+               (the sound could be implicit) */
+                    (maybelearnit = C.char(Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (obj).oy, "seenV *"), "seenV *"), (obj).ox, "seenV"), "seenV") & 2))) != 0))
+                        || Number(!((Number(!!(Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).intrinsic
+                        || (C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).extrinsic))
+                        || ((C.u).uroleplay).deaf)))))))));
+            if (Number((obj).otyp == C.BOULDER)) {
+                ;
+                if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (obj).oy, "seenV *"), "seenV *"), (obj).ox, "seenV"), "seenV") & 2))) != 0))) C.pline_The(C.literal("boulder falls apart."), "");
+                    else C.You_hear(C.literal("a crumbling sound."), "");
+                C.callLocal(fracture_rock, obj);
+            }
+            else if (Number((obj).otyp == C.STATUE)) {
+                if (break_statue(obj)) {
+                    if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (obj).oy, "seenV *"), "seenV *"), (obj).ox, "seenV"), "seenV") & 2))) != 0))) {
+                        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic
+                            && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic
+                            || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic))))))))) C.pline_The(C.literal("%s shatters."), C.rndmonnam(0), "p");
+                            else C.pline_The(C.literal("statue shatters."), "");
+                    }
+                        else C.You_hear(C.literal("a crumbling sound."), "");
+                }
             }
             else {
-                let o;
-/* view contents (not recursively) */
-                for ((o = (obj).cobj); o; (o = (o).nobj)) C.observe_object(o);
-/* "seen", even if blind */
-                C.display_cinventory(obj);
-            }
-            (res = 1);
-        }
-        else if (Number((obj).otyp == C.TIN)) {
-/* don't learn wand if tin is already known */
-            if (Number(!!(Number(!((obj).known)) || Number(!((obj).cknown))))) (res = 1);
-            ((obj).known = C.uint(1));
-            C.set_cknown_lknown(obj);
-/* if TIN obj->cknown = 1 */
-        }
-        else if (Number((obj).otyp == C.EGG)) {
-/* if egg is unhatchable, probing it won't learn wand
-                   because even when flagged as known, it's just "an egg" */
-            if (Number(!!(Number(!((obj).known)) && Number((obj).corpsenm != C.NON_PM)))) (res = 1);
-            ((obj).known = C.uint(1));
-/* [should this call learn_egg_type()?] */
-        }
-        if (res) (learn_it = (C.char(1)));
-        break;
-        case (C.WAN_STRIKING):
-            case (C.SPE_FORCE_BOLT):
-/* learn the type if you see or hear something break
-               (the sound could be implicit) */
-                (maybelearnit = C.char(Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (obj).oy, "seenV *"), "seenV *"), (obj).ox, "seenV"), "seenV") & 2))) != 0)) || Number(!((Number(!!(Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).extrinsic)) || ((C.u).uroleplay).deaf)))))))));
-        if (Number((obj).otyp == C.BOULDER)) {
-            ;
-            if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (obj).oy, "seenV *"), "seenV *"), (obj).ox, "seenV"), "seenV") & 2))) != 0))) C.pline_The(C.literal("boulder falls apart."), "");
-            else C.You_hear(C.literal("a crumbling sound."), "");
-            C.callLocal(fracture_rock, obj);
-        }
-        else if (Number((obj).otyp == C.STATUE)) {
-            if (break_statue(obj)) {
-                if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (obj).oy, "seenV *"), "seenV *"), (obj).ox, "seenV"), "seenV") & 2))) != 0))) {
-                    if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic))))))))) C.pline_The(C.literal("%s shatters."), C.rndmonnam(0), "p");
-                    else C.pline_The(C.literal("statue shatters."), "");
-                }
-                else C.You_hear(C.literal("a crumbling sound."), "");
-            }
-        }
-        else {
-            let oox = (obj).ox;
-            let ooy = (obj).oy;
-            if (((((C.svc).context).mon_moving) ? Number(!(C.breaks(obj, C.short(oox), C.short(ooy)))) : Number(!(C.hero_breaks(obj, C.short(oox), C.short(ooy), C.uint(0)))))) (maybelearnit = (C.char(0)));
-            else /* nothing broke */
-/* obj broke; force redisplay in case it was the only--
+                let oox = (obj).ox;
+                let ooy = (obj).oy;
+                if (((((C.svc).context).mon_moving) ? Number(!(C.breaks(obj, C.short(oox), C.short(ooy)))) : Number(!(C.hero_breaks(obj, C.short(oox), C.short(ooy), C.uint(0)))))) (maybelearnit = (C.char(0)));
+                else /* nothing broke */
+    /* obj broke; force redisplay in case it was the only--
                        or last--item under non-breaking pile-top; top item
                        here might now be a lone object rather than a pile */
-            C.newsym_force(C.short(oox), C.short(ooy));
-            (res = 0);
-        }
-        if (maybelearnit) (learn_it = (C.char(1)));
-        break;
-        case (C.WAN_CANCELLATION):
-            case (C.SPE_CANCELLATION):
-                C.callLocal(cancel_item, obj);
-        C.newsym((obj).ox, (obj).oy);
-/* might change color */
-        break;
-        case (C.SPE_DRAIN_LIFE):
-            drain_item(obj, (C.char(1)));
-        break;
-        case (C.WAN_TELEPORTATION):
-            case (C.SPE_TELEPORT_AWAY):
-{
-                    let ox = (obj).ox;
-                    let oy = (obj).oy;
-                    C.rloco(obj);
-                    C.maybe_unhide_at(ox, oy);
-                }
-        break;
-        case (C.WAN_MAKE_INVISIBLE):
+                    C.newsym_force(C.short(oox), C.short(ooy));
+                (res = 0);
+            }
+            if (maybelearnit) (learn_it = (C.char(1)));
             break;
-        case (C.WAN_UNDEAD_TURNING):
-            case (C.SPE_TURN_UNDEAD):
-                if (Number((obj).otyp == C.EGG)) {
-                    revive_egg(obj);
-                }
-                else if (Number((obj).otyp == C.CORPSE)) {
-                    let mtmp;
-                    const ox = C.scalarLocal("coordxy");
-                    const oy = C.scalarLocal("coordxy");
-                    let save_norevive;
-                    let by_u = C.char(Number(!(((C.svc).context).mon_moving)));
-                    let corpsenm = C.corpse_revive_type(obj);
-                    let corpsname = C.cxname_singular(obj);
-/* get corpse's location before revive() uses it up */
-                    if (Number(!(get_obj_location(obj, ox, oy, 0)))) ((ox.value = (obj).ox), (oy.value = (obj).oy));
-/* won't happen */
-/* explicit revival magic overrides timer-based no-revive */
-                    (save_norevive = (obj).norevive);
-                    ((obj).norevive = C.uint(0));
-                    (mtmp = C.callLocal(revive, obj, (C.char(1))));
-                    if (Number(!(mtmp))) {
-                        ((obj).norevive = save_norevive);
-                        (res = 0);
-/* no monster implies corpse was left intact */
+            case (C.WAN_CANCELLATION):
+                case (C.SPE_CANCELLATION):
+                    C.callLocal(cancel_item, obj);
+            C.newsym((obj).ox, (obj).oy);
+    /* might change color */
+            break;
+            case (C.SPE_DRAIN_LIFE):
+                drain_item(obj, (C.char(1)));
+            break;
+            case (C.WAN_TELEPORTATION):
+                case (C.SPE_TELEPORT_AWAY):
+    {
+                        let ox = (obj).ox;
+                        let oy = (obj).oy;
+                        C.rloco(obj);
+                        C.maybe_unhide_at(ox, oy);
                     }
-                    else {
-                        if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, oy.value, "seenV *"), "seenV *"), ox.value, "seenV"), "seenV") & 2))) != 0))) {
-                            if ((Number(!!(C.canseemon(mtmp) || C.sensemon(mtmp))))) {
-                                C.pline(C.literal("%s is resurrected!"), C.upstart(C.noname_monnam(mtmp, C.ARTICLE_THE)), "p");
-                                (learn_it = C.char(((by_u) ? (C.char(1)) : (C.gz).zap_oseen)));
-                            }
-                            else {
-/* saw corpse but don't see monster: maybe
-                               mtmp is invisible, or has been placed at
-                               a different spot than <ox,oy> */
-                                if (Number(!((Number((C.ulong((((C.ptrAdd(C.mons, corpsenm, "struct permonst"))).mflags2 & C.ulong(524288n)))) != C.ulong(0n)))))) (corpsname = C.The(corpsname));
-                                C.pline(C.literal("%s disappears."), corpsname, "p");
-                            }
+            break;
+            case (C.WAN_MAKE_INVISIBLE):
+                break;
+            case (C.WAN_UNDEAD_TURNING):
+                case (C.SPE_TURN_UNDEAD):
+                    if (Number((obj).otyp == C.EGG)) {
+                        revive_egg(obj);
+                    }
+                    else if (Number((obj).otyp == C.CORPSE)) {
+                        let mtmp;
+                        const ox = C.scalarLocal("coordxy");
+                        const oy = C.scalarLocal("coordxy");
+                        let save_norevive;
+                        let by_u = C.char(Number(!(((C.svc).context).mon_moving)));
+                        let corpsenm = C.corpse_revive_type(obj);
+                        let corpsname = C.cxname_singular(obj);
+    /* get corpse's location before revive() uses it up */
+                        if (Number(!(get_obj_location(obj, ox, oy, 0)))) ((ox.value = (obj).ox), (oy.value = (obj).oy));
+    /* won't happen */
+    /* explicit revival magic overrides timer-based no-revive */
+                        (save_norevive = (obj).norevive);
+                        ((obj).norevive = C.uint(0));
+                        (mtmp = C.callLocal(revive, obj, (C.char(1))));
+                        if (Number(!(mtmp))) {
+                            ((obj).norevive = save_norevive);
+                            (res = 0);
+    /* no monster implies corpse was left intact */
                         }
                         else {
-/* couldn't see corpse's location */
-                            if (Number(!!(Number(!!((Number(((C.gu).urole).mnum == (C.PM_HEALER))) && Number(!((Number(!!(Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).extrinsic)) || ((C.u).uroleplay).deaf))))))) && Number(!((Number(!!(Number(!!((Number((C.ulong((((C.ptrAdd(C.mons, corpsenm, "struct permonst"))).mflags2 & C.ulong(2n)))) != C.ulong(0n))) || C.ptrCompare((C.ptrAdd(C.mons, corpsenm, "struct permonst")), C.ptrAdd(C.mons, C.PM_MANES, "struct permonst"), "=="))) || (Number(!!((Number(((C.ptrAdd(C.mons, corpsenm, "struct permonst"))).mlet == C.S_GOLEM)) || Number(((C.ptrAdd(C.mons, corpsenm, "struct permonst"))).mlet == C.S_VORTEX)))))))))))) {
-                                if (Number(!((Number((C.ulong((((C.ptrAdd(C.mons, corpsenm, "struct permonst"))).mflags2 & C.ulong(524288n)))) != C.ulong(0n)))))) (corpsname = C.an(corpsname));
-                                if (Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic))))))))))) C.You_hear(C.literal("%s reviving."), corpsname, "p");
-                                else C.You_hear(C.literal("a defibrillator."), "");
-                                (learn_it = C.char(((by_u) ? (C.char(1)) : (C.gz).zap_oseen)));
+                            if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, oy.value, "seenV *"), "seenV *"), ox.value, "seenV"), "seenV") & 2))) != 0))) {
+                                if ((Number(!!(C.canseemon(mtmp) || C.sensemon(mtmp))))) {
+                                    C.pline(C.literal("%s is resurrected!"), C.upstart(C.noname_monnam(mtmp, C.ARTICLE_THE)), "p");
+                                    (learn_it = C.char(((by_u) ? (C.char(1)) : (C.gz).zap_oseen)));
+                                }
+                                else {
+    /* saw corpse but don't see monster: maybe
+                               mtmp is invisible, or has been placed at
+                               a different spot than <ox,oy> */
+                                    if (Number(!((Number((C.ulong((((C.ptrAdd(C.mons, corpsenm, "struct permonst"))).mflags2 & C.ulong(524288n)))) != C.ulong(0n)))))) (corpsname = C.The(corpsname));
+                                    C.pline(C.literal("%s disappears."), corpsname, "p");
+                                }
                             }
-                            if ((Number(!!(C.canseemon(mtmp) || C.sensemon(mtmp))))) /* didn't see corpse but do see monster: it
+                            else {
+    /* couldn't see corpse's location */
+                                if (Number(!!(Number(!!((Number(((C.gu).urole).mnum == (C.PM_HEALER)))
+                                    && Number(!((Number(!!(Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).intrinsic
+                                    || (C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).extrinsic))
+                                    || ((C.u).uroleplay).deaf)))))))
+                                    && Number(!((Number(!!(Number(!!((Number((C.ulong((((C.ptrAdd(C.mons, corpsenm, "struct permonst"))).mflags2 & C.ulong(2n)))) != C.ulong(0n)))
+                                    || C.ptrCompare((C.ptrAdd(C.mons, corpsenm, "struct permonst")), C.ptrAdd(C.mons, C.PM_MANES, "struct permonst"), "==")))
+                                    || (Number(!!((Number(((C.ptrAdd(C.mons, corpsenm, "struct permonst"))).mlet == C.S_GOLEM))
+                                    || Number(((C.ptrAdd(C.mons, corpsenm, "struct permonst"))).mlet == C.S_VORTEX)))))))))))) {
+                                    if (Number(!((Number((C.ulong((((C.ptrAdd(C.mons, corpsenm, "struct permonst"))).mflags2 & C.ulong(524288n)))) != C.ulong(0n)))))) (corpsname = C.an(corpsname));
+                                    if (Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic
+                                        && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic
+                                        || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic))))))))))) C.You_hear(C.literal("%s reviving."), corpsname, "p");
+                                        else C.You_hear(C.literal("a defibrillator."), "");
+                                    (learn_it = C.char(((by_u) ? (C.char(1)) : (C.gz).zap_oseen)));
+                                }
+                                if ((Number(!!(C.canseemon(mtmp) || C.sensemon(mtmp))))) /* didn't see corpse but do see monster: it
                                has been placed somewhere other than <ox,oy>
                                or blind hero spots it with ESP */
-                            C.pline(C.literal("%s appears."), C.Monnam(mtmp), "p");
+                                    C.pline(C.literal("%s appears."), C.Monnam(mtmp), "p");
+                            }
+                            if (learn_it) C.exercise(C.A_WIS, (C.char(1)));
                         }
-                        if (learn_it) C.exercise(C.A_WIS, (C.char(1)));
                     }
-                }
-        break;
-        case (C.WAN_OPENING):
-            case (C.SPE_KNOCK):
-                case (C.WAN_LOCKING):
-                    case (C.SPE_WIZARD_LOCK):
-                        if ((Number(!!(Number(((obj)).otyp == C.LARGE_BOX) || Number(((obj)).otyp == C.CHEST))))) (res = C.boxlock(obj, otmp));
-                        else (res = 0);
-        if (res) (learn_it = (C.char(1)));
-        break;
-        case (C.WAN_SLOW_MONSTER):
-/* no effect on objects */
-            case (C.SPE_SLOW_MONSTER):
-                case (C.WAN_SPEED_MONSTER):
-                    case (C.WAN_NOTHING):
-                        case (C.SPE_HEALING):
-                            case (C.SPE_EXTRA_HEALING):
-                                (res = 0);
-        break;
-        case (C.SPE_STONE_TO_FLESH):
-            (res = C.callLocal(stone_to_flesh_obj, obj));
-        break;
-        default:
-            C.impossible(C.literal("What an interesting effect (%d)"), (otmp).otyp, "i");
-        break;
-    }
+            break;
+            case (C.WAN_OPENING):
+                case (C.SPE_KNOCK):
+                    case (C.WAN_LOCKING):
+                        case (C.SPE_WIZARD_LOCK):
+                            if ((Number(!!(Number(((obj)).otyp == C.LARGE_BOX) || Number(((obj)).otyp == C.CHEST))))) (res = C.boxlock(obj, otmp));
+                                else (res = 0);
+            if (res) (learn_it = (C.char(1)));
+            break;
+            case (C.WAN_SLOW_MONSTER):
+    /* no effect on objects */
+                case (C.SPE_SLOW_MONSTER):
+                    case (C.WAN_SPEED_MONSTER):
+                        case (C.WAN_NOTHING):
+                            case (C.SPE_HEALING):
+                                case (C.SPE_EXTRA_HEALING):
+                                    (res = 0);
+            break;
+            case (C.SPE_STONE_TO_FLESH):
+                (res = C.callLocal(stone_to_flesh_obj, obj));
+            break;
+            default:
+                C.impossible(C.literal("What an interesting effect (%d)"), (otmp).otyp, "i");
+            break;
+        }
 /* if effect was observable then discover the wand type provided
        that the wand itself has been seen */
     if (learn_it) learnwand(otmp);
@@ -2146,7 +2359,9 @@ export function bhitpile(obj, fhito, tx, ty, zz) /* wand or fake spellbook for t
     if (Number(!(C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, tx, "struct obj *[21]"), "struct obj *[21]"), ty, "struct obj *"), "struct obj *")))) return 0;
 /* if hiding underneath an object and zapping up or down, the top item
        is either the only thing hit (up) or is skipped (down) */
-    (hidingunder = C.char((Number(!!(Number(!!(Number(zz != 0) && C.int((C.u).uundetected))) && (Number((C.ulong((((((C.gy).youmonst).data)).mflags1 & C.ulong(128n)))) != C.ulong(0n))))))));
+    (hidingunder = C.char((Number(!!(Number(!!(Number(zz != 0)
+        && C.int((C.u).uundetected)))
+        && (Number((C.ulong((((((C.gy).youmonst).data)).mflags1 & C.ulong(128n)))) != C.ulong(0n))))))));
     (first = (C.char(1)));
     if (Number(!!(Number((obj).otyp == C.SPE_FORCE_BOLT) || Number((obj).otyp == C.WAN_STRIKING)))) {
         let t = C.t_at(tx, ty);
@@ -2171,12 +2386,12 @@ export function bhitpile(obj, fhito, tx, ty, zz) /* wand or fake spellbook for t
                 (first = (C.char(0)));
 /* reset for next item */
                 if (Number(zz > 0)) /* down when hiding-under skips first item */
-                continue;
+                    continue;
             }
             else {
 /* !first */
                 if (Number(zz < 0)) /* up when hiding-under skips rest of pile */
-                continue;
+                    continue;
             }
         }
         if (Number(!!(Number(!!(Number((otmp).where != C.OBJ_FLOOR) || Number((otmp).ox != tx))) || Number((otmp).oy != ty)))) continue;
@@ -2196,7 +2411,7 @@ export function bhitpile(obj, fhito, tx, ty, zz) /* wand or fake spellbook for t
         (prevotyp = (otmp).otyp);
     }
     if (hidingunder) /* pile might have been destroyed or dispersed */
-    C.maybe_unhide_at(tx, ty);
+        C.maybe_unhide_at(tx, ty);
     C.fill_pit(tx, ty);
     return hitanything;
 }
@@ -2208,7 +2423,9 @@ export function bhitpile(obj, fhito, tx, ty, zz) /* wand or fake spellbook for t
  */
 export function zappable(wand) {
     wand = C.argument(wand, "struct obj *");
-    if (Number(!!(Number((wand).spe < 0) || (Number(!!(Number((wand).spe == 0) && (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 2516, C.literal("zappable")), C.rn2(121))) : C.rn2(121))))))))) return 0;
+    if (Number(!!(Number((wand).spe < 0)
+        || (Number(!!(Number((wand).spe == 0)
+        && (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 2516, C.literal("zappable")), C.rn2(121))) : C.rn2(121))))))))) return 0;
     if (Number((wand).spe == 0)) C.You(C.literal("wrest one last charge from the worn-out wand."), "");
     C.bump(C.fieldRef(wand, "spe"), -1, true, "signed char");
     return 1;
@@ -2234,7 +2451,10 @@ export function zapnodir(obj) {
             case (C.SPE_LIGHT):
 /* FIXME? wand of light becoming discovered should be contingent upon
            seeing at least one previously unlit spot become lit */
-                (known = C.char((Number(!!(C.int((obj).dknown) && Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked))))))))))));
+                (known = C.char((Number(!!(C.int((obj).dknown)
+                    && Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                    || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                    && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked))))))))))));
         C.litroom((C.char(1)), obj);
         C.callLocal(lightdamage, obj, (C.char(1)), 5);
         break;
@@ -2293,7 +2513,8 @@ export function backfire(otmp) {
 /* in case losehp() is fatal */
     C.pline(C.literal("%s suddenly explodes!"), C.The(C.xname(otmp)), "p");
     (dmg = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 2611, C.literal("backfire")), C.d((C.int(((otmp).spe + 2))), (6)))) : C.d((C.int(((otmp).spe + 2))), (6)))));
-    C.losehp((((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).extrinsic))))) ? (C.int(Math.trunc((C.int(((dmg) + 1))) / 2))) : (dmg))), C.literal("exploding wand"), C.KILLED_BY_AN);
+    C.losehp((((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).intrinsic
+        || (C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).extrinsic))))) ? (C.int(Math.trunc((C.int(((dmg) + 1))) / 2))) : (dmg))), C.literal("exploding wand"), C.KILLED_BY_AN);
     C.useupall(otmp);
 }
 
@@ -2321,7 +2542,8 @@ export function dozap() {
     if (Number(!(zappable(obj)))) {
         C.pline(C.literal("%s"), (C.c_common_strings).c_nothing_happens, "p");
     }
-    else if (Number(!!(C.int((obj).cursed) && Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 2647, C.literal("dozap")), C.rn2(100))) : C.rn2(100)))))))) {
+    else if (Number(!!(C.int((obj).cursed)
+        && Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 2647, C.literal("dozap")), C.rn2(100))) : C.rn2(100)))))))) {
         backfire(obj);
 /* the wand blows up in your face! */
         C.exercise(C.A_STR, (C.char(0)));
@@ -2330,14 +2552,17 @@ export function dozap() {
         return C.ECMD_TIME;
     }
     else if (Number(!!(need_dir && Number(!(C.getdir(0)))))) {
-        if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) C.pline(C.literal("%s glows and fades."), C.The(C.xname(obj)), "p");
+        if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+            && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) C.pline(C.literal("%s glows and fades."), C.The(C.xname(obj)), "p");
 /* make him pay for knowing !NODIR */
     }
     else if (Number(!!(Number(!!(Number(!!(need_dir && Number(!((C.u).dx)))) && Number(!((C.u).dy)))) && Number(!((C.u).dz))))) {
         if (Number(((damage = C.callLocal(zapyourself, obj, (C.char(1))))) != 0)) {
             const buf = C.localArray("char[256]", 0);
             C.sprintf(buf, C.literal("zapped %sself with %s"), ((C.deref(C.ptrAdd(C.genders, (((C.flags).female) ? 1 : 0), "const struct Gender"), "const struct Gender")).him), C.killer_xname(obj), "pp");
-            C.losehp((((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).extrinsic))))) ? (C.int(Math.trunc((C.int(((damage) + 1))) / 2))) : (damage))), buf, C.NO_KILLER_PREFIX);
+            C.losehp((((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).extrinsic))))) ? (C.int(Math.trunc((C.int(((damage) + 1))) / 2))) : (damage))), buf, C.NO_KILLER_PREFIX);
         }
     }
     else {
@@ -2357,7 +2582,7 @@ export function dozap() {
         C.useupall(obj);
 /* calls freeinv() -> update_inventory() */
     }
-    else C.update_inventory();
+        else C.update_inventory();
 /* maybe used a charge */
     return C.ECMD_TIME;
 }
@@ -2391,7 +2616,8 @@ export function zapyourself(obj, ordinary) {
         case (C.WAN_STRIKING):
             case (C.SPE_FORCE_BOLT):
                 (learn_it.value = (C.char(1)));
-        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).extrinsic)))) {
+        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).extrinsic)))) {
             C.shieldeff((C.u).ux, (C.u).uy);
             C.pline(C.literal("Boing!"), "");
             C.monstseesu(C.ulong(C.M_SEEN_MAGR));
@@ -2401,7 +2627,7 @@ export function zapyourself(obj, ordinary) {
                 C.You(C.literal("bash yourself!"), "");
                 (damage = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 2722, C.literal("zapyourself")), C.d((2), (12)))) : C.d((2), (12)))));
             }
-            else (damage = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 2724, C.literal("zapyourself")), C.d((C.int((1 + (obj).spe))), (6)))) : C.d((C.int((1 + (obj).spe))), (6)))));
+                else (damage = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 2724, C.literal("zapyourself")), C.d((C.int((1 + (obj).spe))), (6)))) : C.d((C.int((1 + (obj).spe))), (6)))));
             C.exercise(C.A_STR, (C.char(0)));
             C.monstunseesu(C.ulong(C.M_SEEN_MAGR));
         }
@@ -2409,7 +2635,8 @@ export function zapyourself(obj, ordinary) {
         case (C.WAN_LIGHTNING):
             (learn_it.value = (C.char(1)));
         (orig_dmg = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 2732, C.literal("zapyourself")), C.d((12), (6)))) : C.d((12), (6)))));
-        if (Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.SHOCK_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.SHOCK_RES, "struct prop"), "struct prop")).extrinsic)))))) {
+        if (Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.SHOCK_RES, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.SHOCK_RES, "struct prop"), "struct prop")).extrinsic)))))) {
             C.You(C.literal("shock yourself!"), "");
             (damage = orig_dmg);
             C.exercise(C.A_CON, (C.char(0)));
@@ -2432,7 +2659,8 @@ export function zapyourself(obj, ordinary) {
             case (C.FIRE_HORN):
                 (learn_it.value = (C.char(1)));
         (orig_dmg = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 2755, C.literal("zapyourself")), C.d((12), (6)))) : C.d((12), (6)))));
-        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.FIRE_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.FIRE_RES, "struct prop"), "struct prop")).extrinsic)))) {
+        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.FIRE_RES, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.FIRE_RES, "struct prop"), "struct prop")).extrinsic)))) {
             C.shieldeff((C.u).ux, (C.u).uy);
             C.You_feel(C.literal("rather warm."), "");
             C.monstseesu(C.ulong(C.M_SEEN_FIRE));
@@ -2453,7 +2681,8 @@ export function zapyourself(obj, ordinary) {
                 case (C.FROST_HORN):
                     (learn_it.value = (C.char(1)));
         (orig_dmg = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 2776, C.literal("zapyourself")), C.d((12), (6)))) : C.d((12), (6)))));
-        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.COLD_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.COLD_RES, "struct prop"), "struct prop")).extrinsic)))) {
+        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.COLD_RES, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.COLD_RES, "struct prop"), "struct prop")).extrinsic)))) {
             C.shieldeff((C.u).ux, (C.u).uy);
             C.You_feel(C.literal("a little chill."), "");
             C.monstseesu(C.ulong(C.M_SEEN_COLD));
@@ -2469,7 +2698,8 @@ export function zapyourself(obj, ordinary) {
         case (C.WAN_MAGIC_MISSILE):
             case (C.SPE_MAGIC_MISSILE):
                 (learn_it.value = (C.char(1)));
-        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).extrinsic)))) {
+        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).extrinsic)))) {
             C.shieldeff((C.u).ux, (C.u).uy);
             C.pline_The(C.literal("missiles bounce!"), "");
             C.monstseesu(C.ulong(C.M_SEEN_MAGR));
@@ -2482,7 +2712,8 @@ export function zapyourself(obj, ordinary) {
         break;
         case (C.WAN_POLYMORPH):
             case (C.SPE_POLYMORPH):
-                if (Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.UNCHANGING, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.UNCHANGING, "struct prop"), "struct prop")).extrinsic)))))) {
+                if (Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.UNCHANGING, "struct prop"), "struct prop")).intrinsic
+                    || (C.deref(C.ptrAdd((C.u).uprops, C.UNCHANGING, "struct prop"), "struct prop")).extrinsic)))))) {
                     (learn_it.value = (C.char(1)));
                     C.polyself(C.POLY_NOFLAGS);
                 }
@@ -2492,7 +2723,8 @@ export function zapyourself(obj, ordinary) {
                 C.callLocal(cancel_monst, C.fieldRef(C.gy, "youmonst"), obj, (C.char(1)), (C.char(1)), (C.char(1)));
         break;
         case (C.SPE_DRAIN_LIFE):
-            if (Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DRAIN_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.DRAIN_RES, "struct prop"), "struct prop")).extrinsic)))))) {
+            if (Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DRAIN_RES, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.DRAIN_RES, "struct prop"), "struct prop")).extrinsic)))))) {
                 (learn_it.value = (C.char(1)));
 /* (no effect for spells...) */
                 C.losexp(C.literal("life drainage"));
@@ -2505,8 +2737,15 @@ export function zapyourself(obj, ordinary) {
 /* have to test before changing HInvis but must change
          * HInvis before doing newsym().
          */
-                let msg = Number(!!(Number(!!(Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.INVIS, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.INVIS, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.INVIS, "struct prop"), "struct prop")).blocked))))))) && Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked))))))))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.INVIS, "struct prop"), "struct prop")).blocked))));
-                if (Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.INVIS, "struct prop"), "struct prop")).blocked && Number((C.uarmc).otyp == C.MUMMY_WRAPPING)))) {
+                let msg = Number(!!(Number(!!(Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.INVIS, "struct prop"), "struct prop")).intrinsic
+                    || (C.deref(C.ptrAdd((C.u).uprops, C.INVIS, "struct prop"), "struct prop")).extrinsic)))
+                    && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.INVIS, "struct prop"), "struct prop")).blocked)))))))
+                    && Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                    || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                    && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))))
+                    && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.INVIS, "struct prop"), "struct prop")).blocked))));
+                if (Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.INVIS, "struct prop"), "struct prop")).blocked
+                    && Number((C.uarmc).otyp == C.MUMMY_WRAPPING)))) {
 /* A mummy wrapping absorbs it and protects you */
                     C.You_feel(C.literal("rather itchy under %s."), C.yname(C.uarmc), "p");
                     break;
@@ -2527,14 +2766,15 @@ export function zapyourself(obj, ordinary) {
         case (C.WAN_SLEEP):
             case (C.SPE_SLEEP):
                 (learn_it.value = (C.char(1)));
-        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.SLEEP_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.SLEEP_RES, "struct prop"), "struct prop")).extrinsic)))) {
+        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.SLEEP_RES, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.SLEEP_RES, "struct prop"), "struct prop")).extrinsic)))) {
             C.shieldeff((C.u).ux, (C.u).uy);
             C.You(C.literal("don't feel sleepy!"), "");
             C.monstseesu(C.ulong(C.M_SEEN_SLEEP));
         }
         else {
             if (ordinary) C.pline_The(C.literal("sleep ray hits you!"), "");
-            else C.You(C.literal("fall asleep!"), "");
+                else C.You(C.literal("fall asleep!"), "");
             C.monstunseesu(C.ulong(C.M_SEEN_SLEEP));
             C.fall_asleep(C.int((-(((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 2864, C.literal("zapyourself")), C.rnd(50))) : C.rnd(50))))), (C.char(1)));
         }
@@ -2550,11 +2790,19 @@ export function zapyourself(obj, ordinary) {
             case (C.SPE_TELEPORT_AWAY):
                 C.tele();
 /* same criteria as when mounted (zap_steed) */
-        if (Number(!!(Number(!!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.TELEPORT_CONTROL, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.TELEPORT_CONTROL, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.STUNNED, "struct prop"), "struct prop")).intrinsic))))) || Number(!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (C.u).uy0, "seenV *"), "seenV *"), (C.u).ux0, "seenV"), "seenV") & 1))) != 0)))))) || Number(C.dist2(((C.u).ux0), ((C.u).uy0), (C.u).ux, (C.u).uy) >= 16)))) (learn_it.value = (C.char(1)));
+        if (Number(!!(Number(!!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.TELEPORT_CONTROL, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.TELEPORT_CONTROL, "struct prop"), "struct prop")).extrinsic)))
+            && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.STUNNED, "struct prop"), "struct prop")).intrinsic)))))
+            || Number(!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (C.u).uy0, "seenV *"), "seenV *"), (C.u).ux0, "seenV"), "seenV") & 1))) != 0))))))
+            || Number(C.dist2(((C.u).ux0), ((C.u).uy0), (C.u).ux, (C.u).uy) >= 16)))) (learn_it.value = (C.char(1)));
         break;
         case (C.WAN_DEATH):
             case (C.SPE_FINGER_OF_DEATH):
-                if (Number(!!((Number(!!(Number(!!((Number((C.ulong((((((C.gy).youmonst).data)).mflags2 & C.ulong(2n)))) != C.ulong(0n))) || C.ptrCompare((((C.gy).youmonst).data), C.ptrAdd(C.mons, C.PM_MANES, "struct permonst"), "=="))) || (Number(!!((Number(((((C.gy).youmonst).data)).mlet == C.S_GOLEM)) || Number(((((C.gy).youmonst).data)).mlet == C.S_VORTEX))))))) || (Number((C.ulong((((((C.gy).youmonst).data)).mflags2 & C.ulong(256n)))) != C.ulong(0n)))))) {
+                if (Number(!!((Number(!!(Number(!!((Number((C.ulong((((((C.gy).youmonst).data)).mflags2 & C.ulong(2n)))) != C.ulong(0n)))
+                    || C.ptrCompare((((C.gy).youmonst).data), C.ptrAdd(C.mons, C.PM_MANES, "struct permonst"), "==")))
+                    || (Number(!!((Number(((((C.gy).youmonst).data)).mlet == C.S_GOLEM))
+                    || Number(((((C.gy).youmonst).data)).mlet == C.S_VORTEX)))))))
+                    || (Number((C.ulong((((((C.gy).youmonst).data)).mflags2 & C.ulong(256n)))) != C.ulong(0n)))))) {
                     C.pline((((Number((obj).otyp == C.WAN_DEATH))) ? C.literal("The wand shoots an apparently harmless beam at you.") : C.literal("You seem no deader than before.")), "");
                     break;
                 }
@@ -2577,7 +2825,8 @@ export function zapyourself(obj, ordinary) {
             case (C.SPE_EXTRA_HEALING):
                 (learn_it.value = (C.char(1)));
 /* (no effect for spells...) */
-        C.healup((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 2911, C.literal("zapyourself")), C.d((6), (((Number((obj).otyp == C.SPE_EXTRA_HEALING)) ? 8 : 4))))) : C.d((6), (((Number((obj).otyp == C.SPE_EXTRA_HEALING)) ? 8 : 4))))), 0, (C.char(0)), C.char((Number(!!(C.int((obj).blessed) || Number((obj).otyp == C.SPE_EXTRA_HEALING))))));
+        C.healup((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 2911, C.literal("zapyourself")), C.d((6), (((Number((obj).otyp == C.SPE_EXTRA_HEALING)) ? 8 : 4))))) : C.d((6), (((Number((obj).otyp == C.SPE_EXTRA_HEALING)) ? 8 : 4))))), 0, (C.char(0)), C.char((Number(!!(C.int((obj).blessed)
+            || Number((obj).otyp == C.SPE_EXTRA_HEALING))))));
         C.You_feel(C.literal("%sbetter."), ((Number((obj).otyp == C.SPE_EXTRA_HEALING)) ? C.literal("much ") : C.literal("")), "p");
         break;
         case (C.WAN_LIGHT):
@@ -2711,7 +2960,8 @@ export function lightdamage(obj, ordinary, amt) /* item making light (fake book 
         (how = (((Number((obj).oclass == C.SPBOOK_CLASS))) ? C.literal("spell of light") : (((Number(!((obj).oartifact)))) ? C.ansimpleoname(obj) : C.bare_artifactname(obj))));
         C.sprintf(buf, C.literal("%s %sself with %s"), ((ordinary) ? C.literal("zapped") : C.literal("blasted")), ((C.deref(C.ptrAdd(C.genders, (((C.flags).female) ? 1 : 0), "const struct Gender"), "const struct Gender")).him), how, "ppp");
 /* might rehumanize(); could be fatal, but only for Unchanging */
-        C.losehp((((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).extrinsic))))) ? (C.int(Math.trunc((C.int(((dmg) + 1))) / 2))) : (dmg))), buf, C.NO_KILLER_PREFIX);
+        C.losehp((((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).extrinsic))))) ? (C.int(Math.trunc((C.int(((dmg) + 1))) / 2))) : (dmg))), buf, C.NO_KILLER_PREFIX);
     }
     return dmg;
 }
@@ -2723,7 +2973,9 @@ export function flashburn(duration, via_lightning) {
     if (Number(!(C.resists_blnd(C.fieldRef(C.gy, "youmonst"))))) {
         C.You(C.literal("are blinded by the flash!"), "");
         C.make_blinded(duration, (C.char(0)));
-        if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) C.Your(C.literal("%s"), (C.c_common_strings).c_vision_clears, "p");
+        if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+            && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) C.Your(C.literal("%s"), (C.c_common_strings).c_vision_clears, "p");
         return (C.char(1));
     }
 /* if blinding is resisted due to magical equipment (Sunsword), give
@@ -2765,7 +3017,11 @@ export function zap_steed(obj) /* wand or spell */
 /* you go together */
                 C.tele();
 /* same criteria as when unmounted (zapyourself) */
-        if (Number(!!(Number(!!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.TELEPORT_CONTROL, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.TELEPORT_CONTROL, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.STUNNED, "struct prop"), "struct prop")).intrinsic))))) || Number(!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (C.u).uy0, "seenV *"), "seenV *"), (C.u).ux0, "seenV"), "seenV") & 1))) != 0)))))) || Number(C.dist2(((C.u).ux0), ((C.u).uy0), (C.u).ux, (C.u).uy) >= 16)))) learnwand(obj);
+        if (Number(!!(Number(!!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.TELEPORT_CONTROL, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.TELEPORT_CONTROL, "struct prop"), "struct prop")).extrinsic)))
+            && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.STUNNED, "struct prop"), "struct prop")).intrinsic)))))
+            || Number(!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, (C.u).uy0, "seenV *"), "seenV *"), (C.u).ux0, "seenV"), "seenV") & 1))) != 0))))))
+            || Number(C.dist2(((C.u).ux0), ((C.u).uy0), (C.u).ux, (C.u).uy) >= 16)))) learnwand(obj);
         (steedhit = (C.char(1)));
         break;
 /* Default processing via bhitm() for these */
@@ -2811,7 +3067,9 @@ export function cancel_monst(mdef, obj, youattack, allow_cancel_kill, self_cance
     C.declareStatic("cancel_monst.your", "const char[5]", C.literal("your"));
 /* should be extern */
     let youdefend = C.char((C.ptrCompare(mdef, C.fieldRef(C.gy, "youmonst"), "==")));
-    if (((youdefend) ? (Number(!!(Number(!(youattack)) && (Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).extrinsic)))))) : C.callLocal(resist, mdef, (obj).oclass, 0, C.NOTELL))) return (C.char(0));
+    if (((youdefend) ? (Number(!!(Number(!(youattack))
+        && (Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).intrinsic
+        || (C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).extrinsic)))))) : C.callLocal(resist, mdef, (obj).oclass, 0, C.NOTELL))) return (C.char(0));
 /* resisted cancellation */
     if (self_cancel) {
 /* 1st cancel inventory */
@@ -2834,14 +3092,20 @@ export function cancel_monst(mdef, obj, youattack, allow_cancel_kill, self_cance
              * Does not cure lycanthropy or stop timed random polymorph.
              */
             if (Number((C.u).umonnum == C.PM_CLAY_GOLEM)) {
-                if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) C.pline(C.staticCell("cancel_monst.writing_vanishes").value, C.staticCell("cancel_monst.your").value, "p");
+                if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                    || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                    && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) C.pline(C.staticCell("cancel_monst.writing_vanishes").value, C.staticCell("cancel_monst.your").value, "p");
                 else /* note: "dark" rather than "heavy" is intentional... */
-                C.You_feel(C.literal("%s headed."), (((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic))))))))) ? C.literal("dark") : C.literal("light")), "p");
+                    C.You_feel(C.literal("%s headed."), (((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic
+                        && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic
+                        || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic))))))))) ? C.literal("dark") : C.literal("light")), "p");
                 ((C.u).mh = 0);
 /* fatal; death handled by rehumanize() */
             }
-            if (Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.UNCHANGING, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.UNCHANGING, "struct prop"), "struct prop")).extrinsic))) && Number((C.u).mh > 0)))) C.Your(C.literal("amulet grows hot for a moment, then cools."), "");
-            else C.rehumanize();
+            if (Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.UNCHANGING, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.UNCHANGING, "struct prop"), "struct prop")).extrinsic)))
+                && Number((C.u).mh > 0)))) C.Your(C.literal("amulet grows hot for a moment, then cools."), "");
+                else C.rehumanize();
         }
     }
     else {
@@ -2854,7 +3118,7 @@ export function cancel_monst(mdef, obj, youattack, allow_cancel_kill, self_cance
                will be killed somewhere back up the call/return chain... */
             if (allow_cancel_kill) {
                 if (youattack) C.killed(mdef);
-                else C.monkilled(mdef, C.literal(""), C.AD_SPEL);
+                    else C.monkilled(mdef, C.literal(""), C.AD_SPEL);
             }
         }
     }
@@ -2918,7 +3182,9 @@ export function zap_updown(obj) /* wand or spell, nonnull */
         case (C.WAN_OPENING):
             case (C.SPE_KNOCK):
                 while (stway) {
-                    if (Number(!!(Number(!!(Number(!((stway).isladder)) && Number(!((stway).up)))) && Number(((stway).tolev).dnum == ((C.u).uz).dnum)))) break;
+                    if (Number(!!(Number(!!(Number(!((stway).isladder))
+                        && Number(!((stway).up))))
+                        && Number(((stway).tolev).dnum == ((C.u).uz).dnum)))) break;
                     (stway = (stway).next);
                 }
 /* up or down, but at closed portcullis only */
@@ -2926,7 +3192,12 @@ export function zap_updown(obj) /* wand or spell, nonnull */
             C.open_drawbridge(xx.value, yy.value);
             (disclose.value = (C.char(1)));
         }
-        else if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number((C.u).dz > 0) && stway)) && Number((stway).sx == x))) && Number((stway).sy == y))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_qstart_level")))) && Number(!(C.ok_to_quest()))))) /* can't use the stairs down to quest level 2 until
+        else if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number((C.u).dz > 0)
+            && stway))
+            && Number((stway).sx == x)))
+            && Number((stway).sy == y)))
+            && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_qstart_level"))))
+            && Number(!(C.ok_to_quest()))))) /* can't use the stairs down to quest level 2 until
                       leader "unlocks" them; give feedback if you try */
 {
             C.pline_The(C.literal("stairs seem to ripple momentarily."), "");
@@ -2949,17 +3220,32 @@ export function zap_updown(obj) /* wand or spell, nonnull */
         case (C.WAN_LOCKING):
             case (C.SPE_WIZARD_LOCK):
 /* down at open bridge or up or down at open portcullis */
-                if (Number(!!(((((Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), y, "struct rm"), "struct rm")).typ == C.DRAWBRIDGE_DOWN))) ? (Number((C.u).dz > 0)) : (Number(!!(Number(C.is_drawbridge_wall(x, y) >= 0) && Number(!(C.is_db_wall(x, y)))))))) && C.find_drawbridge(xx, yy)))) {
+                if (Number(!!(((((Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), y, "struct rm"), "struct rm")).typ == C.DRAWBRIDGE_DOWN))) ? (Number((C.u).dz > 0)) : (Number(!!(Number(C.is_drawbridge_wall(x, y) >= 0)
+                    && Number(!(C.is_db_wall(x, y))))))))
+                    && C.find_drawbridge(xx, yy)))) {
                     if (Number(!(striking))) C.close_drawbridge(xx.value, yy.value);
-                    else C.destroy_drawbridge(xx.value, yy.value);
+                        else C.destroy_drawbridge(xx.value, yy.value);
                     (disclose.value = (C.char(1)));
                 }
-                else if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(striking && Number((C.u).dz < 0))) && (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 3307, C.literal("zap_updown")), C.rn2(3))) : C.rn2(3))))) && Number(!(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_air_level")))))))))) && Number(!(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_water_level")))))))))) && Number(!(((C.u).uinwater))))) && Number(!(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_qstart_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_qstart_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_qstart_level"))))))))))) {
+                else if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(striking
+                    && Number((C.u).dz < 0)))
+                    && (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 3307, C.literal("zap_updown")), C.rn2(3))) : C.rn2(3)))))
+                    && Number(!(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dlevel
+                    || ((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dnum)))
+                    && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_air_level"))))))))))
+                    && Number(!(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dlevel
+                    || ((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dnum)))
+                    && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_water_level"))))))))))
+                    && Number(!(((C.u).uinwater)))))
+                    && Number(!(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_qstart_level"))).dlevel
+                    || ((C.fieldRef((C.svd).dungeon_topology, "d_qstart_level"))).dnum)))
+                    && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_qstart_level"))))))))))) {
                     let dmg;
 /* similar to zap_dig() */
                     C.pline(C.literal("A rock is dislodged from the %s and falls on your %s."), C.ceiling(x, y), C.body_part(C.HEAD), "pp");
                     (dmg = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 3314, C.literal("zap_updown")), C.rnd(((C.hard_helmet(C.uarmh)) ? 2 : 6)))) : C.rnd(((C.hard_helmet(C.uarmh)) ? 2 : 6)))));
-                    C.losehp((((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).extrinsic))))) ? (C.int(Math.trunc((C.int(((dmg) + 1))) / 2))) : (dmg))), C.literal("falling rock"), C.KILLED_BY_AN);
+                    C.losehp((((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).intrinsic
+                        || (C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).extrinsic))))) ? (C.int(Math.trunc((C.int(((dmg) + 1))) / 2))) : (dmg))), C.literal("falling rock"), C.KILLED_BY_AN);
                     if (C.ptrCompare(((otmp = C.mksobj_at(C.ROCK, x, y, (C.char(0)), (C.char(0))))), 0, "!=")) {
                         C.xname(otmp);
 /* set dknown, maybe bknown */
@@ -2974,7 +3260,10 @@ export function zap_updown(obj) /* wand or spell, nonnull */
                     }
                     else if (Number(!!(striking && Number(C.int((ttmp).ttyp) == C.TRAPDOOR)))) {
 /* striking transforms trapdoor into hole */
-                        if (Number(!!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked))))) && Number(!((ttmp).tseen))))) {
+                        if (Number(!!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                            || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                            && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))
+                            && Number(!((ttmp).tseen))))) {
                             C.pline(C.literal("%s beneath you shatters."), (C.c_common_strings).c_Something, "p");
                         }
                         else if (Number(!((ttmp).tseen))) {
@@ -2994,7 +3283,10 @@ export function zap_updown(obj) /* wand or spell, nonnull */
                     else if (Number(!!(Number(!(striking)) && Number(C.int((ttmp).ttyp) == C.HOLE)))) {
 /* locking transforms hole into trapdoor */
                         ((ttmp).ttyp = C.uint(C.TRAPDOOR));
-                        if (Number(!!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked))))) || Number(!((ttmp).tseen))))) {
+                        if (Number(!!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                            || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                            && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))
+                            || Number(!((ttmp).tseen))))) {
                             C.pline(C.literal("Some %s swirls beneath you."), ((C.is_ice(x, y)) ? C.literal("frost") : C.literal("dust")), "p");
                         }
                         else {
@@ -3008,22 +3300,36 @@ export function zap_updown(obj) /* wand or spell, nonnull */
                 }
         break;
         case (C.SPE_STONE_TO_FLESH):
-            if (Number(!!(Number(!!(Number(!!(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_air_level")))))) || ((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_water_level")))))))) || C.int(((C.u).uinwater)))) || (Number(!!(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_qstart_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_qstart_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_qstart_level")))))) && Number((C.u).dz < 0))))))) {
+            if (Number(!!(Number(!!(Number(!!(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dlevel
+                || ((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dnum)))
+                && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_air_level"))))))
+                || ((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dlevel
+                || ((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dnum)))
+                && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_water_level"))))))))
+                || C.int(((C.u).uinwater))))
+                || (Number(!!(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_qstart_level"))).dlevel
+                || ((C.fieldRef((C.svd).dungeon_topology, "d_qstart_level"))).dnum)))
+                && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_qstart_level"))))))
+                && Number((C.u).dz < 0))))))) {
                 C.pline(C.literal("%s"), (C.c_common_strings).c_nothing_happens, "p");
             }
             else if (Number((C.u).dz < 0)) {
 /* we should do more... */
                 C.pline(C.literal("Blood drips on your %s."), C.body_part(C.FACE), "p");
             }
-            else if (Number(!!(Number((C.u).dz > 0) && Number(!((C.ptrCompare(C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, (C.u).ux, "struct obj *[21]"), "struct obj *[21]"), (C.u).uy, "struct obj *"), "struct obj *"), 0, "!="))))))) {
+            else if (Number(!!(Number((C.u).dz > 0)
+                && Number(!((C.ptrCompare(C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, (C.u).ux, "struct obj *[21]"), "struct obj *[21]"), (C.u).uy, "struct obj *"), "struct obj *"), 0, "!="))))))) {
 /*
             Print this message only if there wasn't an engraving
             affected here.  If water or ice, act like waterlevel case.
             */
                 (e = C.engr_at((C.u).ux, (C.u).uy));
                 if (Number(!((Number(!!(e && Number((e).engr_type == C.ENGRAVE))))))) {
-                    if (Number(!!(C.is_pool((C.u).ux, (C.u).uy) || C.is_ice((C.u).ux, (C.u).uy)))) C.pline(C.literal("%s"), (C.c_common_strings).c_nothing_happens, "p");
-                    else C.pline(C.literal("Blood %ss %s your %s."), ((C.is_lava((C.u).ux, (C.u).uy)) ? C.literal("boil") : C.literal("pool")), (((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.LEVITATION, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.LEVITATION, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.LEVITATION, "struct prop"), "struct prop")).blocked)))))) ? C.literal("beneath") : C.literal("at")), C.makeplural(C.body_part(C.FOOT)), "ppp");
+                    if (Number(!!(C.is_pool((C.u).ux, (C.u).uy)
+                        || C.is_ice((C.u).ux, (C.u).uy)))) C.pline(C.literal("%s"), (C.c_common_strings).c_nothing_happens, "p");
+                        else C.pline(C.literal("Blood %ss %s your %s."), ((C.is_lava((C.u).ux, (C.u).uy)) ? C.literal("boil") : C.literal("pool")), (((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.LEVITATION, "struct prop"), "struct prop")).intrinsic
+                            || (C.deref(C.ptrAdd((C.u).uprops, C.LEVITATION, "struct prop"), "struct prop")).extrinsic)))
+                            && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.LEVITATION, "struct prop"), "struct prop")).blocked)))))) ? C.literal("beneath") : C.literal("at")), C.makeplural(C.body_part(C.FOOT)), "ppp");
                 }
             }
         break;
@@ -3073,7 +3379,12 @@ export function weffects(obj) {
     let disclose = (C.char(0));
     let was_unkn = C.char(Number(!((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_name_known)));
     C.exercise(C.A_WIS, (C.char(1)));
-    if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!((C.u).usteed && (Number(C.int((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_dir) != C.NODIR)))) && Number(!((C.u).dx)))) && Number(!((C.u).dy)))) && (Number((C.u).dz > 0)))) && zap_steed(obj.value)))) {
+    if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!!((C.u).usteed
+        && (Number(C.int((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_dir) != C.NODIR))))
+        && Number(!((C.u).dx))))
+        && Number(!((C.u).dy))))
+        && (Number((C.u).dz > 0))))
+        && zap_steed(obj.value)))) {
         (disclose = (C.char(1)));
     }
     else if (Number(C.int((C.deref(C.ptrAdd(C.objects, otyp, "struct objclass"), "struct objclass")).oc_dir) == C.IMMEDIATE)) {
@@ -3098,9 +3409,11 @@ export function weffects(obj) {
     else {
 /* neither immediate nor directionless */
         if (Number(!!(Number(otyp == C.WAN_DIGGING) || Number(otyp == C.SPE_DIG)))) C.zap_dig();
-        else if (Number(!!(Number(otyp >= C.SPE_MAGIC_MISSILE) && Number(otyp <= C.SPE_FINGER_OF_DEATH)))) ubuzz((C.int((10 + ((C.int((C.abs(C.int(((otyp) - C.SPE_MAGIC_MISSILE))) % 10))))))), C.int((C.int(Math.trunc((C.u).ulevel / 2)) + 1)));
-        else if (Number(!!(Number(otyp >= C.WAN_MAGIC_MISSILE) && Number(otyp <= C.WAN_LIGHTNING)))) ubuzz((C.int((0 + ((C.int((C.abs(C.int(((otyp) - C.WAN_MAGIC_MISSILE))) % 10))))))), (((Number(otyp == C.WAN_MAGIC_MISSILE))) ? 2 : 6));
-        else C.impossible(C.literal("weffects: unexpected spell or wand"), "");
+        else if (Number(!!(Number(otyp >= C.SPE_MAGIC_MISSILE)
+            && Number(otyp <= C.SPE_FINGER_OF_DEATH)))) ubuzz((C.int((10 + ((C.int((C.abs(C.int(((otyp) - C.SPE_MAGIC_MISSILE))) % 10))))))), C.int((C.int(Math.trunc((C.u).ulevel / 2)) + 1)));
+        else if (Number(!!(Number(otyp >= C.WAN_MAGIC_MISSILE)
+            && Number(otyp <= C.WAN_LIGHTNING)))) ubuzz((C.int((0 + ((C.int((C.abs(C.int(((otyp) - C.WAN_MAGIC_MISSILE))) % 10))))))), (((Number(otyp == C.WAN_MAGIC_MISSILE))) ? 2 : 6));
+            else C.impossible(C.literal("weffects: unexpected spell or wand"), "");
         (disclose = (C.char(1)));
     }
     if (disclose) {
@@ -3126,7 +3439,7 @@ export function spell_damage_bonus(dmg) /* base amount to be adjusted by bonus o
     else /* no bonus or penalty; dmg remains same */
     if (Number(intell <= 18)) (dmg = C.int((dmg + 1)));
     else if (Number(!!(Number(intell <= 24) || Number((C.u).ulevel < 14)))) (dmg = C.int((dmg + 2)));
-    else (dmg = C.int((dmg + 3)));
+        else (dmg = C.int((dmg + 3)));
 /* Int 25 */
     return dmg;
 }
@@ -3158,9 +3471,9 @@ export function spell_hit_bonus(skill) {
     else if (Number(dex < 6)) (hit_bon = C.int((hit_bon - 2)));
     else if (Number(dex < 8)) (hit_bon = C.int((hit_bon - 1)));
     else if (Number(dex < 14)) /* Will change when print stuff below removed */
-    (hit_bon = C.int((hit_bon - 0)));
+        (hit_bon = C.int((hit_bon - 0)));
     else /* Even increment for dexterous heroes (see weapon.c abon) */
-    (hit_bon = C.int((hit_bon + C.int((dex - 14)))));
+        (hit_bon = C.int((hit_bon + C.int((dex - 14)))));
     return hit_bon;
 }
 
@@ -3179,14 +3492,23 @@ export function hit(str, mtmp, force) /* zap text or missile name */
     str = C.argument(str, "const char *");
     mtmp = C.argument(mtmp, "struct monst *");
     force = C.argument(force, "const char *");
-    let verbosely = C.char((Number(!!(C.ptrCompare(mtmp, C.fieldRef(C.gy, "youmonst"), "==") || (Number(!!((C.flags).verbose && (Number(!!(Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, ((C.gb).bhitpos).y, "seenV *"), "seenV *"), ((C.gb).bhitpos).x, "seenV"), "seenV") & 2))) != 0)) || (Number(!!(C.canseemon(mtmp) || C.sensemon(mtmp)))))) || (Number(!!(C.int((C.u).uswallow) && (C.ptrCompare((C.u).ustuck, (mtmp), "==")))))))))))))));
+    let verbosely = C.char((Number(!!(C.ptrCompare(mtmp, C.fieldRef(C.gy, "youmonst"), "==")
+        || (Number(!!((C.flags).verbose
+        && (Number(!!(Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, ((C.gb).bhitpos).y, "seenV *"), "seenV *"), ((C.gb).bhitpos).x, "seenV"), "seenV") & 2))) != 0))
+        || (Number(!!(C.canseemon(mtmp)
+        || C.sensemon(mtmp))))))
+        || (Number(!!(C.int((C.u).uswallow)
+        && (C.ptrCompare((C.u).ustuck, (mtmp), "==")))))))))))))));
     C.pline(C.literal("%s %s %s%s"), C.The(str), C.vtense(str, C.literal("hit")), ((verbosely) ? C.mon_nam(mtmp) : C.literal("it")), force, "pppp");
 }
 
 export function miss(str, mtmp) {
     str = C.argument(str, "const char *");
     mtmp = C.argument(mtmp, "struct monst *");
-    C.pline(C.literal("%s %s %s."), C.The(str), C.vtense(str, C.literal("miss")), (((Number(!!((Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, ((C.gb).bhitpos).y, "seenV *"), "seenV *"), ((C.gb).bhitpos).x, "seenV"), "seenV") & 2))) != 0)) || (Number(!!(C.canseemon(mtmp) || C.sensemon(mtmp))))))) && (C.flags).verbose)))) ? C.mon_nam(mtmp) : C.literal("it")), "ppp");
+    C.pline(C.literal("%s %s %s."), C.The(str), C.vtense(str, C.literal("miss")), (((Number(!!((Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, ((C.gb).bhitpos).y, "seenV *"), "seenV *"), ((C.gb).bhitpos).x, "seenV"), "seenV") & 2))) != 0))
+        || (Number(!!(C.canseemon(mtmp)
+        || C.sensemon(mtmp)))))))
+        && (C.flags).verbose)))) ? C.mon_nam(mtmp) : C.literal("it")), "ppp");
 }
 
 export function skiprange(range, skipstart, skipend) {
@@ -3219,7 +3541,11 @@ export function maybe_explode_trap(ttmp, otmp, learn_it) {
                 C.store(learn_it, "boolean", (C.char(1)));
             }
         }
-        else if ((Number(!!(Number(!!(Number(!!(Number(!!(Number(C.int(((ttmp).ttyp)) == C.TELEP_TRAP) || Number(C.int(((ttmp).ttyp)) == C.LEVEL_TELEP))) || Number(C.int(((ttmp).ttyp)) == C.MAGIC_TRAP))) || Number(C.int(((ttmp).ttyp)) == C.ANTI_MAGIC))) || Number(C.int(((ttmp).ttyp)) == C.POLY_TRAP))))) {
+        else if ((Number(!!(Number(!!(Number(!!(Number(!!(Number(C.int(((ttmp).ttyp)) == C.TELEP_TRAP)
+            || Number(C.int(((ttmp).ttyp)) == C.LEVEL_TELEP)))
+            || Number(C.int(((ttmp).ttyp)) == C.MAGIC_TRAP)))
+            || Number(C.int(((ttmp).ttyp)) == C.ANTI_MAGIC)))
+            || Number(C.int(((ttmp).ttyp)) == C.POLY_TRAP))))) {
             let seeit = (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0));
 /* note: this explosion mustn't destroy otmp */
             C.explode(x, y, C.int((-C.WAN_CANCELLATION)), C.int((20 + (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 3616, C.literal("maybe_explode_trap")), C.d((3), (6)))) : C.d((3), (6)))))), C.char((C.int((C.MAXOCLASSES + 3)))), C.EXPL_MAGICAL);
@@ -3277,7 +3603,9 @@ export function zap_map(x, y, obj) /* zapped wand, or book for cast spell */
                 case (C.SPE_STONE_TO_FLESH):
                     if (Number((e).engr_type == C.ENGRAVE)) {
 /* only affects things in stone */
-                        C.pline_The((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic))))))))) ? C.literal("floor runs like butter!") : C.literal("edges on the floor get smoother.")), "");
+                        C.pline_The((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic
+                            && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic
+                            || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic))))))))) ? C.literal("floor runs like butter!") : C.literal("edges on the floor get smoother.")), "");
                         C.wipe_engr_at(x, y, C.short((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 3673, C.literal("zap_map")), C.d((2), (4)))) : C.d((2), (4))))), (C.char(1)));
                     }
                 break;
@@ -3298,14 +3626,17 @@ export function zap_map(x, y, obj) /* zapped wand, or book for cast spell */
                     case (C.SPE_KNOCK):
 /* dbwall: 'closed door' of raised drawbridge */
                         if (C.is_db_wall(x, y)) {
-                            if (Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, dby.value, "seenV *"), "seenV *"), dbx.value, "seenV"), "seenV") & 2))) != 0)) || (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0))))) (learn_it.value = (C.char(1)));
+                            if (Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, dby.value, "seenV *"), "seenV *"), dbx.value, "seenV"), "seenV") & 2))) != 0))
+                                || (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0))))) (learn_it.value = (C.char(1)));
                             C.open_drawbridge(dbx.value, dby.value);
                         }
                 break;
                 case (C.WAN_LOCKING):
                     case (C.SPE_WIZARD_LOCK):
 /* drawbridge_down: span of lowered drawbridge */
-                        if (Number(!!((Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, dby.value, "seenV *"), "seenV *"), dbx.value, "seenV"), "seenV") & 2))) != 0)) || (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0))))) && Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, dbx.value, "struct rm[21]"), "struct rm[21]"), dby.value, "struct rm"), "struct rm")).typ == C.DRAWBRIDGE_DOWN)))) (learn_it.value = (C.char(1)));
+                        if (Number(!!((Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, dby.value, "seenV *"), "seenV *"), dbx.value, "seenV"), "seenV") & 2))) != 0))
+                            || (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0)))))
+                            && Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, dbx.value, "struct rm[21]"), "struct rm[21]"), dby.value, "struct rm"), "struct rm")).typ == C.DRAWBRIDGE_DOWN)))) (learn_it.value = (C.char(1)));
                 C.close_drawbridge(dbx.value, dby.value);
                 break;
                 case (C.WAN_STRIKING):
@@ -3334,7 +3665,8 @@ export function zap_map(x, y, obj) /* zapped wand, or book for cast spell */
         (oldtyp = C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.svl).lastseentyp, x, "schar[21]"), "schar[21]"), y, "schar"), "schar"));
         (oldglyph = C.glyph_at(x, y));
         C.show_map_spot(x, y, (C.char(0)));
-        if (Number(!!(Number(oldtyp != C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.svl).lastseentyp, x, "schar[21]"), "schar[21]"), y, "schar"), "schar")) || Number(oldglyph != C.glyph_at(x, y))))) {
+        if (Number(!!(Number(oldtyp != C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.svl).lastseentyp, x, "schar[21]"), "schar[21]"), y, "schar"), "schar"))
+            || Number(oldglyph != C.glyph_at(x, y))))) {
 /* TODO: ought to give some message */
             (learn_it.value = (C.char(1)));
         }
@@ -3349,7 +3681,9 @@ export function zap_map(x, y, obj) /* zapped wand, or book for cast spell */
                 C.pline(C.literal("Probing reveals a secret door."), "");
                 (learn_it.value = (C.char(1)));
             }
-            else if (((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))))))) {
+            else if (((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))).dlevel
+                || ((C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))).dnum)))
+                && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))))))) {
 /* from zap_over_floor() */
                 C.draft_message((C.char(0)));
 /* "You feel a draft." (open doorway) */
@@ -3384,7 +3718,9 @@ export function zap_map(x, y, obj) /* zapped wand, or book for cast spell */
             let ttmpname;
             let t_already_seen = (ttmp).tseen;
             let use_the;
-            let hallu = C.char(Number((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic)))))))) != 0));
+            let hallu = C.char(Number((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic
+                && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic)))))))) != 0));
 /* should probably be changed to use sense_trap(detect.c)
                so that trap can temporarily be forced to be shown and
                map browsing can take place before it reverts to being
@@ -3393,7 +3729,8 @@ export function zap_map(x, y, obj) /* zapped wand, or book for cast spell */
             C.newsym(x, y);
             if (Number(!!(Number(!(t_already_seen)) || hallu))) {
                 (ttmpname = C.trapname(C.int((ttmp).ttyp), (C.char(0))));
-                (use_the = C.char(((Number(!(hallu))) ? (Number(!!(Number(C.int((ttmp).ttyp) == C.VIBRATING_SQUARE) && C.Invocation_lev(C.fieldRef(C.u, "uz"))))) : Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 3789, C.literal("zap_map")), C.rn2(4))) : C.rn2(4))))))));
+                (use_the = C.char(((Number(!(hallu))) ? (Number(!!(Number(C.int((ttmp).ttyp) == C.VIBRATING_SQUARE)
+                    && C.Invocation_lev(C.fieldRef(C.u, "uz"))))) : Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 3789, C.literal("zap_map")), C.rn2(4))) : C.rn2(4))))))));
                 C.You(C.literal("find %s%c"), ((use_the) ? C.the(ttmpname) : C.an(ttmpname)), ((use_the) ? 33 : 46), "pi");
                 (learn_it.value = C.char(Number(!(hallu))));
             }
@@ -3471,15 +3808,66 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
         (allow_skip = C.char(Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 3858, C.literal("bhit")), C.rn2(3))) : C.rn2(3)))))));
     }
     if (Number(C.uint(weapon) == C.uint(C.FLASHED_LIGHT))) {
-        C.tmp_at(C.DISP_BEAM, C.short(((((Number((C.S_flashbeam) == C.S_stone))) ? C.GLYPH_CMAP_STONE_OFF : (((Number((C.S_flashbeam) <= C.S_trwall))) ? (C.int((C.int(((C.S_flashbeam) - C.S_vwall)) + (((C.In_mines(C.fieldRef(C.u, "uz"))) ? C.GLYPH_CMAP_MINES_OFF : ((C.In_hell(C.fieldRef(C.u, "uz"))) ? C.GLYPH_CMAP_GEH_OFF : ((((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))))))) ? C.GLYPH_CMAP_KNOX_OFF : (((Number(((C.fieldRef(C.u, "uz"))).dnum == (((C.svd).dungeon_topology).d_sokoban_dnum)))) ? C.GLYPH_CMAP_SOKO_OFF : C.GLYPH_CMAP_MAIN_OFF)))))))) : (((Number((C.S_flashbeam) < C.S_altar))) ? (C.int(((C.int(((C.S_flashbeam) - C.S_ndoor))) + C.GLYPH_CMAP_A_OFF))) : (((Number((C.S_flashbeam) == C.S_altar))) ? ((((Number((C.int(((2) & 16))) == 16))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_other))) : (((Number((C.int(((2) & 7))) == 4))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_lawful))) : (((Number((C.int(((2) & 7))) == 2))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_neutral))) : (((Number((C.int(((2) & 7))) == 1))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_chaotic))) : (C.int((C.GLYPH_ALTAR_OFF + C.altar_unaligned)))))))) : (((Number((C.S_flashbeam) < C.int((C.S_arrow_trap + (C.int((C.TRAPNUM - 1)))))))) ? (C.int(((C.int(((C.S_flashbeam) - C.S_grave))) + C.GLYPH_CMAP_B_OFF))) : (((Number((C.S_flashbeam) <= C.S_goodpos))) ? (C.int(((C.int(((C.S_flashbeam) - C.S_digbeam))) + C.GLYPH_CMAP_C_OFF))) : C.MAX_GLYPH)))))))));
+        C.tmp_at(C.DISP_BEAM, C.short(((((Number((C.S_flashbeam) == C.S_stone))) ? C.GLYPH_CMAP_STONE_OFF : (((Number((C.S_flashbeam) <= C.S_trwall))) ? (C.int((C.int(((C.S_flashbeam) - C.S_vwall)) + (((C.In_mines(C.fieldRef(C.u, "uz"))) ? C.GLYPH_CMAP_MINES_OFF : ((C.In_hell(C.fieldRef(C.u, "uz"))) ? C.GLYPH_CMAP_GEH_OFF : ((((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))).dlevel
+            || ((C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))).dnum)))
+            && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))))))) ? C.GLYPH_CMAP_KNOX_OFF : (((Number(((C.fieldRef(C.u, "uz"))).dnum == (((C.svd).dungeon_topology).d_sokoban_dnum)))) ? C.GLYPH_CMAP_SOKO_OFF : C.GLYPH_CMAP_MAIN_OFF)))))))) : (((Number((C.S_flashbeam) < C.S_altar))) ? (C.int(((C.int(((C.S_flashbeam) - C.S_ndoor))) + C.GLYPH_CMAP_A_OFF))) : (((Number((C.S_flashbeam) == C.S_altar))) ? ((((Number((C.int(((2) & 16))) == 16))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_other))) : (((Number((C.int(((2) & 7))) == 4))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_lawful))) : (((Number((C.int(((2) & 7))) == 2))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_neutral))) : (((Number((C.int(((2) & 7))) == 1))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_chaotic))) : (C.int((C.GLYPH_ALTAR_OFF + C.altar_unaligned)))))))) : (((Number((C.S_flashbeam) < C.int((C.S_arrow_trap + (C.int((C.TRAPNUM - 1)))))))) ? (C.int(((C.int(((C.S_flashbeam) - C.S_grave))) + C.GLYPH_CMAP_B_OFF))) : (((Number((C.S_flashbeam) <= C.S_goodpos))) ? (C.int(((C.int(((C.S_flashbeam) - C.S_digbeam))) + C.GLYPH_CMAP_C_OFF))) : C.MAX_GLYPH)))))))));
     }
     else if (Number(!!(Number(C.uint(weapon) == C.uint(C.THROWN_TETHERED_WEAPON)) && obj))) {
         (tethered_weapon = (C.char(1)));
         (weapon = C.int(C.THROWN_WEAPON));
 /* simplify 'if's that follow below */
-        C.tmp_at(C.DISP_TETHER, C.short(((((Number(((obj)).otyp == C.STATUE))) ? (((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic)))))))))) ? (C.int((((C.callIndirect((C.deref(C.callback("rn2_on_display_rng", C.rn2_on_display_rng), "int (int)")), "int (*)(int)", C.NUMMONS))) + ((((Number(!(C.rn2_on_display_rng(2))))) ? C.GLYPH_MON_MALE_OFF : C.GLYPH_MON_FEM_OFF))))) : (C.int((((obj)).corpsenm + ((((Number((C.int((((obj)).spe & 3))) == 1))) ? ((((Number(!!(Number(!!(Number(((obj)).where == 1) && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!=")))) && (Number(!!(Number(((obj)).otyp != C.BOULDER) || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_STATUE_FEM_PILETOP_OFF : C.GLYPH_STATUE_FEM_OFF)) : ((((Number(!!(Number(!!(Number(((obj)).where == 1) && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!=")))) && (Number(!!(Number(((obj)).otyp != C.BOULDER) || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_STATUE_MALE_PILETOP_OFF : C.GLYPH_STATUE_MALE_OFF))))))))) : ((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic)))))))))) ? ((((Number((((C.go).otg_temp = (C.int((C.callIndirect((C.deref(C.callback("rn2_on_display_rng", C.rn2_on_display_rng), "int (int)")), "int (*)(int)", C.int((C.NUM_OBJECTS - C.FIRST_OBJECT))) + C.FIRST_OBJECT))))) == C.CORPSE))) ? (C.int(((C.callIndirect((C.deref(C.callback("rn2_on_display_rng", C.rn2_on_display_rng), "int (int)")), "int (*)(int)", C.NUMMONS)) + C.GLYPH_BODY_OFF))) : (C.int(((C.go).otg_temp + C.GLYPH_OBJ_OFF))))) : (((Number(((obj)).otyp == C.CORPSE))) ? ((C.int((((obj)).corpsenm + ((((Number(!!(Number(!!(Number(((obj)).where == 1) && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!=")))) && (Number(!!(Number(((obj)).otyp != C.BOULDER) || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_BODY_PILETOP_OFF : C.GLYPH_BODY_OFF)))))) : (((Number(!!(Number(!(((obj)).dknown)) && (Number(!!(Number(!!(Number(((obj)).oclass == C.POTION_CLASS) || (Number(!!(Number(((obj)).otyp >= C.FIRST_REAL_GEM) && (Number(((obj)).otyp <= C.LAST_GLASS_GEM))))))) || (Number(!!(Number(((obj)).otyp >= C.FIRST_SPELL) && (Number(((obj)).otyp <= C.LAST_SPELL)))))))))))) ? ((C.int((((obj)).oclass + ((((Number(!!(Number(!!(Number(((obj)).where == 1) && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!=")))) && (Number(!!(Number(((obj)).otyp != C.BOULDER) || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_OBJ_PILETOP_OFF : C.GLYPH_OBJ_OFF)))))) : ((C.int((((obj)).otyp + ((((Number(!!(Number(!!(Number(((obj)).where == 1) && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!=")))) && (Number(!!(Number(((obj)).otyp != C.BOULDER) || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_OBJ_PILETOP_OFF : C.GLYPH_OBJ_OFF)))))))))))));
+        C.tmp_at(C.DISP_TETHER, C.short(((((Number(((obj)).otyp == C.STATUE))) ? (((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic
+            && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic)))))))))) ? (C.int((((C.callIndirect((C.deref(C.callback("rn2_on_display_rng", C.rn2_on_display_rng), "int (int)")), "int (*)(int)", C.NUMMONS))) + ((((Number(!(C.rn2_on_display_rng(2))))) ? C.GLYPH_MON_MALE_OFF : C.GLYPH_MON_FEM_OFF))))) : (C.int((((obj)).corpsenm + ((((Number((C.int((((obj)).spe & 3))) == 1))) ? ((((Number(!!(Number(!!(Number(((obj)).where == 1)
+            && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!="))))
+            && (Number(!!(Number(((obj)).otyp != C.BOULDER)
+            || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_STATUE_FEM_PILETOP_OFF : C.GLYPH_STATUE_FEM_OFF)) : ((((Number(!!(Number(!!(Number(((obj)).where == 1)
+            && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!="))))
+            && (Number(!!(Number(((obj)).otyp != C.BOULDER)
+            || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_STATUE_MALE_PILETOP_OFF : C.GLYPH_STATUE_MALE_OFF))))))))) : ((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic
+            && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic)))))))))) ? ((((Number((((C.go).otg_temp = (C.int((C.callIndirect((C.deref(C.callback("rn2_on_display_rng", C.rn2_on_display_rng), "int (int)")), "int (*)(int)", C.int((C.NUM_OBJECTS - C.FIRST_OBJECT))) + C.FIRST_OBJECT))))) == C.CORPSE))) ? (C.int(((C.callIndirect((C.deref(C.callback("rn2_on_display_rng", C.rn2_on_display_rng), "int (int)")), "int (*)(int)", C.NUMMONS)) + C.GLYPH_BODY_OFF))) : (C.int(((C.go).otg_temp + C.GLYPH_OBJ_OFF))))) : (((Number(((obj)).otyp == C.CORPSE))) ? ((C.int((((obj)).corpsenm + ((((Number(!!(Number(!!(Number(((obj)).where == 1)
+            && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!="))))
+            && (Number(!!(Number(((obj)).otyp != C.BOULDER)
+            || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_BODY_PILETOP_OFF : C.GLYPH_BODY_OFF)))))) : (((Number(!!(Number(!(((obj)).dknown))
+            && (Number(!!(Number(!!(Number(((obj)).oclass == C.POTION_CLASS)
+            || (Number(!!(Number(((obj)).otyp >= C.FIRST_REAL_GEM)
+            && (Number(((obj)).otyp <= C.LAST_GLASS_GEM)))))))
+            || (Number(!!(Number(((obj)).otyp >= C.FIRST_SPELL)
+            && (Number(((obj)).otyp <= C.LAST_SPELL)))))))))))) ? ((C.int((((obj)).oclass + ((((Number(!!(Number(!!(Number(((obj)).where == 1)
+            && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!="))))
+            && (Number(!!(Number(((obj)).otyp != C.BOULDER)
+            || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_OBJ_PILETOP_OFF : C.GLYPH_OBJ_OFF)))))) : ((C.int((((obj)).otyp + ((((Number(!!(Number(!!(Number(((obj)).where == 1)
+            && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!="))))
+            && (Number(!!(Number(((obj)).otyp != C.BOULDER)
+            || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_OBJ_PILETOP_OFF : C.GLYPH_OBJ_OFF)))))))))))));
     }
-    else if (Number(!!(Number(C.uint(weapon) != C.uint(C.ZAPPED_WAND)) && Number(C.uint(weapon) != C.uint(C.INVIS_BEAM))))) C.tmp_at(C.DISP_FLASH, C.short(((((Number(((obj)).otyp == C.STATUE))) ? (((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic)))))))))) ? (C.int((((C.callIndirect((C.deref(C.callback("rn2_on_display_rng", C.rn2_on_display_rng), "int (int)")), "int (*)(int)", C.NUMMONS))) + ((((Number(!(C.rn2_on_display_rng(2))))) ? C.GLYPH_MON_MALE_OFF : C.GLYPH_MON_FEM_OFF))))) : (C.int((((obj)).corpsenm + ((((Number((C.int((((obj)).spe & 3))) == 1))) ? ((((Number(!!(Number(!!(Number(((obj)).where == 1) && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!=")))) && (Number(!!(Number(((obj)).otyp != C.BOULDER) || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_STATUE_FEM_PILETOP_OFF : C.GLYPH_STATUE_FEM_OFF)) : ((((Number(!!(Number(!!(Number(((obj)).where == 1) && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!=")))) && (Number(!!(Number(((obj)).otyp != C.BOULDER) || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_STATUE_MALE_PILETOP_OFF : C.GLYPH_STATUE_MALE_OFF))))))))) : ((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic)))))))))) ? ((((Number((((C.go).otg_temp = (C.int((C.callIndirect((C.deref(C.callback("rn2_on_display_rng", C.rn2_on_display_rng), "int (int)")), "int (*)(int)", C.int((C.NUM_OBJECTS - C.FIRST_OBJECT))) + C.FIRST_OBJECT))))) == C.CORPSE))) ? (C.int(((C.callIndirect((C.deref(C.callback("rn2_on_display_rng", C.rn2_on_display_rng), "int (int)")), "int (*)(int)", C.NUMMONS)) + C.GLYPH_BODY_OFF))) : (C.int(((C.go).otg_temp + C.GLYPH_OBJ_OFF))))) : (((Number(((obj)).otyp == C.CORPSE))) ? ((C.int((((obj)).corpsenm + ((((Number(!!(Number(!!(Number(((obj)).where == 1) && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!=")))) && (Number(!!(Number(((obj)).otyp != C.BOULDER) || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_BODY_PILETOP_OFF : C.GLYPH_BODY_OFF)))))) : (((Number(!!(Number(!(((obj)).dknown)) && (Number(!!(Number(!!(Number(((obj)).oclass == C.POTION_CLASS) || (Number(!!(Number(((obj)).otyp >= C.FIRST_REAL_GEM) && (Number(((obj)).otyp <= C.LAST_GLASS_GEM))))))) || (Number(!!(Number(((obj)).otyp >= C.FIRST_SPELL) && (Number(((obj)).otyp <= C.LAST_SPELL)))))))))))) ? ((C.int((((obj)).oclass + ((((Number(!!(Number(!!(Number(((obj)).where == 1) && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!=")))) && (Number(!!(Number(((obj)).otyp != C.BOULDER) || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_OBJ_PILETOP_OFF : C.GLYPH_OBJ_OFF)))))) : ((C.int((((obj)).otyp + ((((Number(!!(Number(!!(Number(((obj)).where == 1) && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!=")))) && (Number(!!(Number(((obj)).otyp != C.BOULDER) || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_OBJ_PILETOP_OFF : C.GLYPH_OBJ_OFF)))))))))))));
+    else if (Number(!!(Number(C.uint(weapon) != C.uint(C.ZAPPED_WAND))
+        && Number(C.uint(weapon) != C.uint(C.INVIS_BEAM))))) C.tmp_at(C.DISP_FLASH, C.short(((((Number(((obj)).otyp == C.STATUE))) ? (((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic
+        && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic
+        || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic)))))))))) ? (C.int((((C.callIndirect((C.deref(C.callback("rn2_on_display_rng", C.rn2_on_display_rng), "int (int)")), "int (*)(int)", C.NUMMONS))) + ((((Number(!(C.rn2_on_display_rng(2))))) ? C.GLYPH_MON_MALE_OFF : C.GLYPH_MON_FEM_OFF))))) : (C.int((((obj)).corpsenm + ((((Number((C.int((((obj)).spe & 3))) == 1))) ? ((((Number(!!(Number(!!(Number(((obj)).where == 1)
+        && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!="))))
+        && (Number(!!(Number(((obj)).otyp != C.BOULDER)
+        || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_STATUE_FEM_PILETOP_OFF : C.GLYPH_STATUE_FEM_OFF)) : ((((Number(!!(Number(!!(Number(((obj)).where == 1)
+        && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!="))))
+        && (Number(!!(Number(((obj)).otyp != C.BOULDER)
+        || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_STATUE_MALE_PILETOP_OFF : C.GLYPH_STATUE_MALE_OFF))))))))) : ((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic
+        && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic
+        || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic)))))))))) ? ((((Number((((C.go).otg_temp = (C.int((C.callIndirect((C.deref(C.callback("rn2_on_display_rng", C.rn2_on_display_rng), "int (int)")), "int (*)(int)", C.int((C.NUM_OBJECTS - C.FIRST_OBJECT))) + C.FIRST_OBJECT))))) == C.CORPSE))) ? (C.int(((C.callIndirect((C.deref(C.callback("rn2_on_display_rng", C.rn2_on_display_rng), "int (int)")), "int (*)(int)", C.NUMMONS)) + C.GLYPH_BODY_OFF))) : (C.int(((C.go).otg_temp + C.GLYPH_OBJ_OFF))))) : (((Number(((obj)).otyp == C.CORPSE))) ? ((C.int((((obj)).corpsenm + ((((Number(!!(Number(!!(Number(((obj)).where == 1)
+        && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!="))))
+        && (Number(!!(Number(((obj)).otyp != C.BOULDER)
+        || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_BODY_PILETOP_OFF : C.GLYPH_BODY_OFF)))))) : (((Number(!!(Number(!(((obj)).dknown))
+        && (Number(!!(Number(!!(Number(((obj)).oclass == C.POTION_CLASS)
+        || (Number(!!(Number(((obj)).otyp >= C.FIRST_REAL_GEM)
+        && (Number(((obj)).otyp <= C.LAST_GLASS_GEM)))))))
+        || (Number(!!(Number(((obj)).otyp >= C.FIRST_SPELL)
+        && (Number(((obj)).otyp <= C.LAST_SPELL)))))))))))) ? ((C.int((((obj)).oclass + ((((Number(!!(Number(!!(Number(((obj)).where == 1)
+        && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!="))))
+        && (Number(!!(Number(((obj)).otyp != C.BOULDER)
+        || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_OBJ_PILETOP_OFF : C.GLYPH_OBJ_OFF)))))) : ((C.int((((obj)).otyp + ((((Number(!!(Number(!!(Number(((obj)).where == 1)
+        && (C.ptrCompare((((C.go).otg_otmp = ((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, ((obj)).ox, "struct obj *[21]"), "struct obj *[21]"), ((obj)).oy, "struct obj *"), "struct obj *")).v).v_nexthere)), 0, "!="))))
+        && (Number(!!(Number(((obj)).otyp != C.BOULDER)
+        || Number(((C.go).otg_otmp).otyp == C.BOULDER)))))))) ? C.GLYPH_OBJ_PILETOP_OFF : C.GLYPH_OBJ_OFF)))))))))))));
     while (Number(((range = C.int((range - 1))), C.int((range + 1))) > 0)) {
         let x;
         let y;
@@ -3493,7 +3881,11 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
             (((C.gb).bhitpos).y = C.short((((C.gb).bhitpos).y - ddy)));
             break;
         }
-        if (Number(!!(Number(!!((Number(!!((Number(!!(Number((obj).oclass == C.WEAPON_CLASS) || Number((obj).oclass == C.TOOL_CLASS)))) && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp == C.P_PICK_AXE)))) && C.inside_shop(x, y))) && C.ptrCompare(((mtmp = C.shkcatch(obj, x, y))), 0, "!=")))) {
+        if (Number(!!(Number(!!((Number(!!((Number(!!(Number((obj).oclass == C.WEAPON_CLASS)
+            || Number((obj).oclass == C.TOOL_CLASS))))
+            && Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_subtyp == C.P_PICK_AXE))))
+            && C.inside_shop(x, y)))
+            && C.ptrCompare(((mtmp = C.shkcatch(obj, x, y))), 0, "!=")))) {
             C.tmp_at(C.DISP_END, C.short(0));
             (result = mtmp);
             break bhit_done;
@@ -3505,8 +3897,12 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
         }
 /* iron bars will block anything big enough and break some things */
         if (Number(!!(Number(C.uint(weapon) == C.uint(C.THROWN_WEAPON)) || Number(C.uint(weapon) == C.uint(C.KICKED_WEAPON))))) {
-            if (Number(!!(C.int((obj).lamplit) && Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))))) C.show_transient_light(obj, x, y);
-            if (Number(!!(Number(typ == C.IRONBARS) && C.hits_bars(pobj, C.short(C.int((x - ddx))), C.short(C.int((y - ddy))), x, y, ((point_blank) ? 0 : Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 3906, C.literal("bhit")), C.rn2(5))) : C.rn2(5)))))), 1)))) {
+            if (Number(!!(C.int((obj).lamplit)
+                && Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))))) C.show_transient_light(obj, x, y);
+            if (Number(!!(Number(typ == C.IRONBARS)
+                && C.hits_bars(pobj, C.short(C.int((x - ddx))), C.short(C.int((y - ddy))), x, y, ((point_blank) ? 0 : Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 3906, C.literal("bhit")), C.rn2(5))) : C.rn2(5)))))), 1)))) {
 /* caveat: obj might now be null... */
                 (obj = C.deref(pobj, "struct obj *"));
 /* not currently needed due to 'break'; keep */
@@ -3518,7 +3914,9 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
             }
         }
         else if (Number(C.uint(weapon) == C.uint(C.FLASHED_LIGHT))) {
-            if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) C.show_transient_light(0, x, y);
+            if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) C.show_transient_light(0, x, y);
         }
         if (Number(C.uint(weapon) == C.uint(C.ZAPPED_WAND))) {
 /* cancellation/opening/locking/striking/probing */
@@ -3528,7 +3926,12 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
         }
         (mtmp = (C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).monsters, x, "struct monst *[21]"), "struct monst *[21]"), y, "struct monst *"), "struct monst *")));
         (ttmp = C.t_at(x, y));
-        if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!(mtmp)) && ttmp)) && (Number(C.int((ttmp).ttyp) == C.WEB)))) && (Number(!!(Number(C.uint(weapon) == C.uint(C.THROWN_WEAPON)) || Number(C.uint(weapon) == C.uint(C.KICKED_WEAPON))))))) && Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 3930, C.literal("bhit")), C.rn2(3))) : C.rn2(3)))))))) {
+        if (Number(!!(Number(!!(Number(!!(Number(!!(Number(!(mtmp))
+            && ttmp))
+            && (Number(C.int((ttmp).ttyp) == C.WEB))))
+            && (Number(!!(Number(C.uint(weapon) == C.uint(C.THROWN_WEAPON))
+            || Number(C.uint(weapon) == C.uint(C.KICKED_WEAPON)))))))
+            && Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 3930, C.literal("bhit")), C.rn2(3))) : C.rn2(3)))))))) {
             if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0))) {
                 C.pline(C.literal("%s gets stuck in a web!"), C.Yname2(obj), "p");
                 ((ttmp).tseen = C.uint((C.char(1))));
@@ -3545,8 +3948,10 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
         if (Number(!!(Number(!!(skiprange_start.value && (Number(range == skiprange_start.value)))) && allow_skip))) {
             if (Number(!!(C.is_pool(x, y) && Number(!(mtmp))))) {
                 (in_skip = (C.char(1)));
-                if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) C.pline(C.literal("%s %s%s."), C.Yname2(obj), C.otense(obj, C.literal("skip")), ((skipcount) ? C.literal(" again") : C.literal("")), "ppp");
-                else C.You_hear(C.literal("%s skip."), C.yname(obj), "p");
+                if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                    || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                    && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) C.pline(C.literal("%s %s%s."), C.Yname2(obj), C.otense(obj, C.literal("skip")), ((skipcount) ? C.literal(" again") : C.literal("")), "ppp");
+                    else C.You_hear(C.literal("%s skip."), C.yname(obj), "p");
                 ((skipcount = C.int((skipcount + 1))), C.int((skipcount - 1)));
             }
             else if (Number(skiprange_start.value > C.int((skiprange_end.value + 1)))) {
@@ -3557,10 +3962,18 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
             if (Number(range <= skiprange_end.value)) {
                 (in_skip = (C.char(0)));
                 if (Number(range > 3)) /* another bounce? */
-                skiprange(range, skiprange_start, skiprange_end);
+                    skiprange(range, skiprange_start, skiprange_end);
             }
-            else if (Number(!!(mtmp && (Number(!!(Number((((mtmp).data)).mlet == C.S_EEL) || (Number(!!(Number(!!((Number((C.ulong(((((mtmp).data)).mflags1 & C.ulong(2n)))) != C.ulong(0n))) || (Number((C.ulong(((((mtmp).data)).mflags1 & C.ulong(512n)))) != C.ulong(0n))))) || (Number((C.ulong(((((mtmp).data)).mflags1 & C.ulong(1024n)))) != C.ulong(0n)))))))))))) {
-                if (Number(!!(Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked))))))) && (Number(!!(C.canseemon(mtmp) || C.sensemon(mtmp))))))) C.pline(C.literal("%s %s over %s."), C.Yname2(obj), C.otense(obj, C.literal("pass")), C.mon_nam(mtmp), "ppp");
+            else if (Number(!!(mtmp
+                && (Number(!!(Number((((mtmp).data)).mlet == C.S_EEL)
+                || (Number(!!(Number(!!((Number((C.ulong(((((mtmp).data)).mflags1 & C.ulong(2n)))) != C.ulong(0n)))
+                || (Number((C.ulong(((((mtmp).data)).mflags1 & C.ulong(512n)))) != C.ulong(0n)))))
+                || (Number((C.ulong(((((mtmp).data)).mflags1 & C.ulong(1024n)))) != C.ulong(0n)))))))))))) {
+                if (Number(!!(Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                    || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                    && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))
+                    && (Number(!!(C.canseemon(mtmp)
+                    || C.sensemon(mtmp))))))) C.pline(C.literal("%s %s over %s."), C.Yname2(obj), C.otense(obj, C.literal("pass")), C.mon_nam(mtmp), "ppp");
                 (mtmp = 0);
             }
         }
@@ -3576,7 +3989,32 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
            them); exception: if the hero knows there is a monster there,
            they will be aiming at the monster */
         (xyglyph = C.glyph_at(x, y));
-        if (Number(!!(mtmp && (Number(!!((Number(!!((Number(!!(Number(C.uint(weapon) == C.uint(C.THROWN_WEAPON)) || Number(C.uint(weapon) == C.uint(C.KICKED_WEAPON))))) && (Number(!!(C.shade_miss(C.fieldRef(C.gy, "youmonst"), mtmp, obj, (C.char(1)), (C.char(1))) || (Number(!!(Number(!!(Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_OBJECT) && Number(!((Number(!!(Number(!!(Number(!!((Number(!!((Number(!!(Number((xyglyph) >= C.GLYPH_MON_MALE_OFF) && Number((xyglyph) < (C.int((C.GLYPH_MON_MALE_OFF + C.NUMMONS))))))) || (Number(!!(Number((xyglyph) >= C.GLYPH_MON_FEM_OFF) && Number((xyglyph) < (C.int((C.GLYPH_MON_FEM_OFF + C.NUMMONS)))))))))) || (Number(!!((Number(!!(Number((xyglyph) >= C.GLYPH_PET_MALE_OFF) && Number((xyglyph) < (C.int((C.GLYPH_PET_MALE_OFF + C.NUMMONS))))))) || (Number(!!(Number((xyglyph) >= C.GLYPH_PET_FEM_OFF) && Number((xyglyph) < (C.int((C.GLYPH_PET_FEM_OFF + C.NUMMONS)))))))))))) || (Number(!!((Number(!!(Number((xyglyph) >= C.GLYPH_RIDDEN_MALE_OFF) && Number((xyglyph) < (C.int((C.GLYPH_RIDDEN_MALE_OFF + C.NUMMONS))))))) || (Number(!!(Number((xyglyph) >= C.GLYPH_RIDDEN_FEM_OFF) && Number((xyglyph) < (C.int((C.GLYPH_RIDDEN_FEM_OFF + C.NUMMONS)))))))))))) || (Number(!!((Number(!!(Number((xyglyph) >= C.GLYPH_DETECT_MALE_OFF) && Number((xyglyph) < (C.int((C.GLYPH_DETECT_MALE_OFF + C.NUMMONS))))))) || (Number(!!(Number((xyglyph) >= C.GLYPH_DETECT_FEM_OFF) && Number((xyglyph) < (C.int((C.GLYPH_DETECT_FEM_OFF + C.NUMMONS))))))))))))))))) && Number(!((Number(!!(Number((xyglyph) >= C.GLYPH_WARNING_OFF) && Number((xyglyph) < (C.int((C.GLYPH_WARNING_OFF + 6))))))))))) && Number(!((Number((xyglyph) == C.GLYPH_INVIS_OFF))))))))))))) || (Number(!!(Number(C.uint(weapon) == C.uint(C.FLASHED_LIGHT)) && Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_OBJECT)))))))))) (mtmp = 0);
+        if (Number(!!(mtmp
+            && (Number(!!((Number(!!((Number(!!(Number(C.uint(weapon) == C.uint(C.THROWN_WEAPON))
+            || Number(C.uint(weapon) == C.uint(C.KICKED_WEAPON)))))
+            && (Number(!!(C.shade_miss(C.fieldRef(C.gy, "youmonst"), mtmp, obj, (C.char(1)), (C.char(1)))
+            || (Number(!!(Number(!!(Number(!!(Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_OBJECT)
+            && Number(!((Number(!!(Number(!!(Number(!!((Number(!!((Number(!!(Number((xyglyph) >= C.GLYPH_MON_MALE_OFF)
+            && Number((xyglyph) < (C.int((C.GLYPH_MON_MALE_OFF + C.NUMMONS)))))))
+            || (Number(!!(Number((xyglyph) >= C.GLYPH_MON_FEM_OFF)
+            && Number((xyglyph) < (C.int((C.GLYPH_MON_FEM_OFF + C.NUMMONS))))))))))
+            || (Number(!!((Number(!!(Number((xyglyph) >= C.GLYPH_PET_MALE_OFF)
+            && Number((xyglyph) < (C.int((C.GLYPH_PET_MALE_OFF + C.NUMMONS)))))))
+            || (Number(!!(Number((xyglyph) >= C.GLYPH_PET_FEM_OFF)
+            && Number((xyglyph) < (C.int((C.GLYPH_PET_FEM_OFF + C.NUMMONS))))))))))))
+            || (Number(!!((Number(!!(Number((xyglyph) >= C.GLYPH_RIDDEN_MALE_OFF)
+            && Number((xyglyph) < (C.int((C.GLYPH_RIDDEN_MALE_OFF + C.NUMMONS)))))))
+            || (Number(!!(Number((xyglyph) >= C.GLYPH_RIDDEN_FEM_OFF)
+            && Number((xyglyph) < (C.int((C.GLYPH_RIDDEN_FEM_OFF + C.NUMMONS))))))))))))
+            || (Number(!!((Number(!!(Number((xyglyph) >= C.GLYPH_DETECT_MALE_OFF)
+            && Number((xyglyph) < (C.int((C.GLYPH_DETECT_MALE_OFF + C.NUMMONS)))))))
+            || (Number(!!(Number((xyglyph) >= C.GLYPH_DETECT_FEM_OFF)
+            && Number((xyglyph) < (C.int((C.GLYPH_DETECT_FEM_OFF + C.NUMMONS)))))))))))))))))
+            && Number(!((Number(!!(Number((xyglyph) >= C.GLYPH_WARNING_OFF)
+            && Number((xyglyph) < (C.int((C.GLYPH_WARNING_OFF + 6)))))))))))
+            && Number(!((Number((xyglyph) == C.GLYPH_INVIS_OFF)))))))))))))
+            || (Number(!!(Number(C.uint(weapon) == C.uint(C.FLASHED_LIGHT))
+            && Number((C.int((((mtmp)).m_ap_type & 7))) == C.M_AP_OBJECT)))))))))) (mtmp = 0);
         if (mtmp) {
             ((C.gn).notonhead = C.char((Number(!!(Number(x != (mtmp).mx) || Number(y != (mtmp).my))))));
             if (Number(C.uint(weapon) == C.uint(C.FLASHED_LIGHT))) {
@@ -3611,7 +4049,9 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
             else if (Number(C.uint(weapon) != C.uint(C.ZAPPED_WAND))) {
 /* THROWN_WEAPON, KICKED_WEAPON */
                 if (Number(!(tethered_weapon))) C.tmp_at(C.DISP_END, C.short(0));
-                if (Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0)) && Number(!((Number(!!(C.canseemon(mtmp) || C.sensemon(mtmp))))))))) C.map_invisible(x, y);
+                if (Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0))
+                    && Number(!((Number(!!(C.canseemon(mtmp)
+                    || C.sensemon(mtmp))))))))) C.map_invisible(x, y);
                 (result = mtmp);
                 break bhit_done;
             }
@@ -3625,7 +4065,9 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
             }
         }
         else {
-            if (Number(!!(Number(!!(Number(C.uint(weapon) == C.uint(C.ZAPPED_WAND)) && Number((obj).otyp == C.WAN_PROBING))) && (Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), y, "struct rm"), "struct rm")).glyph) == C.GLYPH_INVIS_OFF))))) {
+            if (Number(!!(Number(!!(Number(C.uint(weapon) == C.uint(C.ZAPPED_WAND))
+                && Number((obj).otyp == C.WAN_PROBING)))
+                && (Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), y, "struct rm"), "struct rm")).glyph) == C.GLYPH_INVIS_OFF))))) {
                 C.unmap_object(x, y);
                 C.newsym(x, y);
             }
@@ -3634,7 +4076,10 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
             if (bhitpile(obj, fhito, x, y, C.char(0))) ((range = C.int((range - 1))), C.int((range + 1)));
         }
         else {
-            if (Number(!!(Number(C.uint(weapon) == C.uint(C.KICKED_WEAPON)) && (Number(!!((Number(!!(Number((obj).oclass == C.COIN_CLASS) && (C.ptrCompare(C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, x, "struct obj *[21]"), "struct obj *[21]"), y, "struct obj *"), "struct obj *"), 0, "!="))))) || C.ship_object(obj, x, y, C.costly_spot(x, y)))))))) {
+            if (Number(!!(Number(C.uint(weapon) == C.uint(C.KICKED_WEAPON))
+                && (Number(!!((Number(!!(Number((obj).oclass == C.COIN_CLASS)
+                && (C.ptrCompare(C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, x, "struct obj *[21]"), "struct obj *[21]"), y, "struct obj *"), "struct obj *"), 0, "!=")))))
+                || C.ship_object(obj, x, y, C.costly_spot(x, y)))))))) {
                 C.tmp_at(C.DISP_END, C.short(0));
                 break bhit_done;
 /* result == (struct monst *) 0 */
@@ -3649,8 +4094,13 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
                                 case (C.SPE_WIZARD_LOCK):
                                     case (C.SPE_FORCE_BOLT):
                                         if (C.doorlock(obj, x, y)) {
-                                            if (Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0)) || (Number(!!(Number((obj).otyp == C.WAN_STRIKING) && Number(!((Number(!!(Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).extrinsic)) || ((C.u).uroleplay).deaf))))))))))) learnwand(obj);
-                                            if (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), y, "struct rm"), "struct rm")).doormask) == C.D_BROKEN) && C.deref(C.in_rooms(x, y, C.SHOPBASE), "char")))) {
+                                            if (Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0))
+                                                || (Number(!!(Number((obj).otyp == C.WAN_STRIKING)
+                                                && Number(!((Number(!!(Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).intrinsic
+                                                || (C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).extrinsic))
+                                                || ((C.u).uroleplay).deaf))))))))))) learnwand(obj);
+                                            if (Number(!!(Number(C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), y, "struct rm"), "struct rm")).doormask) == C.D_BROKEN)
+                                                && C.deref(C.in_rooms(x, y, C.SHOPBASE), "char")))) {
                                                 (shopdoor = (C.char(1)));
                                                 C.add_damage(x, y, C.SHOP_DOOR_COST);
                                             }
@@ -3665,7 +4115,8 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
         }
         if (Number(!!(Number(C.uint(weapon) != C.uint(C.ZAPPED_WAND)) && Number(C.uint(weapon) != C.uint(C.INVIS_BEAM))))) {
 /* 'I' present but no monster: erase; do this before tmp_at() */
-            if (Number(!!((Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), y, "struct rm"), "struct rm")).glyph) == C.GLYPH_INVIS_OFF)) && (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0))))) {
+            if (Number(!!((Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), y, "struct rm"), "struct rm")).glyph) == C.GLYPH_INVIS_OFF))
+                && (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0))))) {
                 C.unmap_object(x, y);
                 C.newsym(x, y);
             }
@@ -3677,7 +4128,9 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
 /* physical objects fall onto sink */
         }
 /* limit range of ball so hero won't make an invalid move */
-        if (Number(!!(Number(!!(Number(C.uint(weapon) == C.uint(C.THROWN_WEAPON)) && Number(range > 0))) && Number((obj).otyp == C.HEAVY_IRON_BALL)))) {
+        if (Number(!!(Number(!!(Number(C.uint(weapon) == C.uint(C.THROWN_WEAPON))
+            && Number(range > 0)))
+            && Number((obj).otyp == C.HEAVY_IRON_BALL)))) {
             let bobj;
             let t;
             if (C.ptrCompare(((bobj = C.sobj_at(C.BOULDER, x, y))), 0, "!=")) {
@@ -3691,7 +4144,12 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
 /* lame */
                     (range = 0);
                 }
-                else if (Number(!!(Number(!!(C.int((((C.svl).level).flags).sokoban_rules) && C.ptrCompare(((t = C.t_at(x, y))), 0, "!="))) && (Number(!!((Number(!!(Number(C.int(((t).ttyp)) == C.PIT) || Number(C.int(((t).ttyp)) == C.SPIKED_PIT)))) || (Number(!!(Number(C.int(((t).ttyp)) == C.HOLE) || Number(C.int(((t).ttyp)) == C.TRAPDOOR)))))))))) {
+                else if (Number(!!(Number(!!(C.int((((C.svl).level).flags).sokoban_rules)
+                    && C.ptrCompare(((t = C.t_at(x, y))), 0, "!=")))
+                    && (Number(!!((Number(!!(Number(C.int(((t).ttyp)) == C.PIT)
+                    || Number(C.int(((t).ttyp)) == C.SPIKED_PIT))))
+                    || (Number(!!(Number(C.int(((t).ttyp)) == C.HOLE)
+                    || Number(C.int(((t).ttyp)) == C.TRAPDOOR)))))))))) {
 /* hero falls into the trap, so ball stops */
                     (range = 0);
                 }
@@ -3701,12 +4159,17 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) /* direction a
         (point_blank = (C.char(0)));
 /* affects passing through iron bars */
     }
-    if (Number(!!((Number(!!(Number(!!(Number(C.uint(weapon) != C.uint(C.ZAPPED_WAND)) && Number(C.uint(weapon) != C.uint(C.INVIS_BEAM)))) && Number(!(tethered_weapon))))) || (Number(!!(was_returning && C.ptrCompare(was_returning, C.castPointer((C.iflags).returning_missile, "struct obj *"), "!="))))))) C.tmp_at(C.DISP_END, C.short(0));
+    if (Number(!!((Number(!!(Number(!!(Number(C.uint(weapon) != C.uint(C.ZAPPED_WAND))
+        && Number(C.uint(weapon) != C.uint(C.INVIS_BEAM))))
+        && Number(!(tethered_weapon)))))
+        || (Number(!!(was_returning
+        && C.ptrCompare(was_returning, C.castPointer((C.iflags).returning_missile, "struct obj *"), "!="))))))) C.tmp_at(C.DISP_END, C.short(0));
     if (shopdoor) C.pay_for_damage(C.literal("destroy"), (C.char(0)));
     } // bhit_done
 /* note: for FLASHED_LIGHT, _caller_ must call transient_light_cleanup()
        after possibly calling flash_hits_mon() */
-    if (Number(!!(Number(C.uint(weapon) == C.uint(C.THROWN_WEAPON)) || Number(C.uint(weapon) == C.uint(C.KICKED_WEAPON))))) C.transient_light_cleanup();
+    if (Number(!!(Number(C.uint(weapon) == C.uint(C.THROWN_WEAPON))
+        || Number(C.uint(weapon) == C.uint(C.KICKED_WEAPON))))) C.transient_light_cleanup();
     return result;
 }
 
@@ -3744,12 +4207,16 @@ export function boomhit(obj, dx, dy) {
     (((C.gb).bhitpos).y = (C.u).uy);
     (boom = ((counterclockwise) ? C.S_boomleft : C.S_boomright));
     (i = C.xytodir(dx, dy));
-    C.tmp_at(C.DISP_FLASH, C.short(((((Number((boom) == C.S_stone))) ? C.GLYPH_CMAP_STONE_OFF : (((Number((boom) <= C.S_trwall))) ? (C.int((C.int(((boom) - C.S_vwall)) + (((C.In_mines(C.fieldRef(C.u, "uz"))) ? C.GLYPH_CMAP_MINES_OFF : ((C.In_hell(C.fieldRef(C.u, "uz"))) ? C.GLYPH_CMAP_GEH_OFF : ((((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))))))) ? C.GLYPH_CMAP_KNOX_OFF : (((Number(((C.fieldRef(C.u, "uz"))).dnum == (((C.svd).dungeon_topology).d_sokoban_dnum)))) ? C.GLYPH_CMAP_SOKO_OFF : C.GLYPH_CMAP_MAIN_OFF)))))))) : (((Number((boom) < C.S_altar))) ? (C.int(((C.int(((boom) - C.S_ndoor))) + C.GLYPH_CMAP_A_OFF))) : (((Number((boom) == C.S_altar))) ? ((((Number((C.int(((2) & 16))) == 16))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_other))) : (((Number((C.int(((2) & 7))) == 4))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_lawful))) : (((Number((C.int(((2) & 7))) == 2))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_neutral))) : (((Number((C.int(((2) & 7))) == 1))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_chaotic))) : (C.int((C.GLYPH_ALTAR_OFF + C.altar_unaligned)))))))) : (((Number((boom) < C.int((C.S_arrow_trap + (C.int((C.TRAPNUM - 1)))))))) ? (C.int(((C.int(((boom) - C.S_grave))) + C.GLYPH_CMAP_B_OFF))) : (((Number((boom) <= C.S_goodpos))) ? (C.int(((C.int(((boom) - C.S_digbeam))) + C.GLYPH_CMAP_C_OFF))) : C.MAX_GLYPH)))))))));
+    C.tmp_at(C.DISP_FLASH, C.short(((((Number((boom) == C.S_stone))) ? C.GLYPH_CMAP_STONE_OFF : (((Number((boom) <= C.S_trwall))) ? (C.int((C.int(((boom) - C.S_vwall)) + (((C.In_mines(C.fieldRef(C.u, "uz"))) ? C.GLYPH_CMAP_MINES_OFF : ((C.In_hell(C.fieldRef(C.u, "uz"))) ? C.GLYPH_CMAP_GEH_OFF : ((((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))).dlevel
+        || ((C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))).dnum)))
+        && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))))))) ? C.GLYPH_CMAP_KNOX_OFF : (((Number(((C.fieldRef(C.u, "uz"))).dnum == (((C.svd).dungeon_topology).d_sokoban_dnum)))) ? C.GLYPH_CMAP_SOKO_OFF : C.GLYPH_CMAP_MAIN_OFF)))))))) : (((Number((boom) < C.S_altar))) ? (C.int(((C.int(((boom) - C.S_ndoor))) + C.GLYPH_CMAP_A_OFF))) : (((Number((boom) == C.S_altar))) ? ((((Number((C.int(((2) & 16))) == 16))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_other))) : (((Number((C.int(((2) & 7))) == 4))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_lawful))) : (((Number((C.int(((2) & 7))) == 2))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_neutral))) : (((Number((C.int(((2) & 7))) == 1))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_chaotic))) : (C.int((C.GLYPH_ALTAR_OFF + C.altar_unaligned)))))))) : (((Number((boom) < C.int((C.S_arrow_trap + (C.int((C.TRAPNUM - 1)))))))) ? (C.int(((C.int(((boom) - C.S_grave))) + C.GLYPH_CMAP_B_OFF))) : (((Number((boom) <= C.S_goodpos))) ? (C.int(((C.int(((boom) - C.S_digbeam))) + C.GLYPH_CMAP_C_OFF))) : C.MAX_GLYPH)))))))));
     for ((ct = 0); Number(ct < 10); ((ct = C.int((ct + 1))), C.int((ct - 1)))) {
         (i = (C.int(((C.int(((i) + (C.int((C.N_DIRS_Z - 2)))))) % (C.int((C.N_DIRS_Z - 2)))))));
         (boom = (C.int((C.int((C.S_boomleft + C.S_boomright)) - boom))));
 /* toggle */
-        C.tmp_at(C.DISP_CHANGE, C.short(((((Number((boom) == C.S_stone))) ? C.GLYPH_CMAP_STONE_OFF : (((Number((boom) <= C.S_trwall))) ? (C.int((C.int(((boom) - C.S_vwall)) + (((C.In_mines(C.fieldRef(C.u, "uz"))) ? C.GLYPH_CMAP_MINES_OFF : ((C.In_hell(C.fieldRef(C.u, "uz"))) ? C.GLYPH_CMAP_GEH_OFF : ((((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))))))) ? C.GLYPH_CMAP_KNOX_OFF : (((Number(((C.fieldRef(C.u, "uz"))).dnum == (((C.svd).dungeon_topology).d_sokoban_dnum)))) ? C.GLYPH_CMAP_SOKO_OFF : C.GLYPH_CMAP_MAIN_OFF)))))))) : (((Number((boom) < C.S_altar))) ? (C.int(((C.int(((boom) - C.S_ndoor))) + C.GLYPH_CMAP_A_OFF))) : (((Number((boom) == C.S_altar))) ? ((((Number((C.int(((2) & 16))) == 16))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_other))) : (((Number((C.int(((2) & 7))) == 4))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_lawful))) : (((Number((C.int(((2) & 7))) == 2))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_neutral))) : (((Number((C.int(((2) & 7))) == 1))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_chaotic))) : (C.int((C.GLYPH_ALTAR_OFF + C.altar_unaligned)))))))) : (((Number((boom) < C.int((C.S_arrow_trap + (C.int((C.TRAPNUM - 1)))))))) ? (C.int(((C.int(((boom) - C.S_grave))) + C.GLYPH_CMAP_B_OFF))) : (((Number((boom) <= C.S_goodpos))) ? (C.int(((C.int(((boom) - C.S_digbeam))) + C.GLYPH_CMAP_C_OFF))) : C.MAX_GLYPH)))))))));
+        C.tmp_at(C.DISP_CHANGE, C.short(((((Number((boom) == C.S_stone))) ? C.GLYPH_CMAP_STONE_OFF : (((Number((boom) <= C.S_trwall))) ? (C.int((C.int(((boom) - C.S_vwall)) + (((C.In_mines(C.fieldRef(C.u, "uz"))) ? C.GLYPH_CMAP_MINES_OFF : ((C.In_hell(C.fieldRef(C.u, "uz"))) ? C.GLYPH_CMAP_GEH_OFF : ((((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))).dlevel
+            || ((C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))).dnum)))
+            && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_knox_level"))))))) ? C.GLYPH_CMAP_KNOX_OFF : (((Number(((C.fieldRef(C.u, "uz"))).dnum == (((C.svd).dungeon_topology).d_sokoban_dnum)))) ? C.GLYPH_CMAP_SOKO_OFF : C.GLYPH_CMAP_MAIN_OFF)))))))) : (((Number((boom) < C.S_altar))) ? (C.int(((C.int(((boom) - C.S_ndoor))) + C.GLYPH_CMAP_A_OFF))) : (((Number((boom) == C.S_altar))) ? ((((Number((C.int(((2) & 16))) == 16))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_other))) : (((Number((C.int(((2) & 7))) == 4))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_lawful))) : (((Number((C.int(((2) & 7))) == 2))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_neutral))) : (((Number((C.int(((2) & 7))) == 1))) ? (C.int((C.GLYPH_ALTAR_OFF + C.altar_chaotic))) : (C.int((C.GLYPH_ALTAR_OFF + C.altar_unaligned)))))))) : (((Number((boom) < C.int((C.S_arrow_trap + (C.int((C.TRAPNUM - 1)))))))) ? (C.int(((C.int(((boom) - C.S_grave))) + C.GLYPH_CMAP_B_OFF))) : (((Number((boom) <= C.S_goodpos))) ? (C.int(((C.int(((boom) - C.S_digbeam))) + C.GLYPH_CMAP_C_OFF))) : C.MAX_GLYPH)))))))));
 /* change glyph */
         (dx = C.deref(C.ptrAdd(C.xdir, i, "const schar"), "const schar"));
         (dy = C.deref(C.ptrAdd(C.ydir, i, "const schar"), "const schar"));
@@ -3770,17 +4237,21 @@ export function boomhit(obj, dx, dy) {
                 break;
             }
         }
-        if (Number(!!(Number(!((Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, ((C.gb).bhitpos).x, "struct rm[21]"), "struct rm[21]"), ((C.gb).bhitpos).y, "struct rm"), "struct rm")).typ) >= C.POOL)))) || C.closed_door(((C.gb).bhitpos).x, ((C.gb).bhitpos).y)))) {
+        if (Number(!!(Number(!((Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, ((C.gb).bhitpos).x, "struct rm[21]"), "struct rm[21]"), ((C.gb).bhitpos).y, "struct rm"), "struct rm")).typ) >= C.POOL))))
+            || C.closed_door(((C.gb).bhitpos).x, ((C.gb).bhitpos).y)))) {
             (((C.gb).bhitpos).x = C.short((((C.gb).bhitpos).x - dx)));
             (((C.gb).bhitpos).y = C.short((((C.gb).bhitpos).y - dy)));
             break;
         }
         if ((Number(!!(Number((((C.gb).bhitpos).x) == (C.u).ux) && Number((((C.gb).bhitpos).y) == (C.u).uy))))) {
 /* ct == 9 */
-            if (Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.FUMBLING, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.FUMBLING, "struct prop"), "struct prop")).extrinsic))) || Number((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4203, C.literal("boomhit")), C.rn2(20))) : C.rn2(20))) >= (C.acurr(C.A_DEX)))))) {
+            if (Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.FUMBLING, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.FUMBLING, "struct prop"), "struct prop")).extrinsic)))
+                || Number((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4203, C.literal("boomhit")), C.rn2(20))) : C.rn2(20))) >= (C.acurr(C.A_DEX)))))) {
                 let dam = C.dmgval(obj.value, C.fieldRef(C.gy, "youmonst"));
 /* we hit ourselves */
-                C.thitu(C.int((10 + (obj.value).spe)), (((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).extrinsic))))) ? (C.int(Math.trunc((C.int(((dam) + 1))) / 2))) : (dam))), obj, C.literal("boomerang"));
+                C.thitu(C.int((10 + (obj.value).spe)), (((((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).intrinsic
+                    || (C.deref(C.ptrAdd((C.u).uprops, C.HALF_PHDAM, "struct prop"), "struct prop")).extrinsic))))) ? (C.int(Math.trunc((C.int(((dam) + 1))) / 2))) : (dam))), obj, C.literal("boomerang"));
                 C.endmultishot((C.char(1)));
                 break;
             }
@@ -3795,7 +4266,9 @@ export function boomhit(obj, dx, dy) {
         C.callIndirect((C.deref((C.windowprocs).win_delay_output, "void (void)")), "void (*)(void)");
         if ((Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, ((C.gb).bhitpos).x, "struct rm[21]"), "struct rm[21]"), ((C.gb).bhitpos).y, "struct rm"), "struct rm")).typ) == C.SINK))) {
             ;
-            if (Number(!((Number(!!(Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).extrinsic)) || ((C.u).uroleplay).deaf)))))) C.pline(C.literal("Klonk!"), "");
+            if (Number(!((Number(!!(Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).extrinsic))
+                || ((C.u).uroleplay).deaf)))))) C.pline(C.literal("Klonk!"), "");
             C.wake_nearto(((C.gb).bhitpos).x, ((C.gb).bhitpos).y, 20);
             break;
 /* boomerang falls on sink */
@@ -3882,7 +4355,15 @@ export function zhitm(mon, type, nd, ootmp) /* monster being hit */
                     (tmp = 0);
                     break;
                 }
-                if (Number(!!(Number(!!(Number(!!((Number(!!(Number(!!((Number((C.ulong(((((mon).data)).mflags2 & C.ulong(2n)))) != C.ulong(0n))) || C.ptrCompare(((mon).data), C.ptrAdd(C.mons, C.PM_MANES, "struct permonst"), "=="))) || (Number(!!((Number((((mon).data)).mlet == C.S_GOLEM)) || Number((((mon).data)).mlet == C.S_VORTEX))))))) || (Number((C.ulong(((((mon).data)).mflags2 & C.ulong(256n)))) != C.ulong(0n))))) || (Number(!!(Number(!!(Number(((mon)).cham == C.PM_VAMPIRE) || Number(((mon)).cham == C.PM_VAMPIRE_LEADER))) || Number(((mon)).cham == C.PM_VLAD_THE_IMPALER)))))) || C.resists_magm(mon)))) {
+                if (Number(!!(Number(!!(Number(!!((Number(!!(Number(!!((Number((C.ulong(((((mon).data)).mflags2 & C.ulong(2n)))) != C.ulong(0n)))
+                    || C.ptrCompare(((mon).data), C.ptrAdd(C.mons, C.PM_MANES, "struct permonst"), "==")))
+                    || (Number(!!((Number((((mon).data)).mlet == C.S_GOLEM))
+                    || Number((((mon).data)).mlet == C.S_VORTEX)))))))
+                    || (Number((C.ulong(((((mon).data)).mflags2 & C.ulong(256n)))) != C.ulong(0n)))))
+                    || (Number(!!(Number(!!(Number(((mon)).cham == C.PM_VAMPIRE)
+                    || Number(((mon)).cham == C.PM_VAMPIRE_LEADER)))
+                    || Number(((mon)).cham == C.PM_VLAD_THE_IMPALER))))))
+                    || C.resists_magm(mon)))) {
 /* similar to player */
                     (sho_shieldeff = (C.char(1)));
                     break;
@@ -3927,12 +4408,16 @@ export function zhitm(mon, type, nd, ootmp) /* monster being hit */
             (tmp = 0);
 /* can still blind the monster */
         }
-        if (Number(!!(Number(!!(Number(!(C.resists_blnd(mon))) && Number(!((Number(!!(Number(type > 0) && (Number(!!(C.int((C.u).uswallow) && (C.ptrCompare((C.u).ustuck, (mon), "==")))))))))))) && Number(nd > 2)))) {
+        if (Number(!!(Number(!!(Number(!(C.resists_blnd(mon)))
+            && Number(!((Number(!!(Number(type > 0)
+            && (Number(!!(C.int((C.u).uswallow)
+            && (C.ptrCompare((C.u).ustuck, (mon), "=="))))))))))))
+            && Number(nd > 2)))) {
 /* sufficiently powerful lightning blinds monsters */
             let rnd_tmp = C.uint((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4356, C.literal("zhitm")), C.rnd(50))) : C.rnd(50))));
             ((mon).mcansee = C.uint(0));
             if (Number((C.uint((C.uint((mon).mblinded) + rnd_tmp))) > C.uint(127))) ((mon).mblinded = C.uint(127));
-            else ((mon).mblinded = C.uint(((mon).mblinded + rnd_tmp)));
+                else ((mon).mblinded = C.uint(((mon).mblinded + rnd_tmp)));
         }
         if (Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4363, C.literal("zhitm")), C.rn2(3))) : C.rn2(3)))))) (tmp = C.int((tmp + C.callLocal(destroy_items, mon, C.AD_ELEC, orig_dmg))));
         break;
@@ -3954,8 +4439,13 @@ export function zhitm(mon, type, nd, ootmp) /* monster being hit */
         break;
     }
     if (sho_shieldeff) C.shieldeff((mon).mx, (mon).my);
-    if (Number(!!((Number(!!(Number((type) >= 10) && Number((type) < 20)))) && (Number(!!((Number(((C.gu).urole).mnum == (C.PM_KNIGHT))) && C.int(((C.u).uhave).questart))))))) (tmp = C.int(Math.imul(tmp, 2)));
-    if (Number(!!(Number(!!(Number(tmp > 0) && Number(type >= 0))) && C.callLocal(resist, mon, C.char(((Number(type < (C.int((10 + (0)))))) ? C.WAND_CLASS : 0)), 0, C.NOTELL)))) (tmp = C.int(Math.trunc(tmp / 2)));
+    if (Number(!!((Number(!!(Number((type) >= 10)
+        && Number((type) < 20))))
+        && (Number(!!((Number(((C.gu).urole).mnum == (C.PM_KNIGHT)))
+        && C.int(((C.u).uhave).questart))))))) (tmp = C.int(Math.imul(tmp, 2)));
+    if (Number(!!(Number(!!(Number(tmp > 0)
+        && Number(type >= 0)))
+        && C.callLocal(resist, mon, C.char(((Number(type < (C.int((10 + (0)))))) ? C.WAND_CLASS : 0)), 0, C.NOTELL)))) (tmp = C.int(Math.trunc(tmp / 2)));
     if (Number(tmp < 0)) (tmp = 0);
 /* don't allow negative damage */
     do {
@@ -3981,7 +4471,8 @@ export function zhitu(type, nd, fltxt, sx, sy) {
     let orig_dam = 0;
     switch (C.int((abstyp % 10))) {
         case C.ZT_MAGIC_MISSILE:
-            if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).extrinsic)))) {
+            if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).extrinsic)))) {
                 C.shieldeff(sx, sy);
                 C.pline_The(C.literal("missiles bounce off!"), "");
                 C.monstseesu(C.ulong(C.M_SEEN_MAGR));
@@ -3994,7 +4485,8 @@ export function zhitu(type, nd, fltxt, sx, sy) {
         break;
         case C.ZT_FIRE:
             (orig_dam = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4422, C.literal("zhitu")), C.d((nd), (6)))) : C.d((nd), (6)))));
-        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.FIRE_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.FIRE_RES, "struct prop"), "struct prop")).extrinsic)))) {
+        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.FIRE_RES, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.FIRE_RES, "struct prop"), "struct prop")).extrinsic)))) {
             C.shieldeff(sx, sy);
             C.You(C.literal("don't feel hot!"), "");
             C.monstseesu(C.ulong(C.M_SEEN_FIRE));
@@ -4013,7 +4505,8 @@ export function zhitu(type, nd, fltxt, sx, sy) {
         break;
         case C.ZT_COLD:
             (orig_dam = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4441, C.literal("zhitu")), C.d((nd), (6)))) : C.d((nd), (6)))));
-        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.COLD_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.COLD_RES, "struct prop"), "struct prop")).extrinsic)))) {
+        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.COLD_RES, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.COLD_RES, "struct prop"), "struct prop")).extrinsic)))) {
             C.shieldeff(sx, sy);
             C.You(C.literal("don't feel cold."), "");
             C.monstseesu(C.ulong(C.M_SEEN_COLD));
@@ -4026,7 +4519,8 @@ export function zhitu(type, nd, fltxt, sx, sy) {
         if (Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4451, C.literal("zhitu")), C.rn2(3))) : C.rn2(3)))))) C.callLocal(destroy_items, C.fieldRef(C.gy, "youmonst"), C.AD_COLD, orig_dam);
         break;
         case C.ZT_SLEEP:
-            if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.SLEEP_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.SLEEP_RES, "struct prop"), "struct prop")).extrinsic)))) {
+            if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.SLEEP_RES, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.SLEEP_RES, "struct prop"), "struct prop")).extrinsic)))) {
                 C.shieldeff((C.u).ux, (C.u).uy);
                 C.You(C.literal("don't feel sleepy."), "");
                 C.monstseesu(C.ulong(C.M_SEEN_SLEEP));
@@ -4040,7 +4534,8 @@ export function zhitu(type, nd, fltxt, sx, sy) {
         case C.ZT_DEATH:
             if (Number(abstyp == (C.int((20 + ((C.int((5 - 1))))))))) {
                 let disn_prot = inventory_resistance_check(C.AD_DISN);
-                if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DISINT_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.DISINT_RES, "struct prop"), "struct prop")).extrinsic)))) {
+                if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DISINT_RES, "struct prop"), "struct prop")).intrinsic
+                    || (C.deref(C.ptrAdd((C.u).uprops, C.DISINT_RES, "struct prop"), "struct prop")).extrinsic)))) {
                     C.You(C.literal("are not disintegrated."), "");
                     C.monstseesu(C.ulong(C.M_SEEN_DISINT));
                     break;
@@ -4065,12 +4560,17 @@ export function zhitu(type, nd, fltxt, sx, sy) {
                 if (C.uarmc) C.disintegrate_arm(C.uarmc);
                 if (C.uarmu) C.disintegrate_arm(C.uarmu);
             }
-            else if (Number(!!((Number(!!(Number(!!((Number((C.ulong((((((C.gy).youmonst).data)).mflags2 & C.ulong(2n)))) != C.ulong(0n))) || C.ptrCompare((((C.gy).youmonst).data), C.ptrAdd(C.mons, C.PM_MANES, "struct permonst"), "=="))) || (Number(!!((Number(((((C.gy).youmonst).data)).mlet == C.S_GOLEM)) || Number(((((C.gy).youmonst).data)).mlet == C.S_VORTEX))))))) || (Number((C.ulong((((((C.gy).youmonst).data)).mflags2 & C.ulong(256n)))) != C.ulong(0n)))))) {
+            else if (Number(!!((Number(!!(Number(!!((Number((C.ulong((((((C.gy).youmonst).data)).mflags2 & C.ulong(2n)))) != C.ulong(0n)))
+                || C.ptrCompare((((C.gy).youmonst).data), C.ptrAdd(C.mons, C.PM_MANES, "struct permonst"), "==")))
+                || (Number(!!((Number(((((C.gy).youmonst).data)).mlet == C.S_GOLEM))
+                || Number(((((C.gy).youmonst).data)).mlet == C.S_VORTEX)))))))
+                || (Number((C.ulong((((((C.gy).youmonst).data)).mflags2 & C.ulong(256n)))) != C.ulong(0n)))))) {
                 C.shieldeff(sx, sy);
                 C.You(C.literal("seem unaffected."), "");
                 break;
             }
-            else if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).extrinsic)))) {
+            else if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.ANTIMAGIC, "struct prop"), "struct prop")).extrinsic)))) {
                 C.shieldeff(sx, sy);
                 C.monstseesu(C.ulong(C.M_SEEN_MAGR));
                 C.You(C.literal("aren't affected."), "");
@@ -4086,7 +4586,8 @@ export function zhitu(type, nd, fltxt, sx, sy) {
 /* lifesaved */
         case C.ZT_LIGHTNING:
             (orig_dam = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4511, C.literal("zhitu")), C.d((nd), (6)))) : C.d((nd), (6)))));
-        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.SHOCK_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.SHOCK_RES, "struct prop"), "struct prop")).extrinsic)))) {
+        if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.SHOCK_RES, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.SHOCK_RES, "struct prop"), "struct prop")).extrinsic)))) {
             C.shieldeff(sx, sy);
             C.You(C.literal("aren't affected."), "");
             C.monstseesu(C.ulong(C.M_SEEN_ELEC));
@@ -4103,7 +4604,8 @@ export function zhitu(type, nd, fltxt, sx, sy) {
             C.poisoned(C.literal("blast"), C.A_DEX, C.literal("poisoned blast"), 15, (C.char(0)));
         break;
         case C.ZT_ACID:
-            if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.ACID_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.ACID_RES, "struct prop"), "struct prop")).extrinsic)))) {
+            if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.ACID_RES, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.ACID_RES, "struct prop"), "struct prop")).extrinsic)))) {
                 C.pline_The(C.literal("%s doesn't hurt."), C.hliquid(C.literal("acid")), "p");
                 C.monstseesu(C.ulong(C.M_SEEN_ACID));
                 (dam = 0);
@@ -4116,7 +4618,8 @@ export function zhitu(type, nd, fltxt, sx, sy) {
             }
 /* using two weapons at once makes both of them more vulnerable */
         if (Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4540, C.literal("zhitu")), C.rn2((((C.u).twoweap) ? 3 : 6)))) : C.rn2((((C.u).twoweap) ? 3 : 6))))))) C.acid_damage(C.uwep);
-        if (Number(!!((C.u).twoweap && Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4542, C.literal("zhitu")), C.rn2(3))) : C.rn2(3)))))))) C.acid_damage(C.uswapwep);
+        if (Number(!!((C.u).twoweap
+            && Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4542, C.literal("zhitu")), C.rn2(3))) : C.rn2(3)))))))) C.acid_damage(C.uswapwep);
         if (Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4544, C.literal("zhitu")), C.rn2(6))) : C.rn2(6)))))) C.erode_armor(C.fieldRef(C.gy, "youmonst"), C.ERODE_CORRODE);
         break;
     }
@@ -4136,7 +4639,8 @@ export function zhitu(type, nd, fltxt, sx, sy) {
         const kbuf = C.localArray("char[256]", 0);
         let otmp = (C.gc).current_wand;
 /* fire horn and frost horn get handled as wands by caller */
-        let verb = (((Number(abstyp < 10))) ? ((((Number(!!(otmp && Number((otmp).oclass == C.TOOL_CLASS))))) ? C.literal("played") : C.literal("zapped"))) : (((Number(abstyp < 20))) ? C.literal("cast") : (((Number(abstyp < 30))) ? C.literal("exhaled") : C.literal("imagined"))));
+        let verb = (((Number(abstyp < 10))) ? ((((Number(!!(otmp
+            && Number((otmp).oclass == C.TOOL_CLASS))))) ? C.literal("played") : C.literal("zapped"))) : (((Number(abstyp < 20))) ? C.literal("cast") : (((Number(abstyp < 30))) ? C.literal("exhaled") : C.literal("imagined"))));
 /* wand */
 /* should never happen */
         if (Number(!!(Number(type < 0) || (Number(!!(Number(type == 0) && C.ptrCompare((C.gb).buzzer, 0, "!="))))))) {
@@ -4153,7 +4657,10 @@ export function zhitu(type, nd, fltxt, sx, sy) {
         }
 /* Half_spell_damage protection yields half-damage for wands & spells,
            including hero's own ricochets; breath attacks do full damage */
-        if (Number(!!(Number(!!(dam && (Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALF_SPDAM, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALF_SPDAM, "struct prop"), "struct prop")).extrinsic))))) && Number(abstyp < 20)))) (dam = C.int(Math.trunc((C.int((dam + 1))) / 2)));
+        if (Number(!!(Number(!!(dam
+            && (Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALF_SPDAM, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.HALF_SPDAM, "struct prop"), "struct prop")).extrinsic)))))
+            && Number(abstyp < 20)))) (dam = C.int(Math.trunc((C.int((dam + 1))) / 2)));
         C.losehp(dam, kbuf, C.KILLED_BY_AN);
     }
     return;
@@ -4179,8 +4686,13 @@ export function burn_floor_objects(x, y, give_feedback, u_caused) /* caller need
     let cnt = 0;
     for ((obj = C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, x, "struct obj *[21]"), "struct obj *[21]"), y, "struct obj *"), "struct obj *")); obj; (obj = obj2)) {
         (obj2 = ((obj).nexthere).nexthere);
-        if (Number(!!(Number(!!(Number((obj).oclass == C.SCROLL_CLASS) || Number((obj).oclass == C.SPBOOK_CLASS))) || (Number(!!(Number((obj).oclass == C.FOOD_CLASS) && Number((obj).otyp == C.GLOB_OF_GREEN_SLIME))))))) {
-            if (Number(!!(Number(!!(Number((obj).otyp == C.SCR_FIRE) || Number((obj).otyp == C.SPE_FIREBALL))) || C.callLocal(obj_resists, obj, 2, 100)))) continue;
+        if (Number(!!(Number(!!(Number((obj).oclass == C.SCROLL_CLASS)
+            || Number((obj).oclass == C.SPBOOK_CLASS)))
+            || (Number(!!(Number((obj).oclass == C.FOOD_CLASS)
+            && Number((obj).otyp == C.GLOB_OF_GREEN_SLIME))))))) {
+            if (Number(!!(Number(!!(Number((obj).otyp == C.SCR_FIRE)
+                || Number((obj).otyp == C.SPE_FIREBALL)))
+                || C.callLocal(obj_resists, obj, 2, 100)))) continue;
             (scrquan = (obj).quan);
 /* number present */
             (delquan = 0n);
@@ -4190,9 +4702,11 @@ export function burn_floor_objects(x, y, give_feedback, u_caused) /* caller need
 /* save name before potential delobj() */
                 if (give_feedback) {
                     ((obj).quan = 1n);
-                    C.strcpy(buf1, (((Number(!!(Number((x) == (C.u).ux) && Number((y) == (C.u).uy))))) ? C.xname(obj) : C.distant_name(obj, C.callback("xname", C.xname))));
+                    C.strcpy(buf1, (((Number(!!(Number((x) == (C.u).ux)
+                        && Number((y) == (C.u).uy))))) ? C.xname(obj) : C.distant_name(obj, C.callback("xname", C.xname))));
                     ((obj).quan = 2n);
-                    C.strcpy(buf2, (((Number(!!(Number((x) == (C.u).ux) && Number((y) == (C.u).uy))))) ? C.xname(obj) : C.distant_name(obj, C.callback("xname", C.xname))));
+                    C.strcpy(buf2, (((Number(!!(Number((x) == (C.u).ux)
+                        && Number((y) == (C.u).uy))))) ? C.xname(obj) : C.distant_name(obj, C.callback("xname", C.xname))));
                     ((obj).quan = scrquan);
                 }
 /* useupf(), which charges, only if hero caused damage */
@@ -4201,11 +4715,11 @@ export function burn_floor_objects(x, y, give_feedback, u_caused) /* caller need
                     ((obj).quan = C.long(((obj).quan - delquan)));
                     ((obj).owt = C.uint(C.weight(obj)));
                 }
-                else C.delobj(obj);
+                    else C.delobj(obj);
                 (cnt = C.int((cnt + delquan)));
                 if (give_feedback) {
                     if (Number(delquan > 1n)) C.pline(C.literal("%ld %s burn."), delquan, buf2, "lp");
-                    else C.pline(C.literal("%s burns."), C.An(buf1), "p");
+                        else C.pline(C.literal("%s burns."), C.An(buf1), "p");
                 }
             }
         }
@@ -4227,7 +4741,10 @@ export function bounce_dir(sx, sy, ddx, ddy, bounceback) {
     ddx = C.argument(ddx, "int *");
     ddy = C.argument(ddy, "int *");
     bounceback = C.argument(bounceback, "int");
-    if (Number(!!(Number(!!(Number(!(C.deref(ddx, "int"))) || Number(!(C.deref(ddy, "int"))))) || (Number(!!(Number(bounceback > 0) && Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4668, C.literal("bounce_dir")), C.rn2(bounceback))) : C.rn2(bounceback))))))))))) {
+    if (Number(!!(Number(!!(Number(!(C.deref(ddx, "int")))
+        || Number(!(C.deref(ddy, "int")))))
+        || (Number(!!(Number(bounceback > 0)
+        && Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4668, C.literal("bounce_dir")), C.rn2(bounceback))) : C.rn2(bounceback))))))))))) {
         C.store(ddx, "int", C.int((-(C.deref(ddx, "int")))));
         C.store(ddy, "int", C.int((-(C.deref(ddy, "int")))));
     }
@@ -4236,8 +4753,19 @@ export function bounce_dir(sx, sy, ddx, ddy, bounceback) {
         let bounce = 0;
         let lsy = C.short(C.int((sy - C.deref(ddy, "int"))));
         let lsx = C.short(C.int((sx - C.deref(ddx, "int"))));
-        if (Number(!!(Number(!!(Number(!!(C.isok(sx, lsy) && (Number(((rmn = C.uchar((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, sx, "struct rm[21]"), "struct rm[21]"), lsy, "struct rm"), "struct rm")).typ))) >= C.POOL)))) && Number(!(C.closed_door(sx, lsy))))) && (Number(!!((Number((rmn) >= C.ROOM)) || (Number(!!(C.isok(C.short(C.int((sx + C.deref(ddx, "int")))), lsy) && (Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, C.int((sx + C.deref(ddx, "int"))), "struct rm[21]"), "struct rm[21]"), lsy, "struct rm"), "struct rm")).typ) >= C.POOL))))))))))) (bounce = 1);
-        if (Number(!!(Number(!!(Number(!!(C.isok(lsx, sy) && (Number(((rmn = C.uchar((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, lsx, "struct rm[21]"), "struct rm[21]"), sy, "struct rm"), "struct rm")).typ))) >= C.POOL)))) && Number(!(C.closed_door(lsx, sy))))) && (Number(!!((Number((rmn) >= C.ROOM)) || (Number(!!(C.isok(lsx, C.short(C.int((sy + C.deref(ddy, "int"))))) && (Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, lsx, "struct rm[21]"), "struct rm[21]"), C.int((sy + C.deref(ddy, "int"))), "struct rm"), "struct rm")).typ) >= C.POOL))))))))))) if (Number(!!(Number(!(bounce)) || (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4686, C.literal("bounce_dir")), C.rn2(2))) : C.rn2(2)))))) (bounce = 2);
+        if (Number(!!(Number(!!(Number(!!(C.isok(sx, lsy)
+            && (Number(((rmn = C.uchar((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, sx, "struct rm[21]"), "struct rm[21]"), lsy, "struct rm"), "struct rm")).typ))) >= C.POOL))))
+            && Number(!(C.closed_door(sx, lsy)))))
+            && (Number(!!((Number((rmn) >= C.ROOM))
+            || (Number(!!(C.isok(C.short(C.int((sx + C.deref(ddx, "int")))), lsy)
+            && (Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, C.int((sx + C.deref(ddx, "int"))), "struct rm[21]"), "struct rm[21]"), lsy, "struct rm"), "struct rm")).typ) >= C.POOL))))))))))) (bounce = 1);
+        if (Number(!!(Number(!!(Number(!!(C.isok(lsx, sy)
+            && (Number(((rmn = C.uchar((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, lsx, "struct rm[21]"), "struct rm[21]"), sy, "struct rm"), "struct rm")).typ))) >= C.POOL))))
+            && Number(!(C.closed_door(lsx, sy)))))
+            && (Number(!!((Number((rmn) >= C.ROOM))
+            || (Number(!!(C.isok(lsx, C.short(C.int((sy + C.deref(ddy, "int")))))
+            && (Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, lsx, "struct rm[21]"), "struct rm[21]"), C.int((sy + C.deref(ddy, "int"))), "struct rm"), "struct rm")).typ) >= C.POOL))))))))))) if (Number(!!(Number(!(bounce))
+            || (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4686, C.literal("bounce_dir")), C.rn2(2))) : C.rn2(2)))))) (bounce = 2);
         switch (bounce) {
             case (0):
                 C.store(ddx, "int", C.int((-(C.deref(ddx, "int")))));
@@ -4277,18 +4805,21 @@ export function disintegrate_mon(mon, type, fltxt) /* hero vs other */
     let m_amulet = C.mlifesaver(mon);
     if (C.canseemon(mon)) {
         if (Number(!(m_amulet))) C.pline(C.literal("%s is disintegrated!"), C.Monnam(mon), "p");
-        else C.callLocal(hit, fltxt, mon, C.literal("!"));
+            else C.callLocal(hit, fltxt, mon, C.literal("!"));
     }
 /* note: worn amulet of life saving must be preserved in order to operate */
     for ((otmp = (mon).minvent); otmp; (otmp = otmp2)) {
         (otmp2 = (otmp).nobj);
-        if (Number(!((Number(!!(Number(!!(Number(!!(Number((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_oprop == C.DISINT_RES) || C.callLocal(obj_resists, otmp, 5, 50))) || C.is_quest_artifact(otmp))) || C.ptrCompare(otmp, m_amulet, "=="))))))) {
+        if (Number(!((Number(!!(Number(!!(Number(!!(Number((C.deref(C.ptrAdd(C.objects, (otmp).otyp, "struct objclass"), "struct objclass")).oc_oprop == C.DISINT_RES)
+            || C.callLocal(obj_resists, otmp, 5, 50)))
+            || C.is_quest_artifact(otmp)))
+            || C.ptrCompare(otmp, m_amulet, "=="))))))) {
             C.extract_from_minvent(mon, otmp, (C.char(1)), (C.char(1)));
             C.obfree(otmp, 0);
         }
     }
     if (Number(type < 0)) C.monkilled(mon, 0, C.int((-C.AD_RBRE)));
-    else C.xkilled(mon, C.int((C.XKILL_NOMSG | C.XKILL_NOCORPSE)));
+        else C.xkilled(mon, C.int((C.XKILL_NOMSG | C.XKILL_NOCORPSE)));
 }
 
 export function ubuzz(type, nd) {
@@ -4345,7 +4876,9 @@ export function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, forcemiss) /* 
 /* will be set during each iteration */
     const otmp = C.scalarLocal("struct obj *");
     let spell_type;
-    let hdmgtype = (((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic))))))))) ? (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4797, C.literal("dobuzz")), C.rn2(6))) : C.rn2(6))) : damgtype);
+    let hdmgtype = (((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic
+        && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic
+        || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic))))))))) ? (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4797, C.literal("dobuzz")), C.rn2(6))) : C.rn2(6))) : damgtype);
 /* if it's a hero spell then get its SPE_TYPE */
     (spell_type = (((Number(!!(Number((type) >= 10) && Number((type) < 20))))) ? C.int((C.SPE_MAGIC_MISSILE + damgtype)) : 0));
     if ((C.u).uswallow) {
@@ -4375,13 +4908,16 @@ export function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, forcemiss) /* 
         (sy = C.short((sy + dy.value)));
         bounce_done: {
         make_bounce: {
-        if (Number(!!(Number(!(C.isok(sx, sy))) || Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, sx, "struct rm[21]"), "struct rm[21]"), sy, "struct rm"), "struct rm")).typ == C.STONE)))) break make_bounce;
+        if (Number(!!(Number(!(C.isok(sx, sy)))
+            || Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, sx, "struct rm[21]"), "struct rm[21]"), sy, "struct rm"), "struct rm")).typ == C.STONE)))) break make_bounce;
         (mon = (C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).monsters, sx, "struct monst *[21]"), "struct monst *[21]"), sy, "struct monst *"), "struct monst *")));
         if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, sy, "seenV *"), "seenV *"), sx, "seenV"), "seenV") & 2))) != 0))) {
 /* reveal/unreveal invisible monsters before tmp_at() */
             if (Number(!!(mon && Number(!((Number(!!(C.canseemon(mon) || C.sensemon(mon))))))))) C.map_invisible(sx, sy);
             else if (Number(!(mon))) C.unmap_invisible(sx, sy);
-            if (Number(!!((Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, sx, "struct rm[21]"), "struct rm[21]"), sy, "struct rm"), "struct rm")).typ) >= C.POOL)) || (Number(!!(C.isok(lsx, lsy) && (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, lsy, "seenV *"), "seenV *"), lsx, "seenV"), "seenV") & 2))) != 0)))))))) C.tmp_at(sx, sy);
+            if (Number(!!((Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, sx, "struct rm[21]"), "struct rm[21]"), sy, "struct rm"), "struct rm")).typ) >= C.POOL))
+                || (Number(!!(C.isok(lsx, lsy)
+                && (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, lsy, "seenV *"), "seenV *"), lsx, "seenV"), "seenV") & 2))) != 0)))))))) C.tmp_at(sx, sy);
             C.callIndirect((C.deref((C.windowprocs).win_delay_output, "void (void)")), "void (*)(void)");
 /* wait a little */
         }
@@ -4420,18 +4956,23 @@ export function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, forcemiss) /* 
                 else {
                     let mon_could_move = C.char((mon).mcanmove);
                     let tmp = C.callLocal(zhitm, mon, type, nd, otmp);
-                    if (Number(!!((Number(!!(Number(!!(C.ptrCompare(((mon).data), C.ptrAdd(C.mons, C.PM_DEATH, "struct permonst"), "==") || C.ptrCompare(((mon).data), C.ptrAdd(C.mons, C.PM_FAMINE, "struct permonst"), "=="))) || C.ptrCompare(((mon).data), C.ptrAdd(C.mons, C.PM_PESTILENCE, "struct permonst"), "==")))) && Number(C.abs(type) == (C.int((20 + ((C.int((5 - 1))))))))))) {
+                    if (Number(!!((Number(!!(Number(!!(C.ptrCompare(((mon).data), C.ptrAdd(C.mons, C.PM_DEATH, "struct permonst"), "==")
+                        || C.ptrCompare(((mon).data), C.ptrAdd(C.mons, C.PM_FAMINE, "struct permonst"), "==")))
+                        || C.ptrCompare(((mon).data), C.ptrAdd(C.mons, C.PM_PESTILENCE, "struct permonst"), "=="))))
+                        && Number(C.abs(type) == (C.int((20 + ((C.int((5 - 1))))))))))) {
                         if (C.canseemon(mon)) {
                             C.callLocal(hit, flash_str(fltyp, (C.char(0))), mon, C.literal("."));
                             C.pline(C.literal("%s disintegrates."), C.Monnam(mon), "p");
-                            C.pline(C.literal("%s body reintegrates before your %s!"), C.s_suffix(C.Monnam(mon)), (((Number((((Number(!((Number((C.ulong((((((C.gy).youmonst).data)).mflags1 & C.ulong(4096n)))) == C.ulong(0n)))))) ? 0 : (((Number(!!(C.ptrCompare((((C.gy).youmonst).data), C.ptrAdd(C.mons, C.PM_CYCLOPS, "struct permonst"), "==") || C.ptrCompare((((C.gy).youmonst).data), C.ptrAdd(C.mons, C.PM_FLOATING_EYE, "struct permonst"), "=="))))) ? 1 : 2))) == 1))) ? C.body_part(C.EYE) : C.castPointer(C.makeplural(C.body_part(C.EYE)), "char *")), "pp");
+                            C.pline(C.literal("%s body reintegrates before your %s!"), C.s_suffix(C.Monnam(mon)), (((Number((((Number(!((Number((C.ulong((((((C.gy).youmonst).data)).mflags1 & C.ulong(4096n)))) == C.ulong(0n)))))) ? 0 : (((Number(!!(C.ptrCompare((((C.gy).youmonst).data), C.ptrAdd(C.mons, C.PM_CYCLOPS, "struct permonst"), "==")
+                                || C.ptrCompare((((C.gy).youmonst).data), C.ptrAdd(C.mons, C.PM_FLOATING_EYE, "struct permonst"), "=="))))) ? 1 : 2))) == 1))) ? C.body_part(C.EYE) : C.castPointer(C.makeplural(C.body_part(C.EYE)), "char *")), "pp");
                             C.pline(C.literal("%s resurrects!"), C.Monnam(mon), "p");
                         }
                         ((mon).mhp = (mon).mhpmax);
                         break beam;
 /* Out of while loop */
                     }
-                    if (Number(!!(C.ptrCompare((mon).data, C.ptrAdd(C.mons, C.PM_DEATH, "struct permonst"), "==") && Number(damgtype == C.ZT_DEATH)))) {
+                    if (Number(!!(C.ptrCompare((mon).data, C.ptrAdd(C.mons, C.PM_DEATH, "struct permonst"), "==")
+                        && Number(damgtype == C.ZT_DEATH)))) {
                         if (C.canseemon(mon)) {
                             C.callLocal(hit, flash_str(fltyp, (C.char(0))), mon, C.literal("."));
                             C.pline(C.literal("%s absorbs the deadly %s!"), C.Monnam(mon), ((Number(type == (C.int((20 + ((C.int((5 - 1))))))))) ? C.literal("blast") : C.literal("ray")), "pp");
@@ -4456,8 +4997,10 @@ export function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, forcemiss) /* 
                                if it's fire, highly flammable monsters leave
                                no corpse; don't bother reporting that they
                                "burn completely" -- unnecessary verbosity */
-                            if (Number(!!(Number(damgtype == C.ZT_FIRE) && (Number(!!(C.ptrCompare(((mon).data), C.ptrAdd(C.mons, C.PM_PAPER_GOLEM, "struct permonst"), "==") || C.ptrCompare(((mon).data), C.ptrAdd(C.mons, C.PM_STRAW_GOLEM, "struct permonst"), "=="))))))) /* paper golem or straw golem */
-                            (xkflags = C.int((xkflags | C.XKILL_NOCORPSE)));
+                            if (Number(!!(Number(damgtype == C.ZT_FIRE)
+                                && (Number(!!(C.ptrCompare(((mon).data), C.ptrAdd(C.mons, C.PM_PAPER_GOLEM, "struct permonst"), "==")
+                                || C.ptrCompare(((mon).data), C.ptrAdd(C.mons, C.PM_STRAW_GOLEM, "struct permonst"), "=="))))))) /* paper golem or straw golem */
+                                (xkflags = C.int((xkflags | C.XKILL_NOCORPSE)));
                             C.xkilled(mon, xkflags);
                         }
                     }
@@ -4472,30 +5015,37 @@ export function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, forcemiss) /* 
                             C.m_useup(mon, otmp.value);
                         }
                         if (Number(!!(mon_could_move && Number(!((mon).mcanmove))))) /* ZT_SLEEP */
-                        C.slept_monst(mon);
+                            C.slept_monst(mon);
                         if (Number(damgtype != C.ZT_SLEEP)) C.wakeup(mon, C.char((((Number(type >= 0))) ? (C.char(1)) : (C.char(0)))));
                     }
                 }
                 (range = C.int((range - 2)));
             }
             else {
-                if (Number(!!(saymiss || (Number(!!(C.canseemon(mon) && Number(!(C.disguised_as_non_mon(mon))))))))) miss(flash_str(fltyp, (C.char(0))), mon);
+                if (Number(!!(saymiss
+                    || (Number(!!(C.canseemon(mon)
+                    && Number(!(C.disguised_as_non_mon(mon))))))))) miss(flash_str(fltyp, (C.char(0))), mon);
             }
         }
         else if (Number(!!((Number(!!(Number((sx) == (C.u).ux) && Number((sy) == (C.u).uy)))) && Number(range >= 0)))) {
             C.nomul(0);
-            if (Number(!!(Number(!!((C.u).usteed && Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4959, C.literal("dobuzz")), C.rn2(3))) : C.rn2(3))))))) && Number(!(C.mon_reflects((C.u).usteed, 0)))))) {
+            if (Number(!!(Number(!!((C.u).usteed
+                && Number(!((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 4959, C.literal("dobuzz")), C.rn2(3))) : C.rn2(3)))))))
+                && Number(!(C.mon_reflects((C.u).usteed, 0)))))) {
                 (mon = (C.u).usteed);
                 { buzzmonst_entry = true; continue buzzmonst; }
             }
             else if (Number(!!(Number(!(forcemiss)) && zap_hit(C.int((C.u).uac), 0)))) {
                 (range = C.int((range - 2)));
                 C.pline_dir(C.xytodir(C.int((-dx.value)), C.int((-dy.value))), C.literal("%s hits you!"), C.The(flash_str(fltyp, (C.char(0)))), "p");
-                if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.REFLECTING, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.REFLECTING, "struct prop"), "struct prop")).extrinsic)))) {
-                    if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) {
+                if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.REFLECTING, "struct prop"), "struct prop")).intrinsic
+                    || (C.deref(C.ptrAdd((C.u).uprops, C.REFLECTING, "struct prop"), "struct prop")).extrinsic)))) {
+                    if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                        || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                        && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) {
                         C.ureflects(C.literal("But %s reflects from your %s!"), C.literal("it"));
                     }
-                    else C.pline(C.literal("For some reason you are not affected."), "");
+                        else C.pline(C.literal("For some reason you are not affected."), "");
                     C.monstseesu(C.ulong(C.M_SEEN_REFL));
                     (dx.value = C.int((-dx.value)));
                     (dy.value = C.int((-dy.value)));
@@ -4509,7 +5059,9 @@ export function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, forcemiss) /* 
                     C.monstunseesu(C.ulong(C.M_SEEN_REFL));
                 }
             }
-            else if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) {
+            else if (Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) {
                 C.pline(C.literal("%s whizzes by you!"), C.The(flash_str(fltyp, (C.char(0)))), "p");
             }
             else if (Number(damgtype == C.ZT_LIGHTNING)) {
@@ -4524,12 +5076,22 @@ export function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, forcemiss) /* 
 /* gas that missed or that hit without being reflected will leave
            a 1x1 cloud here; the earlier zap_over_floor() was deferred */
         if (gas_hit) C.callLocal(zap_over_floor, sx, sy, type, shopdamage, (C.char(1)), C.short(0));
-        if (!(Number(!!(Number(!((Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, sx, "struct rm[21]"), "struct rm[21]"), sy, "struct rm"), "struct rm")).typ) >= C.POOL)))) || (Number(!!(C.closed_door(sx, sy) && Number(range >= 0)))))))) break bounce_done;
+        if (!(Number(!!(Number(!((Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, sx, "struct rm[21]"), "struct rm[21]"), sy, "struct rm"), "struct rm")).typ) >= C.POOL))))
+            || (Number(!!(C.closed_door(sx, sy)
+            && Number(range >= 0)))))))) break bounce_done;
         } // make_bounce
         let bchance;
-            (bchance = (((Number(!!(Number(!(C.isok(sx, sy))) || Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, sx, "struct rm[21]"), "struct rm[21]"), sy, "struct rm"), "struct rm")).typ == C.STONE))))) ? 10 : (((Number(!!(C.In_mines(C.fieldRef(C.u, "uz")) && (Number(!!(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, sx, "struct rm[21]"), "struct rm[21]"), sy, "struct rm"), "struct rm")).typ) && Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, sx, "struct rm[21]"), "struct rm[21]"), sy, "struct rm"), "struct rm")).typ) <= C.DBWALL)))))))) ? 20 : 75)));
-            if (Number(!!((Number(!!(Number(!!(Number((range = C.int((range - 1))) > 0) && C.isok(lsx, lsy))) && (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, lsy, "seenV *"), "seenV *"), lsx, "seenV"), "seenV") & 2))) != 0))))) || fireball))) {
-                if (((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_air_level"))))))) {
+            (bchance = (((Number(!!(Number(!(C.isok(sx, sy)))
+                || Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, sx, "struct rm[21]"), "struct rm[21]"), sy, "struct rm"), "struct rm")).typ == C.STONE))))) ? 10 : (((Number(!!(C.In_mines(C.fieldRef(C.u, "uz"))
+                && (Number(!!(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, sx, "struct rm[21]"), "struct rm[21]"), sy, "struct rm"), "struct rm")).typ)
+                && Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, sx, "struct rm[21]"), "struct rm[21]"), sy, "struct rm"), "struct rm")).typ) <= C.DBWALL)))))))) ? 20 : 75)));
+            if (Number(!!((Number(!!(Number(!!(Number((range = C.int((range - 1))) > 0)
+                && C.isok(lsx, lsy)))
+                && (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, lsy, "seenV *"), "seenV *"), lsx, "seenV"), "seenV") & 2))) != 0)))))
+                || fireball))) {
+                if (((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dlevel
+                    || ((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dnum)))
+                    && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_air_level"))))))) {
 /* nothing to bounce off of */
                     C.pline_The(C.literal("%s vanishes into the aether!"), flash_str(fltyp, (C.char(0))), "p");
                     if (fireball) (type = ((C.int((2 - 1)))));
@@ -4542,12 +5104,11 @@ export function dobuzz(type, nd, sx, sy, dx, dy, sayhit, saymiss, forcemiss) /* 
                     break;
 /* fireballs explode before the obstacle */
                 }
-                else C.pline_The(C.literal("%s bounces!"), flash_str(fltyp, (C.char(0))), "p");
+                    else C.pline_The(C.literal("%s bounces!"), flash_str(fltyp, (C.char(0))), "p");
             }
             bounce_dir(sx, sy, dx, dy, bchance);
             C.tmp_at(C.DISP_CHANGE, C.short(C.zapdir_to_glyph(dx.value, dy.value, hdmgtype)));
                 } // bounce_done
-
     }
     C.tmp_at(C.DISP_END, C.short(0));
     if (fireball) C.explode(sx, sy, type, (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 5027, C.literal("dobuzz")), C.d((12), (6)))) : C.d((12), (6)))), C.char(0), C.EXPL_FIERY);
@@ -4581,7 +5142,9 @@ export function melt_ice(x, y, msg) {
     C.unearth_objs(x, y);
     if (((C.u).uinwater)) C.vision_recalc(1);
     C.newsym(x, y);
-    if (Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0)) || (Number(!!(Number((x) == (C.u).ux) && Number((y) == (C.u).uy))))))) C.Norep(C.literal("%s"), msg, "p");
+    if (Number(!!((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0))
+        || (Number(!!(Number((x) == (C.u).ux)
+        && Number((y) == (C.u).uy))))))) C.Norep(C.literal("%s"), msg, "p");
     if (C.ptrCompare(((otmp = C.sobj_at(C.BOULDER, x, y))), 0, "!=")) {
         if ((Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 2))) != 0))) C.pline(C.literal("%s settles..."), C.An(C.xname(otmp)), "p");
         do {
@@ -4595,7 +5158,8 @@ export function melt_ice(x, y, msg) {
     }
     if ((Number(!!(Number((x) == (C.u).ux) && Number((y) == (C.u).uy))))) C.spoteffects((C.char(1)));
     else /* possibly drown, notice objects */
-    if (Number(!!(C.is_pool(x, y) && C.ptrCompare(((mtmp = (C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).monsters, x, "struct monst *[21]"), "struct monst *[21]"), y, "struct monst *"), "struct monst *")))), 0, "!=")))) C.minliquid(mtmp);
+    if (Number(!!(C.is_pool(x, y)
+        && C.ptrCompare(((mtmp = (C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).monsters, x, "struct monst *[21]"), "struct monst *[21]"), y, "struct monst *"), "struct monst *")))), 0, "!=")))) C.minliquid(mtmp);
 }
 
 /*
@@ -4688,9 +5252,13 @@ export function zap_over_floor(x, y, type, shopdamage, ignoremon, exploding_wand
             C.callLocal(melt_ice, x, y, 0);
         }
         else if (C.is_pool(x, y)) {
-            let on_water_level = C.char(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_water_level")))))));
+            let on_water_level = C.char(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dlevel
+                || ((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dnum)))
+                && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_water_level")))))));
             let msggiven = (C.char(0));
-            let msgtxt = (((Number(!((Number(!!(Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).extrinsic)) || ((C.u).uroleplay).deaf))))))) ? C.literal("You hear hissing gas.") : (((Number(type >= 0))) ? C.literal("That seemed remarkably uneventful.") : 0));
+            let msgtxt = (((Number(!((Number(!!(Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).extrinsic))
+                || ((C.u).uroleplay).deaf))))))) ? C.literal("You hear hissing gas.") : (((Number(type >= 0))) ? C.literal("That seemed remarkably uneventful.") : 0));
 /* Deaf-aware */
 /* don't create steam clouds on Plane of Water; air bubble
                movement and gas regions don't understand each other */
@@ -4702,7 +5270,10 @@ export function zap_over_floor(x, y, type, shopdamage, ignoremon, exploding_wand
             if (Number((lev).typ != C.POOL)) {
 /* MOAT or DRAWBRIDGE_UP or WATER */
                 (t = 0);
-                if (on_water_level) (msgtxt = (((Number(!!(see_it || Number(!((Number(!!(Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).extrinsic)) || ((C.u).uroleplay).deaf))))))))) ? C.literal("Some water boils.") : 0));
+                if (on_water_level) (msgtxt = (((Number(!!(see_it
+                    || Number(!((Number(!!(Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).intrinsic
+                    || (C.deref(C.ptrAdd((C.u).uprops, C.DEAF, "struct prop"), "struct prop")).extrinsic))
+                    || ((C.u).uroleplay).deaf))))))))) ? C.literal("Some water boils.") : 0));
                 else if (see_it) (msgtxt = C.literal("Some water evaporates."));
             }
             else {
@@ -4748,11 +5319,13 @@ export function zap_over_floor(x, y, type, shopdamage, ignoremon, exploding_wand
                 let lava = C.char((Number(!!(C.is_lava(x, y) || lavawall))));
                 let moat = C.is_moat(x, y);
                 let chance = (((Number((2) > (C.int((5 + C.int(Math.imul((((C.svl).level).flags).temperature, 10))))))) ? (2) : (C.int((5 + C.int(Math.imul((((C.svl).level).flags).temperature, 10)))))));
-                if (Number(!!((Number(((lev).typ) == C.WATER)) || (Number(!!(lavawall && (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 5244, C.literal("zap_over_floor")), C.rn2(chance))) : C.rn2(chance))))))))) {
+                if (Number(!!((Number(((lev).typ) == C.WATER))
+                    || (Number(!!(lavawall
+                    && (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 5244, C.literal("zap_over_floor")), C.rn2(chance))) : C.rn2(chance))))))))) {
 /* For now, don't let WATER freeze. */
                     ;
                     if (see_it) C.pline_The(C.literal("%s freezes for a moment."), C.hliquid(((lavawall) ? C.literal("lava") : C.literal("water"))), "p");
-                    else C.You_hear(C.literal("a soft crackling."), "");
+                        else C.You_hear(C.literal("a soft crackling."), "");
                     (rangemod = C.int((rangemod - 1000)));
 /* stop */
                 }
@@ -4769,8 +5342,13 @@ export function zap_over_floor(x, y, type, shopdamage, ignoremon, exploding_wand
                     else {
                         ((lev).icedpool = C.uint(((lava) ? 0 : (((Number((lev).typ == C.POOL))) ? C.ICED_POOL : C.ICED_MOAT))));
                         if (lavawall) {
-                            if (Number(!!((Number(!!(C.isok(x, C.short(C.int((y - 1)))) && (Number(!!(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), C.int((y - 1)), "struct rm"), "struct rm")).typ) && Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), C.int((y - 1)), "struct rm"), "struct rm")).typ) <= C.DBWALL))))))) || (Number(!!(C.isok(x, C.short(C.int((y + 1)))) && (Number(!!(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), C.int((y + 1)), "struct rm"), "struct rm")).typ) && Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), C.int((y + 1)), "struct rm"), "struct rm")).typ) <= C.DBWALL)))))))))) ((lev).typ = C.char(C.VWALL));
-                            else ((lev).typ = C.char(C.HWALL));
+                            if (Number(!!((Number(!!(C.isok(x, C.short(C.int((y - 1))))
+                                && (Number(!!(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), C.int((y - 1)), "struct rm"), "struct rm")).typ)
+                                && Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), C.int((y - 1)), "struct rm"), "struct rm")).typ) <= C.DBWALL)))))))
+                                || (Number(!!(C.isok(x, C.short(C.int((y + 1))))
+                                && (Number(!!(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), C.int((y + 1)), "struct rm"), "struct rm")).typ)
+                                && Number(((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, x, "struct rm[21]"), "struct rm[21]"), C.int((y + 1)), "struct rm"), "struct rm")).typ) <= C.DBWALL)))))))))) ((lev).typ = C.char(C.VWALL));
+                                else ((lev).typ = C.char(C.HWALL));
                             C.fix_wall_spines(C.short((((Number((0) > (C.int((x - 1))))) ? (0) : (C.int((x - 1)))))), C.short((((Number((0) > (C.int((y - 1))))) ? (0) : (C.int((y - 1)))))), C.short((((Number((C.int((80 - 1))) < (C.int((x + 1))))) ? (C.int((80 - 1))) : (C.int((x + 1)))))), C.short((((Number((C.int((21 - 1))) < (C.int((y + 1))))) ? (C.int((21 - 1))) : (C.int((y + 1)))))));
                         }
                         else {
@@ -4784,7 +5362,7 @@ export function zap_over_floor(x, y, type, shopdamage, ignoremon, exploding_wand
                     if (see_it) {
                         if (lava) C.Norep(C.literal("The %s cools and solidifies."), C.hliquid(C.literal("lava")), "p");
                         else if (moat) C.Norep(C.literal("The %s is bridged with ice!"), buf, "p");
-                        else C.Norep(C.literal("The %s freezes."), C.hliquid(C.literal("water")), "p");
+                            else C.Norep(C.literal("The %s freezes."), C.hliquid(C.literal("water")), "p");
                         C.newsym(x, y);
                     }
                     else if (Number(!(lava))) {
@@ -4801,7 +5379,8 @@ export function zap_over_floor(x, y, type, shopdamage, ignoremon, exploding_wand
                             ((C.gv).vision_full_recalc = C.char(1));
                         }
                         else if (Number(!!((C.u).utrap && Number((C.u).utraptype == C.uint(C.TT_LAVA))))) {
-                            if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.PASSES_WALLS, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.PASSES_WALLS, "struct prop"), "struct prop")).extrinsic)))) {
+                            if ((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.PASSES_WALLS, "struct prop"), "struct prop")).intrinsic
+                                || (C.deref(C.ptrAdd((C.u).uprops, C.PASSES_WALLS, "struct prop"), "struct prop")).extrinsic)))) {
                                 C.You(C.literal("pass through the now-solid rock."), "");
                                 C.reset_utrap((C.char(1)));
                             }
@@ -4849,7 +5428,8 @@ export function zap_over_floor(x, y, type, shopdamage, ignoremon, exploding_wand
 /*FALLTHRU*/
         case C.ZT_ACID:
             if (Number((lev).typ == C.IRONBARS)) {
-                if (Number(!!(Number(damgtype == C.ZT_LIGHTNING) && (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 5349, C.literal("zap_over_floor")), C.rn2(10))) : C.rn2(10)))))) break;
+                if (Number(!!(Number(damgtype == C.ZT_LIGHTNING)
+                    && (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 5349, C.literal("zap_over_floor")), C.rn2(10))) : C.rn2(10)))))) break;
                 if (Number((C.int((C.int((lev).wall_info) & C.W_NONDIGGABLE))) != 0)) {
                     if (see_it) C.Norep(C.literal("The %s %s somewhat but remain intact."), (C.deref(C.ptrAdd(C.defsyms, C.S_bars, "const struct symdef"), "const struct symdef")).explanation, (((Number(damgtype == C.ZT_ACID))) ? C.literal("corrode") : C.literal("melt")), "pp");
 /* but nothing actually happens... */
@@ -4899,7 +5479,9 @@ export function zap_over_floor(x, y, type, shopdamage, ignoremon, exploding_wand
            (except on rogue level) */
         C.newsym(x, y);
         if (see_it) C.pline(C.literal("%s %s reveals a secret door."), ((yourzap) ? C.literal("Your") : C.literal("The")), zapverb, "pp");
-        else if (((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))))))) C.draft_message((C.char(0)));
+        else if (((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))).dlevel
+            || ((C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))).dnum)))
+            && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_rogue_level"))))))) C.draft_message((C.char(0)));
 /* "You feel a draft." (open doorway) */
     }
 /* regular door absorbs remaining zap range, possibly gets destroyed */
@@ -4949,9 +5531,9 @@ export function zap_over_floor(x, y, type, shopdamage, ignoremon, exploding_wand
                    inaccurate for an exploding wand since
                    other adjacent locations still get hit */
                 if (exploding_wand_typ) C.pline_The(C.literal("door remains intact."), "");
-                else C.pline_The(C.literal("door absorbs %s %s!"), ((yourzap) ? C.literal("your") : C.literal("the")), zapverb, "pp");
+                    else C.pline_The(C.literal("door absorbs %s %s!"), ((yourzap) ? C.literal("your") : C.literal("the")), zapverb, "pp");
             }
-            else C.You_feel(C.literal("vibrations."), "");
+                else C.You_feel(C.literal("vibrations."), "");
             break;
                 }
         break damage_dispatch;
@@ -4965,7 +5547,7 @@ export function zap_over_floor(x, y, type, shopdamage, ignoremon, exploding_wand
                     C.store(shopdamage, "boolean", (C.char(1)));
                 }
                 else /* caused by monster */
-                C.add_damage(x, y, 0n);
+                    C.add_damage(x, y, 0n);
             }
             ((lev).doormask = C.uint(new_doormask));
             C.recalc_block_point(x, y);
@@ -4984,11 +5566,16 @@ export function zap_over_floor(x, y, type, shopdamage, ignoremon, exploding_wand
             }
         }
     }
-    if (Number(!!((C.ptrCompare(C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, x, "struct obj *[21]"), "struct obj *[21]"), y, "struct obj *"), "struct obj *"), 0, "!=")) && Number(damgtype == C.ZT_FIRE)))) if (Number(!!(C.callLocal(burn_floor_objects, x, y, (C.char(0)), C.char(Number(type > 0))) && (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 1))) != 0))))) {
+    if (Number(!!((C.ptrCompare(C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).objects, x, "struct obj *[21]"), "struct obj *[21]"), y, "struct obj *"), "struct obj *"), 0, "!="))
+        && Number(damgtype == C.ZT_FIRE)))) if (Number(!!(C.callLocal(burn_floor_objects, x, y, (C.char(0)), C.char(Number(type > 0)))
+        && (Number((C.int((C.deref(C.ptrAdd(C.deref(C.ptrAdd((C.gv).viz_array, y, "seenV *"), "seenV *"), x, "seenV"), "seenV") & 1))) != 0))))) {
         C.newsym(x, y);
-        C.You(C.literal("%s of smoke."), ((Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) ? C.literal("see a puff") : C.literal("smell a whiff")), "p");
+        C.You(C.literal("%s of smoke."), ((Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+            || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+            && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked)))))))) ? C.literal("see a puff") : C.literal("smell a whiff")), "p");
     }
-    if (Number(!!(Number(!(ignoremon)) && C.ptrCompare(((mon = (C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).monsters, x, "struct monst *[21]"), "struct monst *[21]"), y, "struct monst *"), "struct monst *")))), 0, "!=")))) C.wakeup(mon, C.char((((Number(type >= 0))) ? (C.char(1)) : (C.char(0)))));
+    if (Number(!!(Number(!(ignoremon))
+        && C.ptrCompare(((mon = (C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).monsters, x, "struct monst *[21]"), "struct monst *[21]"), y, "struct monst *"), "struct monst *")))), 0, "!=")))) C.wakeup(mon, C.char((((Number(type >= 0))) ? (C.char(1)) : (C.char(0)))));
     return rangemod;
 }
 
@@ -5076,7 +5663,9 @@ export function break_statue(obj) {
     let trap = C.t_at((obj).ox, (obj).oy);
     let item;
     let by_you = C.char(Number(!(((C.svc).context).mon_moving)));
-    if (Number(!!(Number(!!(trap && Number(C.int((trap).ttyp) == C.STATUE_TRAP))) && C.activate_statue_trap(trap, (obj).ox, (obj).oy, (C.char(1)))))) return (C.char(0));
+    if (Number(!!(Number(!!(trap
+        && Number(C.int((trap).ttyp) == C.STATUE_TRAP)))
+        && C.activate_statue_trap(trap, (obj).ox, (obj).oy, (C.char(1)))))) return (C.char(0));
 /* drop any objects contained inside the statue */
     while (C.ptrCompare(((item = (obj).cobj)), 0, "!=")) {
         C.obj_extract_self(item);
@@ -5112,7 +5701,10 @@ export function destroyable(obj, adtyp) {
         if (Number(!!(Number((obj).otyp == C.SCR_FIRE) || Number((obj).otyp == C.SPE_FIREBALL)))) {
             return (C.char(0));
         }
-        if (Number(!!(Number(!!(Number(!!(Number((obj).otyp == C.GLOB_OF_GREEN_SLIME) || Number((obj).oclass == C.POTION_CLASS))) || Number((obj).oclass == C.SCROLL_CLASS))) || Number((obj).oclass == C.SPBOOK_CLASS)))) {
+        if (Number(!!(Number(!!(Number(!!(Number((obj).otyp == C.GLOB_OF_GREEN_SLIME)
+            || Number((obj).oclass == C.POTION_CLASS)))
+            || Number((obj).oclass == C.SCROLL_CLASS)))
+            || Number((obj).oclass == C.SPBOOK_CLASS)))) {
             return (C.char(1));
         }
     }
@@ -5170,7 +5762,10 @@ export function u_adtyp_resistance_obj(dmgtyp) {
     if (Number((C.long(((C.deref(C.ptrAdd((C.u).uprops, prop, "struct prop"), "struct prop")).extrinsic & (C.long((C.long((C.long((C.W_ARMOR | C.W_ACCESSORY)) | C.W_WEP)) | C.W_ART)))))) != 0n)) return 99;
 /* worn dwarvish cloaks give 90% protection against heat and cold to
        carried items */
-    if (Number(!!(Number(!!(C.uarmc && Number((C.uarmc).otyp == C.DWARVISH_CLOAK))) && (Number(!!(Number(dmgtyp == C.AD_COLD) || Number(dmgtyp == C.AD_FIRE))))))) return 90;
+    if (Number(!!(Number(!!(C.uarmc
+        && Number((C.uarmc).otyp == C.DWARVISH_CLOAK)))
+        && (Number(!!(Number(dmgtyp == C.AD_COLD)
+        || Number(dmgtyp == C.AD_FIRE))))))) return 90;
     return 0;
 }
 
@@ -5230,8 +5825,8 @@ export function item_what(dmgtyp) {
         }
         else if (C.long((xtrinsic & C.W_RING))) {
             if (Number((C.long((xtrinsic & C.W_RING))) == C.W_RING)) /* both */
-            (what = C.literal("rings"));
-            else (what = C.simpleonames((((C.long((xtrinsic & C.W_RINGL)))) ? C.uleft : C.uright)));
+                (what = C.literal("rings"));
+                else (what = C.simpleonames((((C.long((xtrinsic & C.W_RINGL)))) ? C.uleft : C.uright)));
         }
         else if (C.long((xtrinsic & C.W_WEP))) {
             (what = C.simpleonames(C.uwep));
@@ -5239,7 +5834,7 @@ export function item_what(dmgtyp) {
 /* format the output to be ready for enl_msg() to append it to
            "Your items {are,were} protected against <damage-type>" */
         if (what) /* strlen(what) will be less than 30 */
-        C.sprintf(C.staticCell("item_what.whatbuf").value, C.literal(" by your %.40s"), what, "p");
+            C.sprintf(C.staticCell("item_what.whatbuf").value, C.literal(" by your %.40s"), what, "p");
     }
     return C.staticCell("item_what.whatbuf").value;
 }
@@ -5259,13 +5854,13 @@ export function item_what(dmgtyp) {
  */
 export const destroy_strings = [
     /* also used in trap.c */
-    [ "freezes and shatters", "freeze and shatter", "shattered potion" ],
-    [ "boils and explodes", "boil and explode", "boiling potion" ],
-    [ "ignites and explodes", "ignite and explode", "exploding potion" ],
-    [ "catches fire and burns", "catch fire and burn", "burning scroll" ],
-    [ "catches fire and burns", "", "burning book" ],
-    [ "turns to dust and vanishes", "", "" ],
-    [ "breaks apart and explodes", "", "exploding wand" ],
+    ["freezes and shatters", "freeze and shatter", "shattered potion"],
+    ["boils and explodes", "boil and explode", "boiling potion"],
+    ["ignites and explodes", "ignite and explode", "exploding potion"],
+    ["catches fire and burns", "catch fire and burn", "burning scroll"],
+    ["catches fire and burns", "", "burning book"],
+    ["turns to dust and vanishes", "", ""],
+    ["breaks apart and explodes", "", "exploding wand"],
 ];
 
 /* guts of destroy_items();
@@ -5304,10 +5899,15 @@ export function maybe_destroy_item(carrier, obj, dmgtyp) {
         (dmg = (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 5823, C.literal("maybe_destroy_item")), C.rnd(4))) : C.rnd(4))));
         break;
         case C.AD_FIRE:
-            (xresist = (Number(!!(Number(!!(Number((obj).oclass != C.POTION_CLASS) && Number((obj).otyp != C.GLOB_OF_GREEN_SLIME))) && (((u_carry) ? (Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.FIRE_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.FIRE_RES, "struct prop"), "struct prop")).extrinsic))) : C.Resists_Elem(carrier, C.FIRE_RES)))))));
+            (xresist = (Number(!!(Number(!!(Number((obj).oclass != C.POTION_CLASS)
+                && Number((obj).otyp != C.GLOB_OF_GREEN_SLIME)))
+                && (((u_carry) ? (Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.FIRE_RES, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.FIRE_RES, "struct prop"), "struct prop")).extrinsic))) : C.Resists_Elem(carrier, C.FIRE_RES)))))));
         if (Number((obj).otyp == C.SPE_BOOK_OF_THE_DEAD)) {
             (skip = 1);
-            if (((u_carry) ? Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic))) && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked))))))) : vis)) {
+            if (((u_carry) ? Number(!((Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).extrinsic)))
+                && Number(!((C.deref(C.ptrAdd((C.u).uprops, C.BLINDED, "struct prop"), "struct prop")).blocked))))))) : vis)) {
                 C.pline(C.literal("%s glows a strange %s, but remains intact."), C.The(((u_carry) ? C.xname(obj) : C.distant_name(obj, C.callback("xname", C.xname)))), C.hcolor(C.literal("dark red")), "pp");
             }
             break;
@@ -5335,15 +5935,22 @@ export function maybe_destroy_item(carrier, obj, dmgtyp) {
         }
         break;
         case C.AD_ELEC:
-            (xresist = (Number(!!(Number((obj).oclass != C.RING_CLASS) && (((u_carry) ? (Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.SHOCK_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.SHOCK_RES, "struct prop"), "struct prop")).extrinsic))) : C.Resists_Elem(carrier, C.SHOCK_RES)))))));
+            (xresist = (Number(!!(Number((obj).oclass != C.RING_CLASS)
+                && (((u_carry) ? (Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.SHOCK_RES, "struct prop"), "struct prop")).intrinsic
+                || (C.deref(C.ptrAdd((C.u).uprops, C.SHOCK_RES, "struct prop"), "struct prop")).extrinsic))) : C.Resists_Elem(carrier, C.SHOCK_RES)))))));
         (quan = (obj).quan);
         switch ((obj).oclass) {
             case (C.RING_CLASS):
-                if (Number(!!((Number(!!(Number(!!((C.long(((obj).owornmask & C.W_RING))) && C.uarmg)) && Number(!((Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (C.uarmg).otyp, "struct objclass"), "struct objclass")).oc_material) >= C.IRON) && Number(C.int((C.deref(C.ptrAdd(C.objects, (C.uarmg).otyp, "struct objclass"), "struct objclass")).oc_material) <= C.MITHRIL))))))))) || Number((obj).otyp == C.RIN_SHOCK_RESISTANCE)))) {
+                if (Number(!!((Number(!!(Number(!!((C.long(((obj).owornmask & C.W_RING)))
+                    && C.uarmg))
+                    && Number(!((Number(!!(Number(C.int((C.deref(C.ptrAdd(C.objects, (C.uarmg).otyp, "struct objclass"), "struct objclass")).oc_material) >= C.IRON)
+                    && Number(C.int((C.deref(C.ptrAdd(C.objects, (C.uarmg).otyp, "struct objclass"), "struct objclass")).oc_material) <= C.MITHRIL)))))))))
+                    || Number((obj).otyp == C.RIN_SHOCK_RESISTANCE)))) {
                     ((skip = C.int((skip + 1))), C.int((skip - 1)));
                     break;
                 }
-                else if (Number(!!(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_charged) && (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 5868, C.literal("maybe_destroy_item")), C.rn2(3))) : C.rn2(3)))))) {
+                else if (Number(!!(C.int((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_charged)
+                    && (((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 5868, C.literal("maybe_destroy_item")), C.rn2(3))) : C.rn2(3)))))) {
                     (chargeit = (C.char(1)));
                     break;
                 }
@@ -5381,18 +5988,22 @@ export function maybe_destroy_item(carrier, obj, dmgtyp) {
 /* n of N */
 /* 2 of 2 */
 /* N of N */
-            C.pline(C.literal("%s%s %s!"), mult, (((Number(!!(Number(cnt == 1n) && Number(quan == 1n))))) ? C.Yname2(obj) : C.yname(obj)), C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.destroy_strings, dindx, "const char *const[3]"), "const char *const[3]"), (Number(cnt > 1n)), "const char *const"), "const char *const"), "ppp");
+            C.pline(C.literal("%s%s %s!"), mult, (((Number(!!(Number(cnt == 1n)
+                && Number(quan == 1n))))) ? C.Yname2(obj) : C.yname(obj)), C.deref(C.ptrAdd(C.deref(C.ptrAdd(C.destroy_strings, dindx, "const char *const[3]"), "const char *const[3]"), (Number(cnt > 1n)), "const char *const"), "const char *const"), "ppp");
         }
         if (u_carry) {
 /* effects that happen only to the player */
-            if (Number(!!(Number(!!(Number(osym == C.POTION_CLASS) && Number(dmgtyp != C.AD_COLD))) && (Number(!!(Number(!((Number((C.ulong((((((C.gy).youmonst).data)).mflags1 & C.ulong(1024n)))) != C.ulong(0n))))) || (Number((C.ulong((((((C.gy).youmonst).data)).mflags1 & C.ulong(4096n)))) == C.ulong(0n))))))))) {
+            if (Number(!!(Number(!!(Number(osym == C.POTION_CLASS)
+                && Number(dmgtyp != C.AD_COLD)))
+                && (Number(!!(Number(!((Number((C.ulong((((((C.gy).youmonst).data)).mflags1 & C.ulong(1024n)))) != C.ulong(0n)))))
+                || (Number((C.ulong((((((C.gy).youmonst).data)).mflags1 & C.ulong(4096n)))) == C.ulong(0n))))))))) {
                 C.potionbreathe(obj);
             }
             if ((obj).owornmask) {
 /* m_useup handles these for monster */
                 if (C.long(((obj).owornmask & C.W_RING))) /* ring being worn */
-                C.Ring_gone(obj);
-                else C.setnotworn(obj);
+                    C.Ring_gone(obj);
+                    else C.setnotworn(obj);
             }
             if (C.ptrCompare(obj, (C.gc).current_wand, "==")) {
                 ((C.gc).current_wand = 0);
@@ -5401,7 +6012,7 @@ export function maybe_destroy_item(carrier, obj, dmgtyp) {
         }
         for ((i = C.long(0)); Number(i < cnt); ((i = C.long((i + 1n))), C.long((i - 1n)))) {
             if (u_carry) C.useup(obj);
-            else C.m_useup(carrier, obj);
+                else C.m_useup(carrier, obj);
         }
         if (dmg) {
             if (Number(!(u_carry))) {
@@ -5522,7 +6133,14 @@ export function destroy_items(mon, dmgtyp, dmg_in) /* monster whose invent is be
            until later because potential recursive destroy_items() will
            result in setting bypass bits on whole chain--we would skip
            the rest as already processed once control returns here */
-        if (Number(!!(u_carry && (Number(!!((Number(!!(Number((obj).owornmask != 0n) && (Number(!!(Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_oprop == C.LEVITATION) || Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_oprop == C.FLYING))))))) || (Number(!!(Number(!!(Number((obj).otyp == C.POT_WATER) && (Number(!!(Number(((C.u).ulycn) >= C.LOW_PM) && Number(((C.u).ulycn) < C.NUMMONS)))))) && ((((Number((C.u).umonnum != (C.u).umonster))) ? C.int((obj).blessed) : C.int((obj).cursed)))))))))))) /* destroyed wands and potions of polymorph don't trigger
+        if (Number(!!(u_carry
+            && (Number(!!((Number(!!(Number((obj).owornmask != 0n)
+            && (Number(!!(Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_oprop == C.LEVITATION)
+            || Number((C.deref(C.ptrAdd(C.objects, (obj).otyp, "struct objclass"), "struct objclass")).oc_oprop == C.FLYING)))))))
+            || (Number(!!(Number(!!(Number((obj).otyp == C.POT_WATER)
+            && (Number(!!(Number(((C.u).ulycn) >= C.LOW_PM)
+            && Number(((C.u).ulycn) < C.NUMMONS))))))
+            && ((((Number((C.u).umonnum != (C.u).umonster))) ? C.int((obj).blessed) : C.int((obj).cursed)))))))))))) /* destroyed wands and potions of polymorph don't trigger
                    polymorph so don't need to be deferred */
 {
             ((C.deref(C.ptrAdd(items_to_destroy, i, "struct teleport_zap_destroy_item"), "struct teleport_zap_destroy_item")).deferred = (C.char(1)));
@@ -5541,7 +6159,10 @@ export function destroy_items(mon, dmgtyp, dmg_in) /* monster whose invent is be
            second iteration of the loop */
         for ((i = 0); Number(i < elig_stacks); (i = C.int((i + 1)))) {
             (obj = (C.deref(C.ptrAdd(items_to_destroy, i, "struct teleport_zap_destroy_item"), "struct teleport_zap_destroy_item")).otmp);
-            if (Number(!!(Number(!!(Number(!!(obj && Number((obj).o_id == (C.deref(C.ptrAdd(items_to_destroy, i, "struct teleport_zap_destroy_item"), "struct teleport_zap_destroy_item")).oid))) && Number((obj).where == where))) && (Number((C.deref(C.ptrAdd(items_to_destroy, i, "struct teleport_zap_destroy_item"), "struct teleport_zap_destroy_item")).deferred == (Number(defer == 1))))))) {
+            if (Number(!!(Number(!!(Number(!!(obj
+                && Number((obj).o_id == (C.deref(C.ptrAdd(items_to_destroy, i, "struct teleport_zap_destroy_item"), "struct teleport_zap_destroy_item")).oid)))
+                && Number((obj).where == where)))
+                && (Number((C.deref(C.ptrAdd(items_to_destroy, i, "struct teleport_zap_destroy_item"), "struct teleport_zap_destroy_item")).deferred == (Number(defer == 1))))))) {
                 (dmg_out = C.int((dmg_out + C.callLocal(maybe_destroy_item, mon, obj, dmgtyp))));
                 ((C.deref(C.ptrAdd(items_to_destroy, i, "struct teleport_zap_destroy_item"), "struct teleport_zap_destroy_item")).otmp = 0);
             }
@@ -5563,7 +6184,11 @@ export function resist(mtmp, oclass, damage, tell) {
     let dlev;
 /* fake players always pass resistance test against Conflict
        (this doesn't guarantee that they're never affected by it) */
-    if (Number(!!(Number(!!(Number(!!(Number(oclass == C.RING_CLASS) && Number(!(damage)))) && Number(!(tell)))) && (Number(!!((C.ptrCompare(((mtmp).data), C.ptrAdd(C.mons, C.PM_ARCHEOLOGIST, "struct permonst"), ">=")) && (C.ptrCompare(((mtmp).data), C.ptrAdd(C.mons, C.PM_WIZARD, "struct permonst"), "<=")))))))) return 1;
+    if (Number(!!(Number(!!(Number(!!(Number(oclass == C.RING_CLASS)
+        && Number(!(damage))))
+        && Number(!(tell))))
+        && (Number(!!((C.ptrCompare(((mtmp).data), C.ptrAdd(C.mons, C.PM_ARCHEOLOGIST, "struct permonst"), ">="))
+        && (C.ptrCompare(((mtmp).data), C.ptrAdd(C.mons, C.PM_WIZARD, "struct permonst"), "<=")))))))) return 1;
 /* attack level */
     switch (oclass) {
         case (C.WAND_CLASS):
@@ -5594,7 +6219,8 @@ export function resist(mtmp, oclass, damage, tell) {
 /* defense level */
     (dlev = C.int((mtmp).m_lev));
     if (Number(dlev > 50)) (dlev = 50);
-    else if (Number(dlev < 1)) (dlev = (((Number(!!((C.ptrCompare(((mtmp).data), C.ptrAdd(C.mons, C.PM_ARCHEOLOGIST, "struct permonst"), ">=")) && (C.ptrCompare(((mtmp).data), C.ptrAdd(C.mons, C.PM_WIZARD, "struct permonst"), "<=")))))) ? (C.u).ulevel : 1));
+    else if (Number(dlev < 1)) (dlev = (((Number(!!((C.ptrCompare(((mtmp).data), C.ptrAdd(C.mons, C.PM_ARCHEOLOGIST, "struct permonst"), ">="))
+        && (C.ptrCompare(((mtmp).data), C.ptrAdd(C.mons, C.PM_WIZARD, "struct permonst"), "<=")))))) ? (C.u).ulevel : 1));
     (resisted = Number((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 6141, C.literal("resist")), C.rn2(C.int((C.int((100 + alev)) - dlev))))) : C.rn2(C.int((C.int((100 + alev)) - dlev))))) < ((mtmp).data).mr));
     if (resisted) {
         if (tell) C.shieldeff_mon(mtmp);
@@ -5604,7 +6230,7 @@ export function resist(mtmp, oclass, damage, tell) {
         ((mtmp).mhp = C.int(((mtmp).mhp - damage)));
         if ((Number(((mtmp)).mhp < 1))) {
             if ((C.gm).m_using) C.monkilled(mtmp, C.literal(""), C.AD_RBRE);
-            else C.killed(mtmp);
+                else C.killed(mtmp);
         }
     }
     return resisted;
@@ -5627,7 +6253,8 @@ export function wishcmdassist(triesleft) {
     for ((i = 0); Number(i < C.int((C.int((C.ulong((BigInt(C.sizeof("const char *[16]")) / BigInt(C.sizeof("const char *")))))) - 1))); (i = C.int((i + 1)))) C.callIndirect((C.deref((C.windowprocs).win_putstr, "void (winid, int, const char *)")), "void (*)(winid, int, const char *)", win, 0, C.deref(C.ptrAdd(C.staticCell("wishcmdassist.wishinfo").value, i, "const char *"), "const char *"));
     if (Number(!(((C.u).uconduct).wishes))) C.callIndirect((C.deref((C.windowprocs).win_putstr, "void (winid, int, const char *)")), "void (*)(winid, int, const char *)", win, 0, C.staticCell("wishcmdassist.preserve_wishless").value);
     C.callIndirect((C.deref((C.windowprocs).win_putstr, "void (winid, int, const char *)")), "void (*)(winid, int, const char *)", win, 0, C.literal(""));
-    C.sprintf(buf, C.staticCell("wishcmdassist.retry_info").value, (((Number(!!(Number(triesleft >= 0) && Number(triesleft < C.int((C.ulong((BigInt(C.sizeof("const char *[6]")) / BigInt(C.sizeof("const char *"))))))))))) ? C.deref(C.ptrAdd(C.staticCell("wishcmdassist.cardinals").value, triesleft, "const char *"), "const char *") : C.staticCell("wishcmdassist.too_many").value), (((Number(triesleft < C.MAXWISHTRY))) ? C.literal(" more") : C.literal("")), ((((Number((triesleft) == 1))) ? C.literal("") : C.literal("s"))), "ppp");
+    C.sprintf(buf, C.staticCell("wishcmdassist.retry_info").value, (((Number(!!(Number(triesleft >= 0)
+        && Number(triesleft < C.int((C.ulong((BigInt(C.sizeof("const char *[6]")) / BigInt(C.sizeof("const char *"))))))))))) ? C.deref(C.ptrAdd(C.staticCell("wishcmdassist.cardinals").value, triesleft, "const char *"), "const char *") : C.staticCell("wishcmdassist.too_many").value), (((Number(triesleft < C.MAXWISHTRY))) ? C.literal(" more") : C.literal("")), ((((Number((triesleft) == 1))) ? C.literal("") : C.literal("s"))), "ppp");
     C.callIndirect((C.deref((C.windowprocs).win_putstr, "void (winid, int, const char *)")), "void (*)(winid, int, const char *)", win, 0, buf);
     C.callIndirect((C.deref((C.windowprocs).win_putstr, "void (winid, int, const char *)")), "void (*)(winid, int, const char *)", win, 0, C.staticCell("wishcmdassist.retry_too").value);
     C.callIndirect((C.deref((C.windowprocs).win_putstr, "void (winid, int, const char *)")), "void (*)(winid, int, const char *)", win, 0, C.literal(""));
@@ -5716,8 +6343,10 @@ export function makewish() {
     C.strcpy(promptbuf, C.literal("For what do you wish"));
     if (Number(!!((C.iflags).cmdassist && Number(tries > 0)))) C.strcat(promptbuf, C.literal(" (enter 'help' for assistance)"));
     C.strcat(promptbuf, C.literal("?"));
-    if (Number(!!(Number(!!((C.iflags).menu_requested && C.deref(C.ptrAdd(C.zapState.wish_history, 0, "char *"), "char *"))) && (Number(tries == 0))))) C.callLocal(wish_history_menu, buf);
-    else C.getlin(promptbuf, buf);
+    if (Number(!!(Number(!!((C.iflags).menu_requested
+        && C.deref(C.ptrAdd(C.zapState.wish_history, 0, "char *"), "char *")))
+        && (Number(tries == 0))))) C.callLocal(wish_history_menu, buf);
+        else C.getlin(promptbuf, buf);
     if ((C.iflags).term_gone) {
         if (Number(!((C.iflags).debug_fuzzer))) (((C.svc).context).resume_wish = C.char(1));
         return;
@@ -5769,13 +6398,26 @@ export function makewish() {
     C.nh_snprintf(C.literal("makewish"), 6388, wish, BigInt(C.sizeof("char[256]")), C.literal("\"%s\", got \"%s\""), bufcpy, C.doname(otmp), "pp");
 /* KMH, conduct */
     if (Number(!(C.bump(C.fieldRef((C.u).uconduct, "wishes"), 1, true, "long")))) C.livelog_printf((C.long((C.long((C.LL_CONDUCT | C.LL_WISH)) | maybe_LL_arti))), C.literal("made %s first wish - %s"), ((C.deref(C.ptrAdd(C.genders, (((C.flags).female) ? 1 : 0), "const struct Gender"), "const struct Gender")).his), wish, "pp");
-    else if (Number(!!(Number(!(oldwisharti)) && ((C.u).uconduct).wisharti))) C.livelog_printf((C.long((C.long((C.LL_CONDUCT | C.LL_WISH)) | C.LL_ARTIFACT))), C.literal("made %s first artifact wish - %s"), ((C.deref(C.ptrAdd(C.genders, (((C.flags).female) ? 1 : 0), "const struct Gender"), "const struct Gender")).his), wish, "pp");
-    else C.livelog_printf((C.long((C.LL_WISH | maybe_LL_arti))), C.literal("wished for %s"), wish, "p");
+    else if (Number(!!(Number(!(oldwisharti))
+        && ((C.u).uconduct).wisharti))) C.livelog_printf((C.long((C.long((C.LL_CONDUCT | C.LL_WISH)) | C.LL_ARTIFACT))), C.literal("made %s first artifact wish - %s"), ((C.deref(C.ptrAdd(C.genders, (((C.flags).female) ? 1 : 0), "const struct Gender"), "const struct Gender")).his), wish, "pp");
+        else C.livelog_printf((C.long((C.LL_WISH | maybe_LL_arti))), C.literal("wished for %s"), wish, "p");
 /* TODO? maybe generate a second event describing what was received since
        these just echo player's request rather than show actual result */
     if (Number(!!(Number((otmp).otyp == C.CORPSE) && Number(!(C.u_safe_from_fatal_corpse(otmp, C.st_all)))))) ((otmp).wishedfor = 1);
-    let verb = ((((Number(!!(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_air_level")))))) || C.int((C.u).uinwater))))) ? C.literal("slip") : (((Number(!!(Number((otmp).otyp == C.CORPSE) && (otmp).wishedfor)))) ? C.literal("materialize") : C.literal("drop"))));
-    let oops_msg = (((C.int((C.u).uswallow)) ? C.literal("Oops!  %s out of your reach!") : (((Number(!!(Number(!!(Number(!!(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_air_level")))))) || ((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dlevel || ((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dnum))) && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_water_level")))))))) || Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, (C.u).ux, "struct rm[21]"), "struct rm[21]"), (C.u).uy, "struct rm"), "struct rm")).typ < C.IRONBARS))) || Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, (C.u).ux, "struct rm[21]"), "struct rm[21]"), (C.u).uy, "struct rm"), "struct rm")).typ >= C.ICE))))) ? C.literal("Oops!  %s away from you!") : ((Number(!((Number(!!(Number((otmp).otyp == C.CORPSE) && (otmp).wishedfor)))))) ? C.literal("Oops!  %s to the floor!") : C.literal("Careful! %s on the floor!")))));
+    let verb = ((((Number(!!(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dlevel
+        || ((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dnum)))
+        && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_air_level"))))))
+        || C.int((C.u).uinwater))))) ? C.literal("slip") : (((Number(!!(Number((otmp).otyp == C.CORPSE)
+        && (otmp).wishedfor)))) ? C.literal("materialize") : C.literal("drop"))));
+    let oops_msg = (((C.int((C.u).uswallow)) ? C.literal("Oops!  %s out of your reach!") : (((Number(!!(Number(!!(Number(!!(((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dlevel
+        || ((C.fieldRef((C.svd).dungeon_topology, "d_air_level"))).dnum)))
+        && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_air_level"))))))
+        || ((Number(!!((Number(!!(((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dlevel
+        || ((C.fieldRef((C.svd).dungeon_topology, "d_water_level"))).dnum)))
+        && C.on_level(C.fieldRef(C.u, "uz"), C.fieldRef((C.svd).dungeon_topology, "d_water_level"))))))))
+        || Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, (C.u).ux, "struct rm[21]"), "struct rm[21]"), (C.u).uy, "struct rm"), "struct rm")).typ < C.IRONBARS)))
+        || Number((C.deref(C.ptrAdd(C.deref(C.ptrAdd(((C.svl).level).locations, (C.u).ux, "struct rm[21]"), "struct rm[21]"), (C.u).uy, "struct rm"), "struct rm")).typ >= C.ICE))))) ? C.literal("Oops!  %s away from you!") : ((Number(!((Number(!!(Number((otmp).otyp == C.CORPSE)
+        && (otmp).wishedfor)))))) ? C.literal("Oops!  %s to the floor!") : C.literal("Careful! %s on the floor!")))));
 /* The(aobjnam()) is safe since otmp is unidentified -dlc */
     C.hold_another_object(otmp, oops_msg, C.The(C.aobjnam(otmp, verb)), 0);
     ((C.u).ublesscnt = C.int(((C.u).ublesscnt + (C.int(((((C.rng_log_enabled()) ? ((C.rng_log_set_caller(C.literal("zap.c"), 6421, C.literal("makewish")), C.rn2(100))) : C.rn2(100))) + (50)))))));
@@ -5794,7 +6436,10 @@ export function flash_str(typ, nohallu) /* suppress hallucination (for death rea
     nohallu = C.argument(nohallu, "boolean");
     C.declareStatic("flash_str.fltxt", "char[256]", 0);
     (typ = zaptype(typ));
-    if (Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic)))))))) && Number(!(nohallu))))) {
+    if (Number(!!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC, "struct prop"), "struct prop")).intrinsic
+        && Number(!((Number(!!((C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).intrinsic
+        || (C.deref(C.ptrAdd((C.u).uprops, C.HALLUC_RES, "struct prop"), "struct prop")).extrinsic))))))))
+        && Number(!(nohallu))))) {
 /* always return "blast of foo" for simplicity;
            this could be extended with hallucinatory rays, but probably
            not worth it at this time */

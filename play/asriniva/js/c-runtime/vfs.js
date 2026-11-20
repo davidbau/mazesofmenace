@@ -25,7 +25,7 @@
  */
 
 export const VFS_ERRNO = Object.freeze({ EACCES: 2, EAGAIN:6, EBADF: 8, EBUSY: 10,
-  EEXIST: 20, EFBIG: 22, EINVAL: 28, EIO: 29, EISDIR: 31, EMFILE: 33,
+  EEXIST: 20, EFBIG: 22, EILSEQ: 25, EINVAL: 28, EIO: 29, EISDIR: 31, EMFILE: 33,
   ENAMETOOLONG: 37, ENOENT: 44, ENOMEM: 48, ENOSPC: 51, ENOTDIR: 54,
   ENOTEMPTY: 55, ENOTSUP: 58, EPERM: 63, EROFS: 69, ESPIPE: 70 });
 export const O_RDONLY = 0, O_WRONLY = 1, O_RDWR = 2, O_CREAT = 64, O_EXCL = 128;
@@ -46,6 +46,10 @@ export class VFSError extends Error {
   }
 }
 const fail = (code, path) => { throw new VFSError(code, path); };
+// With the Unicode flag this range matches lone surrogates, never a scalar pair.
+function validateEntryName(name) {
+  if (/[\uD800-\uDFFF]/u.test(name)) fail('EILSEQ', name);
+}
 const integer = n => Number.isSafeInteger(n);
 export const isDir = mode => (mode & S_IFMT) === S_IFDIR;
 export const isFile = mode => (mode & S_IFMT) === S_IFREG;
@@ -86,12 +90,30 @@ function foldedFileName(name) {
   return folded.normalize('NFD');
 }
 
+// Preserve the spelling and iteration order of each directory entry while
+// indexing alternate spellings on case-insensitive recording volumes.
+class CaseInsensitiveEntries extends Map {
+  names = new Map();
+
+  set(name, node) {
+    this.names.set(foldedFileName(name), name);
+    return super.set(name, node);
+  }
+
+  delete(name) {
+    if (!super.delete(name)) return false;
+    this.names.delete(foldedFileName(name));
+    return true;
+  }
+}
+
 export class CVFS {
   constructor({ clock = () => 0, maximumFileBytes = 64 * 1024 * 1024,
-    maximumDescriptors = 4096, storage = null, persistenceKey = 'teleport-js-vfs-v1', ignorePermissions = false, caseInsensitiveDirectory = null } = {}) {
+    maximumDescriptors = 4096, storage = null, persistenceKey = 'teleport-js-vfs-v1', ignorePermissions = false, caseInsensitive = false, caseInsensitiveDirectory = null } = {}) {
     if (typeof clock !== 'function' || !integer(maximumFileBytes) || maximumFileBytes < 0
       || !integer(maximumDescriptors) || maximumDescriptors < 1 || typeof persistenceKey !== 'string' || typeof ignorePermissions !== 'boolean')
       throw new TypeError('Invalid VFS configuration');
+    this.caseInsensitive = caseInsensitive;
     this.caseInsensitiveDirectory = caseInsensitiveDirectory;
     this.clock = clock; this.maximumFileBytes = maximumFileBytes;
     this.maximumDescriptors = maximumDescriptors; this.storage = storage;
@@ -107,10 +129,11 @@ export class CVFS {
     return value;
   }
   _node(type, mode, parent, name) {
+    validateEntryName(name);
     if (!integer(mode) || mode < 0 || mode > 0o777) fail('ENOTSUP');
     const time = this._now();
     return { type, ino: this.nextInode++, mode: (type === 'dir' ? S_IFDIR : ['null','device'].includes(type) ? S_IFCHR : S_IFREG) | mode,
-      parent, name, children: type === 'dir' ? new Map() : null,
+      parent, name, children: type === 'dir' ? (this.caseInsensitive ? new CaseInsensitiveEntries() : new Map()) : null,
       bytes: type === 'file' ? new Uint8Array(0) : null, atime: time, mtime: time, ctime: time };
   }
   _path(node) {
@@ -127,7 +150,9 @@ export class CVFS {
     return parts;
   }
   _entryName(parent, requested) {
-    if (parent.children.has(requested) || !this.caseInsensitiveDirectory
+    if (parent.children.has(requested)) return requested;
+    if (this.caseInsensitive) return parent.children.names.get(foldedFileName(requested)) ?? requested;
+    if (!this.caseInsensitiveDirectory
         || this._path(parent) !== this.caseInsensitiveDirectory) return requested;
     const folded = foldedFileName(requested);
     for (const name of parent.children.keys())
@@ -260,6 +285,7 @@ export class CVFS {
     const from = this._parent(source), to = this._parent(destination);
     const node = from.parent.children.get(from.name), replaced = to.parent.children.get(to.name);
     if (!node) fail('ENOENT', source);
+    validateEntryName(to.requestedName);
     const normalize = path => {
       const result = [];
       for (const part of this._parts(path)) {
@@ -301,10 +327,10 @@ export class CVFS {
       }
     }
     from.parent.children.delete(from.name);
-    if (to.name !== to.requestedName) to.parent.children.delete(to.name);
-    to.parent.children.set(to.requestedName, node);
+    // Replacing a different inode retains the destination entry's spelling.
+    to.parent.children.set(to.name, node);
     this._changed(from.parent); this._changed(to.parent);
-    node.parent = to.parent; node.name = to.requestedName;
+    node.parent = to.parent; node.name = to.name;
   }
   open(path, flags = O_RDONLY, mode = 0o666) {
     if (typeof flags === 'string') {
@@ -494,7 +520,7 @@ export class CVFS {
     if (this.descriptors.size) fail('EBUSY');
     if (!snapshot || snapshot.version !== 1 || !Array.isArray(snapshot.entries) || typeof snapshot.cwd !== 'string') fail('EINVAL');
     const replacement = new CVFS({ clock: this.clock, maximumFileBytes: this.maximumFileBytes,
-      maximumDescriptors: this.maximumDescriptors, caseInsensitiveDirectory: this.caseInsensitiveDirectory, ignorePermissions: true });
+      maximumDescriptors: this.maximumDescriptors, caseInsensitive: this.caseInsensitive, caseInsensitiveDirectory: this.caseInsensitiveDirectory, ignorePermissions: true });
     const seen = new Set();
     for (const entry of snapshot.entries) {
       if (!entry || typeof entry.path !== 'string' || !entry.path.startsWith('/') || seen.has(entry.path)

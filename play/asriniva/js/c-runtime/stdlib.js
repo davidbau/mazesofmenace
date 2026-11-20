@@ -9,7 +9,7 @@ import { formatFloatMagnitude, floatNegative } from './float-format.js';
 // compare named errors across native platforms rather than assuming host IDs.
 export const C_ERRNO = Object.freeze({ EINVAL: 28, ERANGE: 68 });
 
-export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
+export function createCStdlib(memory, { floatPolicy, profile = floatPolicy ?? 'darwin' } = {}) {
     function stringByte(value, isText, offset) {
         if (!isText) return memory.HEAPU8[memory.bounds(value + offset)];
         if (offset >= value.length) return 0;
@@ -140,17 +140,18 @@ export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
             base = 16; at += 2;
         }
         if (!base) base = source[at] === '0' ? 8 : 10;
+        const limit = unsigned ? 0xffffffffffffffffn : negative ? 0x8000000000000000n : 0x7fffffffffffffffn;
         const start = at;
         let value = 0n;
         while (at < source.length) {
             const n = digit(source[at]);
             if (n < 0 || n >= base) break;
-            value = value * BigInt(base) + BigInt(n); at++;
+            if (value <= limit) value = value * BigInt(base) + BigInt(n);
+            at++;
         }
         const end = at === start ? 0 : at;
         if (at === start) api.errno = C_ERRNO.EINVAL;
         if (endPointer) memory.view.setBigUint64(memory.bounds(endPointer, 8), BigInt(pointer + end), true);
-        const limit = unsigned ? 0xffffffffffffffffn : negative ? 0x8000000000000000n : 0x7fffffffffffffffn;
         if (value > limit) {
             api.errno = C_ERRNO.ERANGE;
             return unsigned ? limit : negative ? -limit : limit;
@@ -171,10 +172,11 @@ export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
             value = value * 10n + BigInt(source.charCodeAt(at++) - 48);
         return negative ? -value : value;
     };
-    // atoi/atol have no error-reporting channel; outside-range signed overflow
-    // is undefined in their C implementations and is not a compatibility claim.
-    api.atoi = p => Number(BigInt.asIntN(32, uncheckedDecimal(p)));
-    api.atol = p => BigInt.asIntN(64, uncheckedDecimal(p));
+    // Darwin uses strtol in base ten; atoi narrows the resulting long.
+    // The musl decimal routines accumulate directly and leave errno alone.
+    const decimal = profile === 'darwin' ? p => api.strtol(p, 0, 10) : uncheckedDecimal;
+    api.atoi = p => Number(BigInt.asIntN(32, decimal(p)));
+    api.atol = p => BigInt.asIntN(64, decimal(p));
 
     api.format = (format, ...args) => {
         format = text(format);
@@ -220,8 +222,8 @@ export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
                 if (length && length !== 'l') throw new RangeError('Long-double formatting is not supported');
                 const number = Number(value);
                 floating = true; finite = Number.isFinite(number);
-                prefix = floatPolicy==='darwin'&&Number.isNaN(number)?'':floatNegative(number,floatPolicy) ? '-' : flags.includes('+') ? '+' : flags.includes(' ') ? ' ' : '';
-                body = formatFloatMagnitude(number, conversion, precision ?? null, flags.includes('#'),floatPolicy);
+                prefix = profile==='darwin'&&Number.isNaN(number)?'':floatNegative(number,profile) ? '-' : flags.includes('+') ? '+' : flags.includes(' ') ? ' ' : '';
+                body = formatFloatMagnitude(number, conversion, precision ?? null, flags.includes('#'),profile);
                 if (conversion.toLowerCase() === 'a' && finite) prefix += '0x';
                 if (/[AEFG]/.test(conversion)) { body = body.toUpperCase(); prefix = prefix.toUpperCase(); }
             } else {
@@ -237,7 +239,7 @@ export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
                 if (signed) prefix = number < 0 ? '-' : flags.includes('+') ? '+' : flags.includes(' ') ? ' ' : '';
                 if (flags.includes('#')) {
                     if (conversion === 'o' && !body.startsWith('0')) prefix += '0';
-                    if (/[xXp]/.test(conversion) && (magnitude !== 0n || conversion === 'p' && floatPolicy==='darwin')) prefix += conversion === 'X' ? '0X' : '0x';
+                    if (/[xXp]/.test(conversion) && (magnitude !== 0n || conversion === 'p' && profile==='darwin')) prefix += conversion === 'X' ? '0X' : '0x';
                 }
             }
             const padding = Math.max(0, width - prefix.length - body.length);

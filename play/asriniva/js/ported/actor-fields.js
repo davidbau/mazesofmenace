@@ -28,7 +28,6 @@ export function monsterY(game, actor) {
     return fixed ? fixed.y(actor) : actor.my;
 }
 
-
 const combatFieldKinds = {
     cham: 'Int16',
     female: null,

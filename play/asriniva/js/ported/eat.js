@@ -5,7 +5,6 @@ import {C} from '../c-runtime/context.js';
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 /* also used to see if you're allowed to eat cats and dogs */
 
 /* Rider corpses are treated as non-rotting so that attempting to eat one
@@ -35,10 +34,7 @@ import {C} from '../c-runtime/context.js';
 */
 /* see hunger states in hack.h - texts used on bottom line
    Also used in botl.c and insight.c  */
-export const hu_stat = [
-    "Satiated", "        ", "Hungry  ", "Weak    ",
-    "Fainting", "Fainted ", "Starved "
-];
+export const hu_stat = ["Satiated", "        ", "Hungry  ", "Weak    ", "Fainting", "Fainted ", "Starved "];
 
 export const zero_victual_initial = 0;
 
@@ -56,7 +52,6 @@ export const getobj_else_initial = 0;
  * polymorphed character.  Not used for monster checks.
  */
 export function is_edible(obj)
-
 {
     /* [g-cubes can eat containers and retain all contents
             as engulfed items, but poly'd player can't do that] */
@@ -70,12 +65,17 @@ export function is_edible(obj)
     if (((C.samePtr(C.gy.youmonst.data, C.mons[C.PM_FIRE_ELEMENTAL]) && C.is_flammable(obj)) ? 1 : 0))
         return C.int(1);
 
-    if (((((C.metallivorous(C.gy.youmonst.data) && C.is_metallic(obj)) ? 1 : 0) && ((!C.samePtr(C.gy.youmonst.data, C.mons[C.PM_RUST_MONSTER]) || C.is_rustprone(obj)) ? 1 : 0)) ? 1 : 0))
+    if (((((C.metallivorous(C.gy.youmonst.data)
+        && C.is_metallic(obj)) ? 1 : 0)
+        && ((!C.samePtr(C.gy.youmonst.data, C.mons[C.PM_RUST_MONSTER])
+        || C.is_rustprone(obj)) ? 1 : 0)) ? 1 : 0))
         return C.int(1);
 
     /* Ghouls only eat non-veggy corpses or eggs (see dogfood()) */
     if ((C.u.umonnum == C.PM_GHOUL))
-        return C.int(C.boolean(((((((obj.otyp == C.CORPSE) && !C.vegan(C.mons[obj.corpsenm])) ? 1 : 0) || (C.long(obj.otyp) == C.long(C.EGG))) ? 1 : 0))));
+        return C.int(C.boolean(((((((obj.otyp == C.CORPSE)
+            && !C.vegan(C.mons[obj.corpsenm])) ? 1 : 0)
+            || (C.long(obj.otyp) == C.long(C.EGG))) ? 1 : 0))));
 
     if ((((((C.u.umonnum == C.PM_GELATINOUS_CUBE) && C.is_organic(obj)) ? 1 : 0) && !C.Has_contents(obj)) ? 1 : 0))
         return C.int(1);
@@ -86,7 +86,6 @@ export function is_edible(obj)
 /* used for hero init, life saving (if choking), and prayer results of fix
    starving, fix weak from hunger, or golden glow boon (if u.uhunger < 900) */
 export function init_uhunger()
-
 {
     (C.disp.botl = C.int((((C.u.uhs != C.NOT_HUNGRY) || (C.u.atemp.a[C.A_STR] < 0)) ? 1 : 0)));
     (C.u.uhunger = C.int(900));
@@ -102,26 +101,27 @@ export function init_uhunger()
 /* nutrition */
 /* stocked by health food shops */
 /* causes slippery fingers */
-export const tintxts = [ {txt:"rotten",nut:-50,fodder:0,greasy:0},  /* ROTTEN_TIN = 0 */
-                {txt:"homemade",nut:50,fodder:1,greasy:0}, /* HOMEMADE_TIN = 1 */
-                {txt:"soup made from",nut:20,fodder:1,greasy:0},
-                {txt:"french fried",nut:40,fodder:0,greasy:1},
-                {txt:"pickled",nut:40,fodder:1,greasy:0},
-                {txt:"boiled",nut:50,fodder:1,greasy:0},
-                {txt:"smoked",nut:50,fodder:1,greasy:0},
-                {txt:"dried",nut:55,fodder:1,greasy:0},
-                {txt:"deep fried",nut:60,fodder:0,greasy:1},
-                {txt:"szechuan",nut:70,fodder:1,greasy:0},
-                {txt:"broiled",nut:80,fodder:0,greasy:0},
-                {txt:"stir fried",nut:80,fodder:0,greasy:1},
-                {txt:"sauteed",nut:95,fodder:0,greasy:0},
-                {txt:"candied",nut:100,fodder:1,greasy:0},
-                {txt:"pureed",nut:500,fodder:1,greasy:0},
-                {txt:"",nut:0,fodder:0,greasy:0} ];
+export const tintxts = [
+    {txt:"rotten", nut:-50, fodder:0, greasy:0}, /* ROTTEN_TIN = 0 */
+    {txt:"homemade", nut:50, fodder:1, greasy:0}, /* HOMEMADE_TIN = 1 */
+    {txt:"soup made from", nut:20, fodder:1, greasy:0},
+    {txt:"french fried", nut:40, fodder:0, greasy:1},
+    {txt:"pickled", nut:40, fodder:1, greasy:0},
+    {txt:"boiled", nut:50, fodder:1, greasy:0},
+    {txt:"smoked", nut:50, fodder:1, greasy:0},
+    {txt:"dried", nut:55, fodder:1, greasy:0},
+    {txt:"deep fried", nut:60, fodder:0, greasy:1},
+    {txt:"szechuan", nut:70, fodder:1, greasy:0},
+    {txt:"broiled", nut:80, fodder:0, greasy:0},
+    {txt:"stir fried", nut:80, fodder:0, greasy:1},
+    {txt:"sauteed", nut:95, fodder:0, greasy:0},
+    {txt:"candied", nut:100, fodder:1, greasy:0},
+    {txt:"pureed", nut:500, fodder:1, greasy:0},
+    {txt:"", nut:0, fodder:0, greasy:0}
+];
 
 /* called after mimicking is over */
 export function eatmdone()
-
 {
     /* release `eatmbuf' */
     if (C.ge.eatmbuf) {
@@ -139,7 +139,6 @@ export function eatmdone()
 
 /* called when hallucination is toggled */
 export function eatmupdate()
-
 {
     let altmsg = 0;
     let altapp = C.int(0); /* lint suppression */
@@ -147,11 +146,11 @@ export function eatmupdate()
     if (((!C.ge.eatmbuf || !C.samePtr(C.gn.nomovemsg, C.ge.eatmbuf)) ? 1 : 0))
         return;
 
-    if (((C.is_obj_mappear(C.gy.youmonst,C.ORANGE) && !C.Hallucination) ? 1 : 0)) {
+    if (((C.is_obj_mappear(C.gy.youmonst, C.ORANGE) && !C.Hallucination) ? 1 : 0)) {
         /* revert from hallucinatory to "normal" mimicking */
         (altmsg = "You now prefer mimicking yourself.");
         (altapp = C.int(C.GOLD_PIECE));
-    } else if (((C.is_obj_mappear(C.gy.youmonst,C.GOLD_PIECE) && C.Hallucination) ? 1 : 0)) {
+    } else if (((C.is_obj_mappear(C.gy.youmonst, C.GOLD_PIECE) && C.Hallucination) ? 1 : 0)) {
         /* won't happen; anything which might make immobilized
            hero begin hallucinating (black light attack, theft
            of Grayswandir) will terminate the mimicry first */
@@ -175,7 +174,6 @@ export function eatmupdate()
 
 /* ``[the(] singular(food, xname) [)]'' */
 export function food_xname(food, the_pfx)
-
 {
     (the_pfx = C.int(C.boolean(the_pfx)));
     let result;
@@ -204,7 +202,6 @@ export function food_xname(food, the_pfx)
  * To a full belly all food is bad. (It.)
  */
 export function choke(food)
-
 {
     /* only happens if you were satiated */
     if ((C.u.uhs != C.SATIATED)) {
@@ -251,7 +248,6 @@ export function choke(food)
 
 /* modify victual.piece->owt depending on time spent consuming it */
 export function recalc_wt()
-
 {
     let piece = C.svc.context.victual.piece;
 
@@ -259,22 +255,23 @@ export function recalc_wt()
         C.impossible("recalc_wt without piece");
         return;
     }
-    if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Old weight = %d", piece.owt); (C.iflags.last_msg = C.int(save_plnmsg)); }
-    if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Used time = %d, Req'd time = %d",
-                C.svc.context.victual.usedtime, C.svc.context.victual.reqtime); (C.iflags.last_msg = C.int(save_plnmsg)); }
+    if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Old weight = %d", piece.owt); (C.iflags.last_msg = C.int(save_plnmsg)); }
+    if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg);
+    C.pline("Used time = %d, Req'd time = %d",
+                C.svc.context.victual.usedtime, C.svc.context.victual.reqtime);
+                (C.iflags.last_msg = C.int(save_plnmsg)); }
     (piece.owt = C.uint(C.weight(piece)));
-    if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("New weight = %d", piece.owt); (C.iflags.last_msg = C.int(save_plnmsg)); }
+    if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("New weight = %d", piece.owt); (C.iflags.last_msg = C.int(save_plnmsg)); }
 }
 
 /* called when eating interrupted by an event */
 export function reset_eat()
-
 {
     /* we only set a flag here - the actual reset process is done after
      * the round is spent eating.
      */
     if (((C.svc.context.victual.eating && !C.svc.context.victual.doreset) ? 1 : 0)) {
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("reset_eat..."); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("reset_eat..."); (C.iflags.last_msg = C.int(save_plnmsg)); }
         (C.svc.context.victual.doreset = 1);
     }
     return;
@@ -284,7 +281,6 @@ export function reset_eat()
    of the code that is now in adj_victual_nutrition() and was moved due to
    its affect on weight() */
 export function obj_nutrition(otmp)
-
 {
     let nut = C.uint(((otmp.otyp == C.CORPSE) ? C.mons[otmp.corpsenm].cnutrit : (otmp.globby ? otmp.owt : C.uint(C.objects[otmp.otyp].oc_nutrition))));
 
@@ -295,7 +291,6 @@ export function obj_nutrition(otmp)
    victual.piece->oeaten but that produced weight change if hero
    polymorphed to or from one of the races which has nutrition adjusted */
 export function adj_victual_nutrition()
-
 {
     let otyp = C.int(C.svc.context.victual.piece.otyp);
     /* note: adj_victual_nutrition() is only called when 'nmod' is negative */
@@ -317,14 +312,13 @@ export function adj_victual_nutrition()
 
 /* might destroy otmp if hero drops it */
 export function touchfood(otmp)
-
 {
     if ((C.long(otmp.quan) > C.long(1n))) {
         if (!C.carried(otmp))
             C.splitobj(otmp, C.long((C.long(otmp.quan) - C.long(1n))));
         else
             (otmp = C.splitobj(otmp, 1n));
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("split food,"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("split food,"); (C.iflags.last_msg = C.int(save_plnmsg)); }
     }
 
     if (!otmp.oeaten) {
@@ -353,10 +347,9 @@ export function touchfood(otmp)
  * in do_reset_eat().
  */
 export function food_disappears(obj)
-
 {
     if (C.samePtr(obj, C.svc.context.victual.piece))
-        C.copyStruct(C.svc.context.victual,C.zero_victual,C.victualSize); /* victual.piece = 0, .o_id = 0 */
+        C.copyStruct(C.svc.context.victual, C.zero_victual, C.victualSize); /* victual.piece = 0, .o_id = 0 */
 
     if (obj.timed)
         C.obj_stop_timers(obj);
@@ -366,7 +359,6 @@ export function food_disappears(obj)
    so the sequence start eating/opening, get interrupted, name the food,
    resume eating/opening would restart from scratch */
 export function food_substitution(old_obj, new_obj)
-
 {
     if (C.samePtr(old_obj, C.svc.context.victual.piece)) {
         (C.svc.context.victual.piece = new_obj);
@@ -379,9 +371,8 @@ export function food_substitution(old_obj, new_obj)
 }
 
 export function do_reset_eat()
-
 {
-    if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("do_reset_eat..."); (C.iflags.last_msg = C.int(save_plnmsg)); }
+    if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("do_reset_eat..."); (C.iflags.last_msg = C.int(save_plnmsg)); }
     if (C.svc.context.victual.piece) {
         let otmp;
 
@@ -407,7 +398,6 @@ export function do_reset_eat()
    attribute or because of polymorph shape or worn or carried gear), return
    its timeout, otherwise return 0; used by enlightenment */
 export function temp_resist(prop)
-
 {
     /* and if not also protected by polymorph form */
     /* and not by worn gear (dragon armor) */
@@ -427,14 +417,17 @@ export function temp_resist(prop)
    something which that resistance is protecting against, caller will
    extend resistance's duration so that it times out after meal finishes */
 export function eating_dangerous_corpse(res)
-
 {
     (res = C.int(C.int(res)));
     let food;
     let mnum;
 
-    if ((((((((((C.go.occupation == eatfood) && !C.samePtr((food = C.svc.context.victual.piece), 0)) ? 1 : 0) && (food.otyp == C.CORPSE)) ? 1 : 0) && ((mnum = C.int(food.corpsenm)) >= C.LOW_PM)) ? 1 : 0) && ((C.carried(food) || C.obj_here(food, C.u.ux, C.u.uy)) ? 1 : 0)) ? 1 : 0)) {
-
+    if ((((((((((C.go.occupation == eatfood)
+        && !C.samePtr((food = C.svc.context.victual.piece), 0)) ? 1 : 0)
+        && (food.otyp == C.CORPSE)) ? 1 : 0)
+        && ((mnum = C.int(food.corpsenm)) >= C.LOW_PM)) ? 1 : 0)
+        && ((C.carried(food)
+        || C.obj_here(food, C.u.ux, C.u.uy)) ? 1 : 0)) ? 1 : 0)) {
         if ((((res == C.ACID_RES) && C.acidic(C.mons[mnum])) ? 1 : 0))
             return C.int(1);
         /* flesh_petrifies() includes Medusa as well as touch_petrifies() */
@@ -454,10 +447,8 @@ export function eating_dangerous_corpse(res)
        also extending the protection against other attacks of the sort
        being resisted */
 
-
 /* called each move during eating process */
 export function eatfood()
-
 {
     let food = C.svc.context.victual.piece;
 
@@ -482,7 +473,6 @@ export function eatfood()
 }
 
 export function done_eating(message)
-
 {
     (message = C.int(C.boolean(message)));
     let piece = C.svc.context.victual.piece;
@@ -510,11 +500,10 @@ export function done_eating(message)
     else
         C.useupf(piece, 1n);
 
-    C.copyStruct(C.svc.context.victual,C.zero_victual,C.victualSize); /* victual.piece = 0, .o_id = 0 */
+    C.copyStruct(C.svc.context.victual, C.zero_victual, C.victualSize); /* victual.piece = 0, .o_id = 0 */
 }
 
 export function eating_conducts(pd)
-
 {
     let ll_conduct = C.int(0);
 
@@ -696,13 +685,13 @@ export function eat_brains(
 
 /* eating a corpse or egg of one's own species is usually naughty */
 export function maybe_cannibal(pm, allowmsg)
-
 {
     /* non-cannibalistic heroes shouldn't eat own species ever
            and also shouldn't eat current species when polymorphed
            (even if having the form of something which doesn't care
            about cannibalism--hero's innate traits aren't altered) */
-    (pm = C.int(C.int(pm))); (allowmsg = C.int(C.boolean(allowmsg)));
+    (pm = C.int(C.int(pm)));
+    (allowmsg = C.int(C.boolean(allowmsg)));
     const ate_brains = C.staticCell("maybe_cannibal.ate_brains", "BigInt64");
     let fptr = C.mons[pm]; /* food type */
 
@@ -713,7 +702,13 @@ export function maybe_cannibal(pm, allowmsg)
         return C.int(0);
     (ate_brains.value = C.long(C.svm.moves)); /* ate_anything, not just brains... */
 
-    if (((!(((C.Role_if(C.PM_CAVE_DWELLER) || C.Race_if(C.PM_ORC)) ? 1 : 0)) && ((((C.your_race(fptr) || ((C.Upolyd && C.same_race(C.gy.youmonst.data, fptr)) ? 1 : 0)) ? 1 : 0) || ((C.ismnum(C.u.ulycn) && (C.were_beastie(pm) == C.u.ulycn)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) {
+    if (((!(((C.Role_if(C.PM_CAVE_DWELLER)
+        || C.Race_if(C.PM_ORC)) ? 1 : 0))
+        && ((((C.your_race(fptr)
+        || ((C.Upolyd
+        && C.same_race(C.gy.youmonst.data, fptr)) ? 1 : 0)) ? 1 : 0)
+        || ((C.ismnum(C.u.ulycn)
+        && (C.were_beastie(pm) == C.u.ulycn)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) {
         if (allowmsg) {
             if (((C.Upolyd && C.your_race(fptr)) ? 1 : 0))
                 C.You("have a bad feeling deep inside.");
@@ -727,7 +722,6 @@ export function maybe_cannibal(pm, allowmsg)
 }
 
 export function cprefx(pm)
-
 {
     /* Null for tins */
     /* paranoia */
@@ -782,8 +776,10 @@ export function cprefx(pm)
            5.0: this used to assume that such tins were impossible but
            they can be wished for in wizard mode; they can't make it
            to normal play though because bones creation empties them */
-        if (((((C.svc.context.victual.piece && (C.svc.context.victual.piece.otyp == C.CORPSE)) ? 1 : 0) && C.revive_corpse(C.svc.context.victual.piece)) ? 1 : 0))
-            C.copyStruct(C.svc.context.victual,C.zero_victual,C.victualSize); /* victual.piece=0, .o_id=0 */
+        if (((((C.svc.context.victual.piece
+            && (C.svc.context.victual.piece.otyp == C.CORPSE)) ? 1 : 0)
+            && C.revive_corpse(C.svc.context.victual.piece)) ? 1 : 0))
+            C.copyStruct(C.svc.context.victual, C.zero_victual, C.victualSize); /* victual.piece=0, .o_id=0 */
         return;
     }
     case C.PM_GREEN_SLIME:
@@ -792,7 +788,7 @@ export function cprefx(pm)
             C.make_slimed(10n, 0);
             C.delayed_killer(C.SLIMED, C.KILLED_BY_AN, "");
         }
-        
+
     /* Fall through */
     default:
         if (((C.acidic(C.mons[pm]) && C.Stoned) ? 1 : 0))
@@ -802,9 +798,8 @@ export function cprefx(pm)
 }
 
 export function fix_petrification()
-
 {
-    const buf=C.stackAlloc(C.BUFSZ);
+    const buf = C.stackAlloc(C.BUFSZ);
 
     if (C.Hallucination)
         C.Sprintf(buf, "What a pity--you just ruined a future piece of %sart!",
@@ -832,7 +827,6 @@ export function fix_petrification()
     } while (0)
 */
 export function intrinsic_possible(type, ptr)
-
 {
     (type = C.int(C.int(type)));
     let res = C.int(0);
@@ -840,47 +834,58 @@ export function intrinsic_possible(type, ptr)
     switch (type) {
     case C.FIRE_RES:
         (res = C.int((C.int((ptr.mconveys) & (C.MR_FIRE)) != 0)));
-        if (((res && C.debugcore("eat.c",1)) ? 1 : 0)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("can get fire resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (((res
+            && C.debugcore("eat.c", 1)) ? 1 : 0)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("can get fire resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         break;
     case C.SLEEP_RES:
         (res = C.int((C.int((ptr.mconveys) & (C.MR_SLEEP)) != 0)));
-        if (((res && C.debugcore("eat.c",1)) ? 1 : 0)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("can get sleep resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (((res
+            && C.debugcore("eat.c", 1)) ? 1 : 0)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("can get sleep resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         break;
     case C.COLD_RES:
         (res = C.int((C.int((ptr.mconveys) & (C.MR_COLD)) != 0)));
-        if (((res && C.debugcore("eat.c",1)) ? 1 : 0)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("can get cold resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (((res
+            && C.debugcore("eat.c", 1)) ? 1 : 0)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("can get cold resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         break;
     case C.DISINT_RES:
         (res = C.int((C.int((ptr.mconveys) & (C.MR_DISINT)) != 0)));
-        if (((res && C.debugcore("eat.c",1)) ? 1 : 0)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("can get disintegration resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (((res
+            && C.debugcore("eat.c", 1)) ? 1 : 0)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("can get disintegration resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         break;
     case C.SHOCK_RES: /* shock (electricity) resistance */
         (res = C.int((C.int((ptr.mconveys) & (C.MR_ELEC)) != 0)));
-        if (((res && C.debugcore("eat.c",1)) ? 1 : 0)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("can get shock resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (((res
+            && C.debugcore("eat.c", 1)) ? 1 : 0)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("can get shock resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         break;
     case C.POISON_RES:
         (res = C.int((C.int((ptr.mconveys) & (C.MR_POISON)) != 0)));
-        if (((res && C.debugcore("eat.c",1)) ? 1 : 0)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("can get poison resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (((res
+            && C.debugcore("eat.c", 1)) ? 1 : 0)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("can get poison resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         break;
     case C.ACID_RES:
         (res = C.int((C.int((ptr.mconveys) & (C.MR_ACID)) != 0)));
-        if (((res && C.debugcore("eat.c",1)) ? 1 : 0)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("can get acid resistance temporarily"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (((res
+            && C.debugcore("eat.c", 1)) ? 1 : 0)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("can get acid resistance temporarily"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         break;
     case C.STONE_RES:
         (res = C.int((C.int((ptr.mconveys) & (C.MR_STONE)) != 0)));
-        if (((res && C.debugcore("eat.c",1)) ? 1 : 0)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("can get stoning resistance temporarily"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (((res
+            && C.debugcore("eat.c", 1)) ? 1 : 0)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("can get stoning resistance temporarily"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         break;
     case C.TELEPORT:
         (res = C.int(C.can_teleport(ptr)));
-        if (((res && C.debugcore("eat.c",1)) ? 1 : 0)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("can get teleport"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (((res
+            && C.debugcore("eat.c", 1)) ? 1 : 0)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("can get teleport"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         break;
     case C.TELEPORT_CONTROL:
         (res = C.int(C.control_teleport(ptr)));
-        if (((res && C.debugcore("eat.c",1)) ? 1 : 0)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("can get teleport control"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (((res
+            && C.debugcore("eat.c", 1)) ? 1 : 0)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("can get teleport control"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         break;
     case C.TELEPAT:
         (res = C.int(C.telepathic(ptr)));
-        if (((res && C.debugcore("eat.c",1)) ? 1 : 0)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("can get telepathy"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (((res
+            && C.debugcore("eat.c", 1)) ? 1 : 0)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("can get telepathy"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         break;
     default:
         /* res stays 0 */
@@ -894,7 +899,6 @@ export function intrinsic_possible(type, ptr)
  * intrinsic it is trying to give you.
  */
 export function should_givit(type, ptr)
-
 {
     (type = C.int(C.int(type)));
     let chance;
@@ -902,7 +906,9 @@ export function should_givit(type, ptr)
     /* some intrinsics are easier to get than others */
     switch (type) {
     case C.POISON_RES:
-        if (((((C.samePtr(ptr, C.mons[C.PM_KILLER_BEE]) || C.samePtr(ptr, C.mons[C.PM_SCORPION])) ? 1 : 0) && !C.rn2(4, 969, "should_givit")) ? 1 : 0))
+        if (((((C.samePtr(ptr, C.mons[C.PM_KILLER_BEE])
+            || C.samePtr(ptr, C.mons[C.PM_SCORPION])) ? 1 : 0)
+            && !C.rn2(4, 969, "should_givit")) ? 1 : 0))
             (chance = C.int(1));
         else
             (chance = C.int(15));
@@ -925,7 +931,6 @@ export function should_givit(type, ptr)
 }
 
 export function temp_givit(type, ptr)
-
 {
     (type = C.int(C.int(type)));
     let chance = C.int(((type == C.STONE_RES) ? 6 : ((type == C.ACID_RES) ? 3 : 0)));
@@ -937,45 +942,44 @@ export function temp_givit(type, ptr)
  * and what type of intrinsic it is trying to give you.
  */
 export function givit(type, ptr)
-
 {
     (type = C.int(C.int(type)));
-    if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Attempting to give intrinsic %d", type); (C.iflags.last_msg = C.int(save_plnmsg)); }
+    if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Attempting to give intrinsic %d", type); (C.iflags.last_msg = C.int(save_plnmsg)); }
 
     if (((!should_givit(type, ptr) && !temp_givit(type, ptr)) ? 1 : 0))
         return;
 
     switch (type) {
     case C.FIRE_RES:
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Trying to give fire resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Trying to give fire resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         if (!(C.long((C.long(C.HFire_resistance) & C.long(C.FROMOUTSIDE))))) {
             C.You((C.Hallucination ? "be chillin'." : "feel a momentary chill."));
             (C.HFire_resistance = C.long(C.long(C.long(C.HFire_resistance) | C.long(C.FROMOUTSIDE))));
         }
         break;
     case C.SLEEP_RES:
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Trying to give sleep resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Trying to give sleep resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         if (!(C.long((C.long(C.HSleep_resistance) & C.long(C.FROMOUTSIDE))))) {
             C.You_feel("wide awake.");
             (C.HSleep_resistance = C.long(C.long(C.long(C.HSleep_resistance) | C.long(C.FROMOUTSIDE))));
         }
         break;
     case C.COLD_RES:
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Trying to give cold resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Trying to give cold resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         if (!(C.long((C.long(C.HCold_resistance) & C.long(C.FROMOUTSIDE))))) {
             C.You_feel("full of hot air.");
             (C.HCold_resistance = C.long(C.long(C.long(C.HCold_resistance) | C.long(C.FROMOUTSIDE))));
         }
         break;
     case C.DISINT_RES:
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Trying to give disintegration resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Trying to give disintegration resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         if (!(C.long((C.long(C.HDisint_resistance) & C.long(C.FROMOUTSIDE))))) {
             C.You_feel((C.Hallucination ? "totally together, man." : "very firm."));
             (C.HDisint_resistance = C.long(C.long(C.long(C.HDisint_resistance) | C.long(C.FROMOUTSIDE))));
         }
         break;
     case C.SHOCK_RES: /* shock (electricity) resistance */
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Trying to give shock resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Trying to give shock resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         if (!(C.long((C.long(C.HShock_resistance) & C.long(C.FROMOUTSIDE))))) {
             if (C.Hallucination)
                 C.You_feel("grounded in reality.");
@@ -985,28 +989,28 @@ export function givit(type, ptr)
         }
         break;
     case C.POISON_RES:
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Trying to give poison resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Trying to give poison resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         if (!(C.long((C.long(C.HPoison_resistance) & C.long(C.FROMOUTSIDE))))) {
             C.You_feel((C.Poison_resistance ? "especially healthy." : "healthy."));
             (C.HPoison_resistance = C.long(C.long(C.long(C.HPoison_resistance) | C.long(C.FROMOUTSIDE))));
         }
         break;
     case C.TELEPORT:
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Trying to give teleport"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Trying to give teleport"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         if (!(C.long((C.long(C.HTeleportation) & C.long(C.FROMOUTSIDE))))) {
             C.You_feel((C.Hallucination ? "diffuse." : "very jumpy."));
             (C.HTeleportation = C.long(C.long(C.long(C.HTeleportation) | C.long(C.FROMOUTSIDE))));
         }
         break;
     case C.TELEPORT_CONTROL:
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Trying to give teleport control"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Trying to give teleport control"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         if (!(C.long((C.long(C.HTeleport_control) & C.long(C.FROMOUTSIDE))))) {
             C.You_feel((C.Hallucination ? "centered in your personal space." : "in control of yourself."));
             (C.HTeleport_control = C.long(C.long(C.long(C.HTeleport_control) | C.long(C.FROMOUTSIDE))));
         }
         break;
     case C.TELEPAT:
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Trying to give telepathy"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Trying to give telepathy"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         if (!(C.long((C.long(C.HTelepat) & C.long(C.FROMOUTSIDE))))) {
             C.You_feel((C.Hallucination ? "in touch with the cosmos." : "a strange mental acuity."));
             (C.HTelepat = C.long(C.long(C.long(C.HTelepat) | C.long(C.FROMOUTSIDE))));
@@ -1016,25 +1020,24 @@ export function givit(type, ptr)
         }
         break;
     case C.ACID_RES:
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Giving timed acid resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Giving timed acid resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         if (!C.Acid_resistance)
             C.You_feel("%s.", (C.Hallucination ? "secure from flashbacks" : "less concerned about being harmed by acid"));
         C.incr_itimeout(C.propertyReference("HAcid_resistance"), C.d(3, 6, 1087, "givit"));
         break;
     case C.STONE_RES:
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Giving timed stoning resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Giving timed stoning resistance"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         if (!C.Stone_resistance)
             C.You_feel("%s.", (C.Hallucination ? "unusually limber" : "less concerned about becoming petrified"));
         C.incr_itimeout(C.propertyReference("HStone_resistance"), C.d(3, 6, 1094, "givit"));
         break;
     default:
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Tried to give an impossible intrinsic"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Tried to give an impossible intrinsic"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         break;
     }
 }
 
 export function eye_of_newt_buzz()
-
 {
     /* MRKR: "eye of newt" may give small magical energy boost */
     if (((C.rn2(3, 1106, "eye_of_newt_buzz") || (Math.imul(3, C.u.uen) <= Math.imul(2, C.u.uenmax))) ? 1 : 0)) {
@@ -1060,7 +1063,6 @@ export function eye_of_newt_buzz()
 
 /* called after completely consuming a corpse */
 export function cpostfx(pm)
-
 {
     (pm = C.int(C.int(pm)));
     let tmp = C.int(0);
@@ -1106,28 +1108,28 @@ export function cpostfx(pm)
             (C.HSee_invisible = C.long(C.long(C.long(C.HSee_invisible) | C.long(C.FROMOUTSIDE))));
         }
         C.newsym(C.u.ux, C.u.uy);
-        
+
         /*FALLTHRU*/
     case C.PM_YELLOW_LIGHT:
     case C.PM_GIANT_BAT:
         C.make_stunned(C.long((C.long(C.long((C.long(C.HStun) & C.long(C.TIMEOUT)))) + C.long(30n))), 0);
-        
+
         /*FALLTHRU*/
     case C.PM_BAT:
         C.make_stunned(C.long((C.long(C.long((C.long(C.HStun) & C.long(C.TIMEOUT)))) + C.long(30n))), 0);
         break;
     case C.PM_GIANT_MIMIC:
         (tmp = C.int((tmp) + (10)));
-        
+
         /*FALLTHRU*/
     case C.PM_LARGE_MIMIC:
         (tmp = C.int((tmp) + (20)));
-        
+
         /*FALLTHRU*/
     case C.PM_SMALL_MIMIC:
         (tmp = C.int((tmp) + (20)));
         if ((((C.gy.youmonst.data.mlet != C.S_MIMIC) && !C.Unchanging) ? 1 : 0)) {
-            const buf=C.stackAlloc(C.BUFSZ);
+            const buf = C.stackAlloc(C.BUFSZ);
             let tempshape = (!C.Hallucination ? "a pile of gold" : "an orange");
 
             if (!C.u.uconduct.polyselfs++) /* you're changing form */
@@ -1199,7 +1201,7 @@ export function cpostfx(pm)
     case C.PM_DISENCHANTER:
         /* picks an intrinsic at random and removes it; there's
            no feedback if hero already lacks the chosen ability */
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("using attrcurse to strip an intrinsic"); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("using attrcurse to strip an intrinsic"); (C.iflags.last_msg = C.int(save_plnmsg)); }
         C.attrcurse();
         break;
     case C.PM_DEATH:
@@ -1218,7 +1220,7 @@ export function cpostfx(pm)
         } else {
             C.pline("For some reason, that tasted bland.");
         }
-        
+
     /*FALLTHRU*/
     default:
         (check_intrinsics = C.int(1));
@@ -1264,7 +1266,6 @@ export function cpostfx(pm)
  * Non-deterministic; should only be called once per corpse.
  */
 export function corpse_intrinsic(ptr)
-
 {
     /* Check the monster for all of the intrinsics.  If this
      * monster can give more than one, pick one to try to give
@@ -1278,7 +1279,7 @@ export function corpse_intrinsic(ptr)
     if (conveys_STR) {
         (count = C.int(1));
         (prop = C.int(-1)); /* use -1 as fake prop index for STR */
-        if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("\"Intrinsic\" strength, %d", prop); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("\"Intrinsic\" strength, %d", prop); (C.iflags.last_msg = C.int(save_plnmsg)); }
     }
     for ((i = C.int(1)); (i <= C.LAST_PROP); i++) {
         if (!intrinsic_possible(i, ptr))
@@ -1289,7 +1290,7 @@ export function corpse_intrinsic(ptr)
            of keeping the old choice (note that 1 in 1 and
            0 in 1 are what we want for the first candidate) */
         if (!C.rn2(count, 1363, "corpse_intrinsic")) {
-            if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("Intrinsic %d replacing %d", i, prop); (C.iflags.last_msg = C.int(save_plnmsg)); }
+            if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("Intrinsic %d replacing %d", i, prop); (C.iflags.last_msg = C.int(save_plnmsg)); }
             (prop = C.int(i));
         }
     }
@@ -1301,7 +1302,6 @@ export function corpse_intrinsic(ptr)
 }
 
 export function violated_vegetarian()
-
 {
     C.u.uconduct.unvegetarian++;
     if (C.Role_if(C.PM_MONK)) {
@@ -1330,7 +1330,6 @@ export function costly_tin(alter_type)
 }
 
 export function tin_variety_txt(s, tinvariety)
-
 {
     let k, l;
 
@@ -1352,10 +1351,9 @@ export function tin_variety_txt(s, tinvariety)
  * as is the case with caller xname().
  */
 export function tin_details(obj, mnum, buf)
-
 {
     (mnum = C.int(C.int(mnum)));
-    const buf2=C.stackAlloc(C.BUFSZ);
+    const buf2 = C.stackAlloc(C.BUFSZ);
 
     if (((!obj || !buf) ? 1 : 0))
         return;
@@ -1386,13 +1384,15 @@ export function tin_details(obj, mnum, buf)
 }
 
 export function set_tin_variety(obj, forcetype)
-
 {
     /* empty or already spinach */
     (forcetype = C.int(C.int(forcetype)));
     let r, mnum = C.int(obj.corpsenm);
 
-    if ((((forcetype == C.SPINACH_TIN) || (((C.long(forcetype) == C.long(C.HEALTHY_TIN)) && (((mnum == C.NON_PM) || !C.vegetarian(C.mons[mnum])) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) { /* replace meat */
+    if ((((forcetype == C.SPINACH_TIN)
+        || (((C.long(forcetype) == C.long(C.HEALTHY_TIN))
+        && (((mnum == C.NON_PM)
+        || !C.vegetarian(C.mons[mnum])) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) { /* replace meat */
         (obj.corpsenm = C.int(C.NON_PM)); /* not based on any monster */
         (obj.spe = C.int(1));           /* spinach */
         return;
@@ -1406,7 +1406,12 @@ export function set_tin_variety(obj, forcetype)
         (r = C.int(forcetype));
     } else {               /* RANDOM_TIN */
         (r = C.int(C.rn2((C.tintxts.length - 1), 1481, "set_tin_variety"))); /* take your pick */
-        if ((((r == C.ROTTEN_TIN) && ((C.ismnum(mnum) && (((((((mnum == C.PM_LIZARD) || (mnum == C.PM_LICHEN)) ? 1 : 0) || C.is_rider(C.mons[mnum])) ? 1 : 0) || (mnum == C.PM_ACID_BLOB)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
+        if ((((r == C.ROTTEN_TIN)
+            && ((C.ismnum(mnum)
+            && (((((((mnum == C.PM_LIZARD)
+            || (mnum == C.PM_LICHEN)) ? 1 : 0)
+            || C.is_rider(C.mons[mnum])) ? 1 : 0)
+            || (mnum == C.PM_ACID_BLOB)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
             (r = C.int(C.HOMEMADE_TIN)); /* lizards don't rot */
     }
     (obj.spe = C.int(-(C.int((r) + (1))))); /* offset by 1 to allow index 0 */
@@ -1434,14 +1439,18 @@ export function tin_variety(
     if (((((((!displ && (C.long(r) == C.long(C.HOMEMADE_TIN))) ? 1 : 0) && !obj.blessed) ? 1 : 0) && !C.rn2(7, 1506, "tin_variety")) ? 1 : 0))
         (r = C.int(C.ROTTEN_TIN)); /* some homemade tins go bad */
 
-    if ((((r == C.ROTTEN_TIN) && ((C.ismnum(mnum) && (((((((mnum == C.PM_LIZARD) || (mnum == C.PM_LICHEN)) ? 1 : 0) || C.is_rider(C.mons[mnum])) ? 1 : 0) || (mnum == C.PM_ACID_BLOB)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
+    if ((((r == C.ROTTEN_TIN)
+        && ((C.ismnum(mnum)
+        && (((((((mnum == C.PM_LIZARD)
+        || (mnum == C.PM_LICHEN)) ? 1 : 0)
+        || C.is_rider(C.mons[mnum])) ? 1 : 0)
+        || (mnum == C.PM_ACID_BLOB)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
         (r = C.int(C.HOMEMADE_TIN)); /* lizards don't rot */
     return C.int(r);
 }
 
 /* finish consume_tin(); also potentially used by cprefx() and cpostfx() */
 export function use_up_tin(tin)
-
 {
     if (C.carried(tin))
         C.useup(tin);
@@ -1453,7 +1462,6 @@ export function use_up_tin(tin)
 }
 
 export function consume_tin(mesg)
-
 {
     /* "feel like Popeye" unless sustain ability suppresses
                      any attribute change; this slightly oversimplifies
@@ -1530,7 +1538,7 @@ export function consume_tin(mesg)
         }
 
         /* in case stop_occupation() was called on previous meal */
-        C.copyStruct(C.svc.context.victual,C.zero_victual,C.victualSize); /* victual.piece = 0, .o_id = 0 */
+        C.copyStruct(C.svc.context.victual, C.zero_victual, C.victualSize); /* victual.piece = 0, .o_id = 0 */
 
         C.You("consume %s %s.", C.tintxts[r].txt, C.mons[mnum].pmnames[C.NEUTRAL]);
 
@@ -1624,7 +1632,6 @@ export function consume_tin(mesg)
 
 /* called during each move whilst opening a tin */
 export function opentin()
-
 {
     /* perhaps it was stolen (although that should cause interruption) */
     if (((!C.carried(C.svc.context.tin.tin) && ((!C.obj_here(C.svc.context.tin.tin, C.u.ux, C.u.uy) || !C.can_reach_floor(1)) ? 1 : 0)) ? 1 : 0))
@@ -1642,7 +1649,6 @@ export function opentin()
 
 /* called when starting to open a tin */
 export function start_tin(otmp)
-
 {
     let mesg = 0;
     let tmp;
@@ -1709,7 +1715,6 @@ export function start_tin(otmp)
             return;
         }
         (tmp = C.int(C.int(C.int((C.rn2(C.int((1) + (C.int((500) / (C.int(((C.ACURR(C.A_DEX) + C.ACURRSTR))))))), 1784, "start_tin")) + (10)))));
-    
     }
 
     (C.svc.context.tin.tin = otmp);
@@ -1726,7 +1731,6 @@ export function start_tin(otmp)
 
 /* called when waking up after fainting */
 export function Hear_again()
-
 {
     /* Chance of deafness going away while fainted/sleeping/etc. */
     if (!C.rn2(2, 1804, "Hear_again")) {
@@ -1738,7 +1742,6 @@ export function Hear_again()
 
 /* called on the "first bite" of rotten food */
 export function rottenfood(obj)
-
 {
     C.pline("Blecch!  %s %s!",
           (C.is_rottable(obj) ? "Rotten" : "Awful"), foodword(obj));
@@ -1780,13 +1783,15 @@ export function rottenfood(obj)
 
 /* called when a corpse is selected as food */
 export function eatcorpse(otmp)
-
 {
     let retcode = C.int(0), tp = C.int(0), mnum = C.int(otmp.corpsenm);
     let rotted = C.long(0n);
     let ll_conduct = C.int(0);
     let stoneable,
-            slimeable = (C.int((((((((mnum == C.PM_GREEN_SLIME) && !C.Slimed) ? 1 : 0) && !C.Unchanging) ? 1 : 0) && !C.slimeproof(C.gy.youmonst.data)) ? 1 : 0))),
+            slimeable = (C.int((((((((mnum == C.PM_GREEN_SLIME)
+                && !C.Slimed) ? 1 : 0)
+                && !C.Unchanging) ? 1 : 0)
+                && !C.slimeproof(C.gy.youmonst.data)) ? 1 : 0))),
             glob = C.int((otmp.globby ? 1 : 0));
 
     C.assert(C.ismnum(mnum), 1);
@@ -1807,7 +1812,10 @@ export function eatcorpse(otmp)
                            C.an(food_xname(otmp, 0)));
         violated_vegetarian();
     }
-    if (!((((((((mnum == C.PM_LIZARD) || (mnum == C.PM_LICHEN)) ? 1 : 0) || C.is_rider(C.mons[mnum])) ? 1 : 0) || (mnum == C.PM_ACID_BLOB)) ? 1 : 0))) {
+    if (!((((((((mnum == C.PM_LIZARD)
+        || (mnum == C.PM_LICHEN)) ? 1 : 0)
+        || C.is_rider(C.mons[mnum])) ? 1 : 0)
+        || (mnum == C.PM_ACID_BLOB)) ? 1 : 0))) {
         let age = C.long(C.peek_at_iced_corpse_age(otmp));
 
         (rotted = C.long(C.long((C.long(C.long((C.long(C.svm.moves) - C.long(age)))) / C.long(C.long((C.long(10n) + C.long(C.rn2(20, 1887, "eatcorpse")))))))));
@@ -1860,7 +1868,10 @@ export function eatcorpse(otmp)
             C.You("seem unaffected by the poison.");
 
     /* now any corpse left too long will make you mildly ill */
-    } else if ((((((C.long(rotted) > C.long(5n)) || (((C.long(rotted) > C.long(3n)) && C.rn2(5, 1939, "eatcorpse")) ? 1 : 0)) ? 1 : 0) && !C.Sick_resistance) ? 1 : 0)) {
+    } else if ((((((C.long(rotted) > C.long(5n))
+        || (((C.long(rotted) > C.long(3n))
+        && C.rn2(5, 1939, "eatcorpse")) ? 1 : 0)) ? 1 : 0)
+        && !C.Sick_resistance) ? 1 : 0)) {
         tp++;
         C.You_feel("%ssick.", (C.Sick ? "very " : ""));
         C.losehp(C.rnd(8, 1942, "eatcorpse"), (!glob ? "cadaver" : "rotted glob"), C.KILLED_BY_AN);
@@ -1869,7 +1880,13 @@ export function eatcorpse(otmp)
     /* delay is weight dependent */
     (C.svc.context.victual.reqtime = C.int(C.uint((3) + (C.uint(((!glob ? C.mons[mnum].cwt : otmp.owt)) >>> (6))))));
 
-    if (((((!tp && !((((((((mnum == C.PM_LIZARD) || (mnum == C.PM_LICHEN)) ? 1 : 0) || C.is_rider(C.mons[mnum])) ? 1 : 0) || (mnum == C.PM_ACID_BLOB)) ? 1 : 0))) ? 1 : 0) && ((otmp.orotten || !C.rn2(7, 1949, "eatcorpse")) ? 1 : 0)) ? 1 : 0)) {
+    if (((((!tp
+        && !((((((((mnum == C.PM_LIZARD)
+        || (mnum == C.PM_LICHEN)) ? 1 : 0)
+        || C.is_rider(C.mons[mnum])) ? 1 : 0)
+        || (mnum == C.PM_ACID_BLOB)) ? 1 : 0))) ? 1 : 0)
+        && ((otmp.orotten
+        || !C.rn2(7, 1949, "eatcorpse")) ? 1 : 0)) ? 1 : 0)) {
         if (rottenfood(otmp)) {
             (otmp.orotten = 1);
             (otmp = touchfood(otmp));
@@ -1899,8 +1916,13 @@ export function eatcorpse(otmp)
         ; /* we've already delivered a message; don't add "it tastes okay" */
     } else {
         /* yummy is always False for omnivores, palatable always True */
-        let yummy = (C.int((C.vegan(C.mons[mnum]) ? ((!C.carnivorous(C.gy.youmonst.data) && C.herbivorous(C.gy.youmonst.data)) ? 1 : 0) : ((C.carnivorous(C.gy.youmonst.data) && !C.herbivorous(C.gy.youmonst.data)) ? 1 : 0)))),
-                palatable = (C.int((((((C.vegetarian(C.mons[mnum]) ? C.herbivorous(C.gy.youmonst.data) : C.carnivorous(C.gy.youmonst.data)) && C.rn2(10, 1988, "eatcorpse")) ? 1 : 0) && (((C.long(rotted) < C.long(1)) || !C.rn2(C.int((C.int(rotted)) + (1)), 1989, "eatcorpse")) ? 1 : 0)) ? 1 : 0)));
+        let yummy = (C.int((C.vegan(C.mons[mnum]) ? ((!C.carnivorous(C.gy.youmonst.data)
+            && C.herbivorous(C.gy.youmonst.data)) ? 1 : 0) : ((C.carnivorous(C.gy.youmonst.data)
+            && !C.herbivorous(C.gy.youmonst.data)) ? 1 : 0)))),
+                palatable = (C.int((((((C.vegetarian(C.mons[mnum]) ? C.herbivorous(C.gy.youmonst.data) : C.carnivorous(C.gy.youmonst.data))
+                    && C.rn2(10, 1988, "eatcorpse")) ? 1 : 0)
+                    && (((C.long(rotted) < C.long(1))
+                    || !C.rn2(C.int((C.int(rotted)) + (1)), 1989, "eatcorpse")) ? 1 : 0)) ? 1 : 0)));
         let pmxnam = food_xname(otmp, 0);
         const palatable_msgs = [
             /* first char: T = tastes ... , I = is ... */
@@ -1928,22 +1950,23 @@ export function eatcorpse(otmp)
 
 /* called as you start to eat */
 export function start_eating(otmp, already_partly_eaten)
-
 {
     (already_partly_eaten = C.int(C.boolean(already_partly_eaten)));
     let old_nomovemsg, save_nomovemsg;
     const msgbuf = C.msgbuf;
 
-    if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("start_eating: %s (victual = %s)",
+    if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg);
+    C.pline("start_eating: %s (victual = %s)",
                 /* note: fmt_ptr() returns a static buffer but supports
                    several such so we don't need to copy the first result
                    before calling it a second time */
                 C.fmt_ptr( otmp),
-                C.fmt_ptr( C.svc.context.victual.piece)); (C.iflags.last_msg = C.int(save_plnmsg)); }
-    if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("reqtime = %d", C.svc.context.victual.reqtime); (C.iflags.last_msg = C.int(save_plnmsg)); }
-    if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("(original reqtime = %d)", C.objects[otmp.otyp].oc_delay); (C.iflags.last_msg = C.int(save_plnmsg)); }
-    if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("nmod = %d", C.svc.context.victual.nmod); (C.iflags.last_msg = C.int(save_plnmsg)); }
-    if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("oeaten = %d", otmp.oeaten); (C.iflags.last_msg = C.int(save_plnmsg)); }
+                C.fmt_ptr( C.svc.context.victual.piece));
+                (C.iflags.last_msg = C.int(save_plnmsg)); }
+    if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("reqtime = %d", C.svc.context.victual.reqtime); (C.iflags.last_msg = C.int(save_plnmsg)); }
+    if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("(original reqtime = %d)", C.objects[otmp.otyp].oc_delay); (C.iflags.last_msg = C.int(save_plnmsg)); }
+    if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("nmod = %d", C.svc.context.victual.nmod); (C.iflags.last_msg = C.int(save_plnmsg)); }
+    if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("oeaten = %d", otmp.oeaten); (C.iflags.last_msg = C.int(save_plnmsg)); }
     (C.svc.context.victual.fullwarn = (C.svc.context.victual.doreset = 0));
     (C.svc.context.victual.eating = 1);
 
@@ -1984,14 +2007,12 @@ export function start_eating(otmp, already_partly_eaten)
 
 /* used by shrink_glob() timer routine */
 export function eating_glob(glob)
-
 {
     return C.int((((C.go.occupation == eatfood) && C.samePtr(glob, C.svc.context.victual.piece)) ? 1 : 0));
 }
 
 /* scare nearby monster when hero eats garlic */
 export function garlic_breath(mtmp)
-
 {
     if (((C.olfaction(mtmp.data) && (C.distu(mtmp.mx, mtmp.my) < 7)) ? 1 : 0))
         C.monflee(mtmp, 0, 0, 0);
@@ -2005,7 +2026,6 @@ export function garlic_breath(mtmp)
  * Returns FALSE if eating should not succeed for whatever reason.
  */
 export function fprefx(otmp)
-
 {
     feedback_done: {
     give_feedback: {
@@ -2074,7 +2094,7 @@ export function fprefx(otmp)
             break;
         }
         C.iter_mons(garlic_breath);
-        
+
         /*FALLTHRU*/
     default:
         if ((((((otmp.otyp == C.SLIME_MOLD) && !otmp.cursed) ? 1 : 0) && (otmp.spe == C.svc.context.current_fruit)) ? 1 : 0)) {
@@ -2109,16 +2129,19 @@ export function fprefx(otmp)
     }
 
             C.pline("This %s is %s", C.singular(otmp, C.xname),
-                  (otmp.cursed ? (C.Hallucination ? "grody!" : "terrible!") : ((((((otmp.otyp == C.CRAM_RATION) || (otmp.otyp == C.K_RATION)) ? 1 : 0) || (otmp.otyp == C.C_RATION)) ? 1 : 0) ? "bland." : (C.Hallucination ? "gnarly!" : "delicious!"))));
+                  (otmp.cursed ? (C.Hallucination ? "grody!" : "terrible!") : ((((((otmp.otyp == C.CRAM_RATION)
+                      || (otmp.otyp == C.K_RATION)) ? 1 : 0)
+                      || (otmp.otyp == C.C_RATION)) ? 1 : 0) ? "bland." : (C.Hallucination ? "gnarly!" : "delicious!"))));
     } /* switch */
     return C.int(1);
 }
 
 /* increment a combat intrinsic with limits on its growth */
 export function bounded_increase(old, inc, typ)
-
 {
-    (old = C.int(C.int(old))); (inc = C.int(C.int(inc))); (typ = C.int(C.int(typ)));
+    (old = C.int(C.int(old)));
+    (inc = C.int(C.int(inc)));
+    (typ = C.int(C.int(typ)));
     let absold, absinc, sgnold, sgninc;
 
     /* don't include any amount coming from worn rings (caller handles
@@ -2154,14 +2177,12 @@ export function bounded_increase(old, inc, typ)
 }
 
 export function accessory_has_effect(otmp)
-
 {
     C.pline("Magic spreads through your body as you digest the %s.",
           ((otmp.oclass == C.RING_CLASS) ? "ring" : "amulet"));
 }
 
 export function eataccessory(otmp)
-
 {
     let typ = C.int(otmp.otyp);
     let oldprop;
@@ -2191,7 +2212,11 @@ export function eataccessory(otmp)
             case C.RIN_SEE_INVISIBLE:
                 C.set_mimic_blocking();
                 C.see_monsters();
-                if (((((((((C.Invis && !oldprop) ? 1 : 0) && !C.ESee_invisible) ? 1 : 0) && !C.perceives(C.gy.youmonst.data)) ? 1 : 0) && !C.Blind) ? 1 : 0)) {
+                if (((((((((C.Invis
+                    && !oldprop) ? 1 : 0)
+                    && !C.ESee_invisible) ? 1 : 0)
+                    && !C.perceives(C.gy.youmonst.data)) ? 1 : 0)
+                    && !C.Blind) ? 1 : 0)) {
                     C.newsym(C.u.ux, C.u.uy);
                     C.pline("Suddenly you can see yourself.");
                     C.makeknown(typ);
@@ -2307,7 +2332,6 @@ export function eataccessory(otmp)
 
 /* called after eating non-food */
 export function eatspecial()
-
 {
     /* check description after checking for specific scrolls */
     let otmp = C.svc.context.victual.piece;
@@ -2316,7 +2340,7 @@ export function eatspecial()
     C.set_occupation(eatfood, "eating non-food", 0);
     lesshungry(C.svc.context.victual.nmod);
     (C.go.occupation = 0);
-    C.copyStruct(C.svc.context.victual,C.zero_victual,C.victualSize); /* victual.piece = 0, .o_id = 0 */
+    C.copyStruct(C.svc.context.victual, C.zero_victual, C.victualSize); /* victual.piece = 0, .o_id = 0 */
 
     if ((otmp.oclass == C.COIN_CLASS)) {
         if (C.carried(otmp))
@@ -2387,7 +2411,6 @@ export const foodwords = [
 ];
 
 export function foodword(otmp)
-
 {
     if ((otmp.oclass == C.FOOD_CLASS))
         return "food";
@@ -2398,7 +2421,6 @@ export function foodword(otmp)
 
 /* called after consuming (non-corpse) food */
 export function fpostfx(otmp)
-
 {
     switch (otmp.otyp) {
     case C.SPRIG_OF_WOLFSBANE:
@@ -2475,7 +2497,6 @@ export function fpostfx(otmp)
             } else if (((C.Deaf || !C.flags.acoustics) ? 1 : 0)) {
                 C.You("fall asleep.");
             } else {
-                
                 C.You_hear("sinister laughter as you fall asleep...");
             }
             C.fall_asleep(-C.int(C.int((C.rn2(11, 2595, "fpostfx")) + (20))), 1);
@@ -2489,21 +2510,19 @@ export function fpostfx(otmp)
    "leather" applied to appearance, not composition, and has been
    changed to "leathery" to reflect that */
 
-
 /*
  * return 0 if the food was not dangerous.
  * return 1 if the food was dangerous and you chose to stop.
  * return 2 if the food was dangerous and you chose to eat it anyway.
  */
 export function edibility_prompts(otmp)
-
 {
     /* was rn2(20) */
     /* Blessed food detection grants hero a one-use
      * ability to detect food that is unfit for consumption
      * or dangerous and avoid it.
      */
-    const buf=C.stackAlloc(C.BUFSZ),foodsmell=C.stackAlloc(C.BUFSZ),it_or_they=C.stackAlloc(C.QBUFSZ);
+    const buf = C.stackAlloc(C.BUFSZ), foodsmell = C.stackAlloc(C.BUFSZ), it_or_they = C.stackAlloc(C.QBUFSZ);
     /* 5.0: decaying globs don't become tainted anymore; in 3.6, they did */
     let cadaver = (C.int((otmp.otyp == C.CORPSE))), stoneorslime = C.int(0);
     let material = C.int(C.objects[otmp.otyp].oc_material), mnum = C.int(otmp.corpsenm);
@@ -2512,14 +2531,24 @@ export function edibility_prompts(otmp)
     C.Strcpy(foodsmell, C.Tobjnam(otmp, "smell"));
     C.Strcpy(it_or_they, ((C.long(otmp.quan) == C.long(1n)) ? "it" : "they"));
 
-    if (((((((cadaver || (C.long(otmp.otyp) == C.long(C.EGG))) ? 1 : 0) || (otmp.otyp == C.TIN)) ? 1 : 0) || (otmp.otyp == C.GLOB_OF_GREEN_SLIME)) ? 1 : 0)) {
+    if (((((((cadaver
+        || (C.long(otmp.otyp) == C.long(C.EGG))) ? 1 : 0)
+        || (otmp.otyp == C.TIN)) ? 1 : 0)
+        || (otmp.otyp == C.GLOB_OF_GREEN_SLIME)) ? 1 : 0)) {
         /* These checks must match those in eatcorpse() */
-        (stoneorslime = C.int(((((((C.ismnum(mnum) && C.flesh_petrifies(C.mons[mnum])) ? 1 : 0) && !C.Stone_resistance) ? 1 : 0) && !C.poly_when_stoned(C.gy.youmonst.data)) ? 1 : 0)));
+        (stoneorslime = C.int(((((((C.ismnum(mnum)
+            && C.flesh_petrifies(C.mons[mnum])) ? 1 : 0)
+            && !C.Stone_resistance) ? 1 : 0)
+            && !C.poly_when_stoned(C.gy.youmonst.data)) ? 1 : 0)));
 
         if ((((mnum == C.PM_GREEN_SLIME) || (otmp.otyp == C.GLOB_OF_GREEN_SLIME)) ? 1 : 0))
             (stoneorslime = C.int(((!C.Unchanging && !C.slimeproof(C.gy.youmonst.data)) ? 1 : 0)));
 
-        if (((cadaver && !((((((((mnum == C.PM_LIZARD) || (mnum == C.PM_LICHEN)) ? 1 : 0) || C.is_rider(C.mons[mnum])) ? 1 : 0) || (mnum == C.PM_ACID_BLOB)) ? 1 : 0))) ? 1 : 0)) {
+        if (((cadaver
+            && !((((((((mnum == C.PM_LIZARD)
+            || (mnum == C.PM_LICHEN)) ? 1 : 0)
+            || C.is_rider(C.mons[mnum])) ? 1 : 0)
+            || (mnum == C.PM_ACID_BLOB)) ? 1 : 0))) ? 1 : 0)) {
             let age = C.long(C.peek_at_iced_corpse_age(otmp));
 
             /* worst case rather than random
@@ -2575,10 +2604,21 @@ export function edibility_prompts(otmp)
     /*
      * Breaks conduct, but otherwise safe.
      */
-    } else if (((!C.u.uconduct.unvegan && (((((((((material == C.LEATHER) || (C.long(material) == C.long(C.BONE))) ? 1 : 0) || (material == C.DRAGON_HIDE)) ? 1 : 0) || (material == C.WAX)) ? 1 : 0) || ((cadaver && !C.vegan(C.mons[mnum])) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) {
+    } else if (((!C.u.uconduct.unvegan
+        && (((((((((material == C.LEATHER)
+        || (C.long(material) == C.long(C.BONE))) ? 1 : 0)
+        || (material == C.DRAGON_HIDE)) ? 1 : 0)
+        || (material == C.WAX)) ? 1 : 0)
+        || ((cadaver
+        && !C.vegan(C.mons[mnum])) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) {
         C.Snprintf(buf, C.BUFSZ, "%s foul and unfamiliar to you.",
                  foodsmell, 9);
-    } else if (((!C.u.uconduct.unvegetarian && (((((((material == C.LEATHER) || (C.long(material) == C.long(C.BONE))) ? 1 : 0) || (material == C.DRAGON_HIDE)) ? 1 : 0) || ((cadaver && !C.vegetarian(C.mons[mnum])) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) {
+    } else if (((!C.u.uconduct.unvegetarian
+        && (((((((material == C.LEATHER)
+        || (C.long(material) == C.long(C.BONE))) ? 1 : 0)
+        || (material == C.DRAGON_HIDE)) ? 1 : 0)
+        || ((cadaver
+        && !C.vegetarian(C.mons[mnum])) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) {
         C.Snprintf(buf, C.BUFSZ, "%s unfamiliar to you.", foodsmell, 10);
     }
 
@@ -2591,7 +2631,6 @@ export function edibility_prompts(otmp)
 }
 
 export function doeat_nonfood(otmp)
-
 {
     let basenutrit; /* nutrition of full item */
     let ll_conduct = C.int(0);
@@ -2626,7 +2665,10 @@ export function doeat_nonfood(otmp)
                        food_xname(otmp, 0));
     }
     (material = C.int(C.objects[otmp.otyp].oc_material));
-    if ((((((((material == C.LEATHER) || (C.long(material) == C.long(C.BONE))) ? 1 : 0) || (material == C.DRAGON_HIDE)) ? 1 : 0) || (material == C.WAX)) ? 1 : 0)) {
+    if ((((((((material == C.LEATHER)
+        || (C.long(material) == C.long(C.BONE))) ? 1 : 0)
+        || (material == C.DRAGON_HIDE)) ? 1 : 0)
+        || (material == C.WAX)) ? 1 : 0)) {
         if (((!C.u.uconduct.unvegan++ && !ll_conduct) ? 1 : 0)) {
             C.livelog_printf(C.LL_CONDUCT,
                   "consumed animal products for the first time, by eating %s",
@@ -2665,7 +2707,6 @@ export function doeat_nonfood(otmp)
 
 /* the #eat command */
 export function doeat()
-
 {
     /*eggs*/
     /*milk*/
@@ -2769,7 +2810,6 @@ export function doeat()
     if ((otmp.oclass != C.FOOD_CLASS))
         return C.int(doeat_nonfood(otmp));
 
-
     if (C.samePtr(otmp, C.svc.context.victual.piece)) {
         let one_bite_left = (C.int((C.int((C.svc.context.victual.usedtime) + (1)) >= C.svc.context.victual.reqtime)));
 
@@ -2835,7 +2875,7 @@ export function doeat()
 
         if ((tmp == 2)) {
             /* used up */
-            C.copyStruct(C.svc.context.victual,C.zero_victual,C.victualSize); /* victual.piece=0, .o_id=0 */
+            C.copyStruct(C.svc.context.victual, C.zero_victual, C.victualSize); /* victual.piece=0, .o_id=0 */
             return C.int(C.ECMD_TIME);
         } else if (tmp)
             (dont_start = C.int(1));
@@ -2862,7 +2902,11 @@ export function doeat()
             }
             break;
         default:
-            if ((((((((((otmp.otyp == C.PANCAKE) || (otmp.otyp == C.FORTUNE_COOKIE)) ? 1 : 0) || (otmp.otyp == C.CREAM_PIE)) ? 1 : 0) || (otmp.otyp == C.CANDY_BAR)) ? 1 : 0) || (otmp.otyp == C.LUMP_OF_ROYAL_JELLY)) ? 1 : 0))
+            if ((((((((((otmp.otyp == C.PANCAKE)
+                || (otmp.otyp == C.FORTUNE_COOKIE)) ? 1 : 0)
+                || (otmp.otyp == C.CREAM_PIE)) ? 1 : 0)
+                || (otmp.otyp == C.CANDY_BAR)) ? 1 : 0)
+                || (otmp.otyp == C.LUMP_OF_ROYAL_JELLY)) ? 1 : 0))
                 if (((!C.u.uconduct.unvegan++ && !ll_conduct) ? 1 : 0))
                     C.livelog_printf(C.LL_CONDUCT,
                            "consumed animal products (%s) for the first time",
@@ -2871,7 +2915,13 @@ export function doeat()
         }
 
         (C.svc.context.victual.reqtime = C.int(C.objects[otmp.otyp].oc_delay));
-        if ((((otmp.otyp != C.FORTUNE_COOKIE) && ((otmp.cursed || ((((!((((otmp.otyp == C.LEMBAS_WAFER) || (otmp.otyp == C.CRAM_RATION)) ? 1 : 0)) && (C.long(C.long((C.long(C.svm.moves) - C.long(otmp.age)))) > C.long((otmp.blessed ? 50n : 30n)))) ? 1 : 0) && ((otmp.orotten || !C.rn2(7, 3031, "doeat")) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) {
+        if ((((otmp.otyp != C.FORTUNE_COOKIE)
+            && ((otmp.cursed
+            || ((((!((((otmp.otyp == C.LEMBAS_WAFER)
+            || (otmp.otyp == C.CRAM_RATION)) ? 1 : 0))
+            && (C.long(C.long((C.long(C.svm.moves) - C.long(otmp.age)))) > C.long((otmp.blessed ? 50n : 30n)))) ? 1 : 0)
+            && ((otmp.orotten
+            || !C.rn2(7, 3031, "doeat")) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) {
             if (rottenfood(otmp)) {
                 (otmp.orotten = 1);
                 (dont_start = C.int(1));
@@ -2892,15 +2942,19 @@ export function doeat()
     /* re-calc the nutrition */
     (basenutrit = C.int(C.int(obj_nutrition(otmp))));
 
-    if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline(
+    if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg);
+    C.pline(
      "before rounddiv: victual.reqtime == %d, oeaten == %d, basenutrit == %d",
-                C.svc.context.victual.reqtime, otmp.oeaten, basenutrit); (C.iflags.last_msg = C.int(save_plnmsg)); }
+                C.svc.context.victual.reqtime, otmp.oeaten, basenutrit);
+                (C.iflags.last_msg = C.int(save_plnmsg)); }
 
     (C.svc.context.victual.reqtime = C.int(((basenutrit == 0) ? 0 : C.rounddiv(C.long((C.long(C.svc.context.victual.reqtime) * C.long(C.long(otmp.oeaten)))),
                      basenutrit))));
 
-    if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("after rounddiv: victual.reqtime == %d",
-                C.svc.context.victual.reqtime); (C.iflags.last_msg = C.int(save_plnmsg)); }
+    if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg);
+    C.pline("after rounddiv: victual.reqtime == %d",
+                C.svc.context.victual.reqtime);
+                (C.iflags.last_msg = C.int(save_plnmsg)); }
     /*
      * calculate the modulo value (nutrit. units per round eating)
      * note: this isn't exact - you actually lose a little nutrition due
@@ -2925,7 +2979,6 @@ export function doeat()
 
 /* getobj callback for object to be opened with a tin opener */
 export function tinopen_ok(obj)
-
 {
     if (((obj && (obj.otyp == C.TIN)) ? 1 : 0))
         return C.int(C.GETOBJ_SUGGEST);
@@ -2933,9 +2986,7 @@ export function tinopen_ok(obj)
     return C.int(C.GETOBJ_EXCLUDE);
 }
 
-
 export function use_tin_opener(obj)
-
 {
     let otmp;
     let res = C.int(C.ECMD_OK);
@@ -2947,7 +2998,7 @@ export function use_tin_opener(obj)
 
     if (!C.samePtr(obj, C.uwep)) {
         if (((obj.cursed && obj.bknown) ? 1 : 0)) {
-            const qbuf=C.stackAlloc(C.QBUFSZ);
+            const qbuf = C.stackAlloc(C.QBUFSZ);
 
             if ((C.ynq(C.safe_qbuf(qbuf, "Really wield ", "?",
                               obj, C.doname, C.thesimpleoname, "that")) != 121))
@@ -2970,7 +3021,6 @@ export function use_tin_opener(obj)
  * modifying usedtime.  Returns 1 if they choked and survived, 0 otherwise.
  */
 export function bite()
-
 {
     /* hack to pacify static analyzer incorporated into gcc 12.2 */
     C.sa_victual(C.svc.context.victual);
@@ -2999,7 +3049,6 @@ export function bite()
 
 /* as time goes by - called by moveloop(every move) & domove(melee attack) */
 export function gethungry()
-
 {
     /* slow metabolic rate while asleep */
     /* more hungry if +/- is nonzero or +/- doesn't apply or
@@ -3019,7 +3068,12 @@ export function gethungry()
        this first uhunger decrement, but to stay in such form the hero
        will need to wear an Amulet of Unchanging so still burn a small
        amount of nutrition in the 'moves % 20' ring/amulet check below */
-    if (((((((!C.Unaware || !C.rn2(10, 3174, "gethungry")) ? 1 : 0) && ((((C.carnivorous(C.gy.youmonst.data) || C.herbivorous(C.gy.youmonst.data)) ? 1 : 0) || C.metallivorous(C.gy.youmonst.data)) ? 1 : 0)) ? 1 : 0) && !C.Slow_digestion) ? 1 : 0))
+    if (((((((!C.Unaware
+        || !C.rn2(10, 3174, "gethungry")) ? 1 : 0)
+        && ((((C.carnivorous(C.gy.youmonst.data)
+        || C.herbivorous(C.gy.youmonst.data)) ? 1 : 0)
+        || C.metallivorous(C.gy.youmonst.data)) ? 1 : 0)) ? 1 : 0)
+        && !C.Slow_digestion) ? 1 : 0))
         C.u.uhunger--; /* ordinary food consumption */
 
     /*
@@ -3035,7 +3089,8 @@ export function gethungry()
     (accessorytime = C.int(C.rn2(20, 3191, "gethungry"))); /* rn2(20) replaces (int) (svm.moves % 20L) */
     if ((accessorytime % 2)) { /* odd */
         /* Regeneration uses up food, unless due to an artifact */
-        if (((C.long((C.long(C.HRegeneration) & C.long(~C.FROMFORM))) || C.ulong((C.ulong(C.ERegeneration) & C.ulong(~(C.ulong((C.ulong(C.W_ARTI) | C.ulong(C.W_WEP)))))))) ? 1 : 0))
+        if (((C.long((C.long(C.HRegeneration) & C.long(~C.FROMFORM)))
+            || C.ulong((C.ulong(C.ERegeneration) & C.ulong(~(C.ulong((C.ulong(C.W_ARTI) | C.ulong(C.W_WEP)))))))) ? 1 : 0))
             C.u.uhunger--;
         if ((C.near_capacity() > C.SLT_ENCUMBER))
             C.u.uhunger--;
@@ -3072,11 +3127,24 @@ export function gethungry()
                turns; because of that, wearing two (non-slow digestion)
                rings plus the armor consumes more nutrition that one
                non-slow digestion ring plus ring of slow digestion */
-            if (((((C.Slow_digestion && ((!C.uright || (C.uright.otyp != C.RIN_SLOW_DIGESTION)) ? 1 : 0)) ? 1 : 0) && ((!C.uleft || (C.uleft.otyp != C.RIN_SLOW_DIGESTION)) ? 1 : 0)) ? 1 : 0))
+            if (((((C.Slow_digestion
+                && ((!C.uright
+                || (C.uright.otyp != C.RIN_SLOW_DIGESTION)) ? 1 : 0)) ? 1 : 0)
+                && ((!C.uleft
+                || (C.uleft.otyp != C.RIN_SLOW_DIGESTION)) ? 1 : 0)) ? 1 : 0))
                 C.u.uhunger--;
             break;
         case 4:
-            if (((((C.uleft && (C.uleft.otyp != C.MEAT_RING)) ? 1 : 0) && ((((C.uleft.spe || !C.objects[C.uleft.otyp].oc_charged) ? 1 : 0) || (((C.uleft.otyp == C.RIN_PROTECTION) && (((C.ulong(C.ulong((C.ulong(C.EProtection) & C.ulong(~C.W_RINGL)))) == C.ulong(0n)) || (((((((C.ulong(C.ulong((C.ulong(C.EProtection) & C.ulong(~C.W_RINGL)))) == C.ulong(C.W_RINGR)) && C.uright) ? 1 : 0) && (C.uright.otyp == C.RIN_PROTECTION)) ? 1 : 0) && !C.uright.spe) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
+            if (((((C.uleft
+                && (C.uleft.otyp != C.MEAT_RING)) ? 1 : 0)
+                && ((((C.uleft.spe
+                || !C.objects[C.uleft.otyp].oc_charged) ? 1 : 0)
+                || (((C.uleft.otyp == C.RIN_PROTECTION)
+                && (((C.ulong(C.ulong((C.ulong(C.EProtection) & C.ulong(~C.W_RINGL)))) == C.ulong(0n))
+                || (((((((C.ulong(C.ulong((C.ulong(C.EProtection) & C.ulong(~C.W_RINGL)))) == C.ulong(C.W_RINGR))
+                && C.uright) ? 1 : 0)
+                && (C.uright.otyp == C.RIN_PROTECTION)) ? 1 : 0)
+                && !C.uright.spe) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
                 C.u.uhunger--;
             break;
         case 8:
@@ -3084,7 +3152,12 @@ export function gethungry()
                 C.u.uhunger--;
             break;
         case 12:
-            if (((((C.uright && (C.uright.otyp != C.MEAT_RING)) ? 1 : 0) && ((((C.uright.spe || !C.objects[C.uright.otyp].oc_charged) ? 1 : 0) || (((C.uright.otyp == C.RIN_PROTECTION) && (C.ulong(C.ulong((C.ulong(C.EProtection) & C.ulong(~C.W_RINGR)))) == C.ulong(0n))) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
+            if (((((C.uright
+                && (C.uright.otyp != C.MEAT_RING)) ? 1 : 0)
+                && ((((C.uright.spe
+                || !C.objects[C.uright.otyp].oc_charged) ? 1 : 0)
+                || (((C.uright.otyp == C.RIN_PROTECTION)
+                && (C.ulong(C.ulong((C.ulong(C.EProtection) & C.ulong(~C.W_RINGR)))) == C.ulong(0n))) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
                 C.u.uhunger--;
             break;
         case 16:
@@ -3100,7 +3173,6 @@ export function gethungry()
 
 /* called after vomiting and after performing feats of magic */
 export function morehungry(num)
-
 {
     (num = C.int(C.int(num)));
     (C.u.uhunger = C.int((C.u.uhunger) - (num)));
@@ -3109,13 +3181,12 @@ export function morehungry(num)
 
 /* called after eating (and after drinking fruit juice) */
 export function lesshungry(num)
-
 {
     (num = C.int(C.int(num)));
     /* See comments in newuhs() for discussion on force_save_hs */
     let iseating = C.int((((C.go.occupation == eatfood) || C.gf.force_save_hs) ? 1 : 0));
 
-    if (C.debugcore("eat.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("lesshungry(%d)", num); (C.iflags.last_msg = C.int(save_plnmsg)); }
+    if (C.debugcore("eat.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("lesshungry(%d)", num); (C.iflags.last_msg = C.int(save_plnmsg)); }
     (C.u.uhunger = C.int((C.u.uhunger) + (num)));
     if ((C.u.uhunger >= 2000)) {
         if (((!iseating || C.svc.context.victual.canchoke) ? 1 : 0)) {
@@ -3131,7 +3202,11 @@ export function lesshungry(num)
         /* Have lesshungry() report when you're nearly full so all eating
          * warns when you're about to choke.
          */
-        if ((((((C.u.uhunger >= 1500) && !C.Hunger) ? 1 : 0) && ((!C.svc.context.victual.eating || ((C.svc.context.victual.eating && !C.svc.context.victual.fullwarn) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) {
+        if ((((((C.u.uhunger >= 1500)
+            && !C.Hunger) ? 1 : 0)
+            && ((!C.svc.context.victual.eating
+            || ((C.svc.context.victual.eating
+            && !C.svc.context.victual.fullwarn) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) {
             C.pline("You're having a hard time getting all of it down.");
             (C.gn.nomovemsg = "You're finally finished.");
             if (!C.svc.context.victual.eating) {
@@ -3152,7 +3227,6 @@ export function lesshungry(num)
 }
 
 export function unfaint()
-
 {
     Hear_again();
     if ((C.u.uhs > C.FAINTING))
@@ -3163,14 +3237,12 @@ export function unfaint()
 }
 
 export function is_fainted()
-
 {
     return C.int(C.boolean(((C.u.uhs == C.FAINTED))));
 }
 
 /* call when a faint must be prematurely terminated */
 export function reset_faint()
-
 {
     if ((C.ga.afternmv == unfaint))
         C.unmul("You revive.");
@@ -3178,7 +3250,6 @@ export function reset_faint()
 
 /* compute and comment on your (new?) hunger status */
 export function newuhs(incr)
-
 {
     (incr = C.int(C.boolean(incr)));
     let newhs;
@@ -3320,7 +3391,6 @@ export function newuhs(incr)
 
 /* getobj callback for object to eat - effectively just wraps is_edible() */
 export function eat_ok(obj)
-
 {
     /* 'getobj_else' will be non-zero if floor food is present and
        player declined to eat that; used to insert "else" into
@@ -3342,7 +3412,6 @@ export function eat_ok(obj)
 /* getobj callback for object to be offered (corpses and things that look like
  * the Amulet only */
 export function offer_ok(obj)
-
 {
     if (!obj)
         return C.int((C.getobj_else ? C.GETOBJ_EXCLUDE_NONINVENT : C.GETOBJ_EXCLUDE));
@@ -3363,7 +3432,6 @@ export function offer_ok(obj)
 
 /* getobj callback for object to be tinned */
 export function tin_ok(obj)
-
 {
     if (!obj)
         return C.int((C.getobj_else ? C.GETOBJ_EXCLUDE_NONINVENT : C.GETOBJ_EXCLUDE));
@@ -3387,7 +3455,7 @@ export function floorfood(
 {
     (corpsecheck = C.int(C.int(corpsecheck)));
     let otmp;
-    const qbuf=C.stackAlloc(C.QBUFSZ);
+    const qbuf = C.stackAlloc(C.QBUFSZ);
     let c;
     let uptr = C.gy.youmonst.data;
     let feeding = C.int(!C.strcmp(verb, "eat")),        /* corpsecheck==0 */
@@ -3400,7 +3468,15 @@ export function floorfood(
     /* if we can't touch floor objects then use invent food only;
        same when 'm' prefix is used--for #eat, it means "skip floor food" */
     skipfloor: {
-    if (((((((C.iflags.menu_requested || !C.can_reach_floor(1)) ? 1 : 0) || ((feeding && C.u.usteed) ? 1 : 0)) ? 1 : 0) || ((C.is_pool_or_lava(C.u.ux, C.u.uy) && ((((C.Wwalking || C.is_clinger(uptr)) ? 1 : 0) || ((C.Flying && !C.Breathless) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
+    if (((((((C.iflags.menu_requested
+        || !C.can_reach_floor(1)) ? 1 : 0)
+        || ((feeding
+        && C.u.usteed) ? 1 : 0)) ? 1 : 0)
+        || ((C.is_pool_or_lava(C.u.ux, C.u.uy)
+        && ((((C.Wwalking
+        || C.is_clinger(uptr)) ? 1 : 0)
+        || ((C.Flying
+        && !C.Breathless) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
         break skipfloor;
 
     if (((feeding && C.metallivorous(uptr)) ? 1 : 0)) {
@@ -3422,7 +3498,7 @@ export function floorfood(
                 if (u_in_beartrap)
                     C.reset_utrap(1);
                 (beartrap = C.mksobj(C.BEARTRAP, 1, 0));
-                C.Sprintf(qbuf,"You only manage to %s the bear trap.",
+                C.Sprintf(qbuf, "You only manage to %s the bear trap.",
                         (u_in_beartrap ? "free yourself from" : "disarm"));
                 if (((C.check_capacity(qbuf) && beartrap) ? 1 : 0)) {
                     C.obj_extract_self(beartrap);
@@ -3446,7 +3522,8 @@ export function floorfood(
                       (nodig ? "cannot" : "are too full to"));
             } else {
                 C.Strcat(qbuf, (((((!C.svc.context.digging.chew || !C.u_at(C.svc.context.digging.pos.x,
-                                       C.svc.context.digging.pos.y)) ? 1 : 0) || !C.on_level(C.svc.context.digging.level, C.u.uz)) ? 1 : 0) ? "; eat them?" : "; resume eating them?"));
+                                       C.svc.context.digging.pos.y)) ? 1 : 0)
+                                           || !C.on_level(C.svc.context.digging.level, C.u.uz)) ? 1 : 0) ? "; eat them?" : "; resume eating them?"));
                 (c = C.int(C.yn_function(qbuf, C.ynqchars, 110, 1)));
             }
             if ((c == 121))
@@ -3472,8 +3549,11 @@ export function floorfood(
 
     /* Is there some food (probably a heavy corpse) here on the ground? */
     for ((otmp = C.svl.level.objects[C.u.ux][C.u.uy]); otmp; (otmp = otmp.nexthere)) {
-        if ((corpsecheck ? (((otmp.otyp == C.CORPSE) && (((corpsecheck == 1) || C.tinnable(otmp)) ? 1 : 0)) ? 1 : 0) : (feeding ? (((otmp.oclass != C.COIN_CLASS) && is_edible(otmp)) ? 1 : 0) : (otmp.oclass == C.FOOD_CLASS)))) {
-            const qsfx=C.stackAlloc(C.QBUFSZ);
+        if ((corpsecheck ? (((otmp.otyp == C.CORPSE)
+            && (((corpsecheck == 1)
+            || C.tinnable(otmp)) ? 1 : 0)) ? 1 : 0) : (feeding ? (((otmp.oclass != C.COIN_CLASS)
+            && is_edible(otmp)) ? 1 : 0) : (otmp.oclass == C.FOOD_CLASS)))) {
+            const qsfx = C.stackAlloc(C.QBUFSZ);
             let one = (C.int((C.long(otmp.quan) == C.long(1n))));
 
             /* if blind and without gloves, attempting to eat (or tin or
@@ -3499,7 +3579,6 @@ export function floorfood(
             ++C.getobj_else;
         }
     }
-
     }
     /* We cannot use GETOBJ_PROMPT since we don't want a prompt in the case
        where nothing edible is being carried. */
@@ -3579,7 +3658,6 @@ export function vomit()
 }
 
 export function eaten_stat(base, obj)
-
 {
     (base = C.int(C.int(base)));
     let uneaten_amt, full_amount;
@@ -3600,11 +3678,10 @@ export function eaten_stat(base, obj)
 
 /* reduce obj's oeaten field, making sure it never hits or passes 0 */
 export function consume_oeaten(obj, amt)
-
 {
     (amt = C.int(C.int(amt)));
     if (!obj_nutrition(obj)) {
-        const itembuf=C.stackAlloc(40);
+        const itembuf = C.stackAlloc(40);
         let otyp = C.int(obj.otyp);
 
         if ((((((otyp == C.CORPSE) || (C.long(otyp) == C.long(C.EGG))) ? 1 : 0) || (otyp == C.TIN)) ? 1 : 0)) {
@@ -3668,7 +3745,6 @@ export function consume_oeaten(obj, amt)
 /* called when eatfood occupation has been interrupted,
    or in the case of theft, is about to be interrupted */
 export function maybe_finished_meal(stopping)
-
 {
     (stopping = C.int(C.boolean(stopping)));
     /* in case consume_oeaten() has decided that the food is all gone */
@@ -3684,7 +3760,6 @@ export function maybe_finished_meal(stopping)
 
 /* called by revive(); sort of the opposite of maybe_finished_meal() */
 export function cant_finish_meal(corpse)
-
 {
     /*
      * When a corpse gets resurrected, the makemon() for that might
@@ -3695,7 +3770,7 @@ export function cant_finish_meal(corpse)
      */
     if ((((C.go.occupation == eatfood) && C.samePtr(C.svc.context.victual.piece, corpse)) ? 1 : 0)) {
         /* normally performed by done_eating() */
-        C.copyStruct(C.svc.context.victual,C.zero_victual,C.victualSize); /* victual.piece = 0, .o_id = 0 */
+        C.copyStruct(C.svc.context.victual, C.zero_victual, C.victualSize); /* victual.piece = 0, .o_id = 0 */
 
         if (!corpse.oeaten)
             (corpse.oeaten = C.uint(1)); /* [see consume_oeaten()] */
@@ -3711,7 +3786,6 @@ export function cant_finish_meal(corpse)
    effects there take place on first bite rather than at end of occupation.
    [Popeye the Sailor gets out of trouble by eating tins of spinach. :-] */
 export function Popeye(threat)
-
 {
     (threat = C.int(C.int(threat)));
     let otin;
@@ -3751,7 +3825,6 @@ export function Popeye(threat)
 /* the hero has swallowed a monster whole as a purple worm or similar, and has
    finished digesting its corpse (called via ga.afternmv) */
 export function Finish_digestion()
-
 {
     if ((C.gc.corpsenm_digested != C.NON_PM)) {
         C.callLocal(cpostfx, C.gc.corpsenm_digested);

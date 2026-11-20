@@ -4,9 +4,6 @@ import { C } from '../c-runtime/context.js';
 /* Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /*
  * Argument processing helpers - for xxmain() to share
  * and call.
@@ -395,7 +392,7 @@ export function argcheck(argc, argv, e_arg)
 
         if (!extended_opt)
             extended_opt = C.strchr(userea, 61);
-        switch(e_arg) {
+        switch (e_arg) {
         case C.ARG_DEBUG:
             if (extended_opt) {
                 let cpy_extended_opt;
@@ -454,7 +451,8 @@ export function argcheck(argc, argv, e_arg)
         default:
             break;
         }
-    };
+    }
+    ;
     return 0;
 }
 
@@ -484,7 +482,6 @@ export function debug_fields(opts)
     if (C.strlen(opts) > C.BUFSZ / 2)
         return;
 
-
     /* strip leading and trailing white space */
     while (C.isspace(C.uchar(C.loadChar(opts))))
         opts++;
@@ -511,7 +508,6 @@ export function debug_fields(opts)
         C.iflags.fuzzerpending = 1;
     return;
 }
-
 
 /* monsdump[] and objdump[] are also used in utf8map.c */
 /* the enums are not part of hack.h for this one */
@@ -1833,8 +1829,6 @@ export function dump_glyphids()
 }
 
 /*allmain.c*/
-
-
 
 // Original comments for inactive CPP branches and declaration annotations.
 /* -x:value could work but is not supported (callers don't expect it) \

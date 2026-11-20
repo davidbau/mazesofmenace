@@ -4,14 +4,8 @@
 
 import { C } from '../c-runtime/context.js';
 
-
 /* Monsters that might be ridden */
-export const steeds = [ 'S_QUADRUPED', 'S_UNICORN', 'S_ANGEL',
-                                        'S_CENTAUR',   'S_DRAGON',  'S_JABBERWOCK',
-                                        0 ];
-
-
-
+export const steeds = ['S_QUADRUPED', 'S_UNICORN', 'S_ANGEL', 'S_CENTAUR', 'S_DRAGON', 'S_JABBERWOCK', 0];
 
 /* caller has decided that hero can't reach something while mounted */
 export function rider_cant_reach()

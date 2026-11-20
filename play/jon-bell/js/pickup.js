@@ -785,7 +785,12 @@ const _LOADSTONE_OTYP = 471;
 const _COIN_CLASS = 12;
 const _LAVAPOOL_TYP = 20, _LAVAWALL_TYP = 21;
 const _M1_NOTAKE = 0x00000800;   /* monflag.h */
-const _M1_HIDE = 0x00000100;     /* monflag.h — hides_under() */
+/* monflag.h:92 M1_CONCEAL 0x00000080L "hides under objects" — the bit
+ * mondata.h:35 hides_under(ptr) tests.  The previous value here,
+ * 0x00000100, is monflag.h:93 M1_HIDE ("mimics, blends in with ceiling"),
+ * a DIFFERENT flag: is_hider(), not hides_under().  Same wrong-macro class
+ * js/dig.js:1927-1934 documents catching (0x08000000 = M1_ACID there). */
+const _M1_CONCEAL = 0x00000080;  /* monflag.h — hides_under() */
 const _invlet_basic = 52;        /* hack.h invlet_basic */
 
 function _OBJ_AT(x, y) {
@@ -816,9 +821,8 @@ function notake(data) {
     return !!(data && ((data.mflags1 | 0) & _M1_NOTAKE) !== 0);
 }
 
-/* C ref: mondata.h hides_under(ptr) = ((ptr->mflags1 & M1_HIDE) != 0). */
 function _hides_under(data) {
-    return !!(data && ((data.mflags1 | 0) & _M1_HIDE) !== 0);
+    return !!(data && ((data.mflags1 | 0) & _M1_CONCEAL) !== 0);
 }
 
 /* C ref: rm.h:133-136 SURFACE_AT(x,y) and dbridge.c:115-128 db_under_typ().
@@ -3124,9 +3128,25 @@ async function _tip_target_destination(box) {
     const frameRows = () => build_window_screen(
         titleErased ? ['', ...lines.slice(1)] : lines, column, game.u?.uac | 0,
         undefined, undefined, fullScreen).split('\n');
+    let counting = false, count = 0;
     for (;;) {
-        const key = await nhgetch();
-        if (key === 27) return await finish(true, null);
+        const key = await nhgetch(), morc = String.fromCharCode(key);
+        if (key >= 48 && key <= 57) {
+            /* C wintty.c:1564-1603: digits build a count; keys outside resp stay
+             * inside xwaitforspace(resp) without resetting it. */
+            count = count * 10 + (key - 48);
+            if (count !== 0) counting = true;
+            continue;
+        }
+        if (key === 27) {
+            game._ttyDismissMore = 1;
+            if (counting) { counting = false; count = 0; continue; }
+            return await finish(true, null);
+        }
+        if (key === (game._ttyDismissMore | 0) || '<>^|,\\~.@:'.indexOf(morc) >= 0
+            || (game.mapped_menu_cmds || '').indexOf(morc) >= 0) {
+            counting = false; count = 0;
+        }
         if (key === 0x3a) {
             /* pmatchi() runs against tty_add_menu's stored "%c - %s" text;
              * unavailable rows have no identifier and are skipped. */

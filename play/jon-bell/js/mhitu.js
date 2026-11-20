@@ -241,7 +241,7 @@ import { monkilled_trap as monkilled_mu, openholdingtrap as openholdingtrap_mu }
 import { thitu } from './mthrowu.js';
 import { t_at as t_at_mu } from './trap.js';
 /* ── engulf/swallow (gulpmu, expels) ── */
-import { failed_grab as failed_grab_mu } from './mhitm.js';
+import { engulf_target, failed_grab as failed_grab_mu } from './mhitm.js';
 import monMsizePack_mu from './makemon_msize.json' with { type: 'json' };
 const MONS_MSIZE_MU = monMsizePack_mu.msize;
 import { place_monster as place_monster_mu } from './steed.js';
@@ -2804,25 +2804,6 @@ function _Breathless_wrap() {
         || !!(((game.youmonst?.data?.mflags1 | 0) & 0x00000400 /* M1_BREATHLESS */));
 }
 const M1_SLITHY_MU = 0x00080000, S_SNAKE_MU = 45, S_NAGA_MU = 40;
-function _failed_grab_u(mtmp, mattk) {
-    const heroMndx = _hero_form_mndx_mu();
-    const heroUnsolid = (_kb_mflags1(heroMndx) & M1_UNSOLID_) !== 0;
-    const notonhead = !!(game.gn && game.gn.notonhead);
-    if ((heroUnsolid || notonhead)
-        && (mattk.aatyp === AT_HUGS_ || mattk.adtyp === AD_WRAP_
-            || mattk.adtyp === AD_STCK_ || mattk.adtyp === AD_DGST_GU)) {
-        const magrnam = s_suffix(Monnam(mtmp));
-        const mdefnam = !notonhead ? 'you'
-            : `${s_suffix(some_mon_nam(mtmp))} tail`;
-        const verb = mattk.adtyp === AD_DGST_GU ? 'gulp'
-            : mattk.adtyp === AD_STCK_ ? 'adhere' : 'grab';
-        pline(`${magrnam} ${verb} attempt `
-            + `${!notonhead ? 'passes right through' : 'fails to hold'} `
-            + `${mdefnam}!`);
-        return true;
-    }
-    return false;
-}
 async function mhitm_ad_drst_u(mtmp, mattk, mhm) {
     const negated = mhitm_mgc_atk_negated_u(false, mtmp);
     let ptmp = A_STR_AD;
@@ -3816,7 +3797,6 @@ function _uprop_on_gu(idx) {
     return !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
 }
 const SLOW_DIGESTION_GU = 54; /* const.js SLOW_DIGESTION */
-const PASSES_WALLS_GU = 53; /* const.js PASSES_WALLS */
 const COLD_RES_GU = 2, FIRE_RES_GU = 1, SHOCK_RES_GU = 5, ACID_RES_GU = 7;
 function Cold_resistance_gu() {
     return _uprop_on_gu(COLD_RES_GU);
@@ -3835,54 +3815,7 @@ function Acid_resistance_gu() {
  * change — the same no-op js/worm.js, js/makemon.js and js/dogmove.js already
  * carry for it.  Kept as a named call so the C shape stays readable. */
 function remove_monster_gu(_x, _y) { }
-/* C ref: mhitm.c engulf_target(magr, mdef) — with mdef == &gy.youmonst.
- * js/dogmove.js's exported engulf_target is written for the MON-vs-MON case:
- * it recognises the hero only by identity with game.youmonst and then reads
- * `game.hero.ux`, a record nothing in js/ builds, so for the hero it falls
- * through to locations[0][0] (solid stone) and refuses every engulf.  This is
- * the same predicate against the hero's real square.
- *   if (mdef->data->msize >= MZ_HUGE
- *       || (magr->data->msize < mdef->data->msize && !is_whirly(magr->data)))
- *       return FALSE;
- *   if (mdef->mtrapped || magr->mtrapped) return FALSE;
- *   <terrain checks on both squares>
- * The two terrain tests are the "phasing in solid rock" guard; the hero and
- * the engulfer are on the same accessible square by the time AT_ENGL fires
- * (the attack is melee-range only), so they collapse to the hero's own tile. */
 const MZ_HUGE_GU = 4;
-function engulf_target_hero_mu(magr) {
-    const u = game.u || {};
-    const heroMndx = (u.umonnum ?? -1) | 0;
-    const magrMndx = (magr?.mnum ?? magr?.mndx ?? -1) | 0;
-    const msizeOf = (n) => (n >= 0 && n < MONS_MSIZE_MU.length) ? (MONS_MSIZE_MU[n] | 0) : 0;
-    const defSize = msizeOf(heroMndx), agrSize = msizeOf(magrMndx);
-    if (defSize >= MZ_HUGE_GU
-        || (agrSize < defSize && !is_whirly_gu(magrMndx, magr?.data)))
-        return false;
-    /* mdef->mtrapped is youmonst.mtrapped, which the hero's own traps (u.utrap)
-     * never set, so a web-trapped hero can still be engulfed (the engulf then
-     * releases them, mhitu.c:1352). */
-    if (magr?.mtrapped | 0)
-        return false;
-    /* mhitm.c:828-841 — the "phasing in solid rock" guard, for the hero's
-     * square (mdef) and the engulfer's square (magr).  Passes_walls is the
-     * hero property (set by polymon for a wall-walker); passes_walls(magr->data)
-     * is M1_WALLWALK. */
-    const M1_WALLWALK_GU = 0x00000008, TREE_GU = 13;
-    const blocked = (x, y, ironbarsOk) => {
-        const l = game.level?.at?.(x, y);
-        return !!l && (IS_OBSTRUCTED_MU(l.typ | 0) || closed_door_mu(x, y)
-                       || (l.typ | 0) === TREE_GU
-                       || ((l.typ | 0) === IRONBARS_MU && !ironbarsOk));
-    };
-    if (!_uprop_on_gu(PASSES_WALLS_GU)
-        && blocked(u.ux | 0, u.uy | 0, is_whirly_gu(magrMndx, magr?.data)))
-        return false;
-    if (!(((magr?.data?.mflags1 | 0) & M1_WALLWALK_GU) !== 0)
-        && blocked(magr.mx | 0, magr.my | 0, is_whirly_gu(heroMndx, null)))
-        return false;
-    return true;
-}
 
 export async function expels_gu(mtmp, mndx, message) {
     /* Callers may pass a live monster number (`mnum`), while the attack table
@@ -4019,7 +3952,9 @@ async function gulpmu(mtmp, mattk) {
     if (!(u.uswallow | 0)) { /* swallows you */
         const omx = mtmp.mx | 0, omy = mtmp.my | 0;
 
-        if (!engulf_target_hero_mu(mtmp))
+        /* C mhitu.c:1301 uses the same mhitm.c:807 predicate as gulpmm
+         * and gulpum, with the canonical hero monster as defender. */
+        if (!engulf_target(mtmp, _hero_monst_mu()))
             return M_ATTK_MISS;
         /* C: (t && is_pit(t->ttyp)) && sobj_at(BOULDER, u.ux, u.uy) — a hero in
          * a pit under a boulder cannot be engulfed.  Both halves are RNG-free. */
@@ -4894,8 +4829,8 @@ export async function mattacku(mtmp) {
                          * grab-type attack (AT_TENT/AD_WRAP eel, AT_TUCH/
                          * AD_STCK mimic/lichen) right through.  Was entirely
                          * unported for this arm (only AT_HUGS_ called
-                         * _failed_grab_u before). */
-                        if (_failed_grab_u(mtmp, mattk))
+                         * failed_grab before). */
+                        if (await failed_grab_mu(mtmp, _hero_monst_mu(), mattk))
                             continue;
                         /* C mhitu.c:809-810 — a thick-hided hero form (e.g.
                          * polymorphed into an iron golem) takes no damage
@@ -5036,7 +4971,7 @@ export async function mattacku(mtmp) {
             case AT_HUGS_: {
                 if ((!range2 && i >= 2 && sum[i - 1] && sum[i - 2])
                     || mtmp === u.ustuck) {
-                    if (!_failed_grab_u(mtmp, mattk))
+                    if (!await failed_grab_mu(mtmp, _hero_monst_mu(), mattk))
                         sum[i] = await hitmu_je(mtmp, mattk);
                 }
                 break;

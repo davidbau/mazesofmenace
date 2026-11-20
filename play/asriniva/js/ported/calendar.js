@@ -56,7 +56,6 @@ export function getyear()
     return (1900 + getlt().tm_year) | 0;
 }
 
-
 export function yyyymmdd(date)
 {
     let datenum;
@@ -232,4 +231,3 @@ export function midnight()
 }
 
 /* calendar.c */
-

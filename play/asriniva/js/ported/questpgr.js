@@ -5,10 +5,7 @@ export const QTEXT_FILE = "quest.lua";
 /*      Copyright 1991, M. Stephenson                             */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 /*  quest-specific pager routines. */
-
-
 
 /* sometimes find_qarti(gi.invent), and gi.invent can be null */
 
@@ -163,7 +160,8 @@ export function stinky_nemesis(mon)
 export function qtext_pronoun(who, which)
 /* 'd' => deity, 'l' => leader, 'n' => nemesis, 'o' => arti */ /* 'h'|'H'|'i'|'I'|'j'|'J' */
 {
-    who = C.char(who); which = C.char(which);
+    who = C.char(who);
+    which = C.char(which);
     let pnoun;
     let godgend;
     let lwhich = C.lowc(which); /* H,I,J -> h,i,j */
@@ -337,7 +335,7 @@ export function convert_line(in_line, out_line)
                 /* pluralize */
                 case 'P'.charCodeAt(0):
                     C.storeChar(C.gc.cvt_buf, C.highc(C.loadChar(C.gc.cvt_buf)));
-                    
+
                     /*FALLTHRU*/
                 case 'p'.charCodeAt(0):
                     C.Strcpy(C.gc.cvt_buf, C.makeplural(C.gc.cvt_buf));
@@ -346,7 +344,7 @@ export function convert_line(in_line, out_line)
                 /* append possessive suffix */
                 case 'S'.charCodeAt(0):
                     C.storeChar(C.gc.cvt_buf, C.highc(C.loadChar(C.gc.cvt_buf)));
-                    
+
                     /*FALLTHRU*/
                 case 's'.charCodeAt(0):
                     C.Strcpy(C.gc.cvt_buf, C.s_suffix(C.gc.cvt_buf));
@@ -369,7 +367,7 @@ export function convert_line(in_line, out_line)
                 cc += C.strlen(C.gc.cvt_buf);
                 break;
             }
-            
+
             /* FALLTHRU */
         default:
             C.storeChar(cc++, C.loadChar(c));
@@ -437,7 +435,7 @@ export function com_pager_core(section, msgid, showerror, rawtext)
     let L;
     let text = 0, synopsis = 0, fallback_msgid = 0;
     let res = 0;
-    const sbi = C.sandboxLocal(C.NHL_SB_SAFE, 1*1024*1024, 0, 1*1024*1024);
+    const sbi = C.sandboxLocal(C.NHL_SB_SAFE, 1 * 1024 * 1024, 0, 1 * 1024 * 1024);
 
     compagerdone: {
     if (skip_pager(1))
@@ -614,7 +612,6 @@ export function deliver_splev_message()
         C.gl.lev_message = 0;
     }
 }
-
 
 /*questpgr.c*/
 

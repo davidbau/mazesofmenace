@@ -8,17 +8,6 @@ import { C } from '../c-runtime/context.js';
 /* Ball & Chain
  * =============================================================*/
 
-
-
-
-
-
-
-
-
-
-
-
 export function ballrelease(showmsg)
 {
     showmsg = C.boolean(showmsg);
@@ -185,7 +174,6 @@ export function check_restriction(restriction)
     return ret;
 }
 
-
 export function placebc()
 {
     if (!check_restriction(0)) {
@@ -248,8 +236,6 @@ if (C.config_DEVELOPMENT_LOG) {
 }
 
 /* BREADCRUMBS */
-
-
 
 /*
  *  Return the stacking of the hero's ball & chain.  This assumes that the
@@ -535,8 +521,15 @@ export function drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, cause_
         goto drag;                                                 \
     } while (0) */
 
-        if ((C.IS_OBSTRUCTED(C.levl[C.u.ux][C.u.uy].typ) || (C.IS_DOOR(C.levl[C.u.ux][C.u.uy].typ) && (C.levl[C.u.ux][C.u.uy].doormask & (C.D_CLOSED | C.D_LOCKED)))) || (C.IS_OBSTRUCTED(C.levl[chainx.value][chainy.value].typ) || (C.IS_DOOR(C.levl[chainx.value][chainy.value].typ) && (C.levl[chainx.value][chainy.value].doormask & (C.D_CLOSED | C.D_LOCKED))))
-            || (C.IS_OBSTRUCTED(C.levl[C.uball.ox][C.uball.oy].typ) || (C.IS_DOOR(C.levl[C.uball.ox][C.uball.oy].typ) && (C.levl[C.uball.ox][C.uball.oy].doormask & (C.D_CLOSED | C.D_LOCKED)))))
+        if ((C.IS_OBSTRUCTED(C.levl[C.u.ux][C.u.uy].typ)
+            || (C.IS_DOOR(C.levl[C.u.ux][C.u.uy].typ)
+            && (C.levl[C.u.ux][C.u.uy].doormask & (C.D_CLOSED | C.D_LOCKED))))
+            || (C.IS_OBSTRUCTED(C.levl[chainx.value][chainy.value].typ)
+            || (C.IS_DOOR(C.levl[chainx.value][chainy.value].typ)
+            && (C.levl[chainx.value][chainy.value].doormask & (C.D_CLOSED | C.D_LOCKED))))
+            || (C.IS_OBSTRUCTED(C.levl[C.uball.ox][C.uball.oy].typ)
+                || (C.IS_DOOR(C.levl[C.uball.ox][C.uball.oy].typ)
+                && (C.levl[C.uball.ox][C.uball.oy].doormask & (C.D_CLOSED | C.D_LOCKED)))))
             already_in_rock = 1;
         else
             already_in_rock = 0;
@@ -546,7 +539,10 @@ export function drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, cause_
         case 8:
             chainx.value = Math.trunc((C.uball.ox + x) / 2);
             chainy.value = Math.trunc((C.uball.oy + y) / 2);
-            if ((C.IS_OBSTRUCTED(C.levl[chainx.value][chainy.value].typ) || (C.IS_DOOR(C.levl[chainx.value][chainy.value].typ) && (C.levl[chainx.value][chainy.value].doormask & (C.D_CLOSED | C.D_LOCKED)))) && !already_in_rock)
+            if ((C.IS_OBSTRUCTED(C.levl[chainx.value][chainy.value].typ)
+                || (C.IS_DOOR(C.levl[chainx.value][chainy.value].typ)
+                && (C.levl[chainx.value][chainy.value].doormask & (C.D_CLOSED | C.D_LOCKED))))
+                && !already_in_rock)
                 {
                     chainx.value = oldchainx;
                     chainy.value = oldchainy;
@@ -575,7 +571,12 @@ export function drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, cause_
                 tempy = y;
                 tempy2 = C.uball.oy;
             }
-            if ((C.IS_OBSTRUCTED(C.levl[tempx][tempy].typ) || (C.IS_DOOR(C.levl[tempx][tempy].typ) && (C.levl[tempx][tempy].doormask & (C.D_CLOSED | C.D_LOCKED)))) && !(C.IS_OBSTRUCTED(C.levl[tempx2][tempy2].typ) || (C.IS_DOOR(C.levl[tempx2][tempy2].typ) && (C.levl[tempx2][tempy2].doormask & (C.D_CLOSED | C.D_LOCKED))))
+            if ((C.IS_OBSTRUCTED(C.levl[tempx][tempy].typ)
+                || (C.IS_DOOR(C.levl[tempx][tempy].typ)
+                && (C.levl[tempx][tempy].doormask & (C.D_CLOSED | C.D_LOCKED))))
+                && !(C.IS_OBSTRUCTED(C.levl[tempx2][tempy2].typ)
+                || (C.IS_DOOR(C.levl[tempx2][tempy2].typ)
+                && (C.levl[tempx2][tempy2].doormask & (C.D_CLOSED | C.D_LOCKED))))
                 && !already_in_rock) {
                 if (allow_drag) {
                     /* Avoid pathological case *if* not teleporting:
@@ -607,8 +608,13 @@ export function drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, cause_
                 }
                 chainx.value = tempx2;
                 chainy.value = tempy2;
-            } else if (!(C.IS_OBSTRUCTED(C.levl[tempx][tempy].typ) || (C.IS_DOOR(C.levl[tempx][tempy].typ) && (C.levl[tempx][tempy].doormask & (C.D_CLOSED | C.D_LOCKED))))
-                       && (C.IS_OBSTRUCTED(C.levl[tempx2][tempy2].typ) || (C.IS_DOOR(C.levl[tempx2][tempy2].typ) && (C.levl[tempx2][tempy2].doormask & (C.D_CLOSED | C.D_LOCKED)))) && !already_in_rock) {
+            } else if (!(C.IS_OBSTRUCTED(C.levl[tempx][tempy].typ)
+                || (C.IS_DOOR(C.levl[tempx][tempy].typ)
+                && (C.levl[tempx][tempy].doormask & (C.D_CLOSED | C.D_LOCKED))))
+                       && (C.IS_OBSTRUCTED(C.levl[tempx2][tempy2].typ)
+                           || (C.IS_DOOR(C.levl[tempx2][tempy2].typ)
+                           && (C.levl[tempx2][tempy2].doormask & (C.D_CLOSED | C.D_LOCKED))))
+                           && !already_in_rock) {
                 if (allow_drag) {
                     if (C.dist2(C.u.ux, C.u.uy, C.uball.ox, C.uball.oy) == 5
                         && C.dist2(x, y, tempx2, tempy2) == 1)
@@ -629,8 +635,13 @@ export function drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, cause_
                 }
                 chainx.value = tempx;
                 chainy.value = tempy;
-            } else if ((C.IS_OBSTRUCTED(C.levl[tempx][tempy].typ) || (C.IS_DOOR(C.levl[tempx][tempy].typ) && (C.levl[tempx][tempy].doormask & (C.D_CLOSED | C.D_LOCKED))))
-                       && (C.IS_OBSTRUCTED(C.levl[tempx2][tempy2].typ) || (C.IS_DOOR(C.levl[tempx2][tempy2].typ) && (C.levl[tempx2][tempy2].doormask & (C.D_CLOSED | C.D_LOCKED)))) && !already_in_rock) {
+            } else if ((C.IS_OBSTRUCTED(C.levl[tempx][tempy].typ)
+                || (C.IS_DOOR(C.levl[tempx][tempy].typ)
+                && (C.levl[tempx][tempy].doormask & (C.D_CLOSED | C.D_LOCKED))))
+                       && (C.IS_OBSTRUCTED(C.levl[tempx2][tempy2].typ)
+                           || (C.IS_DOOR(C.levl[tempx2][tempy2].typ)
+                           && (C.levl[tempx2][tempy2].doormask & (C.D_CLOSED | C.D_LOCKED))))
+                           && !already_in_rock) {
                 {
                     chainx.value = oldchainx;
                     chainy.value = oldchainy;
@@ -658,7 +669,10 @@ export function drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, cause_
                 break;
             chainx.value = Math.trunc((x + C.uball.ox) / 2);
             chainy.value = Math.trunc((y + C.uball.oy) / 2);
-            if ((C.IS_OBSTRUCTED(C.levl[chainx.value][chainy.value].typ) || (C.IS_DOOR(C.levl[chainx.value][chainy.value].typ) && (C.levl[chainx.value][chainy.value].doormask & (C.D_CLOSED | C.D_LOCKED)))) && !already_in_rock)
+            if ((C.IS_OBSTRUCTED(C.levl[chainx.value][chainy.value].typ)
+                || (C.IS_DOOR(C.levl[chainx.value][chainy.value].typ)
+                && (C.levl[chainx.value][chainy.value].doormask & (C.D_CLOSED | C.D_LOCKED))))
+                && !already_in_rock)
                 {
                     chainx.value = oldchainx;
                     chainy.value = oldchainy;
@@ -682,7 +696,10 @@ export function drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, cause_
                     chainx.value = C.uball.ox;
                 else
                     chainy.value = C.uball.oy;
-                if ((C.IS_OBSTRUCTED(C.levl[chainx.value][chainy.value].typ) || (C.IS_DOOR(C.levl[chainx.value][chainy.value].typ) && (C.levl[chainx.value][chainy.value].doormask & (C.D_CLOSED | C.D_LOCKED)))) && !already_in_rock)
+                if ((C.IS_OBSTRUCTED(C.levl[chainx.value][chainy.value].typ)
+                    || (C.IS_DOOR(C.levl[chainx.value][chainy.value].typ)
+                    && (C.levl[chainx.value][chainy.value].doormask & (C.D_CLOSED | C.D_LOCKED))))
+                    && !already_in_rock)
                     {
                     chainx.value = oldchainx;
                     chainy.value = oldchainy;
@@ -718,7 +735,6 @@ export function drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, cause_
 // #undef CHAIN_IN_MIDDLE
         return 1;
     }
-
 
     if (C.near_capacity() > C.SLT_ENCUMBER && C.dist2(x, y, C.u.ux, C.u.uy) <= 2) {
         C.You("cannot %sdrag the heavy iron ball.",
@@ -796,10 +812,14 @@ export function drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, cause_
          * the potential between location is inaccessible.
          */
         if (C.dist2(x, y, C.uchain.ox, C.uchain.oy) == 4
-            && !(C.IS_OBSTRUCTED(C.levl[newchainx][newchainy].typ) || (C.IS_DOOR(C.levl[newchainx][newchainy].typ) && (C.levl[newchainx][newchainy].doormask & (C.D_CLOSED | C.D_LOCKED))))) {
+            && !(C.IS_OBSTRUCTED(C.levl[newchainx][newchainy].typ)
+                || (C.IS_DOOR(C.levl[newchainx][newchainy].typ)
+                && (C.levl[newchainx][newchainy].doormask & (C.D_CLOSED | C.D_LOCKED))))) {
             newchainx = Math.trunc((x + C.uchain.ox) / 2);
             newchainy = Math.trunc((y + C.uchain.oy) / 2);
-            if ((C.IS_OBSTRUCTED(C.levl[newchainx][newchainy].typ) || (C.IS_DOOR(C.levl[newchainx][newchainy].typ) && (C.levl[newchainx][newchainy].doormask & (C.D_CLOSED | C.D_LOCKED))))) {
+            if ((C.IS_OBSTRUCTED(C.levl[newchainx][newchainy].typ)
+                || (C.IS_DOOR(C.levl[newchainx][newchainy].typ)
+                && (C.levl[newchainx][newchainy].doormask & (C.D_CLOSED | C.D_LOCKED))))) {
                 /* don't let chain move to inaccessible location */
                 newchainx = C.u.ux;
                 newchainy = C.u.uy;
@@ -1047,4 +1067,3 @@ export function bc_sanity_check()
 }
 
 /*ball.c*/
-

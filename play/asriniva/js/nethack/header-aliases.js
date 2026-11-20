@@ -3108,7 +3108,12 @@ const profileDeclarations={
       ]
     }
   ],
-  "wizcmds": []
+  "wizcmds": [
+    {
+      "shape": ["rm", true, false, false],
+      "fields": [["wall_info", ["flags"]]]
+    }
+  ]
 };
 const prototypeProfiles={
   "hack": [

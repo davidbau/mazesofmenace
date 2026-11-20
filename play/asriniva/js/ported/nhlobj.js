@@ -4,11 +4,6 @@ import {C} from '../c-runtime/context.js';
 /*      Copyright (c) 2019 by Pasi Kallinen */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
 /* UNUSED */
 
 // #define lobj_is_ok(lo) ((lo) && (lo)->obj && (lo)->obj->where != OBJ_LUAFREE)
@@ -136,7 +131,6 @@ export function nhl_obj_u_giveobj(L)
     return 0;
 }
 
-
 /* Get a table of object class data. */
 /* local odata = obj.class(otbl.otyp); */
 /* local odata = obj.class(obj.new("rock")); */
@@ -209,7 +203,6 @@ export function l_obj_objects_to_table(L)
 
     return 1;
 }
-
 
 /* Create a lua table representation of the object, unpacking all the
    object fields.
@@ -312,7 +305,6 @@ export function l_obj_to_table(L)
     return 1;
 }
 
-
 /* create a new object via wishing routine */
 /* local o = obj.new("rock"); */
 /* local o = obj.new({ id = "food ration", class = "%" }); */
@@ -401,7 +393,6 @@ export function l_obj_placeobj(L)
     return 0;
 }
 
-
 /* Get the next object in the object chain */
 /* local o = obj.at(x, y);
    local o2 = o:next(true);
@@ -450,7 +441,6 @@ export function l_obj_isnull(L)
     C.lua_pushboolean(L, !(lo && lo.obj && lo.obj.where != C.OBJ_LUAFREE));
     return 1;
 }
-
 
 /* does object have a timer of certain type? */
 /* local hastimer = o:has_timer("rot-organic"); */
@@ -530,7 +520,6 @@ export function l_obj_timer_stop(L)
     return 0;
 }
 
-
 /* start an object timer. */
 /* o:start_timer("hatch-egg", 10); */
 export function l_obj_timer_start(L)
@@ -583,7 +572,6 @@ export function l_obj_bury(L)
 }
 
 export const l_obj_methods = [
-
     {name:"new", func:l_obj_new_readobjnam},
     {name:"isnull", func:l_obj_isnull},
     {name:"at", func:l_obj_at},
@@ -600,15 +588,9 @@ export const l_obj_methods = [
     {name:"start_timer", func:l_obj_timer_start},
     {name:"bury", func:l_obj_bury},
     {name:0, func:0}
-
 ];
 
-export const l_obj_meta = [
-
-    {name:"__gc", func:l_obj_gc},
-    {name:0, func:0}
-
-];
+export const l_obj_meta = [{name:"__gc", func:l_obj_gc}, {name:0, func:0}];
 
 export function l_obj_register(L)
 {
@@ -643,5 +625,3 @@ export function l_obj_register(L)
 // #undef lobj_is_ok
 
 /*nhlobj.c*/
-
-

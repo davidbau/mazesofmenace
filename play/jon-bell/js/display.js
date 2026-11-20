@@ -8495,6 +8495,24 @@ export function tty_base_window_prompt(background, row, text, cursor) {
     return { screen: background.join('\n'), cursor };
 }
 
+/* C ref: win/tty/wintty.c:651,680-742 — what tty_askname leaves on the
+ * BASE_WINDOW prompt row.  tty_putstr(NHW_BASE) (wintty.c:2349) putchars the
+ * 13-char "Who are you? " prompt at the cursor and never clears the rest of
+ * the row, so a re-ask (role.c:2691 rename -> plnamesuffix -> askname)
+ * paints over the previous answer's echo and the tail past the prompt
+ * survives as screen residue; echoed characters are putchar'd one cell at a
+ * time and backspace erases its cell with \b ' \b, so cells out to the echo
+ * high-water mark (`echoHigh`) are blank while cells past it keep the
+ * pre-prompt row (`residual`).  A retry iteration runs cl_end first
+ * (wintty.c:675-678), so `cleared` drops the residual. */
+export function asknameRowText(typed, echoHigh, cleared, residual) {
+    const head = 'Who are you? ' + typed;   /* wintty.c:653 who_are_you[] */
+    const blanks = ' '.repeat(Math.max(0, echoHigh - typed.length));
+    const tail = (cleared || residual.length <= head.length + blanks.length)
+        ? '' : residual.slice(head.length + blanks.length);
+    return head + blanks + tail;
+}
+
 /* C restore.c:1536-1638 restore_menu(), called by wintty.c:658 tty_askname.
  * This is a BASE_WINDOW menu: there is no map or status window to repaint
  * underneath it.  Read the same VFS save files that dorecover will consume;
@@ -12291,6 +12309,13 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
          * "Other items in your inventory have been destroyed."). */
         const _lastUrgent = (g._topl_urgent_marks || []).some(
             (u) => String(_pages[i + 1] ?? '') === u);
+        /* A wrapped URGENT page raised its own more() from redotoplin
+         * (topl.c:139-140) while update_topl held WIN_NOSTOP (wintty.c:2282),
+         * so an ESC here never sets WIN_STOP (topl.c:233). */
+        const _curUrgentWrapped = _morc === 27
+            && (g._topl_urgent_marks || []).includes(String(_pages[i] ?? ''))
+            && _topl_wordwrap(String(_pages[i]), TOPL_CO - 1).length > 1;
+        if (_curUrgentWrapped) g._topl_win_stop_armed = false;
         /* A final page may contain several plines that fit together. Only
          * its first message entered update_topl before this ESC set WIN_STOP
          * (topl.c:257,274,300); later joined messages are buffered, not drawn. */
@@ -12305,6 +12330,7 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
         const _joinedOwner = _paintOwner && _messages.length > 1
             && _owner.length < TOPL_CO;
         if (_morc === 27 && i === _pages.length - 2 && !_dieClears && !_lastUrgent
+            && !_curUrgentWrapped
             && !_joinedOwner) {
             g._topl_win_stop_armed = false;
             g._topl_win_stop = true;
@@ -12331,7 +12357,8 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
          * Keep the genuine join boundaries: a message can itself contain
          * two spaces, and a page can contain several messages. */
         if (_morc === 27 && (i < _pages.length - 2 || _joinedOwner) && _owner
-            && _owner.length < TOPL_CO && !_dieClears && !_ownerUrgent) {
+            && _owner.length < TOPL_CO && !_dieClears && !_ownerUrgent
+            && !_curUrgentWrapped) {
             let _buf = _owner;
             for (let j = 1; j < _messages.length; ++j) {
                 const _p = _messages[j];
@@ -15898,6 +15925,31 @@ export function zapdir_to_glyph(dx, dy, beam_type) {
     return (((beam_type << 2) | dx) | 0) + GLYPH_ZAP_OFF_C;
 }
 
+/* C display.c:2653 `glyphinfo->ttychar = gs.showsyms[symidx]` — EVERY glyph
+ * prints with the live symbol set's byte, and the transient tmp_at() glyph
+ * arms of map_glyphinfo (display.c:2842-2883) set symidx = S_expl_tl +
+ * offset / S_digbeam + offset / S_vbeam + (offset & 3) exactly like terrain.
+ * dat/symbols Blank (lines 89-219) maps every beam, digbeam/flashbeam, boom
+ * and explosion symbol to the control byte \032: g_putch (wintty.c:3740)
+ * writes it under the glyph's own color, and the recorded terminal reads a
+ * blank cell carrying that color (df-x95ecad5b57 step 12: C paints 97m' '
+ * at each bouncing bolt-of-cold cell where the default '/'/'\' would go).
+ * IBMgraphics' S_vbeam \xb3/S_hbeam \xc4 strip to '3'/'D' and DECgraphics'
+ * \xf8/\xf1 to the dec forms the hand tables below already carry, so this
+ * only changes behaviour where the loaded set really redefines the symbol.
+ * Returns null (unset showsyms, UTF8 handling's glyphmap[].u rendering via
+ * g_pututf8, or the Rogue level's wholesale rogue_syms swap) to keep the
+ * caller's default-symbol cell. */
+function _live_tmp_glyph_cell(cmap, defaultCh) {
+    if (rogue_graphics() || gs.symset?.[PRIMARYSET]?.handling === 5 /* H_UTF8 */)
+        return null;
+    const live = primary_showsym(cmap);
+    if (!live || live === defaultCh.charCodeAt(0))
+        return null;
+    const cell = symset_cell(live);
+    return (cell.ch === defaultCh && !cell.dec) ? null : cell;
+}
+
 function _zap_glyph_cell(glyph) {
     const off = (glyph | 0) - GLYPH_ZAP_OFF_C;
     if (off < 0 || off >= NUM_ZAP * 4)
@@ -15909,6 +15961,11 @@ function _zap_glyph_cell(glyph) {
     /* C display.c:2877-2883: GLYPH_ZAP under has_rogue_color is NO_COLOR. */
     const _zcol = rogue_ibm_color() ? NO_COLOR : _ZAP_COLORS[off >> 2];
     const decMode = dec_mode();
+    /* C display.c:2877-2883 resolve the beam through the live showsyms
+     * first (symset:Blank's \032 beams paint a colored blank). */
+    const live = _live_tmp_glyph_cell(cmap, decMode ? sym.d : sym.a);
+    if (live)
+        return { ch: live.ch, color: _zcol, dec: live.dec, cmap };
     if (!decMode && ibm_mode() && (off % 4) < 2)
         return { ch: (off % 4) === 0 ? '3' : 'D', color: _zcol, dec: false, cmap };
     return {
@@ -15940,6 +15997,12 @@ function _expl_glyph_cell(glyph) {
     const dec = dec_mode() && sym.d !== undefined;
     /* glyphs.js: S_expl_tl = 96; the symset lookup (and a UTF8 customization,
      * wintty.c:3946-3955 g_pututf8) keys on the S_expl_* index. */
+    /* C display.c:2842-2863: the explosion glyph prints through the live
+     * showsyms (Blank's \032 S_expl_* paints a colored blank), like _zap. */
+    const live = _live_tmp_glyph_cell(96 + (off % 9), dec ? sym.d : sym.a);
+    if (live)
+        return { ch: live.ch, color: _EXPL_COLORS[Math.trunc(off / 9)],
+                 dec: live.dec, cmap: 96 + (off % 9) };
     return { ch: dec ? sym.d : sym.a, color: _EXPL_COLORS[Math.trunc(off / 9)], dec,
              cmap: 96 + (off % 9) };
 }
@@ -15950,16 +16013,30 @@ function _expl_glyph_cell(glyph) {
  * Without a cell the flash went to show_glyph()'s unread gbuf, so a --More--
  * raised mid-flight showed the square's own contents instead of the boomerang. */
 function _boom_glyph_cell(glyph) {
-    if (glyph === 4085) return { ch: ')', color: CLR_BROWN, dec: false };
-    if (glyph === 4086) return { ch: '(', color: CLR_BROWN, dec: false };
+    /* C display.c:2653: these cmap-C glyphs (S_boomleft/right, S_digbeam,
+     * S_flashbeam) print through the live showsyms too — dat/symbols Blank
+     * blanks them (\032 → a colored blank); S_goodpos (87) is NOT redefined
+     * by Blank and keeps '$'.  _live_tmp_glyph_cell keeps the hand cell
+     * whenever the loaded set leaves the defsym default in place. */
+    const _live = (cmap, ch, color) => {
+        const live = _live_tmp_glyph_cell(cmap, ch);
+        return live ? { ch: live.ch, color, dec: live.dec, cmap } : null;
+    };
+    if (glyph === 4085) return _live(80, ')', CLR_BROWN)
+        ?? { ch: ')', color: CLR_BROWN, dec: false };
+    if (glyph === 4086) return _live(81, '(', CLR_BROWN)
+        ?? { ch: '(', color: CLR_BROWN, dec: false };
     /* defsym.h:195 PCHAR2(78, '*', S_digbeam, ..., CLR_WHITE): 4005 + 78 */
-    if (glyph === 4083) return { ch: '*', color: CLR_WHITE, dec: false };
+    if (glyph === 4083) return _live(78, '*', CLR_WHITE)
+        ?? { ch: '*', color: CLR_WHITE, dec: false };
     /* defsym.h:196 PCHAR2(79, '!', S_flashbeam, ..., CLR_WHITE): 4005 + 79 */
-    if (glyph === 4084) return { ch: '!', color: CLR_WHITE, dec: false };
+    if (glyph === 4084) return _live(79, '!', CLR_WHITE)
+        ?? { ch: '!', color: CLR_WHITE, dec: false };
     /* cmap_to_glyph(S_goodpos): (87 - S_digbeam 78) + GLYPH_CMAP_C_OFF 4083;
      * defsym.h:207 PCHAR(87, '$', S_goodpos, "valid position", HI_ZAP).
      * getpos's '$' toggle shows valid spots with it (apply.c:1971). */
-    if (glyph === 4092) return { ch: '$', color: CLR_BRIGHT_BLUE, dec: false, cmap: 87 };
+    if (glyph === 4092) return _live(87, '$', CLR_BRIGHT_BLUE)
+        ?? { ch: '$', color: CLR_BRIGHT_BLUE, dec: false, cmap: 87 };
     return null;
 }
 

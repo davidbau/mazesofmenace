@@ -5,7 +5,6 @@
 
 import { C } from '../c-runtime/context.js';
 
-
 /* proportional subset of gold; return value actually fits in an int */
 export function somegold(lmoney)
 {
@@ -749,7 +748,13 @@ export function stealamulet(mtmp)
             worn_item_removal(mtmp, C.uarmc);
         if (otmp.address == (C.uarmu?.address ?? 0) && C.uarm)
             worn_item_removal(mtmp, C.uarm);
-        if ((otmp.address == (C.uarmg?.address ?? 0) || ((otmp.address == (C.uright?.address ?? 0) || otmp.address == (C.uleft?.address ?? 0)) && C.uarmg))
+        if ((otmp.address == (C.uarmg?.address
+            ?? 0)
+            || ((otmp.address == (C.uright?.address
+            ?? 0)
+            || otmp.address == (C.uleft?.address
+            ?? 0))
+            && C.uarmg))
             && C.uwep) {
             /* gloves are about to be unworn; unwield weapon(s) first */
             if (C.u.twoweap)    /* remove_worn_item(uswapwep) indirectly */

@@ -6,9 +6,7 @@ import { C } from '../c-runtime/context.js';
 
 // Original is_bigfoot and martial C.TU macros expand at each source expression.
 
-
 /* gk.kickedobj (decl.c) tracks a kicked object until placed or destroyed */
-
 
 export const kick_passes_thru = "kick passes harmlessly through";
 
@@ -76,7 +74,13 @@ export function kickdmg(mon, clumsy)
     dmg += C.u.udaminc; /* add ring(s) of increase damage */
     if (dmg > 0)
         mon.mhp -= dmg;
-    if (!C.DEADMONSTER(mon) && (C.martial_bonus() || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH]) || (C.uarmf && C.uarmf.otyp == C.KICKING_BOOTS)) && !C.bigmonst(mon.data) && !C.rn2(3, 96, 'kickdmg')
+    if (!C.DEADMONSTER(mon)
+        && (C.martial_bonus()
+        || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH])
+        || (C.uarmf
+        && C.uarmf.otyp == C.KICKING_BOOTS))
+        && !C.bigmonst(mon.data)
+        && !C.rn2(3, 96, 'kickdmg')
         && mon.mcanmove && mon != C.u.ustuck && !mon.mtrapped) {
         /* see if the monster has a place to move into */
         mdx = mon.mx + C.u.dx;
@@ -107,7 +111,8 @@ export function kickdmg(mon, clumsy)
 
 export function maybe_kick_monster(mon, x, y)
 {
-    x = C.coordxy(x);y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     if (mon) {
         let save_forcefight = C.svc.context.forcefight;
 
@@ -127,7 +132,8 @@ export function maybe_kick_monster(mon, x, y)
 
 export function kick_monster(mon, x, y)
 {
-    x = C.coordxy(x);y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     let clumsy = 0;
     let i, j;
 
@@ -244,7 +250,11 @@ export function kick_monster(mon, x, y)
         && mon.data.mlet != C.S_EEL && C.haseyes(mon.data) && mon.mcanmove
         && !mon.mstun && !mon.mconf && !mon.msleeping
         && mon.data.mmove >= 12) {
-        if (!C.nohands(mon.data) && !C.rn2((C.martial_bonus() || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH]) || (C.uarmf && C.uarmf.otyp == C.KICKING_BOOTS)) ? 5 : 3, 262, 'kick_monster')) {
+        if (!C.nohands(mon.data)
+            && !C.rn2((C.martial_bonus()
+            || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH])
+            || (C.uarmf
+            && C.uarmf.otyp == C.KICKING_BOOTS)) ? 5 : 3, 262, 'kick_monster')) {
             C.pline("%s blocks your %skick.", C.Monnam(mon),
                   clumsy ? "clumsy " : "");
             C.passive(mon, C.uarmf, 0, 1, C.AT_KICK, 0);
@@ -394,7 +404,8 @@ export function ghitm(mtmp, gold)
  * Assumes container is on floor.  Checks contents for possible damage. */
 export function container_impact_dmg(obj, x, y) /* coordinates where object was */ /* before the impact, not after */
 {
-    x = C.coordxy(x);y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     let shkp;
     let otmp, otmp2;
     let loss = 0n;
@@ -468,7 +479,9 @@ export function container_impact_dmg(obj, x, y) /* coordinates where object was 
 /* jacket around really_kick_object */
 export function kick_object(x, y, kickobjnam)
 {
-    x = C.coordxy(x);y = C.coordxy(y);kickobjnam = C.charPointer(kickobjnam);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    kickobjnam = C.charPointer(kickobjnam);
     let res = 0;
 
     C.storeChar(kickobjnam, 0);
@@ -487,7 +500,8 @@ export function kick_object(x, y, kickobjnam)
 /* guts of kick_object */
 export function really_kick_object(x, y)
 {
-    x = C.coordxy(x);y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     let range;
     let mon, shkp = 0;
     let trap;
@@ -594,7 +608,11 @@ export function really_kick_object(x, y)
           !isgold ? C.singular(C.gk.kickedobj, C.doname) : C.doname(C.gk.kickedobj));
 
     if (C.IS_OBSTRUCTED(C.levl[x][y].typ) || C.closed_door(x, y)) {
-        if ((!(C.martial_bonus() || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH]) || (C.uarmf && C.uarmf.otyp == C.KICKING_BOOTS)) && C.rn2(20, 616, 'really_kick_object') > C.ACURR(C.A_DEX))
+        if ((!(C.martial_bonus()
+            || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH])
+            || (C.uarmf
+            && C.uarmf.otyp == C.KICKING_BOOTS))
+            && C.rn2(20, 616, 'really_kick_object') > C.ACURR(C.A_DEX))
             || C.IS_OBSTRUCTED(C.levl[C.u.ux][C.u.uy].typ) || C.closed_door(C.u.ux, C.u.uy)) {
             if (C.Blind)
                 C.pline("It doesn't come loose.");
@@ -602,7 +620,11 @@ export function really_kick_object(x, y)
                 C.pline("%s %sn't come loose.",
                       C.The(C.distant_name(C.gk.kickedobj, C.xname)),
                       C.otense(C.gk.kickedobj, "do"));
-            return (Number(Boolean(!C.rn2(3, 624, 'really_kick_object') || (C.martial_bonus() || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH]) || (C.uarmf && C.uarmf.otyp == C.KICKING_BOOTS)))));
+            return (Number(Boolean(!C.rn2(3, 624, 'really_kick_object')
+                || (C.martial_bonus()
+                || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH])
+                || (C.uarmf
+                && C.uarmf.otyp == C.KICKING_BOOTS)))));
         }
         if (C.Blind)
             C.pline("It comes loose.");
@@ -635,7 +657,12 @@ export function really_kick_object(x, y)
             C.pline("THUD!");
         container_impact_dmg(C.gk.kickedobj, x, y);
         if (C.gk.kickedobj.olocked) {
-            if (!C.rn2(5, 657, 'really_kick_object') || ((C.martial_bonus() || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH]) || (C.uarmf && C.uarmf.otyp == C.KICKING_BOOTS)) && !C.rn2(2, 657, 'really_kick_object'))) {
+            if (!C.rn2(5, 657, 'really_kick_object')
+                || ((C.martial_bonus()
+                || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH])
+                || (C.uarmf
+                && C.uarmf.otyp == C.KICKING_BOOTS))
+                && !C.rn2(2, 657, 'really_kick_object'))) {
                 C.You("break open the lock!");
                 C.breakchestlock(C.gk.kickedobj, 0);
                 if (otrp)
@@ -643,7 +670,12 @@ export function really_kick_object(x, y)
                 return 1;
             }
         } else {
-            if (!C.rn2(3, 665, 'really_kick_object') || ((C.martial_bonus() || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH]) || (C.uarmf && C.uarmf.otyp == C.KICKING_BOOTS)) && !C.rn2(2, 665, 'really_kick_object'))) {
+            if (!C.rn2(3, 665, 'really_kick_object')
+                || ((C.martial_bonus()
+                || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH])
+                || (C.uarmf
+                && C.uarmf.otyp == C.KICKING_BOOTS))
+                && !C.rn2(2, 665, 'really_kick_object'))) {
                 C.pline_The("lid slams open, then falls shut.");
                 C.gk.kickedobj.lknown = 1;
                 if (otrp)
@@ -667,7 +699,11 @@ export function really_kick_object(x, y)
     if (range < 2) {
         if (!C.Is_box(C.gk.kickedobj))
             C.pline("Thump!");
-        return (Number(Boolean(!C.rn2(3, 689, 'really_kick_object') || (C.martial_bonus() || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH]) || (C.uarmf && C.uarmf.otyp == C.KICKING_BOOTS)))));
+        return (Number(Boolean(!C.rn2(3, 689, 'really_kick_object')
+            || (C.martial_bonus()
+            || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH])
+            || (C.uarmf
+            && C.uarmf.otyp == C.KICKING_BOOTS)))));
     }
 
     if (C.gk.kickedobj.quan > 1n) {
@@ -690,7 +726,11 @@ export function really_kick_object(x, y)
             }
             if (C.gk.kickedobj.quan > 300n) {
                 C.pline("Thump!");
-                return (Number(Boolean(!C.rn2(3, 712, 'really_kick_object') || (C.martial_bonus() || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH]) || (C.uarmf && C.uarmf.otyp == C.KICKING_BOOTS)))));
+                return (Number(Boolean(!C.rn2(3, 712, 'really_kick_object')
+                    || (C.martial_bonus()
+                    || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH])
+                    || (C.uarmf
+                    && C.uarmf.otyp == C.KICKING_BOOTS)))));
             }
         }
     }
@@ -699,7 +739,7 @@ export function really_kick_object(x, y)
         C.pline("Whee!  %s %s across the %s.", C.Doname2(C.gk.kickedobj),
               C.otense(C.gk.kickedobj, "slide"), C.surface(x, y));
 
-// #if 0   
+// #if 0
 /* now that 'costly' above includes no_charge items, this would
          * clear their no_charge state (while declining to add to bill)
          * and then costly handling below would end up charging for them
@@ -774,7 +814,8 @@ export function really_kick_object(x, y)
 /* cause of death if kicking kills kicker */
 export function kickstr(buf, kickobjnam)
 {
-    buf = C.charPointer(buf);kickobjnam = C.charPointer(kickobjnam);
+    buf = C.charPointer(buf);
+    kickobjnam = C.charPointer(kickobjnam);
     let what;
 
     if (C.loadChar(kickobjnam))
@@ -825,7 +866,8 @@ export function watchman_thief_arrest(mtmp)
 
 export function watchman_door_damage(mtmp, x, y)
 {
-    x = C.coordxy(x);y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     if (C.is_watch(mtmp.data) && mtmp.mpeaceful
         && C.couldsee(mtmp.mx, mtmp.my)) {
         if (C.levl[x][y].looted & C.D_WARNED) {
@@ -843,9 +885,15 @@ export function watchman_door_damage(mtmp, x, y)
 
 export function kick_dumb(x, y)
 {
-    x = C.coordxy(x);y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     C.exercise(C.A_DEX, 0);
-    if ((C.martial_bonus() || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH]) || (C.uarmf && C.uarmf.otyp == C.KICKING_BOOTS)) || C.ACURR(C.A_DEX) >= 16 || C.rn2(3, 867, 'kick_dumb')) {
+    if ((C.martial_bonus()
+        || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH])
+        || (C.uarmf
+        && C.uarmf.otyp == C.KICKING_BOOTS))
+        || C.ACURR(C.A_DEX) >= 16
+        || C.rn2(3, 867, 'kick_dumb')) {
         C.You("kick at empty space.");
         if (C.Blind)
             C.feel_location(x, y);
@@ -860,7 +908,9 @@ export function kick_dumb(x, y)
 
 export function kick_ouch(x, y, kickobjnam)
 {
-    x = C.coordxy(x);y = C.coordxy(y);kickobjnam = C.charPointer(kickobjnam);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    kickobjnam = C.charPointer(kickobjnam);
     let dmg;
     const buf = C.stackAlloc(C.BUFSZ);
 
@@ -889,7 +939,9 @@ export function kick_ouch(x, y, kickobjnam)
 /* kick a door */
 export function kick_door(x, y, avrg_attrib)
 {
-    x = C.coordxy(x);y = C.coordxy(y);avrg_attrib = C.int(avrg_attrib);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    avrg_attrib = C.int(avrg_attrib);
     let doorbuster;
 
     if (C.gm.maploc.doormask == C.D_ISOPEN || C.gm.maploc.doormask == C.D_BROKEN
@@ -908,7 +960,10 @@ export function kick_door(x, y, avrg_attrib)
     doorbuster = Number(Boolean(C.Upolyd && C.is_giant(C.gy.youmonst.data)));
     /* door is known to be CLOSED or LOCKED */
     if (doorbuster
-        || (C.rnl(35, 930, 'kick_door') < avrg_attrib + (!(C.martial_bonus() || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH]) || (C.uarmf && C.uarmf.otyp == C.KICKING_BOOTS)) ? 0 : C.ACURR(C.A_DEX)))) {
+        || (C.rnl(35, 930, 'kick_door') < avrg_attrib + (!(C.martial_bonus()
+            || C.samePtr(C.gy.youmonst.data, C.mons[C.PM_SASQUATCH])
+            || (C.uarmf
+            && C.uarmf.otyp == C.KICKING_BOOTS)) ? 0 : C.ACURR(C.A_DEX)))) {
         let shopdoor = C.charAtRooms(x, y, C.SHOPBASE) ? 1 : 0;
 
         /* break the door */
@@ -953,7 +1008,9 @@ export function kick_door(x, y, avrg_attrib)
 /* kick non-door terrain */
 export function kick_nondoor(x, y, avrg_attrib)
 {
-    x = C.coordxy(x);y = C.coordxy(y);avrg_attrib = C.int(avrg_attrib);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    avrg_attrib = C.int(avrg_attrib);
     if (C.gm.maploc.typ == C.SDOOR) {
         if (!C.Levitation && C.rn2(30, 977, 'kick_nondoor') < avrg_attrib) {
             C.cvt_sdoor_to_door(C.gm.maploc); /* ->typ = DOOR */
@@ -1159,7 +1216,7 @@ export function kick_nondoor(x, y, avrg_attrib)
             while (cnt--) {
                 if (C.enexto(mm, mm.x, mm.y, C.mons[C.PM_KILLER_BEE])
                     && C.makemon(C.mons[C.PM_KILLER_BEE], mm.x, mm.y,
-                               C.MM_ANGRY|C.MM_NOMSG))
+                               C.MM_ANGRY | C.MM_NOMSG))
                     made++;
             }
             if (made)
@@ -1320,7 +1377,7 @@ export function dokick()
                 C.pline("%s burps loudly.", C.Monnam(C.u.ustuck));
                 break;
             }
-            
+
             /*FALLTHRU*/
         default:
             C.Your("feeble kick has no effect.");
@@ -1451,7 +1508,9 @@ export function dokick()
 
 export function drop_to(cc, loc, x, y)
 {
-    loc = C.char(loc);x = C.coordxy(x);y = C.coordxy(y);
+    loc = C.char(loc);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     let stway = C.stairway_at(x, y);
 
     /* cover all the MIGR_xxx choices generated by down_gate() */
@@ -1465,7 +1524,7 @@ export function drop_to(cc, loc, x, y)
             cc.y = cc.x = 0;
             break;
         }
-        
+
         /*FALLTHRU*/
     case C.MIGR_STAIRS_UP:
     case C.MIGR_LADDER_UP:
@@ -1489,7 +1548,9 @@ export function drop_to(cc, loc, x, y)
 /* player or missile impacts location, causing objects to fall down */
 export function impact_drop(missile, x, y, dlev) /* caused impact, won't drop itself */ /* location affected */          /* if !0 send to dlev near player */
 {
-    x = C.coordxy(x);y = C.coordxy(y);dlev = C.coordxy(dlev);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    dlev = C.coordxy(dlev);
     let toloc;
     let obj, obj2;
     let shkp;
@@ -1614,7 +1675,9 @@ export function impact_drop(missile, x, y, dlev) /* caused impact, won't drop it
  */
 export function ship_object(otmp, x, y, shop_floor_obj)
 {
-    x = C.coordxy(x);y = C.coordxy(y);shop_floor_obj = C.boolean(shop_floor_obj);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    shop_floor_obj = C.boolean(shop_floor_obj);
     let toloc;
     let ox, oy;
     const cc = C.coordLocal();
@@ -1779,7 +1842,7 @@ export function obj_delivery(near_hero)
         switch (where) {
         case C.MIGR_LADDER_UP:
             isladder = 1;
-            
+
             /*FALLTHRU*/
         case C.MIGR_STAIRS_UP:
         case C.MIGR_SSTAIRS:
@@ -1829,7 +1892,8 @@ export function obj_delivery(near_hero)
 
 export function deliver_obj_to_mon(mtmp, cnt, deliverflags)
 {
-    cnt = C.int(cnt);deliverflags = C.ulong(deliverflags);
+    cnt = C.int(cnt);
+    deliverflags = C.ulong(deliverflags);
     let otmp, otmp2;
     let where, maxobj = 1;
     let at_crime_scene = C.In_mines(C.u.uz);
@@ -1841,7 +1905,7 @@ export function deliver_obj_to_mon(mtmp, cnt, deliverflags)
     else
         maxobj = 1;
 
-const DELIVER_PM = (C.M2_UNDEAD | C.M2_WERE | C.M2_HUMAN | C.M2_ELF | C.M2_DWARF 
+const DELIVER_PM = (C.M2_UNDEAD | C.M2_WERE | C.M2_HUMAN | C.M2_ELF | C.M2_DWARF
                     | C.M2_GNOME | C.M2_ORC | C.M2_DEMON | C.M2_GIANT);
 
     cnt = 0;
@@ -1884,8 +1948,11 @@ const DELIVER_PM = (C.M2_UNDEAD | C.M2_WERE | C.M2_HUMAN | C.M2_ELF | C.M2_DWARF
 
 export function otransit_msg(otmp, nodrop, chainthere, num)
 {
-    nodrop = C.boolean(nodrop);chainthere = C.boolean(chainthere);num = C.long(num);
-    let optr = 0; const obuf = C.stackAlloc(C.BUFSZ), xbuf = C.stackAlloc(C.BUFSZ);
+    nodrop = C.boolean(nodrop);
+    chainthere = C.boolean(chainthere);
+    num = C.long(num);
+    let optr = 0;
+    const obuf = C.stackAlloc(C.BUFSZ), xbuf = C.stackAlloc(C.BUFSZ);
 
     if (otmp.otyp == C.CORPSE) {
         /* Tobjnam() calls xname() and would yield "The corpse";
@@ -1918,7 +1985,8 @@ export function otransit_msg(otmp, nodrop, chainthere, num)
 /* migration destination for objects which fall down to next level */
 export function down_gate(x, y)
 {
-    x = C.coordxy(x);y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     let ttmp;
     let stway = C.stairway_at(x, y);
 

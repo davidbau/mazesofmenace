@@ -196,5 +196,4 @@ export function free_nomakedefs()
 
 /* __DATE__ && __TIME__ */
 
-
 /*date.c*/

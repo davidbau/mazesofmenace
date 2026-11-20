@@ -10,7 +10,6 @@
  */
 import { C } from '../c-runtime/context.js';
 
-
 /* Categories whose names don't come from OBJ_NAME(objects[type])
  */
 const PN_BARE_HANDED = (-1); /* includes martial arts */
@@ -49,16 +48,12 @@ export const odd_skill_names = [
     "enchantment spells", "clerical spells", "escape spells", "matter spells",
 ];
 /* indexed via is_martial() */
-export const barehands_or_martial = [
-    "bare handed combat", "martial arts"
-];
+export const barehands_or_martial = ["bare handed combat", "martial arts"];
 
 // Original P_NAME macro expands inline at each source call.
 
 /* targets that provide attacker with small to-hit bonus when using a spear */
-export const kebabable = [
-    "S_XORN", "S_DRAGON", "S_JABBERWOCK", "S_NAGA", "S_GIANT",  0
-];
+export const kebabable = ["S_XORN", "S_DRAGON", "S_JABBERWOCK", "S_NAGA", "S_GIANT", 0];
 
 export function give_may_advance_msg(skill)
 {
@@ -365,7 +360,7 @@ export function special_dmgval(magr, mdef, armask, silverhit_p) /* attacker */ /
         else
             armask = 0n;
     } else if (armask & (C.W_ARMG | C.W_RINGL | C.W_RINGR)) {
-        armask = ((obj = C.which_armor(magr, C.W_ARMG)) != 0) ?  C.W_ARMG : 0n;
+        armask = ((obj = C.which_armor(magr, C.W_ARMG)) != 0) ? C.W_ARMG : 0n;
     } else {
         obj = C.which_armor(magr, armask);
     }
@@ -1491,7 +1486,7 @@ export function weapon_hit_bonus(weapon)
         switch (C.u.weapon_skills[type].skill) {
         default:
             C.impossible(bad_skill, C.u.weapon_skills[type].skill);
-            
+
             /* FALLTHRU */
         case C.P_ISRESTRICTED:
         case C.P_UNSKILLED:
@@ -1514,7 +1509,7 @@ export function weapon_hit_bonus(weapon)
         switch (skill) {
         default:
             C.impossible(bad_skill, skill);
-            
+
             /* FALLTHRU */
         case C.P_ISRESTRICTED:
         case C.P_UNSKILLED:
@@ -1588,7 +1583,7 @@ export function weapon_dam_bonus(weapon)
         switch (C.u.weapon_skills[type].skill) {
         default:
             C.impossible("weapon_dam_bonus: bad skill %d", C.u.weapon_skills[type].skill);
-            
+
         /* FALLTHRU */
         case C.P_ISRESTRICTED:
         case C.P_UNSKILLED:
@@ -1755,6 +1750,5 @@ export function setmnotwielded(mon, obj)
         mon.mw = 0;
     obj.owornmask &= ~C.W_WEP;
 }
-
 
 /*weapon.c*/

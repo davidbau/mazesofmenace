@@ -5,11 +5,6 @@ import { combatFieldsFor, monsterHP, setMonsterHP, monsterX, monsterY } from './
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
 /* monster hits hero (most callers have been moved to uthim.c) */
 export function hitmsg(mtmp, mattk)
 {
@@ -202,7 +197,7 @@ export function wildmiss(mtmp, mattk)
                 break;
             case 2:
                 C.pline("%s strikes at %s!", Monst_name,
-                      C.is_waterwall(combat.mux(mtmp),combat.muy(mtmp))
+                      C.is_waterwall(combat.mux(mtmp), combat.muy(mtmp))
                         ? "empty water"
                         : "thin air");
                 break;
@@ -292,8 +287,6 @@ export function getmattk(magr, mdef, indx, prev_result, alt_attk_buf)
 
     /* honor SEDUCE=0 */
     if (!C.SYSOPT_SEDUCE) {
-
-
         /* if the first attack is for SSEX damage, all six attacks will be
            substituted (expected succubus/incubus handling); if it isn't
            but another one is, only that other one will be substituted */
@@ -403,7 +396,6 @@ export function getmattk(magr, mdef, indx, prev_result, alt_attk_buf)
         attk.damn = Math.trunc((attk.damn + 1) / 2);
         if (attk.damd == 10)
             attk.damd = 6;
-
     }
 
     /* elementals on their home plane do double damage */
@@ -460,8 +452,10 @@ export function mtrapped_in_pit(mtmp)
 export function mattacku(mtmp)
 {
     const combat = combatFieldsFor(C);
-    let mattk; const alt_attk = C.localRecord("attack");
-    let i, j = 0, tmp; const sum = C.localArray("i32", C.NATTK);
+    let mattk;
+    const alt_attk = C.localRecord("attack");
+    let i, j = 0, tmp;
+    const sum = C.localArray("i32", C.NATTK);
     let mdat = mtmp.data;
     /*
      * ranged: Is it near you?  Affects your actions.
@@ -1569,7 +1563,7 @@ export function explmu(mtmp, mattk, ufound)
     if (!ufound) {
         C.pline("%s explodes at a spot in %s!",
               C.canseemon(mtmp) ? C.Monnam(mtmp) : "It",
-              C.is_waterwall(combat.mux(mtmp),combat.muy(mtmp)) ? "empty water"
+              C.is_waterwall(combat.mux(mtmp), combat.muy(mtmp)) ? "empty water"
                                                 : "thin air");
     } else {
         C.callLocal(hitmsg, mtmp, mattk);
@@ -2242,7 +2236,8 @@ export function doseduce(mon)
 /* 'mon' tries to remove a piece of hero's armor */
 export function mayberem(mon, seducer, obj, str) /* only used for alternate message */
 {
-    seducer = C.charPointer(seducer);str = C.charPointer(str);
+    seducer = C.charPointer(seducer);
+    str = C.charPointer(str);
     const qbuf = C.stackAlloc(C.QBUFSZ);
 
     if (!obj || !obj.owornmask)
@@ -2298,7 +2293,6 @@ export function assess_dmg(mtmp, tmp)
 }
 
 // Original #if 0 block remains inactive.
-
 
 /* can be used as ranged_attk_assessed() callback.
    Returns TRUE if monster is avoiding use of this attack */
@@ -2543,7 +2537,6 @@ export function cloneu()
     C.disp.botl = 1;
     return mon;
 }
-
 
 /*mhitu.c*/
 

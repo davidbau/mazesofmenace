@@ -6,22 +6,6 @@ import {C} from '../c-runtime/context.js';
 
 /* Contains code for 'd', 'D' (drop), '>', '<' (up, down) */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     /* static boolean badspot(coordxy,coordxy); */
 
 /* the #drop command: drop one inventory item */
@@ -184,7 +168,7 @@ export function flooreffects(obj, x, y, verb)
         ttyp = t.ttyp;
         tseen = t.tseen ? 1 : 0;
         if (((mtmp = C.m_at(x, y)) && mtmp.mtrapped)
-            || (C.u.utrap && C.u_at(x,y))) {
+            || (C.u.utrap && C.u_at(x, y))) {
             if (C.loadChar(verb) && (C.cansee(x, y) || C.distu(x, y) == 0))
                 C.pline("%s boulder %s into the pit%s.",
                       C.Blind ? "A" : "The",
@@ -308,7 +292,7 @@ export function flooreffects(obj, x, y, verb)
         }
         res = !globbyobj;
     } else if (C.svc.context.mon_moving && C.IS_ALTAR(C.levl[x][y].typ)
-               && C.cansee(x,y)) {
+               && C.cansee(x, y)) {
         doaltarobj(obj);
     } else if (obj.oclass == C.POTION_CLASS && C.svl.level.flags.temperature > 0
                && (C.levl[x][y].typ == C.ROOM || C.levl[x][y].typ == C.CORR)) {
@@ -324,7 +308,7 @@ export function flooreffects(obj, x, y, verb)
            oil, one of the substances traditionally used in oil lamps,
            can survive over 100 degrees Centigrade more heat than
            water can.*/
-        if (C.cansee(x,y)) {
+        if (C.cansee(x, y)) {
             /* unconditional "ground" is safe as this only runs for
                room and corridor tiles */
             C.pline("%s up as %s the hot ground.", C.Tobjnam(obj, "heat"),
@@ -338,7 +322,7 @@ export function flooreffects(obj, x, y, verb)
             survival_chance = 100;
 
         if (!C.obj_resists(obj, survival_chance, 100)) {
-            if (C.cansee(x,y)) {
+            if (C.cansee(x, y)) {
                 C.pline("%s from the heat!",
                       C.is_plural(obj) ? "They shatter" : "It shatters", C.varargs(19));
             } else {
@@ -491,7 +475,7 @@ export function teleport_sink()
 
 export function dosinkring(obj)
 {
-    let otmp,otmp2;
+    let otmp, otmp2;
     let ideed = 1;
     let nosink = 0;
 
@@ -708,7 +692,6 @@ export function canletgo(obj, word)
     }
     return 1;
 }
-
 
 export function drop(obj)
 {
@@ -943,7 +926,6 @@ export function doddrop()
     return result;
 }
 
-
 export function better_not_try_to_drop_that(otmp)
 {
     const buf = C.charArray(C.BUFSZ);
@@ -981,7 +963,7 @@ export function menudrop_split(otmp, cnt)
 export function menu_drop(retry)
 {
     let n, i, n_dropped = 0;
-    let otmp,otmp2;
+    let otmp, otmp2;
     let pick_list;
     let all_categories = 1, drop_everything = 0, autopick = 0;
     let drop_justpicked = 0;
@@ -1102,11 +1084,9 @@ export function menu_drop(retry)
             C.free(pick_list);
         }
     }
-
     }
     return (n_dropped ? C.ECMD_TIME : C.ECMD_OK);
 }
-
 
 export function u_stuck_cannot_go(updn)
 {
@@ -1298,7 +1278,7 @@ export function dodown()
 
 export function doup()
 {
-    let stway = C.stairway_at(C.u.ux,C.u.uy);
+    let stway = C.stairway_at(C.u.ux, C.u.uy);
 
     C.set_move_cmd(C.DIR_UP, 0);
 
@@ -1371,7 +1351,6 @@ export function currentlevel_rewrite()
     return nhfp;
 }
 
-
 export function save_currentstate()
 {
     let nhfp;
@@ -1385,7 +1364,7 @@ export function save_currentstate()
         if (nhfp.structlevel)
             C.bufon(nhfp.fd);
         nhfp.mode = C.WRITING;
-        C.savelev(nhfp,C.ledger_no(C.addressOf(C.u, "uz")));
+        C.savelev(nhfp, C.ledger_no(C.addressOf(C.u, "uz")));
         C.close_nhfile(nhfp);
     }
 
@@ -1442,7 +1421,6 @@ export function u_collide_m(mtmp)
             C.m_into_limbo(mtmp);
     }
 }
-
 
 export function familiar_level_msg()
 {
@@ -2029,7 +2007,6 @@ export function maybe_lvltport_feedback()
     }
 }
 
-
 export function final_level()
 {
     /* reset monster hostility relative to player */
@@ -2098,7 +2075,7 @@ export function deferred_goto()
 
 export function revive_corpse(corpse)
 {
-    let mtmp,mcarry;
+    let mtmp, mcarry;
     let is_uwep, chewed;
     let where;
     const cname = C.charArray(C.BUFSZ);
@@ -2214,7 +2191,7 @@ export function revive_corpse(corpse)
                     C.pline("%s claws itself out of the ground!",
                           C.canspotmon(mtmp) ? C.Amonnam(mtmp) : C.Something, C.varargs(122));
                     C.newsym(mtmp.mx, mtmp.my);
-                } else if (C.mdistu(mtmp) < 5*5) {
+                } else if (C.mdistu(mtmp) < 5 * 5) {
                     void 0;
                     C.You_hear("scratching noises.", C.varargs(123));
                 }
@@ -2246,7 +2223,9 @@ export function revive_mon(arg, timeout)
     /* corpse will revive somewhere else if there is a monster in the way;
        Riders get a chance to try to bump the obstacle out of their way */
     if (C.is_displacer(mptr) && body.where == C.OBJ_FLOOR
-        && C.get_obj_location(body, C.reference("coordxy", () => x, value => x = value), C.reference("coordxy", () => y, value => y = value), 0) && (mtmp = C.m_at(x, y)) != 0 &&
+        && C.get_obj_location(body, C.reference("coordxy", () => x, value => x = value), C.reference("coordxy", () => y, value => y = value), 0)
+            && (mtmp = C.m_at(x, y)) != 0
+            &&
         C.svl.level.flags.stasis_until < C.svm.moves) {
         let notice_it = C.canseemon(mtmp); /* before rloc() */
         let monname = C.Monnam(mtmp);
@@ -2309,7 +2288,6 @@ export function danger_uprops()
     return +(!!(C.Stoned || C.Slimed || C.Strangled || C.Sick));
 }
 
-
 export function cmd_safety_prevention(ucverb, cmddesc, act, flagcounter)
 {
     if (C.flags.safe_wait && !C.iflags.menu_requested && !C.gm.multi) {
@@ -2343,7 +2321,6 @@ export function donull()
         return C.ECMD_OK;
     return C.ECMD_TIME; /* Do nothing, but let other things happen */
 }
-
 
 export function wipeoff()
 {
@@ -2407,7 +2384,6 @@ export function legs_in_no_shape(for_what, by_steed)
              bp, (wl == C.BOTH_SIDES) ? "are" : "is", for_what, C.varargs(137));
     }
 }
-
 
 export function set_wounded_legs(side, timex)
 {

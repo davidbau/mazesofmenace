@@ -6,24 +6,9 @@ import { C } from '../c-runtime/context.js';
 
  /* from pager.c */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* Callback function for getpos() to highlight desired map locations.
  * Parameter TRUE: initialize and highlight, FALSE: done (remove highlights).
  */
-
 
 export const HiliteNormalMap = 0, HiliteGoodposSymbol = 1, HiliteBackground = 2;
 
@@ -99,23 +84,20 @@ export function getpos_getvalids_selection(sel, validf)
 }
 
 const gloc_descr = [
-    [ "any monsters", "monster", "next/previous monster", "monsters" ],
-    [ "any items", "item", "next/previous object", "objects" ],
-    [ "any doors", "door", "next/previous door or doorway",
-      "doors or doorways" ],
-    [ "any unexplored areas", "unexplored area", "unexplored location",
-      "locations next to unexplored locations" ],
-    [ "anything interesting", "interesting thing", "anything interesting",
-      "anything interesting" ],
-    [ "any valid locations", "valid location", "valid location",
-      "valid locations" ]
+    ["any monsters", "monster", "next/previous monster", "monsters"],
+    ["any items", "item", "next/previous object", "objects"],
+    ["any doors", "door", "next/previous door or doorway", "doors or doorways"],
+    [
+        "any unexplored areas",
+        "unexplored area",
+        "unexplored location",
+        "locations next to unexplored locations"
+    ],
+    ["anything interesting", "interesting thing", "anything interesting", "anything interesting"],
+    ["any valid locations", "valid location", "valid location", "valid locations"]
 ];
 
-const gloc_filtertxt = [
-    "",
-    " in view",
-    " in this area"
-];
+const gloc_filtertxt = ["", " in view", " in this area"];
 
 export function getpos_help_keyxhelp(tmpwin, k1, k2, gloc)
 {
@@ -138,7 +120,6 @@ export function getpos_help_keyxhelp(tmpwin, k1, k2, gloc)
             gloc_descr[gloc][2 + Number(C.iflags.getloc_usemenu)], filtertxt);
     C.putstr(tmpwin, 0, sbuf);
 }
-
 
 /* the response for '?' help request in getpos() */
 export function getpos_help(force, goal)
@@ -221,7 +202,6 @@ export function getpos_help(force, goal)
     if (!C.iflags.terrainmode || skip_non_mons) {
         let kbuf = C.charArrayLocal(C.BUFSZ);
         if (!skip_non_mons) {
-
         if (C.getpos_getvalid) {
             C.Sprintf(sbuf, "Use '%s' or '%s' to move to valid locations.",
                     C.visctrl(C.gc.Cmd.spkeys[C.NHKF_GETPOS_VALID_NEXT]),
@@ -287,7 +267,6 @@ export function getpos_help(force, goal)
     C.destroy_nhwindow(tmpwin);
 }
 
-
 export function cmp_coord_distu(a, b)
 {
     let c1 = C.coord(a);
@@ -307,11 +286,11 @@ export function cmp_coord_distu(a, b)
     return dist_1 - dist_2;
 }
 
-const IS_UNEXPLORED_LOC = (x,y) =>
-    (C.isok(x,y) && C.glyph_is_unexplored(C.levl[x][y].glyph)
+const IS_UNEXPLORED_LOC = (x, y) =>
+    (C.isok(x, y) && C.glyph_is_unexplored(C.levl[x][y].glyph)
      && !C.levl[x][y].seenv);
-const GLOC_SAME_AREA = (x,y) =>
-    (C.isok(x,y) && C.selection_getpoint(x,y,C.gg.gloc_filter_map));
+const GLOC_SAME_AREA = (x, y) =>
+    (C.isok(x, y) && C.selection_getpoint(x, y, C.gg.gloc_filter_map));
 
 export function gloc_filter_classify_glyph(glyph)
 {
@@ -385,7 +364,6 @@ export function gloc_filter_done()
     if (C.gg.gloc_filter_map) {
         C.selection_free(C.gg.gloc_filter_map, C.TRUE);
         C.gg.gloc_filter_map = 0;
-
     }
 }
 
@@ -401,7 +379,6 @@ export function known_vibrating_square_at(x, y)
     }
     return C.FALSE;
 }
-
 
 export function gather_locs_interesting(x, y, gloc)
 {
@@ -448,7 +425,7 @@ export function gather_locs_interesting(x, y, gloc)
     case C.GLOC_VALID:
         if (C.getpos_getvalid)
             return C.callValid(C.getpos_getvalid, x, y);
-        
+
         /*FALLTHRU*/
     case C.GLOC_INTERESTING:
         return (gather_locs_interesting(x, y, C.GLOC_DOOR)
@@ -471,7 +448,6 @@ export function gather_locs_interesting(x, y, gloc)
     /*NOTREACHED*/
     return C.FALSE;
 }
-
 
 /* gather locations for monsters or objects shown on the map */
 export function gather_locs(arr_p, cnt_p, gloc)
@@ -509,7 +485,7 @@ export function gather_locs(arr_p, cnt_p, gloc)
             }
 
         if (!pass) /* end of first pass */
-            arr_p.value =  C.alloc(cnt_p.value * C.coordStructSize);
+            arr_p.value = C.alloc(cnt_p.value * C.coordStructSize);
         else /* end of second pass */
             C.qsort(arr_p.value, cnt_p.value, C.coordStructSize, cmp_coord_distu);
     } /* pass */
@@ -551,7 +527,6 @@ export function dxdy_to_dist_descr(dx, dy, fulldir)
     return buf;
 }
 
-
 /* coordinate formatting for 'whatis_coord' option */
 export function coord_desc(x, y, outbuf, cmode)
 {
@@ -585,7 +560,7 @@ export function coord_desc(x, y, outbuf, cmode)
            explicit compile-time dead code for clang */
         if (!C.loadChar(screen_fmt))
             C.Sprintf(screen_fmt, "[%%%sd,%%%sd]",
-                    (C.ROWNO - 1 + 2 < (100)) ? "02" :  "03",
+                    (C.ROWNO - 1 + 2 < (100)) ? "02" : "03",
                     (C.COLNO - 1 < (100)) ? "02" : "03");
         /* map line 0 is screen row 2;
            map column 0 isn't used, map column 1 is screen column 1 */
@@ -594,7 +569,6 @@ export function coord_desc(x, y, outbuf, cmode)
     }
     return outbuf;
 }
-
 
 export function auto_describe(cx, cy)
 {
@@ -757,7 +731,8 @@ export function getpos(ccp, force, goal)
     let sidx = C.intLocalPointer();
     let cx = C.coordLocalPointer(), cy = C.coordLocalPointer();
     let tx = C.coordLocalPointer(), ty = C.coordLocalPointer();
-    tx.value = C.u.ux; ty.value = C.u.uy;
+    tx.value = C.u.ux;
+    ty.value = C.u.uy;
     let msg_given = C.TRUE; /* clear message window by default */
     let show_goal_msg = C.FALSE;
     const garr = C.coordArrayCells(C.NUM_GLOCS);
@@ -890,7 +865,6 @@ export function getpos(ccp, force, goal)
                        && glyph == C.glyph_at(cx.value + dx + C.u.dx, cy.value + dy + C.u.dy)) {
                     dx += C.u.dx;
                     dy += C.u.dy;
-
                 }
             } else {
                 dx = 8 * C.u.dx;

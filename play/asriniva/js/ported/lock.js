@@ -5,14 +5,7 @@
 
 import { C } from '../c-runtime/context.js';
 
-
 /* occupation callbacks */
-
-
-
-
-
-
 
 export function picking_lock(x, y)
 {
@@ -342,8 +335,6 @@ export function autokey(opening)
     return key ? key : pick ? pick : card ? card : 0;
 }
 
-
-
 /* for doapply(); if player gives a direction or resumes an interrupted
    previous attempt then it usually costs hero a move even if nothing
    ultimately happens; when told "can't do that" before being asked for
@@ -666,8 +657,6 @@ export function u_have_forceable_weapon()
         return 0;
     return 1;
 }
-
-
 
 /* the #force command - try to force a chest with your weapon */
 export function doforce()
@@ -1321,4 +1310,3 @@ export function chest_shatter_msg(otmp)
 }
 
 /*lock.c*/
-

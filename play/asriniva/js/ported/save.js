@@ -5,8 +5,6 @@ import { C } from '../c-runtime/context.js';
 /*-Copyright (c) Michael Allison, 2009. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
 /* also used in restore */
 
 /* #define HUP if (!program_state.done_hup) */
@@ -175,7 +173,6 @@ export function dosave0()
     /* this should probably come sooner... */
     C.program_state.something_worth_saving = 0;
     res = 1;
-
     }
 
     C.notice_mon_on();
@@ -385,7 +382,6 @@ export function savestateinlock()
             C.program_state.saving--;
             C.done(C.TRICKED);
             return;
-        
     }
     }
     C.program_state.saving--;
@@ -1060,10 +1056,14 @@ export function freedynamicdata()
     C.save_killers(tnhfp);
     C.save_timers(tnhfp, C.RANGE_GLOBAL);
     C.save_light_sources(tnhfp, C.RANGE_GLOBAL);
-    saveobjchn(tnhfp, C.fieldPointer(C.gi, "invent")); C.gi.invent = 0;
-    saveobjchn(tnhfp, C.fieldPointer(C.gm, "migrating_objs")); C.gm.migrating_objs = 0;
-    savemonchn(tnhfp, C.gm.migrating_mons); C.gm.migrating_mons = 0;
-    savemonchn(tnhfp, C.gm.mydogs); C.gm.mydogs = 0; /* ascension or dungeon escape */
+    saveobjchn(tnhfp, C.fieldPointer(C.gi, "invent"));
+    C.gi.invent = 0;
+    saveobjchn(tnhfp, C.fieldPointer(C.gm, "migrating_objs"));
+    C.gm.migrating_objs = 0;
+    savemonchn(tnhfp, C.gm.migrating_mons);
+    C.gm.migrating_mons = 0;
+    savemonchn(tnhfp, C.gm.mydogs);
+    C.gm.mydogs = 0; /* ascension or dungeon escape */
     /* freelevchn();  --  [folded into free_dungeons()] */
     C.mon_animal_list(0);
     C.save_oracles(tnhfp);

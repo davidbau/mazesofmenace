@@ -3086,7 +3086,7 @@ async function trapeffect_web_mon(mtmp, trap, trflags) {
                 || (mtmp.wormno && _count_wsegs_web(mtmp) > 5)) {
                 tear_web = true;
             } else if (in_sight) {
-                await pline(_monnam_safe(mtmp) + " is caught in " + (trap.madeby_u ? "your" : "a") + " spider web.");
+                await pline_mon(mtmp, _monnam_safe(mtmp) + " is caught in " + (trap.madeby_u ? "your" : "a") + " spider web.");
                 seetrap(trap);
             }
             mtmp.mtrapped = tear_web ? 0 : 1;

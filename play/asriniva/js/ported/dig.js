@@ -5,13 +5,10 @@ import {C} from '../c-runtime/context.js';
 /*-Copyright (c) Michael Allison, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
 /* Indices returned by dig_typ() */
-export const DIGTYP_UNDIGGABLE=0, DIGTYP_ROCK=1, DIGTYP_STATUE=2, DIGTYP_BOULDER=3, DIGTYP_DOOR=4, DIGTYP_TREE=5;
+export const DIGTYP_UNDIGGABLE = 0, DIGTYP_ROCK = 1, DIGTYP_STATUE = 2, DIGTYP_BOULDER = 3, DIGTYP_DOOR = 4, DIGTYP_TREE = 5;
 
 export function rm_waslit()
-
 {
     let x, y;
 
@@ -29,9 +26,12 @@ export function rm_waslit()
  * immediately after the effect is complete.
  */
 export function mkcavepos(x, y, dist, waslit, rockit)
-
 {
-    x = C.coordxy(x); y = C.coordxy(y); dist = C.int(dist); waslit = C.boolean(waslit); rockit = C.boolean(rockit);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    dist = C.int(dist);
+    waslit = C.boolean(waslit);
+    rockit = C.boolean(rockit);
     let lev;
 
     if (!C.isok(x, y))
@@ -70,7 +70,6 @@ export function mkcavepos(x, y, dist, waslit, rockit)
 }
 
 export function mkcavearea(rockit)
-
 {
     rockit = C.boolean(rockit);
     let dist;
@@ -80,7 +79,6 @@ export function mkcavearea(rockit)
     let waslit = rm_waslit();
 
     if (rockit) {
-        
         C.pline("Crash!  The ceiling collapses around you!");
     } else {
         C.pline("A mysterious force %s cave around you!",
@@ -124,9 +122,9 @@ export function mkcavearea(rockit)
 
 /* called when attempting to break a statue or boulder with a pick */
 export function pick_can_reach(pick, x, y)
-
 {
-    x = C.coordxy(x); y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     let t = C.t_at(x, y);
     /* tseen: pit only affects item positioning when it is known */
     let target_in_pit = t && C.is_pit(t.ttyp) && t.tseen;
@@ -153,9 +151,9 @@ export function pick_can_reach(pick, x, y)
 
 /* When digging into location <x,y>, what are you actually digging into? */
 export function dig_typ(otmp, x, y)
-
 {
-    x = C.coordxy(x); y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     let ltyp;
 
     if (!C.isok(x, y) || !otmp || (!C.is_pick(otmp) && !C.is_axe(otmp)))
@@ -180,7 +178,6 @@ export function dig_typ(otmp, x, y)
 }
 
 export function is_digging()
-
 {
     if (C.go.occupation == dig) {
         return 1;
@@ -188,14 +185,13 @@ export function is_digging()
     return 0;
 }
 
-
 // #define BY_YOU (&gy.youmonst)
 // #define BY_OBJECT ((struct monst *) 0)
 
 export function dig_check(madeby, x, y)
-
 {
-    x = C.coordxy(x); y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     let ttmp = C.t_at(x, y);
 
     if (C.On_stairs(x, y)) {
@@ -242,9 +238,10 @@ export function dig_check(madeby, x, y)
 }
 
 export function digcheck_fail_message(digresult, madeby, x, y)
-
 {
-    digresult = C.int(digresult); x = C.coordxy(x); y = C.coordxy(y);
+    digresult = C.int(digresult);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     let verb =
         (C.samePtr(madeby, C.BY_YOU) && C.uwep && C.is_axe(C.uwep)) ? "chop" : "dig in";
 
@@ -287,7 +284,6 @@ export function digcheck_fail_message(digresult, madeby, x, y)
 }
 
 export function dig()
-
 {
     let lev;
     let dpx = C.coordxy(C.svc.context.digging.pos.x), dpy = C.coordxy(C.svc.context.digging.pos.y);
@@ -340,7 +336,7 @@ export function dig()
             }
             break;
         case 1:
-            
+
             C.pline("Bang!  You hit with the broad side of %s!",
                   C.the(C.xname(C.uwep)));
             C.wake_nearby(0);
@@ -559,9 +555,10 @@ export function dig()
 }
 
 export function furniture_handled(x, y, madeby_u)
-
 {
-    x = C.coordxy(x); y = C.coordxy(y); madeby_u = C.boolean(madeby_u);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    madeby_u = C.boolean(madeby_u);
     let lev = C.levl[x][y];
 
     if (C.IS_FOUNTAIN(lev.typ)) {
@@ -583,10 +580,8 @@ export function furniture_handled(x, y, madeby_u)
     return 1;
 }
 
-
 /* When will hole be finished? Very rough indication used by shopkeeper. */
 export function holetime()
-
 {
     if (C.go.occupation != dig || !C.loadChar(C.u.ushops))
         return -1;
@@ -597,7 +592,9 @@ export function holetime()
 export function fillholetyp(x, y, fill_if_any)
  /* force filling if it exists at all */
 {
-    x = C.coordxy(x); y = C.coordxy(y); fill_if_any = C.boolean(fill_if_any);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    fill_if_any = C.boolean(fill_if_any);
     let x1, y1;
     let lo_x = C.coordxy(C.max(1, x - 1)), hi_x = C.coordxy(C.min(x + 1, C.COLNO - 1)),
             lo_y = C.coordxy(C.max(0, y - 1)), hi_y = C.coordxy(C.min(y + 1, C.ROWNO - 1));
@@ -629,9 +626,10 @@ export function fillholetyp(x, y, fill_if_any)
 }
 
 export function digactualhole(x, y, madeby, ttyp)
-
 {
-    x = C.coordxy(x); y = C.coordxy(y); ttyp = C.int(ttyp);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    ttyp = C.int(ttyp);
     let oldobjs, newobjs;
     let ttmp;
     let surface_type, tname, in_thru;
@@ -821,15 +819,15 @@ export function digactualhole(x, y, madeby, ttyp)
     }
 }
 
-
 /*
  * Called from dighole(); also from do_break_wand() in apply.c
  * and do_earthquake() in music.c.
  */
 export function liquid_flow(x, y, typ, ttmp, fillmsg)
-
 {
-    x = C.coordxy(x); y = C.coordxy(y); typ = C.char(typ);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    typ = C.char(typ);
     let objchain;
     let mon;
     let u_spot = C.u_at(x, y);
@@ -867,12 +865,11 @@ export function liquid_flow(x, y, typ, ttmp, fillmsg)
     }
 }
 
-
 /* return TRUE if digging succeeded, FALSE otherwise */
 export function dighole(pit_only, by_magic, cc)
-
 {
-    pit_only = C.boolean(pit_only); by_magic = C.boolean(by_magic);
+    pit_only = C.boolean(pit_only);
+    by_magic = C.boolean(by_magic);
     let ttmp;
     let lev;
     let boulder_here;
@@ -939,7 +936,7 @@ export function dighole(pit_only, by_magic, cc)
              * digging makes a hole, but the boulder immediately
              * fills it.  Final outcome:  no hole, no boulder.
              */
-            
+
             C.pline("KADOOM!  The boulder falls in!");
             C.wake_nearby(0);
             C.delfloortrap(ttmp);
@@ -1013,7 +1010,6 @@ export function dighole(pit_only, by_magic, cc)
 }
 
 export function dig_up_grave(cc)
-
 {
     let otmp;
     let what_happens;
@@ -1078,10 +1074,10 @@ export function dig_up_grave(cc)
 }
 
 export function use_pick_axe(obj)
-
 {
     let verb;
-    let dsp; const dirsyms = C.stackAlloc(12), qbuf = C.stackAlloc(C.BUFSZ);
+    let dsp;
+    const dirsyms = C.stackAlloc(12), qbuf = C.stackAlloc(C.BUFSZ);
     let ispick;
     let rx, ry, downok, res = C.ECMD_OK;
     let dir;
@@ -1139,7 +1135,7 @@ export function use_pick_axe(obj)
     C.storeChar(dsp, 0);
     C.Sprintf(qbuf, "In what direction do you want to %s? [%s]", verb, dirsyms);
     if (!C.getdir(qbuf))
-        return (res|C.ECMD_CANCEL);
+        return (res | C.ECMD_CANCEL);
 
     return C.callLocal(use_pick_axe2, obj);
 }
@@ -1148,7 +1144,6 @@ export function use_pick_axe(obj)
 /*       the "In what direction do you want to dig?" query.        */
 /*       use_pick_axe2() uses the existing u.dx, u.dy and u.dz    */
 export function use_pick_axe2(obj)
-
 {
     let rx, ry;
     let lev;
@@ -1183,7 +1178,6 @@ export function use_pick_axe2(obj)
         rx = C.coordxy(C.u.ux + C.u.dx);
         ry = C.coordxy(C.u.uy + C.u.dy);
         if (!C.isok(rx, ry)) {
-            
             C.pline("Clash!");
             return C.ECMD_TIME;
         }
@@ -1348,7 +1342,6 @@ export function use_pick_axe2(obj)
 }
 
 export function watchman_canseeu(mtmp)
-
 {
     if (C.is_watch(mtmp.data) && mtmp.mcansee && C.m_canseeu(mtmp)
         && mtmp.mpeaceful)
@@ -1363,9 +1356,10 @@ export function watchman_canseeu(mtmp)
  * zap == TRUE if wand/spell of digging, FALSE otherwise (chewing)
  */
 export function watch_dig(mtmp, x, y, zap)
-
 {
-    x = C.coordxy(x); y = C.coordxy(y); zap = C.boolean(zap);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    zap = C.boolean(zap);
     let lev = C.levl[x][y];
 
     if (C.in_town(x, y)
@@ -1375,7 +1369,6 @@ export function watch_dig(mtmp, x, y, zap)
             mtmp = C.get_iter_mons(watchman_canseeu);
 
         if (mtmp) {
-            
             if (zap || C.svc.context.digging.warned) {
                 C.verbalize("Halt, vandal!  You're under arrest!");
                 C.angry_guards(!!C.Deaf);
@@ -1401,7 +1394,6 @@ export function watch_dig(mtmp, x, y, zap)
 
 /* Return TRUE if monster died, FALSE otherwise.  Called from m_move(). */
 export function mdig_tunnel(mtmp)
-
 {
     let here;
     let sawit, seeit, trapped;
@@ -1456,7 +1448,6 @@ export function mdig_tunnel(mtmp)
     if (C.IS_WALL(here.typ)) {
         /* KMH -- Okay on arboreal levels (room walls are still stone) */
         if (C.flags.verbose && !C.rn2(5, 1468, "mdig_tunnel")) {
-            
             C.You_hear("crashing rock.");
         }
         if (C.loadChar(C.in_rooms(mtmp.mx, mtmp.my, C.SHOPBASE)))
@@ -1486,13 +1477,11 @@ export function mdig_tunnel(mtmp)
     return 0;
 }
 
-
 /* draft refers to air currents, but can be a pun on "draft" as conscription
    for military service (probably not a good pun if it has to be explained) */
 export const STRIDENT = 4; /* from pray.c */
 
 export function draft_message(unexpected)
-
 {
     unexpected = C.boolean(unexpected);
     /*
@@ -1537,7 +1526,6 @@ export function draft_message(unexpected)
 
 /* digging via wand zap or spell cast */
 export function zap_dig()
-
 {
     let room;
     let mtmp;
@@ -1752,7 +1740,6 @@ export function zap_dig()
  * down in the pit.
  */
 export function adj_pit_checks(cc, msg)
-
 {
     let ltyp;
     let room;
@@ -1829,7 +1816,6 @@ export function adj_pit_checks(cc, msg)
  * Ensure that all conjoined pits fill up.
  */
 export function pit_flow(trap, filltyp)
-
 {
     filltyp = C.char(filltyp);
     /*
@@ -1870,7 +1856,6 @@ export function pit_flow(trap, filltyp)
 }
 
 export function buried_ball(cc)
-
 {
     let odist, bdist = C.COLNO;
     let otmp, ball = 0;
@@ -1920,7 +1905,6 @@ export function buried_ball(cc)
 }
 
 export function buried_ball_to_punishment()
-
 {
     const cc = C.coordLocal();
     let ball;
@@ -1941,7 +1925,6 @@ export function buried_ball_to_punishment()
 }
 
 export function buried_ball_to_freedom()
-
 {
     const cc = C.coordLocal();
     let ball;
@@ -1965,7 +1948,6 @@ export function buried_ball_to_freedom()
 /* move objects from fobj/nexthere lists to buriedobjlist, keeping position
    information */
 export function bury_an_obj(otmp, dealloced)
-
 {
     let otmp2;
     let under_ice;
@@ -2030,9 +2012,9 @@ export function bury_an_obj(otmp, dealloced)
 }
 
 export function bury_objs(x, y)
-
 {
-    x = C.int(x); y = C.int(y);
+    x = C.int(x);
+    y = C.int(y);
     let otmp, otmp2;
     let shkp;
     let loss = 0n;
@@ -2071,9 +2053,9 @@ export function bury_objs(x, y)
 /* move objects from buriedobjlist to fobj/nexthere lists; if caller
    converts terrain from ice to something, it should call obj_ice_effects() */
 export function unearth_objs(x, y)
-
 {
-    x = C.int(x); y = C.int(y);
+    x = C.int(x);
+    y = C.int(y);
     let otmp, otmp2, bball;
     const cc = C.coordLocal();
 
@@ -2115,7 +2097,6 @@ export function unearth_objs(x, y)
  */
 /* ARGSUSED */
 export function rot_organic(arg, timeout)
-
 {
     timeout = C.long(timeout);
     let obj = arg.a_obj;
@@ -2137,7 +2118,6 @@ export function rot_organic(arg, timeout)
  * Called when a corpse has rotted completely away.
  */
 export function rot_corpse(arg, timeout)
-
 {
     timeout = C.long(timeout);
     let x = C.coordxy(0), y = C.coordxy(0);
@@ -2194,7 +2174,6 @@ export function rot_corpse(arg, timeout)
 
 /* the #wizbury command - bury everything at your loc and around */
 export function wiz_debug_cmd_bury()
-
 {
     let otmp;
     let x, y, before = 0, after = 0, diff;
@@ -2236,6 +2215,5 @@ export function wiz_debug_cmd_bury()
 /*#undef STRIDENT*/
 
 /*dig.c*/
-
 
 /* DEBUG */

@@ -5,7 +5,6 @@
 
 import { C } from '../c-runtime/context.js';
 
-
 /* We don't want to rewrite the whole file, because that entails
    creating a new version which requires that the old one be deletable.
    [Write and Delete are separate permissions on VMS.  'record' should
@@ -19,8 +18,6 @@ import { C } from '../c-runtime/context.js';
  */
 /* [note: do not move this to the 'g' struct] */
 
-
-
 const newttentry = () => C.entry(C.alloc(C.entrySize));
 const dealloc_ttentry = ttent => C.free(ttent);
 /* Changing NAMSZ can break your existing record/logfile */
@@ -28,35 +25,12 @@ const NAMSZ = 10;
 const DTHSZ = 100;
 const ROLESZ = 3;
 
-
-
 /* size big enough to read in all the string fields at once; includes
    room for separating space or trailing newline plus string terminator */
 const SCANBUFSZ = (4 * (ROLESZ + 1) + (NAMSZ + 1) + (DTHSZ + 1) + 1);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* "killed by",&c ["an"] 'svk.killer.name' */
 export function formatkiller(buf, siz, how, incl_helpless)
-
 {
     const killed_by_prefix = [
         /* DIED, CHOKING, POISONING, STARVING, */
@@ -127,7 +101,6 @@ export function formatkiller(buf, siz, how, incl_helpless)
 }
 
 export function topten_print(x)
-
 {
     if (C.gt.toptenwin == C.WIN_ERR)
         C.raw_print(x);
@@ -136,7 +109,6 @@ export function topten_print(x)
 }
 
 export function topten_print_bold(x)
-
 {
     if (C.gt.toptenwin == C.WIN_ERR)
         C.raw_print_bold(x);
@@ -145,7 +117,6 @@ export function topten_print_bold(x)
 }
 
 export function observable_depth(lev)
-
 {
 /* if we ever randomize the order of the elemental planes, we
        must use a constant external representation in the record file */
@@ -155,7 +126,6 @@ export function observable_depth(lev)
 
 /* throw away characters until current record has been entirely consumed */
 export function discardexcess(rfile)
-
 {
     let c;
 
@@ -164,9 +134,7 @@ export function discardexcess(rfile)
     } while (c != 10 && c != C.EOF);
 }
 
-
 export function readentry(rfile, tt)
-
 {
     let inbuf = C.charLocal(SCANBUFSZ), s1 = C.charLocal(SCANBUFSZ), s2 = C.charLocal(SCANBUFSZ), s3 = C.charLocal(SCANBUFSZ),
          s4 = C.charLocal(SCANBUFSZ), s5 = C.charLocal(SCANBUFSZ), s6 = C.charLocal(SCANBUFSZ);
@@ -182,7 +150,6 @@ const TTFIELDS = 13;
                C.entryField(tt, "points"), C.entryField(tt, "deathdnum"), C.entryField(tt, "deathlev"), C.entryField(tt, "maxlvl"),
                C.entryField(tt, "hp"), C.entryField(tt, "maxhp"), C.entryField(tt, "deaths"), C.entryField(tt, "deathdate"),
                C.entryField(tt, "birthdate"), C.entryField(tt, "uid")) != TTFIELDS) {
-
         tt.points = 0;
         discardexcess(rfile);
     } else {
@@ -233,7 +200,6 @@ const TTFIELDS = 13;
 }
 
 export function writeentry(rfile, tt)
-
 {
     const fmt32 = "%c%c ";        /* role,gender */
     const fmt33 = "%s %s %s %s "; /* role,race,gndr,algn */
@@ -252,15 +218,11 @@ export function writeentry(rfile, tt)
                        tt.plalign);
     C.fprintf(rfile, fmtX, C.onlyspace(tt.name) ? "_" : tt.name,
                    tt.death);
-
 }
-
 
 /* as tab is never used in eg. svp.plname or death, no need to mangle those. */
 export function writexlentry(rfile, tt, how)
-
 {
-
 const XLOG_SEP = 9; /* xlogfile field separator. */
     let buf = C.charLocal(C.BUFSZ), tmpbuf = C.charLocal(DTHSZ + 1);
     let achbuf = C.charLocal(C.N_ACH * 40);
@@ -308,11 +270,9 @@ const XLOG_SEP = 9; /* xlogfile field separator. */
     C.fprintf(rfile, "%cbones=%ld", XLOG_SEP, C.u.uroleplay.numbones);
     C.fprintf(rfile, "%crerolls=%ld", XLOG_SEP, C.u.uroleplay.numrerolls);
     C.fprintf(rfile, "\n");
-
 }
 
 export function encodexlogflags()
-
 {
     let e = 0n;
 
@@ -329,7 +289,6 @@ export function encodexlogflags()
 }
 
 export function encodeconduct()
-
 {
     let e = 0n;
 
@@ -396,7 +355,6 @@ export function encodeachieve(secondlong) /* False: handle achievements 1..31, T
 
 /* add the achievement or conduct comma-separated to string */
 export function add_achieveX(buf, achievement, condition)
-
 {
     if (condition) {
         if (C.loadChar(buf) != 0) {
@@ -407,7 +365,6 @@ export function add_achieveX(buf, achievement, condition)
 }
 
 export function encode_extended_achievements(buf)
-
 {
     let rnkbuf = C.charLocal(40);
     let achievement = 0;
@@ -500,7 +457,6 @@ export function encode_extended_achievements(buf)
 }
 
 export function encode_extended_conducts(buf)
-
 {
     C.storeChar(buf + (0), 0);
     add_achieveX(buf, "foodless",     !C.u.uconduct.food);
@@ -531,7 +487,6 @@ export function encode_extended_conducts(buf)
 /* XLOGFILE */
 
 export function free_ttlist(tt)
-
 {
     let ttnext;
 
@@ -544,7 +499,6 @@ export function free_ttlist(tt)
 }
 
 export function topten(how, when)
-
 {
     let t0, tprev;
     let t1;
@@ -567,8 +521,6 @@ export function topten(how, when)
     if (C.iflags.toptenwin) {
         C.gt.toptenwin = C.create_nhwindow(C.NHW_TEXT);
     }
-
-
 
 /* make sure the screen is black on white */
     /* create a new 'topten' entry */
@@ -793,7 +745,6 @@ export function topten(how, when)
     C.fclose(rfile);
     C.unlock_file(C.RECORD);
     free_ttlist(C.tt_head);
-
     }
     if (!C.program_state.stopprint) {
         if (C.iflags.toptenwin) {
@@ -815,7 +766,6 @@ export function topten(how, when)
 }
 
 export function outheader()
-
 {
     let linebuf = C.charLocal(C.BUFSZ);
     let bp;
@@ -828,10 +778,8 @@ export function outheader()
     topten_print(linebuf);
 }
 
-
 /* so>0: standout line; so=0: ordinary line */
 export function outentry(rank, t1, so)
-
 {
     let second_line = C.TRUE;
     let linebuf = C.charLocal(C.BUFSZ);
@@ -994,9 +942,7 @@ export function outentry(rank, t1, so)
         topten_print(linebuf);
 }
 
-
 export function score_wanted(current_ver, rank, t1, playerct, players, uid)
-
 {
     let arg, nxt;
     let i;
@@ -1072,7 +1018,6 @@ export function score_wanted(current_ver, rank, t1, playerct, players, uid)
  * caveat: some shells might allow argv elements to be arbitrarily long.
  */
 export function prscore(argc, argv)
-
 {
     let players, player0 = C.stringPointerLocal();
     let i, playerct, rank;
@@ -1098,7 +1043,6 @@ export function prscore(argc, argv)
         C.raw_print("Cannot open record file!");
         return;
     }
-
 
     /* If the score list isn't after a game, we never went through
      * initialization. */
@@ -1129,7 +1073,7 @@ export function prscore(argc, argv)
         if (C.sysopt.pers_is_uid) {
             uid = C.int(C.getuid());
             playerct = 0;
-            players =  0;
+            players = 0;
         } else {
             player0.value = C.svp.plname;
             if (!C.loadChar(player0.value))
@@ -1140,7 +1084,7 @@ export function prscore(argc, argv)
         }
     } else {
         playerct = --argc;
-        players =  (argv = C.stringArray(C.address(argv) + C.pointerSize));
+        players = (argv = C.stringArray(C.address(argv) + C.pointerSize));
     }
     C.raw_print("");
 
@@ -1217,7 +1161,6 @@ export function prscore(argc, argv)
 }
 
 export function classmon(plch)
-
 {
     let i;
 
@@ -1242,7 +1185,6 @@ export function classmon(plch)
  * Get a random player name and class from the high score list,
  */
 export function get_rnd_toptenentry()
-
 {
     let rank, i;
     let rfile;
@@ -1279,13 +1221,11 @@ export function get_rnd_toptenentry()
     return tt;
 }
 
-
 /*
  * Attach random player name and class from high score list
  * to an object (for statues or morgue corpses).
  */
 export function tt_oname(otmp)
-
 {
     let tt;
     if (!otmp)
@@ -1308,7 +1248,6 @@ export function tt_oname(otmp)
 
 /* Randomly select a topten entry to mimic */
 export function tt_doppel(mon)
-
 {
     let tt = C.rn2(13, 1446, "tt_doppel") ? get_rnd_toptenentry() : 0;
     let ret;

@@ -140,7 +140,7 @@ export function msummon(mon)
     xlight = 0;
 
     while (cnt > 0) {
-        mtmp = C.makemon(C.mons[dtype], C.u.ux, C.u.uy, C.MM_EMIN|C.MM_NOMSG);
+        mtmp = C.makemon(C.mons[dtype], C.u.ux, C.u.uy, C.MM_EMIN | C.MM_NOMSG);
         if (mtmp) {
             result++;
             /* an angel's alignment should match the summoner */
@@ -213,7 +213,7 @@ export function summon_minion(alignment, talk)
     if (mnum == C.NON_PM) {
         mon = 0;
     } else if (mnum == C.PM_ANGEL) {
-        mon = C.makemon(C.mons[mnum], C.u.ux, C.u.uy, C.MM_EMIN|C.MM_NOMSG);
+        mon = C.makemon(C.mons[mnum], C.u.ux, C.u.uy, C.MM_EMIN | C.MM_NOMSG);
         if (mon) {
             mon.isminion = 1;
             mon.mextra.emin.min_align = alignment;
@@ -223,7 +223,7 @@ export function summon_minion(alignment, talk)
                && mnum != C.PM_ALIGNED_CLERIC && mnum != C.PM_HIGH_CLERIC) {
         /* This was mons[mnum].pxlth == 0 but is this restriction
            appropriate or necessary now that the structures are separate? */
-        mon = C.makemon(C.mons[mnum], C.u.ux, C.u.uy, C.MM_EMIN|C.MM_NOMSG);
+        mon = C.makemon(C.mons[mnum], C.u.ux, C.u.uy, C.MM_EMIN | C.MM_NOMSG);
         if (mon) {
             mon.isminion = 1;
             mon.mextra.emin.min_align = alignment;

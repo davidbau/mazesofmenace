@@ -79,9 +79,10 @@ import {
 import { LL_NONE, NHW_MESSAGE, REST_CURRENT_LEVEL, Upolyd } from './const.js';
 import { dorestore } from './restore.js';
 import {
-    playgroundDeleteFile, playgroundReadFile, playgroundWriteFile,
-    set_savefile_name,
+    check_panic_save, playgroundDeleteFile, playgroundReadFile,
+    playgroundWriteFile, set_savefile_name,
 } from './files.js';
+import { ask_about_panic_save } from './unixunix.js';
 import { welcomeBackMessage, welcomeHallucinationMessage } from './role_init.js';
 import { udeadinside, ugenocided } from './polyself.js';
 import {
@@ -98,6 +99,7 @@ import {
     vision_reset,
 } from './vision.js';
 import { initUnported } from './unported.js';
+import { process_options, recorderArguments } from './unixmain.js';
 
 // Every Unsupported*Error is a fail-closed refusal of an unported code path.
 // runSegment() catches them as boundary stops so the session scan and scorer
@@ -532,6 +534,13 @@ export class NethackGame {
         // configuration has been parsed and before player selection.
         initoptions_finish(opts, g);
 
+        // unixmain.c:170 process_options() follows initoptions() and
+        // whoami(); the recorder always passes "-u <name>", so the name it
+        // parses from the nethackrc (scripts/record-session.mjs
+        // recordSegment(), js/unixmain.js parseNethackrcName()) replaces the
+        // one the configuration set, and an empty name clears it.
+        process_options(recorderArguments(this._nethackrc), g);
+
         // tty_init_nhwindows() precedes plnamesuffix() and any role menus, and
         // clears the terminal over whatever the configuration read printed.
         tty_init_nhwindows(null, null, g);
@@ -715,6 +724,12 @@ export class NethackGame {
         }
 
         await tty_player_selection(g);
+
+        // C ref: unixmain.c:306-311. With no save file to restore, a panic
+        // save file left by an earlier segment's panic() makes C ask whether
+        // to start a new game; any other answer ends the program there.
+        if (check_panic_save(g))
+            await ask_about_panic_save(g);
 
         // Run game startup
         await newgame();

@@ -9,7 +9,6 @@ import { C } from '../c-runtime/context.js';
  * division and signed long conduct counter retain their original widths.
  * The native getobj trampoline calls this TU's original write_ok function. */
 
-
 /*
  * returns base cost of a scroll or a spellbook
  */

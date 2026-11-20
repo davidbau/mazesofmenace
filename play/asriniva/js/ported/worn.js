@@ -4,31 +4,25 @@ import { C } from '../c-runtime/context.js';
 /*-Copyright (c) Robert Patrick Rankin, 2013. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
 /* for failing sanity check's feedback */
 export const worn = [
-    {w_mask:"W_ARM",w_obj:"uarm",w_what:"suit"},
-    {w_mask:"W_ARMC",w_obj:"uarmc",w_what:"cloak"},
-    {w_mask:"W_ARMH",w_obj:"uarmh",w_what:"helmet"},
-    {w_mask:"W_ARMS",w_obj:"uarms",w_what:"shield"},
-    {w_mask:"W_ARMG",w_obj:"uarmg",w_what:"gloves"},
-    {w_mask:"W_ARMF",w_obj:"uarmf",w_what:"boots"},
-    {w_mask:"W_ARMU",w_obj:"uarmu",w_what:"shirt"},
-    {w_mask:"W_RINGL",w_obj:"uleft",w_what:"left ring"},
-    {w_mask:"W_RINGR",w_obj:"uright",w_what:"right ring"},
-    {w_mask:"W_WEP",w_obj:"uwep",w_what:"weapon"},
-    {w_mask:"W_SWAPWEP",w_obj:"uswapwep",w_what:"alternate weapon"},
-    {w_mask:"W_QUIVER",w_obj:"uquiver",w_what:"quiver"},
-    {w_mask:"W_AMUL",w_obj:"uamul",w_what:"amulet"},
-    {w_mask:"W_TOOL",w_obj:"ublindf",w_what:"facewear"}, /* blindfold|towel|lenses */
-    {w_mask:"W_BALL",w_obj:"uball",w_what:"chained ball"},
-    {w_mask:"W_CHAIN",w_obj:"uchain",w_what:"attached chain"},
-    {w_mask:0,w_obj:0,w_what:0}
+    {w_mask:"W_ARM", w_obj:"uarm", w_what:"suit"},
+    {w_mask:"W_ARMC", w_obj:"uarmc", w_what:"cloak"},
+    {w_mask:"W_ARMH", w_obj:"uarmh", w_what:"helmet"},
+    {w_mask:"W_ARMS", w_obj:"uarms", w_what:"shield"},
+    {w_mask:"W_ARMG", w_obj:"uarmg", w_what:"gloves"},
+    {w_mask:"W_ARMF", w_obj:"uarmf", w_what:"boots"},
+    {w_mask:"W_ARMU", w_obj:"uarmu", w_what:"shirt"},
+    {w_mask:"W_RINGL", w_obj:"uleft", w_what:"left ring"},
+    {w_mask:"W_RINGR", w_obj:"uright", w_what:"right ring"},
+    {w_mask:"W_WEP", w_obj:"uwep", w_what:"weapon"},
+    {w_mask:"W_SWAPWEP", w_obj:"uswapwep", w_what:"alternate weapon"},
+    {w_mask:"W_QUIVER", w_obj:"uquiver", w_what:"quiver"},
+    {w_mask:"W_AMUL", w_obj:"uamul", w_what:"amulet"},
+    {w_mask:"W_TOOL", w_obj:"ublindf", w_what:"facewear"}, /* blindfold|towel|lenses */
+    {w_mask:"W_BALL", w_obj:"uball", w_what:"chained ball"},
+    {w_mask:"W_CHAIN", w_obj:"uchain", w_what:"attached chain"},
+    {w_mask:0, w_obj:0, w_what:0}
 ];
 
 /* This only allows for one blocking item per property */
@@ -201,7 +195,6 @@ export function allunworn()
         C.worn[wp].w_obj.value = 0;
     }
 }
-
 
 /* return item worn in slot indicated by wornmask; needed by poly_obj() */
 export function wearmask_to_obj(wornmask)
@@ -517,7 +510,8 @@ export function mon_adjust_speed(mon, adjust, obj)
 export function update_mon_extrinsics(mon, obj, on, silently)
 /* armor being worn or taken off */
 {
-    on = C.boolean(on); silently = C.boolean(silently);
+    on = C.boolean(on);
+    silently = C.boolean(silently);
     let unseen;
     let mask;
     let otmp;
@@ -652,7 +646,6 @@ export function update_mon_extrinsics(mon, obj, on, silently)
         C.newsym(mon.mx, mon.my);
 }
 
-
 export function find_mac(mon)
 {
     let obj;
@@ -738,7 +731,9 @@ export function m_dowear_type(mon, flag, creation, racialexception)
 /* wornmask value */ /* no wear messages when mon is being created */ /* small monsters that are allowed for player
                               * races (gnomes) can wear suits */
 {
-    flag = C.long(flag); creation = C.boolean(creation); racialexception = C.boolean(racialexception);
+    flag = C.long(flag);
+    creation = C.boolean(creation);
+    racialexception = C.boolean(racialexception);
     let old, best, obj;
     let oldmask = 0n;
     let m_delay = 0;
@@ -1302,7 +1297,8 @@ export function extract_from_minvent(mon, obj, do_extrinsics, silently)
 /* whether to call update_mon_extrinsics */ /* doesn't affect all possible messages,
                              * just update_mon_extrinsics's */
 {
-    do_extrinsics = C.boolean(do_extrinsics); silently = C.boolean(silently);
+    do_extrinsics = C.boolean(do_extrinsics);
+    silently = C.boolean(silently);
     let unwornmask = obj.owornmask;
 
     /*
@@ -1337,6 +1333,5 @@ export function extract_from_minvent(mon, obj, do_extrinsics, silently)
         C.mwepgone(mon); /* unwields and sets weapon_check to NEED_WEAPON */
     }
 }
-
 
 /*worn.c*/

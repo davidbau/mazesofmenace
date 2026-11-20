@@ -21,11 +21,6 @@ const KEEN = 20000;
    increment, the hero used to get cheated out of 1 turn of retention */
 // Original spell field/letter macros expand inline at each use.
 
-
-
-
-
-
 /* The roles[] table lists the role-specific values for tuning
  * percent_success().
  *
@@ -266,15 +261,14 @@ export function deadbook(book2)
                 C.u.udg_cnt = soon;
         } else { /* at least one relic not prepared properly */
             C.You("have a feeling that %s is amiss...", C.something);
-            raise_dead = 1; break raise_dead;
+            raise_dead = 1;
+            break raise_dead;
         }
         return;
     }
-
     }
     /* when not an invocation situation */
     if (book2.cursed || raise_dead) {
-
         C.You("raised the dead!");
         /* first maybe place a dangerous adversary */
         if (!C.rn2(3, 311, 'deadbook') && ((mtmp = C.makemon(C.mons[C.PM_MASTER_LICH], C.u.ux, C.u.uy,
@@ -317,8 +311,6 @@ export function book_cursed(book)
         C.stop_occupation();
     }
 }
-
-
 
 export function learn()
 {
@@ -428,8 +420,6 @@ export function learn()
     C.svc.context.spbook.o_id = 0;
     return 0;
 }
-
-
 
 export function study_book(spellbook)
 {
@@ -685,7 +675,8 @@ export function rejectcasting()
 export function getspell(spell_no)
 {
     let nspells, idx, retry_limit;
-    let ilet; const lets = C.stackAlloc(C.BUFSZ), qbuf = C.stackAlloc(C.QBUFSZ);
+    let ilet;
+    const lets = C.stackAlloc(C.BUFSZ), qbuf = C.stackAlloc(C.QBUFSZ);
     let cq, cmdq;
 
     nspells = num_spells();
@@ -783,7 +774,6 @@ export function dowizcast()
     return C.ECMD_OK;
 }
 
-
 /* the #cast command -- cast a spell */
 export function docast()
 {
@@ -872,7 +862,6 @@ export function skill_based_spellbook_id()
     }
 }
 
-
 /* Limit the total area chain lightning can cover; this is both for
    technical reasons (making it possible to limit the size of arrays
    here and in the display code) and for gameplay balance reasons;
@@ -893,8 +882,6 @@ const CHAIN_LIGHTNING_LIMIT = 100;
 /* current location of the zap */
 /* distance this zap can cover without chaining */
 
-
-
 /* Given a potential chain lightning zap, moves it one square forward in
    the given direction, then adds it to the queue unless it would hit an
    invalid square or is out of power.
@@ -911,7 +898,14 @@ export function propagate_chain_lightning(clq, zap)
 
     if (clq.tail >= CHAIN_LIGHTNING_LIMIT)
         return;    /* zap has covered too many squares */
-    if (!(C.isok(zap.x, zap.y) && ((C.SPACE_POS(C.levl[zap.x][zap.y].typ) || C.levl[zap.x][zap.y].typ == C.POOL || C.levl[zap.x][zap.y].typ == C.MOAT || C.levl[zap.x][zap.y].typ == C.DRAWBRIDGE_UP || C.levl[zap.x][zap.y].typ == C.LAVAPOOL) || (C.IS_DOOR(C.levl[zap.x][zap.y].typ) && !(C.levl[zap.x][zap.y].doormask & (C.D_CLOSED | C.D_LOCKED))))))
+    if (!(C.isok(zap.x, zap.y)
+        && ((C.SPACE_POS(C.levl[zap.x][zap.y].typ)
+        || C.levl[zap.x][zap.y].typ == C.POOL
+        || C.levl[zap.x][zap.y].typ == C.MOAT
+        || C.levl[zap.x][zap.y].typ == C.DRAWBRIDGE_UP
+        || C.levl[zap.x][zap.y].typ == C.LAVAPOOL)
+        || (C.IS_DOOR(C.levl[zap.x][zap.y].typ)
+        && !(C.levl[zap.x][zap.y].doormask & (C.D_CLOSED | C.D_LOCKED))))))
         return;    /* zap can't go to this square */
 
     mon = C.m_at(zap.x, zap.y);
@@ -1047,7 +1041,6 @@ export function cast_chain_lightning()
 
     C.tmp_at(C.DISP_END, 0);
 }
-
 
 export function cast_protection()
 {
@@ -1331,10 +1324,14 @@ export function spelleffects_check(spell, res, energy)
    hero must know the spell (unless force is TRUE). */
 export function spelleffects(spell_otyp, atme, force)
 {
-    spell_otyp = C.int(spell_otyp);atme = C.boolean(atme);force = C.boolean(force);
+    spell_otyp = C.int(spell_otyp);
+    atme = C.boolean(atme);
+    force = C.boolean(force);
     let spell = force ? spell_otyp : spell_idx(spell_otyp);
-    const energy = C.intLocal(0); let damage, n;
-    let otyp, skill, role_skill; const res = C.intLocal(C.ECMD_OK);
+    const energy = C.intLocal(0);
+    let damage, n;
+    let otyp, skill, role_skill;
+    const res = C.intLocal(C.ECMD_OK);
     let physical_damage = 0;
     let pseudo;
     const cc = C.coordLocal();
@@ -1399,13 +1396,13 @@ export function spelleffects(spell_otyp, atme, force)
             }
             break;
         } /* else */
-        
+
         /*FALLTHRU*/
 
     /* these spells are all duplicates of wand effects */
     case C.SPE_FORCE_BOLT:
         physical_damage = 1;
-        
+
     /*FALLTHRU*/
     case C.SPE_SLEEP:
     case C.SPE_MAGIC_MISSILE:
@@ -1471,7 +1468,7 @@ export function spelleffects(spell_otyp, atme, force)
         /* high skill yields effect equivalent to blessed scroll */
         if (role_skill >= C.P_SKILLED)
             pseudo.blessed = 1;
-        
+
     /*FALLTHRU*/
     case C.SPE_MAGIC_MAPPING:
     case C.SPE_CREATE_MONSTER:
@@ -1487,7 +1484,7 @@ export function spelleffects(spell_otyp, atme, force)
         /* high skill yields effect equivalent to blessed potion */
         if (role_skill >= C.P_SKILLED)
             pseudo.blessed = 1;
-        
+
     /*FALLTHRU*/
     case C.SPE_INVISIBILITY:
         C.peffects(pseudo);
@@ -1553,8 +1550,9 @@ export function spelleffects(spell_otyp, atme, force)
 /*ARGSUSED*/
 export function spell_aim_step(arg, x, y)
 {
-    x = C.coordxy(x);y = C.coordxy(y);
-    if (!C.isok(x,y))
+    x = C.coordxy(x);
+    y = C.coordxy(y);
+    if (!C.isok(x, y))
         return 0;
     if (!C.ZAP_POS(C.levl[x][y].typ)
         && !(C.IS_DOOR(C.levl[x][y].typ) && (C.levl[x][y].doormask & C.D_ISOPEN)))
@@ -1565,7 +1563,8 @@ export function spell_aim_step(arg, x, y)
 /* not quite the same as throwspell limits, but close enough */
 export function can_center_spell_location(x, y)
 {
-    x = C.coordxy(x);y = C.coordxy(y);
+    x = C.coordxy(x);
+    y = C.coordxy(y);
     if (C.distmin(C.u.ux, C.u.uy, x, y) > 10)
         return 0;
     return (Number(Boolean(C.isok(x, y) && C.cansee(x, y) && !(C.IS_STWALL(C.levl[x][y].typ)))));
@@ -1867,7 +1866,6 @@ export function sortspells()
     let i;
     let n;
 
-
     if (C.gs.spl_sortmode == SORTBY_CURRENT)
         return;
     for (n = 0; n < C.MAXSPELL && C.svs.spl_book[n].sp_id != C.NO_SPELL; ++n)
@@ -1985,8 +1983,6 @@ export function dovspell()
     return C.ECMD_OK;
 }
 
-
-
 /* lists spells for endgame dumplog purposes */
 export function show_spells()
 {
@@ -2009,7 +2005,8 @@ export function dospellmenu(prompt, splaction, spell_no) /* SPELLMENU_CAST, SPEL
     splaction = C.int(splaction);
     let tmpwin;
     let i, n, how, splnum;
-    const buf = C.stackAlloc(C.BUFSZ), retentionbuf = C.stackAlloc(24); let sep;
+    const buf = C.stackAlloc(C.BUFSZ), retentionbuf = C.stackAlloc(24);
+    let sep;
     let fmt;
     const selected = C.menuPointerLocal();
     const any = C.anyLocal();
@@ -2095,8 +2092,6 @@ export function dospellmenu(prompt, splaction, spell_no) /* SPELLMENU_CAST, SPEL
     }
     return 0;
 }
-
-
 
 export function percent_success(spell)
 {

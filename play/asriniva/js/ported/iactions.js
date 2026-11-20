@@ -5,8 +5,6 @@
 
 import { C } from '../c-runtime/context.js';
 
-
-
     export const IA_NONE = 0;
     export const IA_UNWIELD = 1; /* hack for 'w-' */
     export const IA_APPLY_OBJ = 2; /* 'a' */
@@ -35,7 +33,6 @@ import { C } from '../c-runtime/context.js';
     export const IA_TWOWEAPON = 25;
     export const IA_ZAP_OBJ = 26;
     export const IA_WHATIS_OBJ = 27; /* '/' specify inventory object */
-
 
 /* construct text for the menu entries for IA_NAME_OBJ and IA_NAME_OTYP */
 export function item_naming_classification(obj, onamebuf, ocallbuf)
@@ -658,8 +655,16 @@ export function itemactions(otmp)
         && (C.u.twoweap
         /* but if not, try to filter most "you can't do that" here */
             || (C.could_twoweap(C.gy.youmonst.data) && !C.uarms
-                && C.uwep && (((C.uwep.oclass == C.WEAPON_CLASS) ? !(C.is_launcher(C.uwep) || C.is_ammo(C.uwep) || C.is_missile(C.uwep)) : C.is_weptool(C.uwep)) && !C.bimanual(C.uwep))
-                && C.uswapwep && (((C.uswapwep.oclass == C.WEAPON_CLASS) ? !(C.is_launcher(C.uswapwep) || C.is_ammo(C.uswapwep) || C.is_missile(C.uswapwep)) : C.is_weptool(C.uswapwep)) && !C.bimanual(C.uswapwep))))) {
+                && C.uwep
+                    && (((C.uwep.oclass == C.WEAPON_CLASS) ? !(C.is_launcher(C.uwep)
+                    || C.is_ammo(C.uwep)
+                    || C.is_missile(C.uwep)) : C.is_weptool(C.uwep))
+                    && !C.bimanual(C.uwep))
+                && C.uswapwep
+                    && (((C.uswapwep.oclass == C.WEAPON_CLASS) ? !(C.is_launcher(C.uswapwep)
+                    || C.is_ammo(C.uswapwep)
+                    || C.is_missile(C.uswapwep)) : C.is_weptool(C.uswapwep))
+                    && !C.bimanual(C.uswapwep))))) {
         C.Sprintf(buf, "Toggle two-weapon combat %s", C.u.twoweap ? "off" : "on");
         ia_addmenu(win, IA_TWOWEAPON, 'X'.charCodeAt(0), buf);
     }

@@ -5,8 +5,6 @@ import { C } from '../c-runtime/context.js';
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
 /* #define DOG_HUNGRY      300 */
 const DOG_HUNGRY = 300n;
 /* #define DOG_WEAK        500 */
@@ -17,8 +15,6 @@ const DOG_STARVE = 750n;
 /* pick a carried item for pet to drop */
 export function droppables(mon)
 {
-
-
     /*
      * 'key|pickaxe|&c = &dummy' is used to make various creatures
      * that can't use a key/pick-axe/&c behave as if they are already
@@ -30,15 +26,6 @@ export function droppables(mon)
      * might return the address of a local variable.  It's mistaken,
      * &dummy is never returned.  'static' is simplest way to shut it up.
      */
-
-
-
-
-
-
-
-
-
 
     const dummy = C.dummy;
     let obj, wep, pickaxe, unihorn, key;
@@ -80,7 +67,7 @@ export function droppables(mon)
             if (pickaxe && pickaxe.otyp == C.PICK_AXE && pickaxe != wep
                 && (!pickaxe.oartifact || obj.oartifact))
                 return pickaxe; /* drop the one we earlier decided to keep */
-            
+
         /*FALLTHRU*/
         case C.PICK_AXE:
             if (!pickaxe || (obj.oartifact && !pickaxe.oartifact)) {
@@ -109,14 +96,14 @@ export function droppables(mon)
             if (key && key.otyp == C.LOCK_PICK
                 && (!key.oartifact || obj.oartifact))
                 return key; /* drop the one we earlier decided to keep */
-            
+
         /*FALLTHRU*/
         case C.LOCK_PICK:
             /* keep lock-pick in preference to credit card */
             if (key && key.otyp == C.CREDIT_CARD
                 && (!key.oartifact || obj.oartifact))
                 return key;
-            
+
         /*FALLTHRU*/
         case C.CREDIT_CARD:
             if (!key || (obj.oartifact && !key.oartifact)) {
@@ -140,7 +127,6 @@ export function droppables(mon)
 
 export const nofetch = C => [C.BALL_CLASS, C.CHAIN_CLASS, C.ROCK_CLASS, 0];
 
-
 export function cursed_object_at(x, y)
 {
     x = C.short(x);
@@ -156,16 +142,12 @@ export function cursed_object_at(x, y)
 
 export function dog_nutrition(mtmp, obj)
 {
-
-
     let nutrit;
 
     /*
      * It is arbitrary that the pet takes the same length of time to eat
      * as a human, but gets more nutritional value.
      */
-
-
 
     if (obj.oclass == C.FOOD_CLASS) {
         if (obj.otyp == C.CORPSE) {
@@ -214,9 +196,6 @@ export function dog_nutrition(mtmp, obj)
          * eat.c.  (This also applies to pets eating gold.)
          */
 
-
-
-
         mtmp.meating = C.idiv(obj.owt, 20) + 1;
         nutrit = 5 * C.objects[obj.otyp].oc_nutrition;
     }
@@ -235,7 +214,8 @@ export function dog_eat(mtmp, obj, x, y, devour)
     let edog = C.EDOG(mtmp);
     let nutrit, res;
     let oprice;
-    const objnambuf = C.stackAlloc(C.BUFSZ); let obj_name;
+    const objnambuf = C.stackAlloc(C.BUFSZ);
+    let obj_name;
 
     C.storeChar(objnambuf, 0);
     if (edog.hungrytime < C.svm.moves)
@@ -283,8 +263,6 @@ export function dog_eat(mtmp, obj, x, y, devour)
            they might be the same but will be different when
            the monster is moving+eating on same turn */
 
-
-
         let seeobj = C.cansee(mtmp.mx, mtmp.my),
                 sawpet = C.cansee(x, y) && C.mon_visible(mtmp);
 
@@ -293,9 +271,6 @@ export function dog_eat(mtmp, obj, x, y, devour)
            unseen spot to eat the food there, avoid referring to that
            pet as "it".  However, we want "it" if invisible/unsensed
            pet eats visible food. */
-
-
-
 
         if (sawpet || (seeobj && C.canspotmon(mtmp))) {
             /* call distant_name() for possible side-effects even if the
@@ -346,7 +321,6 @@ export function dog_eat(mtmp, obj, x, y, devour)
                               these two values should always match if
                               edog content is still intact */
 
-
                            mtmp.m_id, edog.parentmid);
                 edog.apport = 1;
             }
@@ -360,7 +334,6 @@ export function dog_eat(mtmp, obj, x, y, devour)
                   C.currency(oprice));
             /* m_consume_obj() -> delobj() -> obfree() will handle the shop
                billing update */
-
         }
         C.m_consume_obj(mtmp, obj);
     }
@@ -370,8 +343,6 @@ export function dog_eat(mtmp, obj, x, y, devour)
 
 export function dog_starve(mtmp)
 {
-
-
     if (mtmp.mleashed && mtmp != C.u.usteed)
         C.Your("leash goes slack.");
     else if (C.cansee(mtmp.mx, mtmp.my))
@@ -385,8 +356,6 @@ export function dog_starve(mtmp)
 /* hunger effects -- returns TRUE on starvation */
 export function dog_hunger(mtmp, edog)
 {
-
-
     if (C.svm.moves > edog.hungrytime + DOG_WEAK) {
         if (!C.carnivorous(mtmp.data) && !C.herbivorous(mtmp.data)) {
             edog.hungrytime = C.svm.moves + DOG_WEAK;
@@ -423,7 +392,6 @@ export function dog_hunger(mtmp, edog)
  * returns 1 if object eaten (since that counts as dog's move), 2 if died
  */
 
-
 export function dog_invent(mtmp, edog, udist)
 {
     udist = C.int(udist);
@@ -442,8 +410,6 @@ export function dog_invent(mtmp, edog, udist)
      * Note: if apport == 1 then our behavior is independent of udist.
      * Use udist+1 so steed won't cause divide by zero.
      */
-
-
 
     if (droppables(mtmp)) {
         C.assert(edog.apport > 0);
@@ -485,9 +451,6 @@ export function dog_invent(mtmp, edog, udist)
                                done before extract+pickup for distant_name()
                                -> doname() -> xname() -> find_artifact()
                                while otmp is still on floor */
-
-
-
 
                             let otmpname = C.distant_name(otmp, C.doname);
 
@@ -543,7 +506,7 @@ export function dog_goal(mtmp, edog, after, udist, whappr)
         C.gg.gy = C.u.uy;
     } else {
 /* #define DDIST(x, y) (dist2(x, y, omx, omy)) */
-        const DDIST = (x,y) => C.dist2(x,y,omx,omy);
+        const DDIST = (x, y) => C.dist2(x, y, omx, omy);
 /* #define SQSRCHRADIUS 5 */
         const SQSRCHRADIUS = 5;
         let min_x, max_x, min_y, max_y;
@@ -615,7 +578,6 @@ export function dog_goal(mtmp, edog, after, udist, whappr)
         /* if you have dog food it'll follow you more closely; if you are
            on stairs (or ladder) or on or next to a magic portal, it will
            behave as if you have dog food */
-
 
         if (appr == 0) {
             if (C.On_stairs(C.u.ux, C.u.uy)) {
@@ -707,14 +669,10 @@ export function find_targ(mtmp, dx, dy, maxdist)
          *        short-circuit unnecessary subsequent checks
          */
 
-
-
         /* If we can't see up to here, forget it - will this
          * mean pets in corridors don't breathe at monsters
          * in rooms? If so, is that necessarily bad?
          */
-
-
 
         if (!C.m_cansee(mtmp, curx, cury))
             break;
@@ -756,7 +714,6 @@ export function find_friends(mtmp, mtarg, maxdist)
          * check any farther
          */
 
-
         if (!C.m_cansee(mtmp, curx, cury))
             return 0;
 
@@ -784,15 +741,11 @@ export function find_friends(mtmp, mtarg, maxdist)
 
 export function score_targ(mtmp, mtarg)
 {
-
-
     let score = 0n;
 
     /* If the monster is confused, normal scoring is disrupted -
      * anything may happen
      */
-
-
 
     /* Give 1 in 3 chance of safe breathing even if pet is confused or
      * if you're on the quest start level */
@@ -859,9 +812,6 @@ export function score_targ(mtmp, mtarg)
            damage (from counterattacks) to switch back to vampire form;
            make it be more aggressive by behaving as if stronger */
 
-
-
-
         mtmp_lev = mtmp.m_lev;
         if (C.is_vampshifter(mtmp) && mtmp.data.mlet != C.S_VAMPIRE) {
             /* is_vampshifter() implies (mtmp->cham >= LOW_PM) */
@@ -882,7 +832,6 @@ export function score_targ(mtmp, mtarg)
         /* All things being the same, go for the beefiest monster. This
            bonus should not be large enough to override the pet's aversion
            to attacking much stronger monsters. */
-
 
         score += C.long(mtarg.m_lev * 2 + C.idiv(mtarg.mhp, 3));
     }
@@ -917,8 +866,6 @@ export function best_target(mtmp, forced)
      * are assigned scores and the best score is chosen.
      */
 
-
-
     for (dy = -1; dy < 2; ++dy) {
         for (dx = -1; dx < 2; ++dx) {
             if (!dx && !dy)
@@ -927,8 +874,6 @@ export function best_target(mtmp, forced)
              * squares. Invisible monsters are skipped (if the
              * pet doesn't have see invisible).
              */
-
-
 
             temp_targ = find_targ(mtmp, dx, dy, 7);
 
@@ -972,7 +917,6 @@ export function pet_ranged_attk(mtmp, forced)
      * if there is such a target, we'll let the pet attempt an attack.
      */
 
-
     mtarg = best_target(mtmp, forced);
 
     /* Hungry pets are unlikely to use breath/spit attacks */
@@ -989,10 +933,6 @@ export function pet_ranged_attk(mtmp, forced)
              * to letting the pet attack the player and continuing to move.
              */
 
-
-
-
-
             mstatus = C.M_ATTK_HIT;
         } else {
             C.gb.bhitpos.x = mtmp.mx, C.gb.bhitpos.y = mtmp.my;
@@ -1008,19 +948,13 @@ export function pet_ranged_attk(mtmp, forced)
              * nothing will happen.
              */
 
-
-
             if ((mstatus & C.M_ATTK_HIT) && !(mstatus & C.M_ATTK_DEF_DIED)
                 && C.rn2(() => (4), 14) && mtarg != C.gy.youmonst) {
-
                 /* Can monster see?  If it can, it can retaliate
                  * even if the pet is invisible, since it'll see
                  * the direction from which the ranged attack came;
                  * if it's blind or unseeing, it can't retaliate
                  */
-
-
-
 
                 if (mtarg.mcansee && C.haseyes(mtarg.data)) {
                     let mresp;
@@ -1044,14 +978,6 @@ export function pet_ranged_attk(mtmp, forced)
          *    will return M_ATTK_MISS.
          */
 
-
-
-
-
-
-
-
-
         if (mstatus != C.M_ATTK_MISS)
             return C.MMOVE_DONE;
     } else if (forced)
@@ -1067,11 +993,6 @@ export function pet_ranged_attk(mtmp, forced)
  *    (may have attacked something)
  */
 
-
-
-
-
-
 export function dog_move(mtmp, after)
 {
     after = C.int(after);
@@ -1083,7 +1004,8 @@ export function dog_move(mtmp, after)
     let edog = (mtmp.mtame && C.has_edog(mtmp)) ? C.EDOG(mtmp) : 0;
     let obj = 0;
     let otyp;
-    const cursemsg = new Int8Array(9); let do_eat = 0;
+    const cursemsg = new Int8Array(9);
+    let do_eat = 0;
     let better_with_displacing = 0, ranged_only;
     let nix, niy;      /* position mtmp is (considering) moving to */
     let nx, ny; /* temporary coordinates */
@@ -1092,7 +1014,7 @@ export function dog_move(mtmp, after)
     let allowflags;
     const mfp = C.recordLocal("mfndposdata");
 /* #define GDIST(x, y) (dist2(x, y, gg.gx, gg.gy)) */
-    const GDIST = (x,y) => C.dist2(x,y,C.gg.gx,C.gg.gy);
+    const GDIST = (x, y) => C.dist2(x, y, C.gg.gx, C.gg.gy);
 
     /*
      * Tame Angels have isminion set and an ispriest structure instead of
@@ -1101,11 +1023,6 @@ export function dog_move(mtmp, after)
      * spend all their energy defending the player.  (They are the only
      * monsters with other structures that can be tame.)
      */
-
-
-
-
-
 
     if (!edog && !mtmp.isminion) {
         C.impossible("dog_move for non-pet?");
@@ -1156,7 +1073,6 @@ export function dog_move(mtmp, after)
              * it disappears, angrily, and sends in some nasties
              */
 
-
             C.lose_guardian_angel(mtmp);
             return C.MMOVE_DIED; /* current monster is gone */
         }
@@ -1170,8 +1086,6 @@ export function dog_move(mtmp, after)
      * other choice they will.  This requires checking ahead of time
      * to see how many uncursed item squares are around.
      */
-
-
 
     uncursedcnt = 0;
     for (i = 0; i < cnt; i++) {
@@ -1223,18 +1137,6 @@ export function dog_move(mtmp, after)
              * the pet will balk at attacking rather than the highest level
              * they are willing to attack; note the >= used when comparing it.
              */
-
-
-
-
-
-
-
-
-
-
-
-
 
             let balk = mtmp.m_lev + C.idiv(5 * mtmp.mhp, mtmp.mhpmax) - 2;
 
@@ -1304,7 +1206,6 @@ export function dog_move(mtmp, after)
             continue;
         if (C.m_avoid_soko_push_loc(mtmp, nx, ny))
             continue;
-
         {
             /* Dog avoids harmful traps, but perhaps it has to pass one
              * in order to follow player.  (Non-harmful traps do not
@@ -1313,11 +1214,6 @@ export function dog_move(mtmp, after)
              * if they've seen some trap of that type sometime in the
              * past.  (Neither behavior is really realistic.)
              */
-
-
-
-
-
 
             let trap;
 
@@ -1329,7 +1225,6 @@ export function dog_move(mtmp, after)
                     /* 1/40 chance of stepping on it anyway, in case
                      * it has to pass one to follow the player...
                      */
-
 
                     if (trap.tseen && C.rn2(() => (40), 18))
                         continue;
@@ -1374,9 +1269,6 @@ export function dog_move(mtmp, after)
          * hero.  Thus, only run it if not leashed and >5 tiles away.
          */
 
-
-
-
         if (!mtmp.mleashed && C.distmin(mtmp.mx, mtmp.my, C.u.ux, C.u.uy) > 5) {
             k = edog ? uncursedcnt : cnt;
             for (j = 0; j < C.MTSZ && j < k - 1; j++)
@@ -1405,11 +1297,8 @@ export function dog_move(mtmp, after)
      * after it performs its ranged attack. Should this be changed?
      */
 
-
-
     if ((i = pet_ranged_attk(mtmp, 0)) != C.MMOVE_NOTHING)
         return i;
-
     }
 
     if (nix != omx || niy != omy) {
@@ -1426,7 +1315,7 @@ export function dog_move(mtmp, after)
         }
         if (!C.m_in_out_region(mtmp, nix, niy))
             return C.MMOVE_MOVED;
-        if (C.m_digweapon_check(mtmp, nix,niy))
+        if (C.m_digweapon_check(mtmp, nix, niy))
             return C.MMOVE_NOTHING;
 
         /* insert a worm_move() if worms ever begin to eat things */
@@ -1437,7 +1326,6 @@ export function dog_move(mtmp, after)
             /* describe top item of pile, not necessarily cursed item itself;
                don't use glyph_at() here--it would return the pet but we want
                to know whether an object is remembered at this map location */
-
 
             let o = (!C.Hallucination && C.svl.level.flags.hero_memory
                              && C.glyph_is_object(C.levl[nix][niy].glyph))
@@ -1456,8 +1344,6 @@ export function dog_move(mtmp, after)
          * moved.  Thus the do_eat flag.
          */
 
-
-
         if (do_eat) {
             if (dog_eat(mtmp, obj, omx, omy, 0) == 2)
                 return C.MMOVE_DIED;
@@ -1466,7 +1352,6 @@ export function dog_move(mtmp, after)
         /* an incredible kludge, but the only way to keep pooch near
          * after it spends time eating or in a trap, etc.
          */
-
 
         const cc = C.recordLocal("nhcoord");
 
@@ -1524,11 +1409,6 @@ export function could_reach_item(mon, nx, ny)
  * calls deep.
  */
 
-
-
-
-
-
 export function can_reach_location(mon, mx, my, fx, fy)
 {
     mx = C.short(mx);
@@ -1574,7 +1454,8 @@ export function wantdoor(x, y, distance)
     x = C.short(x);
     y = C.short(y);
 
-    let ndist; const dist_ptr = C.intPointer(distance);
+    let ndist;
+    const dist_ptr = C.intPointer(distance);
 
     if (dist_ptr.value > (ndist = C.distu(x, y))) {
         C.gg.gx = x;
@@ -1602,8 +1483,6 @@ export const qm = C => [
 
 export function finish_meating(mtmp)
 {
-
-
     mtmp.meating = 0;
     if (C.M_AP_TYPE(mtmp) != C.M_AP_NOTHING && mtmp.data.mlet != C.S_MIMIC) {
         /* was eating a mimic and now appearance needs resetting */
@@ -1629,8 +1508,6 @@ export function mnum_leashable(mnum)
 
 export function quickmimic(mtmp)
 {
-
-
     let idx = 0, trycnt = 5, spotted, seeloc;
     let was_leashed = mtmp.mleashed;
     const buf = C.stackAlloc(C.BUFSZ);
@@ -1644,10 +1521,6 @@ export function quickmimic(mtmp)
        rider taking on an unsuitable shape, but its message works fine
        for this and also avoids inflicting damage during forced dismount;
        do this before changing so that dismount refers to original shape */
-
-
-
-
 
     if (mtmp == C.u.usteed)
         C.dismount_steed(C.DISMOUNT_POLY);
@@ -1704,6 +1577,5 @@ export function quickmimic(mtmp)
         C.display_nhwindow(C.WIN_MAP, 1);
     }
 }
-
 
 /*dogmove.c*/

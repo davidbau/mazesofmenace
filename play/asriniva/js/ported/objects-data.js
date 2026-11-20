@@ -4,10 +4,10 @@ import layouts from '../wasm/tu-layouts.json' with { type: 'json' };
 const { ACID_RES, ADORNED, AGGRAVATE_MONSTER, AMULET_CLASS, ANTIMAGIC, ARMOR_CLASS, ARM_BOOTS, ARM_CLOAK, ARM_GLOVES, ARM_HELM, ARM_SHIELD, ARM_SHIRT, ARM_SUIT, BALL_CLASS, BLINDED, BONE, CHAIN_CLASS, CLAIRVOYANT, CLOTH, COIN_CLASS, COLD_RES, CONFLICT, CONFUSION, COPPER, DISINT_RES, DISPLACED, DRAGON_HIDE, DRAIN_RES, FAST, FIRE_RES, FIXED_ABIL, FLESH, FLYING, FOOD_CLASS, FREE_ACTION, FUMBLING, GEMSTONE, GEM_CLASS, GLASS, GOLD, HALLUC, HUNGER, ILLOBJ_CLASS, INVIS, IRON, JUMPING, LEATHER, LEVITATION, LIFESAVED, LIQUID, MAGICAL_BREATHING, METAL, MINERAL, MITHRIL, PAPER, PLASTIC, PLATINUM, POISON_RES, POLYMORPH, POLYMORPH_CONTROL, POTION_CLASS, PROTECTION, PROT_FROM_SHAPE_CHANGERS, P_ATTACK_SPELL, P_AXE, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLERIC_SPELL, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL, P_ESCAPE_SPELL, P_FLAIL, P_HAMMER, P_HEALING_SPELL, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MACE, P_MATTER_SPELL, P_MORNING_STAR, P_NONE, P_PICK_AXE, P_POLEARMS, P_QUARTERSTAFF, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SLING, P_SPEAR, P_TRIDENT, P_TWO_HANDED_SWORD, P_UNICORN_HORN, P_WHIP, REFLECTING, REGENERATION, RING_CLASS, ROCK_CLASS, SCROLL_CLASS, SEARCHING, SEE_INVIS, SHOCK_RES, SILVER, SLEEPY, SLEEP_RES, SLOW_DIGESTION, SPBOOK_CLASS, STEALTH, STRANGLED, TELEPAT, TELEPORT, TELEPORT_CONTROL, TOOL_CLASS, UNCHANGING, VEGGY, VENOM_CLASS, WAND_CLASS, WARNING, WAX, WEAPON_CLASS, WOOD, WWALKING } = layouts.objects;
 
 export const catalogue = [
-/* NetHack 5.0	objects.h	$NHDT-Date: 1749097644 2025/06/04 20:27:24 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.30 $ */
-/* Copyright (c) Mike Threepoint, 1989.                           */
-/* NetHack may be freely redistributed.  See license for details. */
-/*
+    /* NetHack 5.0	objects.h	$NHDT-Date: 1749097644 2025/06/04 20:27:24 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.30 $ */
+    /* Copyright (c) Mike Threepoint, 1989.                           */
+    /* NetHack may be freely redistributed.  See license for details. */
+    /*
    The data in this file is processed multiple times by its inclusion
    in several places in the code. The results depend on the definition
    of the following:
@@ -15,22 +15,22 @@ export const catalogue = [
      OBJECTS_DESCR_INIT to construct obj_descr[] array entries (objects.c).
      OBJECTS_INIT       to construct objects[] array entries (objects.c).
 */
-/*
+    /*
  * Note...
  *  OBJECTS() currently has 15 parameters; it more become needed, some
  *  will need to be combined the way BITS() is used, because compilers
  *  are allowed to impose a limit of 15.
  */
-/* notes: 'sub' was once a bitfield but got changed to separate schar when
+    /* notes: 'sub' was once a bitfield but got changed to separate schar when
    it was overloaded to hold negative weapon skill indices; the first zero
    is padding for oc_prediscovered which has variable init at run-time;
    the second zero is oc_spare1 for padding between oc_tough and oc_dir */
-/* note: 0UL-1UL is a method of expressing the largest possible
+    /* note: 0UL-1UL is a method of expressing the largest possible
    unsigned long value whilst working around a false-positive warning
    in Microsoft Visual C (which assumes that a negative number was
    intended despite the explicit U suffix) */
-/* dummy object[0] -- description [2nd arg] *must* be NULL */
-/* less visual distraction for 'no description' */
+    /* dummy object[0] -- description [2nd arg] *must* be NULL */
+    /* less visual distraction for 'no description' */
     { id: "STRANGE_OBJECT", oc_name: "strange object", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -40,12 +40,12 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* slots [1] through [MAXOCLASSES-1] are indexed by class; some are
+    /* slots [1] through [MAXOCLASSES-1] are indexed by class; some are
    used for display purposes, most aren't used; none are actual objects;
    note that 'real' strange object is in slot [0] but ILLOBJ_CLASS is 1
    so we add a dummy for it in slot [1] to simplify accessing the rest;
    there isn't any entry for RANDOM_CLASS (0) */
-/* low-intensity white */
+    /* low-intensity white */
     { id: "GENERIC_ILLOBJ", oc_name: "generic strange", oc_descr: "strange",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -55,8 +55,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [1] */
-/* low-intensity white */
+    /* [1] */
+    /* low-intensity white */
     { id: "GENERIC_WEAPON", oc_name: "generic weapon", oc_descr: "weapon",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -66,8 +66,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [2] */
-/* low-intensity white */
+    /* [2] */
+    /* low-intensity white */
     { id: "GENERIC_ARMOR", oc_name: "generic armor", oc_descr: "armor",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -77,8 +77,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [3] */
-/* low-intensity white */
+    /* [3] */
+    /* low-intensity white */
     { id: "GENERIC_RING", oc_name: "generic ring", oc_descr: "ring",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -88,8 +88,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [4] */
-/* low-intensity white */
+    /* [4] */
+    /* low-intensity white */
     { id: "GENERIC_AMULET", oc_name: "generic amulet", oc_descr: "amulet",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -99,8 +99,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [5] */
-/* low-intensity white */
+    /* [5] */
+    /* low-intensity white */
     { id: "GENERIC_TOOL", oc_name: "generic tool", oc_descr: "tool",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -110,8 +110,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [6] */
-/* low-intensity white */
+    /* [6] */
+    /* low-intensity white */
     { id: "GENERIC_FOOD", oc_name: "generic food", oc_descr: "food",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -121,8 +121,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [7] */
-/* low-intensity white */
+    /* [7] */
+    /* low-intensity white */
     { id: "GENERIC_POTION", oc_name: "generic potion", oc_descr: "potion",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -132,8 +132,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [8] */
-/* low-intensity white */
+    /* [8] */
+    /* low-intensity white */
     { id: "GENERIC_SCROLL", oc_name: "generic scroll", oc_descr: "scroll",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -143,8 +143,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [9] */
-/* low-intensity white */
+    /* [9] */
+    /* low-intensity white */
     { id: "GENERIC_SPBOOK", oc_name: "generic spellbook", oc_descr: "spellbook",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -154,8 +154,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [10] */
-/* low-intensity white */
+    /* [10] */
+    /* low-intensity white */
     { id: "GENERIC_WAND", oc_name: "generic wand", oc_descr: "wand",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -165,8 +165,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [11] */
-/* low-intensity white */
+    /* [11] */
+    /* low-intensity white */
     { id: "GENERIC_COIN", oc_name: "generic coin", oc_descr: "coin",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -176,8 +176,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [12] */
-/* low-intensity white */
+    /* [12] */
+    /* low-intensity white */
     { id: "GENERIC_GEM", oc_name: "generic gem", oc_descr: "gem",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -187,8 +187,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [13] */
-/* low-intensity white */
+    /* [13] */
+    /* low-intensity white */
     { id: "GENERIC_ROCK", oc_name: "generic large rock", oc_descr: "large rock",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -198,8 +198,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [14] bldr+statue */
-/* low-intensity white */
+    /* [14] bldr+statue */
+    /* low-intensity white */
     { id: "GENERIC_BALL", oc_name: "generic iron ball", oc_descr: "iron ball",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -209,8 +209,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [15] */
-/* low-intensity white */
+    /* [15] */
+    /* low-intensity white */
     { id: "GENERIC_CHAIN", oc_name: "generic iron chain", oc_descr: "iron chain",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -220,8 +220,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [16] */
-/* low-intensity white */
+    /* [16] */
+    /* low-intensity white */
     { id: "GENERIC_VENOM", oc_name: "generic venom", oc_descr: "venom",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -231,22 +231,22 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* [17] */
-/* FIRST_OBJECT: it would be simpler just to use MARKER(FIRST_OBJECT,ARROW)
+    /* [17] */
+    /* FIRST_OBJECT: it would be simpler just to use MARKER(FIRST_OBJECT,ARROW)
    below but that is vulnerable to neglecting to update the marker enum
    after inserting something in front of arrow */
-/*empty*/
-/*empty*/
-/* this definition of FIRST_OBJECT advances the default value for next enum;
+    /*empty*/
+    /*empty*/
+    /* this definition of FIRST_OBJECT advances the default value for next enum;
    backtrack to fix that, otherwise ARROW and the rest would be off by 1 */
-/*empty*/
-/* weapons ... */
-/* Note: for weapons that don't do an even die of damage (ex. 2-7 or 3-18)
+    /*empty*/
+    /* weapons ... */
+    /* Note: for weapons that don't do an even die of damage (ex. 2-7 or 3-18)
    the extra damage is added on in weapon.c, not here! */
-/* weapon strike mode overloads the oc_dir field */
-/* missiles; materiel reflects the arrowhead, not the shaft */
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
+    /* weapon strike mode overloads the oc_dir field */
+    /* missiles; materiel reflects the arrowhead, not the shaft */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
     { id: "ARROW", oc_name: "arrow", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -256,8 +256,8 @@ export const catalogue = [
       oc_cost: 2, oc_wsdam: 6, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 1,
     },
-/* pointed weapon punctures target */
-/* on IBM, low-intensity yellow is brown */
+    /* pointed weapon punctures target */
+    /* on IBM, low-intensity yellow is brown */
     { id: "ELVEN_ARROW", oc_name: "elven arrow", oc_descr: "runed arrow",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -267,7 +267,7 @@ export const catalogue = [
       oc_cost: 2, oc_wsdam: 7, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 1,
     },
-/* pointed weapon punctures target */
+    /* pointed weapon punctures target */
     { id: "ORCISH_ARROW", oc_name: "orcish arrow", oc_descr: "crude arrow",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -277,9 +277,9 @@ export const catalogue = [
       oc_cost: 2, oc_wsdam: 5, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 1,
     },
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
-/* low-intensity white */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
+    /* low-intensity white */
     { id: "SILVER_ARROW", oc_name: "silver arrow", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -289,7 +289,7 @@ export const catalogue = [
       oc_cost: 5, oc_wsdam: 6, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 1,
     },
-/* pointed weapon punctures target */
+    /* pointed weapon punctures target */
     { id: "YA", oc_name: "ya", oc_descr: "bamboo arrow",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -299,8 +299,8 @@ export const catalogue = [
       oc_cost: 4, oc_wsdam: 7, oc_wldam: 7, oc_oc1: 1,
       oc_oc2: 0, oc_nutrition: 1,
     },
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
     { id: "CROSSBOW_BOLT", oc_name: "crossbow bolt", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -310,9 +310,9 @@ export const catalogue = [
       oc_cost: 2, oc_wsdam: 4, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 1,
     },
-/* missiles that don't use a launcher */
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
+    /* missiles that don't use a launcher */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
     { id: "DART", oc_name: "dart", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -322,7 +322,7 @@ export const catalogue = [
       oc_cost: 2, oc_wsdam: 3, oc_wldam: 2, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 1,
     },
-/* pointed weapon punctures target */
+    /* pointed weapon punctures target */
     { id: "SHURIKEN", oc_name: "shuriken", oc_descr: "throwing star",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -332,8 +332,8 @@ export const catalogue = [
       oc_cost: 5, oc_wsdam: 8, oc_wldam: 6, oc_oc1: 2,
       oc_oc2: 0, oc_nutrition: 1,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "BOOMERANG", oc_name: "boomerang", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -343,12 +343,12 @@ export const catalogue = [
       oc_cost: 20, oc_wsdam: 9, oc_wldam: 9, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 5,
     },
-/* spears [note: javelin used to have a separate skill from spears,
+    /* spears [note: javelin used to have a separate skill from spears,
    because the latter are primarily stabbing weapons rather than
    throwing ones; but for playability, they've been merged together
    under spear skill and spears can now be thrown like javelins] */
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
     { id: "SPEAR", oc_name: "spear", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -358,8 +358,8 @@ export const catalogue = [
       oc_cost: 3, oc_wsdam: 6, oc_wldam: 8, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* pointed weapon punctures target */
-/* on IBM, low-intensity yellow is brown */
+    /* pointed weapon punctures target */
+    /* on IBM, low-intensity yellow is brown */
     { id: "ELVEN_SPEAR", oc_name: "elven spear", oc_descr: "runed spear",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -369,7 +369,7 @@ export const catalogue = [
       oc_cost: 3, oc_wsdam: 7, oc_wldam: 8, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* pointed weapon punctures target */
+    /* pointed weapon punctures target */
     { id: "ORCISH_SPEAR", oc_name: "orcish spear", oc_descr: "crude spear",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -379,7 +379,7 @@ export const catalogue = [
       oc_cost: 3, oc_wsdam: 5, oc_wldam: 8, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* pointed weapon punctures target */
+    /* pointed weapon punctures target */
     { id: "DWARVISH_SPEAR", oc_name: "dwarvish spear", oc_descr: "stout spear",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -389,9 +389,9 @@ export const catalogue = [
       oc_cost: 3, oc_wsdam: 8, oc_wldam: 8, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 35,
     },
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
-/* low-intensity white */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
+    /* low-intensity white */
     { id: "SILVER_SPEAR", oc_name: "silver spear", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -401,7 +401,7 @@ export const catalogue = [
       oc_cost: 40, oc_wsdam: 6, oc_wldam: 8, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 36,
     },
-/* pointed weapon punctures target */
+    /* pointed weapon punctures target */
     { id: "JAVELIN", oc_name: "javelin", oc_descr: "throwing spear",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -411,9 +411,9 @@ export const catalogue = [
       oc_cost: 3, oc_wsdam: 6, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* spearish; doesn't stack, not intended to be thrown */
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
+    /* spearish; doesn't stack, not intended to be thrown */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
     { id: "TRIDENT", oc_name: "trident", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -423,10 +423,10 @@ export const catalogue = [
       oc_cost: 5, oc_wsdam: 6, oc_wldam: 4, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 25,
     },
-/* +1 small, +2d4 large */
-/* blades; all stack */
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
+    /* +1 small, +2d4 large */
+    /* blades; all stack */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
     { id: "DAGGER", oc_name: "dagger", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -436,8 +436,8 @@ export const catalogue = [
       oc_cost: 4, oc_wsdam: 4, oc_wldam: 3, oc_oc1: 2,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* pointed weapon punctures target */
-/* on IBM, low-intensity yellow is brown */
+    /* pointed weapon punctures target */
+    /* on IBM, low-intensity yellow is brown */
     { id: "ELVEN_DAGGER", oc_name: "elven dagger", oc_descr: "runed dagger",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -447,7 +447,7 @@ export const catalogue = [
       oc_cost: 4, oc_wsdam: 5, oc_wldam: 3, oc_oc1: 2,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* pointed weapon punctures target */
+    /* pointed weapon punctures target */
     { id: "ORCISH_DAGGER", oc_name: "orcish dagger", oc_descr: "crude dagger",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -457,9 +457,9 @@ export const catalogue = [
       oc_cost: 4, oc_wsdam: 3, oc_wldam: 3, oc_oc1: 2,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
-/* low-intensity white */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
+    /* low-intensity white */
     { id: "SILVER_DAGGER", oc_name: "silver dagger", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -469,8 +469,8 @@ export const catalogue = [
       oc_cost: 40, oc_wsdam: 4, oc_wldam: 3, oc_oc1: 2,
       oc_oc2: 0, oc_nutrition: 12,
     },
-/* less visual distraction for 'no description' */
-/* sharp weapon cuts target */
+    /* less visual distraction for 'no description' */
+    /* sharp weapon cuts target */
     { id: "ATHAME", oc_name: "athame", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -480,8 +480,8 @@ export const catalogue = [
       oc_cost: 4, oc_wsdam: 4, oc_wldam: 3, oc_oc1: 2,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* less visual distraction for 'no description' */
-/* sharp weapon cuts target */
+    /* less visual distraction for 'no description' */
+    /* sharp weapon cuts target */
     { id: "SCALPEL", oc_name: "scalpel", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -491,35 +491,35 @@ export const catalogue = [
       oc_cost: 6, oc_wsdam: 3, oc_wldam: 3, oc_oc1: 2,
       oc_oc2: 0, oc_nutrition: 5,
     },
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
-/* sharp weapon cuts target */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
+    /* sharp weapon cuts target */
     { id: "KNIFE", oc_name: "knife", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
-      oc_big: 0, oc_tough: 0, oc_spare1: 0, oc_dir: 1 |2,
+      oc_big: 0, oc_tough: 0, oc_spare1: 0, oc_dir: 1 | 2,
       oc_material: IRON, oc_subtyp: P_KNIFE, oc_oprop: 0, oc_class: WEAPON_CLASS,
       oc_delay: 0, oc_color: 6, oc_prob: 20, oc_weight: 5,
       oc_cost: 4, oc_wsdam: 3, oc_wldam: 2, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 5,
     },
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
-/* sharp weapon cuts target */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
+    /* sharp weapon cuts target */
     { id: "STILETTO", oc_name: "stiletto", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
-      oc_big: 0, oc_tough: 0, oc_spare1: 0, oc_dir: 1 |2,
+      oc_big: 0, oc_tough: 0, oc_spare1: 0, oc_dir: 1 | 2,
       oc_material: IRON, oc_subtyp: P_KNIFE, oc_oprop: 0, oc_class: WEAPON_CLASS,
       oc_delay: 0, oc_color: 6, oc_prob: 5, oc_weight: 5,
       oc_cost: 4, oc_wsdam: 3, oc_wldam: 2, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 5,
     },
-/* 3.6: worm teeth and crysknives now stack;
+    /* 3.6: worm teeth and crysknives now stack;
    when a stack of teeth is enchanted at once, they fuse into one crysknife;
    when a stack of crysknives drops, the whole stack reverts to teeth */
-/* 5.0: change crysknife from MINERAL to BONE and worm tooth from 0 to BONE */
-/* less visual distraction for 'no description' */
+    /* 5.0: change crysknife from MINERAL to BONE and worm tooth from 0 to BONE */
+    /* less visual distraction for 'no description' */
     { id: "WORM_TOOTH", oc_name: "worm tooth", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -529,8 +529,8 @@ export const catalogue = [
       oc_cost: 2, oc_wsdam: 2, oc_wldam: 2, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
     { id: "CRYSKNIFE", oc_name: "crysknife", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -540,9 +540,9 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 10, oc_wldam: 10, oc_oc1: 3,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* axes */
-/* less visual distraction for 'no description' */
-/* sharp weapon cuts target */
+    /* axes */
+    /* less visual distraction for 'no description' */
+    /* sharp weapon cuts target */
     { id: "AXE", oc_name: "axe", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -552,8 +552,8 @@ export const catalogue = [
       oc_cost: 8, oc_wsdam: 6, oc_wldam: 4, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 60,
     },
-/* "double-bitted"? */
-/* sharp weapon cuts target */
+    /* "double-bitted"? */
+    /* sharp weapon cuts target */
     { id: "BATTLE_AXE", oc_name: "battle-axe", oc_descr: "double-headed axe",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -563,9 +563,9 @@ export const catalogue = [
       oc_cost: 40, oc_wsdam: 8, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 120,
     },
-/* swords */
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
+    /* swords */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
     { id: "SHORT_SWORD", oc_name: "short sword", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -575,8 +575,8 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 6, oc_wldam: 8, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* pointed weapon punctures target */
-/* on IBM, low-intensity yellow is brown */
+    /* pointed weapon punctures target */
+    /* on IBM, low-intensity yellow is brown */
     { id: "ELVEN_SHORT_SWORD", oc_name: "elven short sword", oc_descr: "runed short sword",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -586,7 +586,7 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 8, oc_wldam: 8, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* pointed weapon punctures target */
+    /* pointed weapon punctures target */
     { id: "ORCISH_SHORT_SWORD", oc_name: "orcish short sword", oc_descr: "crude short sword",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -596,7 +596,7 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 5, oc_wldam: 8, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* pointed weapon punctures target */
+    /* pointed weapon punctures target */
     { id: "DWARVISH_SHORT_SWORD", oc_name: "dwarvish short sword", oc_descr: "broad short sword",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -606,7 +606,7 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 7, oc_wldam: 8, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* sharp weapon cuts target */
+    /* sharp weapon cuts target */
     { id: "SCIMITAR", oc_name: "scimitar", oc_descr: "curved sword",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -616,9 +616,9 @@ export const catalogue = [
       oc_cost: 15, oc_wsdam: 8, oc_wldam: 8, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
-/* sharp weapon cuts target */
-/* low-intensity white */
+    /* less visual distraction for 'no description' */
+    /* sharp weapon cuts target */
+    /* low-intensity white */
     { id: "SILVER_SABER", oc_name: "silver saber", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -628,8 +628,8 @@ export const catalogue = [
       oc_cost: 75, oc_wsdam: 8, oc_wldam: 8, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
-/* sharp weapon cuts target */
+    /* less visual distraction for 'no description' */
+    /* sharp weapon cuts target */
     { id: "BROADSWORD", oc_name: "broadsword", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -639,9 +639,9 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 4, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 70,
     },
-/* +d4 small, +1 large */
-/* sharp weapon cuts target */
-/* on IBM, low-intensity yellow is brown */
+    /* +d4 small, +1 large */
+    /* sharp weapon cuts target */
+    /* on IBM, low-intensity yellow is brown */
     { id: "ELVEN_BROADSWORD", oc_name: "elven broadsword", oc_descr: "runed broadsword",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -651,9 +651,9 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 6, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 70,
     },
-/* +d4 small, +1 large */
-/* less visual distraction for 'no description' */
-/* sharp weapon cuts target */
+    /* +d4 small, +1 large */
+    /* less visual distraction for 'no description' */
+    /* sharp weapon cuts target */
     { id: "LONG_SWORD", oc_name: "long sword", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -663,8 +663,8 @@ export const catalogue = [
       oc_cost: 15, oc_wsdam: 8, oc_wldam: 12, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
-/* sharp weapon cuts target */
+    /* less visual distraction for 'no description' */
+    /* sharp weapon cuts target */
     { id: "TWO_HANDED_SWORD", oc_name: "two-handed sword", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -674,8 +674,8 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 12, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 150,
     },
-/* +2d6 large */
-/* sharp weapon cuts target */
+    /* +2d6 large */
+    /* sharp weapon cuts target */
     { id: "KATANA", oc_name: "katana", oc_descr: "samurai sword",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -685,8 +685,8 @@ export const catalogue = [
       oc_cost: 80, oc_wsdam: 10, oc_wldam: 12, oc_oc1: 1,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* special swords set up for artifacts */
-/* sharp weapon cuts target */
+    /* special swords set up for artifacts */
+    /* sharp weapon cuts target */
     { id: "TSURUGI", oc_name: "tsurugi", oc_descr: "long samurai sword",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -696,8 +696,8 @@ export const catalogue = [
       oc_cost: 500, oc_wsdam: 16, oc_wldam: 8, oc_oc1: 2,
       oc_oc2: 0, oc_nutrition: 60,
     },
-/* +2d6 large */
-/* sharp weapon cuts target */
+    /* +2d6 large */
+    /* sharp weapon cuts target */
     { id: "RUNESWORD", oc_name: "runesword", oc_descr: "runed broadsword",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -707,10 +707,10 @@ export const catalogue = [
       oc_cost: 300, oc_wsdam: 4, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* +d4 small, +1 large; Stormbringer: +5d2 +d8 from level drain */
-/* polearms */
-/* spear-type */
-/* pointed weapon punctures target */
+    /* +d4 small, +1 large; Stormbringer: +5d2 +d8 from level drain */
+    /* polearms */
+    /* spear-type */
+    /* pointed weapon punctures target */
     { id: "PARTISAN", oc_name: "partisan", oc_descr: "vulgar polearm",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -720,8 +720,8 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 6, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 80,
     },
-/* +1 large */
-/* pointed weapon punctures target */
+    /* +1 large */
+    /* pointed weapon punctures target */
     { id: "RANSEUR", oc_name: "ranseur", oc_descr: "hilted polearm",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -731,8 +731,8 @@ export const catalogue = [
       oc_cost: 6, oc_wsdam: 4, oc_wldam: 4, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 50,
     },
-/* +d4 both */
-/* pointed weapon punctures target */
+    /* +d4 both */
+    /* pointed weapon punctures target */
     { id: "SPETUM", oc_name: "spetum", oc_descr: "forked polearm",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -742,8 +742,8 @@ export const catalogue = [
       oc_cost: 5, oc_wsdam: 6, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 50,
     },
-/* +1 small, +d6 large */
-/* sharp weapon cuts target */
+    /* +1 small, +d6 large */
+    /* sharp weapon cuts target */
     { id: "GLAIVE", oc_name: "glaive", oc_descr: "single-edged polearm",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -753,20 +753,20 @@ export const catalogue = [
       oc_cost: 6, oc_wsdam: 6, oc_wldam: 10, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 75,
     },
-/* axe-type */
-/* pointed weapon punctures target */
-/* sharp weapon cuts target */
+    /* axe-type */
+    /* pointed weapon punctures target */
+    /* sharp weapon cuts target */
     { id: "HALBERD", oc_name: "halberd", oc_descr: "angled poleaxe",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
-      oc_big: 1, oc_tough: 0, oc_spare1: 0, oc_dir: 1 |2,
+      oc_big: 1, oc_tough: 0, oc_spare1: 0, oc_dir: 1 | 2,
       oc_material: IRON, oc_subtyp: P_POLEARMS, oc_oprop: 0, oc_class: WEAPON_CLASS,
       oc_delay: 0, oc_color: 6, oc_prob: 8, oc_weight: 150,
       oc_cost: 10, oc_wsdam: 10, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 150,
     },
-/* +1d6 large */
-/* sharp weapon cuts target */
+    /* +1d6 large */
+    /* sharp weapon cuts target */
     { id: "BARDICHE", oc_name: "bardiche", oc_descr: "long poleaxe",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -776,8 +776,8 @@ export const catalogue = [
       oc_cost: 7, oc_wsdam: 4, oc_wldam: 4, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 120,
     },
-/* +1d4 small, +2d4 large */
-/* sharp weapon cuts target */
+    /* +1d4 small, +2d4 large */
+    /* sharp weapon cuts target */
     { id: "VOULGE", oc_name: "voulge", oc_descr: "pole cleaver",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -787,20 +787,20 @@ export const catalogue = [
       oc_cost: 5, oc_wsdam: 4, oc_wldam: 4, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 125,
     },
-/* +d4 both */
-/* curved/hooked */
-/* pointed weapon punctures target */
-/* sharp weapon cuts target */
+    /* +d4 both */
+    /* curved/hooked */
+    /* pointed weapon punctures target */
+    /* sharp weapon cuts target */
     { id: "FAUCHARD", oc_name: "fauchard", oc_descr: "pole sickle",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
-      oc_big: 1, oc_tough: 0, oc_spare1: 0, oc_dir: 1 |2,
+      oc_big: 1, oc_tough: 0, oc_spare1: 0, oc_dir: 1 | 2,
       oc_material: IRON, oc_subtyp: P_POLEARMS, oc_oprop: 0, oc_class: WEAPON_CLASS,
       oc_delay: 0, oc_color: 6, oc_prob: 6, oc_weight: 60,
       oc_cost: 5, oc_wsdam: 6, oc_wldam: 8, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 60,
     },
-/* sharp weapon cuts target */
+    /* sharp weapon cuts target */
     { id: "GUISARME", oc_name: "guisarme", oc_descr: "pruning hook",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -810,46 +810,46 @@ export const catalogue = [
       oc_cost: 5, oc_wsdam: 4, oc_wldam: 8, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 80,
     },
-/* +1d4 small */
-/* pointed weapon punctures target */
-/* sharp weapon cuts target */
+    /* +1d4 small */
+    /* pointed weapon punctures target */
+    /* sharp weapon cuts target */
     { id: "BILL_GUISARME", oc_name: "bill-guisarme", oc_descr: "hooked polearm",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
-      oc_big: 1, oc_tough: 0, oc_spare1: 0, oc_dir: 1 |2,
+      oc_big: 1, oc_tough: 0, oc_spare1: 0, oc_dir: 1 | 2,
       oc_material: IRON, oc_subtyp: P_POLEARMS, oc_oprop: 0, oc_class: WEAPON_CLASS,
       oc_delay: 0, oc_color: 6, oc_prob: 4, oc_weight: 120,
       oc_cost: 7, oc_wsdam: 4, oc_wldam: 10, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 120,
     },
-/* +1d4 small */
-/* other */
-/* blunt weapon bashes target */
-/* pointed weapon punctures target */
+    /* +1d4 small */
+    /* other */
+    /* blunt weapon bashes target */
+    /* pointed weapon punctures target */
     { id: "LUCERN_HAMMER", oc_name: "lucern hammer", oc_descr: "pronged polearm",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
-      oc_big: 1, oc_tough: 0, oc_spare1: 0, oc_dir: 4 |1,
+      oc_big: 1, oc_tough: 0, oc_spare1: 0, oc_dir: 4 | 1,
       oc_material: IRON, oc_subtyp: P_POLEARMS, oc_oprop: 0, oc_class: WEAPON_CLASS,
       oc_delay: 0, oc_color: 6, oc_prob: 5, oc_weight: 150,
       oc_cost: 7, oc_wsdam: 4, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 150,
     },
-/* +1d4 small */
-/* blunt weapon bashes target */
-/* pointed weapon punctures target */
+    /* +1d4 small */
+    /* blunt weapon bashes target */
+    /* pointed weapon punctures target */
     { id: "BEC_DE_CORBIN", oc_name: "bec de corbin", oc_descr: "beaked polearm",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
-      oc_big: 1, oc_tough: 0, oc_spare1: 0, oc_dir: 4 |1,
+      oc_big: 1, oc_tough: 0, oc_spare1: 0, oc_dir: 4 | 1,
       oc_material: IRON, oc_subtyp: P_POLEARMS, oc_oprop: 0, oc_class: WEAPON_CLASS,
       oc_delay: 0, oc_color: 6, oc_prob: 4, oc_weight: 100,
       oc_cost: 8, oc_wsdam: 8, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 100,
     },
-/* formerly grouped with the polearms but don't use polearms skill;
+    /* formerly grouped with the polearms but don't use polearms skill;
    lance isn't even two-handed */
-/* blunt weapon bashes target */
+    /* blunt weapon bashes target */
     { id: "DWARVISH_MATTOCK", oc_name: "dwarvish mattock", oc_descr: "broad pick",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -859,8 +859,8 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 12, oc_wldam: 8, oc_oc1: -1,
       oc_oc2: 0, oc_nutrition: 120,
     },
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
     { id: "LANCE", oc_name: "lance", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -870,11 +870,11 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 6, oc_wldam: 8, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 180,
     },
-/* +2d10 when jousting with lance as primary weapon,
+    /* +2d10 when jousting with lance as primary weapon,
            +2d2 when jousting with it as secondary when dual wielding */
-/* bludgeons */
-/* less visual distraction for 'no description' */
-/* blunt weapon bashes target */
+    /* bludgeons */
+    /* less visual distraction for 'no description' */
+    /* blunt weapon bashes target */
     { id: "MACE", oc_name: "mace", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -884,10 +884,10 @@ export const catalogue = [
       oc_cost: 5, oc_wsdam: 6, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* +1 small */
-/* less visual distraction for 'no description' */
-/* blunt weapon bashes target */
-/* low-intensity white */
+    /* +1 small */
+    /* less visual distraction for 'no description' */
+    /* blunt weapon bashes target */
+    /* low-intensity white */
     { id: "SILVER_MACE", oc_name: "silver mace", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -897,9 +897,9 @@ export const catalogue = [
       oc_cost: 60, oc_wsdam: 6, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 36,
     },
-/* +1 small */
-/* less visual distraction for 'no description' */
-/* blunt weapon bashes target */
+    /* +1 small */
+    /* less visual distraction for 'no description' */
+    /* blunt weapon bashes target */
     { id: "MORNING_STAR", oc_name: "morning star", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -909,9 +909,9 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 4, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 120,
     },
-/* +d4 small, +1 large */
-/* less visual distraction for 'no description' */
-/* blunt weapon bashes target */
+    /* +d4 small, +1 large */
+    /* less visual distraction for 'no description' */
+    /* blunt weapon bashes target */
     { id: "WAR_HAMMER", oc_name: "war hammer", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -921,10 +921,10 @@ export const catalogue = [
       oc_cost: 5, oc_wsdam: 4, oc_wldam: 4, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 50,
     },
-/* +1 small */
-/* less visual distraction for 'no description' */
-/* blunt weapon bashes target */
-/* on IBM, low-intensity yellow is brown */
+    /* +1 small */
+    /* less visual distraction for 'no description' */
+    /* blunt weapon bashes target */
+    /* on IBM, low-intensity yellow is brown */
     { id: "CLUB", oc_name: "club", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -934,9 +934,9 @@ export const catalogue = [
       oc_cost: 3, oc_wsdam: 6, oc_wldam: 3, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* less visual distraction for 'no description' */
-/* blunt weapon bashes target */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* blunt weapon bashes target */
+    /* on IBM, low-intensity yellow is brown */
     { id: "RUBBER_HOSE", oc_name: "rubber hose", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -946,8 +946,8 @@ export const catalogue = [
       oc_cost: 3, oc_wsdam: 4, oc_wldam: 3, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* blunt weapon bashes target */
-/* on IBM, low-intensity yellow is brown */
+    /* blunt weapon bashes target */
+    /* on IBM, low-intensity yellow is brown */
     { id: "QUARTERSTAFF", oc_name: "quarterstaff", oc_descr: "staff",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -957,8 +957,8 @@ export const catalogue = [
       oc_cost: 5, oc_wsdam: 6, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* two-piece */
-/* blunt weapon bashes target */
+    /* two-piece */
+    /* blunt weapon bashes target */
     { id: "AKLYS", oc_name: "aklys", oc_descr: "thonged club",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -968,8 +968,8 @@ export const catalogue = [
       oc_cost: 4, oc_wsdam: 6, oc_wldam: 3, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* less visual distraction for 'no description' */
-/* blunt weapon bashes target */
+    /* less visual distraction for 'no description' */
+    /* blunt weapon bashes target */
     { id: "FLAIL", oc_name: "flail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -979,10 +979,10 @@ export const catalogue = [
       oc_cost: 4, oc_wsdam: 6, oc_wldam: 4, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* +1 small, +1d4 large */
-/* misc */
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* +1 small, +1d4 large */
+    /* misc */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "BULLWHIP", oc_name: "bullwhip", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -992,9 +992,9 @@ export const catalogue = [
       oc_cost: 4, oc_wsdam: 2, oc_wldam: 1, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* bows */
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* bows */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "BOW", oc_name: "bow", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1004,7 +1004,7 @@ export const catalogue = [
       oc_cost: 60, oc_wsdam: 2, oc_wldam: 2, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "ELVEN_BOW", oc_name: "elven bow", oc_descr: "runed bow",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1023,7 +1023,7 @@ export const catalogue = [
       oc_cost: 60, oc_wsdam: 2, oc_wldam: 2, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "YUMI", oc_name: "yumi", oc_descr: "long bow",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1033,8 +1033,8 @@ export const catalogue = [
       oc_cost: 60, oc_wsdam: 2, oc_wldam: 2, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SLING", oc_name: "sling", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1044,8 +1044,8 @@ export const catalogue = [
       oc_cost: 20, oc_wsdam: 2, oc_wldam: 2, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 3,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "CROSSBOW", oc_name: "crossbow", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1055,14 +1055,14 @@ export const catalogue = [
       oc_cost: 40, oc_wsdam: 2, oc_wldam: 2, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 50,
     },
-/* armor ... */
-/* IRON denotes ferrous metals, including steel.
+    /* armor ... */
+    /* IRON denotes ferrous metals, including steel.
          * Only IRON weapons and armor can rust.
          * Only COPPER (including brass) corrodes.
          * Some creatures are vulnerable to SILVER.
          */
-/* helmets */
-/* on IBM, low-intensity yellow is brown */
+    /* helmets */
+    /* on IBM, low-intensity yellow is brown */
     { id: "ELVEN_LEATHER_HELM", oc_name: "elven leather helm", oc_descr: "leather hat",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1090,8 +1090,8 @@ export const catalogue = [
       oc_cost: 20, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 8,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "FEDORA", oc_name: "fedora", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1101,7 +1101,7 @@ export const catalogue = [
       oc_cost: 1, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 10,
       oc_oc2: 0, oc_nutrition: 3,
     },
-/* name coined by devteam; confers clairvoyance for wizards,
+    /* name coined by devteam; confers clairvoyance for wizards,
            blocks clairvoyance if worn by role other than wizard */
     { id: "CORNUTHAUM", oc_name: "cornuthaum", oc_descr: "conical hat",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
@@ -1112,7 +1112,7 @@ export const catalogue = [
       oc_cost: 80, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 10,
       oc_oc2: 1, oc_nutrition: 4,
     },
-/* sets Int and Wis to fixed value of 6, so actually provides
+    /* sets Int and Wis to fixed value of 6, so actually provides
            protection against death caused by Int being drained below 3 */
     { id: "DUNCE_CAP", oc_name: "dunce cap", oc_descr: "conical hat",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
@@ -1123,7 +1123,7 @@ export const catalogue = [
       oc_cost: 1, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 10,
       oc_oc2: 0, oc_nutrition: 4,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "DENTED_POT", oc_name: "dented pot", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1133,7 +1133,7 @@ export const catalogue = [
       oc_cost: 8, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* used to be iron and shuffled as "etched helmet" but required
+    /* used to be iron and shuffled as "etched helmet" but required
            special case for the effect of iron armor on spell casting */
     { id: "HELM_OF_BRILLIANCE", oc_name: "helm of brilliance", oc_descr: "crystal helmet",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
@@ -1144,7 +1144,7 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* with shuffled appearances... */
+    /* with shuffled appearances... */
     { id: "HELMET", oc_name: "helmet", oc_descr: "plumed helmet",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1181,18 +1181,18 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 50,
     },
-/* suits of armor */
-/*
+    /* suits of armor */
+    /*
  * There is code in polyself.c that assumes (1) and (2).
  * There is code in obj.h, objnam.c, mon.c, read.c that assumes (2).
  *      (1) The dragon scale mails and the dragon scales are together.
  *      (2) That the order of the dragon scale mail and dragon scales
  *          is the same as order of dragons defined in monst.c.
  */
-/* 3.4.1: dragon scale mail reclassified as "magic" since magic is
+    /* 3.4.1: dragon scale mail reclassified as "magic" since magic is
    needed to create them */
-/* less visual distraction for 'no description' */
-/* low-intensity white */
+    /* less visual distraction for 'no description' */
+    /* low-intensity white */
     { id: "GRAY_DRAGON_SCALE_MAIL", oc_name: "gray dragon scale mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1202,8 +1202,8 @@ export const catalogue = [
       oc_cost: 1200, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 1,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* gold DSM is a light source; there's no property for that */
-/* less visual distraction for 'no description' */
+    /* gold DSM is a light source; there's no property for that */
+    /* less visual distraction for 'no description' */
     { id: "GOLD_DRAGON_SCALE_MAIL", oc_name: "gold dragon scale mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1213,7 +1213,7 @@ export const catalogue = [
       oc_cost: 900, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 1,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "SILVER_DRAGON_SCALE_MAIL", oc_name: "silver dragon scale mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1223,7 +1223,7 @@ export const catalogue = [
       oc_cost: 1200, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 1,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "RED_DRAGON_SCALE_MAIL", oc_name: "red dragon scale mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1233,7 +1233,7 @@ export const catalogue = [
       oc_cost: 900, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 1,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "WHITE_DRAGON_SCALE_MAIL", oc_name: "white dragon scale mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1243,7 +1243,7 @@ export const catalogue = [
       oc_cost: 900, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 1,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "ORANGE_DRAGON_SCALE_MAIL", oc_name: "orange dragon scale mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1253,7 +1253,7 @@ export const catalogue = [
       oc_cost: 900, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 1,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "BLACK_DRAGON_SCALE_MAIL", oc_name: "black dragon scale mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1263,7 +1263,7 @@ export const catalogue = [
       oc_cost: 1200, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 1,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "BLUE_DRAGON_SCALE_MAIL", oc_name: "blue dragon scale mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1273,7 +1273,7 @@ export const catalogue = [
       oc_cost: 900, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 1,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "GREEN_DRAGON_SCALE_MAIL", oc_name: "green dragon scale mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1283,7 +1283,7 @@ export const catalogue = [
       oc_cost: 900, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 1,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "YELLOW_DRAGON_SCALE_MAIL", oc_name: "yellow dragon scale mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1293,11 +1293,11 @@ export const catalogue = [
       oc_cost: 900, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 1,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* For now, only dragons leave these. */
-/* 3.4.1: dragon scales left classified as "non-magic"; they confer magical
+    /* For now, only dragons leave these. */
+    /* 3.4.1: dragon scales left classified as "non-magic"; they confer magical
    properties but are produced "naturally"; affects use as polypile fodder */
-/* less visual distraction for 'no description' */
-/* low-intensity white */
+    /* less visual distraction for 'no description' */
+    /* low-intensity white */
     { id: "GRAY_DRAGON_SCALES", oc_name: "gray dragon scales", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1307,7 +1307,7 @@ export const catalogue = [
       oc_cost: 700, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 7,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "GOLD_DRAGON_SCALES", oc_name: "gold dragon scales", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1317,7 +1317,7 @@ export const catalogue = [
       oc_cost: 500, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 7,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "SILVER_DRAGON_SCALES", oc_name: "silver dragon scales", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1327,7 +1327,7 @@ export const catalogue = [
       oc_cost: 700, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 7,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "RED_DRAGON_SCALES", oc_name: "red dragon scales", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1337,7 +1337,7 @@ export const catalogue = [
       oc_cost: 500, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 7,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "WHITE_DRAGON_SCALES", oc_name: "white dragon scales", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1347,7 +1347,7 @@ export const catalogue = [
       oc_cost: 500, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 7,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "ORANGE_DRAGON_SCALES", oc_name: "orange dragon scales", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1357,7 +1357,7 @@ export const catalogue = [
       oc_cost: 500, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 7,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "BLACK_DRAGON_SCALES", oc_name: "black dragon scales", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1367,7 +1367,7 @@ export const catalogue = [
       oc_cost: 700, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 7,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "BLUE_DRAGON_SCALES", oc_name: "blue dragon scales", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1377,7 +1377,7 @@ export const catalogue = [
       oc_cost: 500, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 7,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "GREEN_DRAGON_SCALES", oc_name: "green dragon scales", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1387,7 +1387,7 @@ export const catalogue = [
       oc_cost: 500, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 7,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "YELLOW_DRAGON_SCALES", oc_name: "yellow dragon scales", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1397,8 +1397,8 @@ export const catalogue = [
       oc_cost: 500, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 7,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* other suits */
-/* less visual distraction for 'no description' */
+    /* other suits */
+    /* less visual distraction for 'no description' */
     { id: "PLATE_MAIL", oc_name: "plate mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1408,7 +1408,7 @@ export const catalogue = [
       oc_cost: 600, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 3,
       oc_oc2: 2, oc_nutrition: 450,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "CRYSTAL_PLATE_MAIL", oc_name: "crystal plate mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1418,7 +1418,7 @@ export const catalogue = [
       oc_cost: 820, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 3,
       oc_oc2: 2, oc_nutrition: 415,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "BRONZE_PLATE_MAIL", oc_name: "bronze plate mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1428,7 +1428,7 @@ export const catalogue = [
       oc_cost: 400, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 4,
       oc_oc2: 1, oc_nutrition: 450,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "SPLINT_MAIL", oc_name: "splint mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1438,7 +1438,7 @@ export const catalogue = [
       oc_cost: 80, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 4,
       oc_oc2: 1, oc_nutrition: 400,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "BANDED_MAIL", oc_name: "banded mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1448,8 +1448,8 @@ export const catalogue = [
       oc_cost: 90, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 4,
       oc_oc2: 1, oc_nutrition: 350,
     },
-/* less visual distraction for 'no description' */
-/* low-intensity white */
+    /* less visual distraction for 'no description' */
+    /* low-intensity white */
     { id: "DWARVISH_MITHRIL_COAT", oc_name: "dwarvish mithril-coat", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1459,8 +1459,8 @@ export const catalogue = [
       oc_cost: 240, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 4,
       oc_oc2: 2, oc_nutrition: 150,
     },
-/* less visual distraction for 'no description' */
-/* low-intensity white */
+    /* less visual distraction for 'no description' */
+    /* low-intensity white */
     { id: "ELVEN_MITHRIL_COAT", oc_name: "elven mithril-coat", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1470,7 +1470,7 @@ export const catalogue = [
       oc_cost: 240, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 5,
       oc_oc2: 2, oc_nutrition: 150,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "CHAIN_MAIL", oc_name: "chain mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1489,7 +1489,7 @@ export const catalogue = [
       oc_cost: 75, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 6,
       oc_oc2: 1, oc_nutrition: 300,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "SCALE_MAIL", oc_name: "scale mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1499,8 +1499,8 @@ export const catalogue = [
       oc_cost: 45, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 6,
       oc_oc2: 1, oc_nutrition: 250,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "STUDDED_LEATHER_ARMOR", oc_name: "studded leather armor", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1510,7 +1510,7 @@ export const catalogue = [
       oc_cost: 15, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 7,
       oc_oc2: 1, oc_nutrition: 200,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "RING_MAIL", oc_name: "ring mail", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1529,8 +1529,8 @@ export const catalogue = [
       oc_cost: 80, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 8,
       oc_oc2: 1, oc_nutrition: 250,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "LEATHER_ARMOR", oc_name: "leather armor", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1540,7 +1540,7 @@ export const catalogue = [
       oc_cost: 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 8,
       oc_oc2: 1, oc_nutrition: 150,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "LEATHER_JACKET", oc_name: "leather jacket", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1550,8 +1550,8 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* shirts */
-/* less visual distraction for 'no description' */
+    /* shirts */
+    /* less visual distraction for 'no description' */
     { id: "HAWAIIAN_SHIRT", oc_name: "Hawaiian shirt", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1561,7 +1561,7 @@ export const catalogue = [
       oc_cost: 3, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 10,
       oc_oc2: 0, oc_nutrition: 5,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "T_SHIRT", oc_name: "T-shirt", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1571,9 +1571,9 @@ export const catalogue = [
       oc_cost: 2, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 10,
       oc_oc2: 0, oc_nutrition: 5,
     },
-/* cloaks */
-/* less visual distraction for 'no description' */
-/* low-intensity white */
+    /* cloaks */
+    /* less visual distraction for 'no description' */
+    /* low-intensity white */
     { id: "MUMMY_WRAPPING", oc_name: "mummy wrapping", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1583,7 +1583,7 @@ export const catalogue = [
       oc_cost: 2, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 10,
       oc_oc2: 1, oc_nutrition: 3,
     },
-/* worn mummy wrapping blocks invisibility */
+    /* worn mummy wrapping blocks invisibility */
     { id: "ELVEN_CLOAK", oc_name: "elven cloak", oc_descr: "faded pall",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1602,7 +1602,7 @@ export const catalogue = [
       oc_cost: 40, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 10,
       oc_oc2: 1, oc_nutrition: 10,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "DWARVISH_CLOAK", oc_name: "dwarvish cloak", oc_descr: "hooded cloak",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1612,7 +1612,7 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 10,
       oc_oc2: 1, oc_nutrition: 10,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "OILSKIN_CLOAK", oc_name: "oilskin cloak", oc_descr: "slippery cloak",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1622,7 +1622,7 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 2, oc_nutrition: 10,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "ROBE", oc_name: "robe", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1632,7 +1632,7 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 8,
       oc_oc2: 2, oc_nutrition: 15,
     },
-/* robe was adopted from slash'em, where it's worn as a suit
+    /* robe was adopted from slash'em, where it's worn as a suit
            rather than as a cloak and there are several variations */
     { id: "ALCHEMY_SMOCK", oc_name: "alchemy smock", oc_descr: "apron",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
@@ -1643,8 +1643,8 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 1, oc_nutrition: 10,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "LEATHER_CLOAK", oc_name: "leather cloak", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1654,8 +1654,8 @@ export const catalogue = [
       oc_cost: 40, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 1, oc_nutrition: 15,
     },
-/* with shuffled appearances... */
-/* on IBM, low-intensity yellow is brown */
+    /* with shuffled appearances... */
+    /* on IBM, low-intensity yellow is brown */
     { id: "CLOAK_OF_PROTECTION", oc_name: "cloak of protection", oc_descr: "tattered cape",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1665,7 +1665,7 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 7,
       oc_oc2: 3, oc_nutrition: 10,
     },
-/* cloak of protection is now the only item conferring MC 3 */
+    /* cloak of protection is now the only item conferring MC 3 */
     { id: "CLOAK_OF_INVISIBILITY", oc_name: "cloak of invisibility", oc_descr: "opera cloak",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1684,8 +1684,8 @@ export const catalogue = [
       oc_cost: 60, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 1, oc_nutrition: 10,
     },
-/*  'cope' is not a spelling mistake... leave it be */
-/* on IBM, low-intensity yellow is brown */
+    /*  'cope' is not a spelling mistake... leave it be */
+    /* on IBM, low-intensity yellow is brown */
     { id: "CLOAK_OF_DISPLACEMENT", oc_name: "cloak of displacement", oc_descr: "piece of cloth",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1695,8 +1695,8 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 1, oc_nutrition: 10,
     },
-/* shields */
-/* on IBM, low-intensity yellow is brown */
+    /* shields */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SMALL_SHIELD", oc_name: "small shield", oc_descr: "wooden shield",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1706,7 +1706,7 @@ export const catalogue = [
       oc_cost: 3, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SHIELD_OF_DRAIN_RESISTANCE", oc_name: "shield of drain resistance", oc_descr: "wooden shield",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1716,7 +1716,7 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SHIELD_OF_SHOCK_RESISTANCE", oc_name: "shield of shock resistance", oc_descr: "wooden shield",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1753,7 +1753,7 @@ export const catalogue = [
       oc_cost: 7, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 50,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "LARGE_SHIELD", oc_name: "large shield", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1772,7 +1772,7 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 8,
       oc_oc2: 0, oc_nutrition: 100,
     },
-/* low-intensity white */
+    /* low-intensity white */
     { id: "SHIELD_OF_REFLECTION", oc_name: "shield of reflection", oc_descr: "polished silver shield",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1782,12 +1782,12 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 8,
       oc_oc2: 0, oc_nutrition: 50,
     },
-/* gloves */
-/* These have their color but not material shuffled, so the IRON must
+    /* gloves */
+    /* These have their color but not material shuffled, so the IRON must
  * stay CLR_BROWN (== HI_LEATHER) even though it's normally either
  * HI_METAL or CLR_BLACK.  All have shuffled descriptions.
  */
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "LEATHER_GLOVES", oc_name: "leather gloves", oc_descr: "old gloves",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1797,7 +1797,7 @@ export const catalogue = [
       oc_cost: 8, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "GAUNTLETS_OF_FUMBLING", oc_name: "gauntlets of fumbling", oc_descr: "padded gloves",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1807,7 +1807,7 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "GAUNTLETS_OF_POWER", oc_name: "gauntlets of power", oc_descr: "riding gloves",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1817,7 +1817,7 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "GAUNTLETS_OF_DEXTERITY", oc_name: "gauntlets of dexterity", oc_descr: "fencing gloves",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1827,8 +1827,8 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* boots */
-/* on IBM, low-intensity yellow is brown */
+    /* boots */
+    /* on IBM, low-intensity yellow is brown */
     { id: "LOW_BOOTS", oc_name: "low boots", oc_descr: "walking shoes",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1847,7 +1847,7 @@ export const catalogue = [
       oc_cost: 16, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 8,
       oc_oc2: 0, oc_nutrition: 50,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "HIGH_BOOTS", oc_name: "high boots", oc_descr: "jackboots",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1857,8 +1857,8 @@ export const catalogue = [
       oc_cost: 12, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 8,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* with shuffled appearances... */
-/* on IBM, low-intensity yellow is brown */
+    /* with shuffled appearances... */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SPEED_BOOTS", oc_name: "speed boots", oc_descr: "combat boots",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1868,7 +1868,7 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "WATER_WALKING_BOOTS", oc_name: "water walking boots", oc_descr: "jungle boots",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1878,7 +1878,7 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "JUMPING_BOOTS", oc_name: "jumping boots", oc_descr: "hiking boots",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1888,7 +1888,7 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "ELVEN_BOOTS", oc_name: "elven boots", oc_descr: "mud boots",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1898,7 +1898,7 @@ export const catalogue = [
       oc_cost: 8, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "KICKING_BOOTS", oc_name: "kicking boots", oc_descr: "buckled boots",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1908,8 +1908,8 @@ export const catalogue = [
       oc_cost: 8, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 50,
     },
-/* CLR_BROWN for same reason as gauntlets of power */
-/* on IBM, low-intensity yellow is brown */
+    /* CLR_BROWN for same reason as gauntlets of power */
+    /* on IBM, low-intensity yellow is brown */
     { id: "FUMBLE_BOOTS", oc_name: "fumble boots", oc_descr: "riding boots",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1919,7 +1919,7 @@ export const catalogue = [
       oc_cost: 30, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "LEVITATION_BOOTS", oc_name: "levitation boots", oc_descr: "snow boots",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1929,8 +1929,8 @@ export const catalogue = [
       oc_cost: 30, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 10 - 9,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* rings ... */
-/* on IBM, low-intensity yellow is brown */
+    /* rings ... */
+    /* on IBM, low-intensity yellow is brown */
     { id: "RIN_ADORNMENT", oc_name: "adornment", oc_descr: "wooden",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1940,7 +1940,7 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* low-intensity white */
+    /* low-intensity white */
     { id: "RIN_GAIN_STRENGTH", oc_name: "gain strength", oc_descr: "granite",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1950,7 +1950,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* low-intensity white */
+    /* low-intensity white */
     { id: "RIN_GAIN_CONSTITUTION", oc_name: "gain constitution", oc_descr: "opal",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -1987,11 +1987,11 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* 'PROTECTION' intrinsic enhances MC from worn armor by +1,
+    /* 'PROTECTION' intrinsic enhances MC from worn armor by +1,
            regardless of ring's enchantment; wearing a second ring of
            protection (or even one ring of protection combined with
            cloak of protection) doesn't give a second MC boost */
-/* low-intensity white */
+    /* low-intensity white */
     { id: "RIN_REGENERATION", oc_name: "regeneration", oc_descr: "moonstone",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2001,7 +2001,7 @@ export const catalogue = [
       oc_cost: 200, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "RIN_SEARCHING", oc_name: "searching", oc_descr: "tiger eye",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2128,7 +2128,7 @@ export const catalogue = [
       oc_cost: 200, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* low-intensity white */
+    /* low-intensity white */
     { id: "RIN_TELEPORTATION", oc_name: "teleportation", oc_descr: "silver",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2192,7 +2192,7 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* amulets ... - THE Amulet comes last because it is special */
+    /* amulets ... - THE Amulet comes last because it is special */
     { id: "AMULET_OF_ESP", oc_name: "amulet of ESP", oc_descr: "circular",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2202,7 +2202,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/*empty*/
+    /*empty*/
     { id: "AMULET_OF_LIFE_SAVING", oc_name: "amulet of life saving", oc_descr: "spherical",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2275,7 +2275,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* +2 AC and +2 MC; +2 takes naked hero past 'warded' to 'guarded' */
+    /* +2 AC and +2 MC; +2 takes naked hero past 'warded' to 'guarded' */
     { id: "AMULET_OF_GUARDING", oc_name: "amulet of guarding", oc_descr: "perforated",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2285,7 +2285,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* cubical: some descriptions are already three dimensional and
+    /* cubical: some descriptions are already three dimensional and
            parallelogrammatical (real word!) would be way over the top */
     { id: "AMULET_OF_FLYING", oc_name: "amulet of flying", oc_descr: "cubical",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
@@ -2296,7 +2296,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* fixed descriptions; description duplication is deliberate;
+    /* fixed descriptions; description duplication is deliberate;
  * fake one must come before real one because selection for
  * description shuffling stops when a non-magic amulet is encountered
  */
@@ -2309,7 +2309,7 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 1,
     },
-/* note: description == name */
+    /* note: description == name */
     { id: "AMULET_OF_YENDOR", oc_name: "Amulet of Yendor", oc_descr: "Amulet of Yendor",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 1, oc_nowish: 1,
@@ -2319,12 +2319,12 @@ export const catalogue = [
       oc_cost: 30000, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/*empty*/
-/* tools ... */
-/* tools with weapon characteristics come last */
-/* containers */
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /*empty*/
+    /* tools ... */
+    /* tools with weapon characteristics come last */
+    /* containers */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "LARGE_BOX", oc_name: "large box", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2334,8 +2334,8 @@ export const catalogue = [
       oc_cost: 8, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 350,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "CHEST", oc_name: "chest", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2345,7 +2345,7 @@ export const catalogue = [
       oc_cost: 16, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 600,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "ICE_BOX", oc_name: "ice box", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2355,7 +2355,7 @@ export const catalogue = [
       oc_cost: 42, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 900,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SACK", oc_name: "sack", oc_descr: "bag",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2365,7 +2365,7 @@ export const catalogue = [
       oc_cost: 2, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "OILSKIN_SACK", oc_name: "oilskin sack", oc_descr: "bag",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2375,7 +2375,7 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "BAG_OF_HOLDING", oc_name: "bag of holding", oc_descr: "bag",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2385,7 +2385,7 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "BAG_OF_TRICKS", oc_name: "bag of tricks", oc_descr: "bag",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -2395,7 +2395,7 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* lock opening tools */
+    /* lock opening tools */
     { id: "SKELETON_KEY", oc_name: "skeleton key", oc_descr: "key",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2405,7 +2405,7 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 3,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "LOCK_PICK", oc_name: "lock pick", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2415,7 +2415,7 @@ export const catalogue = [
       oc_cost: 20, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 4,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "CREDIT_CARD", oc_name: "credit card", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2425,7 +2425,7 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 1,
     },
-/* light sources */
+    /* light sources */
     { id: "TALLOW_CANDLE", oc_name: "tallow candle", oc_descr: "candle",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2444,7 +2444,7 @@ export const catalogue = [
       oc_cost: 20, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 2,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "BRASS_LANTERN", oc_name: "brass lantern", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2472,8 +2472,8 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* other tools */
-/* less visual distraction for 'no description' */
+    /* other tools */
+    /* less visual distraction for 'no description' */
     { id: "EXPENSIVE_CAMERA", oc_name: "expensive camera", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -2483,7 +2483,7 @@ export const catalogue = [
       oc_cost: 200, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 12,
     },
-/* low-intensity white */
+    /* low-intensity white */
     { id: "MIRROR", oc_name: "mirror", oc_descr: "looking glass",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2502,11 +2502,11 @@ export const catalogue = [
       oc_cost: 60, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 150,
     },
-/* eyewear - tools which can be worn on the face; (!mrg, !chg, !mgc)
+    /* eyewear - tools which can be worn on the face; (!mrg, !chg, !mgc)
    worn lenses don't confer the Blinded property, blindfolds and towels do;
    wet towel can be used as a weapon but is not a weptool and uses obj->spe
    differently from weapons and weptools */
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "LENSES", oc_name: "lenses", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2516,7 +2516,7 @@ export const catalogue = [
       oc_cost: 80, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 3,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "BLINDFOLD", oc_name: "blindfold", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2526,7 +2526,7 @@ export const catalogue = [
       oc_cost: 20, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 2,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "TOWEL", oc_name: "towel", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2536,9 +2536,9 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 5,
     },
-/* still other tools */
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* still other tools */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SADDLE", oc_name: "saddle", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2548,8 +2548,8 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 200,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "LEASH", oc_name: "leash", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2559,7 +2559,7 @@ export const catalogue = [
       oc_cost: 20, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 12,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "STETHOSCOPE", oc_name: "stethoscope", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2569,7 +2569,7 @@ export const catalogue = [
       oc_cost: 75, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 4,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "TINNING_KIT", oc_name: "tinning kit", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -2579,7 +2579,7 @@ export const catalogue = [
       oc_cost: 30, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 100,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "TIN_OPENER", oc_name: "tin opener", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2589,7 +2589,7 @@ export const catalogue = [
       oc_cost: 30, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 4,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "CAN_OF_GREASE", oc_name: "can of grease", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -2599,8 +2599,8 @@ export const catalogue = [
       oc_cost: 20, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* less visual distraction for 'no description' */
-/* low-intensity white */
+    /* less visual distraction for 'no description' */
+    /* low-intensity white */
     { id: "FIGURINE", oc_name: "figurine", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2610,8 +2610,8 @@ export const catalogue = [
       oc_cost: 80, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 50,
     },
-/* monster type specified by obj->corpsenm */
-/* less visual distraction for 'no description' */
+    /* monster type specified by obj->corpsenm */
+    /* less visual distraction for 'no description' */
     { id: "MAGIC_MARKER", oc_name: "magic marker", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -2621,8 +2621,8 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 2,
     },
-/* traps */
-/* less visual distraction for 'no description' */
+    /* traps */
+    /* less visual distraction for 'no description' */
     { id: "LAND_MINE", oc_name: "land mine", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2632,7 +2632,7 @@ export const catalogue = [
       oc_cost: 180, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 200,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "BEARTRAP", oc_name: "beartrap", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2642,7 +2642,7 @@ export const catalogue = [
       oc_cost: 60, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 200,
     },
-/* instruments;
+    /* instruments;
    "If tin whistles are made out of tin, what do they make foghorns out of?" */
     { id: "TIN_WHISTLE", oc_name: "tin whistle", oc_descr: "whistle",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
@@ -2662,7 +2662,7 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 3,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "WOODEN_FLUTE", oc_name: "wooden flute", oc_descr: "flute",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2672,7 +2672,7 @@ export const catalogue = [
       oc_cost: 12, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 5,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "MAGIC_FLUTE", oc_name: "magic flute", oc_descr: "flute",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -2718,8 +2718,8 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 18,
     },
-/* horn, but not an instrument */
-/* on IBM, low-intensity yellow is brown */
+    /* horn, but not an instrument */
+    /* on IBM, low-intensity yellow is brown */
     { id: "WOODEN_HARP", oc_name: "wooden harp", oc_descr: "harp",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2729,7 +2729,7 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "MAGIC_HARP", oc_name: "magic harp", oc_descr: "harp",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -2739,7 +2739,7 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "BELL", oc_name: "bell", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2749,7 +2749,7 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "BUGLE", oc_name: "bugle", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2759,7 +2759,7 @@ export const catalogue = [
       oc_cost: 15, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "LEATHER_DRUM", oc_name: "leather drum", oc_descr: "drum",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2769,7 +2769,7 @@ export const catalogue = [
       oc_cost: 25, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 25,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "DRUM_OF_EARTHQUAKE", oc_name: "drum of earthquake", oc_descr: "drum",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -2779,10 +2779,10 @@ export const catalogue = [
       oc_cost: 25, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 25,
     },
-/* tools useful as weapons */
-/* less visual distraction for 'no description' */
-/* blunt weapon bashes target */
-/* blunt weapon bashes target */
+    /* tools useful as weapons */
+    /* less visual distraction for 'no description' */
+    /* blunt weapon bashes target */
+    /* blunt weapon bashes target */
     { id: "PICK_AXE", oc_name: "pick-axe", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -2792,9 +2792,9 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 6, oc_wldam: 3, oc_oc1: 4,
       oc_oc2: 0, oc_nutrition: 100,
     },
-/* less visual distraction for 'no description' */
-/* blunt weapon bashes target */
-/* blunt weapon bashes target */
+    /* less visual distraction for 'no description' */
+    /* blunt weapon bashes target */
+    /* blunt weapon bashes target */
     { id: "GRAPPLING_HOOK", oc_name: "grappling hook", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -2804,9 +2804,9 @@ export const catalogue = [
       oc_cost: 50, oc_wsdam: 2, oc_wldam: 6, oc_oc1: 4,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* less visual distraction for 'no description' */
-/* pointed weapon punctures target */
-/* pointed weapon punctures target */
+    /* less visual distraction for 'no description' */
+    /* pointed weapon punctures target */
+    /* pointed weapon punctures target */
     { id: "UNICORN_HORN", oc_name: "unicorn horn", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -2816,8 +2816,8 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 12, oc_wldam: 12, oc_oc1: 1,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* 3.4.1: unicorn horn left classified as "magic" */
-/* two unique tools;
+    /* 3.4.1: unicorn horn left classified as "magic" */
+    /* two unique tools;
  * not artifacts, despite the comment which used to be here
  */
     { id: "CANDELABRUM_OF_INVOCATION", oc_name: "Candelabrum of Invocation", oc_descr: "candelabrum",
@@ -2829,7 +2829,7 @@ export const catalogue = [
       oc_cost: 5000, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 200,
     },
-/* low-intensity white */
+    /* low-intensity white */
     { id: "BELL_OF_OPENING", oc_name: "Bell of Opening", oc_descr: "silver bell",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 1, oc_nowish: 1,
@@ -2839,8 +2839,8 @@ export const catalogue = [
       oc_cost: 5000, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 50,
     },
-/* Comestibles ... */
-/* All types of food (except tins & corpses) must have a delay of at least 1.
+    /* Comestibles ... */
+    /* All types of food (except tins & corpses) must have a delay of at least 1.
  * Delay on corpses is computed and is weight dependent.
  * Domestic pets prefer tripe rations above all others.
  * Fortune cookies can be read, using them up without ingesting them.
@@ -2849,9 +2849,9 @@ export const catalogue = [
  * +1 tins (of spinach) make you stronger (like Popeye).
  * Meatballs/sticks/rings are only created from objects via stone to flesh.
  */
-/* meat */
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* meat */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "TRIPE_RATION", oc_name: "tripe ration", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2861,8 +2861,8 @@ export const catalogue = [
       oc_cost: Math.trunc(200 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 200,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "CORPSE", oc_name: "corpse", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2872,7 +2872,7 @@ export const catalogue = [
       oc_cost: Math.trunc(0 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "EGG", oc_name: "egg", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2882,8 +2882,8 @@ export const catalogue = [
       oc_cost: Math.trunc(80 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 80,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "MEATBALL", oc_name: "meatball", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2893,8 +2893,8 @@ export const catalogue = [
       oc_cost: Math.trunc(5 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 5,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "MEAT_STICK", oc_name: "meat stick", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2904,9 +2904,9 @@ export const catalogue = [
       oc_cost: Math.trunc(5 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 5,
     },
-/* formerly "huge chunk of meat" */
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* formerly "huge chunk of meat" */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "ENORMOUS_MEATBALL", oc_name: "enormous meatball", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2916,9 +2916,9 @@ export const catalogue = [
       oc_cost: Math.trunc(2000 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 2000,
     },
-/* special case because it's not mergeable */
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* special case because it's not mergeable */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "MEAT_RING", oc_name: "meat ring", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2928,10 +2928,10 @@ export const catalogue = [
       oc_cost: 1, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 5,
     },
-/* pudding 'corpses' will turn into these and combine;
+    /* pudding 'corpses' will turn into these and combine;
    must be in same order as the pudding monsters */
-/* less visual distraction for 'no description' */
-/* low-intensity white */
+    /* less visual distraction for 'no description' */
+    /* low-intensity white */
     { id: "GLOB_OF_GRAY_OOZE", oc_name: "glob of gray ooze", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2941,8 +2941,8 @@ export const catalogue = [
       oc_cost: Math.trunc(20 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "GLOB_OF_BROWN_PUDDING", oc_name: "glob of brown pudding", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2952,7 +2952,7 @@ export const catalogue = [
       oc_cost: Math.trunc(20 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "GLOB_OF_GREEN_SLIME", oc_name: "glob of green slime", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2962,7 +2962,7 @@ export const catalogue = [
       oc_cost: Math.trunc(20 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "GLOB_OF_BLACK_PUDDING", oc_name: "glob of black pudding", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2972,8 +2972,8 @@ export const catalogue = [
       oc_cost: Math.trunc(20 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* fruits & veggies */
-/* less visual distraction for 'no description' */
+    /* fruits & veggies */
+    /* less visual distraction for 'no description' */
     { id: "KELP_FROND", oc_name: "kelp frond", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2983,7 +2983,7 @@ export const catalogue = [
       oc_cost: Math.trunc(30 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "EUCALYPTUS_LEAF", oc_name: "eucalyptus leaf", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -2993,7 +2993,7 @@ export const catalogue = [
       oc_cost: Math.trunc(1 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 1,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "APPLE", oc_name: "apple", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3003,7 +3003,7 @@ export const catalogue = [
       oc_cost: Math.trunc(50 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 50,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "ORANGE", oc_name: "orange", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3013,7 +3013,7 @@ export const catalogue = [
       oc_cost: Math.trunc(80 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 80,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "PEAR", oc_name: "pear", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3023,7 +3023,7 @@ export const catalogue = [
       oc_cost: Math.trunc(50 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 50,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "MELON", oc_name: "melon", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3033,7 +3033,7 @@ export const catalogue = [
       oc_cost: Math.trunc(100 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 100,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "BANANA", oc_name: "banana", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3043,7 +3043,7 @@ export const catalogue = [
       oc_cost: Math.trunc(80 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 80,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "CARROT", oc_name: "carrot", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3053,7 +3053,7 @@ export const catalogue = [
       oc_cost: Math.trunc(50 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 50,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "SPRIG_OF_WOLFSBANE", oc_name: "sprig of wolfsbane", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3063,7 +3063,7 @@ export const catalogue = [
       oc_cost: Math.trunc(40 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "CLOVE_OF_GARLIC", oc_name: "clove of garlic", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3073,10 +3073,10 @@ export const catalogue = [
       oc_cost: Math.trunc(40 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* name of slime mold is changed based on player's OPTION=fruit:something
+    /* name of slime mold is changed based on player's OPTION=fruit:something
    and bones data might have differently named ones from prior games */
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SLIME_MOLD", oc_name: "slime mold", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3086,8 +3086,8 @@ export const catalogue = [
       oc_cost: Math.trunc(250 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 250,
     },
-/* people food */
-/* less visual distraction for 'no description' */
+    /* people food */
+    /* less visual distraction for 'no description' */
     { id: "LUMP_OF_ROYAL_JELLY", oc_name: "lump of royal jelly", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3097,7 +3097,7 @@ export const catalogue = [
       oc_cost: Math.trunc(200 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 200,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "CREAM_PIE", oc_name: "cream pie", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3107,7 +3107,7 @@ export const catalogue = [
       oc_cost: Math.trunc(100 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 100,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "CANDY_BAR", oc_name: "candy bar", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3117,7 +3117,7 @@ export const catalogue = [
       oc_cost: Math.trunc(100 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 100,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "FORTUNE_COOKIE", oc_name: "fortune cookie", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3127,7 +3127,7 @@ export const catalogue = [
       oc_cost: Math.trunc(40 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 40,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "PANCAKE", oc_name: "pancake", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3137,7 +3137,7 @@ export const catalogue = [
       oc_cost: Math.trunc(200 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 200,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "LEMBAS_WAFER", oc_name: "lembas wafer", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3147,8 +3147,8 @@ export const catalogue = [
       oc_cost: Math.trunc(800 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 800,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "CRAM_RATION", oc_name: "cram ration", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3158,8 +3158,8 @@ export const catalogue = [
       oc_cost: Math.trunc(600 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 600,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "FOOD_RATION", oc_name: "food ration", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3169,8 +3169,8 @@ export const catalogue = [
       oc_cost: Math.trunc(800 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 800,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "K_RATION", oc_name: "K-ration", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3180,8 +3180,8 @@ export const catalogue = [
       oc_cost: Math.trunc(400 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 400,
     },
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "C_RATION", oc_name: "C-ration", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3191,10 +3191,10 @@ export const catalogue = [
       oc_cost: Math.trunc(300 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 300,
     },
-/* tins have type specified by obj->spe (+1 for spinach, other implies
+    /* tins have type specified by obj->spe (+1 for spinach, other implies
    flesh; negative specifies preparation method {homemade,boiled,&c})
    and by obj->corpsenm (type of monster flesh) */
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "TIN", oc_name: "tin", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3204,7 +3204,7 @@ export const catalogue = [
       oc_cost: Math.trunc(0 / 20) + 5, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* potions ... */
+    /* potions ... */
     { id: "POT_GAIN_ABILITY", oc_name: "gain ability", oc_descr: "ruby",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3322,7 +3322,7 @@ export const catalogue = [
       oc_cost: 300, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "POT_ENLIGHTENMENT", oc_name: "enlightenment", oc_descr: "swirly",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3341,7 +3341,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* low-intensity white */
+    /* low-intensity white */
     { id: "POT_OBJECT_DETECTION", oc_name: "object detection", oc_descr: "smoky",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3360,7 +3360,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* low-intensity white */
+    /* low-intensity white */
     { id: "POT_SLEEPING", oc_name: "sleeping", oc_descr: "effervescent",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3388,7 +3388,7 @@ export const catalogue = [
       oc_cost: 200, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "POT_BOOZE", oc_name: "booze", oc_descr: "brown",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3425,7 +3425,7 @@ export const catalogue = [
       oc_cost: 250, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "POT_OIL", oc_name: "oil", oc_descr: "murky",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3435,7 +3435,7 @@ export const catalogue = [
       oc_cost: 250, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* fixed description
+    /* fixed description
  */
     { id: "POT_WATER", oc_name: "water", oc_descr: "clear",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
@@ -3446,7 +3446,7 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* scrolls ... */
+    /* scrolls ... */
     { id: "SCR_ENCHANT_ARMOR", oc_name: "enchant armor", oc_descr: "ZELGO MER",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3636,14 +3636,14 @@ export const catalogue = [
       oc_cost: 300, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* Extra descriptions, shuffled into use at start of new game.
+    /* Extra descriptions, shuffled into use at start of new game.
      * Code in win/share/tilemap.c depends on SCR_STINKING_CLOUD preceding
      * these and on how many of them there are.  If a real scroll gets added
      * after stinking cloud or the number of extra descriptions changes,
      * tilemap.c must be modified to match.  Mgc,Prob,Cost are superfluous.
      * SC values must be distinct but are only used by 'nethack --dumpenums'.
      */
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "SC01", oc_name: null, oc_descr: "FOOBIE BLETCH",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3653,7 +3653,7 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "SC02", oc_name: null, oc_descr: "TEMOV",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3663,7 +3663,7 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "SC03", oc_name: null, oc_descr: "GARVEN DEH",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3673,7 +3673,7 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "SC04", oc_name: null, oc_descr: "READ ME",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3683,7 +3683,7 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "SC05", oc_name: null, oc_descr: "ETAOIN SHRDLU",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3693,7 +3693,7 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "SC06", oc_name: null, oc_descr: "LOREM IPSUM",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3703,7 +3703,7 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "SC07", oc_name: null, oc_descr: "FNORD",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3713,8 +3713,8 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* Illuminati */
-/* less visual distraction for 'no description' */
+    /* Illuminati */
+    /* less visual distraction for 'no description' */
     { id: "SC08", oc_name: null, oc_descr: "KO BATE",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3724,8 +3724,8 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* Kurd Lasswitz */
-/* less visual distraction for 'no description' */
+    /* Kurd Lasswitz */
+    /* less visual distraction for 'no description' */
     { id: "SC09", oc_name: null, oc_descr: "ABRA KA DABRA",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3735,8 +3735,8 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* traditional incantation */
-/* less visual distraction for 'no description' */
+    /* traditional incantation */
+    /* less visual distraction for 'no description' */
     { id: "SC10", oc_name: null, oc_descr: "ASHPD SODALG",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3746,8 +3746,8 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* Portal */
-/* less visual distraction for 'no description' */
+    /* Portal */
+    /* less visual distraction for 'no description' */
     { id: "SC11", oc_name: null, oc_descr: "ZLORFIK",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3757,8 +3757,8 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* Zak McKracken */
-/* less visual distraction for 'no description' */
+    /* Zak McKracken */
+    /* less visual distraction for 'no description' */
     { id: "SC12", oc_name: null, oc_descr: "GNIK SISI VLE",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3768,8 +3768,8 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* Zak McKracken */
-/* less visual distraction for 'no description' */
+    /* Zak McKracken */
+    /* less visual distraction for 'no description' */
     { id: "SC13", oc_name: null, oc_descr: "HAPAX LEGOMENON",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3779,7 +3779,7 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "SC14", oc_name: null, oc_descr: "EIRIS SAZUN IDISI",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3789,8 +3789,8 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* Merseburg Incantations */
-/* less visual distraction for 'no description' */
+    /* Merseburg Incantations */
+    /* less visual distraction for 'no description' */
     { id: "SC15", oc_name: null, oc_descr: "PHOL ENDE WODAN",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3800,8 +3800,8 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* Merseburg Incantations */
-/* less visual distraction for 'no description' */
+    /* Merseburg Incantations */
+    /* less visual distraction for 'no description' */
     { id: "SC16", oc_name: null, oc_descr: "GHOTI",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3811,9 +3811,9 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* pronounced as 'fish',
+    /* pronounced as 'fish',
                                                 * George Bernard Shaw */
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "SC17", oc_name: null, oc_descr: "MAPIRO MAHAMA DIROMAT",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3823,8 +3823,8 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* Wizardry */
-/* less visual distraction for 'no description' */
+    /* Wizardry */
+    /* less visual distraction for 'no description' */
     { id: "SC18", oc_name: null, oc_descr: "VAS CORP BET MANI",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3834,8 +3834,8 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* Ultima */
-/* less visual distraction for 'no description' */
+    /* Ultima */
+    /* less visual distraction for 'no description' */
     { id: "SC19", oc_name: null, oc_descr: "XOR OTA",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3845,8 +3845,8 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* Aarne Haapakoski */
-/* less visual distraction for 'no description' */
+    /* Aarne Haapakoski */
+    /* less visual distraction for 'no description' */
     { id: "SC20", oc_name: null, oc_descr: "STRC PRST SKRZ KRK",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3856,9 +3856,9 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* Czech and Slovak
+    /* Czech and Slovak
                                                 * tongue-twister */
-/* These must come last because they have special fixed descriptions.
+    /* These must come last because they have special fixed descriptions.
      */
     { id: "SCR_MAIL", oc_name: "mail", oc_descr: "stamped",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
@@ -3878,8 +3878,8 @@ export const catalogue = [
       oc_cost: 60, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* spellbooks ... */
-/* Expanding beyond 52 spells would require changes in spellcasting
+    /* spellbooks ... */
+    /* Expanding beyond 52 spells would require changes in spellcasting
      * or imposition of a limit on number of spells hero can know because
      * they are currently assigned successive letters, a-zA-Z, when learned.
      * [The existing spell sorting capability could conceivably be extended
@@ -3887,7 +3887,7 @@ export const catalogue = [
      * out in the process, allowing more than 52 spells be known but keeping
      * only 52 be castable at any given time.]
      */
-/* Spellbook description normally refers to book covers (primarily color).
+    /* Spellbook description normally refers to book covers (primarily color).
    Parchment and vellum would never be used for such, but rather than
    eliminate those, finagle their definitions to refer to the pages
    rather than the cover.  They are made from animal skin (typically of
@@ -3897,9 +3897,9 @@ export const catalogue = [
    by a sheet of parchment, making this become less of an exception.  Also,
    changing the internal composition from paper to leather makes eating a
    parchment or vellum spellbook break vegetarian conduct, as it should.) */
-/* beam that does bounce off walls */
-/* override enum for use in SPELL() expansion */
-/* on IBM, low-intensity yellow is brown */
+    /* beam that does bounce off walls */
+    /* override enum for use in SPELL() expansion */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SPE_DIG", oc_name: "dig", oc_descr: "parchment",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3909,11 +3909,11 @@ export const catalogue = [
       oc_cost: 5 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 5, oc_nutrition: 20,
     },
-/*empty*/
-/* magic missile ... finger of death must be in this order; see buzz() */
-/* beam that does bounce off walls */
-/* override enum for use in SPELL() expansion */
-/* on IBM, low-intensity yellow is brown */
+    /*empty*/
+    /* magic missile ... finger of death must be in this order; see buzz() */
+    /* beam that does bounce off walls */
+    /* override enum for use in SPELL() expansion */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SPE_MAGIC_MISSILE", oc_name: "magic missile", oc_descr: "vellum",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3923,7 +3923,7 @@ export const catalogue = [
       oc_cost: 2 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 2, oc_nutrition: 20,
     },
-/* beam that does bounce off walls */
+    /* beam that does bounce off walls */
     { id: "SPE_FIREBALL", oc_name: "fireball", oc_descr: "ragged",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3933,7 +3933,7 @@ export const catalogue = [
       oc_cost: 4 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 4, oc_nutrition: 20,
     },
-/* beam that does bounce off walls */
+    /* beam that does bounce off walls */
     { id: "SPE_CONE_OF_COLD", oc_name: "cone of cold", oc_descr: "dog eared",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3943,7 +3943,7 @@ export const catalogue = [
       oc_cost: 4 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 4, oc_nutrition: 20,
     },
-/* beam that does bounce off walls */
+    /* beam that does bounce off walls */
     { id: "SPE_SLEEP", oc_name: "sleep", oc_descr: "mottled",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3953,7 +3953,7 @@ export const catalogue = [
       oc_cost: 3 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 3, oc_nutrition: 20,
     },
-/* beam that does bounce off walls */
+    /* beam that does bounce off walls */
     { id: "SPE_FINGER_OF_DEATH", oc_name: "finger of death", oc_descr: "stained",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3963,8 +3963,8 @@ export const catalogue = [
       oc_cost: 7 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 7, oc_nutrition: 20,
     },
-/* non-directional */
-/* on IBM, low-intensity yellow is brown */
+    /* non-directional */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SPE_LIGHT", oc_name: "light", oc_descr: "cloth",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3974,8 +3974,8 @@ export const catalogue = [
       oc_cost: 1 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 1, oc_nutrition: 20,
     },
-/* non-directional */
-/* on IBM, low-intensity yellow is brown */
+    /* non-directional */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SPE_DETECT_MONSTERS", oc_name: "detect monsters", oc_descr: "leathery",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3985,7 +3985,7 @@ export const catalogue = [
       oc_cost: 1 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 1, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_HEALING", oc_name: "healing", oc_descr: "white",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -3995,7 +3995,7 @@ export const catalogue = [
       oc_cost: 1 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 1, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_KNOCK", oc_name: "knock", oc_descr: "pink",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4005,7 +4005,7 @@ export const catalogue = [
       oc_cost: 1 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 1, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_FORCE_BOLT", oc_name: "force bolt", oc_descr: "red",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4015,7 +4015,7 @@ export const catalogue = [
       oc_cost: 1 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 1, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_CONFUSE_MONSTER", oc_name: "confuse monster", oc_descr: "orange",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4025,7 +4025,7 @@ export const catalogue = [
       oc_cost: 1 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 1, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_CURE_BLINDNESS", oc_name: "cure blindness", oc_descr: "yellow",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4035,7 +4035,7 @@ export const catalogue = [
       oc_cost: 2 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 2, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_DRAIN_LIFE", oc_name: "drain life", oc_descr: "velvet",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4045,7 +4045,7 @@ export const catalogue = [
       oc_cost: 2 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 2, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_SLOW_MONSTER", oc_name: "slow monster", oc_descr: "light green",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4055,7 +4055,7 @@ export const catalogue = [
       oc_cost: 2 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 2, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_WIZARD_LOCK", oc_name: "wizard lock", oc_descr: "dark green",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4065,7 +4065,7 @@ export const catalogue = [
       oc_cost: 2 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 2, oc_nutrition: 20,
     },
-/* non-directional */
+    /* non-directional */
     { id: "SPE_CREATE_MONSTER", oc_name: "create monster", oc_descr: "turquoise",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4075,7 +4075,7 @@ export const catalogue = [
       oc_cost: 2 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 2, oc_nutrition: 20,
     },
-/* non-directional */
+    /* non-directional */
     { id: "SPE_DETECT_FOOD", oc_name: "detect food", oc_descr: "cyan",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4085,7 +4085,7 @@ export const catalogue = [
       oc_cost: 2 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 2, oc_nutrition: 20,
     },
-/* non-directional */
+    /* non-directional */
     { id: "SPE_CAUSE_FEAR", oc_name: "cause fear", oc_descr: "light blue",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4095,7 +4095,7 @@ export const catalogue = [
       oc_cost: 3 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 3, oc_nutrition: 20,
     },
-/* non-directional */
+    /* non-directional */
     { id: "SPE_CLAIRVOYANCE", oc_name: "clairvoyance", oc_descr: "dark blue",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4105,7 +4105,7 @@ export const catalogue = [
       oc_cost: 3 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 3, oc_nutrition: 20,
     },
-/* non-directional */
+    /* non-directional */
     { id: "SPE_CURE_SICKNESS", oc_name: "cure sickness", oc_descr: "indigo",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4115,7 +4115,7 @@ export const catalogue = [
       oc_cost: 3 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 3, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_CHARM_MONSTER", oc_name: "charm monster", oc_descr: "magenta",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4125,7 +4125,7 @@ export const catalogue = [
       oc_cost: 5 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 5, oc_nutrition: 20,
     },
-/* non-directional */
+    /* non-directional */
     { id: "SPE_HASTE_SELF", oc_name: "haste self", oc_descr: "purple",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4135,7 +4135,7 @@ export const catalogue = [
       oc_cost: 3 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 3, oc_nutrition: 20,
     },
-/* non-directional */
+    /* non-directional */
     { id: "SPE_DETECT_UNSEEN", oc_name: "detect unseen", oc_descr: "violet",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4145,8 +4145,8 @@ export const catalogue = [
       oc_cost: 3 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 3, oc_nutrition: 20,
     },
-/* non-directional */
-/* on IBM, low-intensity yellow is brown */
+    /* non-directional */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SPE_LEVITATION", oc_name: "levitation", oc_descr: "tan",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4156,7 +4156,7 @@ export const catalogue = [
       oc_cost: 4 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 4, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_EXTRA_HEALING", oc_name: "extra healing", oc_descr: "plaid",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4166,8 +4166,8 @@ export const catalogue = [
       oc_cost: 3 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 3, oc_nutrition: 20,
     },
-/* non-directional */
-/* on IBM, low-intensity yellow is brown */
+    /* non-directional */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SPE_RESTORE_ABILITY", oc_name: "restore ability", oc_descr: "light brown",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4177,8 +4177,8 @@ export const catalogue = [
       oc_cost: 4 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 4, oc_nutrition: 20,
     },
-/* non-directional */
-/* on IBM, low-intensity yellow is brown */
+    /* non-directional */
+    /* on IBM, low-intensity yellow is brown */
     { id: "SPE_INVISIBILITY", oc_name: "invisibility", oc_descr: "dark brown",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4188,8 +4188,8 @@ export const catalogue = [
       oc_cost: 4 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 4, oc_nutrition: 20,
     },
-/* non-directional */
-/* low-intensity white */
+    /* non-directional */
+    /* low-intensity white */
     { id: "SPE_DETECT_TREASURE", oc_name: "detect treasure", oc_descr: "gray",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4199,7 +4199,7 @@ export const catalogue = [
       oc_cost: 4 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 4, oc_nutrition: 20,
     },
-/* non-directional */
+    /* non-directional */
     { id: "SPE_REMOVE_CURSE", oc_name: "remove curse", oc_descr: "wrinkled",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4209,7 +4209,7 @@ export const catalogue = [
       oc_cost: 3 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 3, oc_nutrition: 20,
     },
-/* non-directional */
+    /* non-directional */
     { id: "SPE_MAGIC_MAPPING", oc_name: "magic mapping", oc_descr: "dusty",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4219,7 +4219,7 @@ export const catalogue = [
       oc_cost: 5 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 5, oc_nutrition: 20,
     },
-/* non-directional */
+    /* non-directional */
     { id: "SPE_IDENTIFY", oc_name: "identify", oc_descr: "bronze",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4229,7 +4229,7 @@ export const catalogue = [
       oc_cost: 3 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 3, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_TURN_UNDEAD", oc_name: "turn undead", oc_descr: "copper",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4239,8 +4239,8 @@ export const catalogue = [
       oc_cost: 6 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 6, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
-/* low-intensity white */
+    /* directional beam that doesn't ricochet */
+    /* low-intensity white */
     { id: "SPE_POLYMORPH", oc_name: "polymorph", oc_descr: "silver",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4250,7 +4250,7 @@ export const catalogue = [
       oc_cost: 6 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 6, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_TELEPORT_AWAY", oc_name: "teleport away", oc_descr: "gold",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4260,7 +4260,7 @@ export const catalogue = [
       oc_cost: 6 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 6, oc_nutrition: 20,
     },
-/* non-directional */
+    /* non-directional */
     { id: "SPE_CREATE_FAMILIAR", oc_name: "create familiar", oc_descr: "glittering",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4270,7 +4270,7 @@ export const catalogue = [
       oc_cost: 6 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 6, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_CANCELLATION", oc_name: "cancellation", oc_descr: "shining",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4280,7 +4280,7 @@ export const catalogue = [
       oc_cost: 7 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 7, oc_nutrition: 20,
     },
-/* non-directional */
+    /* non-directional */
     { id: "SPE_PROTECTION", oc_name: "protection", oc_descr: "dull",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4290,7 +4290,7 @@ export const catalogue = [
       oc_cost: 1 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 1, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_JUMPING", oc_name: "jumping", oc_descr: "thin",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4300,7 +4300,7 @@ export const catalogue = [
       oc_cost: 1 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 1, oc_nutrition: 20,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "SPE_STONE_TO_FLESH", oc_name: "stone to flesh", oc_descr: "thick",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4310,8 +4310,8 @@ export const catalogue = [
       oc_cost: 3 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 3, oc_nutrition: 20,
     },
-/* non-directional */
-/* low-intensity white */
+    /* non-directional */
+    /* low-intensity white */
     { id: "SPE_CHAIN_LIGHTNING", oc_name: "chain lightning", oc_descr: "checkered",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4321,7 +4321,7 @@ export const catalogue = [
       oc_cost: 2 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 2, oc_nutrition: 20,
     },
-/* books with fixed descriptions
+    /* books with fixed descriptions
  */
     { id: "SPE_BLANK_PAPER", oc_name: "blank paper", oc_descr: "plain",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
@@ -4332,12 +4332,12 @@ export const catalogue = [
       oc_cost: 0 * 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 20,
     },
-/* LAST_SPELL is used to calculate MAXSPELL, allocation size of spl_book[];
+    /* LAST_SPELL is used to calculate MAXSPELL, allocation size of spl_book[];
    by including blank paper, which has no actual spell, we ensure that
    even if hero learns every spell, spl_book[] will have at least one
    unused slot at end; an unused slot is needed for use as terminator */
-/*empty*/
-/* tribute book added in 3.6 */
+    /*empty*/
+    /* tribute book added in 3.6 */
     { id: "SPE_NOVEL", oc_name: "novel", oc_descr: "paperback",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4347,7 +4347,7 @@ export const catalogue = [
       oc_cost: 20, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 1, oc_nutrition: 20,
     },
-/* a special, one of a kind, spellbook */
+    /* a special, one of a kind, spellbook */
     { id: "SPE_BOOK_OF_THE_DEAD", oc_name: "Book of the Dead", oc_descr: "papyrus",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 1, oc_nowish: 1,
@@ -4357,8 +4357,8 @@ export const catalogue = [
       oc_cost: 10000, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 7, oc_nutrition: 20,
     },
-/* wands ... */
-/* non-directional */
+    /* wands ... */
+    /* non-directional */
     { id: "WAN_LIGHT", oc_name: "light", oc_descr: "glass",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4368,8 +4368,8 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* non-directional */
-/* on IBM, low-intensity yellow is brown */
+    /* non-directional */
+    /* on IBM, low-intensity yellow is brown */
     { id: "WAN_SECRET_DOOR_DETECTION", oc_name: "secret door detection", oc_descr: "balsa",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4379,7 +4379,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* non-directional */
+    /* non-directional */
     { id: "WAN_ENLIGHTENMENT", oc_name: "enlightenment", oc_descr: "crystal",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4389,8 +4389,8 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* non-directional */
-/* on IBM, low-intensity yellow is brown */
+    /* non-directional */
+    /* on IBM, low-intensity yellow is brown */
     { id: "WAN_CREATE_MONSTER", oc_name: "create monster", oc_descr: "maple",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4400,8 +4400,8 @@ export const catalogue = [
       oc_cost: 200, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* non-directional */
-/* on IBM, low-intensity yellow is brown */
+    /* non-directional */
+    /* on IBM, low-intensity yellow is brown */
     { id: "WAN_WISHING", oc_name: "wishing", oc_descr: "pine",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4411,7 +4411,7 @@ export const catalogue = [
       oc_cost: 500, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* non-directional */
+    /* non-directional */
     { id: "WAN_STASIS", oc_name: "stasis", oc_descr: "redwood",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4421,8 +4421,8 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* directional beam that doesn't ricochet */
-/* on IBM, low-intensity yellow is brown */
+    /* directional beam that doesn't ricochet */
+    /* on IBM, low-intensity yellow is brown */
     { id: "WAN_NOTHING", oc_name: "nothing", oc_descr: "oak",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 0, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4432,8 +4432,8 @@ export const catalogue = [
       oc_cost: 100, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* directional beam that doesn't ricochet */
-/* on IBM, low-intensity yellow is brown */
+    /* directional beam that doesn't ricochet */
+    /* on IBM, low-intensity yellow is brown */
     { id: "WAN_STRIKING", oc_name: "striking", oc_descr: "ebony",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4443,8 +4443,8 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* directional beam that doesn't ricochet */
-/* low-intensity white */
+    /* directional beam that doesn't ricochet */
+    /* low-intensity white */
     { id: "WAN_MAKE_INVISIBLE", oc_name: "make invisible", oc_descr: "marble",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4454,7 +4454,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "WAN_SLOW_MONSTER", oc_name: "slow monster", oc_descr: "tin",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4464,7 +4464,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "WAN_SPEED_MONSTER", oc_name: "speed monster", oc_descr: "brass",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4474,7 +4474,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "WAN_UNDEAD_TURNING", oc_name: "undead turning", oc_descr: "copper",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4484,8 +4484,8 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* directional beam that doesn't ricochet */
-/* low-intensity white */
+    /* directional beam that doesn't ricochet */
+    /* low-intensity white */
     { id: "WAN_POLYMORPH", oc_name: "polymorph", oc_descr: "silver",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4495,7 +4495,7 @@ export const catalogue = [
       oc_cost: 200, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "WAN_CANCELLATION", oc_name: "cancellation", oc_descr: "platinum",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4505,7 +4505,7 @@ export const catalogue = [
       oc_cost: 200, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "WAN_TELEPORTATION", oc_name: "teleportation", oc_descr: "iridium",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4515,7 +4515,7 @@ export const catalogue = [
       oc_cost: 200, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "WAN_OPENING", oc_name: "opening", oc_descr: "zinc",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4525,7 +4525,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "WAN_LOCKING", oc_name: "locking", oc_descr: "aluminum",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4535,7 +4535,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* directional beam that doesn't ricochet */
+    /* directional beam that doesn't ricochet */
     { id: "WAN_PROBING", oc_name: "probing", oc_descr: "uranium",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4545,7 +4545,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* beam that does bounce off walls */
+    /* beam that does bounce off walls */
     { id: "WAN_DIGGING", oc_name: "digging", oc_descr: "iron",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4555,8 +4555,8 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* magic missile ... lightning must be in this order; see buzz() */
-/* beam that does bounce off walls */
+    /* magic missile ... lightning must be in this order; see buzz() */
+    /* beam that does bounce off walls */
     { id: "WAN_MAGIC_MISSILE", oc_name: "magic missile", oc_descr: "steel",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4566,7 +4566,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* beam that does bounce off walls */
+    /* beam that does bounce off walls */
     { id: "WAN_FIRE", oc_name: "fire", oc_descr: "hexagonal",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4576,7 +4576,7 @@ export const catalogue = [
       oc_cost: 175, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* beam that does bounce off walls */
+    /* beam that does bounce off walls */
     { id: "WAN_COLD", oc_name: "cold", oc_descr: "short",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4586,7 +4586,7 @@ export const catalogue = [
       oc_cost: 175, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* beam that does bounce off walls */
+    /* beam that does bounce off walls */
     { id: "WAN_SLEEP", oc_name: "sleep", oc_descr: "runed",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4596,7 +4596,7 @@ export const catalogue = [
       oc_cost: 175, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* beam that does bounce off walls */
+    /* beam that does bounce off walls */
     { id: "WAN_DEATH", oc_name: "death", oc_descr: "long",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4606,7 +4606,7 @@ export const catalogue = [
       oc_cost: 500, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* beam that does bounce off walls */
+    /* beam that does bounce off walls */
     { id: "WAN_LIGHTNING", oc_name: "lightning", oc_descr: "curved",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4616,9 +4616,9 @@ export const catalogue = [
       oc_cost: 175, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* extra descriptions, shuffled into use at start of new game */
-/* less visual distraction for 'no description' */
-/* on IBM, low-intensity yellow is brown */
+    /* extra descriptions, shuffled into use at start of new game */
+    /* less visual distraction for 'no description' */
+    /* on IBM, low-intensity yellow is brown */
     { id: "WAN1", oc_name: null, oc_descr: "forked",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4628,7 +4628,7 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "WAN2", oc_name: null, oc_descr: "spiked",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4638,8 +4638,8 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* less visual distraction for 'no description' */
-/* low-intensity white */
+    /* less visual distraction for 'no description' */
+    /* low-intensity white */
     { id: "WAN3", oc_name: null, oc_descr: "jeweled",
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 1, oc_encountered: 0,
       oc_magic: 1, oc_charged: 1, oc_unique: 0, oc_nowish: 0,
@@ -4649,8 +4649,8 @@ export const catalogue = [
       oc_cost: 150, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 30,
     },
-/* coins ... - so far, gold is all there is */
-/* less visual distraction for 'no description' */
+    /* coins ... - so far, gold is all there is */
+    /* less visual distraction for 'no description' */
     { id: "GOLD_PIECE", oc_name: "gold piece", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4660,7 +4660,7 @@ export const catalogue = [
       oc_cost: 1, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* gems ... - includes stones and rocks but not boulders */
+    /* gems ... - includes stones and rocks but not boulders */
     { id: "DILITHIUM_CRYSTAL", oc_name: "dilithium crystal", oc_descr: "white",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4670,7 +4670,7 @@ export const catalogue = [
       oc_cost: 4500, oc_wsdam: 3, oc_wldam: 3, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/*empty*/
+    /*empty*/
     { id: "DIAMOND", oc_name: "diamond", oc_descr: "white",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4752,7 +4752,7 @@ export const catalogue = [
       oc_cost: 1500, oc_wsdam: 3, oc_wldam: 3, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "AMBER", oc_name: "amber", oc_descr: "yellowish brown",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4762,7 +4762,7 @@ export const catalogue = [
       oc_cost: 1000, oc_wsdam: 3, oc_wldam: 3, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "TOPAZ", oc_name: "topaz", oc_descr: "yellowish brown",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4862,7 +4862,7 @@ export const catalogue = [
       oc_cost: 300, oc_wsdam: 3, oc_wldam: 3, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 15,
     },
-/*empty*/
+    /*empty*/
     { id: "WORTHLESS_WHITE_GLASS", oc_name: "worthless piece of white glass", oc_descr: "white",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4872,7 +4872,7 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 3, oc_wldam: 3, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/*empty*/
+    /*empty*/
     { id: "WORTHLESS_BLUE_GLASS", oc_name: "worthless piece of blue glass", oc_descr: "blue",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4891,7 +4891,7 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 3, oc_wldam: 3, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "WORTHLESS_YELLOWBROWN_GLASS", oc_name: "worthless piece of yellowish brown glass", oc_descr: "yellowish brown",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4946,13 +4946,13 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 3, oc_wldam: 3, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 6,
     },
-/*empty*/
-/* Placement note: there is a wishable subrange for
+    /*empty*/
+    /* Placement note: there is a wishable subrange for
  * "gray stones" in the o_ranges[] array in objnam.c
  * that is currently everything between luckstones and flint
  * (inclusive).
  */
-/* low-intensity white */
+    /* low-intensity white */
     { id: "LUCKSTONE", oc_name: "luckstone", oc_descr: "gray",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4962,7 +4962,7 @@ export const catalogue = [
       oc_cost: 60, oc_wsdam: 3, oc_wldam: 3, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* low-intensity white */
+    /* low-intensity white */
     { id: "LOADSTONE", oc_name: "loadstone", oc_descr: "gray",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4972,7 +4972,7 @@ export const catalogue = [
       oc_cost: 1, oc_wsdam: 3, oc_wldam: 3, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* low-intensity white */
+    /* low-intensity white */
     { id: "TOUCHSTONE", oc_name: "touchstone", oc_descr: "gray",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 1, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4982,7 +4982,7 @@ export const catalogue = [
       oc_cost: 45, oc_wsdam: 3, oc_wldam: 3, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* low-intensity white */
+    /* low-intensity white */
     { id: "FLINT", oc_name: "flint", oc_descr: "gray",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -4992,8 +4992,8 @@ export const catalogue = [
       oc_cost: 1, oc_wsdam: 6, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* less visual distraction for 'no description' */
-/* low-intensity white */
+    /* less visual distraction for 'no description' */
+    /* low-intensity white */
     { id: "ROCK", oc_name: "rock", oc_descr: null,
       oc_name_known: 1, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -5003,14 +5003,14 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 3, oc_wldam: 3, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 10,
     },
-/* miscellaneous ... */
-/* Note: boulders and rocks are not normally created at random; the
+    /* miscellaneous ... */
+    /* Note: boulders and rocks are not normally created at random; the
  * probabilities only come into effect when you try to polymorph them.
  * Boulders weigh more than MAX_CARR_CAP; statues use corpsenm to take
  * on a specific type and may act as containers (both affect weight).
  */
-/* less visual distraction for 'no description' */
-/* low-intensity white */
+    /* less visual distraction for 'no description' */
+    /* low-intensity white */
     { id: "BOULDER", oc_name: "boulder", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -5020,7 +5020,7 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 20, oc_wldam: 20, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 2000,
     },
-/* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "STATUE", oc_name: "statue", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -5030,8 +5030,8 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 20, oc_wldam: 20, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 2500,
     },
-/* less visual distraction for 'no description' */
-/* blunt weapon bashes target */
+    /* less visual distraction for 'no description' */
+    /* blunt weapon bashes target */
     { id: "HEAVY_IRON_BALL", oc_name: "heavy iron ball", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -5041,9 +5041,9 @@ export const catalogue = [
       oc_cost: 10, oc_wsdam: 25, oc_wldam: 25, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 200,
     },
-/* +d4 when "very heavy" */
-/* less visual distraction for 'no description' */
-/* blunt weapon bashes target */
+    /* +d4 when "very heavy" */
+    /* less visual distraction for 'no description' */
+    /* blunt weapon bashes target */
     { id: "IRON_CHAIN", oc_name: "iron chain", oc_descr: null,
       oc_name_known: 1, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,
@@ -5053,11 +5053,11 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 4, oc_wldam: 4, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 200,
     },
-/* +1 both l & s */
-/* Venom is normally a transitory missile (spit by various creatures)
+    /* +1 both l & s */
+    /* Venom is normally a transitory missile (spit by various creatures)
  * but can be wished for in wizard mode so could occur in bones data.
  */
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "BLINDING_VENOM", oc_name: "splash of blinding venom", oc_descr: "splash of venom",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -5067,7 +5067,7 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 0, oc_wldam: 0, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* on IBM, low-intensity yellow is brown */
+    /* on IBM, low-intensity yellow is brown */
     { id: "ACID_VENOM", oc_name: "splash of acid venom", oc_descr: "splash of venom",
       oc_name_known: 0, oc_merge: 1, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 1,
@@ -5077,10 +5077,10 @@ export const catalogue = [
       oc_cost: 0, oc_wsdam: 6, oc_wldam: 6, oc_oc1: 0,
       oc_oc2: 0, oc_nutrition: 0,
     },
-/* +d6 small or large */
-/* fencepost, the deadly Array Terminator -- name [1st arg] *must* be NULL */
-/* less visual distraction for 'no description' */
-/* less visual distraction for 'no description' */
+    /* +d6 small or large */
+    /* fencepost, the deadly Array Terminator -- name [1st arg] *must* be NULL */
+    /* less visual distraction for 'no description' */
+    /* less visual distraction for 'no description' */
     { id: "ARRAY_TERMINATOR", oc_name: null, oc_descr: null,
       oc_name_known: 0, oc_merge: 0, oc_uses_known: 0, oc_encountered: 0,
       oc_magic: 0, oc_charged: 0, oc_unique: 0, oc_nowish: 0,

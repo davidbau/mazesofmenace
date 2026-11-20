@@ -29,7 +29,12 @@ export async function runSegment(input,{preservePublishedSaveCursor=true}={}){
   if(isolatedWorker)for(const name of names)delete globalThis[name];
   for(const name of names)Object.defineProperty(globalThis,name,{configurable:true,value:name==='WebAssembly'?new Proxy({},{get:deny}):deny});
   const[{createStandaloneProgram},{CExit}]=await Promise.all([import('./nethack/program.js'),import('./nethack/functions.js')]);
-  program=createStandaloneProgram({layouts,terminalOptions:{preservePublishedSaveCursor},assets:installed,directories:[profile.home,'/nethack/save'],runtime:{filesystem:{caseInsensitiveDirectory:'/nethack/save'},now:()=>epoch*1000,timeZone:profile.timeZone,initialBytes:1024,maximumBytes:128*1024*1024,environment:env},readKey(){if(keyIndex>=moves.length)throw exhausted;const key=moves.charCodeAt(keyIndex++);return key===13?10:key;}});
+  program=createStandaloneProgram({layouts,terminalOptions:{preservePublishedSaveCursor},assets:installed,directories:[profile.home,'/nethack/save'],runtime:{filesystem:{caseInsensitive:true},now:()=>epoch*1000,timeZone:profile.timeZone,initialBytes:1024,maximumBytes:128*1024*1024,environment:env},readKey() {
+   if (keyIndex >= moves.length) throw exhausted;
+   const key = moves.charCodeAt(keyIndex++);
+   // The native recorder translates an actual CR before writing one Latin-1 byte.
+   return key === 13 ? 10 : key & 0xff;
+  }});
   program.environment.filesystem.chdir('/nethack');const baseline=program.environment.fileBaseline();if(previous)program.environment.restoreFiles(previous);
   let name = '';
   // Match the recorder's -u selection from OPTIONS lines, including an empty first name.

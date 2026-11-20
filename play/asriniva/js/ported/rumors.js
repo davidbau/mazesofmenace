@@ -5,7 +5,6 @@
 
 import { C } from '../c-runtime/context.js';
 
-
 "hack.h"
 
 "dlb.h"
@@ -45,16 +44,6 @@ import { C } from '../c-runtime/context.js';
  * and placed there by 'makedefs'.
  */
 
-
-
-
-
-
-
-
-
-
-
 /* used by CapitalMon(); set up by init_CapMons(), released by free_CapMons();
    there's no need for these to be put into 'struct instance_globals g' */
 /* CapMonstCnt+CapBogonCnt+1 when non-zero */
@@ -80,7 +69,6 @@ export function unpadline(line)
     C.storeChar(p, '\0'.charCodeAt(0));
 }
 
-
 export function init_rumors(fp)
 {
     const rumors_header = "%d,%ld,%lx;%d,%ld,%lx;0,0,%lx\n";
@@ -104,7 +92,6 @@ export function init_rumors(fp)
         C.dlb_fclose(fp);
     }
 }
-
 
 /* exclude_cookie is a hack used because we sometimes want to get rumors in a
  * context where messages such as "You swallowed the fortune!" that refer to
@@ -220,7 +207,7 @@ export function rumor_check()
                "T start=%06ld (%06lx), end=%06ld (%06lx), size=%06ld (%06lx)",
             C.long(C.gt.true_rumor_start), C.gt.true_rumor_start,
             C.gt.true_rumor_end, C.ulong(C.gt.true_rumor_end),
-            C.gt.true_rumor_size,C.ulong(C.gt.true_rumor_size));
+            C.gt.true_rumor_size, C.ulong(C.gt.true_rumor_size));
         C.putstr(tmpwin.value, 0, rumor_buf);
         C.Sprintf(rumor_buf,
                "F start=%06ld (%06lx), end=%06ld (%06lx), size=%06ld (%06lx)",
@@ -302,7 +289,6 @@ export function rumor_check()
         C.destroy_nhwindow(tmpwin.value);
     }
 }
-
 
 /* 5.0: augments rumors_check(); test 'engrave' or 'epitaph' or 'bogusmon' */
 export function others_check(
@@ -397,7 +383,6 @@ export function others_check(
                 C.putstr(tmpwin, 0, xbuf); /* already decrypted */
             }
         }
-
     }
         C.dlb_fclose(fh);
     } else {
@@ -407,7 +392,6 @@ export function others_check(
         couldnt_open_file(fname);
     }
 }
-
 
 /* load one randomly chosen line from a section of a file; undoes
    decryption and strips trailing underscore padding and final newline;
@@ -638,8 +622,6 @@ export function restore_oracles(nhfp)
         C.go.oracle_flg = 1; /* no need to call init_oracles() */
     }
 }
-
-
 
 export function outoracle(special, delphi)
 {
@@ -911,7 +893,6 @@ export function init_CapMons()
         }
     }
 
-
     /*
      * CapMons[] init doesn't kick in until needed.  To force this name
      * dump, set DEBUGFILES to "CapMons" in your environment (or in
@@ -934,7 +915,6 @@ export function init_CapMons()
         C.display_nhwindow(tmpwin, 1);
         C.destroy_nhwindow(tmpwin);
     }
-
 
     return;
 }

@@ -49,7 +49,6 @@ export function free_rect()
     R.n_rects = R.rect_cnt = 0;
 }
 
-
 /*
  * Search Index of one precise NhRect.
  *

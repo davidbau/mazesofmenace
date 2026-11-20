@@ -4,19 +4,18 @@
 
 import { C } from '../c-runtime/context.js';
 
-
-
 /* Note: Arrays are column first, while the screen is row first */
 const S_expl_tl = 96, S_expl_tc = 97, S_expl_tr = 98,
       S_expl_ml = 99, S_expl_mc = 100, S_expl_mr = 101,
       S_expl_bl = 102, S_expl_bc = 103, S_expl_br = 104;
 const explosion = [
-        [ S_expl_tl, S_expl_ml, S_expl_bl ],
-        [ S_expl_tc, S_expl_mc, S_expl_bc ],
-        [ S_expl_tr, S_expl_mr, S_expl_br ] ];
+    [S_expl_tl, S_expl_ml, S_expl_bl],
+    [S_expl_tc, S_expl_mc, S_expl_bc],
+    [S_expl_tr, S_expl_mr, S_expl_br]
+];
 
 /* what to do at [x+i][y+j] for i=-1,0,1 and j=-1,0,1 */
-const 
+const
     EXPL_NONE = 0, /* not specified yet or no shield effect needed */
     EXPL_MON  = 1, /* monster is affected */
     EXPL_HERO = 2, /* hero is affected */
@@ -209,11 +208,11 @@ export function explode(x, y, type, dam, olet, expltype)
     let str =  0;
     let mtmp, mdef = 0;
     let adtyp;
-    let explmask = [[0,0,0],[0,0,0],[0,0,0]]; /* 0=normal explosion, 1=do shieldeff, 2=do nothing */
+    let explmask = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]; /* 0=normal explosion, 1=do shieldeff, 2=do nothing */
     let xx, yy;
     let shopdamage = C.booleanLocal(C.FALSE), generic = C.FALSE,
             do_hallu = C.FALSE, inside_engulfer, grabbed, grabbing;
-    let grabxy = {x:0,y:0};
+    let grabxy = {x:0, y:0};
     let hallu_buf = C.stackAlloc(C.BUFSZ), killr_buf = C.stackAlloc(C.BUFSZ);
     let exploding_wand_typ = 0;
     let you_exploding = (olet == C.MON_EXPLODE && type >= 0);
@@ -758,7 +757,7 @@ export function scatter(sx, sy, blastforce, scflags, obj)
             qtmp = BigInt(C.rnd(Number(qtmp), 764, 'scatter'));
             otmp = C.splitobj(otmp, qtmp);
         } else {
-            obj =  0; /* all used */
+            obj = 0; /* all used */
         }
         C.obj_extract_self(otmp);
         used_up = C.FALSE;
@@ -808,7 +807,7 @@ export function scatter(sx, sy, blastforce, scflags, obj)
 
         if (!used_up) {
             stmp = C.scatterChain(C.alloc(C.scatterChainSize));
-            stmp.next =  0;
+            stmp.next = 0;
             stmp.obj = otmp;
             stmp.ox = sx;
             stmp.oy = sy;
@@ -853,7 +852,7 @@ export function scatter(sx, sy, blastforce, scflags, obj)
                     if (scflags & C.MAY_HITMON) {
                         stmp.range--;
                         if (C.ohitmon(mtmp, stmp.obj, 1, C.FALSE)) {
-                            stmp.obj =  0;
+                            stmp.obj = 0;
                             stmp.stopped = C.TRUE;
                         }
                     }
@@ -886,7 +885,7 @@ export function scatter(sx, sy, blastforce, scflags, obj)
                 stmp.oy = C.gb.bhitpos.y;
                 if (C.IS_SINK(C.levl[stmp.ox][stmp.oy].typ))
                     stmp.stopped = C.TRUE;
-                C.gt.thrownobj =  0;
+                C.gt.thrownobj = 0;
             }
         }
     }
@@ -977,7 +976,7 @@ export function explode_oil(obj, x, y)
 /* Convert a damage type into an explosion display type. */
 export function adtyp_to_expltype(adtyp)
 {
-    switch(adtyp) {
+    switch (adtyp) {
     case C.AD_ELEC:
         /* Electricity isn't magical, but there currently isn't an electric
          * explosion type. Magical is the next best thing. */

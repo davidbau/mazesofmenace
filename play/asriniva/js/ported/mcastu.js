@@ -5,8 +5,6 @@ import { C } from '../c-runtime/context.js';
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
 export const MCAST_PSI_BOLT = 0;
 export const MCAST_OPEN_WOUNDS = 1;
 export const MCAST_CURE_SELF = 2;
@@ -64,29 +62,6 @@ export const mon_wizard_spells = [
     'MCAST_AGGRAVATION', 'MCAST_SUMMON_MONS', 'MCAST_CLONE_WIZ', 'MCAST_DEATH_TOUCH'
 ];
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* feedback when frustrated monster couldn't cast a spell */
 export function cursetxt(mtmp, undirected)
 {
@@ -142,7 +117,7 @@ export function choose_monster_spell(mtmp, adtyp)
         spellval = C.rn2(maxlev, 113, 'choose_monster_spell');
 
     /* find the highest spell in the list we could cast */
-    for (i = len-1; i >= 0; i--)
+    for (i = len - 1; i >= 0; i--)
         if (C.mcast_data[list[i]].level <= spellval
             && !spell_would_be_useless(mtmp, list[i]))
             return list[i];
@@ -741,9 +716,7 @@ export function mcast_insects(mtmp)
         fmt = "%s summons %s!";
     }
     if (fmt) {
-        
         C.pline_mon(mtmp, fmt, C.Monnam(mtmp), what);
-        
     }
 }
 
@@ -1031,4 +1004,3 @@ export function buzzmu(mtmp, mattk)
 }
 
 /*mcastu.c*/
-

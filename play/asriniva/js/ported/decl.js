@@ -6,17 +6,9 @@
 
 import { C } from '../c-runtime/context.js';
 
-export const nhcb_name = [
-    "cmd_before",
-    "level_enter",
-    "level_leave",
-    "end_turn"
-];
+export const nhcb_name = ["cmd_before", "level_enter", "level_leave", "end_turn"];
 
-
-export const nhcb_counts = [
-    0
-];
+export const nhcb_counts = [0];
 
 export const c_color_names = {
     "c_black": "black",
@@ -67,7 +59,6 @@ export const c_obj_colors = [
     "white"
 ];
 
-
 export const c_common_strings = {
     "c_nothing_happens": "Nothing happens.",
     "c_nothing_seems_to_happen": "Nothing seems to happen.",
@@ -89,12 +80,9 @@ export const c_common_strings = {
     ]
 };
 
-
 export const disclosure_options = "iavgco";
 
-export const emptystr = [
-    0
-];
+export const emptystr = [0];
        /* non-const */
 
 export const flags = null;
@@ -117,59 +105,15 @@ export const flags = null;
 /* used by coloratt.c, options.c, utf8map.c, windows.c */
 export const hexdd = "00112233445566778899aAbBcCdDeEfF";
 
-
 /* x/y/z deltas for the 10 movement directions (8 compass pts, 2 down/up) */
-export const xdir = [
-    -1,
-    -1,
-    0,
-    1,
-    1,
-    1,
-    0,
-    -1,
-    0,
-    0
-];
+export const xdir = [-1, -1, 0, 1, 1, 1, 0, -1, 0, 0];
 
-export const ydir = [
-    0,
-    -1,
-    -1,
-    -1,
-    0,
-    1,
-    1,
-    1,
-    0,
-    0
-];
+export const ydir = [0, -1, -1, -1, 0, 1, 1, 1, 0, 0];
 
-export const zdir = [
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    1,
-    -1
-];
+export const zdir = [0, 0, 0, 0, 0, 0, 0, 0, 1, -1];
 
 /* reordered directions, cardinals first */
-export const dirs_ord = [
-    0,
-    2,
-    4,
-    6,
-    1,
-    3,
-    5,
-    7
-];
-
+export const dirs_ord = [0, 2, 4, 6, 1, 3, 5, 7];
 
 export const has_strong_rngseed = 0;
 
@@ -209,29 +153,7 @@ export const materialnm = [
 export const quitchars = " \r\n\u001b";
 
 /* 7 per row */
-export const shield_static = [
-    82,
-    83,
-    84,
-    83,
-    82,
-    83,
-    85,
-    82,
-    83,
-    84,
-    83,
-    82,
-    83,
-    85,
-    82,
-    83,
-    84,
-    83,
-    82,
-    83,
-    85
-];
+export const shield_static = [82, 83, 84, 83, 82, 83, 85, 82, 83, 84, 83, 82, 83, 85, 82, 83, 84, 83, 82, 83, 85];
 
 export const u = null;
 
@@ -393,7 +315,6 @@ export const urole_init_data = {
     "spelsbon": -3
 };
 
-
 /*    Str     Int Wis Dex Con Cha */
 /* Init   Lower  Higher */
 /* Hit points */
@@ -448,11 +369,9 @@ export const urace_init_data = {
     }
 };
 
-
 export const disp = {
     "botl": 0
 };
-
 
 /* artifact.c */
 /* decl.c */
@@ -505,7 +424,6 @@ export const g_init_a = {
     },
     "havestate": 1
 };
-
 
 /* botl.c */
 /* blstats */
@@ -589,7 +507,6 @@ export const g_init_b = {
     "bot_disabled": 0,
     "havestate": 1
 };
-
 
 /* command_queue */
 /* botl.c */
@@ -707,7 +624,6 @@ export const g_init_c = {
     "havestate": 1
 };
 
-
 /* decl.c */
 /* doorindex */
 /* done_money */
@@ -757,7 +673,6 @@ export const g_init_d = {
     "havestate": 1
 };
 
-
 /* cmd.c */
 /* en_win */
 /* en_via_menu */
@@ -778,7 +693,6 @@ export const g_init_e = {
     "early_raw_messages": 0,
     "havestate": 1
 };
-
 
 /* decl.c */
 /* ftrap */
@@ -809,7 +723,6 @@ export const g_init_f = {
     "followmsg": 0,
     "havestate": 1
 };
-
 
 /* display.c */
 /* gbuf */
@@ -890,7 +803,6 @@ export const g_init_g = {
     "havestate": 1
 };
 
-
 /* decl.c */
 /* hname */
 /* hackdir */
@@ -915,7 +827,6 @@ export const g_init_h = {
     "hitmsg_prev": 0,
     "havestate": 1
 };
-
 
 /* decl.c */
 /* in_doagain */
@@ -952,7 +863,6 @@ export const g_init_i = {
     "havestate": 1
 };
 
-
 /* apply.c */
 /* jumping_is_magic */
 /* havestate*/
@@ -960,7 +870,6 @@ export const g_init_j = {
     "jumping_is_magic": 0,
     "havestate": 1
 };
-
 
 /* kickedloc */
 /* decl.c */
@@ -977,7 +886,6 @@ export const g_init_k = {
     "known": 0,
     "havestate": 1
 };
-
 
 /* cmd.c */
 /* last_command_count */
@@ -1057,7 +965,6 @@ export const g_init_l = {
     ],
     "havestate": 1
 };
-
 
 /* apply.c */
 /* mkot_trap_warn_count */
@@ -1152,7 +1059,6 @@ export const g_init_m = {
     "havestate": 1
 };
 
-
 /* botl.c */
 /* now_or_before_idx */
 /* decl.c */
@@ -1209,7 +1115,6 @@ export const g_init_n = {
     "nocreate4": 0,
     "havestate": 1
 };
-
 
 /* objs_deleted */
 /* dbridge.c */
@@ -1291,7 +1196,6 @@ export const g_init_o = {
     "havestate": 1
 };
 
-
 /* apply.c */
 /* polearm_range_min */
 /* polearm_range_max  */
@@ -1352,12 +1256,10 @@ export const g_init_p = {
     "havestate": 1
 };
 
-
 /* havestate*/
 export const g_init_q = {
     "havestate": 1
 };
-
 
 /* symbols.c */
 /* rogue_syms */
@@ -1405,7 +1307,6 @@ export const g_init_r = {
     },
     "havestate": 1
 };
-
 
 /* artifact.c */
 /* spec_dbon_applies */
@@ -1517,7 +1418,6 @@ export const g_init_s = {
     "havestate": 1
 };
 
-
 /* apply.c */
 /* trapinfo */
 /* decl.c */
@@ -1579,7 +1479,6 @@ export const g_init_t = {
     "twohits": 0,
     "havestate": 1
 };
-
 
 /* botl.c */
 /* update_all */
@@ -1680,7 +1579,6 @@ export const g_init_u = {
     "havestate": 1
 };
 
-
 /* botl.c */
 /* valset */
 /* end.c */
@@ -1750,7 +1648,6 @@ export const g_init_v = {
     "havestate": 1
 };
 
-
 /* decl.c */
 /* warn_obj_cnt */
 /* wailmsg */
@@ -1788,7 +1685,6 @@ export const g_init_w = {
     "havestate": 1
 };
 
-
 /* decl.c */
 /* x_maze_max */
 /* lock.c */
@@ -1809,7 +1705,6 @@ export const g_init_x = {
     "xsize": 0,
     "havestate": 1
 };
-
 
 /* decl.c */
 /* y_maze_max */
@@ -1833,7 +1728,6 @@ export const g_init_y = {
     "havestate": 1
 };
 
-
 /* mon.c */
 /* zombify */
 /* muse.c */
@@ -1844,7 +1738,6 @@ export const g_init_z = {
     "zap_oseen": 0,
     "havestate": 1
 };
-
 
 /* dungeon.c */
 /* branches */
@@ -1859,7 +1752,6 @@ export const init_svb = {
     ]
 };
 
-
 /* decl.c */
 /* context */
 export const init_svc = {
@@ -1867,7 +1759,6 @@ export const init_svc = {
         "ident": 0
     }
 };
-
 
 /* dungeon.c */
 /* dungeons */
@@ -2006,20 +1897,17 @@ export const init_svd = {
     ]
 };
 
-
 /* decl.c */
 /* exclusion_zones */
 export const init_sve = {
     "exclusion_zones": 0
 };
 
-
 /* decl.c */
 /* hackpid */
 export const init_svh = {
     "hackpid": 0
 };
-
 
 /* decl.c */
 /* inv_pos */
@@ -2030,7 +1918,6 @@ export const init_svi = {
     }
 };
 
-
 /* decl.c */
 /* killer */
 export const init_svk = {
@@ -2038,7 +1925,6 @@ export const init_svk = {
         "next": 0
     }
 };
-
 
 /* decl.c */
 /* lastseentyp */
@@ -2087,7 +1973,6 @@ export const init_svl = {
     ]
 };
 
-
 /* dungeon.c */
 /* mapseenchn */
 /* decl.c */
@@ -2102,7 +1987,6 @@ export const init_svm = {
         }
     ]
 };
-
 
 /* dungeon.c */
 /* n_dgns */
@@ -2156,7 +2040,6 @@ export const init_svn = {
     "n_regions": 0
 };
 
-
 /* rumors.c */
 /* oracle_cnt */
 /* oracle_loc */
@@ -2167,7 +2050,6 @@ export const init_svo = {
     "oracle_loc": 0,
     "omoves": 0
 };
-
 
 /* decl.c */
 /* plname */
@@ -2185,7 +2067,6 @@ export const init_svp = {
     ]
 };
 
-
 /* quest.c */
 /* quest_status */
 export const init_svq = {
@@ -2193,7 +2074,6 @@ export const init_svq = {
         "first_start": 0
     }
 };
-
 
 /* mkroom.c */
 /* rooms */
@@ -2204,7 +2084,6 @@ export const init_svr = {
         }
     ]
 };
-
 
 /* decl.c */
 /* spl_book */
@@ -2218,7 +2097,6 @@ export const init_svs = {
     "sp_levchn": 0
 };
 
-
 /* decl.c */
 /* tune */
 /* timeout.c */
@@ -2229,7 +2107,6 @@ export const init_svt = {
     ],
     "timer_id": 1
 };
-
 
 /* decl.c */
 /* updest */
@@ -2246,7 +2123,6 @@ export const init_svu = {
     }
 };
 
-
 /* mkmaze.c */
 /* xmin */
 /* xmax */
@@ -2255,14 +2131,12 @@ export const init_svx = {
     "xmax": 0
 };
 
-
 /* wreserve */
 /* wtreserved, not used currently */
 export const init_svw = {
     "wreserve": 0,
     "wtreserved": 100
 };
-
 
 /* mkmaze.c */
 /* ymin */
@@ -2272,11 +2146,9 @@ export const init_svy = {
     "ymax": 0
 };
 
-
 export const init_program_state = {
     "gameover": 0
 };
-
 
 // #if 0
 // struct instance_globals g;
@@ -2376,7 +2248,6 @@ export const svy = null;
 
 export const program_state = null;
 
-
 /* zeroobj */
 /* zeromonst */
 /* zeroany */
@@ -2395,7 +2266,6 @@ export const cg = {
         "lx": 0
     }
 };
-
 
 function ZERO(value) { C.zero(value); }
 function MAGICCHECK(xx, name) {
@@ -2515,7 +2385,7 @@ export function decl_globals_init()
     C.uarmh = C.uarms = C.uarmg = C.uarmf = C.uamul = C.uright = C.uleft = 0;
     C.ublindf = C.uchain = C.uball = 0;
 
-    C.WIN_MESSAGE =  C.WIN_STATUS =  C.WIN_MAP = C.WIN_INVEN = C.WIN_ERR;
+    C.WIN_MESSAGE = C.WIN_STATUS = C.WIN_MAP = C.WIN_INVEN = C.WIN_ERR;
 
     C.gu.urole = C.urole_init_data;
     C.gu.urace = C.urace_init_data;
@@ -2525,7 +2395,6 @@ export function decl_globals_init()
 export const hands_obj = {
     "nobj": 0
 };
-
 
 /* gcc 12.2's static analyzer thinks that some fields of svc.context.victual
    are uninitialized when compiling 'bite(eat.c)' but that's impossible;

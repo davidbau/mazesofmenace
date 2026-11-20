@@ -6,19 +6,9 @@ import { terrainAt, doorMaskAt } from './level-grid.js';
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 /* defined in shknam.c */
 
-
-
-
-
-
-
-
-
-export function pet_sanity_check(mtmp,msgarg)
-
+export function pet_sanity_check(mtmp, msgarg)
 {
     if (C.has_edog(mtmp)) {
         let edog = C.EDOG(mtmp);
@@ -30,14 +20,15 @@ export function pet_sanity_check(mtmp,msgarg)
     }
 }
 
-export function sanity_check_single_mon(mtmp,chk_geno,msg)
-
+export function sanity_check_single_mon(mtmp, chk_geno, msg)
 {
     (chk_geno = C.char(C.boolean(chk_geno)));
     let mptr = mtmp.data;
     let mx = C.coordxy(mtmp.mx), my = C.coordxy(mtmp.my);
 
-    if (((((!mptr || (C.rawPointer(mptr) < C.rawPointer(C.mons[C.LOW_PM]))) ? 1 : 0) || (C.rawPointer(mptr) > C.rawPointer(C.mons[C.HIGH_PM]))) ? 1 : 0)) {
+    if (((((!mptr
+        || (C.rawPointer(mptr) < C.rawPointer(C.mons[C.LOW_PM]))) ? 1 : 0)
+        || (C.rawPointer(mptr) > C.rawPointer(C.mons[C.HIGH_PM]))) ? 1 : 0)) {
         /* most sanity checks issue warnings if they detect a problem,
            but this would be too extreme to keep going */
         C.panic("illegal mon data %s; mnum=%d (%s)",
@@ -65,12 +56,6 @@ export function sanity_check_single_mon(mtmp,chk_geno,msg)
                        mtmp.m_id, C.fmt_ptr( mtmp),
                        mtmp.mhp, mtmp.mhpmax);
         if (C.DEADMONSTER(mtmp)) {
-
-
-
-
-
-
             return;
         }
         if (((chk_geno && (C.int((C.svm.mvitals[mndx].mvflags) & (C.G_GENOD)) != 0)) ? 1 : 0))
@@ -136,7 +121,14 @@ export function sanity_check_single_mon(mtmp,chk_geno,msg)
                        (!C.Is_waterlevel(C.u.uz) ? "out of water" : "on Plane of Water"), msg);
         if (/* normally !accessible would be overridable with passes_walls,
                but not for hiding on the ceiling */
-((C.ceiling_hider(mptr) && ((!C.has_ceiling(C.u.uz) || !((((((((((((terrainAt(C, mx, my) == C.POOL) || (terrainAt(C, mx, my) == C.MOAT)) ? 1 : 0) || (terrainAt(C, mx, my) == C.WATER)) ? 1 : 0) || (terrainAt(C, mx, my) == C.LAVAPOOL)) ? 1 : 0) || (terrainAt(C, mx, my) == C.LAVAWALL)) ? 1 : 0) || C.accessible(mx, my)) ? 1 : 0))) ? 1 : 0)) ? 1 : 0))
+((C.ceiling_hider(mptr)
+    && ((!C.has_ceiling(C.u.uz)
+    || !((((((((((((terrainAt(C, mx, my) == C.POOL)
+    || (terrainAt(C, mx, my) == C.MOAT)) ? 1 : 0)
+    || (terrainAt(C, mx, my) == C.WATER)) ? 1 : 0)
+    || (terrainAt(C, mx, my) == C.LAVAPOOL)) ? 1 : 0)
+    || (terrainAt(C, mx, my) == C.LAVAWALL)) ? 1 : 0)
+    || C.accessible(mx, my)) ? 1 : 0))) ? 1 : 0)) ? 1 : 0))
             C.impossible("ceiling hider hiding %s (%s)",
                        (!C.has_ceiling(C.u.uz) ? "without ceiling" : "in solid stone"),
                        msg);
@@ -162,19 +154,6 @@ export function sanity_check_single_mon(mtmp,chk_geno,msg)
         if (!(((((is_mimic || mtmp.meating) ? 1 : 0) || ((mtmp.iswiz && (C.M_AP_TYPE(mtmp) == C.M_AP_MONSTER)) ? 1 : 0)) ? 1 : 0)))
             C.impossible("non-mimic (%s) posing as %s (%s)",
                        mptr.pmnames[C.NEUTRAL], what, msg);
-
-
-
-
-
-
-
-
-
-
-
-
-
     }
     if (mtmp.mleashed) {
         if (!C.get_mleash(mtmp))
@@ -183,21 +162,10 @@ export function sanity_check_single_mon(mtmp,chk_geno,msg)
         else if (!mtmp.mtame)
             C.impossible("monst %u: leashed but not tame %s",
                        mtmp.m_id, C.mon_pmname(mtmp));
-
-
-
-
-
-
-
-
-
-
     }
 }
 
 export function mon_sanity_check()
-
 {
     let x, y;
     let mtmp, m;
@@ -253,7 +221,8 @@ export function mon_sanity_check()
     for ((mtmp = C.gm.migrating_mons); mtmp; (mtmp = mtmp.nmon)) {
         sanity_check_single_mon(mtmp, 0, "migr");
 
-        if ((((C.long(C.long((C.long(mtmp.mstate) & C.long(~(C.int((C.int((C.int((C.MON_MIGRATING) | (C.MON_LIMBO))) | (C.MON_ENDGAME_MIGR))) | (C.MON_OFFMAP))))))) != C.long(0n)) || !(C.long((C.long(mtmp.mstate) & C.long(C.MON_MIGRATING))))) ? 1 : 0))
+        if ((((C.long(C.long((C.long(mtmp.mstate) & C.long(~(C.int((C.int((C.int((C.MON_MIGRATING) | (C.MON_LIMBO))) | (C.MON_ENDGAME_MIGR))) | (C.MON_OFFMAP))))))) != C.long(0n))
+            || !(C.long((C.long(mtmp.mstate) & C.long(C.MON_MIGRATING))))) ? 1 : 0))
             C.impossible("migrating mon (%s) with mstate set to 0x%08lx",
                        C.fmt_ptr( mtmp), mtmp.mstate);
     }
@@ -265,13 +234,15 @@ export function mon_sanity_check()
 /* Does not check for actual poison gas at the location. */
 /* Returns one of M_POISONGAS_foo */
 export function m_poisongas_ok(mtmp)
-
 {
     let px, py;
     let is_you = (C.char(C.samePtr(mtmp, C.gy.youmonst)));
 
     /* Non living, non breathing, immune monsters are not concerned */
-    if (((((((C.nonliving(mtmp.data) || C.is_vampshifter(mtmp)) ? 1 : 0) || C.breathless(mtmp.data)) ? 1 : 0) || C.immune_poisongas(mtmp.data)) ? 1 : 0))
+    if (((((((C.nonliving(mtmp.data)
+        || C.is_vampshifter(mtmp)) ? 1 : 0)
+        || C.breathless(mtmp.data)) ? 1 : 0)
+        || C.immune_poisongas(mtmp.data)) ? 1 : 0))
         return C.int(C.M_POISONGAS_OK);
     /* not is_swimmer(); assume that non-fish are swimming on
        the surface and breathing the air above it periodically
@@ -294,7 +265,6 @@ export function m_poisongas_ok(mtmp)
 
 /* return True if mon is capable of converting other monsters into zombies */
 export function zombie_maker(mon)
-
 {
     let pm = mon.data;
 
@@ -318,7 +288,6 @@ export function zombie_maker(mon)
    be turned into, or NON_PM if it doesn't have a direct counterpart.
    Sort of the zombie-specific inverse of undead_to_corpse. */
 export function zombie_form(pm)
-
 {
     switch (pm.mlet) {
     case C.S_ZOMBIE: /* when already a zombie/ghoul/skeleton, will stay as is */
@@ -349,7 +318,6 @@ export function zombie_form(pm)
 
 /* convert the monster index of an undead to its living counterpart */
 export function undead_to_corpse(mndx)
-
 {
     (mndx = C.int(C.int(mndx)));
     switch (mndx) {
@@ -377,7 +345,6 @@ export function undead_to_corpse(mndx)
     case C.PM_VAMPIRE_LEADER:
 /* DEFERRED */
 
-
     case C.PM_HUMAN_ZOMBIE:
     case C.PM_HUMAN_MUMMY:
         (mndx = C.int(C.PM_HUMAN));
@@ -402,10 +369,10 @@ export function undead_to_corpse(mndx)
  * Return associated character class monster, rather than species
  * if mode is 1.
  */
-export function genus(mndx,mode)
-
+export function genus(mndx, mode)
 {
-    (mndx = C.int(C.int(mndx))); (mode = C.int(C.int(mode)));
+    (mndx = C.int(C.int(mndx)));
+    (mode = C.int(C.int(mode)));
     switch (mndx) {
     /* Quest guardians */
     case C.PM_STUDENT:
@@ -469,7 +436,6 @@ export function genus(mndx,mode)
 
 /* return monster index if chameleon, or NON_PM if not */
 export function pm_to_cham(mndx)
-
 {
     (mndx = C.int(C.int(mndx)));
     let mcham = C.int(C.NON_PM);
@@ -490,8 +456,7 @@ export function pm_to_cham(mndx)
  * G_NOCORPSE set in order to prevent wishing for one, finding tins of one,
  * etc....
  */
-export function make_corpse(mtmp,corpseflags)
-
+export function make_corpse(mtmp, corpseflags)
 {
     (corpseflags = C.uint(C.uint(corpseflags)));
     let mdat = mtmp.data;
@@ -516,7 +481,6 @@ export function make_corpse(mtmp,corpseflags)
     case C.PM_GOLD_DRAGON:
     case C.PM_SILVER_DRAGON:
 /* DEFERRED */
-
 
     case C.PM_RED_DRAGON:
     case C.PM_ORANGE_DRAGON:
@@ -660,161 +624,6 @@ export function make_corpse(mtmp,corpseflags)
     case C.NON_PM: case C.LEAVESTATUE: case C.NUMMONS: /* never use as index */
         break;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     default:
 
         break default_1;
@@ -830,7 +639,13 @@ export function make_corpse(mtmp,corpseflags)
             (obj.value = C.mkcorpstat(C.CORPSE, (/* special cancellation handling for these */
 ((/* normally quest leader will be unique, */
 /* but he or she might have been polymorphed  */
-((((((((((mtmp)).isshk || ((mtmp)).mtame) ? 1 : 0) || C.unique_corpstat(((mtmp)).data)) ? 1 : 0) || C.is_reviver(((mtmp)).data)) ? 1 : 0) || (((mtmp)).m_id == C.svq.quest_status.leader_m_id)) ? 1 : 0) || ((C.dmgtype(((mtmp)).data, C.AD_SEDU) || C.dmgtype(((mtmp)).data, C.AD_SSEX)) ? 1 : 0)) ? 1 : 0) ? mtmp : 0),
+((((((((((mtmp)).isshk
+    || ((mtmp)).mtame) ? 1 : 0)
+    || C.unique_corpstat(((mtmp)).data)) ? 1 : 0)
+    || C.is_reviver(((mtmp)).data)) ? 1 : 0)
+    || (((mtmp)).m_id == C.svq.quest_status.leader_m_id)) ? 1 : 0)
+    || ((C.dmgtype(((mtmp)).data, C.AD_SEDU)
+    || C.dmgtype(((mtmp)).data, C.AD_SSEX)) ? 1 : 0)) ? 1 : 0) ? mtmp : 0),
                              mdat, x, y, corpstatflags));
             if (burythem) {
                 const dealloc = C.booleanLocal();
@@ -874,10 +689,8 @@ export function make_corpse(mtmp,corpseflags)
     return obj.value;
 }
 
-
 /* check mtmp and water/lava for compatibility, 0 (survived), 1 (died) */
 export function minliquid(mtmp)
-
 {
     let res;
 
@@ -891,10 +704,9 @@ export function minliquid(mtmp)
 
 /* guts of minliquid() */
 export function minliquid_core(mtmp)
-
 {
     let inpool, inlava, infountain;
-    let waterwall = C.char(C.is_waterwall(mtmp.mx,mtmp.my));
+    let waterwall = C.char(C.is_waterwall(mtmp.mx, mtmp.my));
 
     /* [ceiling clingers are handled below] */
     (inpool = C.char(((C.is_pool(mtmp.mx, mtmp.my) && /* there's no "above the surface" on the plane of water */
@@ -1048,7 +860,7 @@ export function minliquid_core(mtmp)
 }
 
 /* calculate 'mon's movement for current turn; called from moveloop() */
-export function mcalcmove(mon,m_moving)
+export function mcalcmove(mon, m_moving)
  /* True: adjust for moving;
                        * False: just adjust for speed */
 {
@@ -1096,13 +908,11 @@ export function mcalcmove(mon,m_moving)
    individual monster's metabolism; some of these might need to
    be reclassified to occur more in proportion with movement rate */
 export function mcalcdistress()
-
 {
     iter_mons(m_calcdistress);
 }
 
 export function m_calcdistress(mtmp)
-
 {
     /* must check non-moving monsters once/turn in case they managed
        to end up in water or lava; note: when not in liquid they regen,
@@ -1136,7 +946,6 @@ export function m_calcdistress(mtmp)
 /* perform movement for a single monster.
    meant to be used with iter_mons_safe. */
 export function movemon_singlemon(mtmp)
-
 {
     /* end monster movement early if hero is flagged to leave the level */
     if (/* or if the program has lost contact with the user */
@@ -1213,7 +1022,12 @@ export function movemon_singlemon(mtmp)
             return C.char(0);
         if (mtmp.mundetected)
             return C.char(0);
-    } else if ((((((((((mtmp.data.mlet == C.S_EEL) && !mtmp.mundetected) ? 1 : 0) && ((mtmp.mflee || !C.m_next2u(mtmp)) ? 1 : 0)) ? 1 : 0) && !C.canseemon(mtmp)) ? 1 : 0) && !C.rn2(4, 1297, "movemon_singlemon")) ? 1 : 0)) {
+    } else if ((((((((((mtmp.data.mlet == C.S_EEL)
+        && !mtmp.mundetected) ? 1 : 0)
+        && ((mtmp.mflee
+        || !C.m_next2u(mtmp)) ? 1 : 0)) ? 1 : 0)
+        && !C.canseemon(mtmp)) ? 1 : 0)
+        && !C.rn2(4, 1297, "movemon_singlemon")) ? 1 : 0)) {
         /* some eels end up stuck in isolated pools, where they
            can't--or at least won't--move, so they never reach
            their post-move chance to re-hide */
@@ -1240,7 +1054,6 @@ export function movemon_singlemon(mtmp)
 
 /* perform movement for all monsters */
 export function movemon()
-
 {
     (C.gs.somebody_can_move = C.char(0));
 
@@ -1267,8 +1080,7 @@ export function movemon()
 }
 
 /* dispose of contents of an eaten container; used for pets and other mons */
-export function meatbox(mon,otmp)
-
+export function meatbox(mon, otmp)
 {
     let engulf_contents = (C.char(C.samePtr(mon.data, C.mons[C.PM_GELATINOUS_CUBE])));
     let x = C.int(mon.mx), y = C.int(mon.my);
@@ -1298,12 +1110,10 @@ export function meatbox(mon,otmp)
     }
 }
 
-
 /* Monster mtmp consumes an object.
    Monster may die, polymorph, grow up, heal, etc; meating is not changed.
    Object is extracted from any linked list and freed. */
-export function m_consume_obj(mtmp,otmp)
-
+export function m_consume_obj(mtmp, otmp)
 {
     let ispet = C.char(mtmp.mtame);
 
@@ -1323,7 +1133,10 @@ export function m_consume_obj(mtmp,otmp)
         let poly, grow, heal, eyes, mstone, vis = C.int(C.canseemon(mtmp));
         let corpsenm = (C.int(((otmp.otyp == C.CORPSE) ? otmp.corpsenm : C.NON_PM)));
 
-        (deadmimic = C.char((((otmp.otyp == C.CORPSE) && (((((corpsenm == C.PM_SMALL_MIMIC) || (corpsenm == C.PM_LARGE_MIMIC)) ? 1 : 0) || (corpsenm == C.PM_GIANT_MIMIC)) ? 1 : 0)) ? 1 : 0)));
+        (deadmimic = C.char((((otmp.otyp == C.CORPSE)
+            && (((((corpsenm == C.PM_SMALL_MIMIC)
+            || (corpsenm == C.PM_LARGE_MIMIC)) ? 1 : 0)
+            || (corpsenm == C.PM_GIANT_MIMIC)) ? 1 : 0)) ? 1 : 0)));
         (slimer = C.char((otmp.otyp == C.GLOB_OF_GREEN_SLIME)));
         (poly = C.int(C.polyfood(otmp)));
         (grow = C.int(C.mlevelgain(otmp)));
@@ -1371,7 +1184,6 @@ export function m_consume_obj(mtmp,otmp)
  * has young and old forms).
  */
 export function meatmetal(mtmp)
-
 {
     let otmp;
     let otmpname;
@@ -1385,7 +1197,12 @@ export function meatmetal(mtmp)
     for ((otmp = C.svl.level.objects[mtmp.mx][mtmp.my]); otmp;
          (otmp = otmp.nexthere)) {
         /* Don't eat indigestible/choking/inappropriate objects */
-        if (((((((C.samePtr(mtmp.data, C.mons[C.PM_RUST_MONSTER]) && !C.is_rustprone(otmp)) ? 1 : 0) || (((otmp.otyp == C.AMULET_OF_STRANGULATION) || (otmp.otyp == C.RIN_SLOW_DIGESTION)) ? 1 : 0)) ? 1 : 0) || ((otmp.opoisoned && !C.resists_poison(mtmp)) ? 1 : 0)) ? 1 : 0))
+        if (((((((C.samePtr(mtmp.data, C.mons[C.PM_RUST_MONSTER])
+            && !C.is_rustprone(otmp)) ? 1 : 0)
+            || (((otmp.otyp == C.AMULET_OF_STRANGULATION)
+            || (otmp.otyp == C.RIN_SLOW_DIGESTION)) ? 1 : 0)) ? 1 : 0)
+            || ((otmp.opoisoned
+            && !C.resists_poison(mtmp)) ? 1 : 0)) ? 1 : 0))
             continue;
         if (((((C.is_metallic(otmp) && !C.obj_resists(otmp, 5, 95)) ? 1 : 0) && C.touch_artifact(otmp, mtmp)) ? 1 : 0)) {
             if (((C.samePtr(mtmp.data, C.mons[C.PM_RUST_MONSTER]) && otmp.oerodeproof) ? 1 : 0)) {
@@ -1416,7 +1233,6 @@ export function meatmetal(mtmp)
                                   C.Monnam(mtmp), otmpname);
                 } else {
                     if (C.flags.verbose) {
-                        
                         C.You_hear("a crunching sound.");
                     }
                 }
@@ -1442,7 +1258,7 @@ export function meatobj(mtmp)
     let otmp, otmp2;
     let ptr, original_ptr = mtmp.data;
     let count = C.int(0), ecount = C.int(0);
-    let buf=C.stackAlloc(C.BUFSZ), otmpname;
+    let buf = C.stackAlloc(C.BUFSZ), otmpname;
 
     C.storeChar(C.ptrOffset(buf, 0), 0);
     /* If a pet, eating is handled separately, in dog.c */
@@ -1480,7 +1296,13 @@ export function meatobj(mtmp)
                       (note: scrolls inside eaten containers will still
                       become engulfed) */
 ((((((/* don't engulf boulders and statues or ball&chain */
-(((((((otmp.otyp == C.CORPSE) && C.touch_petrifies(C.mons[otmp.corpsenm])) ? 1 : 0) && !C.resists_ston(mtmp)) ? 1 : 0) || (otmp.oclass == C.ROCK_CLASS)) ? 1 : 0) || C.samePtr(otmp, C.uball)) ? 1 : 0) || C.samePtr(otmp, C.uchain)) ? 1 : 0) || (otmp.otyp == C.SCR_SCARE_MONSTER)) ? 1 : 0)) {
+(((((((otmp.otyp == C.CORPSE)
+    && C.touch_petrifies(C.mons[otmp.corpsenm])) ? 1 : 0)
+    && !C.resists_ston(mtmp)) ? 1 : 0)
+    || (otmp.oclass == C.ROCK_CLASS)) ? 1 : 0)
+    || C.samePtr(otmp, C.uball)) ? 1 : 0)
+    || C.samePtr(otmp, C.uchain)) ? 1 : 0)
+    || (otmp.otyp == C.SCR_SCARE_MONSTER)) ? 1 : 0)) {
             /* do nothing--neither eaten nor engulfed */
             continue;
 
@@ -1489,7 +1311,19 @@ export function meatobj(mtmp)
                       touch_petrifies() check catches eggs */
 ((((/* redundant due to non-organic composition but
                       included for emphasis */
-((((((!C.is_organic(otmp) || C.obj_resists(otmp, 5, 95)) ? 1 : 0) || !C.touch_artifact(otmp, mtmp)) ? 1 : 0) || (((otmp.otyp == C.AMULET_OF_STRANGULATION) || (otmp.otyp == C.RIN_SLOW_DIGESTION)) ? 1 : 0)) ? 1 : 0) || ((otmp.opoisoned && !C.resists_poison(mtmp)) ? 1 : 0)) ? 1 : 0) || ((((((C.ofood((otmp)) && C.ismnum((otmp).corpsenm)) ? 1 : 0) && C.flesh_petrifies(C.mons[(otmp).corpsenm])) ? 1 : 0) && !C.resists_ston(mtmp)) ? 1 : 0)) ? 1 : 0) || (((otmp.otyp == C.GLOB_OF_GREEN_SLIME) && !C.slimeproof(mtmp.data)) ? 1 : 0)) ? 1 : 0)) {
+((((((!C.is_organic(otmp)
+    || C.obj_resists(otmp, 5, 95)) ? 1 : 0)
+    || !C.touch_artifact(otmp, mtmp)) ? 1 : 0)
+    || (((otmp.otyp == C.AMULET_OF_STRANGULATION)
+    || (otmp.otyp == C.RIN_SLOW_DIGESTION)) ? 1 : 0)) ? 1 : 0)
+    || ((otmp.opoisoned
+    && !C.resists_poison(mtmp)) ? 1 : 0)) ? 1 : 0)
+    || ((((((C.ofood((otmp))
+    && C.ismnum((otmp).corpsenm)) ? 1 : 0)
+    && C.flesh_petrifies(C.mons[(otmp).corpsenm])) ? 1 : 0)
+    && !C.resists_ston(mtmp)) ? 1 : 0)) ? 1 : 0)
+    || (((otmp.otyp == C.GLOB_OF_GREEN_SLIME)
+    && !C.slimeproof(mtmp.data)) ? 1 : 0)) ? 1 : 0)) {
             /* engulf */
             ++ecount;
             /* call distant_name() for its possible side-effects even if
@@ -1516,7 +1350,6 @@ export function meatobj(mtmp)
                 if ((((otmp.oclass == C.SCROLL_CLASS) && C.objdescr_is(otmp, "YUM YUM")) ? 1 : 0))
                     C.pline("Yum%c", (otmp.blessed ? 33 : 46));
             } else {
-                
                 if (C.flags.verbose)
                     C.You_hear("a slurping sound.");
             }
@@ -1542,7 +1375,6 @@ export function meatobj(mtmp)
     return C.int(((((count > 0) || (ecount > 0)) ? 1 : 0) ? 1 : 0));
 }
 
-
 /* Monster eats a corpse off the ground.
    Return value is 0 = nothing eaten, 1 = ate a corpse, 2 = died. */
 export function meatcorpse(mtmp)
@@ -1560,7 +1392,6 @@ export function meatcorpse(mtmp)
     for ((otmp = C.sobj_at(C.CORPSE, x, y)); otmp;
          /* won't get back here if otmp is split or gets used up */
          (otmp = C.nxtobj(otmp, C.CORPSE, 1))) {
-
         (corpsepm = C.mons[otmp.corpsenm]);
         /* skip some corpses */
         if (/* ignore veggy corpse even if omnivorous */
@@ -1593,7 +1424,6 @@ export function meatcorpse(mtmp)
                 C.pline_mon(mtmp, "%s eats %s!",
                           C.Monnam(mtmp), otmpname);
         } else {
-            
             if (C.flags.verbose)
                 C.You_hear("a masticating sound.");
         }
@@ -1614,8 +1444,7 @@ export function meatcorpse(mtmp)
 }
 
 /* give monster property prop */
-export function mon_give_prop(mtmp,prop)
-
+export function mon_give_prop(mtmp, prop)
 {
     (prop = C.int(C.int(prop)));
     let msg = 0;
@@ -1667,8 +1496,7 @@ export function mon_give_prop(mtmp,prop)
 }
 
 /* Maybe give an intrinsic to monster from eating corpse that confers it. */
-export function mon_givit(mtmp,ptr)
-
+export function mon_givit(mtmp, ptr)
 {
     let prop = C.int(C.corpse_intrinsic(ptr));
     let vis = C.char(C.canseemon(mtmp));
@@ -1693,7 +1521,7 @@ export function mon_givit(mtmp,ptr)
          * able to have pets gain intrinsics from eating corpses.
          */
         if (((!mtmp.perminvis || mtmp.invis_blkd) ? 1 : 0)) {
-            const mtmpbuf=C.stackAlloc(C.BUFSZ);
+            const mtmpbuf = C.stackAlloc(C.BUFSZ);
 
             C.Strcpy(mtmpbuf, C.Monnam(mtmp));
             C.mon_set_minvis(mtmp, 0);
@@ -1715,7 +1543,6 @@ export function mon_givit(mtmp,ptr)
 }
 
 export function mpickgold(mtmp)
-
 {
     let gold;
     let mat_idx;
@@ -1735,7 +1562,6 @@ export function mpickgold(mtmp)
 
 /* monster picks up one item stack from the map location they are at */
 export function mpickstuff(mtmp)
-
 {
     let otmp, otmp2, otmp3;
     let carryamt = C.int(0);
@@ -1762,9 +1588,12 @@ export function mpickstuff(mtmp)
 
         /* Nymphs take everything.  Most monsters don't pick up corpses. */
         if (C.mon_would_take_item(mtmp, otmp)) {
-
             if (((((/* let a handful of corpse types thru to can_carry() */
-(((((otmp.otyp == C.CORPSE) && (mtmp.data.mlet != C.S_NYMPH)) ? 1 : 0) && !C.touch_petrifies(C.mons[otmp.corpsenm])) ? 1 : 0) && (otmp.corpsenm != C.PM_LIZARD)) ? 1 : 0) && !C.acidic(C.mons[otmp.corpsenm])) ? 1 : 0))
+(((((otmp.otyp == C.CORPSE)
+    && (mtmp.data.mlet != C.S_NYMPH)) ? 1 : 0)
+    && !C.touch_petrifies(C.mons[otmp.corpsenm])) ? 1 : 0)
+    && (otmp.corpsenm != C.PM_LIZARD)) ? 1 : 0)
+    && !C.acidic(C.mons[otmp.corpsenm])) ? 1 : 0))
                 continue;
             if (!can_touch_safely(mtmp, otmp))
                 continue;
@@ -1798,7 +1627,6 @@ export function mpickstuff(mtmp)
 }
 
 export function curr_mon_load(mtmp)
-
 {
     let curload = C.int(0);
     let obj;
@@ -1812,7 +1640,6 @@ export function curr_mon_load(mtmp)
 }
 
 export function max_mon_load(mtmp)
-
 {
     let maxload;
 
@@ -1841,17 +1668,22 @@ export function max_mon_load(mtmp)
 }
 
 /* can monster touch object safely? */
-export function can_touch_safely(mtmp,otmp)
-
+export function can_touch_safely(mtmp, otmp)
 {
     let otyp = C.int(otmp.otyp);
     let mdat = mtmp.data;
 
-    if ((((((((otyp == C.CORPSE) && C.touch_petrifies(C.mons[otmp.corpsenm])) ? 1 : 0) && !(C.long((C.long(mtmp.misc_worn_check) & C.long(C.W_ARMG))))) ? 1 : 0) && !C.resists_ston(mtmp)) ? 1 : 0))
+    if ((((((((otyp == C.CORPSE)
+        && C.touch_petrifies(C.mons[otmp.corpsenm])) ? 1 : 0)
+        && !(C.long((C.long(mtmp.misc_worn_check) & C.long(C.W_ARMG))))) ? 1 : 0)
+        && !C.resists_ston(mtmp)) ? 1 : 0))
         return C.char(0);
     if ((((otyp == C.CORPSE) && C.is_rider(C.mons[otmp.corpsenm])) ? 1 : 0))
         return C.char(0);
-    if ((((((C.objects[otyp].oc_material == C.SILVER) && C.mon_hates_silver(mtmp)) ? 1 : 0) && (((otyp != C.BELL_OF_OPENING) || !C.is_covetous(mdat)) ? 1 : 0)) ? 1 : 0))
+    if ((((((C.objects[otyp].oc_material == C.SILVER)
+        && C.mon_hates_silver(mtmp)) ? 1 : 0)
+        && (((otyp != C.BELL_OF_OPENING)
+        || !C.is_covetous(mdat)) ? 1 : 0)) ? 1 : 0))
         return C.char(0);
     if (!C.touch_artifact(otmp, mtmp))
         return C.char(0);
@@ -1871,8 +1703,7 @@ export function can_touch_safely(mtmp,otmp)
  *       Right now we fake it by reporting a partial quantity, but the
  *       likesgold handling m_move results in picking up the whole stack.
  */
-export function can_carry(mtmp,otmp)
-
+export function can_carry(mtmp, otmp)
 {
     let iquan, otyp = C.int(otmp.otyp), newload = C.int(otmp.owt);
     let mdat = mtmp.data;
@@ -1934,16 +1765,15 @@ export function can_carry(mtmp,otmp)
 }
 
 /* is <nx,ny> in direct line with where 'mon' thinks hero is? */
-export function monlineu(mon,nx,ny)
-
+export function monlineu(mon, nx, ny)
 {
-    (nx = C.int(C.int(nx))); (ny = C.int(C.int(ny)));
+    (nx = C.int(C.int(nx)));
+    (ny = C.int(C.int(ny)));
     return C.char(C.online2(nx, ny, mon.mux, mon.muy));
 }
 
 /* return flags based on monster data, for mfndpos() */
 export function mon_allowflags(mtmp)
-
 {
     let allowflags = C.long(0n);
     let can_open = C.char(!(((C.nohands(mtmp.data) || C.verysmall(mtmp.data)) ? 1 : 0)));
@@ -1953,7 +1783,11 @@ export function mon_allowflags(mtmp)
        to prefer a weapon; same criteria as in m_move() */
     let can_tunnel = (C.char(((C.tunnels(mtmp.data) && !C.Is_rogue_level(C.u.uz)) ? 1 : 0)));
 
-    if (((((can_tunnel && C.needspick(mtmp.data)) ? 1 : 0) && ((((!mtmp.mpeaceful || C.Conflict) ? 1 : 0) && (C.dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8)) ? 1 : 0)) ? 1 : 0))
+    if (((((can_tunnel
+        && C.needspick(mtmp.data)) ? 1 : 0)
+        && ((((!mtmp.mpeaceful
+        || C.Conflict) ? 1 : 0)
+        && (C.dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8)) ? 1 : 0)) ? 1 : 0))
         (can_tunnel = C.char(0));
 
     if (mtmp.mtame)
@@ -1982,11 +1816,11 @@ export function mon_allowflags(mtmp)
         (allowflags = C.long(C.long(C.long(allowflags) | C.long(C.UNLOCKDOOR))));
     if (/* restrict engulfer or holder who might try to pass iron bars while
            carrying hero; accept small subset for poly'd hero passes_bars() */
-((C.passes_bars(mtmp.data) && ((!C.samePtr(mtmp, C.u.ustuck) || ((C.unsolid(C.gy.youmonst.data) || C.verysmall(C.gy.youmonst.data)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
+((C.passes_bars(mtmp.data)
+    && ((!C.samePtr(mtmp, C.u.ustuck)
+    || ((C.unsolid(C.gy.youmonst.data)
+    || C.verysmall(C.gy.youmonst.data)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
         (allowflags = C.long(C.long(C.long(allowflags) | C.long(C.ALLOW_BARS))));
-
-
-
 
     if (((C.is_minion(mtmp.data) || C.is_rider(mtmp.data)) ? 1 : 0))
         (allowflags = C.long(C.long(C.long(allowflags) | C.long(C.ALLOW_SANCT))));
@@ -2003,14 +1837,16 @@ export function mon_allowflags(mtmp)
 
 /* return TRUE if monster is up in the air/on the ceiling */
 export function m_in_air(mtmp)
-
 {
-    return C.char(((((C.is_flyer(mtmp.data) || C.is_floater(mtmp.data)) ? 1 : 0) || ((((C.is_clinger(mtmp.data) && C.has_ceiling(C.u.uz)) ? 1 : 0) && mtmp.mundetected) ? 1 : 0)) ? 1 : 0));
+    return C.char(((((C.is_flyer(mtmp.data)
+        || C.is_floater(mtmp.data)) ? 1 : 0)
+        || ((((C.is_clinger(mtmp.data)
+        && C.has_ceiling(C.u.uz)) ? 1 : 0)
+        && mtmp.mundetected) ? 1 : 0)) ? 1 : 0));
 }
 
 /* return number of acceptable neighbour positions */
-export function mfndpos(mon,data,flag)
-
+export function mfndpos(mon, data, flag)
 {
     (flag = C.long(C.long(flag)));
     let mdat = mon.data;
@@ -2032,7 +1868,7 @@ export function mfndpos(mon,data,flag)
 
     C.memset( data, 0, C.mfpSize);
 
-    (nodiag = C.char(C.NODIAG(C.long((C.rawPointer(mdat)-C.rawPointer(C.mons))/BigInt(C.pmSize)))));
+    (nodiag = C.char(C.NODIAG(C.long((C.rawPointer(mdat) - C.rawPointer(C.mons)) / BigInt(C.pmSize)))));
     (wantpool = C.char((mdat.mlet == C.S_EEL)));
     (poolok = C.char(((((!C.Is_waterlevel(C.u.uz) && m_in_air(mon)) ? 1 : 0) || ((C.is_swimmer(mdat) && !wantpool) ? 1 : 0)) ? 1 : 0)));
     (lavaok = C.char(((m_in_air(mon) || C.likes_lava(mdat)) ? 1 : 0)));
@@ -2040,7 +1876,7 @@ export function mfndpos(mon,data,flag)
         (lavaok = C.char(0));
     (thrudoor = C.char((C.long(C.long((C.long(flag) & C.long(C.long((C.long(C.ALLOW_WALL) | C.long(C.BUSTDOOR))))))) != C.long(0n))));
     (poisongas_ok = C.char((m_poisongas_ok(mon) == C.M_POISONGAS_OK)));
-    (in_poisongas = C.char(((!C.samePtr((gas_reg = C.visible_region_at(x,y)), 0) && (gas_reg.glyph == gas_glyph)) ? 1 : 0)));
+    (in_poisongas = C.char(((!C.samePtr((gas_reg = C.visible_region_at(x, y)), 0) && (gas_reg.glyph == gas_glyph)) ? 1 : 0)));
 
     if (C.long((C.long(flag) & C.long(C.ALLOW_DIG)))) {
         let mw_tmp;
@@ -2052,7 +1888,9 @@ export function mfndpos(mon,data,flag)
             (rockok = C.char(C.is_pick(mw_tmp)));
             (treeok = C.char(C.is_axe(mw_tmp)));
         } else {
-            (rockok = C.char(((C.m_carrying(mon, C.PICK_AXE) || ((C.m_carrying(mon, C.DWARVISH_MATTOCK) && !C.which_armor(mon, C.W_ARMS)) ? 1 : 0)) ? 1 : 0)));
+            (rockok = C.char(((C.m_carrying(mon, C.PICK_AXE)
+                || ((C.m_carrying(mon, C.DWARVISH_MATTOCK)
+                && !C.which_armor(mon, C.W_ARMS)) ? 1 : 0)) ? 1 : 0)));
             (treeok = C.char(((C.m_carrying(mon, C.AXE) || ((C.m_carrying(mon, C.BATTLE_AXE) && !C.which_armor(mon, C.W_ARMS)) ? 1 : 0)) ? 1 : 0)));
         }
         if (((rockok || treeok) ? 1 : 0))
@@ -2075,27 +1913,67 @@ export function mfndpos(mon,data,flag)
             if ((((nx == x) && (ny == y)) ? 1 : 0))
                 continue;
             (ntyp = C.uchar(terrainAt(C, nx, ny)));
-            if (((((C.IS_OBSTRUCTED(ntyp) && !(((C.long((C.long(flag) & C.long(C.ALLOW_WALL))) && C.may_passwall(nx, ny)) ? 1 : 0))) ? 1 : 0) && !((((C.IS_TREE(ntyp) ? treeok : rockok) && C.may_dig(nx, ny)) ? 1 : 0))) ? 1 : 0))
+            if (((((C.IS_OBSTRUCTED(ntyp)
+                && !(((C.long((C.long(flag) & C.long(C.ALLOW_WALL)))
+                && C.may_passwall(nx, ny)) ? 1 : 0))) ? 1 : 0)
+                && !((((C.IS_TREE(ntyp) ? treeok : rockok)
+                && C.may_dig(nx, ny)) ? 1 : 0))) ? 1 : 0))
                 continue;
             /* intelligent peacefuls avoid digging shop/temple walls */
-            if (((((((((((C.IS_OBSTRUCTED(ntyp) && rockok) ? 1 : 0) && !C.mindless(mon.data)) ? 1 : 0) && ((mon.mpeaceful || mon.mtame) ? 1 : 0)) ? 1 : 0) && ((C.loadChar(C.in_rooms(nx, ny, C.TEMPLE)) || C.loadChar(C.in_rooms(nx, ny, C.SHOPBASE))) ? 1 : 0)) ? 1 : 0) && !(((C.loadChar(C.in_rooms(x, y, C.TEMPLE)) || C.loadChar(C.in_rooms(x, y, C.SHOPBASE))) ? 1 : 0))) ? 1 : 0))
+            if (((((((((((C.IS_OBSTRUCTED(ntyp)
+                && rockok) ? 1 : 0)
+                && !C.mindless(mon.data)) ? 1 : 0)
+                && ((mon.mpeaceful
+                || mon.mtame) ? 1 : 0)) ? 1 : 0)
+                && ((C.loadChar(C.in_rooms(nx, ny, C.TEMPLE))
+                || C.loadChar(C.in_rooms(nx, ny, C.SHOPBASE))) ? 1 : 0)) ? 1 : 0)
+                && !(((C.loadChar(C.in_rooms(x, y, C.TEMPLE))
+                || C.loadChar(C.in_rooms(x, y, C.SHOPBASE))) ? 1 : 0))) ? 1 : 0))
                 continue;
             if (((C.IS_WATERWALL(ntyp) && !C.is_swimmer(mdat)) ? 1 : 0))
                 continue;
             /* KMH -- Added iron bars */
-            if ((((ntyp == C.IRONBARS) && ((!(C.long((C.long(flag) & C.long(C.ALLOW_BARS)))) || (((C.levl[nx][ny].wall_info & C.W_NONDIGGABLE) && ((C.dmgtype(mdat, C.AD_RUST) || C.dmgtype(mdat, C.AD_CORR)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
+            if ((((ntyp == C.IRONBARS)
+                && ((!(C.long((C.long(flag) & C.long(C.ALLOW_BARS))))
+                || (((C.levl[nx][ny].wall_info & C.W_NONDIGGABLE)
+                && ((C.dmgtype(mdat, C.AD_RUST)
+                || C.dmgtype(mdat, C.AD_CORR)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
                 continue;
             if (((((/* an amorphous creature can only move under/through a
                    closed door if it doesn't currently have hero engulfed */
-((C.IS_DOOR(ntyp) && !(((((C.amorphous(mdat) || C.can_fog(mon)) ? 1 : 0) && !C.engulfing_u(mon)) ? 1 : 0))) ? 1 : 0) && (((((doorMaskAt(C, nx, ny) & C.D_CLOSED) && !(C.long((C.long(flag) & C.long(C.OPENDOOR))))) ? 1 : 0) || (((doorMaskAt(C, nx, ny) & C.D_LOCKED) && !(C.long((C.long(flag) & C.long(C.UNLOCKDOOR))))) ? 1 : 0)) ? 1 : 0)) ? 1 : 0) && !thrudoor) ? 1 : 0))
+((C.IS_DOOR(ntyp)
+    && !(((((C.amorphous(mdat)
+    || C.can_fog(mon)) ? 1 : 0)
+    && !C.engulfing_u(mon)) ? 1 : 0))) ? 1 : 0)
+    && (((((doorMaskAt(C, nx, ny) & C.D_CLOSED)
+    && !(C.long((C.long(flag) & C.long(C.OPENDOOR))))) ? 1 : 0)
+    || (((doorMaskAt(C, nx, ny) & C.D_LOCKED)
+    && !(C.long((C.long(flag) & C.long(C.UNLOCKDOOR))))) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)
+    && !thrudoor) ? 1 : 0))
                 continue;
             /* avoid poison gas? */
-            if (((((((!poisongas_ok && !in_poisongas) ? 1 : 0) && !C.samePtr((gas_reg = C.visible_region_at(nx,ny)), 0)) ? 1 : 0) && (gas_reg.glyph == gas_glyph)) ? 1 : 0))
+            if (((((((!poisongas_ok
+                && !in_poisongas) ? 1 : 0)
+                && !C.samePtr((gas_reg = C.visible_region_at(nx, ny)), 0)) ? 1 : 0)
+                && (gas_reg.glyph == gas_glyph)) ? 1 : 0))
                 continue;
             /* first diagonal checks (tight squeezes handled below) */
             if ((((((nx != x) && (ny != y)) ? 1 : 0) && /* mustn't pass between adjacent long worm segments,
                        but can attack that way */
-((((((((nodiag || ((C.IS_DOOR(nowtyp) && (doorMaskAt(C, x, y) & ~C.D_BROKEN)) ? 1 : 0)) ? 1 : 0) || ((C.IS_DOOR(ntyp) && (doorMaskAt(C, nx, ny) & ~C.D_BROKEN)) ? 1 : 0)) ? 1 : 0) || ((((C.IS_DOOR(nowtyp) || C.IS_DOOR(ntyp)) ? 1 : 0) && C.Is_rogue_level(C.u.uz)) ? 1 : 0)) ? 1 : 0) || ((((((((C.m_at(x, ny) && C.m_at(nx, y)) ? 1 : 0) && C.worm_cross(x, y, nx, ny)) ? 1 : 0) && !C.m_at(nx, ny)) ? 1 : 0) && (((nx != C.u.ux) || (ny != C.u.uy)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
+((((((((nodiag
+    || ((C.IS_DOOR(nowtyp)
+    && (doorMaskAt(C, x, y) & ~C.D_BROKEN)) ? 1 : 0)) ? 1 : 0)
+    || ((C.IS_DOOR(ntyp)
+    && (doorMaskAt(C, nx, ny) & ~C.D_BROKEN)) ? 1 : 0)) ? 1 : 0)
+    || ((((C.IS_DOOR(nowtyp)
+    || C.IS_DOOR(ntyp)) ? 1 : 0)
+    && C.Is_rogue_level(C.u.uz)) ? 1 : 0)) ? 1 : 0)
+    || ((((((((C.m_at(x, ny)
+    && C.m_at(nx, y)) ? 1 : 0)
+    && C.worm_cross(x, y, nx, ny)) ? 1 : 0)
+    && !C.m_at(nx, ny)) ? 1 : 0)
+    && (((nx != C.u.ux)
+    || (ny != C.u.uy)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
                 continue;
             if (((((!lavaok || !(C.long((C.long(flag) & C.long(C.ALLOW_WALL))))) ? 1 : 0) && (ntyp == C.LAVAWALL)) ? 1 : 0))
                 continue;
@@ -2157,7 +2035,10 @@ export function mfndpos(mon,data,flag)
                     }
                     /* Note: ALLOW_SANCT only prevents movement, not
                        attack, into a temple. */
-                    if (((((((C.svl.level.flags.has_temple && C.loadChar(C.in_rooms(nx, ny, C.TEMPLE))) ? 1 : 0) && !C.loadChar(C.in_rooms(x, y, C.TEMPLE))) ? 1 : 0) && C.in_your_sanctuary(0, nx, ny)) ? 1 : 0)) {
+                    if (((((((C.svl.level.flags.has_temple
+                        && C.loadChar(C.in_rooms(nx, ny, C.TEMPLE))) ? 1 : 0)
+                        && !C.loadChar(C.in_rooms(x, y, C.TEMPLE))) ? 1 : 0)
+                        && C.in_your_sanctuary(0, nx, ny)) ? 1 : 0)) {
                         if (!(C.long((C.long(flag) & C.long(C.ALLOW_SANCT)))))
                             continue;
                         (data.info[cnt] = C.long(C.long(C.long(data.info[cnt]) | C.long(C.ALLOW_SANCT))));
@@ -2179,7 +2060,11 @@ export function mfndpos(mon,data,flag)
                     (data.info[cnt] = C.long(C.long(C.long(data.info[cnt]) | C.long(C.NOTONL))));
                 }
                 /* check for diagonal tight squeeze */
-                if ((((((((((nx != x) && (ny != y)) ? 1 : 0) && C.bad_rock(mdat, x, ny)) ? 1 : 0) && C.bad_rock(mdat, nx, y)) ? 1 : 0) && C.cant_squeeze_thru(mon)) ? 1 : 0))
+                if ((((((((((nx != x)
+                    && (ny != y)) ? 1 : 0)
+                    && C.bad_rock(mdat, x, ny)) ? 1 : 0)
+                    && C.bad_rock(mdat, nx, y)) ? 1 : 0)
+                    && C.cant_squeeze_thru(mon)) ? 1 : 0))
                     continue;
                 /* The monster avoids a particular type of trap if it's
                  * familiar with the trap type.  Pets get ALLOW_TRAPS
@@ -2221,14 +2106,15 @@ export function mfndpos(mon,data,flag)
 /* Part of mm_aggression that represents two-way aggression.  To avoid
    having to code each case twice, this function contains those cases that
    ought to happen twice, and mm_aggression will call it twice. */
-export function mm_2way_aggression(magr,mdef)
-
+export function mm_2way_aggression(magr, mdef)
 {
     if (C.On_W_tower_level(C.u.uz)) {
         /* treat inside the Wizard's tower as if it were a separate level
            from outside so when hero is inside Wizard's tower, both monsters
            need to be too; when outside, the monsters need to be too */
-        if ((C.In_W_tower(C.u.ux, C.u.uy, C.u.uz) ? ((!C.In_W_tower(magr.mx, magr.my, C.u.uz) || !C.In_W_tower(mdef.mx, mdef.my, C.u.uz)) ? 1 : 0) : ((C.In_W_tower(magr.mx, magr.my, C.u.uz) || C.In_W_tower(mdef.mx, mdef.my, C.u.uz)) ? 1 : 0)))
+        if ((C.In_W_tower(C.u.ux, C.u.uy, C.u.uz) ? ((!C.In_W_tower(magr.mx, magr.my, C.u.uz)
+            || !C.In_W_tower(mdef.mx, mdef.my, C.u.uz)) ? 1 : 0) : ((C.In_W_tower(magr.mx, magr.my, C.u.uz)
+            || C.In_W_tower(mdef.mx, mdef.my, C.u.uz)) ? 1 : 0)))
             return C.long(0n);
     }
     /* liches/zombies vs things that can be zombified
@@ -2256,7 +2142,7 @@ export function mm_2way_aggression(magr,mdef)
    in the absence of Conflict.  There is no provision for targeting
    other monsters; just hand to hand fighting when they happen to be
    next to each other. */
-export function mm_aggression(magr,/* monster that is currently deciding where to move */ mdef)
+export function mm_aggression(magr, /* monster that is currently deciding where to move */ mdef)
  /* another monster which is next to it */
 {
     let mndx = C.int(C.monsndx(magr.data));
@@ -2276,7 +2162,7 @@ export function mm_aggression(magr,/* monster that is currently deciding where t
 }
 
 /* Monster displacing another monster out of the way */
-export function mm_displacement(magr,/* monster that is currently deciding where to move */ mdef)
+export function mm_displacement(magr, /* monster that is currently deciding where to move */ mdef)
  /* another monster which is next to it */
 {
     let pa = magr.data, pd = mdef.data;
@@ -2289,30 +2175,39 @@ export function mm_displacement(magr,/* monster that is currently deciding where
     if (/* riders can move anything; others, same size or smaller only */
 ((((/* no displacing trapped monsters or multi-location longworms */
 ((/* no displacing grid bugs diagonally */
-((((C.is_displacer(pa) && ((!C.is_displacer(pd) || (magr.m_lev > mdef.m_lev)) ? 1 : 0)) ? 1 : 0) && !((((((magr.mx != mdef.mx) && (magr.my != mdef.my)) ? 1 : 0) && C.NODIAG(C.monsndx(pd))) ? 1 : 0))) ? 1 : 0) && !mdef.mtrapped) ? 1 : 0) && ((!mdef.wormno || !C.count_wsegs(mdef)) ? 1 : 0)) ? 1 : 0) && ((C.is_rider(pa) || (pa.msize >= pd.msize)) ? 1 : 0)) ? 1 : 0))
+((((C.is_displacer(pa)
+    && ((!C.is_displacer(pd)
+    || (magr.m_lev > mdef.m_lev)) ? 1 : 0)) ? 1 : 0)
+    && !((((((magr.mx != mdef.mx)
+    && (magr.my != mdef.my)) ? 1 : 0)
+    && C.NODIAG(C.monsndx(pd))) ? 1 : 0))) ? 1 : 0)
+    && !mdef.mtrapped) ? 1 : 0)
+    && ((!mdef.wormno
+    || !C.count_wsegs(mdef)) ? 1 : 0)) ? 1 : 0)
+    && ((C.is_rider(pa)
+    || (pa.msize >= pd.msize)) ? 1 : 0)) ? 1 : 0))
         return C.long(C.ALLOW_MDISP);
     return C.long(0n);
 }
 
 /* Is the square close enough for the monster to move or attack into? */
-export function monnear(mon,x,y)
-
+export function monnear(mon, x, y)
 {
-    (x = C.coordxy(C.coordxy(x))); (y = C.coordxy(C.coordxy(y)));
+    (x = C.coordxy(C.coordxy(x)));
+    (y = C.coordxy(C.coordxy(y)));
     let distance = C.int(C.dist2(mon.mx, mon.my, x, y));
 
-    if ((((distance == 2) && C.NODIAG(C.long((C.rawPointer(mon.data)-C.rawPointer(C.mons))/BigInt(C.pmSize)))) ? 1 : 0))
+    if ((((distance == 2) && C.NODIAG(C.long((C.rawPointer(mon.data) - C.rawPointer(C.mons)) / BigInt(C.pmSize)))) ? 1 : 0))
         return C.char(0);
     return C.char(C.boolean(((distance < 3))));
 }
 
 /* really free dead monsters */
 export function dmonsfree()
-
 {
     let mtmp, freetmp;
     let count = C.int(0);
-    const buf=C.stackAlloc(C.QBUFSZ);
+    const buf = C.stackAlloc(C.QBUFSZ);
 
     C.storeChar(C.ptrOffset(buf, 0), 0);
     for ((mtmp = C.monLink(C.fmonAddress)); mtmp.value; ) {
@@ -2335,8 +2230,7 @@ export function dmonsfree()
 }
 
 /* called when monster is moved to larger structure */
-export function replmon(mtmp,mtmp2)
-
+export function replmon(mtmp, mtmp2)
 {
     let otmp;
 
@@ -2381,7 +2275,7 @@ export function replmon(mtmp,mtmp2)
 
 /* release mon from the display and the map's monster list,
    maybe transfer it to one of the other monster lists */
-export function relmon(mon,monst_list)
+export function relmon(mon, monst_list)
  /* &gm.migrating_mons or &gm.mydogs or null */
 {
     if (!C.fmon)
@@ -2415,8 +2309,7 @@ export function relmon(mon,monst_list)
     }
 }
 
-export function copy_mextra(mtmp2,mtmp1)
-
+export function copy_mextra(mtmp2, mtmp1)
 {
     if (((((!mtmp2 || !mtmp1) ? 1 : 0) || !mtmp1.mextra) ? 1 : 0))
         return;
@@ -2431,44 +2324,43 @@ export function copy_mextra(mtmp2,mtmp1)
         if (!C.EGD(mtmp2))
             C.newegd(mtmp2);
         C.assert(C.has_egd(mtmp2), 0);
-        C.copyStruct(C.EGD(mtmp2),C.EGD(mtmp1),C.egdSize);
+        C.copyStruct(C.EGD(mtmp2), C.EGD(mtmp1), C.egdSize);
     }
     if (C.EPRI(mtmp1)) {
         if (!C.EPRI(mtmp2))
             C.newepri(mtmp2);
         C.assert(C.has_epri(mtmp2), 1);
-        C.copyStruct(C.EPRI(mtmp2),C.EPRI(mtmp1),C.epriSize);
+        C.copyStruct(C.EPRI(mtmp2), C.EPRI(mtmp1), C.epriSize);
     }
     if (C.ESHK(mtmp1)) {
         if (!C.ESHK(mtmp2))
             C.neweshk(mtmp2);
         C.assert(C.has_eshk(mtmp2), 2);
-        C.copyStruct(C.ESHK(mtmp2),C.ESHK(mtmp1),C.eshkSize);
+        C.copyStruct(C.ESHK(mtmp2), C.ESHK(mtmp1), C.eshkSize);
     }
     if (C.EMIN(mtmp1)) {
         if (!C.EMIN(mtmp2))
             C.newemin(mtmp2);
         C.assert(C.has_emin(mtmp2), 3);
-        C.copyStruct(C.EMIN(mtmp2),C.EMIN(mtmp1),C.eminSize);
+        C.copyStruct(C.EMIN(mtmp2), C.EMIN(mtmp1), C.eminSize);
     }
     if (C.EDOG(mtmp1)) {
         if (!C.EDOG(mtmp2))
             C.newedog(mtmp2);
         C.assert(C.has_edog(mtmp2), 4);
-        C.copyStruct(C.EDOG(mtmp2),C.EDOG(mtmp1),C.edogSize);
+        C.copyStruct(C.EDOG(mtmp2), C.EDOG(mtmp1), C.edogSize);
     }
     if (C.EBONES(mtmp1)) {
         if (!C.EBONES(mtmp2))
             C.newebones(mtmp2);
         C.assert(C.has_ebones(mtmp2), 5);
-        C.copyStruct(C.EBONES(mtmp2),C.EBONES(mtmp1),C.ebonesSize);
+        C.copyStruct(C.EBONES(mtmp2), C.EBONES(mtmp1), C.ebonesSize);
     }
     if (C.has_mcorpsenm(mtmp1))
         (mtmp2.mextra.mcorpsenm = C.int(mtmp1.mextra.mcorpsenm));
 }
 
 export function dealloc_mextra(m)
-
 {
     let x = m.mextra;
 
@@ -2495,9 +2387,8 @@ export function dealloc_mextra(m)
 }
 
 export function dealloc_monst(mon)
-
 {
-    const buf=C.stackAlloc(C.QBUFSZ);
+    const buf = C.stackAlloc(C.QBUFSZ);
 
     C.storeChar(C.ptrOffset(buf, 0), 0);
     if (mon.nmon) {
@@ -2508,14 +2399,13 @@ export function dealloc_monst(mon)
         dealloc_mextra(mon);
     /* clear out of date information contained in the about-to-become
        stale memory; see dealloc_obj() */
-    C.copyStruct(mon,C.cg.zeromonst,C.monSize);
+    C.copyStruct(mon, C.cg.zeromonst, C.monSize);
     C.free( mon);
 }
 
 /* 'mon' is being removed from level due to migration [relmon from keepdogs
    or migrate_to_level] or due to death [m_detach from mondead or mongone] */
 export function mon_leaving_level(mon)
-
 {
     let mx = C.coordxy(mon.mx), my = C.coordxy(mon.my);
     let onmap = (C.char(((C.isok(mx, my) && C.samePtr(C.svl.level.monsters[mx][my], mon)) ? 1 : 0)));
@@ -2530,11 +2420,6 @@ export function mon_leaving_level(mon)
             C.remove_worm(mon);
         else
             C.remove_monster(mx, my);
-
-
-
-
-
     }
     if (onmap) {
         (mon.mundetected = 0); /* for migration; doesn't matter for death */
@@ -2552,8 +2437,7 @@ export function mon_leaving_level(mon)
 }
 
 /* 'mtmp' is going away; remove effects of mtmp from other data structures */
-export function m_detach(mtmp,mptr,/* reflects mtmp->data _prior_ to mtmp's death */ due_to_death)
-
+export function m_detach(mtmp, mptr, /* reflects mtmp->data _prior_ to mtmp's death */ due_to_death)
 {
     (due_to_death = C.char(C.boolean(due_to_death)));
     let mx = C.coordxy(mtmp.mx), my = C.coordxy(mtmp.my);
@@ -2624,7 +2508,7 @@ export function m_detach(mtmp,mptr,/* reflects mtmp->data _prior_ to mtmp's deat
 
 /* give a life-saved monster a reasonable mhpmax value in case it has
    been the victim of excessive life draining */
-export function set_mon_min_mhpmax(mon,minimum_mhpmax)
+export function set_mon_min_mhpmax(mon, minimum_mhpmax)
  /* monster life-saving has traditionally used 10 */
 {
     (minimum_mhpmax = C.int(C.int(minimum_mhpmax)));
@@ -2643,7 +2527,6 @@ export function set_mon_min_mhpmax(mon,minimum_mhpmax)
 
 /* find the worn amulet of life saving which will save a monster */
 export function mlifesaver(mon)
-
 {
     if (((!C.nonliving(mon.data) || C.is_vampshifter(mon)) ? 1 : 0)) {
         let otmp = C.which_armor(mon, C.W_AMUL);
@@ -2655,7 +2538,6 @@ export function mlifesaver(mon)
 }
 
 export function lifesaved_monster(mtmp)
-
 {
     let surviver;
     let lifesave = mlifesaver(mtmp);
@@ -2705,7 +2587,6 @@ export function lifesaved_monster(mtmp)
    of dying; returns True if mtmp successfully revives, False otherwise;
    "successfully revived" vampire might be killed by a booby trapped door */
 export function vamprises(mtmp)
-
 {
     let mndx = C.int(mtmp.cham);
 
@@ -2715,7 +2596,7 @@ export function vamprises(mtmp)
      * So there's no need to check for that attribute being active.
      */
     if (((((C.ismnum(mndx) && (mndx != C.monsndx(mtmp.data))) ? 1 : 0) && !(C.int((C.svm.mvitals[mndx].mvflags) & (C.G_GENOD)))) ? 1 : 0)) {
-        const action=C.stackAlloc(C.BUFSZ);
+        const action = C.stackAlloc(C.BUFSZ);
         /* alternate message phrasing for some monster types */
         let spec_mon = (C.char(((((C.nonliving(mtmp.data) || C.noncorporeal(mtmp.data)) ? 1 : 0) || C.amorphous(mtmp.data)) ? 1 : 0))),
                 spec_death = (C.char(((/* disintegrated/digested */
@@ -2761,7 +2642,7 @@ export function vamprises(mtmp)
         /* revived vampire is in normal shape, so can't be amorphous; if on
            a closed door spot, destroy the door and if trapped, blow it up */
         if (C.closed_door(x, y)) {
-            const door_smashed="a door being smashed",door_go_boom="a door exploding";
+            const door_smashed = "a door being smashed", door_go_boom = "a door exploding";
             let door = C.levl[x][y];
             let trapped = C.char(((door.doormask & C.D_TRAPPED) != 0)),
                     seeit = C.char(C.cansee(x, y));
@@ -2803,16 +2684,19 @@ export function vamprises(mtmp)
 
 /* when a mon has died, maybe record an achievement or issue livelog message;
    moved into separate routine to unclutter mondead() */
-export function logdeadmon(mtmp,mndx)
-
+export function logdeadmon(mtmp, mndx)
 {
     (mndx = C.int(C.int(mndx)));
     let howmany = C.int(C.svm.mvitals[mndx].died);
 
     if ((((mndx == C.PM_MEDUSA) && (howmany == 1)) ? 1 : 0)) {
         C.record_achievement(C.ACH_MEDU); /* also generates a livelog event */
-    } else if (((((C.unique_corpstat(mtmp.data) && (((mndx != C.PM_HIGH_CLERIC) || !mtmp.mrevived) ? 1 : 0)) ? 1 : 0) || ((mtmp.isshk && !mtmp.mrevived) ? 1 : 0)) ? 1 : 0)) {
-        const shkdetail=C.stackAlloc(C.QBUFSZ);
+    } else if (((((C.unique_corpstat(mtmp.data)
+        && (((mndx != C.PM_HIGH_CLERIC)
+        || !mtmp.mrevived) ? 1 : 0)) ? 1 : 0)
+        || ((mtmp.isshk
+        && !mtmp.mrevived) ? 1 : 0)) ? 1 : 0)) {
+        const shkdetail = C.stackAlloc(C.QBUFSZ);
         let mkilled;
         let herodidit = C.char(!C.svc.context.mon_moving);
 
@@ -2848,8 +2732,12 @@ export function logdeadmon(mtmp,mndx)
            "naturally", others require deliberate player action such as
            use of undead turning to revive a corpse or petrification plus
            stone-to-flesh to create and revive a statue */
-        if ((((((((((howmany <= 3) || (howmany == 5)) ? 1 : 0) || (howmany == 10)) ? 1 : 0) || (howmany == 25)) ? 1 : 0) || ((howmany % 50) == 0)) ? 1 : 0)) { /* 50, 100, 150, 200, 250 */
-            const xtra=C.stackAlloc(40); /* space for " (Nth time)" when N > 1 */
+        if ((((((((((howmany <= 3)
+            || (howmany == 5)) ? 1 : 0)
+            || (howmany == 10)) ? 1 : 0)
+            || (howmany == 25)) ? 1 : 0)
+            || ((howmany % 50) == 0)) ? 1 : 0)) { /* 50, 100, 150, 200, 250 */
+            const xtra = C.stackAlloc(40); /* space for " (Nth time)" when N > 1 */
             let llevent_type = C.long(C.LL_UMONST);
 
             /* the first kill of any unique monster is a major event;
@@ -2877,7 +2765,6 @@ export function logdeadmon(mtmp,mndx)
 
 /* anger all the quest guards on the level */
 export function anger_quest_guardians(mtmp)
-
 {
     if (C.samePtr(mtmp.data, C.mons[C.gu.urole.guardnum]))
         setmangry(mtmp, 1);
@@ -2886,7 +2773,6 @@ export function anger_quest_guardians(mtmp)
 /* monster 'mtmp' has died; maybe life-save, otherwise unshapeshift and
    update vanquished stats and update map */
 export function mondead(mtmp)
-
 {
     let mptr;
     let be_sad;
@@ -2951,7 +2837,6 @@ export function mondead(mtmp)
     if ((mndx == C.PM_MAIL_DAEMON))
         (C.svm.mvitals[mndx].mvflags = C.uchar((C.svm.mvitals[mndx].mvflags) | (C.G_GENOD)));
 
-
     if ((mtmp.data.mlet == C.S_KOP)) {
         let stway = C.stairway_find_type_dir(0, 0);
 
@@ -2962,7 +2847,7 @@ export function mondead(mtmp)
                 C.makemon(mtmp.data, stway.sx, stway.sy, C.NO_MM_FLAGS);
                 break;
             }
-            
+
             /* FALLTHRU */
         case 2: /* randomly */
             C.makemon(mtmp.data, 0, 0, C.NO_MM_FLAGS);
@@ -2985,7 +2870,7 @@ export function mondead(mtmp)
 }
 
 /* TRUE if corpse might be dropped, magr may die if mon was swallowed */
-export function corpse_chance(mon,magr,/* killer, if swallowed */ was_swallowed)
+export function corpse_chance(mon, magr, /* killer, if swallowed */ was_swallowed)
  /* digestion */
 {
     (was_swallowed = C.char(C.boolean(was_swallowed)));
@@ -3044,10 +2929,20 @@ export function corpse_chance(mon,magr,/* killer, if swallowed */ was_swallowed)
     /* must duplicate this below check in xkilled() since it results in
      * creating no objects as well as no corpse
      */
-    if ((     (((((C.Is_rogue_level(C.u.uz) || !C.svl.level.flags.deathdrops) ? 1 : 0) || ((((C.svl.level.flags.graveyard && C.is_undead((mdat))) ? 1 : 0) && C.rn2(3, 3241, "corpse_chance")) ? 1 : 0)) ? 1 : 0))))
+    if ((     (((((C.Is_rogue_level(C.u.uz)
+        || !C.svl.level.flags.deathdrops) ? 1 : 0)
+        || ((((C.svl.level.flags.graveyard
+        && C.is_undead((mdat))) ? 1 : 0)
+        && C.rn2(3, 3241, "corpse_chance")) ? 1 : 0)) ? 1 : 0))))
         return C.char(0);
 
-    if (((((((((((((C.bigmonst(mdat) || C.samePtr(mdat, C.mons[C.PM_LIZARD])) ? 1 : 0) && !mon.mcloned) ? 1 : 0) || C.is_golem(mdat)) ? 1 : 0) || C.is_mplayer(mdat)) ? 1 : 0) || C.is_rider(mdat)) ? 1 : 0) || mon.isshk) ? 1 : 0))
+    if (((((((((((((C.bigmonst(mdat)
+        || C.samePtr(mdat, C.mons[C.PM_LIZARD])) ? 1 : 0)
+        && !mon.mcloned) ? 1 : 0)
+        || C.is_golem(mdat)) ? 1 : 0)
+        || C.is_mplayer(mdat)) ? 1 : 0)
+        || C.is_rider(mdat)) ? 1 : 0)
+        || mon.isshk) ? 1 : 0))
         return C.char(1);
     (tmp = C.int((C.int((2) + ((C.int((mdat.geno) & (C.G_FREQ)) < 2))) + C.verysmall(mdat))));
     return C.char(C.boolean(!C.rn2(tmp, 3248, "corpse_chance")));
@@ -3055,7 +2950,6 @@ export function corpse_chance(mon,magr,/* killer, if swallowed */ was_swallowed)
 
 /* drop (perhaps) a cadaver and remove monster */
 export function mondied(mdef)
-
 {
     mondead(mdef);
     if (!C.DEADMONSTER(mdef))
@@ -3068,7 +2962,6 @@ export function mondied(mdef)
 
 /* monster disappears, not dies */
 export function mongone(mdef)
-
 {
     (mdef.mhp = C.int(0)); /* can skip some inventory bookkeeping */
 
@@ -3088,7 +2981,6 @@ export function mongone(mdef)
 
 /* drop a statue or rock and remove monster */
 export function monstone(mdef)
-
 {
     let otmp, obj, oldminvent;
     let x = C.coordxy(mdef.mx), y = C.coordxy(mdef.my);
@@ -3110,7 +3002,8 @@ export function monstone(mdef)
 
     (mdef.mtrapped = 0); /* (see m_detach) */
 
-    if ((((C.int(mdef.data.msize) > C.MZ_TINY) || !C.rn2(C.int((2) + ((C.int((C.int((mdef.data.geno) & (C.G_FREQ)))) > 2))), 3310, "monstone")) ? 1 : 0)) {
+    if ((((C.int(mdef.data.msize) > C.MZ_TINY)
+        || !C.rn2(C.int((2) + ((C.int((C.int((mdef.data.geno) & (C.G_FREQ)))) > 2))), 3310, "monstone")) ? 1 : 0)) {
         let corpstatflags = C.uint(C.CORPSTAT_NONE);
 
         (oldminvent = 0);
@@ -3171,8 +3064,7 @@ export function monstone(mdef)
 }
 
 /* another monster has killed the monster mdef */
-export function monkilled(mdef,fltxt,how)
-
+export function monkilled(mdef, fltxt, how)
 {
     (how = C.int(C.int(how)));
     let mptr = mdef.data;
@@ -3189,7 +3081,10 @@ export function monkilled(mdef,fltxt,how)
        rot completely are described as "falling to pieces" so they do
        leave a corpse (which means staves for wood golem, leather armor for
        leather golem, iron chains for iron golem, not a regular corpse) */
-    (C.gd.disintegested = C.char((((((how == C.AD_DGST) || (how == -C.AD_RBRE)) ? 1 : 0) || (((how == C.AD_FIRE) && C.completelyburns(mptr)) ? 1 : 0)) ? 1 : 0)));
+    (C.gd.disintegested = C.char((((((how == C.AD_DGST)
+        || (how == -C.AD_RBRE)) ? 1 : 0)
+        || (((how == C.AD_FIRE)
+        && C.completelyburns(mptr)) ? 1 : 0)) ? 1 : 0)));
     if (C.gd.disintegested)
         mondead(mdef); /* never leaves a corpse */
     else
@@ -3200,7 +3095,10 @@ export function monkilled(mdef,fltxt,how)
     /* extra message if pet golem is completely destroyed;
        if not visible, this will follow "you have a sad feeling" */
     if (mdef.mtame) {
-        let rxt = ((((how == C.AD_FIRE) && C.completelyburns(mptr)) ? 1 : 0) ? "roast" : ((((how == C.AD_RUST) && C.completelyrusts(mptr)) ? 1 : 0) ? "rust" : ((((how == C.AD_DCAY) && C.completelyrots(mptr)) ? 1 : 0) ? "rot" : 0)));
+        let rxt = ((((how == C.AD_FIRE)
+            && C.completelyburns(mptr)) ? 1 : 0) ? "roast" : ((((how == C.AD_RUST)
+            && C.completelyrusts(mptr)) ? 1 : 0) ? "rust" : ((((how == C.AD_DCAY)
+            && C.completelyrots(mptr)) ? 1 : 0) ? "rot" : 0)));
         if (rxt)
             C.pline("May %s %s in peace.", C.noit_mon_nam(mdef), rxt);
     }
@@ -3208,7 +3106,6 @@ export function monkilled(mdef,fltxt,how)
 }
 
 export function set_ustuck(mtmp)
-
 {
     if (((C.iflags.sanity_check || C.iflags.debug_fuzzer) ? 1 : 0)) {
         if (((mtmp && !C.m_next2u(mtmp)) ? 1 : 0))
@@ -3225,7 +3122,6 @@ export function set_ustuck(mtmp)
 }
 
 export function unstuck(mtmp)
-
 {
     if (C.samePtr(C.u.ustuck, mtmp)) {
         let ptr = mtmp.data;
@@ -3249,25 +3145,27 @@ export function unstuck(mtmp)
            [note: this call to unstuck() might be because u.ustuck has just
            changed shape and doesn't have a holding attack any more, hence
            don't set mspec_used unconditionally] */
-        if (((!mtmp.mspec_used && ((((C.dmgtype(ptr, C.AD_STCK) || C.attacktype(ptr, C.AT_ENGL)) ? 1 : 0) || C.attacktype(ptr, C.AT_HUGS)) ? 1 : 0)) ? 1 : 0))
+        if (((!mtmp.mspec_used
+            && ((((C.dmgtype(ptr, C.AD_STCK)
+            || C.attacktype(ptr, C.AT_ENGL)) ? 1 : 0)
+            || C.attacktype(ptr, C.AT_HUGS)) ? 1 : 0)) ? 1 : 0))
             (mtmp.mspec_used = C.int(C.rnd(2, 3465, "unstuck")));
     }
 }
 
 export function killed(mtmp)
-
 {
     C.callLocal(xkilled, mtmp, C.XKILL_GIVEMSG);
 }
 
 /* the player has killed the monster mtmp */
-export function xkilled(mtmp,xkill_flags)
+export function xkilled(mtmp, xkill_flags)
  /* 1: suppress mesg, 2: suppress corpse, 4: pacifist */
 {
     (xkill_flags = C.int(C.int(xkill_flags)));
     let tmp, mndx;
     let x = C.coordxy(mtmp.mx), y = C.coordxy(mtmp.my);
-    const museum=C.monLocal(C.cg.zeromonst);
+    const museum = C.monLocal(C.cg.zeromonst);
     let mdat;
     let otmp;
     let t;
@@ -3292,7 +3190,8 @@ export function xkilled(mtmp,xkill_flags)
 
         C.You("%s %s!",
             (C.nonliving(mtmp.data) ? "destroy" : "kill"),
-            (!(((wasinside || C.canspotmon(mtmp)) ? 1 : 0)) ? "it" : (!mtmp.mtame ? C.mon_nam(mtmp) : C.x_monnam(mtmp, (namedpet ? C.ARTICLE_NONE : C.ARTICLE_THE),
+            (!(((wasinside
+                || C.canspotmon(mtmp)) ? 1 : 0)) ? "it" : (!mtmp.mtame ? C.mon_nam(mtmp) : C.x_monnam(mtmp, (namedpet ? C.ARTICLE_NONE : C.ARTICLE_THE),
                            "poor", (namedpet ? C.SUPPRESS_SADDLE : 0), 0))));
     }
 
@@ -3312,7 +3211,11 @@ export function xkilled(mtmp,xkill_flags)
 
     if (/* don't give to mon if missile is going to return to hero */
 ((/* don't give to mon if missile is going to be destroyed */
-((((((wasinside && C.gt.thrownobj) ? 1 : 0) && !C.samePtr(C.gt.thrownobj, C.uball)) ? 1 : 0) && (C.gt.thrownobj.oclass != C.POTION_CLASS)) ? 1 : 0) && !C.samePtr(C.gt.thrownobj, C.iflags.returning_missile)) ? 1 : 0)) {
+((((((wasinside
+    && C.gt.thrownobj) ? 1 : 0)
+    && !C.samePtr(C.gt.thrownobj, C.uball)) ? 1 : 0)
+    && (C.gt.thrownobj.oclass != C.POTION_CLASS)) ? 1 : 0)
+    && !C.samePtr(C.gt.thrownobj, C.iflags.returning_missile)) ? 1 : 0)) {
         /* thrown object has killed hero's engulfer; add it to mon's
            inventory now so that it will be placed with mon's other
            stuff prior to lookhere/autopickup when hero is expelled
@@ -3355,9 +3258,13 @@ export function xkilled(mtmp,xkill_flags)
         break cleanup;
     }
 
-    if (((nocorpse || ((((C.Is_rogue_level(C.u.uz) || !C.svl.level.flags.deathdrops) ? 1 : 0) || ((((C.svl.level.flags.graveyard && C.is_undead((mdat))) ? 1 : 0) && C.rn2(3, 3574, "xkilled")) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
+    if (((nocorpse
+        || ((((C.Is_rogue_level(C.u.uz)
+        || !C.svl.level.flags.deathdrops) ? 1 : 0)
+        || ((((C.svl.level.flags.graveyard
+        && C.is_undead((mdat))) ? 1 : 0)
+        && C.rn2(3, 3574, "xkilled")) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
         break cleanup;
-
 
     if (C.samePtr(mdat, C.mons[C.PM_MAIL_DAEMON])) {
         C.stackobj(C.mksobj_at(C.SCR_MAIL, x, y, 0, 0));
@@ -3371,11 +3278,18 @@ export function xkilled(mtmp,xkill_flags)
         if (/* no items from cloned monsters */
 ((/* no extra item from kops--too easy to abuse */
 ((/* no extra item from swallower or steed */
-((((!C.rn2(6, 3587, "xkilled") && !(C.int((C.svm.mvitals[mndx].mvflags) & (C.G_NOCORPSE)))) ? 1 : 0) && (((x != C.u.ux) || (y != C.u.uy)) ? 1 : 0)) ? 1 : 0) && (mdat.mlet != C.S_KOP)) ? 1 : 0) && !mtmp.mcloned) ? 1 : 0)) {
+((((!C.rn2(6, 3587, "xkilled")
+    && !(C.int((C.svm.mvitals[mndx].mvflags) & (C.G_NOCORPSE)))) ? 1 : 0)
+    && (((x != C.u.ux)
+    || (y != C.u.uy)) ? 1 : 0)) ? 1 : 0)
+    && (mdat.mlet != C.S_KOP)) ? 1 : 0)
+    && !mtmp.mcloned) ? 1 : 0)) {
             (otmp = C.mkobj(C.RANDOM_CLASS, 1));
             /* don't create large objects from small monsters */
             (otyp = C.int(otmp.otyp));
-            if ((((((otmp.oclass == C.FOOD_CLASS) && !(C.ulong((C.ulong(mdat.mflags2) & C.ulong(C.M2_COLLECT))))) ? 1 : 0) && !otmp.oartifact) ? 1 : 0)) {
+            if ((((((otmp.oclass == C.FOOD_CLASS)
+                && !(C.ulong((C.ulong(mdat.mflags2) & C.ulong(C.M2_COLLECT))))) ? 1 : 0)
+                && !otmp.oartifact) ? 1 : 0)) {
                 /* don't drop newly created permafood from kills, unless
                    the monster collects food; it creates too much nutrition
                    in the late game and encourages grinding in the early
@@ -3395,10 +3309,19 @@ export function xkilled(mtmp,xkill_flags)
         }
         /* corpse--none if hero was inside the monster */
         if (((!wasinside && corpse_chance(mtmp, 0, 0)) ? 1 : 0)) {
-            (C.gz.zombify = C.char(((((((((!C.gt.thrownobj && !C.gs.stoned) ? 1 : 0) && !C.uwep) ? 1 : 0) && zombie_maker(C.gy.youmonst)) ? 1 : 0) && (zombie_form(mtmp.data) != C.NON_PM)) ? 1 : 0)));
+            (C.gz.zombify = C.char(((((((((!C.gt.thrownobj
+                && !C.gs.stoned) ? 1 : 0)
+                && !C.uwep) ? 1 : 0)
+                && zombie_maker(C.gy.youmonst)) ? 1 : 0)
+                && (zombie_form(mtmp.data) != C.NON_PM)) ? 1 : 0)));
             (cadaver = C.callLocal(make_corpse, mtmp, (burycorpse ? C.CORPSTAT_BURIED : C.CORPSTAT_NONE)));
             (C.gz.zombify = C.char(0)); /* reset */
-            if (((((((((((burycorpse && cadaver) ? 1 : 0) && C.cansee(x, y)) ? 1 : 0) && !mtmp.minvis) ? 1 : 0) && (cadaver.where == C.OBJ_BURIED)) ? 1 : 0) && !nomsg) ? 1 : 0)) {
+            if (((((((((((burycorpse
+                && cadaver) ? 1 : 0)
+                && C.cansee(x, y)) ? 1 : 0)
+                && !mtmp.minvis) ? 1 : 0)
+                && (cadaver.where == C.OBJ_BURIED)) ? 1 : 0)
+                && !nomsg) ? 1 : 0)) {
                 C.pline("%s corpse ends up buried.", C.s_suffix(C.Monnam(mtmp)));
             }
         }
@@ -3406,7 +3329,7 @@ export function xkilled(mtmp,xkill_flags)
 
     if (wasinside) {
         /* spoteffects() can end up clearing level of monsters; grab a copy */
-        C.copyStruct(museum,mtmp,C.monSize);
+        C.copyStruct(museum, mtmp, C.monSize);
         (museum.nmon = 0);
         (museum.minvent = 0);
         (museum.mextra = 0);
@@ -3415,7 +3338,6 @@ export function xkilled(mtmp,xkill_flags)
     }
     /* monster is gone, corpse or other object might now be visible */
     C.newsym(x, y);
-
     }
     /*
      * Punish bad behavior.
@@ -3425,7 +3347,13 @@ export function xkilled(mtmp,xkill_flags)
            it is rare and most likely to occur as the result of resurrecting
            a corpse or animating a statue and usually will be hostile */
 ((/* exclude role monsters */
-((((C.is_human(mdat) && ((!C.always_hostile(mdat) && (mtmp.malign <= 0)) ? 1 : 0)) ? 1 : 0) && (((mndx < C.PM_ARCHEOLOGIST) || (mndx > C.PM_WIZARD)) ? 1 : 0)) ? 1 : 0) && (mndx != C.PM_HUMAN)) ? 1 : 0) && (C.u.ualign.type != C.A_CHAOTIC)) ? 1 : 0)) {
+((((C.is_human(mdat)
+    && ((!C.always_hostile(mdat)
+    && (mtmp.malign <= 0)) ? 1 : 0)) ? 1 : 0)
+    && (((mndx < C.PM_ARCHEOLOGIST)
+    || (mndx > C.PM_WIZARD)) ? 1 : 0)) ? 1 : 0)
+    && (mndx != C.PM_HUMAN)) ? 1 : 0)
+    && (C.u.ualign.type != C.A_CHAOTIC)) ? 1 : 0)) {
         (C.HTelepat = C.long(C.long(C.long(C.HTelepat) & C.long(~C.INTRINSIC))));
         C.change_luck(-2);
         C.You("murderer!");
@@ -3475,10 +3403,8 @@ export function xkilled(mtmp,xkill_flags)
         C.adjalign(-15); /* bad!! */
         /* your god is mighty displeased... */
         if (!C.Hallucination) {
-            
             C.You_hear("the rumble of distant thunder...");
         } else {
-            
             C.You_hear("the studio audience applaud!");
         }
         if (!C.unique_corpstat(mdat)) {
@@ -3495,26 +3421,12 @@ export function xkilled(mtmp,xkill_flags)
     /* malign was already adjusted for u.ualign.type and randomization */
     C.adjalign(mtmp.malign);
 
-
-
-
-
-
-
-
-
-
-
-
-
     return;
 }
-
 
 /* changes the monster into a stone monster of the same type
    this should only be called when poly_when_stoned() is true */
 export function mon_to_stone(mtmp)
-
 {
     if ((mtmp.data.mlet == C.S_GOLEM)) {
         /* it's a golem, and not a stone golem */
@@ -3532,7 +3444,6 @@ export function mon_to_stone(mtmp)
 }
 
 export function vamp_stone(mtmp)
-
 {
     if (C.is_vampshifter(mtmp)) {
         let mndx = C.int(mtmp.cham);
@@ -3540,7 +3451,7 @@ export function vamp_stone(mtmp)
 
         /* this only happens if shapeshifted */
         if ((((((mndx >= C.LOW_PM) && (mndx != C.monsndx(mtmp.data))) ? 1 : 0) && !(C.int((C.svm.mvitals[mndx].mvflags) & (C.G_GENOD)))) ? 1 : 0)) {
-            const buf=C.stackAlloc(C.BUFSZ);
+            const buf = C.stackAlloc(C.BUFSZ);
 
             /* construct a format string before transformation */
             C.Sprintf(buf, "The lapidifying %s %s %s",
@@ -3556,7 +3467,7 @@ export function vamp_stone(mtmp)
             if (C.engulfing_u(mtmp))
                 C.expels(mtmp, mtmp.data, 0);
             if (((C.amorphous(mtmp.data) && C.closed_door(mtmp.mx, mtmp.my)) ? 1 : 0)) {
-                const new_xy=C.coordLocal();
+                const new_xy = C.coordLocal();
 
                 if (C.enexto(new_xy, mtmp.mx, mtmp.my, C.mons[mndx])) {
                     C.rloc_to(mtmp, new_xy.x, new_xy.y);
@@ -3595,7 +3506,6 @@ export function vamp_stone(mtmp)
 
 /* drop monster into "limbo" - that is, migrate to the current level */
 export function m_into_limbo(mtmp)
-
 {
     let target_lev = C.coordxy(C.ledger_no(C.u.uz)), xyloc = C.coordxy(C.MIGR_APPROX_XY);
 
@@ -3603,7 +3513,7 @@ export function m_into_limbo(mtmp)
     migrate_mon(mtmp, target_lev, xyloc);
 }
 
-export function migrate_mon(mtmp,target_lev,/* destination level */ xyloc)
+export function migrate_mon(mtmp, target_lev, /* destination level */ xyloc)
       /* MIGR_xxx flag for location within destination */
 {
     /*
@@ -3622,19 +3532,23 @@ export function migrate_mon(mtmp,target_lev,/* destination level */ xyloc)
 }
 
 export function ok_to_obliterate(mtmp)
-
 {
     /*
      * Add checks for monsters that should not be obliterated
      * here (return FALSE).
      */
-    if (((((((((((((C.samePtr(mtmp.data, C.mons[C.PM_WIZARD_OF_YENDOR]) || C.is_rider(mtmp.data)) ? 1 : 0) || C.has_emin(mtmp)) ? 1 : 0) || C.has_epri(mtmp)) ? 1 : 0) || C.has_eshk(mtmp)) ? 1 : 0) || C.samePtr(mtmp, C.u.ustuck)) ? 1 : 0) || C.samePtr(mtmp, C.u.usteed)) ? 1 : 0))
+    if (((((((((((((C.samePtr(mtmp.data, C.mons[C.PM_WIZARD_OF_YENDOR])
+        || C.is_rider(mtmp.data)) ? 1 : 0)
+        || C.has_emin(mtmp)) ? 1 : 0)
+        || C.has_epri(mtmp)) ? 1 : 0)
+        || C.has_eshk(mtmp)) ? 1 : 0)
+        || C.samePtr(mtmp, C.u.ustuck)) ? 1 : 0)
+        || C.samePtr(mtmp, C.u.usteed)) ? 1 : 0))
         return C.char(0);
     return C.char(1);
 }
 
 export function elemental_clog(mon)
-
 {
     const msgmv = C.staticCell("elemental_clog.msgmv", "BigInt64");
     let m_lev = C.int(0);
@@ -3696,7 +3610,7 @@ export function elemental_clog(mon)
 
         /* last resort - migrate mon to the next plane */
         } else if (!C.Is_astralevel(C.u.uz)) {
-            const dest=C.levelLocal();
+            const dest = C.levelLocal();
             let target_lev;
 
             (dest = C.u.uz);
@@ -3710,11 +3624,10 @@ export function elemental_clog(mon)
 
 /* make monster mtmp next to you (if possible);
    might place monst on far side of a wall or boulder */
-export function mnexto(mtmp,rlocflags)
-
+export function mnexto(mtmp, rlocflags)
 {
     (rlocflags = C.uint(C.uint(rlocflags)));
-    const mm=C.coordLocal();
+    const mm = C.coordLocal();
 
     if (C.samePtr(mtmp, C.u.usteed)) {
         /* Keep your steed in sync with you instead */
@@ -3732,7 +3645,7 @@ export function mnexto(mtmp,rlocflags)
        used to make sure player doesn't choose hero's location and then
        answer 'y' to the 'override invalid spot' prompt */
     if (C.iflags.mon_telecontrol) {
-        const savemm=C.coordLocal(mm);
+        const savemm = C.coordLocal(mm);
 
         if (!C.control_mon_tele(mtmp, mm, rlocflags, 0))
             (mm = savemm);
@@ -3743,24 +3656,22 @@ export function mnexto(mtmp,rlocflags)
 }
 
 export function deal_with_overcrowding(mtmp)
-
 {
     if (C.In_endgame(C.u.uz)) {
-        if (C.debugcore("mon.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("overcrowding: elemental_clog on %s", C.m_monnam(mtmp)); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("mon.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("overcrowding: elemental_clog on %s", C.m_monnam(mtmp)); (C.iflags.last_msg = C.int(save_plnmsg)); }
         C.callLocal(elemental_clog, mtmp);
     } else {
-        if (C.debugcore("mon.c",1)) { let save_plnmsg=C.int(C.iflags.last_msg); C.pline("overcrowding: sending %s into limbo", C.m_monnam(mtmp)); (C.iflags.last_msg = C.int(save_plnmsg)); }
+        if (C.debugcore("mon.c", 1)) { let save_plnmsg = C.int(C.iflags.last_msg); C.pline("overcrowding: sending %s into limbo", C.m_monnam(mtmp)); (C.iflags.last_msg = C.int(save_plnmsg)); }
         m_into_limbo(mtmp);
     }
 }
 
 /* like mnexto() but requires destination to be directly accessible */
 export function maybe_mnexto(mtmp)
-
 {
-    const mm=C.coordLocal();
+    const mm = C.coordLocal();
     let ptr = mtmp.data;
-    let diagok = C.char(!C.NODIAG(C.long((C.rawPointer(ptr)-C.rawPointer(C.mons))/BigInt(C.pmSize))));
+    let diagok = C.char(!C.NODIAG(C.long((C.rawPointer(ptr) - C.rawPointer(C.mons)) / BigInt(C.pmSize))));
     let tryct = C.int(20);
 
     do {
@@ -3786,13 +3697,15 @@ export function maybe_mnexto(mtmp)
  * Might be called recursively if 'move_other' is True; if so, that argument
  * will be False on the nested call so there won't be any further recursion.
  */
-export function mnearto(mtmp,x,y,move_other,/* make sure mtmp gets to x, y! so move m_at(x, y) */ rlocflags)
-
+export function mnearto(mtmp, x, y, move_other, /* make sure mtmp gets to x, y! so move m_at(x, y) */ rlocflags)
 {
-    (x = C.coordxy(C.coordxy(x))); (y = C.coordxy(C.coordxy(y))); (move_other = C.char(C.boolean(move_other))); (rlocflags = C.uint(C.uint(rlocflags)));
+    (x = C.coordxy(C.coordxy(x)));
+    (y = C.coordxy(C.coordxy(y)));
+    (move_other = C.char(C.boolean(move_other)));
+    (rlocflags = C.uint(C.uint(rlocflags)));
     let othermon = 0;
     let newx, newy;
-    const mm=C.coordLocal();
+    const mm = C.coordLocal();
     let res = C.int(1);
 
     if ((((((mtmp.mx == x) && (mtmp.my == y)) ? 1 : 0) && C.samePtr(C.m_at(x, y), mtmp)) ? 1 : 0))
@@ -3841,7 +3754,6 @@ export function mnearto(mtmp,x,y,move_other,/* make sure mtmp gets to x, y! so m
 
 /* shrieker special action: shriek, maybe summon monster, aggravate */
 export function m_respond_shrieker(mtmp)
-
 {
     if (!C.Deaf) {
         C.pline("%s shrieks.", C.Monnam(mtmp));
@@ -3859,7 +3771,6 @@ export function m_respond_shrieker(mtmp)
 
 /* medusa special action: gaze at hero */
 export function m_respond_medusa(mtmp)
-
 {
     let i;
 
@@ -3872,7 +3783,6 @@ export function m_respond_medusa(mtmp)
 
 /* monster responds to player action; not the same as a passive attack */
 export function m_respond(mtmp)
-
 {
     if ((((mtmp.data.msound == C.MS_SHRIEK) && !C.um_dist(mtmp.mx, mtmp.my, 1)) ? 1 : 0))
         m_respond_shrieker(mtmp);
@@ -3885,7 +3795,6 @@ export function m_respond(mtmp)
 
 /* how quest guardians respond when you attack the quest leader */
 export function qst_guardians_respond()
-
 {
     let mon;
     let q_guardian = C.mons[C.quest_info(C.MS_GUARDIAN)];
@@ -3913,7 +3822,6 @@ export function qst_guardians_respond()
 
 /* how other peacefuls react when you attack monster */
 export function peacefuls_respond(mtmp)
-
 {
     let mon;
     let mndx = C.int(C.monsndx(mtmp.data));
@@ -3924,14 +3832,18 @@ export function peacefuls_respond(mtmp)
         if (C.samePtr(mon, mtmp)) /* the mpeaceful test catches this since mtmp */
             continue;    /* is no longer peaceful, but be explicit...  */
 
-        if (((((((((((!C.mindless(mon.data) && mon.mpeaceful) ? 1 : 0) && C.couldsee(mon.mx, mon.my)) ? 1 : 0) && !mon.msleeping) ? 1 : 0) && mon.mcansee) ? 1 : 0) && C.m_canseeu(mon)) ? 1 : 0)) {
-            const buf=C.stackAlloc(C.BUFSZ);
+        if (((((((((((!C.mindless(mon.data)
+            && mon.mpeaceful) ? 1 : 0)
+            && C.couldsee(mon.mx, mon.my)) ? 1 : 0)
+            && !mon.msleeping) ? 1 : 0)
+            && mon.mcansee) ? 1 : 0)
+            && C.m_canseeu(mon)) ? 1 : 0)) {
+            const buf = C.stackAlloc(C.BUFSZ);
             let exclaimed = C.char(0), needpunct = C.char(0), alreadyfleeing;
 
             C.storeChar(C.ptrOffset(buf, 0), 0);
             if (((((C.humanoid(mon.data) || mon.isshk) ? 1 : 0) || mon.ispriest) ? 1 : 0)) {
                 if (C.is_watch(mon.data)) {
-                    
                     C.verbalize("Halt!  You're under arrest!");
                     C.callLocal(angry_guards, !!C.Deaf);
                 } else {
@@ -3953,7 +3865,10 @@ export function peacefuls_respond(mtmp)
                        surprise, but they won't become angry here;
                        quest leader will only get angry if hero attacks
                        own quest guardians */
-                    if (((((mon.isshk || mon.ispriest) ? 1 : 0) || ((C.samePtr(mon.data, C.mons[C.quest_info(C.MS_LEADER)]) && !C.samePtr(mtmp.data, C.mons[C.gu.urole.guardnum])) ? 1 : 0)) ? 1 : 0)) {
+                    if (((((mon.isshk
+                        || mon.ispriest) ? 1 : 0)
+                        || ((C.samePtr(mon.data, C.mons[C.quest_info(C.MS_LEADER)])
+                        && !C.samePtr(mtmp.data, C.mons[C.gu.urole.guardnum])) ? 1 : 0)) ? 1 : 0)) {
                         if (exclaimed)
                             C.pline_mon(mon, "%s%s", buf, " then shrugs.");
                         continue;
@@ -3984,7 +3899,9 @@ export function peacefuls_respond(mtmp)
                             C.pline_mon(mon, "%s gets angry!", C.Monnam(mon));
                     }
                 }
-            } else if ((((((mon.data.mlet == mtmp.data.mlet) && C.big_little_match(mndx, C.monsndx(mon.data))) ? 1 : 0) && !C.rn2(3, 4241, "peacefuls_respond")) ? 1 : 0)) {
+            } else if ((((((mon.data.mlet == mtmp.data.mlet)
+                && C.big_little_match(mndx, C.monsndx(mon.data))) ? 1 : 0)
+                && !C.rn2(3, 4241, "peacefuls_respond")) ? 1 : 0)) {
                 if (!C.rn2(4, 4242, "peacefuls_respond")) {
                     C.growl(mon);
                     (exclaimed = C.char((C.iflags.last_msg == C.PLNMSG_GROWL)));
@@ -4007,8 +3924,7 @@ export function peacefuls_respond(mtmp)
    attack and any ramifications that might have. Useful also in situations
    where mtmp was already hostile; it checks for situations where the player
    shouldn't be attacking and any ramifications /that/ might have. */
-export function setmangry(mtmp,via_attack)
-
+export function setmangry(mtmp, via_attack)
 {
     (via_attack = C.char(C.boolean(via_attack)));
     if (/* only hypocritical if monster is vulnerable to Elbereth (or
@@ -4064,8 +3980,7 @@ export function setmangry(mtmp,via_attack)
 }
 
 /* Indicate via message that a monster has awoken. */
-export function wake_msg(mtmp,interesting)
-
+export function wake_msg(mtmp, interesting)
 {
     (interesting = C.char(C.boolean(interesting)));
     if (((mtmp.msleeping && C.canseemon(mtmp)) ? 1 : 0)) {
@@ -4076,8 +3991,7 @@ export function wake_msg(mtmp,interesting)
 }
 
 /* wake up a monster, possibly making it angry in the process */
-export function wakeup(mtmp,via_attack)
-
+export function wakeup(mtmp, via_attack)
 {
     (via_attack = C.char(C.boolean(via_attack)));
     let was_sleeping = C.char(mtmp.msleeping);
@@ -4111,17 +4025,18 @@ export function wakeup(mtmp,via_attack)
 
 /* Wake up nearby monsters without angering them. */
 export function wake_nearby(petcall)
-
 {
     (petcall = C.char(C.boolean(petcall)));
     wake_nearto_core(C.u.ux, C.u.uy, Math.imul(C.u.ulevel, 20), petcall);
 }
 
 /* Wake up monsters near some particular location. */
-export function wake_nearto_core(x,y,distance,petcall)
-
+export function wake_nearto_core(x, y, distance, petcall)
 {
-    (x = C.coordxy(C.coordxy(x))); (y = C.coordxy(C.coordxy(y))); (distance = C.int(C.int(distance))); (petcall = C.char(C.boolean(petcall)));
+    (x = C.coordxy(C.coordxy(x)));
+    (y = C.coordxy(C.coordxy(y)));
+    (distance = C.int(C.int(distance)));
+    (petcall = C.char(C.boolean(petcall)));
     let mtmp;
 
     for ((mtmp = C.fmon); mtmp; (mtmp = mtmp.nmon)) {
@@ -4147,16 +4062,16 @@ export function wake_nearto_core(x,y,distance,petcall)
     C.disturb_buried_zombies(x, y);
 }
 
-export function wake_nearto(x,y,distance)
-
+export function wake_nearto(x, y, distance)
 {
-    (x = C.coordxy(C.coordxy(x))); (y = C.coordxy(C.coordxy(y))); (distance = C.int(C.int(distance)));
+    (x = C.coordxy(C.coordxy(x)));
+    (y = C.coordxy(C.coordxy(y)));
+    (distance = C.int(C.int(distance)));
     wake_nearto_core(x, y, distance, 0);
 }
 
 /* NOTE: we must check for mimicry before calling this routine */
 export function seemimic(mtmp)
-
 {
     let is_blocker_appear = (C.char(C.is_lightblocker_mappear(mtmp)));
 
@@ -4177,7 +4092,6 @@ export function seemimic(mtmp)
 
 /* [taken out of rescham() in order to be shared by restore_cham()] */
 export function normal_shape(mon)
-
 {
     let mcham = C.int(C.int(mon.cham));
 
@@ -4217,7 +4131,6 @@ export const itermonsiz_initial = 0; /* size in 'monst *' pointers */
 /* manage itermonarr; it used to be allocated and freed every time the
    monster movement loop ran; now, keep it around most of the time */
 export function alloc_itermonarr(count)
-
 {
     (count = C.uint(C.uint(count)));
     /* if count is 0 or bigger than itermonsiz or much smaller than
@@ -4247,7 +4160,6 @@ export function alloc_itermonarr(count)
    Safe for list deletions and insertions, and guarantees calling bfunc()
    once per monster in fmon unless it returns TRUE (or game ends). */
 export function iter_mons_safe(bfunc)
-
 {
     let mtmp;
     let i, nmons;
@@ -4264,17 +4176,15 @@ export function iter_mons_safe(bfunc)
 
         for ((i = C.uint(0)); (i < nmons); i++) {
             (mtmp = C.itermonarr[i]);
-            if (C.invokeMonBool(bfunc,mtmp))
+            if (C.invokeMonBool(bfunc, mtmp))
                 break;
         }
     }
     return;
 }
 
-
 /* iterate all living monsters on current level, calling vfunc for each. */
 export function iter_mons(vfunc)
-
 {
     let mtmp, mtmp2;
 
@@ -4282,16 +4192,14 @@ export function iter_mons(vfunc)
         (mtmp2 = mtmp.nmon);
         if (((C.DEADMONSTER(mtmp) || C.mon_offmap(mtmp)) ? 1 : 0))
             continue;
-        C.invokeMonVoid(vfunc,mtmp);
+        C.invokeMonVoid(vfunc, mtmp);
     }
     return;
 }
 
-
 /* iterate all living monsters on current level, calling bfunc for each.
    if bfunc returns TRUE, stop and return that monster. */
 export function get_iter_mons(bfunc)
-
 {
     let mtmp, mtmp2;
 
@@ -4299,7 +4207,7 @@ export function get_iter_mons(bfunc)
         (mtmp2 = mtmp.nmon);
         if (((C.DEADMONSTER(mtmp) || C.mon_offmap(mtmp)) ? 1 : 0))
             continue;
-        if (C.invokeMonBool(bfunc,mtmp))
+        if (C.invokeMonBool(bfunc, mtmp))
             break;
     }
     return mtmp;
@@ -4308,22 +4216,21 @@ export function get_iter_mons(bfunc)
 /* iterate all living monsters on current level, calling bfunc for each,
    passing x,y to the function.
    if bfunc returns TRUE, stop and return that monster. */
-export function get_iter_mons_xy(bfunc,x,y)
-
+export function get_iter_mons_xy(bfunc, x, y)
 {
-    (x = C.coordxy(C.coordxy(x))); (y = C.coordxy(C.coordxy(y)));
+    (x = C.coordxy(C.coordxy(x)));
+    (y = C.coordxy(C.coordxy(y)));
     let mtmp, mtmp2;
 
     for ((mtmp = C.fmon); mtmp; (mtmp = mtmp2)) {
         (mtmp2 = mtmp.nmon);
         if (((C.DEADMONSTER(mtmp) || C.mon_offmap(mtmp)) ? 1 : 0))
             continue;
-        if (C.invokeMonBoolXY(bfunc,mtmp,x,y))
+        if (C.invokeMonBoolXY(bfunc, mtmp, x, y))
             break;
     }
     return mtmp;
 }
-
 
 /* Heal the given monster by amt hitpoints, unless it is somehow prevented
    from healing. "overheal" is the maximum amount by which the max HP will
@@ -4341,10 +4248,10 @@ export function get_iter_mons_xy(bfunc,x,y)
 
    amt and overheal must not be negative (0 is allowed, and a very common
    amount for overheal). Returns the number of hitpoints healed. */
-export function healmon(mtmp,amt,overheal)
-
+export function healmon(mtmp, amt, overheal)
 {
-    (amt = C.int(C.int(amt))); (overheal = C.int(C.int(overheal)));
+    (amt = C.int(C.int(amt)));
+    (overheal = C.int(C.int(overheal)));
     if (C.samePtr(mtmp, C.gy.youmonst)) {
         let oldhp = C.int((C.Upolyd ? C.u.mh : C.u.uhp));
         C.healup(amt, 0, 0, 0);
@@ -4363,18 +4270,15 @@ export function healmon(mtmp,amt,overheal)
     }
 }
 
-
 /* force all chameleons and mimics to become themselves and werecreatures
    to revert to human form; called when Protection_from_shape_changers gets
    activated via wearing or eating ring or via #wizintrinsic */
 export function rescham()
-
 {
     iter_mons(normal_shape);
 }
 
 export function m_restartcham(mtmp)
-
 {
     if (!mtmp.mcan)
         (mtmp.cham = C.coordxy(pm_to_cham(C.monsndx(mtmp.data))));
@@ -4387,7 +4291,6 @@ export function m_restartcham(mtmp)
 /* let chameleons change and mimics hide again; called when taking off
    ring of protection from shape changers */
 export function restartcham()
-
 {
     iter_mons(m_restartcham);
 }
@@ -4396,7 +4299,6 @@ export function restartcham()
    against shape-changing might be different now than it was at the
    time the level was saved. */
 export function restore_cham(mon)
-
 {
     if (((C.Protection_from_shape_changers || mon.mcan) ? 1 : 0)) {
         /* force chameleon or mimic to revert to its natural shape */
@@ -4409,14 +4311,24 @@ export function restore_cham(mon)
 
 /* unwatched hiders may hide again; if so, returns True */
 export function restrap(mtmp)
-
 {
     let t;
 
     if (/* won't hide when adjacent to hero */
 ((/* can't hide on ceiling if there isn't one */
 ((/* can't hide while trapped except in pits */
-((((((((((mtmp.mcan || C.M_AP_TYPE(mtmp)) ? 1 : 0) || C.cansee(mtmp.mx, mtmp.my)) ? 1 : 0) || C.rn2(3, 4667, "restrap")) ? 1 : 0) || C.samePtr(mtmp, C.u.ustuck)) ? 1 : 0) || ((((mtmp.mtrapped && !C.samePtr((t = C.t_at(mtmp.mx, mtmp.my)), 0)) ? 1 : 0) && !C.is_pit(t.ttyp)) ? 1 : 0)) ? 1 : 0) || ((C.ceiling_hider(mtmp.data) && !C.has_ceiling(C.u.uz)) ? 1 : 0)) ? 1 : 0) || ((C.sensemon(mtmp) && C.m_next2u(mtmp)) ? 1 : 0)) ? 1 : 0))
+((((((((((mtmp.mcan
+    || C.M_AP_TYPE(mtmp)) ? 1 : 0)
+    || C.cansee(mtmp.mx, mtmp.my)) ? 1 : 0)
+    || C.rn2(3, 4667, "restrap")) ? 1 : 0)
+    || C.samePtr(mtmp, C.u.ustuck)) ? 1 : 0)
+    || ((((mtmp.mtrapped
+    && !C.samePtr((t = C.t_at(mtmp.mx, mtmp.my)), 0)) ? 1 : 0)
+    && !C.is_pit(t.ttyp)) ? 1 : 0)) ? 1 : 0)
+    || ((C.ceiling_hider(mtmp.data)
+    && !C.has_ceiling(C.u.uz)) ? 1 : 0)) ? 1 : 0)
+    || ((C.sensemon(mtmp)
+    && C.m_next2u(mtmp)) ? 1 : 0)) ? 1 : 0))
         return C.char(0);
 
     if ((mtmp.data.mlet == C.S_MIMIC)) {
@@ -4439,10 +4351,10 @@ export function restrap(mtmp)
 
 /* reveal a hiding monster at x,y, either under nonexistent object,
    or an eel out of water. */
-export function maybe_unhide_at(x,y)
-
+export function maybe_unhide_at(x, y)
 {
-    (x = C.coordxy(C.coordxy(x))); (y = C.coordxy(C.coordxy(y)));
+    (x = C.coordxy(C.coordxy(x)));
+    (y = C.coordxy(C.coordxy(y)));
     let mtmp;
     let undetected = C.char(0), trapped = C.char(0);
 
@@ -4457,7 +4369,13 @@ export function maybe_unhide_at(x,y)
         return;
     }
 
-    if (((undetected && ((((C.hides_under(mtmp.data) && ((((!C.OBJ_AT(x, y) || trapped) ? 1 : 0) || !C.can_hide_under_obj(C.svl.level.objects[x][y])) ? 1 : 0)) ? 1 : 0) || (((mtmp.data.mlet == C.S_EEL) && !C.is_pool(x, y)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
+    if (((undetected
+        && ((((C.hides_under(mtmp.data)
+        && ((((!C.OBJ_AT(x, y)
+        || trapped) ? 1 : 0)
+        || !C.can_hide_under_obj(C.svl.level.objects[x][y])) ? 1 : 0)) ? 1 : 0)
+        || (((mtmp.data.mlet == C.S_EEL)
+        && !C.is_pool(x, y)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
         hideunder(mtmp);
 }
 
@@ -4465,7 +4383,6 @@ export function maybe_unhide_at(x,y)
    if used by monster creation, should only happen during level
    creation, otherwise there will be message sequencing issues */
 export function hideunder(mtmp)
-
 {
     let t;
     let otmp;
@@ -4494,7 +4411,12 @@ export function hideunder(mtmp)
                   state that shares a pile with one or more cursed items */
 ((/* most things can be hidden under, but not all */
 ((/* hider-underers only hide under objects */
-((C.hides_under(mtmp.data) && !C.samePtr((otmp = C.svl.level.objects[x][y]), 0)) ? 1 : 0) && C.can_hide_under_obj(otmp)) ? 1 : 0) && ((!mtmp.mtame || !C.cursed_object_at(x, y)) ? 1 : 0)) ? 1 : 0) && !C.is_pool_or_lava(x, y)) ? 1 : 0)) {
+((C.hides_under(mtmp.data)
+    && !C.samePtr((otmp = C.svl.level.objects[x][y]), 0)) ? 1 : 0)
+    && C.can_hide_under_obj(otmp)) ? 1 : 0)
+    && ((!mtmp.mtame
+    || !C.cursed_object_at(x, y)) ? 1 : 0)) ? 1 : 0)
+    && !C.is_pool_or_lava(x, y)) ? 1 : 0)) {
         if (seeit) /*&& (!is_pool(x, y) || (Underwater && distu(x, y) <= 2))*/
             (seenobj = C.ansimpleoname(otmp));
         /* most monsters won't hide under a cockatrice corpse but they
@@ -4509,9 +4431,6 @@ export function hideunder(mtmp)
     if (is_u) {
         (oldundetctd = C.char((C.u.uundetected != 0)));
         (C.u.uundetected = (undetected ? 1 : 0));
-
-
-
 
     } else {
         if (seeit)
@@ -4537,7 +4456,6 @@ export function hideunder(mtmp)
 
 /* called when returning to a previously visited level */
 export function hide_monst(mon)
-
 {
     let hider_under = C.char(((C.hides_under(mon.data) || (mon.data.mlet == C.S_EEL)) ? 1 : 0));
 
@@ -4559,11 +4477,10 @@ export function hide_monst(mon)
 }
 
 export function mon_animal_list(construct)
-
 {
     (construct = C.char(C.boolean(construct)));
     if (construct) {
-        const animal_temp=C.shortArrayLocal(C.SPECIAL_PM);
+        const animal_temp = C.shortArrayLocal(C.SPECIAL_PM);
         let i, n;
 
         /* if (animal_list) impossible("animal_list already exists"); */
@@ -4586,7 +4503,6 @@ export function mon_animal_list(construct)
 }
 
 export function pick_animal()
-
 {
     let res;
 
@@ -4603,7 +4519,6 @@ export function pick_animal()
 }
 
 export function decide_to_shapeshift(mon)
-
 {
     let ptr = 0;
     let mndx;
@@ -4625,10 +4540,16 @@ export function decide_to_shapeshift(mon)
          * If we're not already shifted and in good health, maybe shift.
          */
         if ((mon.data.mlet != C.S_VAMPIRE)) {
-            if ((((((mon.mhp <= C.int((C.int((mon.mhpmax) + (5))) / (6))) && C.rn2(4, 4894, "decide_to_shapeshift")) ? 1 : 0) && C.ismnum(mon.cham)) ? 1 : 0)) {
+            if ((((((mon.mhp <= C.int((C.int((mon.mhpmax) + (5))) / (6)))
+                && C.rn2(4, 4894, "decide_to_shapeshift")) ? 1 : 0)
+                && C.ismnum(mon.cham)) ? 1 : 0)) {
                 (ptr = C.mons[mon.cham]);
                 (dochng = C.char(1));
-            } else if (((((((C.samePtr(mon.data, C.mons[C.PM_FOG_CLOUD]) && (mon.mhp == mon.mhpmax)) ? 1 : 0) && !C.rn2(4, 4899, "decide_to_shapeshift")) ? 1 : 0) && ((!C.canseemon(mon) || (C.mdistu(mon) > Math.imul(C.BOLT_LIM, C.BOLT_LIM))) ? 1 : 0)) ? 1 : 0)) {
+            } else if (((((((C.samePtr(mon.data, C.mons[C.PM_FOG_CLOUD])
+                && (mon.mhp == mon.mhpmax)) ? 1 : 0)
+                && !C.rn2(4, 4899, "decide_to_shapeshift")) ? 1 : 0)
+                && ((!C.canseemon(mon)
+                || (C.mdistu(mon) > Math.imul(C.BOLT_LIM, C.BOLT_LIM))) ? 1 : 0)) ? 1 : 0)) {
                 /* if a fog cloud, maybe change to wolf or vampire bat;
                    those are more likely to take damage--at least when
                    tame--and then switch back to vampire; they'll also
@@ -4640,14 +4561,17 @@ export function decide_to_shapeshift(mon)
                 }
             }
             if (((((dochng && C.amorphous(mon.data)) ? 1 : 0) && C.closed_door(mon.mx, mon.my)) ? 1 : 0)) {
-                const new_xy=C.coordLocal();
+                const new_xy = C.coordLocal();
 
                 if (C.enexto(new_xy, mon.mx, mon.my, ptr)) {
                     C.rloc_to(mon, new_xy.x, new_xy.y);
                 }
             }
         } else {
-            if ((((((mon.mhp >= C.int((Math.imul(9, mon.mhpmax)) / (10))) && !C.rn2(6, 4921, "decide_to_shapeshift")) ? 1 : 0) && ((!C.canseemon(mon) || (C.mdistu(mon) > Math.imul(C.BOLT_LIM, C.BOLT_LIM))) ? 1 : 0)) ? 1 : 0))
+            if ((((((mon.mhp >= C.int((Math.imul(9, mon.mhpmax)) / (10)))
+                && !C.rn2(6, 4921, "decide_to_shapeshift")) ? 1 : 0)
+                && ((!C.canseemon(mon)
+                || (C.mdistu(mon) > Math.imul(C.BOLT_LIM, C.BOLT_LIM))) ? 1 : 0)) ? 1 : 0))
                 (dochng = C.char(1)); /* 'ptr' stays Null */
         }
     }
@@ -4665,7 +4589,6 @@ export function decide_to_shapeshift(mon)
 }
 
 export function pickvampshape(mon)
-
 {
     let mndx = C.int(mon.cham), wolfchance = C.int(10);
     /* avoid picking monsters with lowercase display symbols ('d' for wolf
@@ -4678,7 +4601,7 @@ export function pickvampshape(mon)
         if (C.mon_has_special(mon))
             break; /* leave mndx as is */
         (wolfchance = C.int(3));
-        
+
     /*FALLTHRU*/
     case C.PM_VAMPIRE_LEADER: /* vampire lord or Vlad can become wolf */
         if (/* don't pick a walking form if that would lead to immediate
@@ -4687,7 +4610,7 @@ export function pickvampshape(mon)
             (mndx = C.int(C.PM_WOLF));
             break;
         }
-        
+
     /*FALLTHRU*/
     case C.PM_VAMPIRE: /* any vampire can become fog or bat */
         (mndx = C.int((((!C.rn2(4, 4967, "pickvampshape") && !uppercase_only) ? 1 : 0) ? C.PM_FOG_CLOUD : C.PM_VAMPIRE_BAT)));
@@ -4697,7 +4620,9 @@ export function pickvampshape(mon)
     /* return to base form if chosen poly target has been genocided
        or randomly if already in an alternate form (to prevent always
        switching back and forth between bat and fog) */
-    if ((((C.int((C.svm.mvitals[mndx].mvflags) & (C.G_GENOD)) != 0) || ((!C.samePtr(mon.data, C.mons[mon.cham]) && !C.rn2(4, 4975, "pickvampshape")) ? 1 : 0)) ? 1 : 0))
+    if ((((C.int((C.svm.mvitals[mndx].mvflags) & (C.G_GENOD)) != 0)
+        || ((!C.samePtr(mon.data, C.mons[mon.cham])
+        && !C.rn2(4, 4975, "pickvampshape")) ? 1 : 0)) ? 1 : 0))
         return C.int(mon.cham);
 
     return C.int(mndx);
@@ -4705,7 +4630,6 @@ export function pickvampshape(mon)
 
 /* nonshapechangers who warrant special polymorph handling */
 export function isspecmon(mon)
-
 {
     return C.char(((((((mon.isshk || mon.ispriest) ? 1 : 0) || mon.isgd) ? 1 : 0) || (mon.m_id == C.svq.quest_status.leader_m_id)) ? 1 : 0));
 }
@@ -4713,8 +4637,7 @@ export function isspecmon(mon)
 /* restrict certain special monsters (shopkeepers, aligned priests,
    vault guards) to forms that allow them to behave sensibly (catching
    gold, speaking?) so that they don't need too much extra code */
-export function validspecmon(mon,mndx)
-
+export function validspecmon(mon, mndx)
 {
     (mndx = C.int(C.int(mndx)));
     if ((mndx == C.NON_PM))
@@ -4736,12 +4659,15 @@ export function validspecmon(mon,mndx)
 }
 
 /* used for hero polyself handling */
-export function valid_vampshiftform(base,form)
-
+export function valid_vampshiftform(base, form)
 {
-    (base = C.int(C.int(base))); (form = C.int(C.int(form)));
+    (base = C.int(C.int(base)));
+    (form = C.int(C.int(form)));
     if ((((base >= C.LOW_PM) && C.is_vampire(C.mons[base])) ? 1 : 0)) {
-        if ((((((form == C.PM_VAMPIRE_BAT) || (form == C.PM_FOG_CLOUD)) ? 1 : 0) || (((form == C.PM_WOLF) && (base != C.PM_VAMPIRE)) ? 1 : 0)) ? 1 : 0))
+        if ((((((form == C.PM_VAMPIRE_BAT)
+            || (form == C.PM_FOG_CLOUD)) ? 1 : 0)
+            || (((form == C.PM_WOLF)
+            && (base != C.PM_VAMPIRE)) ? 1 : 0)) ? 1 : 0))
             return C.char(1);
     }
     return C.char(0);
@@ -4749,8 +4675,7 @@ export function valid_vampshiftform(base,form)
 
 /* prevent wizard mode user from specifying invalid vampshifter shape
    when using monpolycontrol to assign a new form to a vampshifter */
-export function validvamp(mon,mndx_p,monclass)
-
+export function validvamp(mon, mndx_p, monclass)
 {
     (monclass = C.int(C.int(monclass)));
     /* simplify caller's usage */
@@ -4791,7 +4716,7 @@ export function validvamp(mon,mndx_p,monclass)
             (mndx_p.value = C.int(C.PM_WOLF));
             break;
         }
-        
+
         /*FALLTHRU*/
     default:
         (mndx_p.value = C.int(C.NON_PM));
@@ -4801,9 +4726,8 @@ export function validvamp(mon,mndx_p,monclass)
 }
 
 export function wiz_force_cham_form(mon)
-
 {
-    const pprompt=C.stackAlloc(C.BUFSZ),parttwo=C.stackAlloc(C.QBUFSZ),buf=C.stackAlloc(C.BUFSZ),prevbuf=C.stackAlloc(C.BUFSZ);
+    const pprompt = C.stackAlloc(C.BUFSZ), parttwo = C.stackAlloc(C.QBUFSZ), buf = C.stackAlloc(C.BUFSZ), prevbuf = C.stackAlloc(C.BUFSZ);
     let monclass, len, tryct, mndx = C.intLocal(C.NON_PM);
 
     /* construct prompt in pieces */
@@ -4858,13 +4782,6 @@ export function wiz_force_cham_form(mon)
 
         C.pline("It can't become that.");
 
-
-
-
-
-
-
-
         C.nhUse(prevbuf);
 
     } while ((--tryct > 0));
@@ -4877,7 +4794,6 @@ export function wiz_force_cham_form(mon)
 }
 
 export function select_newcham_form(mon)
-
 {
     let mndx = C.int(C.NON_PM), tryct;
 
@@ -4940,14 +4856,17 @@ export function select_newcham_form(mon)
             (mndx = C.int(C.int(C.int((C.rn2(C.int((C.SPECIAL_PM) - (C.LOW_PM)), 5217, "select_newcham_form")) + (C.LOW_PM)))));
             /* assert(ismnum(mndx); */
         } while (/* try harder to select uppercase monster on rogue level */
-(((((--tryct > 0) && !validspecmon(mon, mndx)) ? 1 : 0) && (((((tryct > 40) && C.Is_rogue_level(C.u.uz)) ? 1 : 0) && !C.isupper(C.monsym(C.mons[mndx]))) ? 1 : 0)) ? 1 : 0));
+(((((--tryct > 0)
+    && !validspecmon(mon, mndx)) ? 1 : 0)
+    && (((((tryct > 40)
+    && C.Is_rogue_level(C.u.uz)) ? 1 : 0)
+    && !C.isupper(C.monsym(C.mons[mndx]))) ? 1 : 0)) ? 1 : 0));
     }
     return C.int(mndx);
 }
 
 /* this used to be inline within newcham() but monpolycontrol needs it too */
-export function accept_newcham_form(mon,mndx)
-
+export function accept_newcham_form(mon, mndx)
 {
     (mndx = C.int(C.int(mndx)));
     let mdat;
@@ -4973,8 +4892,7 @@ export function accept_newcham_form(mon,mndx)
 }
 
 /* shapechanger might take on a shape that forces gender change */
-export function mgender_from_permonst(mtmp,mdat)
-
+export function mgender_from_permonst(mtmp, mdat)
 {
     if (C.is_male(mdat)) {
         (mtmp.female = 0);
@@ -4993,8 +4911,7 @@ export function mgender_from_permonst(mtmp,mdat)
 /* make a chameleon take on another shape, or a polymorph target
    (possibly self-inflicted) become a different monster;
    returns 1 if it actually changes form */
-export function newcham(mtmp,mdat,ncflags)
-
+export function newcham(mtmp, mdat, ncflags)
 {
     (ncflags = C.uint(C.uint(ncflags)));
     let polyspot = (C.char((C.uint((ncflags) & (C.NC_VIA_WAND_OR_SPELL)) != 0))),
@@ -5003,7 +4920,7 @@ export function newcham(mtmp,mdat,ncflags)
             seenorsensed = C.char(C.canspotmon(mtmp));
     let hpn, hpd, mndx, tryct;
     let olddata = mtmp.data;
-    let p, oldname=C.stackAlloc(C.BUFSZ), l_oldname=C.stackAlloc(C.BUFSZ);
+    let p, oldname = C.stackAlloc(C.BUFSZ), l_oldname = C.stackAlloc(C.BUFSZ);
 
     /* Riders are immune to polymorph and green slime
        (but apparent Rider might actually be a doppelganger) */
@@ -5064,8 +4981,11 @@ export function newcham(mtmp,mdat,ncflags)
      * the opposite sex.  Player characters don't use ranks when
      * polymorphed, so dropping rank for mplayers seems reasonable.
      */
-    if (((((((C.In_endgame(C.u.uz) && C.is_mplayer(olddata)) ? 1 : 0) && C.has_mgivenname(mtmp)) ? 1 : 0) && !C.samePtr((p = C.strstr(C.MGIVENNAME(mtmp), " the ")), 0)) ? 1 : 0))
-        C.storeChar(p,0);
+    if (((((((C.In_endgame(C.u.uz)
+        && C.is_mplayer(olddata)) ? 1 : 0)
+        && C.has_mgivenname(mtmp)) ? 1 : 0)
+        && !C.samePtr((p = C.strstr(C.MGIVENNAME(mtmp), " the ")), 0)) ? 1 : 0))
+        C.storeChar(p, 0);
 
     if (mtmp.wormno) { /* throw tail away */
         let mx = C.coordxy(mtmp.mx), my = C.coordxy(mtmp.my);
@@ -5126,8 +5046,11 @@ export function newcham(mtmp,mdat,ncflags)
         if (C.u.uswallow) {
             if (!C.attacktype(mdat, C.AT_ENGL)) {
                 /* Does mdat care? */
-                if (((((!C.noncorporeal(mdat) && !C.is_whirly(mdat)) ? 1 : 0) && !(((C.amorphous(mdat) || (mdat.mlet == C.S_LIGHT)) ? 1 : 0))) ? 1 : 0)) {
-                    const msgtrail=C.stackAlloc(C.BUFSZ);
+                if (((((!C.noncorporeal(mdat)
+                    && !C.is_whirly(mdat)) ? 1 : 0)
+                    && !(((C.amorphous(mdat)
+                    || (mdat.mlet == C.S_LIGHT)) ? 1 : 0))) ? 1 : 0)) {
+                    const msgtrail = C.stackAlloc(C.BUFSZ);
 
                     if (C.is_vampshifter(mtmp)) {
                         C.Sprintf(msgtrail, " which was a shapeshifted %s",
@@ -5250,7 +5173,6 @@ export function newcham(mtmp,mdat,ncflags)
  * NON_PM if the given monster can't be hatched.
  */
 export function can_be_hatched(mnum)
-
 {
     (mnum = C.int(C.int(mnum)));
     /* ranger quest nemesis has the oviparous bit set, making it
@@ -5264,16 +5186,21 @@ export function can_be_hatched(mnum)
      * Queen bees lay killer bee eggs (usually), but killer bees don't
      * grow into queen bees.  Ditto for [winged-]gargoyles.
      */
-    if ((((((mnum == C.PM_KILLER_BEE) || (mnum == C.PM_GARGOYLE)) ? 1 : 0) || ((C.lays_eggs(C.mons[mnum]) && ((!C.rn2(77, 5561, "can_be_hatched") || (((mnum != C.PM_QUEEN_BEE) && (mnum != C.PM_WINGED_GARGOYLE)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
+    if ((((((mnum == C.PM_KILLER_BEE)
+        || (mnum == C.PM_GARGOYLE)) ? 1 : 0)
+        || ((C.lays_eggs(C.mons[mnum])
+        && ((!C.rn2(77, 5561, "can_be_hatched")
+        || (((mnum != C.PM_QUEEN_BEE)
+        && (mnum != C.PM_WINGED_GARGOYLE)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0)) ? 1 : 0))
         return C.int(mnum);
     return C.int(C.NON_PM);
 }
 
 /* type of egg laid by #sit; usually matches parent */
-export function egg_type_from_parent(mnum,/* parent monster; caller must handle lays_eggs() check */ force_ordinary)
-
+export function egg_type_from_parent(mnum, /* parent monster; caller must handle lays_eggs() check */ force_ordinary)
 {
-    (mnum = C.int(C.int(mnum))); (force_ordinary = C.char(C.boolean(force_ordinary)));
+    (mnum = C.int(C.int(mnum)));
+    (force_ordinary = C.char(C.boolean(force_ordinary)));
     if (((force_ordinary || !(!C.rn2(77, 5573, "egg_type_from_parent"))) ? 1 : 0)) {
         if ((mnum == C.PM_QUEEN_BEE))
             (mnum = C.int(C.PM_KILLER_BEE));
@@ -5283,13 +5210,12 @@ export function egg_type_from_parent(mnum,/* parent monster; caller must handle 
     return C.int(mnum);
 }
 
-
 /* decide whether an egg of the indicated monster type is viable;
    also used to determine whether an egg or tin can be created... */
-export function dead_species(m_idx,egg)
-
+export function dead_species(m_idx, egg)
 {
-    (m_idx = C.int(C.int(m_idx))); (egg = C.char(C.boolean(egg)));
+    (m_idx = C.int(C.int(m_idx)));
+    (egg = C.char(C.boolean(egg)));
     let alt_idx;
 
     /* generic eggs are unhatchable and have corpsenm of NON_PM */
@@ -5304,12 +5230,12 @@ export function dead_species(m_idx,egg)
      */
     /* assert(ismnum(m_idx)); */
     (alt_idx = C.int((egg ? C.big_to_little(m_idx) : m_idx)));
-    return C.char(C.boolean(((((C.int((C.svm.mvitals[m_idx].mvflags) & (C.G_GENOD)) != 0) || (C.int((C.svm.mvitals[alt_idx].mvflags) & (C.G_GENOD)) != 0)) ? 1 : 0))));
+    return C.char(C.boolean(((((C.int((C.svm.mvitals[m_idx].mvflags) & (C.G_GENOD)) != 0)
+        || (C.int((C.svm.mvitals[alt_idx].mvflags) & (C.G_GENOD)) != 0)) ? 1 : 0))));
 }
 
 /* kill off any eggs of genocided monsters */
 export function kill_eggs(obj_list)
-
 {
     let otmp;
 
@@ -5325,13 +5251,6 @@ export function kill_eggs(obj_list)
                 C.kill_egg(otmp);
             }
 
-
-
-
-
-
-
-
         } else if (C.Has_contents(otmp)) {
             kill_eggs(otmp.cobj);
         }
@@ -5339,7 +5258,6 @@ export function kill_eggs(obj_list)
 
 /* kill all members of genocided species */
 export function kill_genocided_monsters()
-
 {
     let mtmp, mtmp2;
     let kill_cham;
@@ -5378,10 +5296,10 @@ export function kill_genocided_monsters()
     kill_eggs(C.svl.level.buriedobjlist);
 }
 
-export function golemeffects(mon,damtype,dam)
-
+export function golemeffects(mon, damtype, dam)
 {
-    (damtype = C.int(C.int(damtype))); (dam = C.int(C.int(dam)));
+    (damtype = C.int(C.int(damtype)));
+    (dam = C.int(C.int(dam)));
     let heal = C.int(0), slow = C.int(0);
 
     if (C.samePtr(mon.data, C.mons[C.PM_FLESH_GOLEM])) {
@@ -5411,7 +5329,6 @@ export function golemeffects(mon,damtype,dam)
 
 /* anger the Minetown watch */
 export function angry_guards(silent)
-
 {
     (silent = C.char(C.boolean(silent)));
     let mtmp;
@@ -5437,7 +5354,7 @@ export function angry_guards(silent)
     }
     if (ct) {
         if (!silent) { /* do we want pline msgs? */
-            const buf=C.stackAlloc(C.BUFSZ);
+            const buf = C.stackAlloc(C.BUFSZ);
 
             if (slct) { /* sleeping guard(s) */
                 C.Sprintf(buf, "guard%s", C.plur(slct));
@@ -5454,7 +5371,7 @@ export function angry_guards(silent)
                       buf, C.vtense(buf, "are"));
             } else {
                 C.Strcpy(buf, ((ct == 1) ? "a guard's" : "guards'"));
-                
+
                 C.You_hear("the shrill sound of %s whistle%s.", buf, C.plur(ct));
             }
         }
@@ -5464,20 +5381,17 @@ export function angry_guards(silent)
 }
 
 export function pacify_guard(mtmp)
-
 {
     if (C.is_watch(mtmp.data))
         (mtmp.mpeaceful = 1);
 }
 
 export function pacify_guards()
-
 {
     iter_mons(pacify_guard);
 }
 
-export function mimic_hit_msg(mtmp,otyp)
-
+export function mimic_hit_msg(mtmp, otyp)
 {
     (otyp = C.coordxy(C.coordxy(otyp)));
     let ap = C.coordxy(mtmp.mappearance);
@@ -5498,7 +5412,6 @@ export function mimic_hit_msg(mtmp,otyp)
 }
 
 export function usmellmon(mdat)
-
 {
     let mndx;
     let nonspecific = C.char(0);
@@ -5617,14 +5530,12 @@ export function usmellmon(mdat)
    and potentially re-equip gear at the start of its next move;
    this hides the details of that */
 export function check_gear_next_turn(mon)
-
 {
     (mon.misc_worn_check = C.long(C.long(C.long(mon.misc_worn_check) | C.long(C.I_SPECIAL))));
 }
 
 /* make erinyes more dangerous based on your alignment abuse */
 export function adj_erinys(abuse)
-
 {
     (abuse = C.uint(C.uint(abuse)));
     let pm = C.mons[C.PM_ERINYS];
@@ -5673,8 +5584,7 @@ export function adj_erinys(abuse)
 
 /* mark individual monster type as seen from close-up,
    if we haven't seen it nearby before */
-export function see_monster_closeup(mtmp,photo)
-
+export function see_monster_closeup(mtmp, photo)
 {
     (photo = C.char(C.boolean(photo)));
     let mndx;
@@ -5697,7 +5607,11 @@ export function see_monster_closeup(mtmp,photo)
        being able to see invisible doesn't make invisible monsters show up
        on photos; likewise, telepathy allows hero to see hidden monsters
        but doesn't cause them to appear on photos */
-    if (((((((photo && !mtmp.minvis) ? 1 : 0) && !mtmp.mundetected) ? 1 : 0) && (((C.M_AP_TYPE(mtmp) == C.M_AP_NOTHING) || (C.M_AP_TYPE(mtmp) == C.M_AP_MONSTER)) ? 1 : 0)) ? 1 : 0)) {
+    if (((((((photo
+        && !mtmp.minvis) ? 1 : 0)
+        && !mtmp.mundetected) ? 1 : 0)
+        && (((C.M_AP_TYPE(mtmp) == C.M_AP_NOTHING)
+        || (C.M_AP_TYPE(mtmp) == C.M_AP_MONSTER)) ? 1 : 0)) ? 1 : 0)) {
         if ((C.M_AP_TYPE(mtmp) == C.M_AP_MONSTER)) /* cloned Wizard of Yendor */
             (mndx = C.int(mtmp.mappearance));
 
@@ -5714,7 +5628,10 @@ export function see_monster_closeup(mtmp,photo)
 ((/* suppress extra points for photographing the pet that hero
                    started with (unless it has changed shape due to growing
                    up or being polymorphed) */
-((C.Role_if(C.PM_TOURIST) && (((mtmp.m_id != C.svc.context.startingpet_mid) || (mndx != C.svc.context.startingpet_typ)) ? 1 : 0)) ? 1 : 0) && (mndx == C.monsndx(mtmp.data))) ? 1 : 0)) {
+((C.Role_if(C.PM_TOURIST)
+    && (((mtmp.m_id != C.svc.context.startingpet_mid)
+    || (mndx != C.svc.context.startingpet_typ)) ? 1 : 0)) ? 1 : 0)
+    && (mndx == C.monsndx(mtmp.data))) ? 1 : 0)) {
                 C.more_experienced(C.experience(mtmp, 0), 0);
                 C.newexplevel();
             }
@@ -5724,7 +5641,6 @@ export function see_monster_closeup(mtmp,photo)
 
 /* mark a monster type as seen close-up when we see it next to us */
 export function see_nearby_monsters()
-
 {
     let mtmp;
     let mndx;
@@ -5757,7 +5673,6 @@ export function see_nearby_monsters()
 /* monster resists something.
    make a shield effect at monster's location and give a message */
 export function shieldeff_mon(mtmp)
-
 {
     C.shieldeff(mtmp.mx, mtmp.my);
     /* does not depend on seeing the monster; the shield effect is visible */
@@ -5766,7 +5681,6 @@ export function shieldeff_mon(mtmp)
 }
 
 export function flash_mon(mtmp)
-
 {
     let mx = C.coordxy(mtmp.mx), my = C.coordxy(mtmp.my);
     let count = C.int((C.couldsee(mx, my) ? 8 : 4));
@@ -5801,8 +5715,6 @@ export function flash_mon(mtmp)
            immediately; knockback has shorter range than magical jumping) */
 
 /*if (!m_next2u(mtmp))*/
-
-
 
 /* can't do this here; leave it for mfndpos() */
 

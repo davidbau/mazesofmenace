@@ -2900,9 +2900,10 @@ export async function askchain(objchn, olets, allflag, fn, ckfn, mx, word) {
                      * single-row prompt survives as dead topline text. */
                     game._topl_sticky = game._topl_yn_wraprow > 0
                         ? null : `${q} [${rs}] (n)`;
-                    /* cmd.c:5442-5451 yn_function_menu (query_menu): the answer is
-                     * pline'd and WIN_MESSAGE cleared, so no prompt text stays. */
-                    if (game.iflags?.query_menu && game.iflags?.window_inited)
+                    /* cmd.c:5394-5399,5442-5451 yn_function_menu (query_menu): only
+                     * ynaqchars (not ynNaqchars 'yn#aq') uses the menu, where the
+                     * answer is pline'd and WIN_MESSAGE cleared. */
+                    if (game.iflags?.query_menu && game.iflags?.window_inited && rs === 'ynaq')
                         game._topl_sticky = null;
                     if (sym === '#') yn_number = await yn_count_tail(`${q} [${rs}] (n)`);
                 } while (yn_number < 0);

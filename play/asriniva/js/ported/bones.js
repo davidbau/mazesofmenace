@@ -5,10 +5,6 @@ import { C } from '../c-runtime/context.js';
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
 export function no_bones_level(lev)
 {
     let sptr;
@@ -415,7 +411,6 @@ export function savebones(how, when, corpse)
         C.compress_bonesfile();
         return;
     }
-
     }
     C.unleash_all();
     /* new ghost or other undead isn't punished even if hero was;
@@ -616,9 +611,9 @@ export function getbones()
     let ok;
     let nhfp = 0;
     let c = 0, bonesid;
-    const oldbonesid = C.stackAlloc(40); C.memset(oldbonesid, 0, 40); /* was [10]; more should be safer */
+    const oldbonesid = C.stackAlloc(40);
+    C.memset(oldbonesid, 0, 40); /* was [10]; more should be safer */
     const ancestor_nhuuid = C.stackAlloc(C.nhuuidSize);
-
 
     if (C.discover) /* save bones files for real games */
         return 0;
@@ -640,7 +635,7 @@ export function getbones()
         return 0;
     if (nhfp && nhfp.fieldlevel) {
         if (nhfp.style.deflt && !nhfp.fpdef)
-        return 0;
+            return 0;
     }
 
     C.program_state.reading_bonesfile = 1;
@@ -739,8 +734,6 @@ export function getbones()
     return ok;
 }
 
-
-
 /* check whether current level contains bones from a particular player */
 export function bones_include_name(name)
 {
@@ -778,7 +771,7 @@ export function fix_ghostly_obj(obj)
 {
     if (!obj.ghostly)
         return;
-    switch(obj.otyp) {
+    switch (obj.otyp) {
         /* asymmetrical weapons */
         case C.BOW:
         case C.ELVEN_BOW:

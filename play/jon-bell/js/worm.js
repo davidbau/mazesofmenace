@@ -373,7 +373,7 @@ export async function cutworm(worm, x, y, cuttier) {
     wgrowtime[new_wnum] = 0;
 
     /* Place the new monster at all the segment locations. */
-    place_wsegs(new_worm, worm);
+    await place_wsegs(new_worm, worm);
 
     if (game.context?.mon_moving)
         await pline(Monnam(worm) + " is cut in half.");
@@ -563,7 +563,7 @@ export function place_worm_tail_randomly(worm, x, y) {
  * the head segment is co-located with the worm itself and is deliberately not
  * on the map, so this is what keeps the chain's last link in step with a head
  * that may have moved since the segments were laid down.  RNG-free. */
-export function place_wsegs(worm, oldworm) {
+export async function place_wsegs(worm, oldworm) {
     const wnum = worm.wormno | 0;
     let curr = wtails[wnum];
 
@@ -574,10 +574,14 @@ export function place_wsegs(worm, oldworm) {
         if (oldworm && mtmp === oldworm)
             remove_monster(x, y);
         else if (mtmp)
-            impossible("placing worm seg <%d,%d> over another mon", x, y);
+            await cutworm_impossible("placing worm seg <%d,%d> over another mon", x, y);
         else if (oldworm)
-            impossible("replacing worm seg <%d,%d> on empty spot", x, y);
+            await cutworm_impossible("replacing worm seg <%d,%d> on empty spot", x, y);
 
+        // C rm.h:533 overwrites this grid cell even after the diagnostic.
+        // A displaced head remains on fmon, but is no longer found by m_at.
+        if (mtmp && mtmp.mx === x && mtmp.my === y)
+            mtmp._mapRemoved = true;
         place_worm_seg(worm, x, y);
         curr = curr.nseg;
     }

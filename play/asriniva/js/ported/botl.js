@@ -8,7 +8,6 @@ import {C} from '../c-runtime/context.js';
 
 export function get_strength_str()
 {
-    
 const buf = C.staticBuffer("get_strength_str_buf", 32);
     let st = C.ACURR(C.A_STR);
 
@@ -25,7 +24,6 @@ const buf = C.staticBuffer("get_strength_str_buf", 32);
     return buf;
 }
 
-
 export function check_gold_symbol()
 {
     let goldch = C.gs.showsyms[C.COIN_CLASS + C.SYM_OFF_O];
@@ -33,10 +31,8 @@ export function check_gold_symbol()
     C.iflags.invis_goldsym = (goldch <= C.uchar(32));
 }
 
-
 export function do_statusline1()
 {
-    
 const newbot1 = C.staticBuffer("do_statusline1_newbot1", C.BUFSZ);
     let nb;
     let i, j;
@@ -82,7 +78,6 @@ const newbot1 = C.staticBuffer("do_statusline1_newbot1", C.BUFSZ);
                 : "  Lawful", C.varargs(8));
     return newbot1;
 }
-
 
 export function do_statusline2()
 {
@@ -239,7 +234,6 @@ const vers = C.staticPointerArray("do_statusline2_vers", C.QBUFSZ);
     return newbot2;
 }
 
-
 export function bot()
 {
     if (C.gb.bot_disabled)
@@ -315,7 +309,6 @@ export function rank_to_xlev(rank)
            : (rank < 8) ? ((rank * 4) - 2) : 30;
 }
 
-
 export function rank_of(lev, monnum, female)
 {
     let role;
@@ -344,12 +337,10 @@ export function rank_of(lev, monnum, female)
     return "Player";
 }
 
-
 export function rank()
 {
     return C.callLocal(rank_of, C.u.ulevel, C.Role_switch, C.flags.female);
 }
-
 
 export function title_to_mon(str, rank_indx, title_length)
 {
@@ -381,7 +372,6 @@ export function title_to_mon(str, rank_indx, title_length)
         title_length.value = 0;
     return C.NON_PM;
 }
-
 
 export function max_rank_sz()
 {
@@ -531,7 +521,7 @@ export function armor_status(armbuf)
     } else if (n == 1) { /* just one piece; spell it out */
         C.Strcpy(armbuf, C.uarmg ? "gloves"
                        : C.uarmc ? "cloak"
-                         : C.uarm  ? "suit"
+                         : C.uarm ? "suit"
                            : C.uarmu ? "shirt"
                              : C.uarmh ? C.helm_simple_name(C.uarmh) /* hat|helm */
                                : C.uarmf ? "boots"
@@ -863,7 +853,6 @@ export function bot_via_windowport()
      * configurations) should ameliorate that.]
      */
 
-
     C.condtests[C.bl_foodpois].test = C.condtests[C.bl_termill].test = 0;
     if (C.Sick) {
         if (C.condtests[C.bl_foodpois].enabled) C.condtests[C.bl_foodpois].test = (C.u.usick_type & C.SICK_VOMITABLE) != 0;
@@ -899,53 +888,53 @@ export function bot_via_windowport()
             if (C.condtests[C.bl_held].enabled) C.condtests[C.bl_held].test = !C.condtests[C.bl_grab].test;
         }
     }
-    C.condtests[C.bl_blind].test     = (C.Blind) ? 1 : 0;
-    C.condtests[C.bl_conf].test      = (C.Confusion) ? 1 : 0;
-    C.condtests[C.bl_deaf].test      = (C.Deaf) ? 1 : 0;
-    C.condtests[C.bl_fly].test       = (C.Flying) ? 1 : 0;
+    C.condtests[C.bl_blind].test = (C.Blind) ? 1 : 0;
+    C.condtests[C.bl_conf].test = (C.Confusion) ? 1 : 0;
+    C.condtests[C.bl_deaf].test = (C.Deaf) ? 1 : 0;
+    C.condtests[C.bl_fly].test = (C.Flying) ? 1 : 0;
     C.condtests[C.bl_glowhands].test = (C.u.umconf) ? 1 : 0;
-    C.condtests[C.bl_hallu].test     = (C.Hallucination) ? 1 : 0;
-    C.condtests[C.bl_lev].test       = (C.Levitation) ? 1 : 0;
-    C.condtests[C.bl_ride].test      = (C.u.usteed) ? 1 : 0;
-    C.condtests[C.bl_slime].test     = (C.Slimed) ? 1 : 0;
-    C.condtests[C.bl_stone].test     = (C.Stoned) ? 1 : 0;
-    C.condtests[C.bl_strngl].test    = (C.Strangled) ? 1 : 0;
-    C.condtests[C.bl_stun].test      = (C.Stunned) ? 1 : 0;
+    C.condtests[C.bl_hallu].test = (C.Hallucination) ? 1 : 0;
+    C.condtests[C.bl_lev].test = (C.Levitation) ? 1 : 0;
+    C.condtests[C.bl_ride].test = (C.u.usteed) ? 1 : 0;
+    C.condtests[C.bl_slime].test = (C.Slimed) ? 1 : 0;
+    C.condtests[C.bl_stone].test = (C.Stoned) ? 1 : 0;
+    C.condtests[C.bl_strngl].test = (C.Strangled) ? 1 : 0;
+    C.condtests[C.bl_stun].test = (C.Stunned) ? 1 : 0;
     C.condtests[C.bl_submerged].test = (C.Underwater) ? 1 : 0;
     if (C.condtests[C.bl_elf_iron].enabled) C.condtests[C.bl_elf_iron].test = (0);
-    if (C.condtests[C.bl_bareh].enabled) C.condtests[C.bl_bareh].test    = ((+!!(!C.uarmg && !C.uwep)));
-    if (C.condtests[C.bl_icy].enabled) C.condtests[C.bl_icy].test      = (C.levl[C.u.ux][C.u.uy].typ == C.ICE);
+    if (C.condtests[C.bl_bareh].enabled) C.condtests[C.bl_bareh].test = ((+!!(!C.uarmg && !C.uwep)));
+    if (C.condtests[C.bl_icy].enabled) C.condtests[C.bl_icy].test = (C.levl[C.u.ux][C.u.uy].typ == C.ICE);
     if (C.condtests[C.bl_slippery].enabled) C.condtests[C.bl_slippery].test = (C.Glib) ? 1 : 0;
     if (C.condtests[C.bl_woundedl].enabled) C.condtests[C.bl_woundedl].test = (C.Wounded_legs) ? 1 : 0;
 
     if (C.gm.multi < 0) {
-        {                                                        
-    let clear_cache = 0, refresh_cache = 0;     
-                                                            
-    if (C.gm.multi < 0) {                                     
-        if (C.gn.nomovemsg || C.gm.multi_reason) {              
-            if (C.cache_nomovemsg != C.gn.nomovemsg)            
-                refresh_cache = 1;                       
-            if (C.cache_multi_reason != C.gm.multi_reason)      
-                refresh_cache = 1;                       
-        } else {                                            
-            clear_cache = 1;                             
-        }                                                   
-    } else {                                                
-        clear_cache = 1;                                 
-    }                                                       
-    if (clear_cache) {                                      
-        C.cache_nomovemsg =  0;                 
-        C.cache_multi_reason =  0;              
-    }                                                       
-    if (refresh_cache) {                                    
-        C.cache_nomovemsg = C.gn.nomovemsg;                     
-        C.cache_multi_reason = C.gm.multi_reason;               
-    }                                                       
-    if (clear_cache || refresh_cache) {                     
-        C.cache_reslt[0] = C.cache_avail[0] = 0;            
-        C.cache_reslt[1] = C.cache_avail[1] = 0;            
-    }                                                       
+        {
+    let clear_cache = 0, refresh_cache = 0;
+
+    if (C.gm.multi < 0) {
+        if (C.gn.nomovemsg || C.gm.multi_reason) {
+            if (C.cache_nomovemsg != C.gn.nomovemsg)
+                refresh_cache = 1;
+            if (C.cache_multi_reason != C.gm.multi_reason)
+                refresh_cache = 1;
+        } else {
+            clear_cache = 1;
+        }
+    } else {
+        clear_cache = 1;
+    }
+    if (clear_cache) {
+        C.cache_nomovemsg = 0;
+        C.cache_multi_reason = 0;
+    }
+    if (refresh_cache) {
+        C.cache_nomovemsg = C.gn.nomovemsg;
+        C.cache_multi_reason = C.gm.multi_reason;
+    }
+    if (clear_cache || refresh_cache) {
+        C.cache_reslt[0] = C.cache_avail[0] = 0;
+        C.cache_reslt[1] = C.cache_avail[1] = 0;
+    }
 }
         if ((+!!((+!!(C.condtests[C.bl_unconsc].enabled
             && C.cache_nomovemsg)) && !C.cache_avail[0]))) {
@@ -971,7 +960,6 @@ export function bot_via_windowport()
         C.condtests[C.bl_unconsc].test = C.condtests[C.bl_parlyz].test =
             C.condtests[C.bl_sleeping].test = C.condtests[C.bl_busy].test = 0;
     }
-
 
     for (i = 0; i < C.CONDITION_COUNT; ++i) {
         if ((+!!(C.condtests[i].enabled
@@ -1078,11 +1066,10 @@ export function menualpha_cmp(vptr1, vptr2)
     return C.strcmpi(C.condtests[indx1].useroption, C.condtests[indx2].useroption);
 }
 
-
 export function parse_cond_option(negated, opts)
 {
     let i, sl;
-    let compareto,uniqpart, prefix = "cond_";
+    let compareto, uniqpart, prefix = "cond_";
 
     if ((+!!(!opts || C.strlen(opts) <= C.sizes.typeSize_11 - 1)))
         return 2;
@@ -1215,7 +1202,6 @@ export function opt_next_cond(indx, outbuf)
     return 1;
 }
 
-
 export function eval_notify_windowport_field(fld, valsetlist, idx)
 {
     void C.oldrndencode;
@@ -1223,7 +1209,7 @@ export function eval_notify_windowport_field(fld, valsetlist, idx)
     let pc, chg, color = C.NO_COLOR;
     let anytype;
     let updated = 0, reset;
-    let curr,prev;
+    let curr, prev;
     let fldmax;
 
     /*
@@ -1335,7 +1321,6 @@ export function eval_notify_windowport_field(fld, valsetlist, idx)
     return updated;
 }
 
-
 export function evaluate_and_notify_windowport(valsetlist, idx)
 {
     let i, fld, updated = 0;
@@ -1401,7 +1386,7 @@ export function status_initialize(reassessment)
     let fld;
     let fldenabl;
     let i;
-    let fieldfmt,fieldname;
+    let fieldfmt, fieldname;
 
     if (!reassessment) {
         if (C.gb.blinit)
@@ -1434,7 +1419,6 @@ export function status_initialize(reassessment)
     C.disp.botlx = 1;
 }
 
-
 export function status_finish()
 {
     let i;
@@ -1455,7 +1439,7 @@ export function status_finish()
            that list is about to go away */
         C.gb.blstats[0][i].hilite_rule = C.gb.blstats[1][i].hilite_rule = 0;
         if (C.gb.blstats[0][i].thresholds) {
-            let temp,next;
+            let temp, next;
 
             for (temp = C.gb.blstats[0][i].thresholds; temp; temp = next) {
                 next = temp.next;
@@ -1468,7 +1452,6 @@ export function status_finish()
 /* STATUS_HILITES */
     }
 }
-
 
 export function init_blstats()
 {
@@ -1517,7 +1500,7 @@ export function init_blstats()
 
 export function compare_blstats(bl1, bl2)
 {
-    let a1,a2;
+    let a1, a2;
     let use_rawval;
     let anytype, fld, result = 0;
 
@@ -1591,7 +1574,6 @@ export function compare_blstats(bl1, bl2)
     return result;
 }
 
-
 export function anything_to_s(buf, a, anytype)
 {
     if (!buf)
@@ -1633,7 +1615,6 @@ export function anything_to_s(buf, a, anytype)
     }
     return buf;
 }
-
 
 export function s_to_anything(a, buf, anytype)
 {
@@ -1713,7 +1694,7 @@ export function percentage(bl, maxbl)
             result = (C.intDiv((100 * ival) , mval));
             break;
         case C.ANY_LONG:
-            lval  = bl.a.a_long;
+            lval = bl.a.a_long;
             result = C.int(((100n * lval) / maxbl.a.a_long));
             break;
         case C.ANY_UINT:
@@ -1856,10 +1837,11 @@ export function bl_idx_to_fldname(idx)
 
 export function repad_with_dashes(inoutbuf)
 {
-    let p = C.eos(inoutbuf);
+    const start = Number(inoutbuf);
+    let p = Number(C.eos(inoutbuf));
 
-    while ((+!!((+!!(p >= inoutbuf + 2 && p[-1] == 32)) && p[-2] == 32))) {
-        p[-1] = 45;
+    while (p >= start + 2 && C.loadChar(p - 1) === 32 && C.loadChar(p - 2) === 32) {
+        C.storeChar(p - 1, 45);
         p -= 2;
     }
 }
@@ -1899,7 +1881,6 @@ export function fldname_to_bl_indx(name)
                     nmatches++;
                 }
         }
-
     }
     return (nmatches == 1) ? fld : C.BL_FLUSH;
 }
@@ -2008,7 +1989,7 @@ export function noneoftheabove(hl_text)
 
 export function get_hilite(idx, fldidx, vp, chg, pc, colorptr)
 {
-    let hl,rule = 0;
+    let hl, rule = 0;
     let value = vp;
     let txtstr;
 
@@ -2210,7 +2191,6 @@ export function get_hilite(idx, fldidx, vp, chg, pc, colorptr)
     return rule;
 }
 
-
 export function split_clridx(idx, coloridx, attrib)
 {
     if (coloridx)
@@ -2321,7 +2301,7 @@ export function has_ltgt_percentnumber(str)
 export function splitsubfields(str, sfarr, maxsf)
 {
 const MAX_SUBFIELDS = 16;
-    
+
 const subfields = C.staticPointerArray("splitsubfields_subfields", MAX_SUBFIELDS);
     let st = C.charPointer(0);
     let sf = 0;
@@ -2342,7 +2322,7 @@ const subfields = C.staticPointerArray("splitsubfields_subfields", MAX_SUBFIELDS
             if ((+!!(C.loadChar(c) == 38 || C.loadChar(c) == 43))) {
                 C.storeChar(c, 0);
                 subfields[sf] = st;
-                st = c+1;
+                st = c + 1;
                 sf++;
             }
             c++;
@@ -2359,7 +2339,6 @@ const subfields = C.staticPointerArray("splitsubfields_subfields", MAX_SUBFIELDS
     return sf;
 }
 
-
 export function is_fld_arrayvalues(str, arr, arrmin, arrmax, retidx)
 {
     let i;
@@ -2371,7 +2350,6 @@ export function is_fld_arrayvalues(str, arr, arrmin, arrmax, retidx)
         }
     return 0;
 }
-
 
 export function query_arrayvalue(querystr, arr, arrmin, arrmax)
 {
@@ -2406,10 +2384,9 @@ export function query_arrayvalue(querystr, arr, arrmin, arrmax)
     return ret;
 }
 
-
 export function status_hilite_add_threshold(fld, hilite)
 {
-    let new_hilite,old_hilite;
+    let new_hilite, old_hilite;
 
     if (!hilite)
         return;
@@ -2436,7 +2413,6 @@ export function status_hilite_add_threshold(fld, hilite)
     C.gb.blstats[1][fld].thresholds = C.gb.blstats[0][fld].thresholds;
 }
 
-
 export function parse_status_hl2(s, from_configfile)
 {
     const aligntxt = [ "chaotic", "neutral", "lawful" ];
@@ -2445,7 +2421,7 @@ export function parse_status_hl2(s, from_configfile)
     const hutxt = [
         "Satiated", "", "Hungry", "Weak", "Fainting", "Fainted", "Starved"
     ];
-    let tmp,how;
+    let tmp, how;
     let sidx = 0, i = -1, dt = C.ANY_INVALID;
     let coloridx = -1, successes = 0;
     let disp_attrib = 0;
@@ -2490,7 +2466,8 @@ export function parse_status_hl2(s, from_configfile)
 
     ++sidx;
     while (s[sidx][0]) {
-        const buf = C.charArray(C.BUFSZ, "parse_status_hl2:automatic:2"); let subfields;
+        const buf = C.charArray(C.BUFSZ, "parse_status_hl2:automatic:2");
+        let subfields;
         let sf = 0;     /* subfield count */
         let kidx;
 
@@ -2545,7 +2522,7 @@ export function parse_status_hl2(s, from_configfile)
 
             tmp = s[sidx]; /* is_ltgt_() guarantees [<>]?=?[-+]?[0-9]+%? */
             if (C.strchr(tmp, 37))
-               percent = 1;
+                percent = 1;
             if (C.loadChar(tmp) == 60) {
                 if (tmp[1] == 61)
                     le = 1;
@@ -2604,7 +2581,7 @@ export function parse_status_hl2(s, from_configfile)
             hilite.rel = C.GE_VALUE;
         else if (le)
             hilite.rel = C.LE_VALUE;
-        else if ((+!!((+!!((+!!(eq  || percent)) || numeric)) || changed)))
+        else if ((+!!((+!!((+!!(eq || percent)) || numeric)) || changed)))
             hilite.rel = C.EQ_VALUE;
         else if (txtval)
             hilite.rel = C.TXT_VALUE;
@@ -2727,10 +2704,9 @@ export function parse_status_hl2(s, from_configfile)
     return (successes > 0);
 }
 
-
 export function query_conditions()
 {
-    let i,res;
+    let i, res;
     let ret = 0n;
     let tmpwin;
     const any = C.localStruct("any", "query_conditions:automatic:0");
@@ -2759,15 +2735,12 @@ export function query_conditions()
     return ret;
 }
 
-
 export function conditionbitmask2str(ul)
 {
-    
 const buf = C.staticBuffer("conditionbitmask2str_buf", C.BUFSZ);
     let i;
     let first = 1;
     let alias = C.charPointer(0);
-
 
     buf[0] = 0;
     if (!ul)
@@ -2789,7 +2762,6 @@ const buf = C.staticBuffer("conditionbitmask2str_buf", C.BUFSZ);
 
     return buf;
 }
-
 
 export function match_str2conditionbitmask(str)
 {
@@ -2828,7 +2800,6 @@ export function match_str2conditionbitmask(str)
     return mask;
 }
 
-
 export function str2conditionbitmask(str)
 {
     let conditions_bitmask = 0n;
@@ -2852,12 +2823,11 @@ export function str2conditionbitmask(str)
     return conditions_bitmask;
 }
 
-
 export function parse_condition(s, sidx)
 {
     let i;
     let coloridx = C.NO_COLOR;
-    let tmp,how;
+    let tmp, how;
     let conditions_bitmask = 0n;
     let result = 0;
 
@@ -2883,7 +2853,8 @@ export function parse_condition(s, sidx)
     }
     while (s[sidx][0]) {
         let sf = 0;     /* subfield count */
-        const buf = C.charArray(C.BUFSZ, "parse_condition:automatic:0"); let subfields;
+        const buf = C.charArray(C.BUFSZ, "parse_condition:automatic:0");
+        let subfields;
 
         tmp = s[sidx];
         C.Strcpy(buf, tmp);
@@ -2970,13 +2941,12 @@ export function parse_condition(s, sidx)
     return result;
 }
 
-
 export function clear_status_hilites()
 {
     let i;
 
     for (i = 0; i < C.MAXBLSTATS; ++i) {
-        let temp,next;
+        let temp, next;
 
         for (temp = C.gb.blstats[0][i].thresholds; temp; temp = next) {
             next = temp.next;
@@ -2987,7 +2957,6 @@ export function clear_status_hilites()
         C.gb.blstats[0][i].hilite_rule = C.gb.blstats[1][i].hilite_rule = 0;
     }
 }
-
 
 export function hlattr2attrname(attrib, buf, bufsz)
 {
@@ -3026,7 +2995,7 @@ export function hlattr2attrname(attrib, buf, bufsz)
 
 export function status_hilite_linestr_add(fld, hl, mask, str)
 {
-    let tmp,nxt;
+    let tmp, nxt;
 
     tmp = C.view("_status_hilite_line_str", C.alloc(C.sizes.typeSize_20));
     C.memset(tmp, 0, C.sizes.typeSize_21);
@@ -3050,10 +3019,9 @@ export function status_hilite_linestr_add(fld, hl, mask, str)
     }
 }
 
-
 export function status_hilite_linestr_done()
 {
-    let nxt,tmp = C.status_hilite_str;
+    let nxt, tmp = C.status_hilite_str;
 
     while (tmp) {
         nxt = tmp.next;
@@ -3063,7 +3031,6 @@ export function status_hilite_linestr_done()
     C.status_hilite_str = C.view("_status_hilite_line_str", 0);
     C.status_hilite_str_id = 0;
 }
-
 
 export function status_hilite_linestr_countfield(fld)
 {
@@ -3088,7 +3055,6 @@ export function count_status_hilites()
     C.callLocal(status_hilite_linestr_done);
     return count;
 }
-
 
 export function status_hilite_linestr_gather_conditions()
 {
@@ -3168,7 +3134,6 @@ export function status_hilite_linestr_gather_conditions()
         }
 }
 
-
 export function status_hilite_linestr_gather()
 {
     let i;
@@ -3187,10 +3152,8 @@ export function status_hilite_linestr_gather()
     C.callLocal(status_hilite_linestr_gather_conditions);
 }
 
-
 export function status_hilite2str(hl)
 {
-    
 const buf = C.staticBuffer("status_hilite2str_buf", C.BUFSZ);
     let clr = C.NO_COLOR, attr = C.ATR_NONE;
     const behavebuf = C.charArray(C.BUFSZ, "status_hilite2str:automatic:0");
@@ -3270,7 +3233,6 @@ const buf = C.staticBuffer("status_hilite2str_buf", C.BUFSZ);
     return buf;
 }
 
-
 export function status_hilite_menu_choose_field()
 {
     let tmpwin;
@@ -3303,11 +3265,10 @@ export function status_hilite_menu_choose_field()
     return fld;
 }
 
-
 export function status_hilite_menu_choose_behavior(fld)
 {
     let tmpwin;
-    let res = 0, beh = C.BL_TH_NONE-1;
+    let res = 0, beh = C.BL_TH_NONE - 1;
     const any = C.localStruct("any", "status_hilite_menu_choose_behavior:automatic:0");
     let picks = 0;
     const buf = C.charArray(C.BUFSZ, "status_hilite_menu_choose_behavior:automatic:1");
@@ -3407,7 +3368,6 @@ export function status_hilite_menu_choose_behavior(fld)
     return beh;
 }
 
-
 export function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok)
 {
     let res, ret = C.NO_LTEQGT;
@@ -3483,7 +3443,6 @@ export function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok)
     return ret;
 }
 
-
 export function status_hilite_menu_add(origfld)
 {
     let fld;
@@ -3540,7 +3499,7 @@ export function status_hilite_menu_add(origfld)
         const aval = C.localStruct("any", "status_hilite_menu_add:automatic:5");
         let val, dt;
         let gotnum = 0, percent = (behavior == C.BL_TH_VAL_PERCENTAGE);
-        let inp,numstart;
+        let inp, numstart;
         let op;
 
         lt_gt_eq = C.NO_LTEQGT; /* not set up yet */
@@ -3872,7 +3831,7 @@ export function status_hilite_menu_add(origfld)
         C.pline("Added hilite condition/%s/%s",
               C.callLocal(conditionbitmask2str, cond), clrbuf, C.varargs(119));
     } else {
-        let p,q;
+        let p, q;
 
         hilite.coloridx = clr | (atr << 8);
         hilite.anytype = C.initblstats[fld].anytype;
@@ -3896,13 +3855,11 @@ export function status_hilite_menu_add(origfld)
     }
     C.callLocal(reset_status_hilites);
     return 1;
-
 }
 }
 }
 }
 }
-
 
 export function status_hilite_remove(id)
 {
@@ -3929,7 +3886,7 @@ export function status_hilite_remove(id)
         return 1;
     } else {
         let fld = hlstr.fld;
-        let hl,hlprev = C.view("hilite_s", 0);
+        let hl, hlprev = C.view("hilite_s", 0);
 
         for (hl = C.gb.blstats[0][fld].thresholds; hl; hl = hl.next) {
             if (C.samePointer(hlstr.hl , hl)) {
@@ -3954,7 +3911,6 @@ export function status_hilite_remove(id)
     }
     return 0;
 }
-
 
 export function status_hilite_menu_fld(fld)
 {
@@ -4052,7 +4008,6 @@ export function status_hilite_menu_fld(fld)
     return acted;
 }
 
-
 export function status_hilites_viewall()
 {
     let datawin;
@@ -4073,7 +4028,6 @@ export function status_hilites_viewall()
     C.destroy_nhwindow(datawin);
 }
 
-
 export function all_options_statushilites(sbuf)
 {
     let hlstr;
@@ -4093,7 +4047,6 @@ export function all_options_statushilites(sbuf)
     }
     C.callLocal(status_hilite_linestr_done);
 }
-
 
 export function status_hilite_menu()
 {
@@ -4173,7 +4126,6 @@ export function status_hilite_menu()
         C.iflags.hilite_delta = 3n;
 
     return 1;
-
 }
 }
 /* STATUS_HILITES */

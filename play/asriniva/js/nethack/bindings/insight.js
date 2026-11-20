@@ -8,7 +8,11 @@ export function createInsightEnvironment(services,L,state){
  const raw=v=>CAdapter.unsignedPointer(v),addr=v=>Number(raw(typeof v==='string'?services.literal(v):v)),view=()=>CAdapter.currentDataView(services);
  const C=Object.assign(Object.create(services),L),key=t=>t.replace(/\b(?:const|volatile)\s+/g,'').trim().replace(/^(struct|union) /,'').replaceAll(' ','_');
  const primitive={char:[1,true],schar:[1,true],uchar:[1,false],boolean:[1,true],aligntyp:[1,true],'signed char':[1,true],'unsigned char':[1,false],short:[2,true],xint16:[2,true],'unsigned short':[2,false],int:[4,true],'unsigned int':[4,false],long:[8,true],'long long':[8,true],'unsigned long long':[8,false],ulong:[8,false],'unsigned long':[8,false]};
- const bare=t=>t.replace(/\b(?:const|volatile)\s*/g,'').trim(),record=t=>schema.records[bare(t)]??schema.records[({dungeon:'struct dungeon'})[bare(t)]];
+ const bare=t=>t.replace(/\b(?:const|volatile)\s*/g,'').trim();
+ // Nested topology entries use the struct tag. Its typedef describes both
+ // coordinates needed to identify a level in the main dungeon (dnum 0).
+ const recordAliases={'struct d_level':'d_level',dungeon:'struct dungeon'};
+ function record(t){const name=bare(t);return schema.records[recordAliases[name]??name];}
  function size(t){t=bare(t);if(t.endsWith('*'))return 8;const a=t.match(/^(.*?)\[([^\]]*)\](.*)$/);if(a)return size(a[1]+a[3])*Number(a[2]);if(primitive[t])return primitive[t][0];return L[key(t)+'_size'];}
  function scalar(p,n,s,v,write){const method=(n===8?'Big':'')+(s?'Int':'Uint')+(n*8);if(write){view()['set'+method](addr(p),n===8?BigInt(v):Number(v),true);return v;}return view()['get'+method](addr(p),true);}
  function read(p,t){t=bare(t);const a=t.match(/^(.*?)\[([^\]]*)\](.*)$/);if(a){const elem=a[1]+a[3],stride=size(elem);if(elem==='char')return addr(p);return new Proxy({address:addr(p),length:Number(a[2])},{get:(o,k)=>/^\d+$/.test(String(k))?read(addr(p)+Number(k)*stride,elem):o[k],set:(o,k,v)=>{if(/^\d+$/.test(String(k))){write(addr(p)+Number(k)*stride,elem,v);return true;}return false;}});}if(t.endsWith('*')){const ptr=view().getBigUint64(addr(p),true),target=t.slice(0,-1).trim();return record(target)?wrap(ptr,target):Number(ptr);}if(record(t)||/^(?:struct|union) /.test(t))return wrap(p,t);const [n,s]=primitive[t]??[];if(!n)throw Error('Review INSIGHT native scalar '+t);return scalar(p,n,s);}

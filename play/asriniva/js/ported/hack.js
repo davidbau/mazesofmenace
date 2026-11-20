@@ -15,7 +15,7 @@ export function initializeHackData(C)
     if (C.state.initialized)
         return;
     C.state.inspoteffects = 0;
-    C.state.spotloc = {x:0,y:0};
+    C.state.spotloc = {x:0, y:0};
     C.state.spotterrain = 0;
     C.state.spottrap = 0;
     C.state.spottraptyp = C.NO_TRAP;
@@ -27,11 +27,11 @@ export function initializeHackData(C)
         "You feel the ice shift beneath you!",
         "The ice, is gonna BREAK!",
     ];
-    C.state.powers = [C.TELEPORT,C.SEE_INVIS,C.POISON_RES,C.COLD_RES,
-        C.SHOCK_RES,C.FIRE_RES,C.SLEEP_RES,C.DISINT_RES,
-        C.TELEPORT_CONTROL,C.STEALTH,C.FAST,C.INVIS];
-    for (let i=0;i<5;i++)
-        C.HEAP8[C.charPointer(C.in_rooms_buf)+i] = 0;
+    C.state.powers = [C.TELEPORT, C.SEE_INVIS, C.POISON_RES, C.COLD_RES,
+        C.SHOCK_RES, C.FIRE_RES, C.SLEEP_RES, C.DISINT_RES,
+        C.TELEPORT_CONTROL, C.STEALTH, C.FAST, C.INVIS];
+    for (let i = 0; i < 5; i++)
+        C.HEAP8[C.charPointer(C.in_rooms_buf) + i] = 0;
     C.state.initialized = true;
 }
 
@@ -42,42 +42,42 @@ export function initializeHackData(C)
 /* mode values for findtravelpath() */
 export function uint_to_any(ui)
 {
-    ui=C.uint(ui);
-    C.copyRecord(C.gt.tmp_anything,C.cg.zeroany,C.sizes.any);
+    ui = C.uint(ui);
+    C.copyRecord(C.gt.tmp_anything, C.cg.zeroany, C.sizes.any);
     C.gt.tmp_anything.a_uint = C.uint(ui);
     return C.gt.tmp_anything;
 }
 
 export function long_to_any(lng)
 {
-    lng=C.long(lng);
-    C.copyRecord(C.gt.tmp_anything,C.cg.zeroany,C.sizes.any);
+    lng = C.long(lng);
+    C.copyRecord(C.gt.tmp_anything, C.cg.zeroany, C.sizes.any);
     C.gt.tmp_anything.a_long = C.long(lng);
     return C.gt.tmp_anything;
 }
 
 export function monst_to_any(mtmp)
 {
-    
-    C.copyRecord(C.gt.tmp_anything,C.cg.zeroany,C.sizes.any);
+    C.copyRecord(C.gt.tmp_anything, C.cg.zeroany, C.sizes.any);
     C.gt.tmp_anything.a_monst = mtmp;
     return C.gt.tmp_anything;
 }
 
 export function obj_to_any(obj)
 {
-    
-    C.copyRecord(C.gt.tmp_anything,C.cg.zeroany,C.sizes.any);
+    C.copyRecord(C.gt.tmp_anything, C.cg.zeroany, C.sizes.any);
     C.gt.tmp_anything.a_obj = obj;
     return C.gt.tmp_anything;
 }
 
 /* can hero move onto a spot containing one or more boulders?
    used for m<dir> and travel and during boulder push failure */
-export function revive_nasty(x,y,msg)
+export function revive_nasty(x, y, msg)
 {
-    x=C.short(x);y=C.short(y);
-    let otmp = 0; let otmp2 = 0;
+    x = C.short(x);
+    y = C.short(y);
+    let otmp = 0;
+    let otmp2 = 0;
     let mtmp;
     let cc = C.recordLocal("nhcoord");
     let revived = C.char(C.FALSE);
@@ -109,9 +109,10 @@ export function revive_nasty(x,y,msg)
     return C.char(revived);
 }
 
-export function could_move_onto_boulder(sx,sy)
+export function could_move_onto_boulder(sx, sy)
 {
-    sx=C.short(sx);sy=C.short(sy);
+    sx = C.short(sx);
+    sy = C.short(sy);
     /* can if able to phaze through rock (must be poly'd, so not riding) */
     if (C.Passes_walls)
         return C.char(C.TRUE);
@@ -130,14 +131,18 @@ export function could_move_onto_boulder(sx,sy)
     return C.char(C.squeezeablylightinvent());
 }
 
-export function dopush(sx,sy,rx,ry,otmp,costly)
+export function dopush(sx, sy, rx, ry, otmp, costly)
 {
-    sx=C.short(sx);sy=C.short(sy);rx=C.short(rx);ry=C.short(ry);costly=C.char(costly);
+    sx = C.short(sx);
+    sy = C.short(sy);
+    rx = C.short(rx);
+    ry = C.short(ry);
+    costly = C.char(costly);
     let shkp;
-
     {
         let what;
-        let givemesg; let easypush;
+        let givemesg;
+        let easypush;
         /* give boulder pushing feedback if this is a different
            boulder than the last one pushed or if it's been at
            least 2 turns since we last pushed this boulder;
@@ -168,7 +173,7 @@ export function dopush(sx,sy,rx,ry,otmp,costly)
     if (C.glyph_is_invisible(C.levl[rx][ry].glyph))
         C.unmap_object(rx, ry);
     otmp.next_boulder = C.int(0);
-    C.callLocal(movobj,otmp, rx, ry); /* does newsym(rx,ry) */
+    C.callLocal(movobj, otmp, rx, ry); /* does newsym(rx,ry) */
     if (C.Blind) {
         C.feel_location(rx, ry);
         C.feel_location(sx, sy);
@@ -183,7 +188,7 @@ export function dopush(sx,sy,rx,ry,otmp,costly)
         /* pushing from inside shop to its boundary (or free spot) */
         C.addtobill(otmp, C.FALSE, C.FALSE, C.FALSE);
     } else if (Number(Boolean(!costly && C.costly_spot(rx, ry) && otmp.unpaid
-               && (!C.pointerEqual((shkp = C.shop_keeper(C.HEAP8[C.charPointer(C.callLocal(in_rooms,rx, ry, C.SHOPBASE))])),0))
+               && (!C.pointerEqual((shkp = C.shop_keeper(C.HEAP8[C.charPointer(C.callLocal(in_rooms, rx, ry, C.SHOPBASE))])), 0))
                && C.onshopbill(otmp, shkp, C.TRUE)))) {
         /* this can happen if hero pushes boulder from farther inside
            shop into shop's free spot (which will add it to the bill),
@@ -194,8 +199,8 @@ export function dopush(sx,sy,rx,ry,otmp,costly)
            is unpaid at the free spot */
         C.subfrombill(otmp, shkp);
     } else if (Number(Boolean(otmp.unpaid
-               && !C.pointerEqual((shkp = C.find_objowner(otmp, sx, sy)),0)
-               && !C.strchr(C.callLocal(in_rooms,rx, ry, C.SHOPBASE),
+               && !C.pointerEqual((shkp = C.find_objowner(otmp, sx, sy)), 0)
+               && !C.strchr(C.callLocal(in_rooms, rx, ry, C.SHOPBASE),
                           C.ESHK(shkp).shoproom)))) {
         /* once the boulder is fully out of the shop, so that it's
          * impossible to change your mind and push it back in without
@@ -204,9 +209,10 @@ export function dopush(sx,sy,rx,ry,otmp,costly)
     }
 }
 
-export function cannot_push_msg(otmp,sx,sy)
+export function cannot_push_msg(otmp, sx, sy)
 {
-    sx=C.short(sx);sy=C.short(sy);
+    sx = C.short(sx);
+    sy = C.short(sy);
     let what;
 
     what = C.charPointer(C.the(C.xname(otmp)));
@@ -219,9 +225,10 @@ export function cannot_push_msg(otmp,sx,sy)
         C.feel_location(sx, sy);
 }
 
-export function cannot_push(otmp,sx,sy)
+export function cannot_push(otmp, sx, sy)
 {
-    sx=C.short(sx);sy=C.short(sy);
+    sx = C.short(sx);
+    sy = C.short(sy);
     if (C.throws_rocks(C.gy.youmonst.data)) {
         let canpickup = C.char((Number(Boolean(!C.Sokoban
                          /* similar exception as in can_lift():
@@ -229,8 +236,9 @@ export function cannot_push(otmp,sx,sy)
                             pick up a boulder if you have a free
                             slot or into the overflow ('#') slot
                             unless already carrying at least one */
-                        && (C.callLocal(inv_cnt,C.FALSE) < C.invlet_basic
-                               || !C.carrying(C.BOULDER)))))); let willpickup = C.char((Number(Boolean(canpickup
+                        && (C.callLocal(inv_cnt, C.FALSE) < C.invlet_basic
+                               || !C.carrying(C.BOULDER))))));
+                               let willpickup = C.char((Number(Boolean(canpickup
                           && (C.flags.pickup && !C.svc.context.nopick)
                           && C.autopick_testobj(otmp, C.TRUE)))));
 
@@ -260,7 +268,7 @@ export function cannot_push(otmp,sx,sy)
         return C.int(0);
     }
 
-    if (C.callLocal(could_move_onto_boulder,sx, sy)) {
+    if (C.callLocal(could_move_onto_boulder, sx, sy)) {
         C.pline(
            "However, you can squeeze yourself into a small opening.");
         C.sokoban_guilt();
@@ -272,19 +280,18 @@ export function cannot_push(otmp,sx,sy)
 
 export function rock_disappear_msg(otmp)
 {
-    
     if (C.u.usteed)
         C.pline("%s pushes %s and suddenly it disappears!",
                 C.YMonnam(C.u.usteed), C.the(C.xname(otmp)));
     else
         C.You("push %s and suddenly it disappears!",
             C.the(C.xname(otmp)));
-
 }
 
-export function moverock_done(sx,sy)
+export function moverock_done(sx, sy)
 {
-    sx=C.short(sx);sy=C.short(sy);
+    sx = C.short(sx);
+    sy = C.short(sy);
     let otmp;
     for (otmp = C.svl.level.objects[sx][sy]; otmp; otmp = otmp.nexthere)
         if (otmp.otyp == C.BOULDER)
@@ -293,13 +300,13 @@ export function moverock_done(sx,sy)
 
 export function moverock()
 {
-    
-    let sx; let sy;
+    let sx;
+    let sy;
     let ret;
 
     sx = C.short(C.u.ux + C.u.dx), sy = C.short(C.u.uy + C.u.dy); /* boulder starting position */
-    ret = C.int(C.callLocal(moverock_core,sx, sy));
-    C.callLocal(moverock_done,sx, sy);
+    ret = C.int(C.callLocal(moverock_core, sx, sy));
+    C.callLocal(moverock_done, sx, sy);
     return C.int(ret);
 }
 
@@ -309,21 +316,23 @@ export function moverock()
  *  Chew on a wall, door, or boulder.  [What about statues?]
  *  Returns TRUE if still eating, FALSE when done.
  */
-export function moverock_core(sx,sy)
+export function moverock_core(sx, sy)
 {
-    sx=C.short(sx);sy=C.short(sy);
-    let rx; let ry;
+    sx = C.short(sx);
+    sy = C.short(sy);
+    let rx;
+    let ry;
     let otmp;
     let ttmp;
     let mtmp;
-    let costly; let firstboulder = C.char(C.TRUE);
+    let costly;
+    let firstboulder = C.char(C.TRUE);
 
-    while (!C.pointerEqual((otmp = C.sobj_at(C.BOULDER, sx, sy)),0)) {
-
+    while (!C.pointerEqual((otmp = C.sobj_at(C.BOULDER, sx, sy)), 0)) {
         if (Number(Boolean(C.Blind && C.glyph_to_obj(C.glyph_at(sx, sy)) != C.BOULDER))) {
             C.pline("That feels like a boulder.");
             C.map_object(otmp, C.TRUE);
-            C.callLocal(nomul,0);
+            C.callLocal(nomul, 0);
             return C.int(-1);
         }
 
@@ -337,12 +346,12 @@ export function moverock_core(sx,sy)
         firstboulder = C.char(C.FALSE);
 
         /* make sure that this boulder is visible as the top object */
-        if (!C.pointerEqual(otmp,C.svl.level.objects[sx][sy]))
-            C.callLocal(movobj,otmp, sx, sy);
+        if (!C.pointerEqual(otmp, C.svl.level.objects[sx][sy]))
+            C.callLocal(movobj, otmp, sx, sy);
 
         rx = C.short(C.u.ux + 2 * C.u.dx); /* boulder destination position */
         ry = C.short(C.u.uy + 2 * C.u.dy);
-        C.callLocal(nomul,0);
+        C.callLocal(nomul, 0);
 
         /* using m<dir> towards an adjacent boulder steps over/onto it if
            poly'd into a giant or squeezes under/beside it if small/light
@@ -358,11 +367,11 @@ export function moverock_core(sx,sy)
                    spot without pushing it; hero is poly'd into a giant,
                    so exotic forms of locomotion are out, but might be
                    levitating (ring, potion, spell) or flying (amulet) */
-                C.You("%s over a boulder here.", C.callLocal(u_locomotion,"step"));
+                C.You("%s over a boulder here.", C.callLocal(u_locomotion, "step"));
                 /* ["over" seems weird on air level but what else to say?] */
                 C.sokoban_guilt();
                 res = C.int(0); /* move to <sx,sy> */
-            } else if (C.callLocal(could_move_onto_boulder,sx, sy)) {
+            } else if (C.callLocal(could_move_onto_boulder, sx, sy)) {
                 C.You("squeeze yourself %s the boulder.",
                     C.Flying ? "over" : "against");
                 C.sokoban_guilt();
@@ -392,16 +401,16 @@ export function moverock_core(sx,sy)
             if (C.Blind)
                 C.feel_location(sx, sy);
             C.pline("You're too small to push that %s.", C.xname(otmp));
-            return C.int(C.callLocal(cannot_push,otmp, sx, sy));
+            return C.int(C.callLocal(cannot_push, otmp, sx, sy));
         }
         if (Number(Boolean(C.isok(rx, ry) && !C.IS_OBSTRUCTED(terrainAt(C, rx, ry))
             && terrainAt(C, rx, ry) != C.IRONBARS
             && (!C.IS_DOOR(terrainAt(C, rx, ry)) || !(Number(Boolean(C.u.dx && C.u.dy)))
-                || C.callLocal(doorless_door,rx, ry)) && !C.sobj_at(C.BOULDER, rx, ry)))) {
+                || C.callLocal(doorless_door, rx, ry)) && !C.sobj_at(C.BOULDER, rx, ry)))) {
             ttmp = C.t_at(rx, ry);
             mtmp = C.m_at(rx, ry);
             costly = C.char((Number(Boolean(C.costly_spot(sx, sy)
-                      && C.shop_keeper(C.HEAP8[C.charPointer(C.callLocal(in_rooms,sx, sy, C.SHOPBASE))])))));
+                      && C.shop_keeper(C.HEAP8[C.charPointer(C.callLocal(in_rooms, sx, sy, C.SHOPBASE))])))));
 
             /* KMH -- Sokoban doesn't let you push boulders diagonally */
             if (Number(Boolean(C.Sokoban && C.u.dx && C.u.dy))) {
@@ -409,10 +418,10 @@ export function moverock_core(sx,sy)
                     C.feel_location(sx, sy);
                 C.pline("%s won't roll diagonally on this %s.",
                       C.The(C.xname(otmp)), C.surface(sx, sy));
-                return C.int(C.callLocal(cannot_push,otmp, sx, sy));
+                return C.int(C.callLocal(cannot_push, otmp, sx, sy));
             }
 
-            if (C.callLocal(revive_nasty,rx, ry,
+            if (C.callLocal(revive_nasty, rx, ry,
                              "You sense movement on the other side.")) {
                 return C.int(-1);
             }
@@ -434,7 +443,7 @@ export function moverock_core(sx,sy)
                     C.map_invisible(rx, ry);
                 }
                 if (C.flags.verbose) {
-                    let you_or_steed = C.localArray("char",[256]);
+                    let you_or_steed = C.localArray("char", [256]);
 
                     C.Strcpy(you_or_steed,
                            C.u.usteed ? C.y_monnam(C.u.usteed) : "you");
@@ -444,19 +453,19 @@ export function moverock_core(sx,sy)
                                         : C.upstart(you_or_steed),
                           deliver_part1 ? "it" : C.the(C.xname(otmp)));
                 }
-                return C.int(C.callLocal(cannot_push,otmp, sx, sy));
+                return C.int(C.callLocal(cannot_push, otmp, sx, sy));
             }
 
             if (C.closed_door(rx, ry)) {
-                C.callLocal(cannot_push_msg,otmp, sx, sy);
-                return C.int(C.callLocal(cannot_push,otmp, sx, sy));
+                C.callLocal(cannot_push_msg, otmp, sx, sy);
+                return C.int(C.callLocal(cannot_push, otmp, sx, sy));
             }
 
             /* at this point the boulder should be able to move (though
                potentially into something like a trap, pool, or lava) */
 
             /* rumbling disturbs buried zombies */
-            C.callLocal(disturb_buried_zombies,sx, sy);
+            C.callLocal(disturb_buried_zombies, sx, sy);
 
             if (ttmp) {
                 let newlev = C.int(0); /* lint suppression */
@@ -468,7 +477,7 @@ export function moverock_core(sx,sy)
                    should advance to the vacated boulder position */
                 switch (ttmp.ttyp) {
                 case C.LANDMINE:
-                    if ((C.rngCaller(506,"moverock_core"),C.rn2(10))) {
+                    if ((C.rngCaller(506, "moverock_core"), C.rn2(10))) {
                         C.obj_extract_self(otmp);
                         C.place_object(otmp, rx, ry);
                         C.newsym(sx, sy);
@@ -499,7 +508,7 @@ export function moverock_core(sx,sy)
                        the pit will temporarily be seen even
                        if this is one among multiple boulders */
                     if (!C.Blind)
-                        ((_hackTarget,_hackIndex)=>_hackTarget[_hackIndex] = C.uchar(C.int(C.int(_hackTarget[_hackIndex]) | C.int(C.IN_SIGHT))))(C.gv.viz_array[ry],rx);
+                        ((_hackTarget, _hackIndex) => _hackTarget[_hackIndex] = C.uchar(C.int(C.int(_hackTarget[_hackIndex]) | C.int(C.IN_SIGHT))))(C.gv.viz_array[ry], rx);
                     if (!C.flooreffects(otmp, rx, ry, "fall")) {
                         C.place_object(otmp, rx, ry);
                     }
@@ -524,7 +533,7 @@ export function moverock_core(sx,sy)
                     C.deltrap(ttmp);
                     C.useupf(otmp, 1n);
                     C.bury_objs(rx, ry);
-                    ((_hackTarget)=>_hackTarget.wall_info = (C.uint(C.int(C.int(_hackTarget.wall_info) & C.int(~C.W_NONDIGGABLE))) & 31))(C.levl[rx][ry]);
+                    ((_hackTarget) => _hackTarget.wall_info = (C.uint(C.int(C.int(_hackTarget.wall_info) & C.int(~C.W_NONDIGGABLE))) & 31))(C.levl[rx][ry]);
                     C.levl[rx][ry].candig = C.uint(1);
                     if (C.cansee(rx, ry))
                         C.newsym(rx, ry);
@@ -535,13 +544,13 @@ export function moverock_core(sx,sy)
                     newlev = C.int(C.random_teleport_level());
                     /* if trap doesn't work, skip "disappears" message */
                     if (newlev == C.depth(C.u.uz)) {
-                        C.callLocal(dopush,sx, sy, rx, ry, otmp, costly);
+                        C.callLocal(dopush, sx, sy, rx, ry, otmp, costly);
                         continue;
                     }
                     ;
                     /*FALLTHRU*/
                 case C.TELEP_TRAP:
-                    C.callLocal(rock_disappear_msg,otmp);
+                    C.callLocal(rock_disappear_msg, otmp);
                     otmp.next_boulder = C.int(0); /* reset before moving it */
                     if (ttmp.ttyp == C.TELEP_TRAP) {
                         void (C.rloco(otmp));
@@ -589,32 +598,34 @@ export function moverock_core(sx,sy)
              * Re-link at top of fobj chain so that pile order is preserved
              * when level is restored.
              */
-            if (!C.pointerEqual(otmp,C.fobj)) {
+            if (!C.pointerEqual(otmp, C.fobj)) {
                 C.remove_object(otmp);
                 C.place_object(otmp, otmp.ox, otmp.oy);
             }
-            C.callLocal(dopush,sx, sy, rx, ry, otmp, costly);
+            C.callLocal(dopush, sx, sy, rx, ry, otmp, costly);
         } else {
-            C.callLocal(cannot_push_msg,otmp, sx, sy);
-            return C.int(C.callLocal(cannot_push,otmp, sx, sy));
+            C.callLocal(cannot_push_msg, otmp, sx, sy);
+            return C.int(C.callLocal(cannot_push, otmp, sx, sy));
         }
     }
     return C.int(0);
 }
 
-export function still_chewing(x,y)
+export function still_chewing(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     let lev = C.levl[x][y];
     let boulder = C.sobj_at(C.BOULDER, x, y);
-    let digtxt = C.charPointer(( 0)); let dmgtxt = C.charPointer(( 0));
+    let digtxt = C.charPointer(( 0));
+    let dmgtxt = C.charPointer(( 0));
 
     if (C.svc.context.digging.down) /* not continuing prev dig (w/ pick-axe) */
         void (C.memset(( C.svc.context.digging), 0,
                       BigInt(C.sizes["dig_info"])));
 
     if (Number(Boolean(!boulder
-        && ((C.IS_OBSTRUCTED(lev.typ) && !C.callLocal(may_dig,x, y))
+        && ((C.IS_OBSTRUCTED(lev.typ) && !C.callLocal(may_dig, x, y))
             /* may_dig() checks W_NONDIGGABLE but doesn't handle iron bars */
             || (lev.typ == C.IRONBARS && (lev.wall_info & C.W_NONDIGGABLE)))))) {
         C.You("hurt your teeth on the %s.",
@@ -623,13 +634,13 @@ export function still_chewing(x,y)
                 : C.IS_TREE(lev.typ)
                     ? "tree"
                     : "hard stone");
-        C.callLocal(nomul,0);
+        C.callLocal(nomul, 0);
         return C.int(1);
     } else if (Number(Boolean(lev.typ == C.IRONBARS
                && C.metallivorous(C.gy.youmonst.data) && C.u.uhunger > 1500))) {
         /* finishing eating via 'morehungry()' doesn't handle choking */
         C.You("are too full to eat the bars.");
-        C.callLocal(nomul,0);
+        C.callLocal(nomul, 0);
         return C.int(1);
     } else if (Number(Boolean(!C.svc.context.digging.chew
                || C.svc.context.digging.pos.x != x
@@ -658,7 +669,7 @@ export function still_chewing(x,y)
                             : "door");
         C.watch_dig(C.view("monst", 0), x, y, C.FALSE);
         return C.int(1);
-    } else if ((((_hackTarget)=>_hackTarget.effort = C.int(C.int(C.int(_hackTarget.effort) + C.int((30 + C.u.udaminc)))))(C.svc.context.digging)) <= 100) {
+    } else if ((((_hackTarget) => _hackTarget.effort = C.int(C.int(C.int(_hackTarget.effort) + C.int((30 + C.u.udaminc)))))(C.svc.context.digging)) <= 100) {
         if (C.flags.verbose)
             C.You("%s chewing on the %s.",
                 C.svc.context.digging.chew ? "continue" : "begin",
@@ -685,7 +696,7 @@ export function still_chewing(x,y)
                          : C.IS_OBSTRUCTED(lev.typ) ? "rock"
                            : (lev.typ == C.IRONBARS) ? "iron bars"
                              : "a door");
-    ((_hackTarget)=>_hackTarget.uhunger = C.int(C.int(C.int(_hackTarget.uhunger) + C.int((C.rngCaller(730,"still_chewing"),C.rnd(20))))))(C.u);
+    ((_hackTarget) => _hackTarget.uhunger = C.int(C.int(C.int(_hackTarget.uhunger) + C.int((C.rngCaller(730, "still_chewing"), C.rnd(20))))))(C.u);
 
     if (boulder) {
         C.delobj(boulder);         /* boulder goes bye-bye */
@@ -708,14 +719,14 @@ export function still_chewing(x,y)
         }
 
     } else if (C.IS_WALL(lev.typ)) {
-        if (C.HEAP8[C.charPointer(C.callLocal(in_rooms,x, y, C.SHOPBASE))]) {
+        if (C.HEAP8[C.charPointer(C.callLocal(in_rooms, x, y, C.SHOPBASE))]) {
             C.add_damage(x, y, C.SHOP_WALL_DMG);
             dmgtxt = C.charPointer("damage");
         }
         digtxt = C.charPointer("chew a hole in the wall.");
         if (C.svl.level.flags.is_maze_lev) {
             lev.typ = C.char(C.ROOM);
-        } else if (Number(Boolean(C.svl.level.flags.is_cavernous_lev && !C.callLocal(in_town,x, y)))) {
+        } else if (Number(Boolean(C.svl.level.flags.is_cavernous_lev && !C.callLocal(in_town, x, y)))) {
             lev.typ = C.char(C.CORR);
         } else {
             lev.typ = C.char(C.DOOR);
@@ -751,7 +762,7 @@ export function still_chewing(x,y)
         lev.typ = C.char(C.DOOR);
 
     } else if (C.IS_DOOR(lev.typ)) {
-        if (C.HEAP8[C.charPointer(C.callLocal(in_rooms,x, y, C.SHOPBASE))]) {
+        if (C.HEAP8[C.charPointer(C.callLocal(in_rooms, x, y, C.SHOPBASE))]) {
             C.add_damage(x, y, C.SHOP_DOOR_COST);
             dmgtxt = C.charPointer("break");
         }
@@ -779,9 +790,10 @@ export function still_chewing(x,y)
     return C.int(0);
 }
 
-export function movobj(obj,ox,oy)
+export function movobj(obj, ox, oy)
 {
-    ox=C.short(ox);oy=C.short(oy);
+    ox = C.short(ox);
+    oy = C.short(oy);
     /* optimize by leaving on the fobj chain? */
     C.remove_object(obj);
     C.maybe_unhide_at(obj.ox, obj.oy);
@@ -797,18 +809,22 @@ export function movobj(obj,ox,oy)
 /* intended to be called only on ROCKs or TREEs */
 export function dosinkfall()
 {
-    
-    
     let obj;
     let dmg;
-    let lev_boots = C.char((Number(Boolean(C.uarmf && C.uarmf.otyp == C.LEVITATION_BOOTS)))); let innate_lev = C.char(((C.long((C.long(C.HLevitation)) & (C.long((C.long((C.long(C.FROMOUTSIDE)) | (C.long(C.FROMFORM)))))))) != 0n)); let blockd_lev = C.char((C.BLevitation == C.I_SPECIAL)); let ufall = C.char((Number(Boolean(!innate_lev && !blockd_lev
+    let lev_boots = C.char((Number(Boolean(C.uarmf
+        && C.uarmf.otyp == C.LEVITATION_BOOTS))));
+    let innate_lev = C.char(((C.long((C.long(C.HLevitation)) & (C.long((C.long((C.long(C.FROMOUTSIDE)) | (C.long(C.FROMFORM)))))))) != 0n));
+    let blockd_lev = C.char((C.BLevitation == C.I_SPECIAL));
+    let ufall = C.char((Number(Boolean(!innate_lev
+        && !blockd_lev
                      && !(Number(Boolean(C.HFlying || C.EFlying))))))); /* BFlying */
 
     if (!ufall) {
         C.You((Number(Boolean(innate_lev || blockd_lev))) ? "wobble unsteadily for a moment."
                                        : "gain control of your flight.");
     } else {
-        let save_ELev = C.long(C.ELevitation); let save_HLev = C.long(C.HLevitation);
+        let save_ELev = C.long(C.ELevitation);
+        let save_HLev = C.long(C.HLevitation);
 
         /* fake removal of levitation in advance so that final
            disclosure will be right in case this turns out to
@@ -816,14 +832,14 @@ export function dosinkfall()
            are really still worn has no effect on bones data */
         C.ELevitation = C.long(C.HLevitation = C.long(0n));
         C.You("crash to the floor!");
-        dmg = C.int(((C.rngCaller(863,"dosinkfall"),C.rn2(8)) + ( 25 - C.int( C.ACURR(C.A_CON)))));
-        C.callLocal(losehp,(C.Half_physical_damage ? Math.trunc(((dmg) + 1)/2) : (dmg)), C.state.fell_on_sink, C.NO_KILLER_PREFIX);
+        dmg = C.int(((C.rngCaller(863, "dosinkfall"), C.rn2(8)) + ( 25 - C.int( C.ACURR(C.A_CON)))));
+        C.callLocal(losehp, (C.Half_physical_damage ? Math.trunc(((dmg) + 1) / 2) : (dmg)), C.state.fell_on_sink, C.NO_KILLER_PREFIX);
         C.exercise(C.A_DEX, C.FALSE);
         C.selftouch("Falling, you");
         for (obj = C.svl.level.objects[C.u.ux][C.u.uy]; obj; obj = obj.nexthere)
             if (Number(Boolean(obj.oclass == C.WEAPON_CLASS || C.is_weptool(obj)))) {
                 C.You("fell on %s.", C.doname(obj));
-                C.callLocal(losehp,(C.Half_physical_damage ? Math.trunc((((C.rngCaller(870,"dosinkfall"),C.rnd(3))) + 1)/2) : ((C.rngCaller(870,"dosinkfall"),C.rnd(3)))), C.state.fell_on_sink,
+                C.callLocal(losehp, (C.Half_physical_damage ? Math.trunc((((C.rngCaller(870, "dosinkfall"), C.rnd(3))) + 1) / 2) : ((C.rngCaller(870, "dosinkfall"), C.rnd(3)))), C.state.fell_on_sink,
                        C.NO_KILLER_PREFIX);
                 C.exercise(C.A_CON, C.FALSE);
             }
@@ -874,17 +890,19 @@ export function dosinkfall()
     C.float_vs_flight();
 }
 
-export function may_dig(x,y)
+export function may_dig(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     const terrain = terrainAt(C, x, y);
     return Number(!((C.IS_STWALL(terrain) || C.IS_TREE(terrain))
                     && (doorMaskAt(C, x, y) & C.W_NONDIGGABLE)));
 }
 
-export function may_passwall(x,y)
+export function may_passwall(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     return C.char(C.char( !(Number(Boolean(C.IS_STWALL(terrainAt(C, x, y))
                        && (doorMaskAt(C, x, y) & C.W_NONPASSWALL))))));
 }
@@ -893,23 +911,23 @@ export function may_passwall(x,y)
    monster--who might be the hero--can fit through, and if not then return
    the reason why:  1: can't fit, 2: possessions won't fit, 3: sokoban
    returns 0 if we can squeeze through */
-export function bad_rock(mdat,x,y)
+export function bad_rock(mdat, x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     return C.char(C.char( (Number(Boolean((C.Sokoban && C.sobj_at(C.BOULDER, x, y))
                       || (C.IS_OBSTRUCTED(terrainAt(C, x, y))
                           && (!C.tunnels(mdat) || C.needspick(mdat)
-                              || !C.callLocal(may_dig,x, y))
-                          && !(Number(Boolean(C.passes_walls(mdat) && C.callLocal(may_passwall,x, y))))))))));
+                              || !C.callLocal(may_dig, x, y))
+                          && !(Number(Boolean(C.passes_walls(mdat) && C.callLocal(may_passwall, x, y))))))))));
 }
 
 export function cant_squeeze_thru(mon)
 {
-    
     let amt;
     let ptr = mon.data;
 
-    if ((C.pointerEqual(mon,C.gy.youmonst)) ? C.Passes_walls : C.passes_walls(ptr))
+    if ((C.pointerEqual(mon, C.gy.youmonst)) ? C.Passes_walls : C.passes_walls(ptr))
         return C.int(0);
 
     /* too big? */
@@ -919,13 +937,13 @@ export function cant_squeeze_thru(mon)
         return C.int(1);
 
     /* lugging too much junk? */
-    amt = C.int((C.pointerEqual(mon,C.gy.youmonst)) ? C.callLocal(inv_weight,) + C.callLocal(weight_cap,)
+    amt = C.int((C.pointerEqual(mon, C.gy.youmonst)) ? C.callLocal(inv_weight,) + C.callLocal(weight_cap,)
                                : C.curr_mon_load(mon));
     if (amt > C.WT_TOOMUCH_DIAGONAL)
         return C.int(2);
 
     /* Sokoban restriction applies to hero only */
-    if (Number(Boolean(C.pointerEqual(mon,C.gy.youmonst) && C.Sokoban)))
+    if (Number(Boolean(C.pointerEqual(mon, C.gy.youmonst) && C.Sokoban)))
         return C.int(3);
 
     /* can squeeze through */
@@ -934,9 +952,10 @@ export function cant_squeeze_thru(mon)
 
 /* return TRUE if (ux+dx,uy+dy) is an OK place to move;
    mode is one of DO_MOVE, TEST_MOVE, TEST_TRAV, or TEST_TRAP */
-export function invocation_pos(x,y)
+export function invocation_pos(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     return C.char(C.char( (Number(Boolean(C.Invocation_lev(C.u.uz)
                       && x == C.svi.inv_pos.x && y == C.svi.inv_pos.y)))));
 }
@@ -950,9 +969,13 @@ export function invocation_pos(x,y)
  * gt.travelmap keeps track of map locations we've moved through
  * this travel session. It will be cleared once the travel stops.
  */
-export function test_move(ux,uy,dx,dy,mode)
+export function test_move(ux, uy, dx, dy, mode)
 {
-    ux=C.short(ux);uy=C.short(uy);dx=C.short(dx);dy=C.short(dy);mode=C.int(mode);
+    ux = C.short(ux);
+    uy = C.short(uy);
+    dx = C.short(dx);
+    dy = C.short(dy);
+    mode = C.int(mode);
     let x = C.short(ux + dx);
     let y = C.short(uy + dy);
 
@@ -969,7 +992,7 @@ export function test_move(ux,uy,dx,dy,mode)
     if (C.IS_OBSTRUCTED(terrain) || terrain === C.IRONBARS) {
         if (Number(Boolean(C.Blind && mode == C.DO_MOVE)))
             C.feel_location(x, y);
-        if (Number(Boolean(C.Passes_walls && C.callLocal(may_passwall,x, y)))) {
+        if (Number(Boolean(C.Passes_walls && C.callLocal(may_passwall, x, y)))) {
             ; /* do nothing */
         } else if (C.Underwater) {
             /* note: if water_friction() changes direction due to
@@ -984,7 +1007,7 @@ export function test_move(ux,uy,dx,dy,mode)
                 && (C.dmgtype(C.gy.youmonst.data, C.AD_RUST)
                     || C.dmgtype(C.gy.youmonst.data, C.AD_CORR)
                     || C.metallivorous(C.gy.youmonst.data))
-                && C.callLocal(still_chewing,x, y)))) {
+                && C.callLocal(still_chewing, x, y)))) {
                 return C.char(C.FALSE);
             }
             if (!(Number(Boolean(C.Passes_walls || C.passes_bars(C.gy.youmonst.data))))) {
@@ -995,7 +1018,7 @@ export function test_move(ux,uy,dx,dy,mode)
         } else if (Number(Boolean(C.tunnels(C.gy.youmonst.data)
                    && !C.needspick(C.gy.youmonst.data)))) {
             /* Eat the rock. */
-            if (Number(Boolean(mode == C.DO_MOVE && C.callLocal(still_chewing,x, y))))
+            if (Number(Boolean(mode == C.DO_MOVE && C.callLocal(still_chewing, x, y))))
                 return C.char(C.FALSE);
         } else if (Number(Boolean(C.flags.autodig && !C.svc.context.run && !C.svc.context.nopick
                    && C.uwep && C.is_pick(C.uwep)))) {
@@ -1007,13 +1030,14 @@ export function test_move(ux,uy,dx,dy,mode)
             if (mode == C.DO_MOVE) {
                 if (C.is_db_wall(x, y)) {
                     C.pline("That drawbridge is up!");
-                } else if (Number(Boolean(C.Passes_walls && !C.callLocal(may_passwall,x, y)
+                } else if (Number(Boolean(C.Passes_walls && !C.callLocal(may_passwall, x, y)
                            && C.In_sokoban(C.u.uz)))) {
                     /* soko restriction stays even after puzzle is solved */
                     C.pline_The("Sokoban walls resist your ability.");
                 } else if (C.flags.mention_walls) {
-                    let buf = C.localArray("char",[256]);
-                    let glyph = C.int(C.back_to_glyph(x, y)); let sym = C.int(C.glyph_is_cmap(glyph) ? C.glyph_to_cmap(glyph)
+                    let buf = C.localArray("char", [256]);
+                    let glyph = C.int(C.back_to_glyph(x, y));
+                    let sym = C.int(C.glyph_is_cmap(glyph) ? C.glyph_to_cmap(glyph)
                                                    : -1);
 
                     if (sym == C.S_stone)
@@ -1046,7 +1070,7 @@ export function test_move(ux,uy,dx,dy,mode)
             } else if (Number(Boolean(C.tunnels(C.gy.youmonst.data)
                        && !C.needspick(C.gy.youmonst.data)))) {
                 /* Eat the door. */
-                if (Number(Boolean(mode == C.DO_MOVE && C.callLocal(still_chewing,x, y))))
+                if (Number(Boolean(mode == C.DO_MOVE && C.callLocal(still_chewing, x, y))))
                     return C.char(C.FALSE);
             } else {
                 if (mode == C.DO_MOVE) {
@@ -1061,7 +1085,7 @@ export function test_move(ux,uy,dx,dy,mode)
                         let cq = C.cmdq_peek(C.CQ_CANNED);
 
                         if (Number(Boolean(tmp == C.ECMD_OK && cq && cq.typ == C.CMDQ_EXTCMD
-                            && C.pointerEqual(cq.ec_entry,C.ext_func_tab_from_func(C.dokick)))))
+                            && C.pointerEqual(cq.ec_entry, C.ext_func_tab_from_func(C.dokick)))))
                             /* door hasn't been opened, but fake it so that
                                canned kick will be executed as next command */
                             C.svc.context.door_opened = C.char(C.TRUE);
@@ -1086,7 +1110,7 @@ export function test_move(ux,uy,dx,dy,mode)
                             C.svc.context.door_opened = C.char(C.svc.context.move = C.char(C.TRUE));
                             /* since we've just lied about successfully
                                moving, we need to manually stop running */
-                            C.callLocal(nomul,0);
+                            C.callLocal(nomul, 0);
                         } else
                             C.pline("That door is closed.");
                     }
@@ -1099,7 +1123,7 @@ export function test_move(ux,uy,dx,dy,mode)
         }
 
             if (Number(Boolean(dx && dy && !C.Passes_walls
-                && (!C.callLocal(doorless_door,x, y) || C.block_door(x, y))))) {
+                && (!C.callLocal(doorless_door, x, y) || C.block_door(x, y))))) {
                 /* Diagonal moves into a door are not allowed. */
                 if (mode == C.DO_MOVE) {
                     if (C.Blind)
@@ -1109,13 +1133,12 @@ export function test_move(ux,uy,dx,dy,mode)
                 }
                 return C.char(C.FALSE);
             }
-        
         }
     }
-    if (Number(Boolean(dx && dy && C.callLocal(bad_rock,C.gy.youmonst.data, ux, y)
-        && C.callLocal(bad_rock,C.gy.youmonst.data, x, uy)))) {
+    if (Number(Boolean(dx && dy && C.callLocal(bad_rock, C.gy.youmonst.data, ux, y)
+        && C.callLocal(bad_rock, C.gy.youmonst.data, x, uy)))) {
         /* Move at a diagonal. */
-        switch (C.callLocal(cant_squeeze_thru,C.gy.youmonst)) {
+        switch (C.callLocal(cant_squeeze_thru, C.gy.youmonst)) {
         case 3:
             if (mode == C.DO_MOVE)
                 C.You("cannot pass that way.");
@@ -1166,7 +1189,7 @@ export function test_move(ux,uy,dx,dy,mode)
 
     /* Now see if other things block our way . . */
     if (Number(Boolean(dx && dy && !C.Passes_walls && C.IS_DOOR(terrainAt(C, ux, uy))
-        && (!C.callLocal(doorless_door,ux, uy) || C.block_entry(x, y))))) {
+        && (!C.callLocal(doorless_door, ux, uy) || C.block_entry(x, y))))) {
         /* Can't move at a diagonal out of a doorway with door. */
         if (Number(Boolean(mode == C.DO_MOVE && C.flags.mention_walls)))
             C.You_cant("move diagonally out of an intact doorway.");
@@ -1175,16 +1198,16 @@ export function test_move(ux,uy,dx,dy,mode)
 
     if (Number(Boolean(C.sobj_at(C.BOULDER, x, y) && (C.Sokoban || !C.Passes_walls)))) {
         if (Number(Boolean(mode != C.TEST_TRAV && C.svc.context.run >= 2
-            && !(Number(Boolean(C.Blind || C.Hallucination))) && !C.callLocal(could_move_onto_boulder,x, y)))) {
+            && !(Number(Boolean(C.Blind || C.Hallucination))) && !C.callLocal(could_move_onto_boulder, x, y)))) {
             if (Number(Boolean(mode == C.DO_MOVE && C.flags.mention_walls)))
-                C.pline_dir(C.xytodir(dx,dy), "A boulder blocks your path.");
+                C.pline_dir(C.xytodir(dx, dy), "A boulder blocks your path.");
             return C.char(C.FALSE);
         }
         if (mode == C.DO_MOVE) {
             /* tunneling monsters will chew before pushing */
             if (Number(Boolean(C.tunnels(C.gy.youmonst.data) && !C.needspick(C.gy.youmonst.data)
                 && !C.Sokoban))) {
-                if (C.callLocal(still_chewing,x, y))
+                if (C.callLocal(still_chewing, x, y))
                     return C.char(C.FALSE);
             } else if (C.callLocal(moverock,) < 0)
                 return C.char(C.FALSE);
@@ -1198,7 +1221,7 @@ export function test_move(ux,uy,dx,dy,mode)
             /* don't pick two boulders in a row, unless there's a way thru */
             if (Number(Boolean(C.sobj_at(C.BOULDER, ux, uy) && !C.Sokoban))) {
                 if (Number(Boolean(!C.Passes_walls
-                    && !C.callLocal(could_move_onto_boulder,ux, uy)
+                    && !C.callLocal(could_move_onto_boulder, ux, uy)
                     && !(Number(Boolean(C.tunnels(C.gy.youmonst.data)
                          && !C.needspick(C.gy.youmonst.data))))
                     && !C.carrying(C.PICK_AXE) && !C.carrying(C.DWARVISH_MATTOCK)
@@ -1218,7 +1241,7 @@ export function test_move(ux,uy,dx,dy,mode)
 /* DEBUG */
 export function findtravelpath(mode)
 {
-    mode=C.int(mode);
+    mode = C.int(mode);
     if (!C.gt.travelmap)
         C.gt.travelmap = C.selection_new();
     /* if travel to adjacent, reachable location, use normal movement rules */
@@ -1226,13 +1249,13 @@ export function findtravelpath(mode)
         /* was '&& distmin(u.ux, u.uy, u.tx, u.ty) == 1' */
         && C.next2u(C.u.tx, C.u.ty) /* one step away */
         /* handle restricted diagonals */
-        && C.callLocal(crawl_destination,C.u.tx, C.u.ty)))) {
-        C.callLocal(end_running,C.FALSE);
-        if (C.callLocal(test_move,C.u.ux, C.u.uy, C.u.tx - C.u.ux, C.u.ty - C.u.uy, C.TEST_MOVE)) {
+        && C.callLocal(crawl_destination, C.u.tx, C.u.ty)))) {
+        C.callLocal(end_running, C.FALSE);
+        if (C.callLocal(test_move, C.u.ux, C.u.uy, C.u.tx - C.u.ux, C.u.ty - C.u.uy, C.TEST_MOVE)) {
             if (mode == TRAVP_TRAVEL) {
                 C.u.dx = C.int(C.u.tx - C.u.ux);
                 C.u.dy = C.int(C.u.ty - C.u.uy);
-                C.callLocal(nomul,0);
+                C.callLocal(nomul, 0);
                 C.iflags.travelcc.x = C.short(C.iflags.travelcc.y = C.short(0));
             }
             return C.char(C.TRUE);
@@ -1242,10 +1265,13 @@ export function findtravelpath(mode)
     }
     found: {
     if (Number(Boolean(C.u.tx != C.u.ux || C.u.ty != C.u.uy))) {
-        let travel = C.localArray("coordxy",[80, 21]);
-        let travelstepx = C.localArray("coordxy",[2, 1680]);
-        let travelstepy = C.localArray("coordxy",[2, 1680]);
-        let tx; let ty; let ux; let uy;
+        let travel = C.localArray("coordxy", [80, 21]);
+        let travelstepx = C.localArray("coordxy", [2, 1680]);
+        let travelstepy = C.localArray("coordxy", [2, 1680]);
+        let tx;
+        let ty;
+        let ux;
+        let uy;
         let n = C.int(1);      /* max offset in travelsteps */
         let set = C.int(0);    /* two sets current and previous */
         let radius = C.int(1); /* search radius */
@@ -1268,7 +1294,7 @@ export function findtravelpath(mode)
         }
 
  noguess: for (;;) {
-        void (C.memset(( travel), 0, BigInt(2*80*21)));
+        void (C.memset(( travel), 0, BigInt(2 * 80 * 21)));
         travelstepx[0][0] = C.short(tx);
         travelstepy[0][0] = C.short(ty);
 
@@ -1329,8 +1355,8 @@ export function findtravelpath(mode)
                         continue;
                     if (Number(Boolean((C.closed_door(x, y) && !C.Passes_walls && !C.can_ooze(C.gy.youmonst))
                         || (C.sobj_at(C.BOULDER, x, y)
-                            && !C.callLocal(could_move_onto_boulder,x, y))
-                        || C.callLocal(test_move,x, y, nx - x, ny - y, C.TEST_TRAP)))) {
+                            && !C.callLocal(could_move_onto_boulder, x, y))
+                        || C.callLocal(test_move, x, y, nx - x, ny - y, C.TEST_TRAP)))) {
                         /* closed doors and boulders usually cause a delay,
                            so prefer another path; however, giants and tiny
                            creatures can use m<dir> to move onto a boulder's
@@ -1346,7 +1372,7 @@ export function findtravelpath(mode)
                             continue;
                         }
                     }
-                    if (Number(Boolean(C.callLocal(test_move,x, y, nx - x, ny - y, C.TEST_TRAV)
+                    if (Number(Boolean(C.callLocal(test_move, x, y, nx - x, ny - y, C.TEST_TRAV)
                         && (seenAt(C, nx, ny)
                             || (!C.Blind && C.couldsee(nx, ny)))))) {
                         if (Number(Boolean(nx == ux && ny == uy))) {
@@ -1357,7 +1383,7 @@ export function findtravelpath(mode)
                                 if (Number(Boolean(mode == TRAVP_TRAVEL
                                     && ((x == C.u.tx && y == C.u.ty)
                                         || visited)))) {
-                                    C.callLocal(nomul,0);
+                                    C.callLocal(nomul, 0);
                                     /* reset run so domove run checks work */
                                     C.svc.context.run = C.uint(8);
                                     if (visited)
@@ -1400,9 +1426,14 @@ export function findtravelpath(mode)
 
         /* if guessing, find best location in travel matrix and go there */
         if (mode == TRAVP_GUESS) {
-            let px = C.int(tx); let py = C.int(ty); /* pick location */
-            let dist; let nxtdist; let d2; let nd2;
-            let ctrav; let ptrav = C.int(C.COLNO*C.ROWNO);
+            let px = C.int(tx);
+            let py = C.int(ty); /* pick location */
+            let dist;
+            let nxtdist;
+            let d2;
+            let nd2;
+            let ctrav;
+            let ptrav = C.int(C.COLNO * C.ROWNO);
 
             dist = C.int(C.distmin(ux, uy, tx, ty));
             d2 = C.int(C.dist2(ux, uy, tx, ty));
@@ -1432,7 +1463,7 @@ export function findtravelpath(mode)
                 /* no guesses, just go in the general direction */
                 C.u.dx = C.int(C.sgn(C.u.tx - C.u.ux));
                 C.u.dy = C.int(C.sgn(C.u.ty - C.u.uy));
-                if (C.callLocal(test_move,C.u.ux, C.u.uy, C.u.dx, C.u.dy, C.TEST_MOVE)) {
+                if (C.callLocal(test_move, C.u.ux, C.u.uy, C.u.dx, C.u.dy, C.TEST_MOVE)) {
                     C.selection_setpoint(C.u.ux, C.u.uy, C.gt.travelmap, 1);
                     return C.char(C.TRUE);
                 }
@@ -1466,29 +1497,30 @@ export function findtravelpath(mode)
     } // found
     C.u.dx = C.int(0);
     C.u.dy = C.int(0);
-    C.callLocal(nomul,0);
+    C.callLocal(nomul, 0);
     return C.char(C.FALSE);
 }
 
 /* try to escape being stuck in a trapped state by walking out of it;
    return true iff moving should continue to intended destination
    (all failures and most successful escapes leave hero at original spot) */
-export function is_valid_travelpt(x,y)
+export function is_valid_travelpt(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     let tx = C.int(C.u.tx);
     let ty = C.int(C.u.ty);
     let ret;
-    let glyph = C.int(C.glyph_at(x,y));
+    let glyph = C.int(C.glyph_at(x, y));
 
     if (C.u_at(x, y))
         return C.char(C.TRUE);
-    if (Number(Boolean(C.isok(x,y) && C.glyph_is_cmap(glyph) && C.S_stone == C.glyph_to_cmap(glyph)
+    if (Number(Boolean(C.isok(x, y) && C.glyph_is_cmap(glyph) && C.S_stone == C.glyph_to_cmap(glyph)
         && !C.levl[x][y].seenv)))
         return C.char(C.FALSE);
     C.u.tx = C.short(x);
     C.u.ty = C.short(y);
-    ret = C.char(C.callLocal(findtravelpath,TRAVP_VALID));
+    ret = C.char(C.callLocal(findtravelpath, TRAVP_VALID));
     C.u.tx = C.short(tx);
     C.u.ty = C.short(ty);
     return C.char(ret);
@@ -1496,11 +1528,13 @@ export function is_valid_travelpt(x,y)
 
 /* targeted destination, <u.ux+u.dx,u.uy+u.dy> */
 /* nonnull if another trap at <x,y> */
-export function trapmove(x,y,desttrap)
+export function trapmove(x, y, desttrap)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     let anchored = C.char(C.FALSE);
-    let predicament; let culprit;
+    let predicament;
+    let culprit;
     let steedname = C.charPointer(!C.u.usteed ? ( 0) : C.y_monnam(C.u.usteed));
 
     const wriggle_free = () => {
@@ -1512,7 +1546,7 @@ export function trapmove(x,y,desttrap)
                     !anchored ? "wriggle" : "wrench the ball");
             if (anchored)
                 C.buried_ball_to_punishment();
-        
+
     };
 
     if (!C.u.utrap)
@@ -1532,7 +1566,7 @@ export function trapmove(x,y,desttrap)
                 C.Norep("You are %s.", predicament);
         }
         /* [why does diagonal movement give quickest escape?] */
-        if (Number(Boolean((C.u.dx && C.u.dy) || !(C.rngCaller(1575,"trapmove"),C.rn2(5)))))
+        if (Number(Boolean((C.u.dx && C.u.dy) || !(C.rngCaller(1575, "trapmove"), C.rn2(5)))))
             C.u.utrap--;
         if (!C.u.utrap)
             {wriggle_free();break;}
@@ -1644,13 +1678,12 @@ export function trapmove(x,y,desttrap)
 
 export function u_rooted()
 {
-    
     if (!C.gy.youmonst.data.mmove) {
         C.You("are rooted %s.",
             Number(Boolean(C.Levitation || C.Is_airlevel(C.u.uz) || C.Is_waterlevel(C.u.uz)))
                 ? "in place"
                 : "to the ground");
-        C.callLocal(nomul,0);
+        C.callLocal(nomul, 0);
         return C.char(C.TRUE);
     }
     return C.char(C.FALSE);
@@ -1658,7 +1691,6 @@ export function u_rooted()
 
 export function notice_mon(mtmp)
 {
-    
     if (Number(Boolean(C.a11y.mon_notices && !C.a11y.mon_notices_blocked))) {
         let spot = C.char(Number(Boolean(C.canspotmon(mtmp)
             && !(Number(Boolean(C.is_hider(mtmp.data)
@@ -1683,10 +1715,10 @@ export function notice_mon(mtmp)
     }
 }
 
-export function notice_mons_cmp(ptr1,ptr2)
+export function notice_mons_cmp(ptr1, ptr2)
 {
-    
-    let m1 = C.pointerLoad("monst",C.pointerArray("monst", ptr1)); let m2 = C.pointerLoad("monst",C.pointerArray("monst", ptr2));
+    let m1 = C.pointerLoad("monst", C.pointerArray("monst", ptr1));
+    let m2 = C.pointerLoad("monst", C.pointerArray("monst", ptr2));
 
     return C.int((C.distu(m1.mx, m1.my) - C.distu(m2.mx, m2.my)));
 }
@@ -1694,11 +1726,13 @@ export function notice_mons_cmp(ptr1,ptr2)
 /* maybe disturb buried zombies when an object is dropped or thrown nearby */
 export function notice_all_mons(reset)
 {
-    reset=C.char(reset);
+    reset = C.char(reset);
     if (Number(Boolean(C.a11y.mon_notices && !C.a11y.mon_notices_blocked))) {
         let mtmp;
         let arr = C.NULL;
-        let j; let i = C.int(0); let cnt = C.int(0);
+        let j;
+        let i = C.int(0);
+        let cnt = C.int(0);
 
         for (mtmp = C.fmon; mtmp; mtmp = mtmp.nmon) {
             if (C.DEADMONSTER(mtmp))
@@ -1727,7 +1761,7 @@ export function notice_all_mons(reset)
                   notice_mons_cmp);
 
             for (j = C.int(0); j < i; j++)
-                C.callLocal(notice_mon,arr[j]);
+                C.callLocal(notice_mon, arr[j]);
         }
 
         C.free(arr);
@@ -1735,20 +1769,21 @@ export function notice_all_mons(reset)
 }
 
 /* reduce zombification timeout of buried zombies around px, py */
-export function impact_disturbs_zombies(obj,violent)
+export function impact_disturbs_zombies(obj, violent)
 {
-    violent=C.char(violent);
+    violent = C.char(violent);
     /* if object won't make a noticeable impact, let buried zombies rest */
     if (Number(Boolean(obj.owt < (violent ? 10 : 100) || C.is_flimsy(obj))))
         return;
 
-    C.callLocal(disturb_buried_zombies,obj.ox, obj.oy);
+    C.callLocal(disturb_buried_zombies, obj.ox, obj.oy);
 }
 
 /* return an appropriate locomotion word for hero */
-export function disturb_buried_zombies(x,y)
+export function disturb_buried_zombies(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     let otmp;
     let t;
 
@@ -1756,10 +1791,10 @@ export function disturb_buried_zombies(x,y)
         if (Number(Boolean(otmp.otyp == C.CORPSE && otmp.timed
             && otmp.ox >= x - 1 && otmp.ox <= x + 1
             && otmp.oy >= y - 1 && otmp.oy <= y + 1
-            && (t = C.long(C.peek_timer(C.ZOMBIFY_MON, C.callLocal(obj_to_any,otmp)))) > 0))) {
-            t = C.long(C.stop_timer(C.ZOMBIFY_MON, C.callLocal(obj_to_any,otmp)));
+            && (t = C.long(C.peek_timer(C.ZOMBIFY_MON, C.callLocal(obj_to_any, otmp)))) > 0))) {
+            t = C.long(C.stop_timer(C.ZOMBIFY_MON, C.callLocal(obj_to_any, otmp)));
             void (C.start_timer(((1) > ( (C.long((C.long(C.long((C.long(t)) * (C.long(2))))) / (C.long(3))))) ? (1) : ( (C.long((C.long(C.long((C.long(t)) * (C.long(2))))) / (C.long(3)))))), C.TIMER_OBJECT,
-                               C.ZOMBIFY_MON, C.callLocal(obj_to_any,otmp)));
+                               C.ZOMBIFY_MON, C.callLocal(obj_to_any, otmp)));
         }
     }
 }
@@ -1767,7 +1802,6 @@ export function disturb_buried_zombies(x,y)
 /* Return a simplified floor solid/liquid state based on hero's state */
 export function u_locomotion(def)
 {
-    
     let capitalize = C.char((C.HEAP8[C.charPointer(def)] == C.highc(C.HEAP8[C.charPointer(def)])));
 
     /* regular locomotion() takes a monster type rather than a specific
@@ -1781,9 +1815,10 @@ export function u_locomotion(def)
 }
 
 /* maybe show a helpful gameplay tip? returns True if tip gets shown */
-export function u_simple_floortyp(x,y)
+export function u_simple_floortyp(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     let u_in_air = C.char((Number(Boolean(C.Levitation || C.Flying || !C.grounded(C.gy.youmonst.data)))));
 
     if (C.is_waterwall(x, y))
@@ -1802,12 +1837,12 @@ export function u_simple_floortyp(x,y)
 /* Is it dangerous for hero to move to x,y due to water or lava? */
 export function handle_tip(tip)
 {
-    tip=C.int(tip);
+    tip = C.int(tip);
     if (!C.flags.tips)
         return C.char(C.FALSE);
 
     if (Number(Boolean(tip >= 0 && tip < C.NUM_TIPS && !(C.ulong((C.ulong(C.svc.context.tips)) & (C.ulong((1 << tip)))))))) {
-        ((_hackTarget)=>_hackTarget.tips = C.ulong(C.ulong(C.ulong(_hackTarget.tips) | C.ulong((1 << tip)))))(C.svc.context);
+        ((_hackTarget) => _hackTarget.tips = C.ulong(C.ulong(C.ulong(_hackTarget.tips) | C.ulong((1 << tip)))))(C.svc.context);
         /* the "Tip:" prefix is a hint to use of OPTIONS=!tips to suppress */
         switch (tip) {
         case C.TIP_ENHANCE:
@@ -1833,19 +1868,19 @@ export function handle_tip(tip)
 }
 
 /* moving with 'm' prefix, bump into a monster? */
-export function swim_move_danger(x,y)
+export function swim_move_danger(x, y)
 {
-    x=C.short(x);y=C.short(y);
-    let newtyp = C.char(C.callLocal(u_simple_floortyp,x, y));
+    x = C.short(x);
+    y = C.short(y);
+    let newtyp = C.char(C.callLocal(u_simple_floortyp, x, y));
     let liquid_wall = C.char(Number(Boolean(C.IS_WATERWALL(newtyp) || newtyp == C.LAVAWALL)));
 
-    if (Number(Boolean(C.Underwater && (C.is_pool(x,y) || C.IS_WATERWALL(newtyp)))))
+    if (Number(Boolean(C.Underwater && (C.is_pool(x, y) || C.IS_WATERWALL(newtyp)))))
         return C.char(C.FALSE);
 
-    if (Number(Boolean((newtyp != C.callLocal(u_simple_floortyp,C.u.ux, C.u.uy))
+    if (Number(Boolean((newtyp != C.callLocal(u_simple_floortyp, C.u.ux, C.u.uy))
         && !C.Stunned && !C.Confusion && C.levl[x][y].seenv
         && (C.is_pool(x, y) || C.is_lava(x, y) || liquid_wall)))) {
-
         /* FIXME: This can be exploited to identify ring of fire resistance
          * if the player is wearing it unidentified and has identified
          * fireproof boots of water walking and is walking over lava. However,
@@ -1858,13 +1893,13 @@ export function swim_move_danger(x,y)
             || liquid_wall))) {
             if (C.svc.context.nopick) {
                 /* moving with m-prefix */
-                ((_hackTarget)=>_hackTarget.tips = C.ulong(C.ulong(C.ulong(_hackTarget.tips) | C.ulong((1 << C.TIP_SWIM)))))(C.svc.context);
+                ((_hackTarget) => _hackTarget.tips = C.ulong(C.ulong(C.ulong(_hackTarget.tips) | C.ulong((1 << C.TIP_SWIM)))))(C.svc.context);
                 return C.char(C.FALSE);
             } else if (Number(Boolean(C.ParanoidSwim || liquid_wall))) {
                 C.You("avoid %s into the %s.",
-                    C.ing_suffix(C.callLocal(u_locomotion,"step")),
+                    C.ing_suffix(C.callLocal(u_locomotion, "step")),
                     C.waterbody_name(x, y));
-                void (C.callLocal(handle_tip,C.TIP_SWIM));
+                void (C.callLocal(handle_tip, C.TIP_SWIM));
                 return C.char(C.TRUE);
             }
         }
@@ -1876,9 +1911,9 @@ export function swim_move_danger(x,y)
    returns TRUE if hero movement is used up.
    sets displaceu, if hero and monster could swap places instead.
 */
-export function domove_bump_mon(mtmp,glyph)
+export function domove_bump_mon(mtmp, glyph)
 {
-    glyph=C.int(glyph);
+    glyph = C.int(glyph);
     /* If they used a 'm' command, trying to move onto a monster
      * prints the below message and wastes a turn.  The exception is
      * if the monster is unseen and the player doesn't remember an
@@ -1903,9 +1938,10 @@ export function domove_bump_mon(mtmp,glyph)
 }
 
 /* force-fight iron bars with your weapon? */
-export function domove_attackmon_at(mtmp,x,y,displaceu)
+export function domove_attackmon_at(mtmp, x, y, displaceu)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     /* assert(mtmp != NULL) */
     /* only attack if we know it's there
      * or if we used the 'F' command to fight blindly
@@ -1918,17 +1954,18 @@ export function domove_attackmon_at(mtmp,x,y,displaceu)
         || ((C.hides_under(mtmp.data) || mtmp.data.mlet == C.S_EEL)
             && !C.is_safemon(mtmp))))) {
         /* target monster might decide to switch places with you... */
-        (displaceu).value = C.char((Number(Boolean(C.pointerEqual(mtmp.data,C.mons[C.PM_DISPLACER_BEAST]) && !(C.rngCaller(1972,"domove_attackmon_at"),C.rn2(2))
+        (displaceu).value = C.char((Number(Boolean(C.pointerEqual(mtmp.data, C.mons[C.PM_DISPLACER_BEAST])
+            && !(C.rngCaller(1972, "domove_attackmon_at"), C.rn2(2))
                       && mtmp.mux == C.u.ux0 && mtmp.muy == C.u.uy0
                       && !C.helpless(mtmp)
                       && !mtmp.meating && !mtmp.mtrapped
                       && !C.u.utrap && !C.u.ustuck && !C.u.usteed
                       && !(Number(Boolean(C.u.dx && C.u.dy
                            && (C.NODIAG(C.u.umonnum)
-                               || (C.callLocal(bad_rock,mtmp.data, x, C.u.uy0)
-                                   && C.callLocal(bad_rock,mtmp.data, C.u.ux0, y))
-                               || (C.callLocal(bad_rock,C.gy.youmonst.data, C.u.ux0, y)
-                                   && C.callLocal(bad_rock,C.gy.youmonst.data, x, C.u.uy0))))))
+                               || (C.callLocal(bad_rock, mtmp.data, x, C.u.uy0)
+                                   && C.callLocal(bad_rock, mtmp.data, C.u.ux0, y))
+                               || (C.callLocal(bad_rock, C.gy.youmonst.data, C.u.ux0, y)
+                                   && C.callLocal(bad_rock, C.gy.youmonst.data, x, C.u.uy0))))))
                       && C.goodpos(C.u.ux0, C.u.uy0, mtmp, C.GP_ALLOW_U)))));
         /* if not displacing, try to attack; note that it might evade;
            also, we don't attack tame or peaceful when safemon() */
@@ -1941,9 +1978,10 @@ export function domove_attackmon_at(mtmp,x,y,displaceu)
 }
 
 /* force-fight a spider web with your weapon */
-export function domove_fight_ironbars(x,y)
+export function domove_fight_ironbars(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     if (Number(Boolean(C.svc.context.forcefight && terrainAt(C, x, y) == C.IRONBARS && C.uwep))) {
         let obj = C.uwep;
         let breakflags = C.uint((C.BRK_BY_HERO | C.BRK_FROM_INV | C.BRK_MELEE));
@@ -1959,7 +1997,7 @@ export function domove_fight_ironbars(x,y)
             breakflags = C.uint(C.uint(C.uint(breakflags) | C.uint(C.BRK_KNOWN2NOTBREAK)));
         }
 
-        C.hit_bars(C.localPointer("obj *",()=>obj,_value=>obj=_value), C.u.ux, C.u.uy, x, y, breakflags);
+        C.hit_bars(C.localPointer("obj *", () => obj, _value => obj = _value), C.u.ux, C.u.uy, x, y, breakflags);
         return C.char(C.TRUE);
     }
     return C.char(C.FALSE);
@@ -1970,13 +2008,16 @@ export function domove_fight_ironbars(x,y)
 /* higher value is worse for player; for weaponless, adjust the
                chance to succeed rather than maybe make two tries */
 /* maybe swap places with a pet? returns TRUE if swapped places */
-export function domove_fight_web(x,y)
+export function domove_fight_web(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     let trap = C.t_at(x, y);
 
     if (Number(Boolean(C.svc.context.forcefight && trap && trap.ttyp == C.WEB && trap.tseen))) {
-        let wtype = C.int(C.uwep_skill_type()); let wskill_minus_2 = C.int(((C.P_SKILL(wtype)) > ( C.P_UNSKILLED) ? (C.P_SKILL(wtype)) : ( C.P_UNSKILLED)) - 2); let roll = C.int((C.rngCaller(2032,"domove_fight_web"),C.rn2(C.uwep ? 20 : (45 - 5 * wskill_minus_2))));
+        let wtype = C.int(C.uwep_skill_type());
+        let wskill_minus_2 = C.int(((C.P_SKILL(wtype)) > ( C.P_UNSKILLED) ? (C.P_SKILL(wtype)) : ( C.P_UNSKILLED)) - 2);
+        let roll = C.int((C.rngCaller(2032, "domove_fight_web"), C.rn2(C.uwep ? 20 : (45 - 5 * wskill_minus_2))));
 
         if (Number(Boolean(C.uwep && (C.u_wield_art(C.ART_STING)
                      || (C.uwep.oartifact && C.attacks(C.AD_FIRE, C.uwep)))))) {
@@ -1988,7 +2029,10 @@ export function domove_fight_web(x,y)
            but doesn't include axes and slashing polearms */
         } else if (Number(Boolean(C.uwep && !C.is_blade(C.uwep)
                    && (!C.u.twoweap || !C.is_blade(C.uswapwep))))) {
-            let uwepstr = C.charPointer(0); let scndstr = C.charPointer(0); let uwepbuf = C.localArray("char",[256]); let scndbuf = C.localArray("char",[256]);
+            let uwepstr = C.charPointer(0);
+            let scndstr = C.charPointer(0);
+            let uwepbuf = C.localArray("char", [256]);
+            let scndbuf = C.localArray("char", [256]);
             let onewep;
 
             /* when dual wielding, second weapon will only be mentioned
@@ -2009,7 +2053,7 @@ export function domove_fight_web(x,y)
                 uwepstr = C.charPointer(C.makeplural(uwepbuf));
             }
             if (!onewep) {
-                void ((C.uswapwep != C.NULL) || (C.__assert_fail("uswapwep != NULL","hack.c",2065,"domove_fight_web"),0));
+                void ((C.uswapwep != C.NULL) || (C.__assert_fail("uswapwep != NULL", "hack.c", 2065, "domove_fight_web"), 0));
                 scndstr = C.charPointer((C.uswapwep.quan == 1n) ? C.an(scndbuf)
                                                  : C.makeplural(scndbuf));
             }
@@ -2041,13 +2085,14 @@ export function domove_fight_web(x,y)
 }
 
 /* force-fight (x,y) which doesn't have anything to fight */
-export function domove_swap_with_pet(mtmp,x,y)
+export function domove_swap_with_pet(mtmp, x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     let trap;
     /* if it turns out we can't actually move */
     let didnt_move = C.char(C.FALSE);
-    let u_with_boulder = C.char((!C.pointerEqual(C.sobj_at(C.BOULDER, C.u.ux, C.u.uy),0)));
+    let u_with_boulder = C.char((!C.pointerEqual(C.sobj_at(C.BOULDER, C.u.ux, C.u.uy), 0)));
 
     /* seemimic/newsym should be done before moving hero, otherwise
        the display code will draw the hero here before we possibly
@@ -2066,7 +2111,7 @@ export function domove_swap_with_pet(mtmp,x,y)
         && C.sobj_at(C.BOULDER, trap.tx, trap.ty)))) {
         /* can't swap places with pet pinned in a pit by a boulder */
         didnt_move = C.char(C.TRUE);
-    } else if (Number(Boolean(C.u.ux0 != x && C.u.uy0 != y && C.NODIAG(C.pointerDifference(mtmp.data,C.mons,"permonst"))))) {
+    } else if (Number(Boolean(C.u.ux0 != x && C.u.uy0 != y && C.NODIAG(C.pointerDifference(mtmp.data, C.mons, "permonst"))))) {
         /* can't swap places when pet can't move to your spot */
         C.You("stop.  %s can't move diagonally.", C.YMonnam(mtmp));
         didnt_move = C.char(C.TRUE);
@@ -2077,28 +2122,29 @@ export function domove_swap_with_pet(mtmp,x,y)
         C.You("stop.  %s won't fit into the same spot that you're at.",
             C.YMonnam(mtmp));
         didnt_move = C.char(C.TRUE);
-    } else if (Number(Boolean(C.u.ux0 != x && C.u.uy0 != y && C.callLocal(bad_rock,mtmp.data, x, C.u.uy0)
-               && C.callLocal(bad_rock,mtmp.data, C.u.ux0, y)
+    } else if (Number(Boolean(C.u.ux0 != x && C.u.uy0 != y && C.callLocal(bad_rock, mtmp.data, x, C.u.uy0)
+               && C.callLocal(bad_rock, mtmp.data, C.u.ux0, y)
                && (C.bigmonst(mtmp.data) || (C.curr_mon_load(mtmp) > 600))))) {
         /* can't swap places when pet won't fit thru the opening */
         C.You("stop.  %s won't fit through.", C.YMonnam(mtmp));
         didnt_move = C.char(C.TRUE);
     } else if (Number(Boolean(mtmp.mpeaceful && mtmp.mtrapped))) {
         /* all mtame are also mpeaceful, so this affects pets too */
-        void ((trap != C.NULL) || (C.__assert_fail("trap != NULL","hack.c",2143,"domove_swap_with_pet"),0)); /* implied by mtrapped */
-        let what = C.charPointer(C.trapname(trap.ttyp, C.FALSE)); let which = C.charPointer("that ");
-        let anbuf = C.localArray("char",[10]);
+        void ((trap != C.NULL) || (C.__assert_fail("trap != NULL", "hack.c", 2143, "domove_swap_with_pet"), 0)); /* implied by mtrapped */
+        let what = C.charPointer(C.trapname(trap.ttyp, C.FALSE));
+        let which = C.charPointer("that ");
+        let anbuf = C.localArray("char", [10]);
 
         if (!trap.tseen) {
             C.feeltrap(trap); /* show on map once mtmp is out of the way */
             which = C.charPointer(C.just_an(anbuf, what)); /* "a " or "an " */
         }
         C.You("stop.  %s can't move out of %s%s.", C.YMonnam(mtmp), which, what);
-        void (C.callLocal(handle_tip,C.TIP_UNTRAP_MON));
+        void (C.callLocal(handle_tip, C.TIP_UNTRAP_MON));
         didnt_move = C.char(C.TRUE);
     } else if (Number(Boolean(mtmp.mpeaceful
                && (!C.goodpos(C.u.ux0, C.u.uy0, mtmp, 0)
-                   || !C.pointerEqual(C.t_at(C.u.ux0, C.u.uy0),C.NULL)
+                   || !C.pointerEqual(C.t_at(C.u.ux0, C.u.uy0), C.NULL)
                    || C.mundisplaceable(mtmp))))) {
         /* displacing peaceful into unsafe or trapped space, or trying to
            displace quest leader, Oracle, shk, priest, or vault guard */
@@ -2141,7 +2187,8 @@ export function domove_swap_with_pet(mtmp,x,y)
             {
                 /* minliquid() and mintrap() call mondead() rather than
                    killed() so we duplicate some of the latter here */
-                let tmp; let mndx;
+                let tmp;
+                let mndx;
 
                 if (!C.u.uconduct.killer++)
                     C.livelog_printf(C.LL_CONDUCT, "killed for the first time");
@@ -2155,7 +2202,7 @@ export function domove_swap_with_pet(mtmp,x,y)
              * [This has always been pretty iffy.  Why does your
              * patron deity care at all, let alone enough to get mad?]
              */
-            if ((C.rngCaller(2213,"domove_swap_with_pet"),C.rn2(4))) {
+            if ((C.rngCaller(2213, "domove_swap_with_pet"), C.rn2(4))) {
                 C.You_feel("guilty about losing your pet like this.");
                 C.u.ugangr++;
                 C.adjalign(-15);
@@ -2170,10 +2217,11 @@ export function domove_swap_with_pet(mtmp,x,y)
 }
 
 /* does the plane of air disturb movement? */
-export function domove_fight_empty(x,y)
+export function domove_fight_empty(x, y)
 {
-    x=C.short(x);y=C.short(y);
-    
+    x = C.short(x);
+    y = C.short(y);
+
     let off_edge = C.char(!C.isok(x, y));
     let glyph = C.int(!off_edge ? C.glyph_at(x, y) : C.GLYPH_UNEXPLORED);
 
@@ -2189,16 +2237,19 @@ export function domove_fight_empty(x,y)
         || (C.glyph_is_invisible(glyph) && !C.m_at(x, y)
             && !C.svc.context.nopick)))) {
         let boulder = 0;
-        let explo = C.char((Number(Boolean(C.Upolyd && C.attacktype(C.gy.youmonst.data, C.AT_EXPL))))); let solid = C.char((Number(Boolean(off_edge || (!C.accessible(x, y)
+        let explo = C.char((Number(Boolean(C.Upolyd
+            && C.attacktype(C.gy.youmonst.data, C.AT_EXPL)))));
+        let solid = C.char((Number(Boolean(off_edge
+            || (!C.accessible(x, y)
                                       || C.IS_FURNITURE(terrainAt(C, x, y)))))));
-        let buf = C.localArray("char",[256]);
+        let buf = C.localArray("char", [256]);
 
         const futile = () => {
         C.You("%s%s %s.",
             !(Number(Boolean(boulder || solid))) ? "" : !explo ? "harmlessly " : "futilely ",
             explo ? "explode at" : "attack", buf);
 
-        C.callLocal(nomul,0);
+        C.callLocal(nomul, 0);
         if (explo) {
             let attk = C.attacktype_fordmg(C.gy.youmonst.data, C.AT_EXPL, C.AD_ANY);
 
@@ -2286,9 +2337,8 @@ export function domove_fight_empty(x,y)
 /* does water disturb the movement? */
 export function air_turbulence()
 {
-    
-    if (Number(Boolean(C.Is_airlevel(C.u.uz) && (C.rngCaller(2344,"air_turbulence"),C.rn2(4)) && !C.Levitation && !C.Flying))) {
-        switch ((C.rngCaller(2345,"air_turbulence"),C.rn2(3))) {
+    if (Number(Boolean(C.Is_airlevel(C.u.uz) && (C.rngCaller(2344, "air_turbulence"), C.rn2(4)) && !C.Levitation && !C.Flying))) {
+        switch ((C.rngCaller(2345, "air_turbulence"), C.rn2(3))) {
         case 0:
             C.You("tumble in place.");
             C.exercise(C.A_DEX, C.FALSE);
@@ -2306,16 +2356,15 @@ export function air_turbulence()
     return C.char(C.FALSE);
 }
 
-export function water_turbulence(x,y)
+export function water_turbulence(x, y)
 {
-    
     if (C.u.uinwater) {
         let wtcap;
         let wtmod = C.int((C.Swimming ? C.MOD_ENCUMBER : C.SLT_ENCUMBER));
 
         C.water_friction();
         if (Number(Boolean(!C.u.dx && !C.u.dy))) {
-            C.callLocal(nomul,0);
+            C.callLocal(nomul, 0);
             return C.char(C.TRUE);
         }
         (x).value = C.short(C.u.ux + C.u.dx);
@@ -2330,7 +2379,7 @@ export function water_turbulence(x,y)
                form, stressed or less is allowed; otherwise (magical
                breathing), only burdened is allowed */
             C.You("are carrying too much to climb out of the water.");
-            C.callLocal(nomul,0);
+            C.callLocal(nomul, 0);
             return C.char(C.TRUE);
         }
     }
@@ -2339,7 +2388,6 @@ export function water_turbulence(x,y)
 
 export function slippery_ice_fumbling()
 {
-    
     let on_ice = C.char(Number(Boolean(!C.Levitation && C.is_ice(C.u.ux, C.u.uy))));
     let iceskater = C.u.usteed ? C.u.usteed : C.gy.youmonst;
 
@@ -2349,7 +2397,7 @@ export function slippery_ice_fumbling()
             || C.is_floater(iceskater.data) || C.is_clinger(iceskater.data)
             || C.is_whirly(iceskater.data)))) {
             on_ice = C.char(C.FALSE);
-        } else if (!(C.rngCaller(2407,"slippery_ice_fumbling"),C.rn2(C.Cold_resistance ? 3 : 2))) {
+        } else if (!(C.rngCaller(2407, "slippery_ice_fumbling"), C.rn2(C.Cold_resistance ? 3 : 2))) {
             C.HFumbling = C.long(C.long(C.long(C.HFumbling) | C.long(C.FROMOUTSIDE)));
             C.HFumbling = C.long(C.long(C.long(C.HFumbling) & C.long(~C.TIMEOUT)));
             C.HFumbling = C.long(C.long(C.long(C.HFumbling) + C.long(1))); /* slip on next move */
@@ -2362,32 +2410,32 @@ export function slippery_ice_fumbling()
 /* change movement dir if impaired. return TRUE if can't move */
 export function u_maybe_impaired()
 {
-    
-    return C.char((Number(Boolean(C.Stunned || (C.Confusion && !(C.rngCaller(2420,"u_maybe_impaired"),C.rn2(5)))))));
+    return C.char((Number(Boolean(C.Stunned || (C.Confusion && !(C.rngCaller(2420, "u_maybe_impaired"), C.rn2(5)))))));
 }
 
-export function impaired_movement(x,y)
+export function impaired_movement(x, y)
 {
-    
     if (C.callLocal(u_maybe_impaired,)) {
         let tries = C.int(0);
 
         do {
             if (tries++ > 50) {
-                C.callLocal(nomul,0);
+                C.callLocal(nomul, 0);
                 return C.char(C.TRUE);
             }
             C.confdir(C.TRUE);
             (x).value = C.short(C.u.ux + C.u.dx);
             (y).value = C.short(C.u.uy + C.u.dy);
-        } while (Number(Boolean(!C.isok((x).value, (y).value) || C.callLocal(bad_rock,C.gy.youmonst.data, (x).value, (y).value))));
+        } while (Number(Boolean(!C.isok((x).value, (y).value) || C.callLocal(bad_rock, C.gy.youmonst.data, (x).value, (y).value))));
     }
     return C.char(C.FALSE);
 }
 
-export function avoid_moving_on_trap(x,y,msg)
+export function avoid_moving_on_trap(x, y, msg)
 {
-    x=C.short(x);y=C.short(y);msg=C.char(msg);
+    x = C.short(x);
+    y = C.short(y);
+    msg = C.char(msg);
     let trap;
 
     if (Number(Boolean((trap = C.t_at(x, y)) && trap.tseen
@@ -2406,9 +2454,11 @@ export function avoid_moving_on_trap(x,y,msg)
 
 /* when running/rushing, avoid stepping on a known trap or pool of liquid.
    returns TRUE if avoided. */
-export function avoid_moving_on_liquid(x,y,msg)
+export function avoid_moving_on_liquid(x, y, msg)
 {
-    x=C.short(x);y=C.short(y);msg=C.char(msg);
+    x = C.short(x);
+    y = C.short(y);
+    msg = C.char(msg);
     let in_air = C.char((Number(Boolean(C.Levitation || C.Flying))));
 
     /* don't stop if you're not on a transition between terrain types... */
@@ -2427,7 +2477,7 @@ export function avoid_moving_on_liquid(x,y,msg)
         if (Number(Boolean(msg && C.flags.mention_walls))) {
             C.set_msg_xy(x, y);
             C.You("stop at the edge of the %s.",
-                C.hliquid(C.is_pool(x,y) ? "water" : "lava"));
+                C.hliquid(C.is_pool(x, y) ? "water" : "lava"));
         }
         return C.char(C.TRUE);
     }
@@ -2437,16 +2487,17 @@ export function avoid_moving_on_liquid(x,y,msg)
 /* if paranoid_confirm:Trap is enabled, check whether the next step forward
    needs player confirmation due to visible region or discovered trap;
    result: True => stop moving, False => proceed */
-export function avoid_running_into_trap_or_liquid(x,y)
+export function avoid_running_into_trap_or_liquid(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     let would_stop = C.char((C.svc.context.run >= 2));
     if (!C.svc.context.run)
         return C.char(C.FALSE);
 
-    if (Number(Boolean(C.callLocal(avoid_moving_on_trap,x,y, would_stop)
-        || (C.Blind && C.callLocal(avoid_moving_on_liquid,x,y, would_stop))))) {
-        C.callLocal(nomul,0);
+    if (Number(Boolean(C.callLocal(avoid_moving_on_trap, x, y, would_stop)
+        || (C.Blind && C.callLocal(avoid_moving_on_liquid, x, y, would_stop))))) {
+        C.callLocal(nomul, 0);
         if (would_stop)
             C.svc.context.move = C.char(0);
         return C.char(would_stop);
@@ -2455,11 +2506,13 @@ export function avoid_running_into_trap_or_liquid(x,y)
 }
 
 /* trying to move out-of-bounds? */
-export function avoid_trap_andor_region(x,y)
+export function avoid_trap_andor_region(x, y)
 {
-    x=C.short(x);y=C.short(y);
-    let qbuf = C.localArray("char",[128]);
-    let newreg; let oldreg;
+    x = C.short(x);
+    y = C.short(y);
+    let qbuf = C.localArray("char", [128]);
+    let newreg;
+    let oldreg;
     let trap = C.NULL;
 
     /* treat entering a visible gas cloud region like entering a trap;
@@ -2472,22 +2525,22 @@ export function avoid_trap_andor_region(x,y)
         /* skip if player used 'm' prefix or is moving recklessly */
         && (!C.svc.context.nopick || C.svc.context.run)
         /* check for region(s) */
-        && !C.pointerEqual((newreg = C.visible_region_at(x, y)),0)
-        && (C.pointerEqual((oldreg = C.visible_region_at(C.u.ux, C.u.uy)),0)
+        && !C.pointerEqual((newreg = C.visible_region_at(x, y)), 0)
+        && (C.pointerEqual((oldreg = C.visible_region_at(C.u.ux, C.u.uy)), 0)
             /* if moving from one region into another, only ask for
                confirmation if the one potentially being entered inflicts
                damage (poison gas) and the one being exited doesn't (vapor) */
             || (C.reg_damg(newreg) > 0 && C.reg_damg(oldreg) == 0))
         /* check whether attempted move will be viable */
-        && C.callLocal(test_move,C.u.ux, C.u.uy, C.u.dx, C.u.dy, C.TEST_MOVE)))
+        && C.callLocal(test_move, C.u.ux, C.u.uy, C.u.dx, C.u.dy, C.TEST_MOVE)))
         /* we don't override confirmation for poison resistance since the
            region also hinders hero's vision even if/when no damage is done */
     ) {
-        C.nh_snprintf("avoid_trap_andor_region",2544,qbuf, BigInt(1*128), "%s into that %s cloud?",
-                 C.callLocal(u_locomotion,"step"),
+        C.nh_snprintf("avoid_trap_andor_region", 2544, qbuf, BigInt(1 * 128), "%s into that %s cloud?",
+                 C.callLocal(u_locomotion, "step"),
                  (C.reg_damg(newreg) > 0) ? "poison gas" : "vapor");
         if (!C.paranoid_query(C.ParanoidConfirm, C.upstart(qbuf))) {
-            C.callLocal(nomul,0);
+            C.callLocal(nomul, 0);
             C.svc.context.move = C.char(0);
             return C.char(C.TRUE);
         }
@@ -2498,26 +2551,26 @@ export function avoid_trap_andor_region(x,y)
         /* skip if player used 'm' prefix or is moving recklessly */
         && (!C.svc.context.nopick || C.svc.context.run)
         /* check for discovered trap */
-        && !C.pointerEqual((trap = C.t_at(x, y)),0) && trap.tseen
+        && !C.pointerEqual((trap = C.t_at(x, y)), 0) && trap.tseen
         /* check whether attempted move will be viable */
-        && C.callLocal(test_move,C.u.ux, C.u.uy, C.u.dx, C.u.dy, C.TEST_MOVE)
+        && C.callLocal(test_move, C.u.ux, C.u.uy, C.u.dx, C.u.dy, C.TEST_MOVE)
         /* override confirmation if the trap is harmless to the hero */
         && (C.immune_to_trap(C.gy.youmonst, trap.ttyp) != C.TRAP_CLEARLY_IMMUNE
             /* Hallucination: all traps still show as ^, but the
                hero can't tell what they are, so treat as dangerous */
             || C.Hallucination)))) {
-        let traptype = C.int((C.Hallucination ? (C.rngCaller(2565,"avoid_trap_andor_region"),C.rnd(C.TRAPNUM - 1)) : C.int( trap.ttyp)));
+        let traptype = C.int((C.Hallucination ? (C.rngCaller(2565, "avoid_trap_andor_region"), C.rnd(C.TRAPNUM - 1)) : C.int( trap.ttyp)));
         let into = C.char(C.into_vs_onto(traptype));
 
-        C.nh_snprintf("avoid_trap_andor_region",2570,qbuf, BigInt(1*128), "Really %s %s that %s?",
-                 C.callLocal(u_locomotion,"step"), into ? "into" : "onto",
+        C.nh_snprintf("avoid_trap_andor_region", 2570, qbuf, BigInt(1 * 128), "Really %s %s that %s?",
+                 C.callLocal(u_locomotion, "step"), into ? "into" : "onto",
                  C.defsyms[C.trap_to_defsym(traptype)].explanation);
         /* handled like paranoid_confirm:pray; when paranoid_confirm:trap
            isn't set, don't ask at all but if it is set (checked above),
            ask via y/n if parnoid_confirm:confirm isn't also set or via
            yes/no if it is */
         if (!C.paranoid_query(C.ParanoidConfirm, qbuf)) {
-            C.callLocal(nomul,0);
+            C.callLocal(nomul, 0);
             C.svc.context.move = C.char(0);
             return C.char(C.TRUE);
         }
@@ -2526,15 +2579,17 @@ export function avoid_trap_andor_region(x,y)
 }
 
 /* carrying too much to be able to move? */
-export function move_out_of_bounds(x,y)
+export function move_out_of_bounds(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     if (!C.isok(x, y)) {
         if (C.svc.context.forcefight)
-            return C.char(C.callLocal(domove_fight_empty,x, y));
+            return C.char(C.callLocal(domove_fight_empty, x, y));
 
         if (C.flags.mention_walls) {
-            let dx = C.short(C.u.dx); let dy = C.short(C.u.dy);
+            let dx = C.short(C.u.dx);
+            let dy = C.short(C.u.dy);
 
             if (Number(Boolean(dx && dy))) { /* diagonal */
                 /* only as far as possible diagonally if in very
@@ -2548,7 +2603,7 @@ export function move_out_of_bounds(x,y)
             C.You("have already gone as far %s as possible.",
                 C.directionname(C.xytodir(dx, dy)));
         }
-        C.callLocal(nomul,0);
+        C.callLocal(nomul, 0);
         C.svc.context.move = C.char(0);
         return C.char(C.TRUE);
     }
@@ -2559,7 +2614,6 @@ export function move_out_of_bounds(x,y)
    you're sticking to. returns TRUE if you lose your movement. */
 export function carrying_too_much()
 {
-    
     let wtcap;
 
     if (Number(Boolean(((wtcap = C.int(C.callLocal(near_capacity,))) >= C.OVERLOADED
@@ -2572,15 +2626,16 @@ export function carrying_too_much()
             C.exercise(C.A_CON, C.FALSE);
         } else
             C.You("collapse under your load.");
-        C.callLocal(nomul,0);
+        C.callLocal(nomul, 0);
         return C.char(C.TRUE);
     }
     return C.char(C.FALSE);
 }
 
-export function escape_from_sticky_mon(x,y)
+export function escape_from_sticky_mon(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     if (Number(Boolean(C.u.ustuck && (x != C.u.ustuck.mx || y != C.u.ustuck.my)))) {
         let mtmp;
 
@@ -2604,7 +2659,7 @@ export function escape_from_sticky_mon(x,y)
              * If holder is tame and there is no conflict,
              * guaranteed escape.
              */
-            switch ((C.rngCaller(2664,"escape_from_sticky_mon"),C.rn2(!C.u.ustuck.mcanmove ? 8 : 40))) {
+            switch ((C.rngCaller(2664, "escape_from_sticky_mon"), C.rn2(!C.u.ustuck.mcanmove ? 8 : 40))) {
             case 3:
                 if (!C.u.ustuck.mcanmove) {
                     /* it's free to move on next turn */
@@ -2616,7 +2671,7 @@ export function escape_from_sticky_mon(x,y)
             default:
                 if (Number(Boolean(C.Conflict || C.u.ustuck.mconf || !C.u.ustuck.mtame))) {
                     C.You("cannot escape from %s!", C.y_monnam(C.u.ustuck));
-                    C.callLocal(nomul,0);
+                    C.callLocal(nomul, 0);
                     return C.char(C.TRUE);
                 }
                 ;
@@ -2636,14 +2691,14 @@ export function escape_from_sticky_mon(x,y)
 
 export function domove()
 {
-    
-        let ux1 = C.short(C.u.ux); let uy1 = C.short(C.u.uy);
+        let ux1 = C.short(C.u.ux);
+        let uy1 = C.short(C.u.uy);
 
         C.gd.domove_succeeded = C.long(0n);
         C.callLocal(domove_core,);
         /* gd.domove_succeeded is available to make assessments now */
         if ((C.long((C.long(C.gd.domove_succeeded)) & (C.long((C.DOMOVE_RUSH | C.DOMOVE_WALK))))) != 0) {
-            C.callLocal(maybe_smudge_engr,ux1, uy1, C.u.ux, C.u.uy);
+            C.callLocal(maybe_smudge_engr, ux1, uy1, C.u.ux, C.u.uy);
             C.maybe_adjust_hero_bubble();
         }
         C.gd.domove_attempting = C.long(0n);
@@ -2656,18 +2711,22 @@ export function domove()
    if hero is running or doing a multi-turn action */
 export function domove_core()
 {
-    
     let mtmp;
     let tmpr;
-    let x; let y;
+    let x;
+    let y;
     let glyph;
-    let chainx = C.short(0); let chainy = C.short(0); let ballx = C.short(0); let bally = C.short(0);       /* ball&chain new positions */
+    let chainx = C.short(0);
+    let chainy = C.short(0);
+    let ballx = C.short(0);
+    let bally = C.short(0);       /* ball&chain new positions */
     let bc_control = C.int(0);                 /* control for ball&chain */
-    let cause_delay = C.char(C.FALSE); let displaceu = C.char(C.FALSE);          /* involuntary swap */
+    let cause_delay = C.char(C.FALSE);
+    let displaceu = C.char(C.FALSE);          /* involuntary swap */
 
     if (C.svc.context.travel) {
-        if (!C.callLocal(findtravelpath,TRAVP_TRAVEL))
-            void (C.callLocal(findtravelpath,TRAVP_GUESS));
+        if (!C.callLocal(findtravelpath, TRAVP_TRAVEL))
+            void (C.callLocal(findtravelpath, TRAVP_GUESS));
         C.svc.context.travel1 = C.char(0);
     }
 
@@ -2688,20 +2747,20 @@ export function domove_core()
 
         x = C.short(C.u.ux + C.u.dx);
         y = C.short(C.u.uy + C.u.dy);
-        if (C.callLocal(impaired_movement,C.localPointer("coordxy",()=>x,_value=>x=_value), C.localPointer("coordxy",()=>y,_value=>y=_value)))
+        if (C.callLocal(impaired_movement, C.localPointer("coordxy", () => x, _value => x = _value), C.localPointer("coordxy", () => y, _value => y = _value)))
             return;
 
         /* turbulence might alter your actual destination */
-        if (C.callLocal(water_turbulence,C.localPointer("coordxy",()=>x,_value=>x=_value), C.localPointer("coordxy",()=>y,_value=>y=_value)))
+        if (C.callLocal(water_turbulence, C.localPointer("coordxy", () => x, _value => x = _value), C.localPointer("coordxy", () => y, _value => y = _value)))
             return;
 
-        if (C.callLocal(move_out_of_bounds,x, y))
+        if (C.callLocal(move_out_of_bounds, x, y))
             return;
 
-        if (C.callLocal(avoid_running_into_trap_or_liquid,x, y))
+        if (C.callLocal(avoid_running_into_trap_or_liquid, x, y))
             return;
 
-        if (C.callLocal(escape_from_sticky_mon,x, y))
+        if (C.callLocal(escape_from_sticky_mon, x, y))
             return;
 
         mtmp = C.m_at(x, y);
@@ -2714,7 +2773,7 @@ export function domove_core()
                                       && C.M_AP_TYPE(mtmp) != C.M_AP_OBJECT)
                                      || C.Protection_from_shape_changers))
                                 || C.sensemon(mtmp))))) {
-                C.callLocal(nomul,0);
+                C.callLocal(nomul, 0);
                 C.svc.context.move = C.char(0);
                 return;
             }
@@ -2733,31 +2792,30 @@ export function domove_core()
            displace fails for some reason, do_attack() in uhitm.c
            will stop travel rather than domove */
         if (Number(Boolean(!C.is_safemon(mtmp) || C.svc.context.forcefight)))
-            C.callLocal(nomul,0);
+            C.callLocal(nomul, 0);
 
-        if (C.callLocal(domove_bump_mon,mtmp, glyph))
+        if (C.callLocal(domove_bump_mon, mtmp, glyph))
             return;
 
         /* attack monster */
-        if (C.callLocal(domove_attackmon_at,mtmp, x, y, C.localPointer("boolean",()=>displaceu,_value=>displaceu=_value)))
+        if (C.callLocal(domove_attackmon_at, mtmp, x, y, C.localPointer("boolean", () => displaceu, _value => displaceu = _value)))
             return;
     }
 
     if (!displaceu) {
-
-        if (C.callLocal(domove_fight_ironbars,x, y))
+        if (C.callLocal(domove_fight_ironbars, x, y))
             return;
 
-        if (C.callLocal(domove_fight_web,x, y))
+        if (C.callLocal(domove_fight_web, x, y))
             return;
 
-        if (C.callLocal(domove_fight_empty,x, y))
+        if (C.callLocal(domove_fight_empty, x, y))
             return;
 
         void (C.unmap_invisible(x, y));
         /* not attacking an animal, so we try to move */
         if (Number(Boolean((C.u.dx || C.u.dy) && C.u.usteed && C.stucksteed(C.FALSE)))) {
-            C.callLocal(nomul,0);
+            C.callLocal(nomul, 0);
             return;
         }
 
@@ -2767,12 +2825,12 @@ export function domove_core()
         /* handling for paranoid_confirm:Trap which doubles as
            paranoid_confirm:Region */
         if (C.ParanoidTrap) {
-            if (C.callLocal(avoid_trap_andor_region,x, y))
+            if (C.callLocal(avoid_trap_andor_region, x, y))
                 return;
         }
 
         if (C.u.utrap) { /* when u.utrap is True, displaceu is False */
-            let moved = C.char(C.callLocal(trapmove,x, y, C.view("trap", C.NULL)));
+            let moved = C.char(C.callLocal(trapmove, x, y, C.view("trap", C.NULL)));
 
             if (!C.u.utrap) {
                 C.disp.botl = C.char(C.TRUE);
@@ -2784,18 +2842,18 @@ export function domove_core()
                 return;
         }
 
-        if (!C.callLocal(test_move,C.u.ux, C.u.uy, x - C.u.ux, y - C.u.uy, C.DO_MOVE)) {
+        if (!C.callLocal(test_move, C.u.ux, C.u.uy, x - C.u.ux, y - C.u.uy, C.DO_MOVE)) {
             if (!C.svc.context.door_opened) {
                 C.svc.context.move = C.char(0);
-                C.callLocal(nomul,0);
+                C.callLocal(nomul, 0);
             }
             return;
         }
 
         /* Is it dangerous to swim in water or lava? */
-        if (C.callLocal(swim_move_danger,x, y)) {
+        if (C.callLocal(swim_move_danger, x, y)) {
             C.svc.context.move = C.char(0);
-            C.callLocal(nomul,0);
+            C.callLocal(nomul, 0);
             return;
         }
 
@@ -2803,8 +2861,8 @@ export function domove_core()
 
     /* Move ball and chain.  */
     if (C.Punished)
-        if (!C.drag_ball(x, y, C.localPointer("int",()=>bc_control,_value=>bc_control=_value), C.localPointer("coordxy",()=>ballx,_value=>ballx=_value), C.localPointer("coordxy",()=>bally,_value=>bally=_value), C.localPointer("coordxy",()=>chainx,_value=>chainx=_value), C.localPointer("coordxy",()=>chainy,_value=>chainy=_value),
-                       C.localPointer("boolean",()=>cause_delay,_value=>cause_delay=_value), C.TRUE))
+        if (!C.drag_ball(x, y, C.localPointer("int", () => bc_control, _value => bc_control = _value), C.localPointer("coordxy", () => ballx, _value => ballx = _value), C.localPointer("coordxy", () => bally, _value => bally = _value), C.localPointer("coordxy", () => chainx, _value => chainx = _value), C.localPointer("coordxy", () => chainy, _value => chainy = _value),
+                       C.localPointer("boolean", () => cause_delay, _value => cause_delay = _value), C.TRUE))
             return;
 
     /* Check regions entering/leaving */
@@ -2815,8 +2873,8 @@ export function domove_core()
     /* mtmp can be null at this point */
 
     /* tentatively move the hero plus steed; leave CLIPPING til later */
-    ((_hackTarget)=>_hackTarget.ux = C.short(C.int(C.int(_hackTarget.ux) + C.int(C.u.dx))))(C.u);
-    ((_hackTarget)=>_hackTarget.uy = C.short(C.int(C.int(_hackTarget.uy) + C.int(C.u.dy))))(C.u);
+    ((_hackTarget) => _hackTarget.ux = C.short(C.int(C.int(_hackTarget.ux) + C.int(C.u.dx))))(C.u);
+    ((_hackTarget) => _hackTarget.uy = C.short(C.int(C.int(_hackTarget.uy) + C.int(C.u.dy))))(C.u);
 
     C.m_postmove_effect(C.gy.youmonst);
 
@@ -2863,7 +2921,7 @@ export function domove_core()
          */
         } else if (Number(Boolean(C.is_safemon(mtmp)
                    && !(Number(Boolean(C.is_hider(mtmp.data) && mtmp.mundetected)))))) {
-            if (!C.callLocal(domove_swap_with_pet,mtmp, x, y)) {
+            if (!C.callLocal(domove_swap_with_pet, mtmp, x, y)) {
                 C.u.ux = C.short(C.u.ux0), C.u.uy = C.short(C.u.uy0); /* didn't move after all */
                 /* could skip this since we're about to call u_on_newpos() */
                 if (C.u.usteed)
@@ -2882,13 +2940,13 @@ export function domove_core()
         if (C.svc.context.run < 8)
             if (Number(Boolean(C.IS_DOOR(tmpr.typ) || C.IS_OBSTRUCTED(tmpr.typ)
                 || C.IS_FURNITURE(tmpr.typ))))
-                C.callLocal(nomul,0);
+                C.callLocal(nomul, 0);
     }
 
     /* your tread on the ground may disturb the slumber of nearby zombies */
     if (Number(Boolean(!C.Levitation && !C.Flying && !C.Stealth
         && C.gy.youmonst.data.cwt >= (Math.trunc((C.WT_ELF) / (2))))))
-        C.callLocal(disturb_buried_zombies,C.u.ux, C.u.uy);
+        C.callLocal(disturb_buried_zombies, C.u.ux, C.u.uy);
 
     if (Number(Boolean(C.hides_under(C.gy.youmonst.data) || C.gy.youmonst.data.mlet == C.S_EEL
         || C.u.dx || C.u.dy)))
@@ -2907,7 +2965,7 @@ export function domove_core()
 
     if (Number(Boolean(C.u.ux0 != C.u.ux || C.u.uy0 != C.u.uy))) {
         /* let caller know so that an evaluation may take place */
-        ((_hackTarget)=>_hackTarget.domove_succeeded = C.long(C.long(C.long(_hackTarget.domove_succeeded) | C.long((C.long((C.long(C.gd.domove_attempting)) & (C.long((C.DOMOVE_RUSH | C.DOMOVE_WALK)))))))))(C.gd);
+        ((_hackTarget) => _hackTarget.domove_succeeded = C.long(C.long(C.long(_hackTarget.domove_succeeded) | C.long((C.long((C.long(C.gd.domove_attempting)) & (C.long((C.DOMOVE_RUSH | C.DOMOVE_WALK)))))))))(C.gd);
         C.u.umoved = C.char(C.TRUE);
         /* Clean old position -- vision_recalc() will print our new one. */
         C.newsym(C.u.ux0, C.u.uy0);
@@ -2920,12 +2978,12 @@ export function domove_core()
         C.move_bc(0, bc_control, ballx, bally, chainx, chainy);
 
     if (C.u.umoved)
-        C.callLocal(spoteffects,C.TRUE);
+        C.callLocal(spoteffects, C.TRUE);
 
     /* delay next move because of ball dragging */
     /* must come after we finished picking up, in spoteffects() */
     if (cause_delay) {
-        C.callLocal(nomul,-2);
+        C.callLocal(nomul, -2);
         C.gm.multi_reason = C.charPointer("dragging an iron ball");
         C.gn.nomovemsg = C.charPointer("");
     }
@@ -2935,7 +2993,6 @@ export function domove_core()
 
 export function runmode_delay_output()
 {
-    
     if (Number(Boolean((C.svc.context.run || C.gm.multi) && C.flags.runmode != C.RUN_TPORT))) {
         /* for tport mode, don't display anything until we've stopped;
            for normal (leap) mode, update display every 7th step
@@ -2958,28 +3015,30 @@ export function runmode_delay_output()
 }
 
 /* HP loss or passing out from overexerting yourself */
-export function maybe_smudge_engr(x1,y1,x2,y2)
+export function maybe_smudge_engr(x1, y1, x2, y2)
 {
-    x1=C.short(x1);y1=C.short(y1);x2=C.short(x2);y2=C.short(y2);
+    x1 = C.short(x1);
+    y1 = C.short(y1);
+    x2 = C.short(x2);
+    y2 = C.short(y2);
     let ep;
 
     if (C.can_reach_floor(C.TRUE)) {
         if (Number(Boolean((ep = C.engr_at(x1, y1)) && ep.engr_type != C.HEADSTONE)))
-            C.wipe_engr_at(x1, y1, (C.rngCaller(3026,"maybe_smudge_engr"),C.rnd(5)), C.FALSE);
+            C.wipe_engr_at(x1, y1, (C.rngCaller(3026, "maybe_smudge_engr"), C.rnd(5)), C.FALSE);
         if (Number(Boolean((x2 != x1 || y2 != y1)
                 && (ep = C.engr_at(x2, y2)) && ep.engr_type != C.HEADSTONE)))
-            C.wipe_engr_at(x2, y2, (C.rngCaller(3029,"maybe_smudge_engr"),C.rnd(5)), C.FALSE);
+            C.wipe_engr_at(x2, y2, (C.rngCaller(3029, "maybe_smudge_engr"), C.rnd(5)), C.FALSE);
     }
 }
 
 /* combat increases metabolism */
 export function overexert_hp()
 {
-    
-    let hp = (!C.Upolyd ? C.fieldPointer(C.u,"uhp") : C.fieldPointer(C.u,"mh"));
+    let hp = (!C.Upolyd ? C.fieldPointer(C.u, "uhp") : C.fieldPointer(C.u, "mh"));
 
     if ((hp).value > 1) {
-        ((_hackTarget)=>_hackTarget.value = C.int(C.int(C.int(_hackTarget.value) - C.int(1))))(hp);
+        ((_hackTarget) => _hackTarget.value = C.int(C.int(C.int(_hackTarget.value) - C.int(1))))(hp);
         C.disp.botl = C.char(C.TRUE);
     } else {
         C.You("pass out from exertion!");
@@ -2990,7 +3049,6 @@ export function overexert_hp()
 
 export function overexertion()
 {
-    
     /* this used to be part of domove() when moving to a monster's
        position, but is now called by do_attack() so that it doesn't
        execute if you decline to attack a peaceful monster */
@@ -3005,13 +3063,12 @@ export function overexertion()
    some types need fixing up  */
 export function invocation_message()
 {
-    
     /* a special clue-msg when on the Invocation position */
-    if (Number(Boolean(C.callLocal(invocation_pos,C.u.ux, C.u.uy) && !C.On_stairs(C.u.ux, C.u.uy)))) {
-        let buf = C.localArray("char",[256]);
+    if (Number(Boolean(C.callLocal(invocation_pos, C.u.ux, C.u.uy) && !C.On_stairs(C.u.ux, C.u.uy)))) {
+        let buf = C.localArray("char", [256]);
         let otmp = C.carrying(C.CANDELABRUM_OF_INVOCATION);
 
-        C.callLocal(nomul,0); /* stop running or travelling */
+        C.callLocal(nomul, 0); /* stop running or travelling */
         if (C.u.usteed)
             C.Sprintf(buf, "beneath %s", C.y_monnam(C.u.usteed));
         else if (Number(Boolean(C.Levitation || C.Flying)))
@@ -3039,7 +3096,6 @@ export function invocation_message()
    or coming back out of such, reinstating levitation/flying */
 export function classify_terrain()
 {
-    
     let lev = C.levl[C.u.ux][C.u.uy];
     let typ = C.int(C.svl.lastseentyp[C.u.ux][C.u.uy]); /* lev->typ */
 
@@ -3104,11 +3160,12 @@ export function classify_terrain()
 /* set or clear u.uinwater */
 export function switch_terrain()
 {
-    
     let lev = C.levl[C.u.ux][C.u.uy];
     let blocklev = C.char((Number(Boolean(C.IS_OBSTRUCTED(lev.typ) || C.closed_door(C.u.ux, C.u.uy)
                         || C.IS_WATERWALL(lev.typ)
-                        || lev.typ == C.LAVAWALL)))); let was_levitating = C.char(!!C.Levitation); let was_flying = C.char(!!C.Flying);
+                        || lev.typ == C.LAVAWALL))));
+                        let was_levitating = C.char(!!C.Levitation);
+                        let was_flying = C.char(!!C.Flying);
 
     if (blocklev) {
         /* called from spoteffects(), stop levitating but skip float_down() */
@@ -3148,7 +3205,7 @@ export function switch_terrain()
    returns true to skip rest of spoteffects */
 export function set_uinwater(in_out)
 {
-    in_out=C.int(in_out);
+    in_out = C.int(in_out);
     if (in_out != C.int( C.u.uinwater)) {
         C.u.uinwater = C.uint(in_out ? 1 : 0);
         C.callLocal(switch_terrain,);
@@ -3158,7 +3215,7 @@ export function set_uinwater(in_out)
 /* true if called by spoteffects */
 export function pooleffects(newspot)
 {
-    newspot=C.char(newspot);
+    newspot = C.char(newspot);
     /* check for leaving water */
     if (C.u.uinwater) {
         let still_inwater = C.char(C.FALSE); /* assume we're getting out */
@@ -3186,7 +3243,7 @@ export function pooleffects(newspot)
         if (!still_inwater) {
             let was_underwater = C.char((Number(Boolean(C.Underwater && !C.Is_waterlevel(C.u.uz)))));
 
-            C.callLocal(set_uinwater,0); /* u.uinwater = 0; leave the water */
+            C.callLocal(set_uinwater, 0); /* u.uinwater = 0; leave the water */
             if (was_underwater) { /* restore vision */
                 C.docrt();
                 C.gv.vision_full_recalc = C.char(1);
@@ -3210,7 +3267,7 @@ export function pooleffects(newspot)
             /* even if we actually end up at same location, float_down()
                has already done trap and pickup actions of spoteffects() */
             if (newspot)
-                C.callLocal(check_special_room,C.FALSE); /* spoteffects */
+                C.callLocal(check_special_room, C.FALSE); /* spoteffects */
             return C.char(C.TRUE);
         }
         /* not mounted */
@@ -3224,7 +3281,7 @@ export function pooleffects(newspot)
         if (C.is_lava(C.u.ux, C.u.uy)) {
             if (C.lava_effects())
                 return C.char(C.TRUE);
-        } else if (Number(Boolean((!C.Wwalking || C.is_waterwall(C.u.ux,C.u.uy))
+        } else if (Number(Boolean((!C.Wwalking || C.is_waterwall(C.u.ux, C.u.uy))
                    && (newspot || !C.u.uinwater
                        || !(Number(Boolean(C.Swimming || C.Amphibious || C.Breathless))))))) {
             if (C.drown())
@@ -3238,12 +3295,7 @@ export function pooleffects(newspot)
 /* returns first matching monster */
 export function spoteffects(pick)
 {
-    pick=C.char(pick);
-    
-    
-    
-    
-    
+    pick = C.char(pick);
 
     let mtmp;
     let trap = C.t_at(C.u.ux, C.u.uy);
@@ -3275,10 +3327,10 @@ export function spoteffects(pick)
         || C.iflags.terrain_typ == C.MAX_TYPE)))
         C.callLocal(switch_terrain,);
 
-    if (C.callLocal(pooleffects,C.TRUE))
+    if (C.callLocal(pooleffects, C.TRUE))
         break spotdone;
 
-    C.callLocal(check_special_room,C.FALSE);
+    C.callLocal(check_special_room, C.FALSE);
     if (Number(Boolean(C.IS_SINK(terrainAt(C, C.u.ux, C.u.uy)) && C.Levitation)))
         C.callLocal(dosinkfall,);
     if (!C.gi.in_steed_dismounting) { /* if dismounting, check again later */
@@ -3289,9 +3341,10 @@ export function spoteffects(pick)
            that a trap here is being triggered twice, so adjust
            the timeout to prevent that */
         if (Number(Boolean(trap && (C.long((C.long(C.HLevitation)) & (C.long(C.TIMEOUT)))) == 1n
-            && !(Number(Boolean(C.ELevitation || (C.long((C.long(C.HLevitation)) & (C.long(~(C.long((C.long(C.I_SPECIAL)) | (C.long(C.TIMEOUT)))))))))))))) {
-            if ((C.rngCaller(3364,"spoteffects"),C.rn2(2))) { /* defer timeout */
-                C.incr_itimeout(C.fieldPointer(C.HLevitation,"intrinsic"), 1n);
+            && !(Number(Boolean(C.ELevitation
+                || (C.long((C.long(C.HLevitation)) & (C.long(~(C.long((C.long(C.I_SPECIAL)) | (C.long(C.TIMEOUT)))))))))))))) {
+            if ((C.rngCaller(3364, "spoteffects"), C.rn2(2))) { /* defer timeout */
+                C.incr_itimeout(C.fieldPointer(C.HLevitation, "intrinsic"), 1n);
             } else { /* timeout early */
                 if (C.float_down(C.long((C.long(C.I_SPECIAL)) | (C.long(C.TIMEOUT))), 0n)) {
                     /* levitation has ended; we've already triggered
@@ -3330,7 +3383,6 @@ export function spoteffects(pick)
     }
     /* Warning alerts you to ice danger */
     if (Number(Boolean(C.Warning && C.is_ice(C.u.ux, C.u.uy)))) {
-        
         let time_left = C.long(C.spot_time_left(C.u.ux, C.u.uy, C.MELT_ICE_AWAY));
 
         if (Number(Boolean(time_left && time_left < 15n)))
@@ -3339,7 +3391,7 @@ export function spoteffects(pick)
                                       : 0]);
     }
 
-    if (Number(Boolean(!C.pointerEqual((mtmp = C.m_at(C.u.ux, C.u.uy)),0) && !C.u.uswallow))) {
+    if (Number(Boolean(!C.pointerEqual((mtmp = C.m_at(C.u.ux, C.u.uy)), 0) && !C.u.uswallow))) {
         mtmp.mundetected = C.uint(mtmp.msleeping = C.uint(0));
         switch (mtmp.data.mlet) {
         case C.S_PIERCER:
@@ -3350,7 +3402,7 @@ export function spoteffects(pick)
             } else if (C.hard_helmet(C.uarmh)) {
                 C.pline("Its blow glances off your %s.",
                       C.helm_simple_name(C.uarmh));
-            } else if (C.u.uac + 3 <= (C.rngCaller(3428,"spoteffects"),C.rnd(20))) {
+            } else if (C.u.uac + 3 <= (C.rngCaller(3428, "spoteffects"), C.rnd(20))) {
                 C.You("are almost hit by %s!",
                     C.x_monnam(mtmp, C.ARTICLE_A, "falling", 0, C.TRUE));
             } else {
@@ -3358,7 +3410,7 @@ export function spoteffects(pick)
 
                 C.You("are hit by %s!",
                     C.x_monnam(mtmp, C.ARTICLE_A, "falling", 0, C.TRUE));
-                dmg = C.int((C.rngCaller(3436,"spoteffects"),C.d(4, 6)));
+                dmg = C.int((C.rngCaller(3436, "spoteffects"), C.d(4, 6)));
                 if (C.Half_physical_damage)
                     dmg = C.int(Math.trunc(((dmg + 1)) / (2)));
                 C.mdamageu(mtmp, dmg);
@@ -3387,29 +3439,36 @@ export function spoteffects(pick)
 }
 
 /* check whether room contains a particular type of furniture */
-export function monstinroom(mdat,roomno)
+export function monstinroom(mdat, roomno)
 {
-    roomno=C.int(roomno);
+    roomno = C.int(roomno);
     let mtmp;
 
     for (mtmp = C.fmon; mtmp; mtmp = mtmp.nmon) {
         if (C.DEADMONSTER(mtmp))
             continue;
-        if (Number(Boolean(C.pointerEqual(mtmp.data,mdat)
-            && C.strchr(C.callLocal(in_rooms,mtmp.mx, mtmp.my, 0), roomno + C.ROOMOFFSET))))
+        if (Number(Boolean(C.pointerEqual(mtmp.data, mdat)
+            && C.strchr(C.callLocal(in_rooms, mtmp.mx, mtmp.my, 0), roomno + C.ROOMOFFSET))))
             return mtmp;
     }
     return C.view("monst", 0);
 }
 
-export function furniture_present(furniture,roomno)
+export function furniture_present(furniture, roomno)
 {
-    furniture=C.int(furniture);roomno=C.int(roomno);
-    let x; let y; let lx; let ly; let hx; let hy;
+    furniture = C.int(furniture);
+    roomno = C.int(roomno);
+    let x;
+    let y;
+    let lx;
+    let ly;
+    let hx;
+    let hy;
     let sroom = C.svr.rooms[roomno];
 
     ly = C.int(sroom.ly), hy = C.int(sroom.hy);
-    lx = C.int(sroom.lx); hx = C.int(sroom.hx);
+    lx = C.int(sroom.lx);
+    hx = C.int(sroom.hx);
     /* the inside_room() check handles irregularly shaped rooms */
     for (y = C.int(ly); y <= hy; ++y)
         for (x = C.int(lx); x <= hx; ++x)
@@ -3419,14 +3478,21 @@ export function furniture_present(furniture,roomno)
 }
 
 /* is (x,y) in a town? */
-export function in_rooms(x,y,typewanted)
+export function in_rooms(x, y, typewanted)
 {
-    x=C.short(x);y=C.short(y);typewanted=C.int(typewanted);
+    x = C.short(x);
+    y = C.short(y);
+    typewanted = C.int(typewanted);
     const buf = C.in_rooms_buf;
-    let rno = C.char(0); let ptr = C.charPointer((C.charPointer(buf) + 4));
-    let typefound; let min_x; let min_y; let max_x; let max_y_offset; let step;
+    let rno = C.char(0);
+    let ptr = C.charPointer((C.charPointer(buf) + 4));
+    let typefound;
+    let min_x;
+    let min_y;
+    let max_x;
+    let max_y_offset;
+    let step;
     let lev;
-
 
     switch (rno = C.char(C.levl[x][y].roomno)) {
     case C.NO_ROOM:
@@ -3438,7 +3504,10 @@ export function in_rooms(x,y,typewanted)
         step = C.int(1);
         break;
     default: /* i.e. a regular room # */
-        if ((!typewanted || (typefound = C.svr.rooms[rno - C.ROOMOFFSET].rtype) == typewanted || (typewanted == C.SHOPBASE && typefound > C.SHOPBASE)))
+        if ((!typewanted
+            || (typefound = C.svr.rooms[rno - C.ROOMOFFSET].rtype) == typewanted
+            || (typewanted == C.SHOPBASE
+            && typefound > C.SHOPBASE)))
             C.HEAP8[C.charPointer((--ptr))] = C.char(rno);
         return ptr;
     }
@@ -3462,27 +3531,37 @@ export function in_rooms(x,y,typewanted)
         lev = C.levl[x][min_y];
         y = C.short(0);
         if (Number(Boolean((rno = C.char(lev[y].roomno)) >= C.ROOMOFFSET && !C.strchr(ptr, rno)
-            && (!typewanted || (typefound = C.svr.rooms[rno - C.ROOMOFFSET].rtype) == typewanted || (typewanted == C.SHOPBASE && typefound > C.SHOPBASE)))))
+            && (!typewanted
+                || (typefound = C.svr.rooms[rno - C.ROOMOFFSET].rtype) == typewanted
+                || (typewanted == C.SHOPBASE
+                && typefound > C.SHOPBASE)))))
             C.HEAP8[C.charPointer((--ptr))] = C.char(rno);
         y = C.short(C.int(C.int(y) + C.int(step)));
         if (y > max_y_offset)
             continue;
         if (Number(Boolean((rno = C.char(lev[y].roomno)) >= C.ROOMOFFSET && !C.strchr(ptr, rno)
-            && (!typewanted || (typefound = C.svr.rooms[rno - C.ROOMOFFSET].rtype) == typewanted || (typewanted == C.SHOPBASE && typefound > C.SHOPBASE)))))
+            && (!typewanted
+                || (typefound = C.svr.rooms[rno - C.ROOMOFFSET].rtype) == typewanted
+                || (typewanted == C.SHOPBASE
+                && typefound > C.SHOPBASE)))))
             C.HEAP8[C.charPointer((--ptr))] = C.char(rno);
         y = C.short(C.int(C.int(y) + C.int(step)));
         if (y > max_y_offset)
             continue;
         if (Number(Boolean((rno = C.char(lev[y].roomno)) >= C.ROOMOFFSET && !C.strchr(ptr, rno)
-            && (!typewanted || (typefound = C.svr.rooms[rno - C.ROOMOFFSET].rtype) == typewanted || (typewanted == C.SHOPBASE && typefound > C.SHOPBASE)))))
+            && (!typewanted
+                || (typefound = C.svr.rooms[rno - C.ROOMOFFSET].rtype) == typewanted
+                || (typewanted == C.SHOPBASE
+                && typefound > C.SHOPBASE)))))
             C.HEAP8[C.charPointer((--ptr))] = C.char(rno);
     }
     return ptr;
 }
 
-export function in_town(x,y)
+export function in_town(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     let sroom;
     let has_subrooms = C.char(C.FALSE);
 
@@ -3493,7 +3572,7 @@ export function in_town(x,y)
      * See if (x,y) is in a room with subrooms, if so, assume it's the
      * town.  If there are no subrooms, the whole level is in town.
      */
-    for (sroom = C.svr.rooms[0]; sroom.hx > 0; (sroom = C.advanceRecord(sroom,1))) {
+    for (sroom = C.svr.rooms[0]; sroom.hx > 0; (sroom = C.advanceRecord(sroom, 1))) {
         if (sroom.nsubrooms > 0) {
             has_subrooms = C.char(C.TRUE);
             if (C.inside_room(sroom, x, y))
@@ -3507,20 +3586,24 @@ export function in_town(x,y)
 /* possibly deliver a one-time room entry message */
 export function move_update(newlev)
 {
-    newlev=C.char(newlev);
-    let c; let ptr1; let ptr2; let ptr3; let ptr4;
+    newlev = C.char(newlev);
+    let c;
+    let ptr1;
+    let ptr2;
+    let ptr3;
+    let ptr4;
 
     C.Strcpy(C.u.urooms0, C.u.urooms);
     C.Strcpy(C.u.ushops0, C.u.ushops);
     if (newlev) {
-        void (C.memset(C.u.urooms, 0, BigInt(1*5)));
-        void (C.memset(C.u.uentered, 0, BigInt(1*5)));
-        void (C.memset(C.u.ushops, 0, BigInt(1*5)));
-        void (C.memset(C.u.ushops_entered, 0, BigInt(1*5)));
+        void (C.memset(C.u.urooms, 0, BigInt(1 * 5)));
+        void (C.memset(C.u.uentered, 0, BigInt(1 * 5)));
+        void (C.memset(C.u.ushops, 0, BigInt(1 * 5)));
+        void (C.memset(C.u.ushops_entered, 0, BigInt(1 * 5)));
         C.Strcpy(C.u.ushops_left, C.u.ushops0);
         return;
     }
-    C.Strcpy(C.u.urooms, C.callLocal(in_rooms,C.u.ux, C.u.uy, 0));
+    C.Strcpy(C.u.urooms, C.callLocal(in_rooms, C.u.ux, C.u.uy, 0));
 
     for (ptr1 = C.charPointer(C.u.urooms), ptr2 = C.charPointer(C.u.uentered),
          ptr3 = C.charPointer(C.u.ushops), ptr4 = C.charPointer(C.u.ushops_entered); C.HEAP8[C.charPointer(ptr1)]; ptr1++) {
@@ -3549,11 +3632,11 @@ export function move_update(newlev)
   -2 = loot the monster */
 export function check_special_room(newlev)
 {
-    newlev=C.char(newlev);
+    newlev = C.char(newlev);
     let mtmp;
     let ptr;
 
-    C.callLocal(move_update,newlev);
+    C.callLocal(move_update, newlev);
 
     if (C.HEAP8[C.charPointer(C.u.ushops0)])
         C.u_left_shop(C.u.ushops_left, newlev);
@@ -3571,7 +3654,7 @@ export function check_special_room(newlev)
      * boundary to have such.
      */
     if (Number(Boolean(C.svl.level.flags.has_town && !C.svc.context.achieveo.minetn_reached
-        && C.In_mines(C.u.uz) && C.callLocal(in_town,C.u.ux, C.u.uy)))) {
+        && C.In_mines(C.u.uz) && C.callLocal(in_town, C.u.ux, C.u.uy)))) {
         C.record_achievement(C.ACH_TOWN);
         C.svc.context.achieveo.minetn_reached = C.char(C.TRUE);
     }
@@ -3584,7 +3667,8 @@ export function check_special_room(newlev)
         C.u_entered_shop(C.u.ushops_entered);
 
     for (ptr = C.charPointer((C.charPointer(C.u.uentered) + 0)); C.HEAP8[C.charPointer(ptr)]; ptr++) {
-        let roomno = C.int(C.HEAP8[C.charPointer(ptr)] - C.ROOMOFFSET); let rt = C.int(C.svr.rooms[roomno].rtype);
+        let roomno = C.int(C.HEAP8[C.charPointer(ptr)] - C.ROOMOFFSET);
+        let rt = C.int(C.svr.rooms[roomno].rtype);
         let msg_given = C.char(C.TRUE);
 
         /* Did we just enter some other special room? */
@@ -3602,14 +3686,14 @@ export function check_special_room(newlev)
         case C.COURT:
             C.You("enter an opulent%s room!",
                 /* the throne room in Sam quest home level lacks a throne */
-                !C.callLocal(furniture_present,C.THRONE, roomno) ? "" : " throne");
+                !C.callLocal(furniture_present, C.THRONE, roomno) ? "" : " throne");
             break;
         case C.LEPREHALL:
             C.You("enter a leprechaun hall!");
             break;
         case C.MORGUE:
             if (C.midnight()) {
-                let run = C.charPointer(C.callLocal(u_locomotion,"Run"));
+                let run = C.charPointer(C.callLocal(u_locomotion, "Run"));
 
                 C.pline("%s away!  %s away!", run, run);
             } else
@@ -3625,16 +3709,16 @@ export function check_special_room(newlev)
             C.You("enter an anthole!");
             break;
         case C.BARRACKS:
-            if (Number(Boolean(C.callLocal(monstinroom,C.mons[C.PM_SOLDIER], roomno)
-                || C.callLocal(monstinroom,C.mons[C.PM_SERGEANT], roomno)
-                || C.callLocal(monstinroom,C.mons[C.PM_LIEUTENANT], roomno)
-                || C.callLocal(monstinroom,C.mons[C.PM_CAPTAIN], roomno))))
+            if (Number(Boolean(C.callLocal(monstinroom, C.mons[C.PM_SOLDIER], roomno)
+                || C.callLocal(monstinroom, C.mons[C.PM_SERGEANT], roomno)
+                || C.callLocal(monstinroom, C.mons[C.PM_LIEUTENANT], roomno)
+                || C.callLocal(monstinroom, C.mons[C.PM_CAPTAIN], roomno))))
                 C.You("enter a military barracks!");
             else
                 C.You("enter an abandoned barracks.");
             break;
         case C.DELPHI: {
-            let oracle = C.callLocal(monstinroom,C.mons[C.PM_ORACLE], roomno);
+            let oracle = C.callLocal(monstinroom, C.mons[C.PM_ORACLE], roomno);
 
             if (oracle) {
                 ;
@@ -3691,10 +3775,10 @@ export function check_special_room(newlev)
                 for (mtmp = C.fmon; mtmp; mtmp = mtmp.nmon) {
                     if (C.DEADMONSTER(mtmp))
                         continue;
-                    if (Number(Boolean(!C.isok(mtmp.mx,mtmp.my)
+                    if (Number(Boolean(!C.isok(mtmp.mx, mtmp.my)
                         || roomno != C.int( C.levl[mtmp.mx][mtmp.my].roomno))))
                         continue;
-                    if (Number(Boolean(!C.Stealth && !(C.rngCaller(3772,"check_special_room"),C.rn2(3))))) {
+                    if (Number(Boolean(!C.Stealth && !(C.rngCaller(3772, "check_special_room"), C.rn2(3))))) {
                         C.wake_msg(mtmp, C.FALSE);
                         mtmp.msleeping = C.uint(0);
                     }
@@ -3707,7 +3791,6 @@ export function check_special_room(newlev)
 /* the #pickup command */
 export function pickup_checks()
 {
-    
     let traphere;
 
     /* uswallow case added by GAN 01/29/87 */
@@ -3797,8 +3880,9 @@ export function pickup_checks()
 /* do not turn left or right twice */
 export function dopickup()
 {
-    
-    let count; let tmpcount; let ret;
+    let count;
+    let tmpcount;
+    let ret;
 
     count = C.int(C.int( C.gc.command_count));
     C.gm.multi = 0; /* always reset */
@@ -3807,7 +3891,7 @@ export function dopickup()
         return C.int(ret ? C.ECMD_TIME : C.ECMD_OK);
     } else if (ret == -2) {
         tmpcount = C.int(-count);
-        return C.int(C.loot_mon(C.u.ustuck, C.localPointer("int",()=>tmpcount,_value=>tmpcount=_value), ( 0)) ? C.ECMD_TIME
+        return C.int(C.loot_mon(C.u.ustuck, C.localPointer("int", () => tmpcount, _value => tmpcount = _value), ( 0)) ? C.ECMD_TIME
                                                             : C.ECMD_OK);
     } /* else ret == -1 */
 
@@ -3817,17 +3901,22 @@ export function dopickup()
 /* check for a doorway which lacks its door (NODOOR or BROKEN) */
 export function lookaround()
 {
-    
-    let x; let y;
-    let i; let x0 = C.short(0); let y0 = C.short(0); let m0 = C.short(1); let i0 = C.short(9);
-    let corrct = C.int(0); let noturn = C.int(0);
+    let x;
+    let y;
+    let i;
+    let x0 = C.short(0);
+    let y0 = C.short(0);
+    let m0 = C.short(1);
+    let i0 = C.short(9);
+    let corrct = C.int(0);
+    let noturn = C.int(0);
     let mtmp;
 
     /* Grid bugs stop if trying to move diagonal, even if blind.  Maybe */
     /* they polymorphed while in the middle of a long move. */
     if (Number(Boolean(C.NODIAG(C.u.umonnum) && C.u.dx && C.u.dy))) {
         C.You("cannot move diagonally.");
-        C.callLocal(nomul,0);
+        C.callLocal(nomul, 0);
         return;
     }
 
@@ -3845,7 +3934,7 @@ export function lookaround()
                 continue;
 
             /* can we see a monster there? */
-            if (Number(Boolean(!C.pointerEqual((mtmp = C.m_at(x, y)),0)
+            if (Number(Boolean(!C.pointerEqual((mtmp = C.m_at(x, y)), 0)
                 && C.M_AP_TYPE(mtmp) != C.M_AP_FURNITURE
                 && C.M_AP_TYPE(mtmp) != C.M_AP_OBJECT
                 && C.mon_visible(mtmp)))) {
@@ -3856,7 +3945,7 @@ export function lookaround()
                     if (C.flags.mention_walls)
                         C.pline_xy(x, y, "%s blocks your path.",
                                  C.upstart(C.a_monnam(mtmp)));
-                    {C.callLocal(nomul,0);return;}
+                    {C.callLocal(nomul, 0);return;}
                 }
             }
 
@@ -3868,7 +3957,7 @@ export function lookaround()
                 continue;
 
             /* stop for traps, sometimes */
-            if (C.callLocal(avoid_moving_on_trap,x, y,
+            if (C.callLocal(avoid_moving_on_trap, x, y,
                                      (Number(Boolean(infront && C.svc.context.run > 1))))) {
                 if (C.svc.context.run == 1)
                     {
@@ -3900,7 +3989,7 @@ if (terrainAt(C, C.u.ux, C.u.uy) != C.ROOM) {
                 continue;
 } /* if you must */
                 if (infront)
-                    {C.callLocal(nomul,0);return;}
+                    {C.callLocal(nomul, 0);return;}
             }
 
             /* more uninteresting terrain */
@@ -3917,7 +4006,7 @@ if (terrainAt(C, C.u.ux, C.u.uy) != C.ROOM) {
                         C.set_msg_xy(x, y);
                         C.You("stop in front of the door.");
                     }
-                    {C.callLocal(nomul,0);return;}
+                    {C.callLocal(nomul, 0);return;}
                 }
                 /* orthogonal to a closed door, consider it a corridor */
                 {
@@ -3978,8 +4067,8 @@ if (terrainAt(C, C.u.ux, C.u.uy) != C.ROOM) {
                 }
                 continue;
             } else if (C.is_pool_or_lava(x, y)) {
-                if (Number(Boolean(infront && C.callLocal(avoid_moving_on_liquid,x, y, C.TRUE))))
-                    {C.callLocal(nomul,0);return;}
+                if (Number(Boolean(infront && C.callLocal(avoid_moving_on_liquid, x, y, C.TRUE))))
+                    {C.callLocal(nomul, 0);return;}
                 continue;
             } else { /* e.g. objects or trap or stairs */
                 if (C.svc.context.run == 1)
@@ -4020,14 +4109,14 @@ if (terrainAt(C, C.u.ux, C.u.uy) != C.ROOM) {
                     continue;
             }
  stop:
-            C.callLocal(nomul,0);
+            C.callLocal(nomul, 0);
             return;
         } /* end for loops */
 
     if (Number(Boolean(corrct > 1 && C.svc.context.run == 2))) {
         if (C.flags.mention_walls)
             C.pline_The("corridor widens here.");
-        {C.callLocal(nomul,0);return;}
+        {C.callLocal(nomul, 0);return;}
     }
     if (Number(Boolean((C.svc.context.run == 1 || C.svc.context.run == 3 || C.svc.context.run == 8)
         && !noturn && !m0 && i0
@@ -4062,9 +4151,10 @@ if (terrainAt(C, C.u.ux, C.u.uy) != C.ROOM) {
 
 /* used by drown() to check whether hero can crawl from water to <x,y>;
    also used by findtravelpath() when destination is one step away */
-export function doorless_door(x,y)
+export function doorless_door(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     let lev_p = C.levl[x][y];
 
     if (!C.IS_DOOR(lev_p.typ))
@@ -4078,9 +4168,10 @@ export function doorless_door(x,y)
 
 /* something like lookaround, but we are not running */
 /* react only to monsters that might hit us */
-export function crawl_destination(x,y)
+export function crawl_destination(x, y)
 {
-    x=C.short(x);y=C.short(y);
+    x = C.short(x);
+    y = C.short(y);
     /* is location ok in general? */
     if (!C.goodpos(x, y, C.gy.youmonst, 0))
         return C.char(C.FALSE);
@@ -4095,18 +4186,18 @@ export function crawl_destination(x,y)
     if (C.Passes_walls)
         return C.char(C.TRUE); /* or a xorn... */
     /* pool could be next to a door, conceivably even inside a shop */
-    if (Number(Boolean(C.IS_DOOR(terrainAt(C, x, y)) && (!C.callLocal(doorless_door,x, y) || C.block_door(x, y)))))
+    if (Number(Boolean(C.IS_DOOR(terrainAt(C, x, y)) && (!C.callLocal(doorless_door, x, y) || C.block_door(x, y)))))
         return C.char(C.FALSE);
     /* finally, are we trying to squeeze through a too-narrow gap? */
-    return C.char(!(Number(Boolean(C.callLocal(bad_rock,C.gy.youmonst.data, C.u.ux, y)
-             && C.callLocal(bad_rock,C.gy.youmonst.data, x, C.u.uy)
-             && C.callLocal(cant_squeeze_thru,C.gy.youmonst)))));
+    return C.char(!(Number(Boolean(C.callLocal(bad_rock, C.gy.youmonst.data, C.u.ux, y)
+             && C.callLocal(bad_rock, C.gy.youmonst.data, x, C.u.uy)
+             && C.callLocal(cant_squeeze_thru, C.gy.youmonst)))));
 }
 
 export function monster_nearby()
 {
-    
-    let x; let y;
+    let x;
+    let y;
     let mtmp;
 
     /* Also see the similar check in dochugw() in monmove.c */
@@ -4114,7 +4205,7 @@ export function monster_nearby()
         for (y = C.short(C.u.uy - 1); y <= C.u.uy + 1; y++) {
             if (Number(Boolean(!C.isok(x, y) || C.u_at(x, y))))
                 continue;
-            if (Number(Boolean(!C.pointerEqual((mtmp = C.m_at(x, y)),0)
+            if (Number(Boolean(!C.pointerEqual((mtmp = C.m_at(x, y)), 0)
                 && C.M_AP_TYPE(mtmp) != C.M_AP_FURNITURE
                 && C.M_AP_TYPE(mtmp) != C.M_AP_OBJECT
                 && (C.Hallucination
@@ -4129,7 +4220,7 @@ export function monster_nearby()
 
 export function end_running(and_travel)
 {
-    and_travel=C.char(and_travel);
+    and_travel = C.char(and_travel);
     /* moveloop() suppresses time_botl when context.run is non-zero; when
        running stops, update 'time' even if other botl status is unchanged */
     if (C.svc.context.run) {
@@ -4161,22 +4252,21 @@ export function end_running(and_travel)
 /* called when a non-movement, multi-turn action has completed */
 export function nomul(nval)
 {
-    nval=C.int(nval);
+    nval = C.int(nval);
     if (C.gm.multi < nval)
         return;              /* This is a bug fix by ab@unido */
-    ((_hackTarget)=>_hackTarget.botl = C.char(C.int(C.int(_hackTarget.botl) | C.int((C.gm.multi >= 0)))))(C.disp);
+    ((_hackTarget) => _hackTarget.botl = C.char(C.int(C.int(_hackTarget.botl) | C.int((C.gm.multi >= 0)))))(C.disp);
     C.u.uinvulnerable = C.uint(C.FALSE); /* Kludge to avoid ctrl-C bug -dlc */
     C.u.usleep = C.long(0);
     C.gm.multi = nval;
     if (nval == 0)
         C.gm.multi_reason = C.charPointer(C.NULL), C.gm.multireasonbuf[0] = C.char(0);
-    C.callLocal(end_running,C.TRUE);
+    C.callLocal(end_running, C.TRUE);
     C.cmdq_clear(C.CQ_CANNED);
 }
 
 export function unmul(msg_override)
 {
-    
     C.disp.botl = C.char(C.TRUE);
     C.gm.multi = 0; /* caller will usually have done this already */
     if (msg_override)
@@ -4211,16 +4301,14 @@ export function unmul(msg_override)
 /* show a message how much damage you received */
 export function maybe_wail()
 {
-    
-    
-
     if (C.svm.moves <= C.long((C.long(C.gw.wailmsg)) + (C.long(50))))
         return;
 
     C.gw.wailmsg = C.long(C.svm.moves);
     if (Number(Boolean(C.Role_if(C.PM_WIZARD) || C.Race_if(C.PM_ELF) || C.Role_if(C.PM_VALKYRIE)))) {
         let who;
-        let i; let powercnt;
+        let i;
+        let powercnt;
 
         who = C.charPointer((Number(Boolean(C.Role_if(C.PM_WIZARD) || C.Role_if(C.PM_VALKYRIE)))) ? C.gu.urole.name.m
                                                            : "Elf");
@@ -4244,7 +4332,7 @@ export function maybe_wail()
 
 export function showdamage(dmg)
 {
-    dmg=C.int(dmg);
+    dmg = C.int(dmg);
     if (Number(Boolean(!C.iflags.showdamage || !dmg)))
         return;
 
@@ -4253,14 +4341,15 @@ export function showdamage(dmg)
 
 /* code below is prepared to handle negative 'loss' so don't add this
          * until we've verified that no callers intentionally rely on that */
-export function losehp(n,knam,k_format)
+export function losehp(n, knam, k_format)
 {
-    n=C.int(n);k_format=C.char(k_format);
+    n = C.int(n);
+    k_format = C.char(k_format);
     C.disp.botl = C.char(C.TRUE); /* u.uhp or u.mh is changing */
-    C.callLocal(end_running,C.TRUE);
+    C.callLocal(end_running, C.TRUE);
     if (C.Upolyd) {
-        ((_hackTarget)=>_hackTarget.mh = C.int(C.int(C.int(_hackTarget.mh) - C.int(n))))(C.u);
-        C.callLocal(showdamage,n);
+        ((_hackTarget) => _hackTarget.mh = C.int(C.int(C.int(_hackTarget.mh) - C.int(n))))(C.u);
+        C.callLocal(showdamage, n);
         if (C.u.mhmax < C.u.mh)
             C.u.mhmax = C.int(C.u.mh);
         if (C.u.mh < 1)
@@ -4270,13 +4359,13 @@ export function losehp(n,knam,k_format)
         return;
     }
 
-    ((_hackTarget)=>_hackTarget.uhp = C.int(C.int(C.int(_hackTarget.uhp) - C.int(n))))(C.u);
-    C.callLocal(showdamage,n);
+    ((_hackTarget) => _hackTarget.uhp = C.int(C.int(C.int(_hackTarget.uhp) - C.int(n))))(C.u);
+    C.callLocal(showdamage, n);
     if (C.u.uhp > C.u.uhpmax)
         C.u.uhpmax = C.int(C.u.uhp); /* perhaps n was negative */
     if (C.u.uhp < 1) {
         C.svk.killer.format = C.int(k_format);
-        if (!C.pointerEqual(C.svk.killer.name,knam)) /* the thing that killed you */
+        if (!C.pointerEqual(C.svk.killer.name, knam)) /* the thing that killed you */
             C.Strcpy(C.svk.killer.name, knam ? knam : "");
         C.urgent_pline("You die...");
         C.done(C.DIED);
@@ -4289,14 +4378,15 @@ export function losehp(n,knam,k_format)
 /* inv_weight() is negative if the player is below normal capacity. */
 export function weight_cap()
 {
-    
-    let carrcap; let save_ELev = C.long(C.ELevitation); let save_BLev = C.long(C.BLevitation);
+    let carrcap;
+    let save_ELev = C.long(C.ELevitation);
+    let save_BLev = C.long(C.BLevitation);
 
     /* boots take multiple turns to wear but any properties they
        confer are enabled at the start rather than the end; that
        causes message sequencing issues for boots of levitation
        so defer their encumbrance benefit until they're fully worn */
-    if (Number(Boolean(C.pointerEqual(C.ga.afternmv,C.Boots_on) && (C.long((C.long(C.ELevitation)) & (C.long(C.W_ARMF)))) != 0n))) {
+    if (Number(Boolean(C.pointerEqual(C.ga.afternmv, C.Boots_on) && (C.long((C.long(C.ELevitation)) & (C.long(C.W_ARMF)))) != 0n))) {
         C.ELevitation = C.long(C.long(C.long(C.ELevitation) & C.long(~C.W_ARMF)));
         C.float_vs_flight(); /* in case Levitation is blocking Flying */
     }
@@ -4347,7 +4437,6 @@ export function weight_cap()
  */
 export function inv_weight()
 {
-    
     let otmp = C.gi.invent;
     let wt = C.int(0);
 
@@ -4364,8 +4453,9 @@ export function inv_weight()
 
 export function calc_capacity(xtra_wt)
 {
-    xtra_wt=C.int(xtra_wt);
-    let cap; let wt = C.int(C.callLocal(inv_weight,) + xtra_wt);
+    xtra_wt = C.int(xtra_wt);
+    let cap;
+    let wt = C.int(C.callLocal(inv_weight,) + xtra_wt);
 
     if (wt <= 0)
         return C.int(C.UNENCUMBERED);
@@ -4377,13 +4467,11 @@ export function calc_capacity(xtra_wt)
 
 export function near_capacity()
 {
-    
-    return C.int(C.callLocal(calc_capacity,0));
+    return C.int(C.callLocal(calc_capacity, 0));
 }
 
 export function max_capacity()
 {
-    
     let wt = C.int(C.callLocal(inv_weight,));
 
     return C.int((wt - (2 * C.gw.wc)));
@@ -4393,7 +4481,6 @@ export function max_capacity()
 /* 0-6 = weight in ascii; 7 - end = name */
 export function check_capacity(str)
 {
-    
     if (C.callLocal(near_capacity,) >= C.EXT_ENCUMBER) {
         if (str)
             C.pline1(str);
@@ -4406,9 +4493,13 @@ export function check_capacity(str)
 
 export function dump_weights()
 {
-    
-    let i; let cnt = C.int(0); let nmwidth = C.int(49); let mcount = C.int(C.NUMMONS); let ocount = C.int(C.NUM_OBJECTS);
-    let nmbuf = C.localArray("char",[256]); let nmbufbase = C.localArray("char",[256]);
+    let i;
+    let cnt = C.int(0);
+    let nmwidth = C.int(49);
+    let mcount = C.int(C.NUMMONS);
+    let ocount = C.int(C.NUM_OBJECTS);
+    let nmbuf = C.localArray("char", [256]);
+    let nmbufbase = C.localArray("char", [256]);
     let num_entries = C.ulong(C.ulong( (mcount + ocount)));
 
     C.weightlist = C.view("weight_table_entry",
@@ -4423,10 +4514,10 @@ export function dump_weights()
             C.weightlist[cnt].idx = C.int(i);
             C.weightlist[cnt].wtyp = C.uint(1);
             C.weightlist[cnt].unique = C.char(((C.mons[i].geno & C.G_UNIQ) != 0));
-            C.nh_snprintf("dump_weights",4439,nmbuf, BigInt(1*256), "%07u", C.weightlist[cnt].wt);
+            C.nh_snprintf("dump_weights", 4439, nmbuf, BigInt(1 * 256), "%07u", C.weightlist[cnt].wt);
             cm = C.char(C.CapitalMon(C.mons[i].pmnames[C.NEUTRAL]));
-            C.nh_snprintf("dump_weights",4444,(C.charPointer(nmbuf) + 7), C.ulong((C.ulong(BigInt(1*256))) - (C.ulong(7))), "%s%s", "the body of ",
-                     (cm)                     ? C.the(C.mons[i].pmnames[C.NEUTRAL])
+            C.nh_snprintf("dump_weights", 4444, (C.charPointer(nmbuf) + 7), C.ulong((C.ulong(BigInt(1 * 256))) - (C.ulong(7))), "%s%s", "the body of ",
+                     (cm) ? C.the(C.mons[i].pmnames[C.NEUTRAL])
                      : C.weightlist[cnt].unique ? C.mons[i].pmnames[C.NEUTRAL]
                                               : C.an(C.mons[i].pmnames[C.NEUTRAL]));
             C.weightlist[cnt].nm = C.charPointer(C.dupstr(nmbuf));
@@ -4445,7 +4536,7 @@ export function dump_weights()
             C.weightlist[cnt].unique = C.char((C.objects[i].oc_unique != 0));
             C.objects[i].oc_name_known = C.uint(1);
             C.Strcpy(nmbufbase, C.simple_typename(i));
-            C.nh_snprintf("dump_weights",4463,nmbuf, BigInt(1*256), "%07u%s", wt,
+            C.nh_snprintf("dump_weights", 4463, nmbuf, BigInt(1 * 256), "%07u%s", wt,
                      (C.weightlist[cnt].unique) ? C.the(nmbufbase)
                                               : C.an(nmbufbase));
             C.weightlist[cnt].nm = C.charPointer(C.dupstr(nmbuf));
@@ -4469,10 +4560,10 @@ export function dump_weights()
     C.freedynamicdata();
 }
 
-export function cmp_weights(p1,p2)
+export function cmp_weights(p1, p2)
 {
-    
-    let i1 = C.view("weight_table_entry", p1); let i2 = C.view("weight_table_entry", p2);
+    let i1 = C.view("weight_table_entry", p1);
+    let i2 = C.view("weight_table_entry", p2);
 
    /* return (i1->wt - i2->wt); */
     return C.int(C.strcmp(i1.nm, i2.nm));
@@ -4484,7 +4575,7 @@ export function cmp_weights(p1,p2)
 /* Counting money in a container might be possible too. */
 export function inv_cnt(incl_gold)
 {
-    incl_gold=C.char(incl_gold);
+    incl_gold = C.char(incl_gold);
     let otmp = C.gi.invent;
     let ct = C.int(0);
 
@@ -4498,7 +4589,6 @@ export function inv_cnt(incl_gold)
 
 export function money_cnt(otmp)
 {
-    
     while (otmp) {
         if (otmp.oclass == C.COIN_CLASS)
             return C.long(otmp.quan);
@@ -4508,9 +4598,11 @@ export function money_cnt(otmp)
 }
 
 /* calculate x/y, rounding as appropriate */
-export function spot_checks(x,y,old_typ)
+export function spot_checks(x, y, old_typ)
 {
-    x=C.short(x);y=C.short(y);old_typ=C.char(old_typ);
+    x = C.short(x);
+    y = C.short(y);
+    old_typ = C.char(old_typ);
     let new_typ = C.char(terrainAt(C, x, y));
     let db_ice_now = C.char(C.FALSE);
 
@@ -4534,10 +4626,12 @@ export function spot_checks(x,y,old_typ)
 }
 
 /*hack.c*/
-export function rounddiv(x,y)
+export function rounddiv(x, y)
 {
-    x=C.long(x);y=C.int(y);
-    let r; let m;
+    x = C.long(x);
+    y = C.int(y);
+    let r;
+    let m;
     let divsgn = C.int(1);
 
     if (y == 0)

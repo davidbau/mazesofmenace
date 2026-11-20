@@ -156,7 +156,6 @@ export function add_custom_urep_entry(
         = C.gs.sym_customizations[which_set][C.custom_ureps];
     let details, newdetails = 0;
 
-
     if (!gdc.details) {
         gdc.customization_name = C.dupstr(customization_name);
         gdc.custtype = C.custom_ureps;
@@ -212,4 +211,3 @@ export function reset_customsymbols()
 }
 
 /* utf8map.c */
-

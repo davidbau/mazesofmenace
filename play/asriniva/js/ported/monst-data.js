@@ -145,11 +145,11 @@ const M2_WANDER = BigInt(layouts.monst.M2_WANDER);
 const M2_WERE = BigInt(layouts.monst.M2_WERE);
 
 export const mons_init = [
-/* NetHack 5.0	monsters.h	$NHDT-Date: 1723945838 2024/08/18 01:50:38 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.124 $ */
-/* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
-/*-Copyright (c) Michael Allison, 2006. */
-/* NetHack may be freely redistributed.  See license for details. */
-/*
+    /* NetHack 5.0	monsters.h	$NHDT-Date: 1723945838 2024/08/18 01:50:38 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.124 $ */
+    /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
+    /*-Copyright (c) Michael Allison, 2006. */
+    /* NetHack may be freely redistributed.  See license for details. */
+    /*
  *      Entry Format:   (from permonst.h)
  *
  *      name, symbol (S_* defines),
@@ -216,7 +216,7 @@ export const mons_init = [
  * become `intuitive' about them, deducing some or all of these rules
  * unconsciously. Use your common sense.
  */
-/*
+    /*
      * ants
      */
     { id: "PM_GIANT_ANT", pmidx: PM_GIANT_ANT,
@@ -267,7 +267,7 @@ export const mons_init = [
       mflags1: M1_ANIMAL | M1_FLY | M1_NOHANDS | M1_OVIPAROUS | M1_POIS, mflags2: M2_HOSTILE | M2_FEMALE | M2_PRINCE, mflags3: 0,
       difficulty: 12, mcolor: HI_LORD,
     },
-/*
+    /*
      * blobs
      */
     { id: "PM_ACID_BLOB", pmidx: PM_ACID_BLOB,
@@ -294,7 +294,7 @@ export const mons_init = [
       mflags1: M1_NOEYES | M1_NOLIMBS | M1_NOHEAD | M1_MINDLESS | M1_OMNIVORE | M1_ACID, mflags2: M2_WANDER | M2_HOSTILE | M2_NEUTER, mflags3: 0,
       difficulty: 8, mcolor: CLR_CYAN,
     },
-/*
+    /*
      * cockatrice
      */
     { id: "PM_CHICKATRICE", pmidx: PM_CHICKATRICE,
@@ -321,7 +321,7 @@ export const mons_init = [
       mflags1: M1_ANIMAL | M1_NOHANDS | M1_OMNIVORE | M1_OVIPAROUS, mflags2: M2_HOSTILE, mflags3: M3_INFRAVISIBLE,
       difficulty: 8, mcolor: CLR_RED,
     },
-/*
+    /*
      * dogs & other canines
      */
     { id: "PM_JACKAL", pmidx: PM_JACKAL,
@@ -396,7 +396,7 @@ export const mons_init = [
       mflags1: M1_ANIMAL | M1_NOHANDS | M1_CARNIVORE, mflags2: M2_HOSTILE, mflags3: M3_INFRAVISIBLE,
       difficulty: 6, mcolor: CLR_GRAY,
     },
-/* werewolf in wolf form; one in human form uses a different monster
+    /* werewolf in wolf form; one in human form uses a different monster
        type (in the S_HUMAN section below); switching back and forth is
        a shape-change that sets monst->data to the appropriate monster */
     { id: "PM_WEREWOLF", pmidx: PM_WEREWOLF,
@@ -447,7 +447,7 @@ export const mons_init = [
       mflags1: M1_ANIMAL | M1_NOHANDS | M1_CARNIVORE, mflags2: M2_HOSTILE | M2_STRONG, mflags3: M3_INFRAVISIBLE,
       difficulty: 14, mcolor: CLR_RED,
     },
-/*
+    /*
      * eyes
      */
     { id: "PM_GAS_SPORE", pmidx: PM_GAS_SPORE,
@@ -490,7 +490,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_BREATHLESS | M1_NOLIMBS | M1_NOHEAD | M1_MINDLESS | M1_NOTAKE, mflags2: M2_HOSTILE | M2_NEUTER, mflags3: M3_INFRAVISIBLE,
       difficulty: 10, mcolor: HI_ZAP,
     },
-/*
+    /*
      * felines
      */
     { id: "PM_KITTEN", pmidx: PM_KITTEN,
@@ -557,7 +557,7 @@ export const mons_init = [
       mflags1: M1_ANIMAL | M1_NOHANDS | M1_CARNIVORE, mflags2: M2_HOSTILE | M2_NASTY, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION | M3_DISPLACES,
       difficulty: 14, mcolor: CLR_BLUE,
     },
-/*
+    /*
      * gremlins and gargoyles
      */
     { id: "PM_GREMLIN", pmidx: PM_GREMLIN,
@@ -568,7 +568,7 @@ export const mons_init = [
       mflags1: M1_SWIM | M1_HUMANOID | M1_POIS, mflags2: M2_STALK, mflags3: M3_INFRAVISIBLE,
       difficulty: 8, mcolor: CLR_GREEN,
     },
-/* gargoyle and winged gargoyle are inspired by a cheesy made-for-TV
+    /* gargoyle and winged gargoyle are inspired by a cheesy made-for-TV
        horror movie (starring Cornel Wilde and Jennifer Salt, 1972) */
     { id: "PM_GARGOYLE", pmidx: PM_GARGOYLE,
       pmnames: [null, null, "gargoyle"],
@@ -586,7 +586,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_HUMANOID | M1_THICK_HIDE | M1_BREATHLESS | M1_OVIPAROUS, mflags2: M2_LORD | M2_HOSTILE | M2_STRONG | M2_MAGIC, mflags3: 0,
       difficulty: 11, mcolor: HI_LORD,
     },
-/*
+    /*
      * humanoids
      */
     { id: "PM_HOBBIT", pmidx: PM_HOBBIT,
@@ -597,7 +597,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_COLLECT, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 2, mcolor: CLR_GREEN,
     },
-/* unlike plain human|elf|orc, plain "dwarf" is an ordinary monster */
+    /* unlike plain human|elf|orc, plain "dwarf" is an ordinary monster */
     { id: "PM_DWARF", pmidx: PM_DWARF,
       pmnames: [null, null, "dwarf"],
       mlet: S_HUMANOID, mlevel: 2, mmove: 6, ac: 10, mr: 10, maligntyp: 4, geno: (G_GENO | 3),
@@ -646,7 +646,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_FLY | M1_SEE_INVIS | M1_OMNIVORE, mflags2: M2_HOSTILE | M2_NASTY | M2_GREEDY | M2_JEWELS | M2_COLLECT, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 19, mcolor: CLR_BRIGHT_MAGENTA,
     },
-/*
+    /*
      * imps & other minor demons/devils
      */
     { id: "PM_MANES", pmidx: PM_MANES,
@@ -697,7 +697,7 @@ export const mons_init = [
       mflags1: M1_TPORT | M1_TPORT_CNTRL, mflags2: M2_STALK, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 7, mcolor: CLR_CYAN,
     },
-/*
+    /*
      * jellies
      */
     { id: "PM_BLUE_JELLY", pmidx: PM_BLUE_JELLY,
@@ -724,7 +724,7 @@ export const mons_init = [
       mflags1: M1_BREATHLESS | M1_AMORPHOUS | M1_NOEYES | M1_NOLIMBS | M1_NOHEAD | M1_MINDLESS | M1_ACID | M1_NOTAKE, mflags2: M2_HOSTILE | M2_NEUTER, mflags3: 0,
       difficulty: 8, mcolor: CLR_BROWN,
     },
-/*
+    /*
      * kobolds
      */
     { id: "PM_KOBOLD", pmidx: PM_KOBOLD,
@@ -759,7 +759,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_POIS | M1_OMNIVORE, mflags2: M2_HOSTILE | M2_MAGIC, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 4, mcolor: HI_ZAP,
     },
-/*
+    /*
      * leprechauns
      */
     { id: "PM_LEPRECHAUN", pmidx: PM_LEPRECHAUN,
@@ -770,7 +770,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_TPORT, mflags2: M2_HOSTILE | M2_GREEDY, mflags3: M3_INFRAVISIBLE,
       difficulty: 4, mcolor: CLR_GREEN,
     },
-/*
+    /*
      * mimics
      */
     { id: "PM_SMALL_MIMIC", pmidx: PM_SMALL_MIMIC,
@@ -797,7 +797,7 @@ export const mons_init = [
       mflags1: M1_CLING | M1_BREATHLESS | M1_AMORPHOUS | M1_HIDE | M1_ANIMAL | M1_NOEYES | M1_NOHEAD | M1_NOLIMBS | M1_THICK_HIDE | M1_CARNIVORE, mflags2: M2_HOSTILE | M2_STRONG, mflags3: 0,
       difficulty: 11, mcolor: HI_LORD,
     },
-/*
+    /*
      * nymphs
      */
     { id: "PM_WOOD_NYMPH", pmidx: PM_WOOD_NYMPH,
@@ -824,7 +824,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_TPORT, mflags2: M2_HOSTILE | M2_FEMALE | M2_COLLECT, mflags3: M3_INFRAVISIBLE,
       difficulty: 5, mcolor: CLR_BROWN,
     },
-/*
+    /*
      * orcs
      */
     { id: "PM_GOBLIN", pmidx: PM_GOBLIN,
@@ -843,7 +843,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_ORC | M2_STRONG | M2_COLLECT, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 3, mcolor: CLR_BROWN,
     },
-/* Plain "orc" for zombie and mummy corpses only; not created at random.
+    /* Plain "orc" for zombie and mummy corpses only; not created at random.
      * Orcs (but not goblins and hobgoblins) are granted poison resistance;
      * however, their corpses don't confer it. */
     { id: "PM_ORC", pmidx: PM_ORC,
@@ -894,7 +894,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_ORC | M2_STRONG | M2_GREEDY | M2_JEWELS | M2_COLLECT, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 7, mcolor: HI_LORD,
     },
-/*
+    /*
      * piercers
      */
     { id: "PM_ROCK_PIERCER", pmidx: PM_ROCK_PIERCER,
@@ -921,7 +921,7 @@ export const mons_init = [
       mflags1: M1_CLING | M1_HIDE | M1_ANIMAL | M1_NOEYES | M1_NOLIMBS | M1_CARNIVORE | M1_NOTAKE, mflags2: M2_HOSTILE, mflags3: 0,
       difficulty: 9, mcolor: CLR_WHITE,
     },
-/*
+    /*
      * quadrupeds
      *  (note: horses are grouped with unicorns in another section below)
      */
@@ -981,7 +981,7 @@ export const mons_init = [
       mflags1: M1_ANIMAL | M1_THICK_HIDE | M1_NOHANDS | M1_HERBIVORE, mflags2: M2_HOSTILE | M2_STRONG, mflags3: M3_INFRAVISIBLE,
       difficulty: 22, mcolor: CLR_BLACK,
     },
-/*
+    /*
      * rodents
      */
     { id: "PM_SEWER_RAT", pmidx: PM_SEWER_RAT,
@@ -1024,8 +1024,8 @@ export const mons_init = [
       mflags1: M1_TUNNEL | M1_ANIMAL | M1_NOHANDS | M1_METALLIVORE, mflags2: M2_HOSTILE | M2_GREEDY | M2_JEWELS | M2_COLLECT, mflags3: M3_INFRAVISIBLE,
       difficulty: 4, mcolor: CLR_GRAY,
     },
-/*LOGGING*/
-/* In reality, they tunnel instead of cutting lumber.  Oh, well. */
+    /*LOGGING*/
+    /* In reality, they tunnel instead of cutting lumber.  Oh, well. */
     { id: "PM_WOODCHUCK", pmidx: PM_WOODCHUCK,
       pmnames: [null, null, "woodchuck"],
       mlet: S_RODENT, mlevel: 3, mmove: 3, ac: 0, mr: 20, maligntyp: 0, geno: (G_NOGEN | G_GENO),
@@ -1034,7 +1034,7 @@ export const mons_init = [
       mflags1: M1_TUNNEL | M1_ANIMAL | M1_NOHANDS | M1_SWIM | M1_HERBIVORE, mflags2: M2_WANDER | M2_HOSTILE, mflags3: M3_INFRAVISIBLE,
       difficulty: 4, mcolor: CLR_BROWN,
     },
-/*
+    /*
      * spiders & scorpions (keep webmaker() in sync if new critters are added)
      */
     { id: "PM_CAVE_SPIDER", pmidx: PM_CAVE_SPIDER,
@@ -1069,7 +1069,7 @@ export const mons_init = [
       mflags1: M1_CONCEAL | M1_ANIMAL | M1_NOHANDS | M1_OVIPAROUS | M1_POIS | M1_CARNIVORE, mflags2: M2_HOSTILE, mflags3: 0,
       difficulty: 8, mcolor: CLR_RED,
     },
-/*
+    /*
      * trappers, lurkers, &c
      * Note:  prior to 5.0, these were defined to do AD_DGST damage,
      * but they don't swallow their victims into their stomachs and
@@ -1093,7 +1093,7 @@ export const mons_init = [
       mflags1: M1_HIDE | M1_ANIMAL | M1_NOEYES | M1_NOLIMBS | M1_NOHEAD | M1_CARNIVORE, mflags2: M2_HOSTILE | M2_STALK | M2_STRONG, mflags3: 0,
       difficulty: 14, mcolor: CLR_GREEN,
     },
-/*
+    /*
      * unicorns and horses
      */
     { id: "PM_PONY", pmidx: PM_PONY,
@@ -1144,7 +1144,7 @@ export const mons_init = [
       mflags1: M1_ANIMAL | M1_NOHANDS | M1_HERBIVORE, mflags2: M2_WANDER | M2_STRONG | M2_DOMESTIC, mflags3: M3_INFRAVISIBLE,
       difficulty: 9, mcolor: CLR_BROWN,
     },
-/*
+    /*
      * vortices
      */
     { id: "PM_FOG_CLOUD", pmidx: PM_FOG_CLOUD,
@@ -1195,7 +1195,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_BREATHLESS | M1_NOEYES | M1_NOLIMBS | M1_NOHEAD | M1_MINDLESS | M1_UNSOLID, mflags2: M2_HOSTILE | M2_NEUTER, mflags3: M3_INFRAVISIBLE,
       difficulty: 10, mcolor: CLR_YELLOW,
     },
-/*
+    /*
      * worms
      */
     { id: "PM_BABY_LONG_WORM", pmidx: PM_BABY_LONG_WORM,
@@ -1230,7 +1230,7 @@ export const mons_init = [
       mflags1: M1_ANIMAL | M1_SLITHY | M1_NOLIMBS | M1_OVIPAROUS | M1_CARNIVORE, mflags2: M2_HOSTILE | M2_STRONG | M2_NASTY, mflags3: 0,
       difficulty: 17, mcolor: CLR_MAGENTA,
     },
-/*
+    /*
      * xan, &c
      */
     { id: "PM_GRID_BUG", pmidx: PM_GRID_BUG,
@@ -1249,10 +1249,10 @@ export const mons_init = [
       mflags1: M1_FLY | M1_ANIMAL | M1_NOHANDS | M1_POIS, mflags2: M2_HOSTILE, mflags3: M3_INFRAVISIBLE,
       difficulty: 9, mcolor: CLR_RED,
     },
-/*
+    /*
      * lights
      */
-/* yellow light is visible and its suicidal explosion causes blindness */
+    /* yellow light is visible and its suicidal explosion causes blindness */
     { id: "PM_YELLOW_LIGHT", pmidx: PM_YELLOW_LIGHT,
       pmnames: [null, null, "yellow light"],
       mlet: S_LIGHT, mlevel: 3, mmove: 15, ac: 0, mr: 0, maligntyp: 0, geno: (G_NOCORPSE | G_GENO | 4),
@@ -1261,7 +1261,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_BREATHLESS | M1_AMORPHOUS | M1_NOEYES | M1_NOLIMBS | M1_NOHEAD | M1_MINDLESS | M1_UNSOLID | M1_NOTAKE, mflags2: M2_HOSTILE | M2_NEUTER, mflags3: M3_INFRAVISIBLE,
       difficulty: 5, mcolor: CLR_YELLOW,
     },
-/* black light is invisible and causes hallucination */
+    /* black light is invisible and causes hallucination */
     { id: "PM_BLACK_LIGHT", pmidx: PM_BLACK_LIGHT,
       pmnames: [null, null, "black light"],
       mlet: S_LIGHT, mlevel: 5, mmove: 15, ac: 0, mr: 0, maligntyp: 0, geno: (G_NOCORPSE | G_GENO | 2),
@@ -1270,7 +1270,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_BREATHLESS | M1_AMORPHOUS | M1_NOEYES | M1_NOLIMBS | M1_NOHEAD | M1_MINDLESS | M1_UNSOLID | M1_SEE_INVIS | M1_NOTAKE, mflags2: M2_HOSTILE | M2_NEUTER, mflags3: 0,
       difficulty: 7, mcolor: CLR_BLACK,
     },
-/*
+    /*
      * zruty
      */
     { id: "PM_ZRUTY", pmidx: PM_ZRUTY,
@@ -1281,7 +1281,7 @@ export const mons_init = [
       mflags1: M1_ANIMAL | M1_HUMANOID | M1_CARNIVORE, mflags2: M2_HOSTILE | M2_STRONG, mflags3: M3_INFRAVISIBLE,
       difficulty: 11, mcolor: CLR_BROWN,
     },
-/*
+    /*
      * Angels and other lawful minions
      */
     { id: "PM_COUATL", pmidx: PM_COUATL,
@@ -1300,7 +1300,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_SEE_INVIS, mflags2: M2_MINION | M2_STALK | M2_NASTY | M2_COLLECT, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 12, mcolor: CLR_YELLOW,
     },
-/* Angels start with the emin extension attached, and usually have
+    /* Angels start with the emin extension attached, and usually have
        the isminion flag set; however, non-minion Angels can be tamed
        and will switch to edog (guardian Angel is handled specially and
        always sticks with emin) */
@@ -1312,7 +1312,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_HUMANOID | M1_SEE_INVIS, mflags2: M2_NOPOLY | M2_MINION | M2_STALK | M2_STRONG | M2_NASTY | M2_COLLECT, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 19, mcolor: CLR_WHITE,
     },
-/* the AD&D Monster Manual depicts ki-rin as very similar to unicorns
+    /* the AD&D Monster Manual depicts ki-rin as very similar to unicorns
        except that they fly (without wings) and can cast spells; nethack's
        ki-rin doesn't leave its horn when killed, but it can use the horn
        while alive to cure itself of various maladies */
@@ -1332,7 +1332,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_HUMANOID | M1_SEE_INVIS | M1_REGEN, mflags2: M2_NOPOLY | M2_MINION | M2_STALK | M2_STRONG | M2_NASTY | M2_LORD | M2_COLLECT | M2_MAGIC, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 26, mcolor: HI_LORD,
     },
-/*
+    /*
      * Bats and birds
      */
     { id: "PM_BAT", pmidx: PM_BAT,
@@ -1367,7 +1367,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_ANIMAL | M1_NOHANDS | M1_POIS | M1_REGEN | M1_OMNIVORE, mflags2: M2_HOSTILE, mflags3: M3_INFRAVISIBLE,
       difficulty: 7, mcolor: CLR_BLACK,
     },
-/*
+    /*
      * Centaurs
      */
     { id: "PM_PLAINS_CENTAUR", pmidx: PM_PLAINS_CENTAUR,
@@ -1394,10 +1394,10 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_STRONG | M2_GREEDY | M2_COLLECT, mflags3: M3_INFRAVISIBLE,
       difficulty: 9, mcolor: CLR_CYAN,
     },
-/*
+    /*
      * Dragons
      */
-/* The order of the dragons is VERY IMPORTANT.  Quite a few
+    /* The order of the dragons is VERY IMPORTANT.  Quite a few
      * pieces of code depend on gray being first and yellow being last.
      * The code also depends on the *order* being the same as that for
      * dragon scale mail and dragon scales in objects.c.  [Also,
@@ -1499,7 +1499,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_THICK_HIDE | M1_NOHANDS | M1_SEE_INVIS | M1_OVIPAROUS | M1_CARNIVORE, mflags2: M2_HOSTILE | M2_STRONG | M2_NASTY | M2_GREEDY | M2_JEWELS | M2_MAGIC, mflags3: 0,
       difficulty: 20, mcolor: CLR_GRAY,
     },
-/* gold dragon can be seen via infravision but doesn't have infravision */
+    /* gold dragon can be seen via infravision but doesn't have infravision */
     { id: "PM_GOLD_DRAGON", pmidx: PM_GOLD_DRAGON,
       pmnames: [null, null, "gold dragon"],
       mlet: S_DRAGON, mlevel: 15, mmove: 9, ac: -1, mr: 20, maligntyp: 4, geno: (G_GENO | 1),
@@ -1516,7 +1516,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_THICK_HIDE | M1_NOHANDS | M1_SEE_INVIS | M1_OVIPAROUS | M1_CARNIVORE, mflags2: M2_HOSTILE | M2_STRONG | M2_NASTY | M2_GREEDY | M2_JEWELS | M2_MAGIC, mflags3: 0,
       difficulty: 20, mcolor: DRAGON_SILVER,
     },
-/* red dragon has infravision and can be seen via infravision */
+    /* red dragon has infravision and can be seen via infravision */
     { id: "PM_RED_DRAGON", pmidx: PM_RED_DRAGON,
       pmnames: [null, null, "red dragon"],
       mlet: S_DRAGON, mlevel: 15, mmove: 9, ac: -1, mr: 20, maligntyp: -4, geno: (G_GENO | 1),
@@ -1541,7 +1541,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_THICK_HIDE | M1_NOHANDS | M1_SEE_INVIS | M1_OVIPAROUS | M1_CARNIVORE, mflags2: M2_HOSTILE | M2_STRONG | M2_NASTY | M2_GREEDY | M2_JEWELS | M2_MAGIC, mflags3: 0,
       difficulty: 20, mcolor: CLR_ORANGE,
     },
-/* disintegration breath is actually all or nothing, not 1d255 */
+    /* disintegration breath is actually all or nothing, not 1d255 */
     { id: "PM_BLACK_DRAGON", pmidx: PM_BLACK_DRAGON,
       pmnames: [null, null, "black dragon"],
       mlet: S_DRAGON, mlevel: 15, mmove: 9, ac: -1, mr: 20, maligntyp: -6, geno: (G_GENO | 1),
@@ -1574,7 +1574,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_THICK_HIDE | M1_NOHANDS | M1_SEE_INVIS | M1_OVIPAROUS | M1_CARNIVORE | M1_ACID, mflags2: M2_HOSTILE | M2_STRONG | M2_NASTY | M2_GREEDY | M2_JEWELS | M2_MAGIC, mflags3: 0,
       difficulty: 20, mcolor: CLR_YELLOW,
     },
-/*
+    /*
      * Elementals
      */
     { id: "PM_STALKER", pmidx: PM_STALKER,
@@ -1617,7 +1617,7 @@ export const mons_init = [
       mflags1: M1_NOEYES | M1_NOLIMBS | M1_NOHEAD | M1_MINDLESS | M1_BREATHLESS | M1_UNSOLID | M1_AMPHIBIOUS | M1_SWIM, mflags2: M2_STRONG | M2_NEUTER, mflags3: 0,
       difficulty: 10, mcolor: CLR_BLUE,
     },
-/*
+    /*
      * Fungi
      */
     { id: "PM_LICHEN", pmidx: PM_LICHEN,
@@ -1676,7 +1676,7 @@ export const mons_init = [
       mflags1: M1_BREATHLESS | M1_NOEYES | M1_NOLIMBS | M1_NOHEAD | M1_MINDLESS | M1_NOTAKE, mflags2: M2_HOSTILE | M2_NEUTER, mflags3: 0,
       difficulty: 5, mcolor: CLR_MAGENTA,
     },
-/*
+    /*
      * Gnomes
      *  Unlike plain human|elf|orc, plain "gnome" is an ordinary monster.
      */
@@ -1712,10 +1712,10 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_GNOME | M2_PRINCE | M2_COLLECT, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 6, mcolor: HI_LORD,
     },
-/*
+    /*
      * giant Humanoids
      */
-/* plain giant is a placeholder for zombie and mummy corpses */
+    /* plain giant is a placeholder for zombie and mummy corpses */
     { id: "PM_GIANT", pmidx: PM_GIANT,
       pmnames: [null, null, "giant"],
       mlet: S_GIANT, mlevel: 6, mmove: 6, ac: 0, mr: 0, maligntyp: 2, geno: (G_GENO | G_NOGEN | 1),
@@ -1756,7 +1756,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_CARNIVORE, mflags2: M2_GIANT | M2_STRONG | M2_ROCKTHROW | M2_NASTY | M2_COLLECT | M2_JEWELS, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 13, mcolor: CLR_WHITE,
     },
-/* ettin is a two-headed giant but its corpse doesn't confer strength */
+    /* ettin is a two-headed giant but its corpse doesn't confer strength */
     { id: "PM_ETTIN", pmidx: PM_ETTIN,
       pmnames: [null, null, "ettin"],
       mlet: S_GIANT, mlevel: 10, mmove: 12, ac: 3, mr: 0, maligntyp: 0, geno: (G_GENO | 1),
@@ -1789,16 +1789,16 @@ export const mons_init = [
       mflags1: M1_ANIMAL | M1_HUMANOID | M1_CARNIVORE, mflags2: M2_HOSTILE | M2_STRONG | M2_NASTY, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 17, mcolor: CLR_BROWN,
     },
-/*
+    /*
      * Invisible
      * S_invisible=='I' is a visual marker for all invisible monsters
      * and must be not be used for any specific monster types.  Long
      * time 'invisible stalker' was changed to 'stalker', an Elemental.
      */
-/*
+    /*
      * Jabberwock
      */
-/* the illustration from _Through_the_Looking_Glass_
+    /* the illustration from _Through_the_Looking_Glass_
        depicts hands as well as wings */
     { id: "PM_JABBERWOCK", pmidx: PM_JABBERWOCK,
       pmnames: [null, null, "jabberwock"],
@@ -1808,7 +1808,7 @@ export const mons_init = [
       mflags1: M1_ANIMAL | M1_FLY | M1_CARNIVORE, mflags2: M2_HOSTILE | M2_STRONG | M2_NASTY | M2_COLLECT, mflags3: M3_INFRAVISIBLE,
       difficulty: 18, mcolor: CLR_ORANGE,
     },
-/*
+    /*
      * Kops
      */
     { id: "PM_KEYSTONE_KOP", pmidx: PM_KEYSTONE_KOP,
@@ -1843,7 +1843,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID, mflags2: M2_HUMAN | M2_WANDER | M2_HOSTILE | M2_STRONG | M2_MALE | M2_COLLECT, mflags3: M3_INFRAVISIBLE,
       difficulty: 6, mcolor: HI_LORD,
     },
-/*
+    /*
      * Liches
      */
     { id: "PM_LICH", pmidx: PM_LICH,
@@ -1878,7 +1878,7 @@ export const mons_init = [
       mflags1: M1_BREATHLESS | M1_HUMANOID | M1_POIS | M1_REGEN, mflags2: M2_UNDEAD | M2_HOSTILE | M2_MAGIC, mflags3: M3_WANTSBOOK | M3_INFRAVISION,
       difficulty: 29, mcolor: HI_LORD,
     },
-/*
+    /*
      * Mummies
      */
     { id: "PM_KOBOLD_MUMMY", pmidx: PM_KOBOLD_MUMMY,
@@ -1945,7 +1945,7 @@ export const mons_init = [
       mflags1: M1_BREATHLESS | M1_MINDLESS | M1_HUMANOID | M1_POIS, mflags2: M2_UNDEAD | M2_HOSTILE | M2_GIANT | M2_STRONG | M2_JEWELS, mflags3: M3_INFRAVISION,
       difficulty: 10, mcolor: CLR_CYAN,
     },
-/*
+    /*
      * Nagas
      */
     { id: "PM_RED_NAGA_HATCHLING", pmidx: PM_RED_NAGA_HATCHLING,
@@ -2004,7 +2004,7 @@ export const mons_init = [
       mflags1: M1_NOLIMBS | M1_SLITHY | M1_THICK_HIDE | M1_OVIPAROUS | M1_NOTAKE | M1_OMNIVORE, mflags2: M2_STRONG, mflags3: 0,
       difficulty: 13, mcolor: HI_GOLD,
     },
-/* 5.0: guardian naga used to have three attacks: bite, spit, hug
+    /* 5.0: guardian naga used to have three attacks: bite, spit, hug
        but in order for the hug to succeed the two preceding attacks had
        to have hit, and it's not possible to both bite and spit, hence
        the hug never hit; change to spit, bite, touch, hug; if the bite
@@ -2017,7 +2017,7 @@ export const mons_init = [
       mflags1: M1_NOLIMBS | M1_SLITHY | M1_THICK_HIDE | M1_OVIPAROUS | M1_POIS | M1_NOTAKE | M1_OMNIVORE, mflags2: M2_STRONG, mflags3: 0,
       difficulty: 17, mcolor: CLR_GREEN,
     },
-/*
+    /*
      * Ogres
      */
     { id: "PM_OGRE", pmidx: PM_OGRE,
@@ -2044,7 +2044,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_CARNIVORE, mflags2: M2_STRONG | M2_PRINCE | M2_GREEDY | M2_JEWELS | M2_COLLECT, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 11, mcolor: HI_LORD,
     },
-/*
+    /*
      * Puddings
      *
      * must be in the same order as the pudding globs in objects.c
@@ -2081,7 +2081,7 @@ export const mons_init = [
       mflags1: M1_BREATHLESS | M1_AMORPHOUS | M1_NOEYES | M1_NOLIMBS | M1_NOHEAD | M1_MINDLESS | M1_OMNIVORE | M1_ACID, mflags2: M2_HOSTILE | M2_NEUTER, mflags3: 0,
       difficulty: 12, mcolor: CLR_BLACK,
     },
-/*
+    /*
      * Quantum mechanics
      */
     { id: "PM_QUANTUM_MECHANIC", pmidx: PM_QUANTUM_MECHANIC,
@@ -2092,7 +2092,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE | M1_POIS | M1_TPORT, mflags2: M2_HOSTILE, mflags3: M3_INFRAVISIBLE,
       difficulty: 9, mcolor: CLR_CYAN,
     },
-/* 5.0: from slash'em, to expand Q class; hit polymorphs target */
+    /* 5.0: from slash'em, to expand Q class; hit polymorphs target */
     { id: "PM_GENETIC_ENGINEER", pmidx: PM_GENETIC_ENGINEER,
       pmnames: [null, null, "genetic engineer"],
       mlet: S_QUANTMECH, mlevel: 12, mmove: 12, ac: 3, mr: 10, maligntyp: 0, geno: (G_GENO | 1),
@@ -2101,7 +2101,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE | M1_POIS | M1_TPORT, mflags2: M2_HOSTILE | M2_NASTY, mflags3: M3_INFRAVISIBLE,
       difficulty: 14, mcolor: CLR_GREEN,
     },
-/*
+    /*
      * Rust monster or disenchanter
      */
     { id: "PM_RUST_MONSTER", pmidx: PM_RUST_MONSTER,
@@ -2120,7 +2120,7 @@ export const mons_init = [
       mflags1: M1_ANIMAL | M1_CARNIVORE, mflags2: M2_HOSTILE, mflags3: M3_INFRAVISIBLE,
       difficulty: 14, mcolor: CLR_BLUE,
     },
-/*
+    /*
      * Snakes
      *  Note: in the real world, most snakes are oviparous but some aren't;
      *  we treat all of these as if they are.
@@ -2173,7 +2173,7 @@ export const mons_init = [
       mflags1: M1_SWIM | M1_CONCEAL | M1_NOLIMBS | M1_ANIMAL | M1_SLITHY | M1_POIS | M1_CARNIVORE | M1_OVIPAROUS | M1_NOTAKE, mflags2: M2_HOSTILE, mflags3: 0,
       difficulty: 10, mcolor: CLR_BLUE,
     },
-/*
+    /*
      * Trolls
      */
     { id: "PM_TROLL", pmidx: PM_TROLL,
@@ -2216,7 +2216,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_REGEN | M1_CARNIVORE, mflags2: M2_STRONG | M2_STALK | M2_HOSTILE | M2_COLLECT, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 16, mcolor: HI_LORD,
     },
-/*
+    /*
      * Umber hulk
      */
     { id: "PM_UMBER_HULK", pmidx: PM_UMBER_HULK,
@@ -2227,7 +2227,7 @@ export const mons_init = [
       mflags1: M1_TUNNEL | M1_CARNIVORE, mflags2: M2_STRONG, mflags3: M3_INFRAVISIBLE,
       difficulty: 12, mcolor: CLR_BROWN,
     },
-/*
+    /*
      * Vampires
      */
     { id: "PM_VAMPIRE", pmidx: PM_VAMPIRE,
@@ -2254,7 +2254,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_BREATHLESS | M1_HUMANOID | M1_POIS | M1_REGEN, mflags2: M2_NOPOLY | M2_UNDEAD | M2_STALK | M2_HOSTILE | M2_PNAME | M2_STRONG | M2_NASTY | M2_PRINCE | M2_MALE | M2_SHAPESHIFTER, mflags3: M3_WAITFORU | M3_WANTSCAND | M3_INFRAVISIBLE,
       difficulty: 32, mcolor: HI_LORD,
     },
-/*
+    /*
      * Wraiths
      */
     { id: "PM_BARROW_WIGHT", pmidx: PM_BARROW_WIGHT,
@@ -2265,7 +2265,7 @@ export const mons_init = [
       mflags1: M1_BREATHLESS | M1_HUMANOID, mflags2: M2_UNDEAD | M2_STALK | M2_HOSTILE | M2_COLLECT, mflags3: 0,
       difficulty: 8, mcolor: CLR_GRAY,
     },
-/* wraiths weigh 0 but can leave corpses */
+    /* wraiths weigh 0 but can leave corpses */
     { id: "PM_WRAITH", pmidx: PM_WRAITH,
       pmnames: [null, null, "wraith"],
       mlet: S_WRAITH, mlevel: 6, mmove: 12, ac: 4, mr: 15, maligntyp: -6, geno: (G_GENO | 2),
@@ -2282,7 +2282,7 @@ export const mons_init = [
       mflags1: M1_BREATHLESS | M1_HUMANOID | M1_SEE_INVIS, mflags2: M2_NOPOLY | M2_UNDEAD | M2_STALK | M2_STRONG | M2_HOSTILE | M2_MALE | M2_COLLECT, mflags3: 0,
       difficulty: 17, mcolor: HI_LORD,
     },
-/*
+    /*
      * Xorn
      */
     { id: "PM_XORN", pmidx: PM_XORN,
@@ -2293,10 +2293,10 @@ export const mons_init = [
       mflags1: M1_BREATHLESS | M1_WALLWALK | M1_THICK_HIDE | M1_METALLIVORE, mflags2: M2_HOSTILE | M2_STRONG, mflags3: 0,
       difficulty: 11, mcolor: CLR_BROWN,
     },
-/*
+    /*
      * Apelike beasts
      */
-/* tameable via banana; does not grow up into ape...
+    /* tameable via banana; does not grow up into ape...
        not flagged as domestic, so no guilt penalty for eating non-pet one */
     { id: "PM_MONKEY", pmidx: PM_MONKEY,
       pmnames: [null, null, "monkey"],
@@ -2346,7 +2346,7 @@ export const mons_init = [
       mflags1: M1_ANIMAL | M1_HUMANOID | M1_SEE_INVIS | M1_OMNIVORE, mflags2: M2_STRONG, mflags3: M3_INFRAVISIBLE,
       difficulty: 9, mcolor: CLR_GRAY,
     },
-/*
+    /*
      * Zombies
      */
     { id: "PM_KOBOLD_ZOMBIE", pmidx: PM_KOBOLD_ZOMBIE,
@@ -2429,7 +2429,7 @@ export const mons_init = [
       mflags1: M1_BREATHLESS | M1_MINDLESS | M1_HUMANOID | M1_THICK_HIDE, mflags2: M2_UNDEAD | M2_WANDER | M2_HOSTILE | M2_STRONG | M2_COLLECT | M2_NASTY, mflags3: M3_INFRAVISION,
       difficulty: 14, mcolor: CLR_WHITE,
     },
-/*
+    /*
      * golems
      */
     { id: "PM_STRAW_GOLEM", pmidx: PM_STRAW_GOLEM,
@@ -2520,12 +2520,12 @@ export const mons_init = [
       mflags1: M1_BREATHLESS | M1_MINDLESS | M1_HUMANOID | M1_THICK_HIDE | M1_POIS, mflags2: M2_HOSTILE | M2_STRONG | M2_COLLECT, mflags3: 0,
       difficulty: 22, mcolor: HI_METAL,
     },
-/*
+    /*
      * humans, including elves and were-critters;
      *  the '@' class does not obey rule #2.
      *  Plain "human" is a placeholder, not a normal monster.
      */
-/* for corpses */
+    /* for corpses */
     { id: "PM_HUMAN", pmidx: PM_HUMAN,
       pmnames: [null, null, "human"],
       mlet: S_HUMAN, mlevel: 0, mmove: 12, ac: 10, mr: 0, maligntyp: 0, geno: G_NOGEN,
@@ -2558,8 +2558,8 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_POIS | M1_REGEN | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_WERE | M2_HOSTILE | M2_HUMAN | M2_COLLECT, mflags3: M3_INFRAVISIBLE,
       difficulty: 6, mcolor: CLR_ORANGE,
     },
-/* plain "elf" is a placeholder, not a normal monster */
-/* for corpses */
+    /* plain "elf" is a placeholder, not a normal monster */
+    /* for corpses */
     { id: "PM_ELF", pmidx: PM_ELF,
       pmnames: [null, null, "elf"],
       mlet: S_HUMAN, mlevel: 0, mmove: 12, ac: 10, mr: 2, maligntyp: -3, geno: G_NOGEN,
@@ -2616,7 +2616,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_HOSTILE | M2_STRONG | M2_COLLECT | M2_SHAPESHIFTER, mflags3: M3_INFRAVISIBLE,
       difficulty: 11, mcolor: HI_DOMESTIC,
     },
-/* 5.0: shopkeepers used to have speed 18, but if/when they were
+    /* 5.0: shopkeepers used to have speed 18, but if/when they were
        hasted they always got 2 moves per turn and had a tendency to move
        away from blocking the door and then move right back; since they
        might start with a potion of speed and drink that as soon as the
@@ -2633,7 +2633,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_PEACEFUL | M2_STRONG | M2_COLLECT | M2_MAGIC, mflags3: M3_INFRAVISIBLE,
       difficulty: 15, mcolor: HI_DOMESTIC,
     },
-/* vault guard */
+    /* vault guard */
     { id: "PM_GUARD", pmidx: PM_GUARD,
       pmnames: [null, null, "guard"],
       mlet: S_HUMAN, mlevel: 12, mmove: 12, ac: 10, mr: 40, maligntyp: 10, geno: G_NOGEN,
@@ -2642,7 +2642,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_MERC | M2_PEACEFUL | M2_STRONG | M2_COLLECT, mflags3: M3_INFRAVISIBLE,
       difficulty: 14, mcolor: CLR_BLUE,
     },
-/* prisoner is used on some special levels */
+    /* prisoner is used on some special levels */
     { id: "PM_PRISONER", pmidx: PM_PRISONER,
       pmnames: [null, null, "prisoner"],
       mlet: S_HUMAN, mlevel: 12, mmove: 12, ac: 10, mr: 0, maligntyp: 0, geno: G_NOGEN,
@@ -2651,7 +2651,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_PEACEFUL | M2_STRONG | M2_COLLECT, mflags3: M3_INFRAVISIBLE | M3_CLOSE,
       difficulty: 14, mcolor: HI_DOMESTIC,
     },
-/* the Oracle of Delphi doesn't move */
+    /* the Oracle of Delphi doesn't move */
     { id: "PM_ORACLE", pmidx: PM_ORACLE,
       pmnames: [null, null, "Oracle"],
       mlet: S_HUMAN, mlevel: 12, mmove: 0, ac: 0, mr: 50, maligntyp: 0, geno: (G_NOGEN | G_UNIQ),
@@ -2660,7 +2660,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_PEACEFUL | M2_FEMALE, mflags3: M3_INFRAVISIBLE,
       difficulty: 13, mcolor: HI_ZAP,
     },
-/* aligned priests always have the epri extension attached;
+    /* aligned priests always have the epri extension attached;
        individual instantiations should always have either ispriest
        or isminion set; role monster priests are separate (below) */
     { id: "PM_ALIGNED_CLERIC", pmidx: PM_ALIGNED_CLERIC,
@@ -2671,7 +2671,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_LORD | M2_PEACEFUL | M2_COLLECT, mflags3: M3_INFRAVISIBLE,
       difficulty: 15, mcolor: CLR_WHITE,
     },
-/* high priests always have epri and always have ispriest set;
+    /* high priests always have epri and always have ispriest set;
        they are flagged as unique even through they aren't */
     { id: "PM_HIGH_CLERIC", pmidx: PM_HIGH_CLERIC,
       pmnames: ["high priest", "high priestess", "high cleric"],
@@ -2737,7 +2737,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_MERC | M2_STALK | M2_PEACEFUL | M2_STRONG | M2_COLLECT, mflags3: M3_INFRAVISIBLE,
       difficulty: 12, mcolor: CLR_GREEN,
     },
-/* Unique humans not tied to quests.
+    /* Unique humans not tied to quests.
      */
     { id: "PM_MEDUSA", pmidx: PM_MEDUSA,
       pmnames: [null, null, "Medusa"],
@@ -2763,7 +2763,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_SEE_INVIS | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_STALK | M2_HOSTILE | M2_STRONG | M2_NASTY | M2_PNAME | M2_PRINCE | M2_MALE | M2_GREEDY | M2_JEWELS | M2_COLLECT | M2_MAGIC, mflags3: M3_INFRAVISIBLE,
       difficulty: 22, mcolor: HI_LORD,
     },
-/*
+    /*
      * ghosts
      *  ghosts and shades don't leave corpses; assigning human weight
      *  to them matters for statues
@@ -2784,7 +2784,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_BREATHLESS | M1_WALLWALK | M1_HUMANOID | M1_UNSOLID | M1_SEE_INVIS, mflags2: M2_NOPOLY | M2_UNDEAD | M2_WANDER | M2_STALK | M2_HOSTILE | M2_NASTY, mflags3: M3_INFRAVISION,
       difficulty: 14, mcolor: CLR_BLACK,
     },
-/*
+    /*
      * (major) demons
      */
     { id: "PM_WATER_DEMON", pmidx: PM_WATER_DEMON,
@@ -2795,9 +2795,9 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_POIS | M1_SWIM, mflags2: M2_NOPOLY | M2_DEMON | M2_STALK | M2_HOSTILE | M2_NASTY | M2_COLLECT, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 11, mcolor: CLR_BLUE,
     },
-/* standard demons & devils
+    /* standard demons & devils
      */
-/* incubus and succubus; prior to 5.0, succubus and incubus were
+    /* incubus and succubus; prior to 5.0, succubus and incubus were
        distinct monsters; "amorous demon" is considered to be a temporary
        placeholder but may be here to stay... */
     { id: "PM_AMOROUS_DEMON", pmidx: PM_AMOROUS_DEMON,
@@ -2816,9 +2816,9 @@ export const mons_init = [
       mflags1: M1_POIS | M1_THICK_HIDE, mflags2: M2_DEMON | M2_STALK | M2_HOSTILE | M2_NASTY, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 9, mcolor: CLR_BROWN,
     },
-/* Used by AD&D for a type of demon, originally one of the Furies
+    /* Used by AD&D for a type of demon, originally one of the Furies
        and spelled this way; plural is erinyes */
-/* erinys attacks (among other things) are variable depending on your
+    /* erinys attacks (among other things) are variable depending on your
            alignment abuse, can be increased from here by adj_erinys(mon.c) */
     { id: "PM_ERINYS", pmidx: PM_ERINYS,
       pmnames: [null, null, "erinys"],
@@ -2892,7 +2892,7 @@ export const mons_init = [
       mflags1: M1_SEE_INVIS | M1_POIS, mflags2: M2_DEMON | M2_STALK | M2_HOSTILE | M2_NASTY | M2_COLLECT, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 16, mcolor: CLR_RED,
     },
-/* from Jack Vance's _Rhialto_the_Marvellous_, one of the sequels
+    /* from Jack Vance's _Rhialto_the_Marvellous_, one of the sequels
        to _The_Dying_Earth_ */
     { id: "PM_SANDESTIN", pmidx: PM_SANDESTIN,
       pmnames: [null, null, "sandestin"],
@@ -2910,7 +2910,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_SEE_INVIS | M1_POIS, mflags2: M2_DEMON | M2_STALK | M2_HOSTILE | M2_STRONG | M2_NASTY | M2_COLLECT, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 20, mcolor: CLR_RED,
     },
-/* Named demon lords & princes plus Arch-Devils.
+    /* Named demon lords & princes plus Arch-Devils.
      * (their order matters; see minion.c)
      */
     { id: "PM_JUIBLEX", pmidx: PM_JUIBLEX,
@@ -2977,7 +2977,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_SEE_INVIS | M1_NOHANDS | M1_POIS, mflags2: M2_NOPOLY | M2_DEMON | M2_STALK | M2_HOSTILE | M2_PNAME | M2_NASTY | M2_PRINCE | M2_MALE, mflags3: M3_WANTSAMUL | M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 57, mcolor: HI_LORD,
     },
-/* Riders -- the Four Horsemen of the Apocalypse ("War" == player);
+    /* Riders -- the Four Horsemen of the Apocalypse ("War" == player);
      * depicted with '&' but do not have M2_DEMON set.
      */
     { id: "PM_DEATH", pmidx: PM_DEATH,
@@ -3004,7 +3004,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_HUMANOID | M1_REGEN | M1_SEE_INVIS | M1_TPORT_CNTRL, mflags2: M2_NOPOLY | M2_STALK | M2_HOSTILE | M2_PNAME | M2_STRONG | M2_NASTY, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION | M3_DISPLACES,
       difficulty: 34, mcolor: HI_OVERLORD,
     },
-/* other demons
+    /* other demons
      */
     { id: "PM_MAIL_DAEMON", pmidx: PM_MAIL_DAEMON,
       pmnames: [null, null, "mail daemon"],
@@ -3014,7 +3014,7 @@ export const mons_init = [
       mflags1: M1_FLY | M1_SWIM | M1_BREATHLESS | M1_SEE_INVIS | M1_HUMANOID | M1_POIS, mflags2: M2_NOPOLY | M2_STALK | M2_PEACEFUL, mflags3: M3_INFRAVISIBLE | M3_INFRAVISION,
       difficulty: 26, mcolor: CLR_BRIGHT_BLUE,
     },
-/* djinni is singular; plural is djinn */
+    /* djinni is singular; plural is djinn */
     { id: "PM_DJINNI", pmidx: PM_DJINNI,
       pmnames: [null, null, "djinni"],
       mlet: S_DEMON, mlevel: 7, mmove: 12, ac: 4, mr: 30, maligntyp: 0, geno: (G_NOGEN | G_NOCORPSE),
@@ -3023,7 +3023,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_FLY | M1_POIS, mflags2: M2_NOPOLY | M2_STALK | M2_COLLECT, mflags3: M3_INFRAVISIBLE,
       difficulty: 8, mcolor: CLR_YELLOW,
     },
-/*
+    /*
      * sea monsters
      *
      * 5.0: all the fish except kraken used to specify M1_SLITHY, presumably
@@ -3081,7 +3081,7 @@ export const mons_init = [
       mflags1: M1_SWIM | M1_AMPHIBIOUS | M1_ANIMAL | M1_NOHANDS | M1_CARNIVORE, mflags2: M2_NOPOLY | M2_HOSTILE | M2_STRONG, mflags3: M3_INFRAVISIBLE,
       difficulty: 22, mcolor: CLR_RED,
     },
-/*
+    /*
      * lizards, &c
      */
     { id: "PM_NEWT", pmidx: PM_NEWT,
@@ -3116,7 +3116,7 @@ export const mons_init = [
       mflags1: M1_SWIM | M1_AMPHIBIOUS | M1_ANIMAL | M1_NOHANDS | M1_CARNIVORE, mflags2: M2_HOSTILE, mflags3: 0,
       difficulty: 4, mcolor: CLR_BROWN,
     },
-/* trivia:  before monster corpses were implemented, "lizard corpse"
+    /* trivia:  before monster corpses were implemented, "lizard corpse"
        was a specific type of item */
     { id: "PM_LIZARD", pmidx: PM_LIZARD,
       pmnames: [null, null, "lizard"],
@@ -3150,7 +3150,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_SLITHY | M1_THICK_HIDE | M1_POIS, mflags2: M2_STALK | M2_HOSTILE | M2_COLLECT | M2_MAGIC, mflags3: M3_INFRAVISIBLE,
       difficulty: 12, mcolor: CLR_ORANGE,
     },
-/*
+    /*
      * dummy monster needed for visual interface
      * (marking it unique prevents figurines)
      */
@@ -3162,13 +3162,13 @@ export const mons_init = [
       mflags1: 0n, mflags2: M2_NOPOLY, mflags3: 0,
       difficulty: 1, mcolor: CLR_BROWN,
     },
-/* Note:
+    /* Note:
      * Worm tail must be between the normal monsters and the special
      * quest & pseudo-character ones because an optimization in the
      * random monster selection code assumes everything beyond here
      * has the G_NOGEN and M2_NOPOLY attributes.
      */
-/*
+    /*
      * character classes
      */
     { id: "PM_ARCHEOLOGIST", pmidx: PM_ARCHEOLOGIST,
@@ -3219,7 +3219,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_HERBIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_STRONG | M2_COLLECT, mflags3: M3_INFRAVISIBLE,
       difficulty: 11, mcolor: HI_DOMESTIC,
     },
-/* monster priests are separate monsters (above; "aligned cleric") */
+    /* monster priests are separate monsters (above; "aligned cleric") */
     { id: "PM_CLERIC", pmidx: PM_CLERIC,
       pmnames: ["priest", "priestess", "cleric"],
       mlet: S_HUMAN, mlevel: 10, mmove: 12, ac: 10, mr: 2, maligntyp: 0, geno: G_NOGEN,
@@ -3260,7 +3260,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_STRONG | M2_COLLECT, mflags3: M3_INFRAVISIBLE,
       difficulty: 12, mcolor: HI_DOMESTIC,
     },
-/* valk is lawful by default; player valk can be neutral, in which case
+    /* valk is lawful by default; player valk can be neutral, in which case
        role_init() will change this monster and 'warrior' to be neutral too;
        if a neutral valk leaves a bones file containing neutral warriors,
        the latter will magically turn lawful if encountered by a lawful valk
@@ -3281,7 +3281,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_STRONG | M2_COLLECT | M2_MAGIC, mflags3: M3_INFRAVISIBLE,
       difficulty: 12, mcolor: HI_DOMESTIC,
     },
-/*
+    /*
      * quest leaders
      */
     { id: "PM_LORD_CARNARVON", pmidx: PM_LORD_CARNARVON,
@@ -3348,7 +3348,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE | M1_SEE_INVIS | M1_SWIM | M1_AMPHIBIOUS, mflags2: M2_NOPOLY | M2_HUMAN | M2_PNAME | M2_PEACEFUL | M2_STRONG | M2_MALE | M2_COLLECT | M2_MAGIC, mflags3: M3_CLOSE | M3_INFRAVISION | M3_INFRAVISIBLE,
       difficulty: 24, mcolor: HI_LORD,
     },
-/* Note: Master of Thieves is also the Tourist's nemesis.
+    /* Note: Master of Thieves is also the Tourist's nemesis.
      */
     { id: "PM_MASTER_OF_THIEVES", pmidx: PM_MASTER_OF_THIEVES,
       pmnames: [null, null, "Master of Thieves"],
@@ -3374,7 +3374,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_PNAME | M2_PEACEFUL | M2_STRONG | M2_MALE | M2_COLLECT | M2_MAGIC, mflags3: M3_CLOSE | M3_INFRAVISIBLE,
       difficulty: 22, mcolor: HI_DOMESTIC,
     },
-/* for a valkyrie hero, Norn's alignment will be changed to match hero's
+    /* for a valkyrie hero, Norn's alignment will be changed to match hero's
        starting alignment */
     { id: "PM_NORN", pmidx: PM_NORN,
       pmnames: [null, null, "Norn"],
@@ -3392,7 +3392,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_FEMALE | M2_PNAME | M2_PEACEFUL | M2_STRONG | M2_COLLECT | M2_MAGIC, mflags3: M3_CLOSE | M3_INFRAVISIBLE,
       difficulty: 25, mcolor: CLR_GREEN,
     },
-/*
+    /*
      * quest nemeses
      */
     { id: "PM_MINION_OF_HUHETOTL", pmidx: PM_MINION_OF_HUHETOTL,
@@ -3411,7 +3411,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_PNAME | M2_STRONG | M2_MALE | M2_STALK | M2_HOSTILE | M2_NASTY | M2_COLLECT | M2_MAGIC, mflags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISIBLE,
       difficulty: 22, mcolor: HI_LORD,
     },
-/* Multi-headed, possessing the breath attacks of all the other dragons
+    /* Multi-headed, possessing the breath attacks of all the other dragons
      * (selected at random when attacking).  Despite being a superset of
      * gold dragon, does not emit light.  Also does not fly.
      */
@@ -3471,7 +3471,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_STRONG | M2_MALE | M2_HOSTILE | M2_STALK | M2_NASTY | M2_COLLECT | M2_MAGIC, mflags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISIBLE,
       difficulty: 20, mcolor: HI_LORD,
     },
-/* A renegade daimyo who led a 13 year civil war against the shogun
+    /* A renegade daimyo who led a 13 year civil war against the shogun
      * of his time.
      */
     { id: "PM_ASHIKAGA_TAKAUJI", pmidx: PM_ASHIKAGA_TAKAUJI,
@@ -3482,7 +3482,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_PNAME | M2_HOSTILE | M2_STRONG | M2_STALK | M2_NASTY | M2_MALE | M2_COLLECT | M2_MAGIC, mflags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISIBLE,
       difficulty: 19, mcolor: HI_LORD,
     },
-/*
+    /*
      * Note: the Master of Thieves was defined above.
      */
     { id: "PM_LORD_SURTUR", pmidx: PM_LORD_SURTUR,
@@ -3501,7 +3501,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_STRONG | M2_HOSTILE | M2_STALK | M2_NASTY | M2_COLLECT | M2_MAGIC, mflags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISIBLE,
       difficulty: 20, mcolor: CLR_BLACK,
     },
-/*
+    /*
      * quest "guardians"
      */
     { id: "PM_STUDENT", pmidx: PM_STUDENT,
@@ -3528,7 +3528,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_PEACEFUL | M2_STRONG | M2_COLLECT, mflags3: M3_INFRAVISIBLE,
       difficulty: 7, mcolor: HI_DOMESTIC,
     },
-/* attendants used to be lawful but have been changed to neutral because
+    /* attendants used to be lawful but have been changed to neutral because
        grow_up() promotes them to healer and the latter is always neutral */
     { id: "PM_ATTENDANT", pmidx: PM_ATTENDANT,
       pmnames: [null, null, "attendant"],
@@ -3602,7 +3602,7 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_PEACEFUL | M2_STRONG | M2_COLLECT | M2_MAGIC, mflags3: M3_INFRAVISIBLE,
       difficulty: 8, mcolor: HI_DOMESTIC,
     },
-/* warriors used to be chaotic but have been changed to lawful because
+    /* warriors used to be chaotic but have been changed to lawful because
        grow_up() promotes them to valkyrie; for a valkyrie hero, they might
        be changed to neutral at game start; see the valkyrie comment above */
     { id: "PM_WARRIOR", pmidx: PM_WARRIOR,
@@ -3621,12 +3621,12 @@ export const mons_init = [
       mflags1: M1_HUMANOID | M1_OMNIVORE, mflags2: M2_NOPOLY | M2_HUMAN | M2_PEACEFUL | M2_STRONG | M2_COLLECT | M2_MAGIC, mflags3: M3_INFRAVISIBLE,
       difficulty: 8, mcolor: HI_DOMESTIC,
     },
-/*
+    /*
      * mons_init() in monst.c adds a terminator here, mons[NUMMONS].
      * It is part of the mons[] array without introducing another type
      * of monster.
      */
-/*monsters.h*/
+    /*monsters.h*/
     { id: "NON_PM", pmidx: NON_PM,
       pmnames: [null, null, ""],
       mlet: 0, mlevel: 0, mmove: 0, ac: 0, mr: 0, maligntyp: 0, geno: G_NOGEN | G_NOCORPSE,

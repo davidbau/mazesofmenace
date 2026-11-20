@@ -6,9 +6,6 @@ import { C } from '../c-runtime/context.js';
 
 /* Code for drinking from fountains. */
 
-
-
-
 /* used when trying to dip in or drink from fountain or sink or pool while
    levitating above it, or when trying to move downwards in that state */
 export function floating_above(what)
@@ -23,7 +20,6 @@ export function floating_above(what)
     }
     C.You(umsg, what);
 }
-
 
 /* Fountain of snakes! */
 export function dowatersnakes()
@@ -629,7 +625,7 @@ export function drinksink()
         otmp.cursed = otmp.blessed = 0;
         C.pline("Some %s liquid flows from the faucet.",
               C.Blind ? "odd" : C.hcolor(C.OBJ_DESCR(C.objects[otmp.otyp])));
-        if(!(C.Blind || C.Hallucination))
+        if (!(C.Blind || C.Hallucination))
             C.observe_object(otmp);
         otmp.quan++;       /* Avoid panic upon useup() */
         otmp.fromsink = 1; /* kludge for docall() */

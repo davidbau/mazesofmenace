@@ -10,29 +10,7 @@ import {C} from '../c-runtime/context.js';
 /* shared with save */
 /* shared with save */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* these ones are declared non-static in extern.h if SFCTOOL is defined */
-
-
-
-
 
 /*
  * Save a mapping of IDs from ghost levels to the current level.  This
@@ -41,17 +19,11 @@ import {C} from '../c-runtime/context.js';
 /* ghost ID */
 /* new ID */
 
-
-
-
 /* SFCTOOL */
 
 /* use colors from save file */
 
-
-
 /* Recalculate svl.level.objects[x][y], since this info was not saved. */
-
 
 export function find_lev_obj()
 {
@@ -97,7 +69,7 @@ export function find_lev_obj()
 
 export function inven_inuse(quietly)
 {
-    let otmp,otmp2;
+    let otmp, otmp2;
 
     for (otmp = C.gi.invent; otmp; otmp = otmp2) {
         otmp2 = otmp.nobj;
@@ -111,11 +83,10 @@ export function inven_inuse(quietly)
 
 /* SFCTOOL */
 
-
 export function restlevchn(nhfp)
 {
     let cnt = 0;
-    let tmplev,x;
+    let tmplev, x;
 
     C.svs.sp_levchn = 0;
     C.Sfi_int(nhfp, C.reference("int", () => cnt, value => cnt = value), "levchn-lev_count");
@@ -133,7 +104,6 @@ export function restlevchn(nhfp)
         tmplev.next = 0;
     }
 }
-
 
 export function restdamage(nhfp)
 {
@@ -209,10 +179,9 @@ export function restobj(nhfp, otmp)
     }
 }
 
-
 export function restobjchn(nhfp, frozen)
 {
-    let otmp,otmp2 = 0;
+    let otmp, otmp2 = 0;
     let first = 0;
     let buflen = 0;
     let ghostly = (nhfp.ftype == C.NHF_BONESFILE);
@@ -347,10 +316,9 @@ export function restmon(nhfp, mtmp)
     } /* mextra */
 }
 
-
 export function restmonchn(nhfp)
 {
-    let mtmp,mtmp2 = 0;
+    let mtmp, mtmp2 = 0;
     let first = 0;
     let buflen = 0;
     let offset;
@@ -429,10 +397,9 @@ export function restmonchn(nhfp)
     return first;
 }
 
-
 export function loadfruitchn(nhfp)
 {
-    let flist,fnext;
+    let flist, fnext;
 
     flist = 0;
     for (;;) {
@@ -448,7 +415,6 @@ export function loadfruitchn(nhfp)
     return flist;
 }
 
-
 export function freefruitchn(flist)
 {
     let fnext;
@@ -459,7 +425,6 @@ export function freefruitchn(flist)
         flist = fnext;
     }
 }
-
 
 export function ghostfruit(otmp)
 {
@@ -475,8 +440,6 @@ export function ghostfruit(otmp)
         otmp.spe = C.fruitadd(oldf.fname, 0);
 }
 /* !SFCTOOL */
-
-
 
 export function restgamestate(nhfp)
 {
@@ -722,7 +685,6 @@ export function restlevelfile(ltmp)
  *     other levels
  */
 
-
 export function dorecover(nhfp)
 {
     let ltmp = 0;
@@ -853,7 +815,6 @@ export function dorecover(nhfp)
 }
 /* !SFCTOOL */
 
-
 export function rest_stairs(nhfp)
 {
     let buflen = 0;
@@ -880,10 +841,9 @@ export function rest_stairs(nhfp)
     }
 }
 
-
 export function restcemetery(nhfp, cemeteryaddr)
 {
-    let bonesinfo,bonesaddr;
+    let bonesinfo, bonesaddr;
     let cflag = 0;
 
     C.Sfi_int(nhfp, C.reference("int", () => cflag, value => cflag = value), "cemetery-cemetery_flag");
@@ -900,7 +860,7 @@ export function restcemetery(nhfp, cemeteryaddr)
     }
     if (((nhfp.mode & C.CONVERTING) != 0)
          || ((nhfp.mode & C.UNCONVERTING) != 0)) {
-        let thisbones,nextbones;
+        let thisbones, nextbones;
 
         /* free the memory */
         nextbones = cemeteryaddr.value;
@@ -927,8 +887,6 @@ export function rest_levl(nhfp)
     }
 }
 
-
-
 export function trickery(reason)
 {
     C.pline("Strange, this map is not as I remember it.");
@@ -938,7 +896,6 @@ export function trickery(reason)
     C.done(C.TRICKED);
 }
 /* !SFCTOOL */
-
 
 export function getlev(nhfp, pid, lev)
 {
@@ -958,7 +915,6 @@ export function getlev(nhfp, pid, lev)
     if (ghostly)
         clear_id_mapping();
 /* !SFCTOOL */
-
 
     /* Load the old fruit info.  We have to do it first, so the
      * information is available when restoring the objects.
@@ -982,7 +938,7 @@ export function getlev(nhfp, pid, lev)
             C.pline1(trickbuf);
         trickery(trickbuf);
     }
-    restcemetery(nhfp, C.fieldPointer(C.svl.level,"bonesinfo"));
+    restcemetery(nhfp, C.fieldPointer(C.svl.level, "bonesinfo"));
     rest_levl(nhfp);
 
     if (!Object.hasOwn(C, "restoreLastSeenTerrain") || !C.restoreLastSeenTerrain(nhfp)) {
@@ -1186,7 +1142,6 @@ export function getlev(nhfp, pid, lev)
     C.program_state.in_getlev = 0;
 }
 
-
 export function rest_adjust_levelflags()
 {
     /* adjust timestamps */
@@ -1199,7 +1154,6 @@ export function moves_to_relative_time(timestamp)
 
     timestamp.value = prevts - C.svm.moves;
 }
-
 
 export function relative_time_to_moves(timestamp)
 {
@@ -1249,18 +1203,17 @@ export function rest_bubbles(nhfp)
         C.restore_waterlevel(nhfp);
 }
 
-
 export function restore_gamelog(nhfp)
 {
     let slen = 0;
-    const msg = C.stackAlloc(C.BUFSZ*2);
+    const msg = C.stackAlloc(C.BUFSZ * 2);
     const tmp = C.localStruct("gamelog_line", true);
 
     while (1) {
         C.Sfi_int(nhfp, C.reference("int", () => slen, value => slen = value), "gamelog-length");
         if (slen == -1)
             break;
-        if (slen > ((C.BUFSZ*2) - 1))
+        if (slen > ((C.BUFSZ * 2) - 1))
             C.panic("restore_gamelog: msg too big (%d)", slen);
         C.Sfi_char(nhfp, msg, "gamelog-gamelog_text", slen);
         C.storeChar(msg + slen, 0);
@@ -1269,7 +1222,6 @@ export function restore_gamelog(nhfp)
 /* !SFCTOOL */
     }
 }
-
 
 export function restore_msghistory(nhfp)
 {
@@ -1294,7 +1246,6 @@ export function restore_msghistory(nhfp)
     C.debugpline1("Read %d messages from savefile.", msgcount);
 /* !SFCTOOL */
 }
-
 
 /* Clear all structures for object and monster ID mapping. */
 
@@ -1359,7 +1310,6 @@ export function lookup_id_mapping(gid, nidp)
 
     return 0;
 }
-
 
 export function reset_oattached_mids(ghostly)
 {

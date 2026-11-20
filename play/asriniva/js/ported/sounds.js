@@ -4,8 +4,6 @@ import {C} from '../c-runtime/context.js';
 /*      Copyright (c) 1989 Janet Walz, Mike Threepoint */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
 /* this easily could be a macro, but it might overtax dumb compilers */
 export function mon_in_room(mon, rmtyp)
 {
@@ -15,7 +13,6 @@ export function mon_in_room(mon, rmtyp)
         return C.svr.rooms[rno - C.ROOMOFFSET].rtype == rmtyp;
     return 0;
 }
-
 
 export function throne_mon_sound(mtmp)
 {
@@ -38,15 +35,12 @@ export function throne_mon_sound(mtmp)
             }
             C.You_hear1(throne_msg[which]);
         } else {
-
             C.pline(throne_msg[2], C.uhis());
-
         }
         return 1;
     }
     return 0;
 }
-
 
 export function beehive_mon_sound(mtmp)
 {
@@ -153,7 +147,6 @@ export function temple_priest_sound(mtmp)
         while (!C.letter(C.loadChar(msg)))
             ++msg; /* skip control flags */
         if (C.strchr(msg, '%'.charCodeAt(0))) {
-
             C.You_hear(msg, C.halu_gname(C.EPRI(mtmp).shralign));
 
         } else
@@ -247,7 +240,7 @@ export function dosounds()
                     break;
                 }
             }
-            
+
                 /*FALLTHRU*/
             case 0:
                 /* Soundeffect(se_guards_footsteps, 30); */
@@ -835,7 +828,7 @@ export function domonnoise(mtmp)
             }
             break;
         }
-        
+
         /*FALLTHRU*/
     case C.MS_GROWL:
         /* Soundeffect((mtmp->mpeaceful ? se_snarl : se_growl), 80); */
@@ -985,7 +978,7 @@ export function domonnoise(mtmp)
             }
             break;
         }
-        
+
         /*FALLTHRU*/
     case C.MS_HUMANOID:
         if (!mtmp.mpeaceful) {
@@ -1107,7 +1100,7 @@ export function domonnoise(mtmp)
             C.demon_talk(mtmp);
             break;
         }
-        
+
         /* FALLTHRU */
     case C.MS_CUSS:
         if (!mtmp.mpeaceful)
@@ -1369,7 +1362,8 @@ export function dochat()
 /* is there a monster at <x,y> that can see the hero and react? */
 export function responsive_mon_at(x, y)
 {
-    x = C.int(x); y = C.int(y);
+    x = C.int(x);
+    y = C.int(y);
     let mtmp = C.isok(x, y) ? C.m_at(x, y) : 0;
 
     if (mtmp && (C.helpless(mtmp) /* immobilized monst */
@@ -1498,10 +1492,6 @@ export function tiphat()
     return res;
 }
 
-
-
-
-
 export const nosound_procs = {soundname:"nosound", soundlib_id:"soundlib_nosound", sound_triggers:0n,
     sound_init_nhsound:0, sound_exit_nhsound:0, sound_achievement:0,
     sound_soundeffect:0, sound_hero_playnotes:0, sound_play_usersound:0,
@@ -1548,7 +1538,6 @@ export function assign_soundlib(idx)
         = C.soundlib_choices[idx].sndprocs.soundlib_id;
 }
 
-
 /* copy up to maxlen-1 characters; 'dest' must be able to hold maxlen;
    treat comma as alternate end of 'src' */
 export function get_soundlib_name(dest, maxlen)
@@ -1590,11 +1579,10 @@ export function soundlib_id_from_opt(op)
  * and build procedures should reference them there.
  */
 
-
-
 export function base_soundname_to_filename(basename, buf, bufsz, approach)
 {
-    bufsz = C.size_t(bufsz); approach = C.int(approach);
+    bufsz = C.size_t(bufsz);
+    approach = C.int(approach);
     const suffix = ".wav";
     let consumes = 0n, baselen = 0n, existinglen = 0n;
     let cp = buf;
@@ -1643,7 +1631,6 @@ export function base_soundname_to_filename(basename, buf, bufsz, approach)
     }
     return buf;
 }
-
 
 export function set_voice(mtmp, tone, volume, moreinfo)
 {

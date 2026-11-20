@@ -5,8 +5,6 @@
 
 import { C } from '../c-runtime/context.js';
 
-
-
 /* take away the hero's money */
 export function take_gold()
 {
@@ -28,7 +26,6 @@ export function take_gold()
         C.disp.botl = 1;
     }
 }
-
 
 /* maybe do something when hero sits on a throne */
 export function throne_sit_effect()

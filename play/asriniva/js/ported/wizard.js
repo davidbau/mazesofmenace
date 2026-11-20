@@ -10,17 +10,11 @@ import { C } from '../c-runtime/context.js';
 /*             - dewimped and given some maledictions. -3. */
 /*             - generalized for 3.1 (mike@bullns.on01.bull.ca) */
 
-
-
-
 /* other_mon_has_arti() won't blow up if passed a NULL monst,
  * but its caller target_on() passes it a nonnull monst;
  * it may return a NULL monst pointer */
 
   /* might return NULL obj pointer */
-
-
-
 
 /* adding more neutral creatures will tend to reduce the number of monsters
    summoned by nasty(); adding more lawful creatures will reduce the number
@@ -357,8 +351,6 @@ export function choose_stairs(sx, sy, dir)
         sx.value = stway.sx, sy.value = stway.sy;
 }
 
-
-
 export function tactics(mtmp)
 {
     let strat = strategy(mtmp);
@@ -460,8 +452,6 @@ export function tactics(mtmp)
     /*NOTREACHED*/
     return 0;
 }
-
-
 
 /* are there any monsters mon could aggravate? */
 export function has_aggravatables(mon)

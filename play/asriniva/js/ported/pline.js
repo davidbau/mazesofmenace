@@ -4,8 +4,6 @@ import { C } from '../c-runtime/context.js';
 /*-Copyright (c) Robert Patrick Rankin, 2018. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
 /* big enough to format a 4*BUFSZ string (from
                               * config file parsing) with modest decoration;
                               * result will then be truncated to BUFSZ-1 */
@@ -83,17 +81,13 @@ export function set_msg_xy(x, y)
     C.a11y.msg_loc.y = y;
 }
 
-
-
 export function pline(line, ...the_args)
 {
-
     vpline(line, the_args);
 }
 
 export function pline_dir(dir, line, ...the_args)
 {
-
     set_msg_dir(dir);
 
     vpline(line, the_args);
@@ -101,7 +95,6 @@ export function pline_dir(dir, line, ...the_args)
 
 export function pline_xy(x, y, line, ...the_args)
 {
-
     set_msg_xy(x, y);
 
     vpline(line, the_args);
@@ -109,7 +102,6 @@ export function pline_xy(x, y, line, ...the_args)
 
 export function pline_mon(mtmp, line, ...the_args)
 {
-
     if (C.samePtr(mtmp, C.gy.youmonst))
         set_msg_xy(0, 0);
     else
@@ -129,7 +121,7 @@ export function vpline(line, the_args)
     let no_repeat;
     let a11y_mesgxy;
 
-    a11y_mesgxy = {x:C.a11y.msg_loc.x,y:C.a11y.msg_loc.y}; /* save a11y.msg_loc before reseting it */
+    a11y_mesgxy = {x:C.a11y.msg_loc.x, y:C.a11y.msg_loc.y}; /* save a11y.msg_loc before reseting it */
     /* always reset a11y.msg_loc whether we end up using it or not */
     C.a11y.msg_loc.x = C.a11y.msg_loc.y = 0;
 
@@ -143,7 +135,8 @@ export function vpline(line, the_args)
     /* when accessiblemsg is set and a11y.msg_loc is nonzero, use the latter
        to insert a location prefix in front of current message */
     if (C.a11y.accessiblemsg && C.isok(a11y_mesgxy.x, a11y_mesgxy.y)) {
-        let tmp, dirstr; const dirstrbuf = C.stackAlloc(C.QBUFSZ);
+        let tmp, dirstr;
+        const dirstrbuf = C.stackAlloc(C.QBUFSZ);
 
         dirstr = C.coord_desc(a11y_mesgxy.x, a11y_mesgxy.y, dirstrbuf,
                             ((C.iflags.getpos_coords == C.GPCOORDS_NONE)
@@ -263,13 +256,11 @@ export function vpline(line, the_args)
     --C.plineState.in_pline;
 }
 
-
 /* pline() variant which can override MSGTYPE handling or suppress
    message history (tty interface uses pline() to issue prompts and
    they shouldn't be blockable via MSGTYPE=hide) */
 export function custompline(pflags, line, ...the_args)
 {
-
     C.gp.pline_flags = C.unsigned(pflags);
     vpline(line, the_args);
     C.gp.pline_flags = 0;
@@ -281,7 +272,6 @@ export function custompline(pflags, line, ...the_args)
    but slightly simpler to use */
 export function urgent_pline(line, ...the_args)
 {
-
     C.gp.pline_flags = C.URGENT_MESSAGE;
     vpline(line, the_args);
     C.gp.pline_flags = 0;
@@ -289,7 +279,6 @@ export function urgent_pline(line, ...the_args)
 
 export function Norep(line, ...the_args)
 {
-
     C.gp.pline_flags = C.PLINE_NOREPEAT;
     vpline(line, the_args);
     C.gp.pline_flags = 0;
@@ -406,7 +395,6 @@ export function verbalize(line, ...the_args)
     C.gp.pline_flags &= ~C.PLINE_VERBALIZE;
 }
 
-
 export function gamelog_add(glflags, gltime, str)
 {
     if (Object.hasOwn(C, "chronicle")) {
@@ -449,16 +437,12 @@ export function livelog_printf(ll_type, line, ...the_args)
     C.livelog_add(ll_type, gamelogbuf);
 }
 
-
-
 export function raw_printf(line, ...the_args)
 {
-
     vraw_printf(line, the_args);
     if (!C.program_state.beyond_savefile_load)
         C.ge.early_raw_messages++;
 }
-
 
 export function vraw_printf(line, the_args)
 {
@@ -528,9 +512,6 @@ export function impossible(s, ...the_args)
     C.program_state.in_impossible = 0;
 }
 
-
-
-
 export function execplinehandler(line)
 {
     let f;
@@ -582,7 +563,6 @@ export function nhassert_failed(expression, filepath, line)
 /*pline.c*/
 // Original comments attached to inactive platform/macro declarations:
 
-
 /* clear the SPEECH flag so caller never has to */
 /* nothing here */
 /* !CHRONICLE */
@@ -591,4 +571,3 @@ export function nhassert_failed(expression, filepath, line)
        but might be "device:[root.][directory]name"
        and either "[directory]" or "[root.]" or both can be delimited
        by <> rather than by []; find the last of ']', '>', and ':'  */
-

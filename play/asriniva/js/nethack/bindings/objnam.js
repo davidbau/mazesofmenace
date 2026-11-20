@@ -74,7 +74,11 @@ export function createObjnamEnvironment(services,L,state){
                     if(d.bit)throw Error('OBJNAM private bitfield requires compiler plan '+t+'.'+name);
                     const offset=Number(L[key(t)+'_'+name]),type=canonical(d.type);
                     Object.defineProperty(prototype,name,{get(){return read(this.address+offset,type);},set(value){write(this.address+offset,type,value);}});
-                }privatePrototypes.set(t,prototype);
+                }
+                for (const [alias, field] of Object.entries(schema.fieldAliases[t] ?? {})) {
+                    Object.defineProperty(prototype, alias, Object.getOwnPropertyDescriptor(prototype, field));
+                }
+                privatePrototypes.set(t,prototype);
             }
             const result=Object.assign(Object.create(prototype),{address:at,nativeType:t});privateRecords.set(id,result);return result;
         }

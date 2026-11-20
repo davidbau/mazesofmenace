@@ -454,7 +454,8 @@ export async function dosave0() {
                     const stored = state.levelStore instanceof Map
                         ? [...state.levelStore.entries()] : [];
                     stored.sort((a, b) => a[0] - b[0]);
-                    const { find_lev_obj_no_longer_held } = await import('./restore.js');
+                    const { find_lev_obj_no_longer_held,
+                            restmonchn_place_diagnostics } = await import('./restore.js');
                     for (const [lev, snap] of stored) {
                         if ((lev | 0) === current || !snap)
                             continue;
@@ -470,6 +471,9 @@ export async function dosave0() {
                         if (snap.level)
                             snap.level.damagelist = reverse_chain(snap.level.damagelist, 'next');
                         await find_lev_obj_no_longer_held(snap.fobj);
+                        // C save.c:210 -> restore.c:1177-1194: even a copying
+                        // read rebuilds monster occupancy and reports overlaps.
+                        await restmonchn_place_diagnostics(snap.fmon, snap.worms);
                         if (snap.timers) restore_timer_order(snap.timers);
                         if (!snap.bubbles)
                             continue;
@@ -483,6 +487,13 @@ export async function dosave0() {
             /* C save.c:129 create_savefile() plus version and player header. */
             if (vfsWriteFile(path, `NHSAVE 2\n${g.plname}\n${payload}\n`)) {
                 g.program_state.something_worth_saving = 0; // C save.c:227
+                // Copying getlev() diagnostics leave a final tty message for
+                // save.c:63 display_nhwindow(WIN_MESSAGE, TRUE). Ordinary saves
+                // have no pending message after save.c:147's clear above.
+                if (g._pending_message && !g._topl_win_stop) {
+                    await force_more_pages(g._pending_message);
+                    g._pending_message = '';
+                }
                 return 1;
             }
             return 0;

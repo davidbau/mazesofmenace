@@ -30,7 +30,6 @@ export function l_selection_check(L, index)
     return sel;
 }
 
-
 export function l_selection_gc(L)
 {
     let sel = l_selection_check(L, 1);
@@ -39,7 +38,6 @@ export function l_selection_gc(L)
         C.selection_free(sel, C.FALSE);
     return 0;
 }
-
 
 /* push a new selection into lua stack, return the selectionvar */
 
@@ -59,7 +57,6 @@ export function l_selection_push_new(L)
     return sel;
 }
 
-
 /* push a copy of selectionvar tmp to lua stack */
 
 export function l_selection_push_copy(L, tmp)
@@ -74,7 +71,6 @@ export function l_selection_push_copy(L, tmp)
     sel.map = C.dupstr(tmp.map);
 }
 
-
 /* local sel = selection.new(); */
 
 export function l_selection_new(L)
@@ -82,7 +78,6 @@ export function l_selection_new(L)
     l_selection_push_new(L);
     return 1;
 }
-
 
 /* Replace the topmost selection in the stack with a clone of it. */
 
@@ -101,7 +96,6 @@ export function l_selection_clone(L)
     tmp.map = C.dupstr(sel.map);
     return 1;
 }
-
 
 /* selection.set(sel, x, y); */
 
@@ -149,14 +143,13 @@ export function l_selection_setpoint(L)
     if (x == -1 && y == -1)
         crd = C.SP_COORD_PACK_RANDOM(0);
     else
-        crd = C.SP_COORD_PACK(x,y);
+        crd = C.SP_COORD_PACK(x, y);
     C.get_location_coord(C.ref(() => x, value => { x = value; }), C.ref(() => y, value => { y = value; }), C.ANY_LOC,
                        C.gc.coder ? C.gc.coder.croom : 0, crd);
     C.selection_setpoint(x, y, sel, val);
     C.lua_settop(L, 1);
     return 1;
 }
-
 
 /* local numpoints = selection.numpoints(sel); */
 
@@ -178,7 +171,6 @@ export function l_selection_numpoints(L)
     C.lua_pushinteger(L, ret);
     return 1;
 }
-
 
 /* local value = selection.get(sel, x, y); */
 
@@ -202,7 +194,7 @@ export function l_selection_getpoint(L)
     if (x == -1 && y == -1)
         crd = C.SP_COORD_PACK_RANDOM(0);
     else
-        crd = C.SP_COORD_PACK(x,y);
+        crd = C.SP_COORD_PACK(x, y);
     C.get_location_coord(C.ref(() => x, value => { x = value; }), C.ref(() => y, value => { y = value; }), C.ANY_LOC,
                        C.gc.coder ? C.gc.coder.croom : 0, crd);
 
@@ -211,7 +203,6 @@ export function l_selection_getpoint(L)
     C.lua_pushnumber(L, val);
     return 1;
 }
-
 
 /* local s = selection.negate(sel); */
 
@@ -238,7 +229,6 @@ export function l_selection_not(L)
     return 1;
 }
 
-
 /* local sel = selection.area(4,5, 40,10) & selection.rect(7,8, 60,14); */
 
 export function l_selection_and(L)
@@ -264,12 +254,11 @@ export function l_selection_and(L)
     return 1;
 }
 
-
 /* local sel = selection.area(4,5, 40,10) | selection.rect(7,8, 60,14); */
 
 export function l_selection_or(L)
 {
-    let x,y;
+    let x, y;
     let sela = l_selection_check(L, 1);
     let selb = l_selection_check(L, 2);
     let selr = l_selection_push_new(L);
@@ -291,12 +280,11 @@ export function l_selection_or(L)
     return 1;
 }
 
-
 /* local sel = selection.area(4,5, 40,10) ~ selection.rect(7,8, 60,14); */
 
 export function l_selection_xor(L)
 {
-    let x,y;
+    let x, y;
     let sela = l_selection_check(L, 1);
     let selb = l_selection_check(L, 2);
     let selr = l_selection_push_new(L);
@@ -320,13 +308,12 @@ export function l_selection_xor(L)
     return 1;
 }
 
-
 /* local sel = selection.area(10,10, 20,20) - selection.area(14,14, 17,17)
  *   - i.e. points that are in A but not in B */
 
 export function l_selection_sub(L)
 {
-    let x,y;
+    let x, y;
     let sela = l_selection_check(L, 1);
     let selb = l_selection_check(L, 2);
     let selr = l_selection_push_new(L);
@@ -350,7 +337,6 @@ export function l_selection_sub(L)
     return 1;
 }
 
-
 /* local s = selection.percentage(sel, 50); */
 
 export function l_selection_filter_percent(L)
@@ -367,7 +353,6 @@ export function l_selection_filter_percent(L)
 
     return 1;
 }
-
 
 /* local pt = selection.rndcoord(sel); */
 
@@ -396,7 +381,6 @@ export function l_selection_rndcoord(L)
     return 1;
 }
 
-
 /* local s = selection.room(); */
 
 export function l_selection_room(L)
@@ -419,7 +403,6 @@ export function l_selection_room(L)
     return 1;
 }
 
-
 /* local rect = sel:bounds(); */
 
 export function l_selection_getbounds(L)
@@ -436,7 +419,6 @@ export function l_selection_getbounds(L)
     C.nhl_add_table_entry_int(L, "hy", rect.hy);
     return 1;
 }
-
 
 /* internal function to get a selection and 4 integer values from lua stack.
    removes the integers from the stack.
@@ -475,7 +457,6 @@ export function params_sel_2coords(L, sel, x1, y1, x2, y2)
     return C.FALSE;
 }
 
-
 /* local s = selection.line(sel, x1,y1, x2,y2); */
 
 /* local s = selection.line(x1,y1, x2,y2); */
@@ -498,10 +479,9 @@ export function l_selection_line(L)
 
     l_selection_clone(L);
     sel = l_selection_check(L, 2);
-    C.selection_do_line(x1,y1,x2,y2, sel);
+    C.selection_do_line(x1, y1, x2, y2, sel);
     return 1;
 }
-
 
 /* local s = selection.rect(sel, x1,y1, x2,y2); */
 
@@ -527,7 +507,6 @@ export function l_selection_rect(L)
     C.selection_do_line(x1, y2, x2, y2, sel);
     return 1;
 }
-
 
 /* local s = selection.fillrect(sel, x1,y1, x2,y2); */
 
@@ -563,7 +542,6 @@ export function l_selection_fillrect(L)
     }
     return 1;
 }
-
 
 /* local s = selection.randline(sel, x1,y1, x2,y2, roughness); */
 
@@ -610,7 +588,6 @@ export function l_selection_randline(L)
     return 1;
 }
 
-
 /* local s = selection.grow(sel); */
 
 /* local s = selection.grow(sel, "north"); */
@@ -638,7 +615,6 @@ export function l_selection_grow(L)
     return 1;
 }
 
-
 /* local s = selection.filter_mapchar(sel, mapchar, lit); */
 
 export function l_selection_filter_mapchar(L)
@@ -663,7 +639,6 @@ export function l_selection_filter_mapchar(L)
 
     return 1;
 }
-
 
 /* local s = selection.match([[...]]); */
 
@@ -696,7 +671,7 @@ export function l_selection_match(L)
 
     for (y = 0; y <= sel.hei; y++)
         for (x = 1; x < sel.wid; x++)
-            C.selection_setpoint(x, y, sel, C.mapfrag_match(mf, x,y) ? 1 : 0);
+            C.selection_setpoint(x, y, sel, C.mapfrag_match(mf, x, y) ? 1 : 0);
 
     /* unless the (0, 1) coordinate is a match, this would wind up with a
        selection with lx=COLNO, hx=0, etc, so fix the boundaries */
@@ -706,7 +681,6 @@ export function l_selection_match(L)
 
     return 1;
 }
-
 
 /* local s = selection.floodfill(x,y); */
 
@@ -741,7 +715,6 @@ export function l_selection_flood(L)
     }
     return 1;
 }
-
 
 /* local s = selection.circle(x,y, radius); */
 
@@ -793,7 +766,6 @@ export function l_selection_circle(L)
     C.lua_settop(L, 1);
     return 1;
 }
-
 
 /* local s = selection.ellipse(x, y, radius1, radius2); */
 
@@ -848,7 +820,6 @@ export function l_selection_ellipse(L)
     C.lua_settop(L, 1);
     return 1;
 }
-
 
 /* Gradients are versatile enough, with so many independently optional
  * arguments, that it doesn't seem helpful to provide a non-table form with
@@ -912,7 +883,6 @@ export function l_selection_gradient(L)
     return 1;
 }
 
-
 /* sel:iterate(function(x,y) ... end);
  * The x, y coordinates passed to the function are map- or room-relative
  * rather than absolute, unless there has been no previous map or room
@@ -930,7 +900,7 @@ export function l_selection_iterate(L)
         sel = l_selection_check(L, 1);
         C.selection_getbounds(sel, rect);
         for (y = rect.ly; y <= rect.hy; y++) {
-            for (x = C.max(1,rect.lx); x <= rect.hx; x++)
+            for (x = C.max(1, rect.lx); x <= rect.hx; x++)
                 if (C.selection_getpoint(x, y, sel)) {
                     let tmpx = x, tmpy = y;
                     C.cvt_to_relcoord(C.ref(() => tmpx, value => { tmpx = value; }), C.ref(() => tmpy, value => { tmpy = value; }));
@@ -952,7 +922,6 @@ export function l_selection_iterate(L)
     return 0;
 }
 
-
 /* local txt = sel:describe_size(); */
 
 /* gives a textual description of the selection size */
@@ -973,7 +942,6 @@ export function l_selection_size_description(L)
     }
     return 0;
 }
-
 
 /* this aliases + to be the same as | */
 
@@ -1008,7 +976,6 @@ export function l_selection_register(L)
 
     return 0;
 }
-
 
 export const l_selection_methods = [
     ["new", l_selection_new],
@@ -1050,4 +1017,33 @@ export const l_selection_meta = [
     [0, 0]
 ];
 
-export const callbackNames = ["l_selection_gc", "l_selection_new", "l_selection_clone", "l_selection_setpoint", "l_selection_numpoints", "l_selection_getpoint", "l_selection_not", "l_selection_and", "l_selection_or", "l_selection_xor", "l_selection_sub", "l_selection_filter_percent", "l_selection_rndcoord", "l_selection_room", "l_selection_getbounds", "l_selection_line", "l_selection_rect", "l_selection_fillrect", "l_selection_randline", "l_selection_grow", "l_selection_filter_mapchar", "l_selection_match", "l_selection_flood", "l_selection_circle", "l_selection_ellipse", "l_selection_gradient", "l_selection_iterate", "l_selection_size_description"];
+export const callbackNames = [
+    "l_selection_gc",
+    "l_selection_new",
+    "l_selection_clone",
+    "l_selection_setpoint",
+    "l_selection_numpoints",
+    "l_selection_getpoint",
+    "l_selection_not",
+    "l_selection_and",
+    "l_selection_or",
+    "l_selection_xor",
+    "l_selection_sub",
+    "l_selection_filter_percent",
+    "l_selection_rndcoord",
+    "l_selection_room",
+    "l_selection_getbounds",
+    "l_selection_line",
+    "l_selection_rect",
+    "l_selection_fillrect",
+    "l_selection_randline",
+    "l_selection_grow",
+    "l_selection_filter_mapchar",
+    "l_selection_match",
+    "l_selection_flood",
+    "l_selection_circle",
+    "l_selection_ellipse",
+    "l_selection_gradient",
+    "l_selection_iterate",
+    "l_selection_size_description"
+];

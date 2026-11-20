@@ -4,19 +4,6 @@ import {C} from '../c-runtime/context.js';
 /*-Copyright (c) Pasi Kallinen, 2016. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*
  * Keep consistent with breath weapons in zap.c, and AD_* in monattk.h.
  */
@@ -361,7 +348,7 @@ export function ohitmon(mtmp, otmp, range, verbose)
         if (ismimic)
             C.seemimic(mtmp);
         mtmp.msleeping = 0;
-        
+
         if (vis) {
             if (otmp.otyp == C.EGG) {
                 C.pline("Splat!  %s is hit with %s egg!", C.Monnam(mtmp),
@@ -601,22 +588,20 @@ export function m_throw(mon, x, y, dx, dy, range, obj)
         }
     }
 
-    if (    (                                 
-     !C.isok(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy)                       
-                                            
-     || C.IS_OBSTRUCTED(C.terrain(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy).typ)  
-                                          
-     || C.closed_door(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy)              
-                                      
-              
-                  
-     || (C.terrain(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy).typ == C.IRONBARS    
-         && hits_bars(singleobj,                                      
-                      C.gb.bhitpos.x, C.gb.bhitpos.y,                      
-                      C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy,            
-                      (1 ? 0 : 0), 0))                      
-                                            
-     || (!1 && C.IS_SINK(C.terrain(C.gb.bhitpos.x, C.gb.bhitpos.y).typ))      
+    if (    (
+     !C.isok(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy)
+
+     || C.IS_OBSTRUCTED(C.terrain(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy).typ)
+
+     || C.closed_door(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy)
+
+     || (C.terrain(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy).typ == C.IRONBARS
+         && hits_bars(singleobj,
+                      C.gb.bhitpos.x, C.gb.bhitpos.y,
+                      C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy,
+                      (1 ? 0 : 0), 0))
+
+     || (!1 && C.IS_SINK(C.terrain(C.gb.bhitpos.x, C.gb.bhitpos.y).typ))
      )) {
         drop_throw(singleobj.value, 0, C.gb.bhitpos.x, C.gb.bhitpos.y);
         return;
@@ -690,7 +675,7 @@ export function m_throw(mon, x, y, dx, dy, range, obj)
                     hitu = 0;
                     break;
                 }
-                
+
                 /*FALLTHRU*/
             case C.CREAM_PIE:
             case C.BLINDING_VENOM:
@@ -777,22 +762,20 @@ export function m_throw(mon, x, y, dx, dy, range, obj)
         }
 
         forcehit = !C.rn2(5, "m_throw", 798);
-        if (!range ||     (                                 
-     !C.isok(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy)                       
-                                            
-     || C.IS_OBSTRUCTED(C.terrain(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy).typ)  
-                                          
-     || C.closed_door(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy)              
-                                      
-              
-                  
-     || (C.terrain(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy).typ == C.IRONBARS    
-         && hits_bars(singleobj,                                      
-                      C.gb.bhitpos.x, C.gb.bhitpos.y,                      
-                      C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy,            
-                      (0 ? 0 : forcehit), 0))                      
-                                            
-     || (!0 && C.IS_SINK(C.terrain(C.gb.bhitpos.x, C.gb.bhitpos.y).typ))      
+        if (!range || (
+     !C.isok(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy)
+
+     || C.IS_OBSTRUCTED(C.terrain(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy).typ)
+
+     || C.closed_door(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy)
+
+     || (C.terrain(C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy).typ == C.IRONBARS
+         && hits_bars(singleobj,
+                      C.gb.bhitpos.x, C.gb.bhitpos.y,
+                      C.gb.bhitpos.x + dx, C.gb.bhitpos.y + dy,
+                      (0 ? 0 : forcehit), 0))
+
+     || (!0 && C.IS_SINK(C.terrain(C.gb.bhitpos.x, C.gb.bhitpos.y).typ))
      )) {
             /* end of path or blocked */
             if (singleobj.value) { /* hits_bars might have destroyed it */
@@ -841,8 +824,6 @@ export function m_throw(mon, x, y, dx, dy, range, obj)
     return;
 }
 
-
-
 export function return_from_mtoss(magr, otmp, tethered_weapon)
 {
     let impaired = (magr.mconf || magr.mstun || magr.mblinded),
@@ -874,7 +855,6 @@ export function return_from_mtoss(magr, otmp, tethered_weapon)
         y = magr.my;
         if (!impaired && C.rn2(100, "return_from_mtoss", 881)) {
             /* FIXME: this should be moved to struct g (gd these days) */
-            
 
             if (!C.do_not_annoy || (C.svm.moves - C.do_not_annoy) > 500n) {
                 C.pline("%s to %s %s!", C.Tobjnam(otmp, "return"),
@@ -946,7 +926,6 @@ export function return_from_mtoss(magr, otmp, tethered_weapon)
             if (!C.Deaf && !C.Underwater) {
                 /* Some sound effects when item lands in water or lava */
                 if (C.is_pool(x, y) || (C.is_lava(x, y) && !C.is_flammable(otmp))) {
-                    
                     C.pline((C.weight(otmp) > 9) ? "Splash!" : "Plop!");
                 }
             }
@@ -1015,7 +994,6 @@ export function spitmm(mtmp, mattk, mtarg)
                 C.pline("A dry rattle comes from %s throat.",
                       C.s_suffix(C.mon_nam(mtmp)));
             } else {
-                
                 C.You_hear("a dry rattle nearby.");
             }
         }
@@ -1033,19 +1011,19 @@ export function spitmm(mtmp, mattk, mtarg)
             break;
         default:
             C.impossible("bad attack type in spitmm");
-            
+
             /*FALLTHRU*/
         case C.AD_ACID:
             otmp = C.mksobj(C.ACID_VENOM, 1, 0);
             break;
         }
-        if (!C.rn2(C.BOLT_LIM-C.distmin(mtmp.mx,mtmp.my,tx,ty), "spitmm", 1050)) {
+        if (!C.rn2(C.BOLT_LIM - C.distmin(mtmp.mx, mtmp.my, tx, ty), "spitmm", 1050)) {
             if (C.canseemon(mtmp))
                 C.pline("%s spits venom!", C.Monnam(mtmp));
             if (!utarg)
                 C.gm.mtarget = mtarg;
             C.callLocal(m_throw, mtmp, mtmp.mx, mtmp.my, C.sgn(C.gt.tbx), C.sgn(C.gt.tby),
-                    C.distmin(mtmp.mx,mtmp.my,tx,ty), otmp);
+                    C.distmin(mtmp.mx, mtmp.my, tx, ty), otmp);
             C.gm.mtarget = 0;
             C.nomul(0);
 
@@ -1091,7 +1069,6 @@ export function breamm(mtmp, mattk, mtarg)
                 if (C.canseemon(mtmp)) {
                     C.pline("%s coughs.", C.Monnam(mtmp));
                 } else {
-                    
                     C.You_hear("a cough.");
                 }
             }
@@ -1132,7 +1109,7 @@ export function breamm(mtmp, mattk, mtarg)
                     if (dog.hungrytime >= 10)
                         dog.hungrytime -= 10n;
                 }
-            } else C.impossible("Breath weapon %d used", typ-1);
+            } else C.impossible("Breath weapon %d used", typ - 1);
         } else
             return C.M_ATTK_MISS;
     }
@@ -1365,7 +1342,6 @@ export function m_lined_up(mtarg, mtmp)
                    utarget ? (ignore_boulders ? 1 : 2) : 0);
 }
 
-
 /* is mtmp in position to use ranged attack on hero? */
 export function lined_up(mtmp)
 {
@@ -1406,7 +1382,6 @@ export function hit_bars(objp, objx, objy, barsx, barsy, breakflags)
             if (C.cansee(barsx, barsy) && !nodissolve) {
                 C.pline_The("iron bars are dissolved!");
             } else {
-                
                 C.You_hear(C.Hallucination ? "angry snakes!"
                                        : "a hissing noise.");
             }
@@ -1433,7 +1408,6 @@ export function hit_bars(objp, objx, objy, barsx, barsy, breakflags)
                            ? 4
                            : barsounds.length - 1;
 
-            
             C.pline("%s!", barsounds[bsindx]);
             C.nhUse(se[bsindx]);
         }

@@ -3,13 +3,9 @@ import {C} from '../c-runtime/context.js';
 /* Copyright (c) NetHack Development Team 2020.                   */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 /* drawing.c */
 
-
 /* TERMLIB || CURSES */
-
-
 
 /*
  * Explanations of the functions found below:
@@ -117,7 +113,7 @@ export function get_othersym(idx, which_set)
         sym = C.go.ov_primary_syms[oidx] ? C.go.ov_primary_syms[oidx]
                                       : C.gp.primary_syms[oidx];
     if (!sym) {
-        switch(idx) {
+        switch (idx) {
             case C.SYM_NOTHING:
             case C.SYM_UNEXPLORED:
                 sym = C.DEF_NOTHING;
@@ -313,7 +309,6 @@ export function symset_is_compatible(handling, wincap2)
  *      under the case 5 sections of the same SYM_CONTROL idx switches.
  *    - add the field to clear_symsetentry()
  */
-
 
 /* fence post */
 
@@ -576,9 +571,6 @@ export function free_symsets()
     /* assert( symset_list == NULL ); */
 }
 
-
-
-
 export function savedsym_free()
 {
     let tmp = C.saved_symbols, tmp2;
@@ -730,7 +722,9 @@ export function match_sym(buf)
     let p = C.strchr(buf, (':').charCodeAt(0)), q = C.strchr(buf, ('=').charCodeAt(0));
 
     /* G_ lines will never match here */
-    if ((C.loadChar(buf + (0)) == ('G').charCodeAt(0) || C.loadChar(buf + (0)) == ('g').charCodeAt(0)) && C.loadChar(buf + (1)) == ('_').charCodeAt(0))
+    if ((C.loadChar(buf + (0)) == ('G').charCodeAt(0)
+        || C.loadChar(buf + (0)) == ('g').charCodeAt(0))
+        && C.loadChar(buf + (1)) == ('_').charCodeAt(0))
         return 0;
 
     if (!p || (q && q < p))
@@ -771,8 +765,6 @@ export function match_sym(buf)
     }
     return 0;
 }
-
-
 
 /*
  * this is called from options.c to do the symset work.
@@ -957,8 +949,6 @@ export function do_symset(rogueflag)
     C.preference_update("symset");
     return 1;
 }
-
-
 
 /*symbols.c*/
 export const known_handling = ["UNKNOWN", "IBM", "DEC", "CURS", "MAC", "UTF8", 0];

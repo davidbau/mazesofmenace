@@ -1421,7 +1421,6 @@ export function bwrite(fd, loc, num)
     let failed;
     let idx = getidx(fd, C.NOFLG);
 
-
     if (idx >= 0) {
         if (num == 0) {
             /* nothing to do; we need a special case to exit early
@@ -1453,8 +1452,6 @@ export function bwrite(fd, loc, num)
 
 export function mread(fd, buf, len)
 {
-
-
     /* e.g. SYSV, __TURBOC__ */
     let rlen;
         /* Not perfect, but we don't have ssize_t available. */
@@ -1481,7 +1478,6 @@ export function sfstruct_read_error()
 {
     /* problem */;
 }
-
 
 /* SFLOGGING */
 

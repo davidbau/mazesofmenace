@@ -8,21 +8,7 @@ import { C } from '../c-runtime/context.js';
 
 /* for NOMUX_CAPTURE define + nomux_capture_write_input_boundary decl (#460) */
 
-
-
-
-
-
-
-
-
-
-
-
 /* SFCTOOL */
-
-
-
 
 /*
  * The order of these needs to match the macros in hack.h.
@@ -45,8 +31,6 @@ export const ends = [
     "panicked", "were tricked", "quit",
     "escaped", "ascended"
 ];
-
-
 
 /* called as signal() handler, so sent at least one arg */
 /*ARGSUSED*/
@@ -138,7 +122,6 @@ export function done_hangup(sig)
 
 /* one compiler warns if the format
                                      string is the result of a ? x : y */
-
 
 export function done_in_by(mtmp, how)
 {
@@ -236,7 +219,8 @@ export function done_in_by(mtmp, how)
         && C.gm.multi_reason > C.gm.multireasonbuf
         && C.gm.multi_reason
            < C.gm.multireasonbuf + C.MultiReasonSize - 1) {
-        const reasondummy = C.charLocal(); let p;
+        const reasondummy = C.charLocal();
+        let p;
         const reasonmid = C.uintLocal(0);
 
         /*
@@ -293,7 +277,6 @@ export function done_in_by(mtmp, how)
 
 /* some special cases for overriding while-helpless reason */
 export const death_fixups = [
-
     /* "petrified by <foo>, while getting stoned" -- "while getting stoned"
        prevented any last-second recovery, but it was not the cause of
        "petrified by <foo>" */
@@ -332,8 +315,6 @@ export function fixup_death(how)
 export function panic(str)
 {
     let buf = C.stackAlloc(C.BUFSZ);
-    
-    
 
     if (C.program_state.panicking++)
         NH_abort(0); /* avoid loops - this should never happen*/
@@ -389,10 +370,9 @@ export function panic(str)
     C.paniclog("panic", buf);
 
         NH_abort(buf); /* generate core dump */
-    
+
     C.callLocal(really_done, C.PANICKED);
 }
-
 
 export function should_query_disclose_option(category, defquery)
 {
@@ -457,14 +437,12 @@ export function dump_everything(how, when)
 /* ends with a blank line */
 /* 'd' => 'y' */
 /* 'd' => 'y' */
-    
-    
 }
-
 
 export function disclose(how, taken)
 {
-    let c = 0; const defquery = C.charLocal();
+    let c = 0;
+    const defquery = C.charLocal();
     let qbuf = C.stackAlloc(C.QBUFSZ);
     let ask = 0;
 
@@ -1483,7 +1461,7 @@ export function nh_terminate(status)
        avoid trouble in case that happens to be due to memory problems */
     if (!C.program_state.panicking) {
         C.freedynamicdata();
-        
+
         C.l_nhcore_done();
     }
 
@@ -1518,7 +1496,6 @@ export function delayed_killer(id, format, killername)
     C.byte(C.svk.killer.name + (0)).value = 0;
 }
 
-
 export function find_delayed_killer(id)
 {
     let k;
@@ -1529,7 +1506,6 @@ export function find_delayed_killer(id)
     }
     return k;
 }
-
 
 export function dealloc_killer(kptr)
 {
@@ -1548,10 +1524,10 @@ export function dealloc_killer(kptr)
     } else {
         prev.next = k.next;
         C.free(k);
-        if (C.config_DEBUG && C.debugcore("end.c", 1)) { const save_plnmsg = C.iflags.last_msg; C.pline("freed delayed killer #%d", kptr.id); C.iflags.last_msg = save_plnmsg; }
+        if (C.config_DEBUG
+            && C.debugcore("end.c", 1)) { const save_plnmsg = C.iflags.last_msg; C.pline("freed delayed killer #%d", kptr.id); C.iflags.last_msg = save_plnmsg; }
     }
 }
-
 
 export function save_killers(nhfp)
 {
@@ -1572,7 +1548,6 @@ export function save_killers(nhfp)
 }
 /* !SFCTOOL */
 
-
 export function restore_killers(nhfp)
 {
     let kptr;
@@ -1584,7 +1559,6 @@ export function restore_killers(nhfp)
         }
     }
 }
-
 
 export function wordcount(p)
 {
@@ -1601,7 +1575,6 @@ export function wordcount(p)
     return words;
 }
 
-
 export function bel_copy1(inp, out)
 {
     let in_ = inp.value;
@@ -1614,7 +1587,6 @@ export function bel_copy1(inp, out)
     C.storeChar(out, 0);
     inp.value = in_;
 }
-
 
 export function build_english_list(in_)
 {
@@ -1667,13 +1639,10 @@ export function build_english_list(in_)
  * otherwise we just use stdout.  Requires libc for now.
  */
 
-
-
 export function NH_abort(why)
 {
     let gdb_prio = C.sysopt.panictrace_gdb;
     let libc_prio = 0;
-    
 
     /* don't execute this code recursively if a second abort is requested
        while this routine or the code it calls is executing */
@@ -1681,7 +1650,7 @@ export function NH_abort(why)
         return;
     C.aborting = 1;
 
-    if(!C.submit_web_report(1, "Panic", why))
+    if (!C.submit_web_report(1, "Panic", why))
     {
         if (gdb_prio == libc_prio && gdb_prio > 0)
             gdb_prio++;

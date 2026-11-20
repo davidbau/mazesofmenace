@@ -4,17 +4,13 @@
 
 import { C } from '../c-runtime/context.js';
 
-
 /* these match the categorizations shown by enlightenment */
 export const ALGN_SINNED = (-4);
 /* worse than strayed (-1..-3) */
 export const ALGN_DEVOUT = 14;
 /* better than fervent (9..13) */
 
-
-
-
-export function newepri(mtmp) 
+export function newepri(mtmp)
 {
     if (!mtmp.mextra)
         mtmp.mextra = C.mextra(C.newmextra());
@@ -25,7 +21,7 @@ export function newepri(mtmp)
     }
 }
 
-export function free_epri(mtmp) 
+export function free_epri(mtmp)
 {
     if (mtmp.mextra && C.EPRI(mtmp)) {
         C.free(C.EPRI(mtmp));
@@ -38,7 +34,7 @@ export function free_epri(mtmp)
  * Move for priests and shopkeepers.  Called from shk_move() and pri_move().
  * Valid returns are  1: moved  0: didn't  -1: let m_move do it  -2: died.
  */
-export function move_special(mtmp, in_his_shop, appr, uondoor, avoid, omx, omy, ggx, ggy) 
+export function move_special(mtmp, in_his_shop, appr, uondoor, avoid, omx, omy, ggx, ggy)
 {
     ggy = C.coordxy(ggy);
     ggx = C.coordxy(ggx);
@@ -75,7 +71,6 @@ export function move_special(mtmp, in_his_shop, appr, uondoor, avoid, omx, omy, 
                 break pick_move;
         avoid = 0;
     }
-
     }
  pick_move_retry: for (;;) {
     chcnt = 0;
@@ -107,7 +102,6 @@ export function move_special(mtmp, in_his_shop, appr, uondoor, avoid, omx, omy, 
     }
 
     if (nix != omx || niy != omy) {
-
         if (ninfo & C.ALLOW_ROCK) {
             C.m_break_boulder(mtmp, nix, niy);
             return 1;
@@ -136,7 +130,7 @@ export function move_special(mtmp, in_his_shop, appr, uondoor, avoid, omx, omy, 
     return 0;
 }
 
-export function temple_occupied(array) 
+export function temple_occupied(array)
 {
     let ptr;
 
@@ -146,7 +140,7 @@ export function temple_occupied(array)
     return '\0'.charCodeAt(0);
 }
 
-export function histemple_at(priest, x, y) 
+export function histemple_at(priest, x, y)
 {
     y = C.coordxy(y);
     x = C.coordxy(x);
@@ -155,7 +149,7 @@ export function histemple_at(priest, x, y)
                       && C.on_level(C.EPRI(priest).shrlevel, C.u.uz));
 }
 
-export function inhistemple(priest) 
+export function inhistemple(priest)
 {
     /* make sure we have a priest */
     if (!priest || !priest.ispriest)
@@ -170,7 +164,7 @@ export function inhistemple(priest)
 /*
  * pri_move: return 1: moved  0: didn't  -1: let m_move do it  -2: died
  */
-export function pri_move(priest) 
+export function pri_move(priest)
 {
     let ggx, ggy, omx, omy;
     let temple;
@@ -213,7 +207,6 @@ export function pri_move(priest)
 
 /* exclusively for mktemple() */
 export function priestini(lvl, sroom, sx, sy, sanctum) /* is it the seat of the high priest? */
-
 {
     sanctum = C.boolean(sanctum);
     sy = C.int(sy);
@@ -226,8 +219,8 @@ export function priestini(lvl, sroom, sx, sy, sanctum) /* is it the seat of the 
                                           : C.PM_ALIGNED_CLERIC];
 
     for (i = 0; i < C.N_DIRS; i++) {
-        px = sx + C.xdir[C.DIR_CLAMP(i+si)];
-        py = sy + C.ydir[C.DIR_CLAMP(i+si)];
+        px = sx + C.xdir[C.DIR_CLAMP(i + si)];
+        py = sy + C.ydir[C.DIR_CLAMP(i + si)];
         if (C.pm_good_location(px, py, prim))
             break;
     }
@@ -271,7 +264,7 @@ export function priestini(lvl, sroom, sx, sy, sanctum) /* is it the seat of the 
 }
 
 /* get a monster's alignment type without caller needing EPRI & EMIN */
-export function mon_aligntyp(mon) 
+export function mon_aligntyp(mon)
 {
     let algn = mon.ispriest ? C.EPRI(mon).shralign
                                   : mon.isminion ? C.EMIN(mon).min_align
@@ -293,7 +286,6 @@ export function mon_aligntyp(mon)
  *              the true name even when under that influence
  */
 export function priestname(mon, article, reveal_high_priest, pname) /* caller-supplied output buffer */
-
 {
     reveal_high_priest = C.boolean(reveal_high_priest);
     article = C.int(article);
@@ -359,12 +351,12 @@ export function priestname(mon, article, reveal_high_priest, pname) /* caller-su
     return pname;
 }
 
-export function p_coaligned(priest) 
+export function p_coaligned(priest)
 {
     return (C.u.ualign.type == mon_aligntyp(priest));
 }
 
-export function has_shrine(pri) 
+export function has_shrine(pri)
 {
     let lev;
     let epri_p;
@@ -379,7 +371,7 @@ export function has_shrine(pri)
                       == (C.Amask2align(lev.altarmask & ~C.AM_SHRINE)));
 }
 
-export function findpriest(roomno) 
+export function findpriest(roomno)
 {
     roomno = C.char(roomno);
     let mtmp;
@@ -394,10 +386,8 @@ export function findpriest(roomno)
     return 0;
 }
 
-
-
 /* called from check_special_room() when the player enters the temple room */
-export function intemple(roomno) 
+export function intemple(roomno)
 {
     roomno = C.int(roomno);
     let priest, mtmp;
@@ -528,11 +518,9 @@ export function intemple(roomno)
     }
 }
 
-
-
 /* reset the move counters used to limit temple entry feedback;
    leaving the level and then returning yields a fresh start */
-export function forget_temple_entry(priest) 
+export function forget_temple_entry(priest)
 {
     let epri_p = priest.ispriest ? C.EPRI(priest) : 0;
 
@@ -544,7 +532,7 @@ export function forget_temple_entry(priest)
         epri_p.hostile_time = 0n;
 }
 
-export function priest_talk(priest) 
+export function priest_talk(priest)
 {
     let coaligned = p_coaligned(priest);
     let strayed = (C.u.ualign.record < 0);
@@ -709,7 +697,7 @@ export function priest_talk(priest)
     }
 }
 
-export function mk_roamer(ptr, alignment, x, y, peaceful) 
+export function mk_roamer(ptr, alignment, x, y, peaceful)
 {
     peaceful = C.boolean(peaceful);
     y = C.coordxy(y);
@@ -739,7 +727,7 @@ export function mk_roamer(ptr, alignment, x, y, peaceful)
     return roamer;
 }
 
-export function reset_hostility(roamer) 
+export function reset_hostility(roamer)
 {
     if (!roamer.isminion)
         return;
@@ -754,7 +742,7 @@ export function reset_hostility(roamer)
     C.newsym(roamer.mx, roamer.my);
 }
 
-export function in_your_sanctuary(mon, x, y) /* if non-null, <mx,my> overrides <x,y> */ 
+export function in_your_sanctuary(mon, x, y) /* if non-null, <mx,my> overrides <x,y> */
 {
     y = C.coordxy(y);
     x = C.coordxy(x);
@@ -778,7 +766,7 @@ export function in_your_sanctuary(mon, x, y) /* if non-null, <mx,my> overrides <
 }
 
 /* when attacking "priest" in his temple */
-export function ghod_hitsu(priest) 
+export function ghod_hitsu(priest)
 {
     let troom;
     let oldbuzzer;
@@ -858,7 +846,7 @@ export function ghod_hitsu(priest)
     C.exercise(C.A_WIS, 0);
 }
 
-export function angry_priest() 
+export function angry_priest()
 {
     let priest;
     let lev;
@@ -899,7 +887,7 @@ export function angry_priest()
  * and remove them.  This avoids big problems when restoring bones.
  * [Perhaps we should convert them into roamers instead?]
  */
-export function clearpriests() 
+export function clearpriests()
 {
     let mtmp;
 
@@ -912,7 +900,7 @@ export function clearpriests()
 }
 
 /* munge priest-specific structure when restoring -dlc */
-export function restpriest(mtmp, ghostly) 
+export function restpriest(mtmp, ghostly)
 {
     ghostly = C.boolean(ghostly);
     if (C.u.uz.dlevel) {
@@ -920,6 +908,5 @@ export function restpriest(mtmp, ghostly)
             C.assign_level(C.EPRI(mtmp).shrlevel, C.u.uz);
     }
 }
-
 
 /*priest.c*/
