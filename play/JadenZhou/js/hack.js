@@ -2,11 +2,14 @@
 // C ref: hack.c
 //
 // Ported so far: weight_cap(), inv_weight(), calc_capacity(),
-// near_capacity(); in_rooms(), move_update() and check_special_room() (its
-// shop and special room messages aren't ported yet).
+// near_capacity(), lookaround(), domove()/domove_core() and test_move()
+// for the parts reached so far; in_rooms(), move_update() and
+// check_special_room() (its shop and special room messages aren't ported
+// yet).
 
 import { game } from './gstate.js';
-import { ACURR, acurrstr } from './attrib.js';
+import { rn2, rnd } from './rng.js';
+import { ACURR, acurrstr, exercise } from './attrib.js';
 import {
     A_CON, WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE, MAX_CARR_CAP, WT_HUMAN,
     WT_WOUNDEDLEG_REDUCT, UNENCUMBERED, OVERLOADED, LEVITATION,
@@ -14,16 +17,48 @@ import {
     isok, HALLUC, STONED, SLIMED, STRANGLED, SICK, M_AP_FURNITURE, M_AP_OBJECT,
     CONFUSION, STUNNED, BLINDED, WWALKING, STONE, ROOM, CORR, ICE, LAVAWALL,
     IS_OBSTRUCTED, IS_AIR, IS_WATERWALL,
-    COLNO, ROWNO, ROOMOFFSET, NO_ROOM, SHARED, SHARED_PLUS, OROOM, SHOPBASE,
+    FUMBLING, PASSES_WALLS, DBWALL, IRONBARS, SHOPBASE, SLT_ENCUMBER, A_DEX,
+    Is_waterlevel, HEADSTONE, GP_ALLOW_U, PROT_FROM_SHAPE_CHANGERS,
+    D_BROKEN, D_NODOOR, NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, COLNO,
+    ROWNO, xdir, ydir, DO_MOVE, TEST_MOVE, WT_TOOMUCH_DIAGONAL, IS_DOOR,
+    IS_FURNITURE, SCORR, SDOOR, TREE, OROOM,
 } from './const.js';
 import { S_NYMPH, M2_STRONG, M2_ROCKTHROW, MZ_HUMAN, AT_BOOM, M1_HIDE,
-         PM_GRID_BUG } from './monsters.js';
-import { m_at, is_pool, is_lava, closed_door } from './makemon.js';
-import { pline, canspotmon, mon_visible } from './display.js';
-import { t_at, VIBRATING_SQUARE } from './trap.js';
+         PM_GRID_BUG, mons, M1_TUNNEL, M1_NEEDPICK, M1_AMORPHOUS, MZ_SMALL,
+         MZ_LARGE, M1_CONCEAL, S_VORTEX, PM_AIR_ELEMENTAL, M1_SLITHY, S_GHOST,
+         PM_ORACLE, S_EEL, PM_DISPLACER_BEAST, M2_PNAME } from './monsters.js';
+import { m_at, is_pool, is_lava, closed_door, may_passwall, sobj_at, goodpos,
+         place_monster } from './makemon.js';
+import { pline, canspotmon, mon_visible, newsym, sensemon, You, Your,
+         You_cant, pline_The, There } from './display.js';
+import { vision_recalc } from './vision.js';
+import { t_at, VIBRATING_SQUARE, is_pit } from './trap.js';
 import { dist2 } from './hacklib.js';
 import { onscary } from './monmove.js';
-import { COIN_CLASS, BOULDER } from './objects.js';
+import { COIN_CLASS, BOULDER, PICK_AXE, DWARVISH_MATTOCK } from './objects.js';
+import { u_on_newpos } from './mklev.js';
+import { doopen_indir } from './lock.js';
+import { do_attack } from './uhitm.js';
+import { x_monnam, YMonnam, m_monnam, mon_nam, ARTICLE_NONE, ARTICLE_THE,
+         ARTICLE_YOUR, SUPPRESS_SADDLE } from './do_name.js';
+import { curr_mon_load } from './dogmove.js';
+import { bad_rock } from './mon.js';
+import { engr_at, wipe_engr_at, can_reach_floor } from './engrave.js';
+import { an, xname } from './objnam.js';
+import { the } from './iactions.js';
+import { obj_extract_self, place_object } from './mkobj.js';
+import { a_monnam, y_monnam } from './do_name.js';
+import { set_ustuck } from './uhitm.js';
+import { CONFLICT } from './const.js';
+import { AT_ENGL, AT_HUGS, AD_STCK } from './monsters.js';
+import { WT_SQUEEZABLE_INV, A_STR, LANDMINE, SPIKED_PIT, PIT, HOLE, TRAPDOOR,
+         LEVEL_TELEP, TELEP_TRAP, ROLLING_BOULDER_TRAP } from './const.js';
+import { CORPSE } from './objects.js';
+
+/* C ref: obj.h is_pick() */
+function is_pick(otmp) {
+    return otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK;
+}
 
 function strongmonst(ptr) { return (ptr.mflags2 & M2_STRONG) !== 0; }
 function throws_rocks(ptr) { return (ptr.mflags2 & M2_ROCKTHROW) !== 0; }
@@ -118,6 +153,18 @@ export function near_capacity() {
     return calc_capacity(0);
 }
 
+// C ref: hack.c check_capacity()
+export async function check_capacity(str) {
+    if (near_capacity() >= 4 /* EXT_ENCUMBER */) {
+        if (str)
+            await pline(str);
+        else
+            await You_cant("do that while carrying so much stuff.");
+        return 1;
+    }
+    return 0;
+}
+
 // C ref: mondata.c noattacks()
 function noattacks(ptr) {
     for (const mattk of ptr.mattk || []) {
@@ -191,7 +238,7 @@ export async function cmd_safety_prevention(ucverb, cmddesc, act, flagcounter) {
 }
 
 // C ref: display.h _is_safemon() -- is_safemon(mon)
-function is_safemon(mtmp) {
+export function is_safemon(mtmp) {
     const P = game.u.uprops;
     const has = (p) => !!(P[p]?.intrinsic || P[p]?.extrinsic);
     return game.flags.safe_dog !== false && mtmp.mpeaceful && canspotmon(mtmp)
@@ -470,6 +517,90 @@ export function nomul(nval) {
     /* cmdq_clear(CQ_CANNED): the command queue isn't ported yet */
 }
 
+/* ── C ref: hack.c domove() and the parts of domove_core() reached so far ── */
+
+/* C ref: you.h / youprop.h property tests used below */
+function uhave(prop) {
+    const p = game.u.uprops[prop];
+    return !!(p && (p.intrinsic || p.extrinsic));
+}
+function Blind() { return uhave(BLINDED); }
+function Confusion() { return uhave(CONFUSION); }
+function Stunned() { return uhave(STUNNED); }
+function Fumbling() { return uhave(FUMBLING); }
+function Passes_walls() { return uhave(PASSES_WALLS); }
+function Underwater() { return !!game.u.uinwater; }
+function Levitation() { return uhave(LEVITATION); }
+function Flying() { return uhave(FLYING); }
+function Punished() { return !!game.uball; }
+/* C ref: dungeon.h Sokoban -- the Sokoban branch isn't ported */
+function Sokoban() { return false; }
+/* C ref: mondata.h tunnels(), needspick(), amorphous(), verysmall(),
+   bigmonst(), hides_under(), is_hider(), is_whirly(), slithy(),
+   noncorporeal(), NODIAG() */
+function tunnels(ptr) { return (ptr.mflags1 & M1_TUNNEL) !== 0; }
+function needspick(ptr) { return (ptr.mflags1 & M1_NEEDPICK) !== 0; }
+function amorphous(ptr) { return (ptr.mflags1 & M1_AMORPHOUS) !== 0; }
+function verysmall(ptr) { return ptr.msize < MZ_SMALL; }
+function bigmonst(ptr) { return ptr.msize >= MZ_LARGE; }
+function hides_under(ptr) { return (ptr.mflags1 & M1_CONCEAL) !== 0; }
+function is_hider(ptr) { return (ptr.mflags1 & M1_HIDE) !== 0; }
+function is_whirly(ptr) {
+    return ptr.mlet === S_VORTEX || ptr === mons[PM_AIR_ELEMENTAL];
+}
+function slithy(ptr) { return (ptr.mflags1 & M1_SLITHY) !== 0; }
+function noncorporeal(ptr) { return ptr.mlet === S_GHOST; }
+function NODIAG(monnum) { return monnum === PM_GRID_BUG; }
+/* C ref: monst.h helpless(), mundisplaceable() */
+function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
+function mundisplaceable(mon) {
+    return !!(mon.ispriest || mon.isshk || mon.isgd
+              || mon.data === mons[PM_ORACLE]
+              || (game.quest_status?.leader_m_id
+                  && mon.m_id === game.quest_status.leader_m_id));
+}
+
+/* C ref: decl.c dirs_ord[] -- reordered directions, cardinals first */
+const dirs_ord = [0 /* DIR_W */, 2 /* DIR_N */, 4 /* DIR_E */, 6 /* DIR_S */,
+                  1 /* DIR_NW */, 3 /* DIR_NE */, 5 /* DIR_SE */, 7 /* DIR_SW */];
+
+// C ref: hack.c u_maybe_impaired()
+export function u_maybe_impaired() {
+    return (Stunned() || (Confusion() && !rn2(5)));
+}
+
+// C ref: cmd.c confdir()
+export function confdir(force_impairment) {
+    const u = game.u;
+    if (force_impairment || u_maybe_impaired()) {
+        const kmax = NODIAG(u.umonnum) ? (8 / 2) : 8,
+              k = dirs_ord[rn2(kmax)];
+
+        u.dx = xdir[k];
+        u.dy = ydir[k];
+    }
+}
+
+// C ref: cmd.c xytodir() -- convert an x,y pair into a direction code
+export function xytodir(x, y) {
+    for (let dd = 0; dd < 8; dd++)
+        if (x === xdir[dd] && y === ydir[dd])
+            return dd;
+    return -1; /* DIR_ERR */
+}
+
+// C ref: cmd.c directionname()
+export function directionname(dir) {
+    const dirnames = [
+        "west",      "northwest", "north",     "northeast", "east",
+        "southeast", "south",     "southwest", "down",      "up",
+    ];
+
+    if (dir < 0 || dir >= 10)
+        return "invalid";
+    return dirnames[dir];
+}
+
 // C ref: hack.c in_rooms()
 /* returns the room numbers (each + ROOMOFFSET) the spot is in, as a string
    of character codes like C's char buf; typewanted 0 means any room type */
@@ -597,5 +728,1052 @@ export function check_special_room(newlev) {
             throw new Error('check_special_room(): special room entry not ported yet');
         /* default: msg_given = (rt == TEMPLE || rt >= SHOPBASE), so FALSE;
            rt = 0: nothing else changes */
+    }
+}
+
+/* C ref: shk.c IS_SHOP() -- indexes rooms[] by its argument as given */
+function IS_SHOP(x) {
+    return (game.level.rooms?.[x]?.rtype ?? 0) >= SHOPBASE;
+}
+
+/* C ref: shk.c shop_keeper() */
+function shop_keeper(rmno) {
+    return (rmno >= ROOMOFFSET)
+        ? (game.level.rooms?.[rmno - ROOMOFFSET]?.resident || null) : null;
+}
+
+/* C ref: '*in_rooms(x, y, SHOPBASE)' -- the first char of the buffer,
+   '\0' when the spot is in no shop */
+function first_shop_rno(x, y) {
+    const ptr = in_rooms(x, y, SHOPBASE);
+    return ptr.length ? ptr.charCodeAt(0) : 0;
+}
+
+// C ref: shk.c block_door() -- shopkeepers aren't created by the JS
+// port yet, so a shop door is never blocked
+function block_door(x, y) {
+    const roomno = first_shop_rno(x, y);
+
+    if (roomno < 0 || !IS_SHOP(roomno))
+        return false;
+    if (!IS_DOOR(game.level.at(x, y).typ))
+        return false;
+    if (roomno !== ((game.u.ushops || '').charCodeAt(0) || 0))
+        return false;
+    if (shop_keeper(roomno))
+        throw new Error('block_door(): shopkeepers not ported yet');
+    return false;
+}
+
+// C ref: shk.c block_entry()
+function block_entry(x, y) {
+    const u = game.u;
+    if (!(IS_DOOR(game.level.at(u.ux, u.uy).typ)
+          && game.level.at(u.ux, u.uy).doormask === D_BROKEN))
+        return false;
+
+    const roomno = first_shop_rno(x, y);
+    if (roomno < 0 || !IS_SHOP(roomno))
+        return false;
+    if (shop_keeper(roomno))
+        throw new Error('block_entry(): shopkeepers not ported yet');
+    return false;
+}
+
+// C ref: hack.c doorless_door()
+function doorless_door(x, y) {
+    const lev_p = game.level.at(x, y);
+
+    if (!IS_DOOR(lev_p.typ))
+        return false;
+    /* Is_rogue_level(&u.uz): the Rogue level isn't ported */
+    return !(lev_p.doormask & ~(D_NODOOR | D_BROKEN));
+}
+
+// C ref: hack.c cant_squeeze_thru() -- the hero's case
+function cant_squeeze_thru_u() {
+    const ptr = game.youmonst.data;
+
+    if (Passes_walls())
+        return 0;
+
+    /* too big? */
+    if (bigmonst(ptr)
+        && !(amorphous(ptr) || is_whirly(ptr) || noncorporeal(ptr)
+             || slithy(ptr) /* || can_fog(&youmonst) */))
+        return 1;
+
+    /* lugging too much junk? */
+    const amt = inv_weight() + weight_cap();
+    if (amt > WT_TOOMUCH_DIAGONAL)
+        return 2;
+
+    /* Sokoban restriction applies to hero only */
+    if (Sokoban())
+        return 3;
+
+    /* can squeeze through */
+    return 0;
+}
+
+// C ref: hack.c test_move() -- DO_MOVE and TEST_MOVE; the travel modes
+// (TEST_TRAV, TEST_TRAP) aren't ported yet
+export async function test_move(ux, uy, dx, dy, mode) {
+    const u = game.u;
+    const x = ux + dx;
+    const y = uy + dy;
+
+    game.context.door_opened = 0;
+
+    if (!isok(x, y))
+        return false;
+    if (mode !== DO_MOVE && mode !== TEST_MOVE)
+        throw new Error('test_move(): travel modes not ported yet');
+
+    const tmpr = game.level.at(x, y);
+
+    /*
+     *  Check for physical obstacles.  First, the place we are going.
+     */
+    if (IS_OBSTRUCTED(tmpr.typ) || tmpr.typ === IRONBARS) {
+        if (Blind() && mode === DO_MOVE)
+            throw new Error('test_move(): feel_location() not ported yet');
+        if (Passes_walls() && may_passwall(x, y)) {
+            ; /* do nothing */
+        } else if (Underwater()) {
+            if (mode === DO_MOVE)
+                await There("is an obstacle there.");
+            return false;
+        } else if (tmpr.typ === IRONBARS) {
+            throw new Error('test_move(): iron bars not ported yet');
+        } else if (tunnels(game.youmonst.data)
+                   && !needspick(game.youmonst.data)) {
+            /* Eat the rock. */
+            if (mode === DO_MOVE)
+                throw new Error('test_move(): still_chewing() not ported yet');
+        } else if (game.flags.autodig && !game.context.run
+                   && !game.context.nopick && game.uwep
+                   && is_pick(game.uwep)) {
+            /* MRKR: Automatic digging when wielding the appropriate tool */
+            if (mode === DO_MOVE)
+                throw new Error('test_move(): use_pick_axe2() not ported yet');
+            return false;
+        } else {
+            if (mode === DO_MOVE) {
+                if (tmpr.typ === DBWALL) { /* is_db_wall() */
+                    await pline("That drawbridge is up!");
+                } else if (Passes_walls() && !may_passwall(x, y)
+                           && Sokoban()) {
+                    /* soko restriction stays even after puzzle is solved */
+                    await pline_The("Sokoban walls resist your ability.");
+                } else if (game.flags.mention_walls) {
+                    /* back_to_glyph(x, y) for the obstructed terrain types
+                       that reach here, and defsyms[sym].explanation */
+                    const arboreal = !!game.level.flags?.arboreal;
+                    let expl;
+                    if (tmpr.typ === STONE || tmpr.typ === SCORR)
+                        expl = arboreal ? "tree" : null; /* S_tree : S_stone */
+                    else if (tmpr.typ === TREE
+                             || (tmpr.typ === SDOOR && tmpr.arboreal_sdoor))
+                        expl = "tree"; /* S_tree */
+                    else /* walls and SDOOR: wall_angle() or S_stone */
+                        expl = tmpr.seenv ? "wall" : null;
+                    const buf = (expl === null) ? "solid stone" : an(expl);
+                    /* pline_dir(xytodir(dx, dy), ...) */
+                    await pline(`It's ${buf}.`);
+                }
+            }
+            return false;
+        }
+    } else if (IS_DOOR(tmpr.typ)) {
+        if (closed_door(x, y)) {
+            if (Blind() && mode === DO_MOVE)
+                throw new Error('test_move(): feel_location() not ported yet');
+            if (Passes_walls()) {
+                ; /* do nothing */
+            } else if (amorphous(game.youmonst.data) && !game.invent) {
+                /* can_ooze(&youmonst): amorphous and carrying nothing
+                   (the rest of can_ooze() isn't needed without
+                   inventory) */
+                if (mode === DO_MOVE)
+                    await You("ooze under the door.");
+            } else if (Underwater()) {
+                if (mode === DO_MOVE)
+                    await There("is an obstacle there.");
+                return false;
+            } else if (tunnels(game.youmonst.data)
+                       && !needspick(game.youmonst.data)) {
+                /* Eat the door. */
+                if (mode === DO_MOVE)
+                    throw new Error('test_move(): still_chewing() not ported yet');
+            } else {
+                if (mode === DO_MOVE) {
+                    if (amorphous(game.youmonst.data))
+                        await You("try to ooze under the door,"
+                                + " but can't squeeze your possessions through.");
+                    if (game.flags.autoopen !== false && !game.context.run
+                        && !Confusion() && !Stunned() && !Fumbling()) {
+                        await doopen_indir(x, y);
+                        /* if 'autounlock' includes Kick, we might have a
+                           kick at the door queued up after doopen_indir():
+                           the autounlock kick isn't ported (it throws) */
+                        game.context.door_opened = !closed_door(x, y) ? 1 : 0;
+                        game.context.move = (ux !== u.ux || uy !== u.uy) ? 1 : 0;
+                    } else if (x === ux || y === uy) {
+                        if (Blind() || Stunned() || ACURR(A_DEX) < 10
+                            || Fumbling()) {
+                            if (u.usteed) {
+                                throw new Error('test_move(): steed at a closed door not ported yet');
+                            } else {
+                                await pline("Ouch!  You bump into a door.");
+                                exercise(A_DEX, false);
+                            }
+                            /* use current move; needed for the "ouch" case
+                               but done for steed case too for consistency;
+                               we haven't opened a door but we're going to
+                               return False and without having 'door_opened'
+                               set, 'move' would get reset by caller */
+                            game.context.door_opened = game.context.move = 1;
+                            /* since we've just lied about successfully
+                               moving, we need to manually stop running */
+                            nomul(0);
+                        } else
+                            await pline("That door is closed.");
+                    }
+                }
+                return false;
+            }
+        } else {
+            /* testdiag: */
+            if (dx && dy && !Passes_walls()
+                && (!doorless_door(x, y) || block_door(x, y))) {
+                /* Diagonal moves into a door are not allowed. */
+                if (mode === DO_MOVE) {
+                    if (Blind())
+                        throw new Error('test_move(): feel_location() not ported yet');
+                    if (Underwater() || game.flags.mention_walls)
+                        await You_cant("move diagonally into an intact doorway.");
+                }
+                return false;
+            }
+        }
+    }
+    if (dx && dy && bad_rock(game.youmonst.data, ux, y)
+        && bad_rock(game.youmonst.data, x, uy)) {
+        /* Move at a diagonal. */
+        switch (cant_squeeze_thru_u()) {
+        case 3:
+            if (mode === DO_MOVE)
+                await You("cannot pass that way.");
+            return false;
+        case 2:
+            if (mode === DO_MOVE)
+                await You("are carrying too much to get through.");
+            return false;
+        case 1:
+            if (mode === DO_MOVE)
+                await Your("body is too large to fit through.");
+            return false;
+        default:
+            break; /* can squeeze through */
+        }
+    }
+    /* worm_cross(): long worm segments aren't ported (m_move() throws
+       for long worms) */
+
+    const ust = game.level.at(ux, uy);
+
+    /* Now see if other things block our way . . */
+    if (dx && dy && !Passes_walls() && IS_DOOR(ust.typ)
+        && (!doorless_door(ux, uy) || block_entry(x, y))) {
+        /* Can't move at a diagonal out of a doorway with door. */
+        if (mode === DO_MOVE && game.flags.mention_walls)
+            await You_cant("move diagonally out of an intact doorway.");
+        return false;
+    }
+
+    if (sobj_at(BOULDER, x, y) && (Sokoban() || !Passes_walls())) {
+        if (game.context.run >= 2
+            && !(Blind() || uhave(HALLUC)) /* && !could_move_onto_boulder() */)
+            throw new Error('test_move(): could_move_onto_boulder() not ported yet');
+        if (mode === DO_MOVE) {
+            /* tunneling monsters will chew before pushing */
+            if (tunnels(game.youmonst.data) && !needspick(game.youmonst.data)
+                && !Sokoban()) {
+                throw new Error('test_move(): still_chewing() not ported yet');
+            } else if ((await moverock()) < 0)
+                return false;
+        }
+    }
+
+    /* OK, it is a legal place to move. */
+    return true;
+}
+
+/* C ref: hacklib.c upstart() */
+function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
+// C ref: hack.c movobj()
+function movobj(obj, ox, oy) {
+    /* optimize by leaving on the fobj chain? */
+    obj_extract_self(obj); /* remove_object() */
+    const mtmp = m_at(obj.ox, obj.oy);
+    if (mtmp && mtmp.mundetected)
+        throw new Error('movobj(): maybe_unhide_at() not ported yet');
+    newsym(obj.ox, obj.oy);
+    place_object(obj, ox, oy);
+    newsym(ox, oy);
+}
+
+// C ref: hack.c cannot_push_msg()
+async function cannot_push_msg(otmp, sx, sy) {
+    const what = the(xname(otmp));
+    if (game.u.usteed)
+        throw new Error('cannot_push_msg(): steed message not ported yet');
+    else
+        await You(`try to move ${what}, but in vain.`);
+    if (Blind())
+        throw new Error('cannot_push_msg(): feel_location() not ported yet');
+    void sx, sy;
+}
+
+// C ref: hack.c cannot_push()
+async function cannot_push(otmp, sx, sy) {
+    void otmp;
+    if (throws_rocks(game.youmonst.data))
+        throw new Error('cannot_push(): giant stepping over a boulder not ported yet');
+    if (could_move_onto_boulder(sx, sy))
+        throw new Error('cannot_push(): squeezing onto a boulder not ported yet');
+    return -1;
+}
+
+// C ref: hack.c could_move_onto_boulder() -- the cases a starting hero
+// can reach
+function could_move_onto_boulder(sx, sy) {
+    void sx, sy;
+    /* can if able to phaze through rock (must be poly'd, so not riding) */
+    if (Passes_walls())
+        return true;
+    /* can't when riding */
+    if (game.u.usteed)
+        return false;
+    if (throws_rocks(game.youmonst.data) || verysmall(game.youmonst.data))
+        throw new Error('could_move_onto_boulder(): giant/tiny hero not ported yet');
+    /* can squeeze to spot if carrying extremely little, otherwise can't */
+    /* squeezeablylightinvent() */
+    return (!game.invent || inv_weight() <= (WT_SQUEEZABLE_INV * -1));
+}
+
+// C ref: hack.c dopush()
+async function dopush(sx, sy, rx, ry, otmp, costly) {
+    {
+        let what;
+        let givemesg, easypush;
+        /* give boulder pushing feedback if this is a different
+           boulder than the last one pushed or if it's been at
+           least 2 turns since we last pushed this boulder;
+           unlike with Norep(), intervening messages don't cause
+           it to repeat, only doing something else in the meantime */
+        if (otmp.o_id !== game.bldrpush_oid) {
+            game.bldrpushtime = game.moves + 1;
+            game.bldrpush_oid = otmp.o_id;
+        }
+        givemesg = (game.moves > game.bldrpushtime + 2
+                    || game.moves < game.bldrpushtime);
+        what = givemesg ? the(xname(otmp)) : null;
+        if (!game.u.usteed) {
+            easypush = throws_rocks(game.youmonst.data);
+            if (givemesg)
+                await pline(`With ${easypush ? "little" : "great"} effort you move ${what}.`);
+            if (!easypush)
+                exercise(A_STR, true);
+        } else {
+            throw new Error('dopush(): steed pushing not ported yet');
+        }
+        game.bldrpushtime = game.moves;
+    }
+
+    /* Move the boulder *after* the message. */
+    /* glyph_is_invisible(levl[rx][ry].glyph): unmap_object() */
+    if (game.level.at(rx, ry).glyph_invisible)
+        throw new Error('dopush(): unmap_object() not ported yet');
+    otmp.next_boulder = 0;
+    movobj(otmp, rx, ry); /* does newsym(rx,ry) */
+    if (Blind()) {
+        throw new Error('dopush(): feel_location() not ported yet');
+    } else {
+        newsym(sx, sy);
+    }
+    if (costly || otmp.unpaid)
+        throw new Error('dopush(): shop billing not ported yet');
+}
+
+// C ref: hack.c moverock()
+async function moverock() {
+    const sx = game.u.ux + game.u.dx, sy = game.u.uy + game.u.dy; /* boulder starting position */
+    const ret = await moverock_core(sx, sy);
+    /* moverock_done(sx, sy) */
+    for (const otmp of game.level.objects || [])
+        if (otmp.ox === sx && otmp.oy === sy && otmp.where === 'OBJ_FLOOR'
+            && otmp.otyp === BOULDER)
+            otmp.next_boulder = 0; /* resume normal xname() for this obj */
+    return ret;
+}
+
+// C ref: hack.c moverock_core() -- pushing into traps, pools, Sokoban
+// and the m-prefix cases are not ported yet
+async function moverock_core(sx, sy) {
+    let rx, ry;
+    let otmp, ttmp, mtmp;
+    let costly, firstboulder = true;
+
+    while ((otmp = sobj_at(BOULDER, sx, sy)) !== null && otmp) {
+        if (Blind())
+            throw new Error('moverock_core(): feeling a boulder while blind not ported yet');
+
+        /* when otmp->next_boulder is 1, xname() will format it as
+           "next boulder" instead of just "boulder" */
+        otmp.next_boulder = firstboulder ? 0 : 1;
+        firstboulder = false;
+
+        /* make sure that this boulder is visible as the top object */
+        const top = (game.level.objects || []).find(
+            o => o.ox === sx && o.oy === sy && o.where === 'OBJ_FLOOR');
+        if (otmp !== top)
+            movobj(otmp, sx, sy);
+
+        rx = game.u.ux + 2 * game.u.dx; /* boulder destination position */
+        ry = game.u.uy + 2 * game.u.dy;
+        nomul(0);
+
+        if (game.context.nopick)
+            throw new Error('moverock_core(): m-prefix move onto a boulder not ported yet');
+        if (Levitation() || Is_airlevel(game.u.uz))
+            throw new Error('moverock_core(): no leverage while levitating not ported yet');
+        if (verysmall(game.youmonst.data) && !game.u.usteed)
+            throw new Error('moverock_core(): too small to push not ported yet');
+        if (isok(rx, ry) && !IS_OBSTRUCTED(game.level.at(rx, ry).typ)
+            && game.level.at(rx, ry).typ !== IRONBARS
+            && (!IS_DOOR(game.level.at(rx, ry).typ) || !(game.u.dx && game.u.dy)
+                || doorless_door(rx, ry)) && !sobj_at(BOULDER, rx, ry)) {
+            ttmp = t_at(rx, ry);
+            mtmp = m_at(rx, ry);
+            costly = false; /* costly_spot(sx, sy) && shop_keeper(): below */
+            if (game.level.flags?.has_shop)
+                throw new Error('moverock_core(): costly_spot() not ported yet');
+
+            /* KMH -- Sokoban doesn't let you push boulders diagonally */
+            if (Sokoban() && game.u.dx && game.u.dy)
+                throw new Error('moverock_core(): Sokoban diagonal push not ported yet');
+
+            /* revive_nasty(rx, ry, "You sense movement on the other side.") */
+            if ((game.level.objects || []).some(
+                o => o.ox === rx && o.oy === ry && o.where === 'OBJ_FLOOR'
+                     && o.otyp === CORPSE))
+                throw new Error('moverock_core(): revive_nasty() not ported yet');
+
+            if (mtmp && !noncorporeal(mtmp.data)
+                && (!mtmp.mtrapped || !(ttmp && is_pit(ttmp.ttyp)))) {
+                let deliver_part1 = false;
+
+                if (canspotmon(mtmp)) {
+                    await pline(`There's ${a_monnam(mtmp)} on the other side.`);
+                    deliver_part1 = true;
+                } else {
+                    throw new Error('moverock_core(): You_hear() a monster behind a boulder not ported yet');
+                }
+                if (game.flags?.verbose ?? true) {
+                    const you_or_steed = game.u.usteed ? y_monnam(game.u.usteed) : "you";
+                    await pline(`${deliver_part1 ? "Perhaps that's why " : ""}`
+                                + `${deliver_part1 ? you_or_steed : upstart(you_or_steed)}`
+                                + ` cannot move ${deliver_part1 ? "it" : the(xname(otmp))}.`);
+                }
+                return await cannot_push(otmp, sx, sy);
+            }
+
+            if (closed_door(rx, ry)) {
+                await cannot_push_msg(otmp, sx, sy);
+                return await cannot_push(otmp, sx, sy);
+            }
+
+            /* at this point the boulder should be able to move (though
+               potentially into something like a trap, pool, or lava) */
+
+            /* rumbling disturbs buried zombies */
+            if (game.level.buriedobjlist?.some(o => o.otyp === CORPSE && o.timed))
+                throw new Error('moverock_core(): disturb_buried_zombies() not ported yet');
+
+            if (ttmp) {
+                switch (ttmp.ttyp) {
+                case LANDMINE: case SPIKED_PIT: case PIT: case HOLE:
+                case TRAPDOOR: case LEVEL_TELEP: case TELEP_TRAP:
+                case ROLLING_BOULDER_TRAP:
+                    throw new Error('moverock_core(): pushing a boulder into a trap not ported yet');
+                default:
+                    break; /* boulder not affected by this trap */
+                }
+            }
+
+            /* boulder_hits_pool(otmp, rx, ry, TRUE) */
+            if (is_pool(rx, ry) || is_lava(rx, ry))
+                throw new Error('moverock_core(): boulder_hits_pool() not ported yet');
+
+            /*
+             * Re-link at top of fobj chain so that pile order is preserved
+             * when level is restored.
+             */
+            if (otmp !== game.level.objects[0]) {
+                obj_extract_self(otmp); /* remove_object() */
+                place_object(otmp, otmp.ox, otmp.oy);
+            }
+            await dopush(sx, sy, rx, ry, otmp, costly);
+        } else {
+            await cannot_push_msg(otmp, sx, sy);
+            return await cannot_push(otmp, sx, sy);
+        }
+    }
+    return 0;
+}
+
+/* C ref: mondata.c attacktype(), sticks() */
+function hero_sticks(ptr) {
+    return (ptr.mattk || []).some(a => a.aatyp === AT_ENGL || a.aatyp === AT_HUGS
+                                       || a.adtyp === AD_STCK);
+}
+
+// C ref: hack.c escape_from_sticky_mon() -- try to pull free from
+// sticking monster, or you release a monster you're sticking to.
+// returns TRUE if you lose your movement.
+async function escape_from_sticky_mon(x, y) {
+    const u = game.u;
+    if (u.ustuck && (x !== u.ustuck.mx || y !== u.ustuck.my)) {
+        let mtmp;
+
+        if (!(Math.abs(u.ustuck.mx - u.ux) <= 1 && Math.abs(u.ustuck.my - u.uy) <= 1)) {
+            /* perhaps it fled (or was teleported or ... ) */
+            set_ustuck(null);
+        } else if (hero_sticks(game.youmonst.data)) {
+            /* When polymorphed into a sticking monster,
+             * u.ustuck means it's stuck to you, not you to it.
+             */
+            mtmp = u.ustuck;
+            set_ustuck(null);
+            await You(`release ${y_monnam(mtmp)}.`);
+        } else {
+            /* If holder is asleep or paralyzed:
+             *      37.5% chance of getting away,
+             *      12.5% chance of waking/releasing it;
+             * otherwise:
+             *       7.5% chance of getting away.
+             * If holder is tame and there is no conflict,
+             * guaranteed escape.
+             */
+            let pullfree = false;
+            switch (rn2(!u.ustuck.mcanmove ? 8 : 40)) {
+            case 3:
+                if (!u.ustuck.mcanmove) {
+                    /* it's free to move on next turn */
+                    u.ustuck.mfrozen = 1;
+                    u.ustuck.msleeping = 0;
+                }
+                /*FALLTHRU*/
+            default:
+                if (uhave(CONFLICT) || u.ustuck.mconf || !u.ustuck.mtame) {
+                    await You(`cannot escape from ${y_monnam(u.ustuck)}!`);
+                    nomul(0);
+                    return true;
+                }
+                /*FALLTHRU*/
+            case 0:
+            case 1:
+            case 2:
+                pullfree = true;
+                break;
+            }
+            if (pullfree) {
+                mtmp = u.ustuck;
+                set_ustuck(null);
+                await You(`pull free from ${y_monnam(mtmp)}.`);
+            }
+        }
+    }
+    return false;
+}
+
+/* C ref: hack.c carrying_too_much() */
+async function carrying_too_much() {
+    const u = game.u;
+    let wtcap;
+    const Upolyd = u.umonnum !== u.umonster;
+
+    if (((wtcap = near_capacity()) >= OVERLOADED
+         || (wtcap > SLT_ENCUMBER
+             && (Upolyd ? (u.mh < 5 && u.mh !== u.mhmax)
+                        : (u.uhp < 10 && u.uhp !== u.uhpmax))))
+        && !Is_airlevel(u.uz)) {
+        if (wtcap < OVERLOADED) {
+            await You("don't have enough stamina to move.");
+            exercise(A_CON, false);
+        } else
+            await You("collapse under your load.");
+        nomul(0);
+        return true;
+    }
+    return false;
+}
+
+/* C ref: hack.c slippery_ice_fumbling() */
+function slippery_ice_fumbling() {
+    const u = game.u;
+    const on_ice = !Levitation() && game.level.at(u.ux, u.uy).typ === ICE;
+    if (on_ice)
+        throw new Error('slippery_ice_fumbling(): ice not ported yet');
+    /* if (!on_ice && (HFumbling & FROMOUTSIDE)) HFumbling &= ~FROMOUTSIDE:
+       nothing sets FROMOUTSIDE fumbling yet */
+}
+
+/* C ref: hack.c impaired_movement() -- change movement dir if impaired.
+   return TRUE if can't move */
+function impaired_movement(xy) {
+    const u = game.u;
+    if (u_maybe_impaired()) {
+        let tries = 0;
+
+        do {
+            if (tries++ > 50) {
+                nomul(0);
+                return true;
+            }
+            confdir(true);
+            xy.x = u.ux + u.dx;
+            xy.y = u.uy + u.dy;
+        } while (!isok(xy.x, xy.y) || bad_rock(game.youmonst.data, xy.x, xy.y));
+    }
+    return false;
+}
+
+/* C ref: hack.c move_out_of_bounds() -- trying to move out-of-bounds? */
+async function move_out_of_bounds(x, y) {
+    const u = game.u;
+    if (!isok(x, y)) {
+        if (game.context.forcefight)
+            throw new Error('move_out_of_bounds(): domove_fight_empty() not ported yet');
+        if (game.flags.mention_walls) {
+            let dx = u.dx, dy = u.dy;
+
+            if (dx && dy) { /* diagonal */
+                /* only as far as possible diagonally if in very
+                   corner; otherwise just report whichever of the
+                   cardinal directions has reached its limit */
+                if (isok(x, u.uy))
+                    dx = 0;
+                else if (isok(u.ux, y))
+                    dy = 0;
+            }
+            await You(`have already gone as far ${directionname(xytodir(dx, dy))} as possible.`);
+        }
+        nomul(0);
+        game.context.move = 0;
+        return true;
+    }
+    return false;
+}
+
+/* C ref: hack.c avoid_running_into_trap_or_liquid() -- when running/
+   rushing, avoid stepping on a known trap or pool of liquid.
+   returns TRUE if avoided. */
+function avoid_running_into_trap_or_liquid(x, y) {
+    const would_stop = (game.context.run >= 2);
+    if (!game.context.run)
+        return false;
+
+    if (avoid_moving_on_trap(x, y, would_stop)
+        || (Blind() && avoid_moving_on_liquid(x, y, would_stop))) {
+        nomul(0);
+        if (would_stop)
+            game.context.move = 0;
+        return would_stop;
+    }
+    return false;
+}
+
+/* C ref: hack.c domove_bump_mon() -- the 'm' prefix */
+async function domove_bump_mon(mtmp, glyph) {
+    /* If they used a 'm' command, trying to move onto a monster
+     * prints the below message and wastes a turn.  The exception is
+     * if the monster is unseen and the player doesn't remember an
+     * invisible monster--then, we fall through to do_attack() and
+     * attack_check(), which still wastes a turn, but prints a
+     * different message and makes the player remember the monster.
+     */
+    if (game.context.nopick && !game.context.travel
+        && canspotmon(mtmp) /* || glyph_is_invisible() || glyph_is_warning() */) {
+        if (mtmp.m_ap_type && !uhave(PROT_FROM_SHAPE_CHANGERS)
+            && !sensemon(mtmp))
+            throw new Error('domove_bump_mon(): stumble_onto_mimic() not ported yet');
+        else if (mtmp.mpeaceful && !uhave(HALLUC))
+            /* m_monnam(): "dog" or "Fido", no "invisible dog" or "it" */
+            await pline(`Pardon me, ${m_monnam(mtmp)}.`);
+        else
+            await You(`move right into ${mon_nam(mtmp)}.`);
+        return true;
+    }
+    return false;
+}
+
+/* C ref: hack.c domove_attackmon_at() -- hero is moving, do we maybe
+   attack a monster at (x,y)?  returns TRUE if hero movement is used up.
+   sets displaceu, if hero and monster could swap places instead. */
+async function domove_attackmon_at(mtmp, x, y, displaceu) {
+    const u = game.u;
+    /* only attack if we know it's there
+     * or if we used the 'F' command to fight blindly
+     * or if it hides_under, in which case we call do_attack() to print
+     * the Wait! message.
+     * This is different from ceiling hiders, who aren't handled in
+     * do_attack().
+     */
+    if (game.context.forcefight || !mtmp.mundetected || sensemon(mtmp)
+        || ((hides_under(mtmp.data) || mtmp.data.mlet === S_EEL)
+            && !is_safemon(mtmp))) {
+        /* target monster might decide to switch places with you... */
+        displaceu.val = (mtmp.data === mons[PM_DISPLACER_BEAST] && !rn2(2)
+                         && mtmp.mux === u.ux0 && mtmp.muy === u.uy0
+                         && !helpless(mtmp)
+                         && !mtmp.meating && !mtmp.mtrapped
+                         && !u.utrap && !u.ustuck && !u.usteed
+                         && !(u.dx && u.dy
+                              && (NODIAG(u.umonnum)
+                                  || (bad_rock(mtmp.data, x, u.uy0)
+                                      && bad_rock(mtmp.data, u.ux0, y))
+                                  || (bad_rock(game.youmonst.data, u.ux0, y)
+                                      && bad_rock(game.youmonst.data, x, u.uy0))))
+                         && goodpos(u.ux0, u.uy0, mtmp, GP_ALLOW_U));
+        /* if not displacing, try to attack; note that it might evade;
+           also, we don't attack tame or peaceful when safemon() */
+        if (!displaceu.val) {
+            if (await do_attack(mtmp))
+                return true;
+        }
+    }
+    return false;
+}
+
+/* C ref: hack.c domove_fight_empty() -- 'F' with no monster, or a
+   remembered 'I': neither the 'F' prefix nor remembered invisible
+   monsters are ported yet */
+function domove_fight_empty(x, y) {
+    if (game.context.forcefight)
+        throw new Error('domove_fight_empty(): forcefight not ported yet');
+    return false;
+}
+
+/* C ref: hack.c domove_swap_with_pet() */
+async function domove_swap_with_pet(mtmp, x, y) {
+    const u = game.u;
+    /* if it turns out we can't actually move */
+    let didnt_move = false;
+    const u_with_boulder = (sobj_at(BOULDER, u.ux0, u.uy0) != null);
+
+    /* seemimic/newsym should be done before moving hero, otherwise
+       the display code will draw the hero here before we possibly
+       cancel the swap below (we can ignore steed mx,my here) */
+    u.ux = u.ux0, u.uy = u.uy0;
+    mtmp.mundetected = 0;
+    if (mtmp.m_ap_type)
+        throw new Error('domove_swap_with_pet(): seemimic() not ported yet');
+    else if (!mtmp.mcanmove) /* (wasn't already displayed) */
+        newsym(mtmp.mx, mtmp.my);
+    u.ux = mtmp.mx, u.uy = mtmp.my; /* resume swapping positions */
+
+    const trap = mtmp.mtrapped ? t_at(mtmp.mx, mtmp.my) : null;
+    if (!trap)
+        mtmp.mtrapped = 0;
+
+    if (mtmp.mtrapped && is_pit(trap.ttyp)
+        && sobj_at(BOULDER, trap.tx, trap.ty)) {
+        /* can't swap places with pet pinned in a pit by a boulder */
+        didnt_move = true;
+    } else if (u.ux0 !== x && u.uy0 !== y && NODIAG(mtmp.data.pmidx)) {
+        /* can't swap places when pet can't move to your spot */
+        await You(`stop.  ${YMonnam(mtmp)} can't move diagonally.`);
+        didnt_move = true;
+    } else if (u_with_boulder
+               && !(verysmall(mtmp.data)
+                    && (!mtmp.minvent || curr_mon_load(mtmp) <= 600))) {
+        /* can't swap places when pet won't fit there with the boulder */
+        await You(`stop.  ${YMonnam(mtmp)} won't fit into the same spot that you're at.`);
+        didnt_move = true;
+    } else if (u.ux0 !== x && u.uy0 !== y && bad_rock(mtmp.data, x, u.uy0)
+               && bad_rock(mtmp.data, u.ux0, y)
+               && (bigmonst(mtmp.data) || (curr_mon_load(mtmp) > 600))) {
+        /* can't swap places when pet won't fit thru the opening */
+        await You(`stop.  ${YMonnam(mtmp)} won't fit through.`);
+        didnt_move = true;
+    } else if (mtmp.mpeaceful && mtmp.mtrapped) {
+        /* all mtame are also mpeaceful, so this affects pets too */
+        throw new Error('domove_swap_with_pet(): trapname()/feeltrap() not ported yet');
+    } else if (mtmp.mpeaceful
+               && (!goodpos(u.ux0, u.uy0, mtmp, 0)
+                   || t_at(u.ux0, u.uy0) != null
+                   || mundisplaceable(mtmp))) {
+        /* displacing peaceful into unsafe or trapped space, or trying to
+         * displace quest leader, Oracle, shk, priest, or vault guard */
+        await You(`stop.  ${YMonnam(mtmp)} doesn't want to swap places.`);
+        didnt_move = true;
+    } else {
+        mtmp.mtrapped = 0;
+        /* remove_monster(x, y); place_monster(mtmp, u.ux0, u.uy0) */
+        place_monster(mtmp, u.ux0, u.uy0);
+        newsym(x, y);
+        newsym(u.ux0, u.uy0);
+
+        await You(`${mtmp.mpeaceful ? "swap places with" : "frighten"} ${x_monnam(mtmp,
+                     mtmp.mtame ? ARTICLE_YOUR
+                     : (!mtmp.mgivenname
+                        && !(mtmp.data.mflags2 & M2_PNAME)) ? ARTICLE_THE
+                     : ARTICLE_NONE,
+                     (mtmp.mpeaceful && !mtmp.mtame) ? "peaceful" : null,
+                     mtmp.mgivenname ? SUPPRESS_SADDLE : 0, false)}.`);
+
+        /* check for displacing it into pools and traps:
+           minliquid(mtmp) ? Trap_Killed_Mon : mintrap(mtmp, NO_TRAP_FLAGS) */
+        if (is_pool(mtmp.mx, mtmp.my) || is_lava(mtmp.mx, mtmp.my))
+            throw new Error('domove_swap_with_pet(): minliquid() not ported yet');
+        if (t_at(mtmp.mx, mtmp.my))
+            throw new Error('domove_swap_with_pet(): mintrap() not ported yet');
+        /* Trap_Effect_Finished */
+    }
+    return !didnt_move;
+}
+
+/* C ref: hack.h DOMOVE_WALK, DOMOVE_RUSH */
+export const DOMOVE_WALK = 0x00000001;
+export const DOMOVE_RUSH = 0x00000002;
+
+/* C ref: hack.c domove_core() */
+async function domove_core() {
+    const u = game.u;
+    const ctx = game.context;
+    let mtmp;
+    let x, y;
+    const displaceu = { val: false }; /* involuntary swap */
+
+    if (ctx.travel)
+        throw new Error('domove_core(): findtravelpath() not ported yet');
+
+    if (await carrying_too_much())
+        return;
+
+    if (u.uswallow) {
+        throw new Error('domove_core(): engulfed movement not ported yet');
+    } else {
+        /* air_turbulence() */
+        if (Is_airlevel(u.uz))
+            throw new Error('domove_core(): air_turbulence() not ported yet');
+
+        /* check slippery ice */
+        slippery_ice_fumbling();
+
+        const xy = { x: u.ux + u.dx, y: u.uy + u.dy };
+        if (impaired_movement(xy))
+            return;
+        x = xy.x, y = xy.y;
+
+        /* turbulence might alter your actual destination:
+           water_turbulence() */
+        if (u.uinwater)
+            throw new Error('domove_core(): water_turbulence() not ported yet');
+
+        if (await move_out_of_bounds(x, y))
+            return;
+
+        if (avoid_running_into_trap_or_liquid(x, y))
+            return;
+
+        if (await escape_from_sticky_mon(x, y))
+            return;
+
+        mtmp = m_at(x, y);
+        if (mtmp && !is_safemon(mtmp)) {
+            /* Don't attack if you're running, and can see it */
+            /* It's fine to displace pets, though */
+            /* We should never get here if forcefight */
+            if (ctx.run && ((!Blind() && mon_visible(mtmp)
+                             && ((mtmp.m_ap_type !== M_AP_FURNITURE
+                                  && mtmp.m_ap_type !== M_AP_OBJECT)
+                                 || uhave(PROT_FROM_SHAPE_CHANGERS)))
+                            || sensemon(mtmp))) {
+                nomul(0);
+                ctx.move = 0;
+                return;
+            }
+        }
+    }
+
+    u.ux0 = u.ux;
+    u.uy0 = u.uy;
+    game.bhitpos = { x, y };
+    const tmpr = game.level.at(x, y);
+    const glyph = null; /* glyph_at(x, y): only remembered 'I' and warning
+                           glyphs matter below, and neither is ported */
+
+    if (mtmp) {
+        /* don't stop travel when displacing pets; if the
+           displace fails for some reason, do_attack() in uhitm.c
+           will stop travel rather than domove */
+        if (!is_safemon(mtmp) || ctx.forcefight)
+            nomul(0);
+
+        if (await domove_bump_mon(mtmp, glyph))
+            return;
+
+        /* attack monster */
+        if (await domove_attackmon_at(mtmp, x, y, displaceu))
+            return;
+    }
+
+    if (!displaceu.val) {
+        /* domove_fight_ironbars(), domove_fight_web(): 'F' only */
+        if (ctx.forcefight)
+            throw new Error('domove_core(): forcefight not ported yet');
+
+        if (domove_fight_empty(x, y))
+            return;
+
+        /* (void) unmap_invisible(x, y): remembered 'I' isn't ported */
+        /* not attacking an animal, so we try to move */
+        if ((u.dx || u.dy) && u.usteed)
+            throw new Error('domove_core(): stucksteed() not ported yet');
+
+        /* u_rooted() */
+        if (!game.youmonst.data.mmove) {
+            await You(`are rooted ${Levitation() || Is_airlevel(u.uz)
+                                          || Is_waterlevel(u.uz)
+                                          ? "in place" : "to the ground"}.`);
+            nomul(0);
+            return;
+        }
+
+        /* ParanoidTrap (paranoid_confirm:trap): the option isn't ported */
+
+        if (u.utrap)
+            throw new Error('domove_core(): trapmove() not ported yet');
+
+        if (!await test_move(u.ux, u.uy, x - u.ux, y - u.uy, DO_MOVE)) {
+            if (!ctx.door_opened) {
+                ctx.move = 0;
+                nomul(0);
+            }
+            return;
+        }
+
+        /* Is it dangerous to swim in water or lava? swim_move_danger() */
+        if ((is_pool(x, y) || is_lava(x, y)) && !Levitation() && !Flying())
+            throw new Error('domove_core(): swim_move_danger() not ported yet');
+    } /* !displaceu */
+
+    /* Move ball and chain.  */
+    if (Punished())
+        throw new Error('domove_core(): drag_ball() not ported yet');
+
+    /* Check regions entering/leaving: in_out_region() -- regions aren't
+       ported */
+
+    mtmp = m_at(x, y);
+    /* mtmp can be null at this point */
+
+    /* tentatively move the hero plus steed; leave CLIPPING til later */
+    u.ux += u.dx;
+    u.uy += u.dy;
+
+    /* m_postmove_effect(&youmonst): only for poison-trail forms */
+
+    if (mtmp) {
+        if (displaceu.val) {
+            throw new Error('domove_core(): displacer beast swap not ported yet');
+        /*
+         * If safepet at destination then move the pet to the hero's
+         * previous location using the same conditions as in do_attack().
+         * there are special extenuating circumstances:
+         * (1) if the pet dies then your god angers,
+         * (2) if the pet gets trapped then your god may disapprove.
+         *
+         * Ceiling-hiding pets are skipped by this section of code, to
+         * be caught by the normal falling-monster code.
+         */
+        } else if (is_safemon(mtmp)
+                   && !(is_hider(mtmp.data) && mtmp.mundetected)) {
+            if (!await domove_swap_with_pet(mtmp, x, y)) {
+                u.ux = u.ux0, u.uy = u.uy0; /* didn't move after all */
+            }
+        }
+    }  /* mtmp != NULL */
+
+    /* tentative move above didn't handle CLIPPING, in case there was a
+       monster in the way and the move attempt ended up being blocked;
+       do a full re-position now, possibly back to where hero started */
+    u_on_newpos(u.ux, u.uy);
+
+    /* reset_occupations(): occupations aren't ported yet */
+    if (ctx.run) {
+        if (ctx.run < 8)
+            if (IS_DOOR(tmpr.typ) || IS_OBSTRUCTED(tmpr.typ)
+                || IS_FURNITURE(tmpr.typ))
+                nomul(0);
+    }
+
+    /* disturb_buried_zombies(): buried objects aren't ported */
+    /* hideunder(&youmonst): only a hider form can hide */
+    if (u.umonnum !== u.umonster
+        && (hides_under(game.youmonst.data) || game.youmonst.data.mlet === S_EEL))
+        throw new Error('domove_core(): hideunder() not ported yet');
+
+    /* check_leash(u.ux0, u.uy0): leashes aren't ported */
+
+    if (u.ux0 !== u.ux || u.uy0 !== u.uy) {
+        /* let caller know so that an evaluation may take place */
+        game.domove_succeeded |= (game.domove_attempting & (DOMOVE_RUSH | DOMOVE_WALK));
+        u.umoved = 1;
+        /* Clean old position -- vision_recalc() will print our new one. */
+        newsym(u.ux0, u.uy0);
+        /* Since the hero has moved, adjust what can be seen/unseen. */
+        vision_recalc(1); /* Do the work now in the recover time. */
+        newsym(u.ux, u.uy);
+        /* invocation_message(): only on the vibrating square level */
+    }
+
+    /* if (u.umoved) spoteffects(TRUE): not ported yet */
+
+    /* runmode_delay_output(): display timing only */
+}
+
+// C ref: hack.c domove()
+export async function domove() {
+    const u = game.u;
+    const ux1 = u.ux, uy1 = u.uy;
+
+    game.domove_succeeded = 0;
+    await domove_core();
+    /* domove_succeeded is available to make assessments now */
+    if ((game.domove_succeeded & (DOMOVE_RUSH | DOMOVE_WALK)) !== 0) {
+        maybe_smudge_engr(ux1, uy1, u.ux, u.uy);
+        /* maybe_adjust_hero_bubble(): Plane of Water only */
+    }
+    game.domove_attempting = 0;
+
+    game.kickedloc = { x: 0, y: 0 };
+}
+
+/* C ref: hack.c maybe_smudge_engr() */
+function maybe_smudge_engr(x1, y1, x2, y2) {
+    let ep;
+
+    if (can_reach_floor(true)) {
+        if ((ep = engr_at(x1, y1)) && ep.engr_type !== HEADSTONE)
+            wipe_engr_at(x1, y1, rnd(5), false);
+        if ((x2 !== x1 || y2 !== y1)
+                && (ep = engr_at(x2, y2)) && ep.engr_type !== HEADSTONE)
+            wipe_engr_at(x2, y2, rnd(5), false);
     }
 }

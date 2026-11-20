@@ -3091,7 +3091,10 @@ async function numberPadSubmenu(preserveStatus = false) {
     while (idx < 0) {
         /* C wintty.c:1549-1552: an existing page only restores the footer
          * cursor. MENU_SEARCH's getlin erased the title; do not redraw it. */
-        set_cursor(30, 8);
+        /* wintty.c:1923-1925: !menu_overlay makes the menu full screen
+         * (offx 0), so dmore leaves the cursor at 1 + strlen("(end) ") = 7. */
+        set_cursor(game.iflags?.menu_overlay === false
+            || game.iflags?.menu_overlay === 0 ? 7 : 30, 8);
         game._pending_message = '';
         const key = await nhgetch();
         if (key === 27 || key === 10 || key === 13 || key === 32)
@@ -3118,6 +3121,10 @@ async function numberPadSubmenu(preserveStatus = false) {
     game.iflags.num_pad_mode = mode;
     game.iflags.num_pad = on;
     reset_commands(false);
+    /* wintty.c:978-979 tty_dismiss_nhwindow of a full-screen (!menu_overlay)
+     * menu docrt()s the map, whose notice_all_mons re-announces the pet. */
+    if (game.iflags?.menu_overlay === false || game.iflags?.menu_overlay === 0)
+        await docrt();
 }
 
 // Run the pickup_types submenu select loop.  PICK_ANY: class accelerators and
@@ -3502,8 +3509,19 @@ export async function doset_simple() {
             titleErased = true;
             if (!searchPick) continue;   /* no match: menu stays up, row 0 blank */
             if (searchPick === DOSET_SIMPLE_HELP_ROW) {
-                /* C options.c:8657-8659 — k == -2 toggles gs.simple_options_help
-                 * and `goto redo_opt_help` rebuilds the menu from page 1. */
+                /* C options.c:8657-8659,8694-8699 — k == -2 toggles
+                 * gs.simple_options_help after select_menu dismissed the
+                 * Options window (erase_menu_or_text -> docrt + flush_screen(1)
+                 * with bot() disabled), then `goto redo_opt_help` rebuilds from
+                 * page 1. */
+                const oldBotDisabled = g._bot_disabled;
+                g._bot_disabled = true;
+                try {
+                    await docrt();
+                    await flush_screen(1);
+                } finally {
+                    g._bot_disabled = oldBotDisabled;
+                }
                 g.simple_options_help = !g.simple_options_help;
                 pageIdx = 0; titleErased = false; continue;
             }
@@ -3682,8 +3700,18 @@ export async function doset_simple() {
         }
         /* '?' is the help row's selector, which only exists on page 1
          * (wintty.c process_menu_window matches within the current page).
-         * C options.c:8657-8659 toggles gs.simple_options_help and rebuilds. */
+         * C options.c:8657-8659,8694-8699 toggles gs.simple_options_help after
+         * select_menu dismissed the Options window (erase_menu_or_text -> docrt
+         * + flush_screen(1) with bot() disabled), then rebuilds. */
         if (ch === '?' && pageIdx === 0) {
+            const oldBotDisabled = g._bot_disabled;
+            g._bot_disabled = true;
+            try {
+                await docrt();
+                await flush_screen(1);
+            } finally {
+                g._bot_disabled = oldBotDisabled;
+            }
             g.simple_options_help = !g.simple_options_help;
             titleErased = false;
             continue;
@@ -5374,7 +5402,6 @@ export async function ask_do_tutorial() {
         { selector: 'n', str: 'n - No, just start play' },
     ];
     const RESP_EXPLICIT = mlist.map((m) => m.selector).join(''); /* "yn" */
-    const RESP = RESP_EXPLICIT + ' ' + '0123456789\x1b\n\r' + '^|><.-@,\\~:';
     let pass = 0;
     /* C ref: options.c:449-472 — do { build; select_menu } while (!n). */
     for (;;) {
@@ -5429,11 +5456,15 @@ export async function ask_do_tutorial() {
             }
             const keyCode = await nhgetch();
             const morc = typeof keyCode === 'number' ? String.fromCharCode(keyCode) : String(keyCode || '');
+            const RESP = RESP_EXPLICIT + ' ' + '0123456789\x1b\n\r'
+                + (g.mapped_menu_cmds || '') + '^|><.-@,\\~:';
             /* C ref: getline.c:230-257 xwaitforspace(resp) — '\n'/'\r' always
-             * break, ESC breaks under iflags.cbreak, and so does any member of
-             * `resp`.  Anything else rings the bell and is re-read, leaving the
-             * frame identical. */
+             * break, ESC breaks under iflags.cbreak (setting dismiss_more = 1),
+             * and so does any member of `resp` or `c == x` (dismiss_more).
+             * Anything else rings the bell and is re-read, leaving the frame
+             * identical and not turning process_menu_window's loop over. */
             if (keyCode !== 10 && keyCode !== 13 && keyCode !== 27
+                && !(keyCode !== 0 && keyCode === (g._ttyDismissMore | 0))
                 && RESP.indexOf(morc) < 0) {
                 reset_count = false; /* the loop never turned over: keep the count */
                 continue;
@@ -5441,10 +5472,12 @@ export async function ask_do_tutorial() {
             /* C ref: wintty.c:1558-1563 — an explicit page selector is taken as
              * a choice even when it also happens to be a mapped menu command. */
             const explicit = RESP_EXPLICIT.indexOf(morc) >= 0;
-            if (!explicit && morc >= '0' && morc <= '9') {
+            const mappedCode = explicit ? keyCode : map_menu_cmd(keyCode);
+            const mappedMorc = String.fromCharCode(mappedCode);
+            if (!explicit && mappedMorc >= '0' && mappedMorc <= '9') {
                 /* C ref: wintty.c:1565-1600 — accumulate a count.  gacc is
                  * empty here, so the group-accelerator shortcut cannot fire. */
-                count = count * 10 + (morc.charCodeAt(0) - 48);
+                count = count * 10 + (mappedCode - 48);
                 if (count !== 0) { counting = true; reset_count = false; }
                 continue;
             }
@@ -5455,20 +5488,20 @@ export async function ask_do_tutorial() {
                 if (!counting) { n = -1; finished = true; }
                 continue;
             }
-            if (!explicit && (keyCode === 10 || keyCode === 13)) {
+            if (!explicit && (mappedCode === 10 || mappedCode === 13)) {
                 /* C ref: wintty.c:1615-1620 — finished (commit) with nothing
                  * selected, so select_menu returns 0 and options.c's do-while
                  * re-asks with the "(Please choose 'y' or 'n'.)" line. */
                 finished = true;
                 continue;
             }
-            if (!explicit && morc === ' ') {
+            if (!explicit && mappedMorc === ' ') {
                 /* C ref: wintty.c:1622-1631 MENU_NEXT_PAGE — this menu is one
                  * page, so ' ' finishes it (and '>' deliberately does not). */
                 finished = true;
                 continue;
             }
-            if (!explicit && morc === ':') {
+            if (!explicit && mappedMorc === ':') {
                 /* C ref: wintty.c:1700-1730 MENU_SEARCH. */
                 const answer = await _menu_search(windowLines, WIN_COL, uac, titleErased);
                 titleErased = true;

@@ -11,11 +11,23 @@ import { pline } from './display.js';
 import {
     DEAF, HALLUC, HALLUC_RES, ROOMOFFSET, VAULT, ANY_SHOP, ANY_TYPE, OROOM,
     SHOPBASE, COURT, BEEHIVE, MORGUE, ZOO, BARRACKS,
-    Is_astralevel, Is_oracle_level,
+    Is_astralevel, Is_oracle_level, Is_sanctum, STRANGLED, BLINDED, FULL_MOON, IS_WALL,
+    SDOOR, M_AP_FURNITURE, M_AP_OBJECT, STRAT_WAITMASK, isok, ECMD_OK,
+    ECMD_TIME, ECMD_CANCEL,
 } from './const.js';
 import { M1_ANIMAL, M2_LORD, M2_PRINCE, M2_MERC, S_ANT, PM_ORACLE,
-         mons } from './monsters.js';
-import { GOLD_PIECE } from './objects.js';
+         mons, M1_HUMANOID, PM_GECKO, PM_DINGO, PM_RAVEN, PM_DEATH,
+         MS_SILENT, MS_BARK, MS_MEW, MS_ROAR, MS_BELLOW, MS_GROWL, MS_SQEEK,
+         MS_SQAWK, MS_CHIRP, MS_HISS, MS_BUZZ, MS_GRUNT, MS_NEIGH, MS_MOO,
+         MS_WAIL, MS_GURGLE, MS_BURBLE, MS_ANIMAL, MS_LAUGH, MS_MUMBLE,
+         MS_IMITATE, MS_ORC, MS_LEADER, MS_GUARDIAN, MS_SELL,
+         MS_GROAN } from './monsters.js';
+import { GOLD_PIECE, STATUE } from './objects.js';
+import { canspotmon, vobj_at } from './display.js';
+import { m_at } from './makemon.js';
+import { Monnam, mon_nam } from './do_name.js';
+import { night } from './calendar.js';
+import { getdir } from './cmd.js';
 import { is_flyer, is_undead, is_vampshifter } from './mondata.js';
 
 /* C ref: mondata.h predicates */
@@ -36,7 +48,7 @@ function Hallucination() {
 /* C ref: pline.c You_hear() -- the "You hear" prefix; the hearing-
    while-asleep/unconscious variant ("You dream that you hear") isn't
    ported yet */
-async function You_hear(msg) {
+export async function You_hear(msg) {
     await pline(`You hear ${msg}`);
 }
 
@@ -354,7 +366,7 @@ export async function dosounds() {
         return;
     }
     if (lf.has_temple && !rn2(200)
-        && !(Is_astralevel(u.uz) || false /* Is_sanctum(): not ported yet */)) {
+        && !(Is_astralevel(u.uz) || Is_sanctum(u.uz))) {
         if (await get_iter_mons(temple_priest_sound))
             return;
     }
@@ -362,4 +374,319 @@ export async function dosounds() {
         if (await get_iter_mons(oracle_sound))
             return;
     }
+}
+
+// ── C ref: sounds.c #chat: dotalk(), dochat(), domonnoise() (the animal
+//    noises and other simple cases; the talking monsters aren't ported) ──
+
+/* C ref: mondata.h is_silent() */
+function is_silent(ptr) { return ptr.msound === MS_SILENT; }
+/* C ref: monst.h helpless() */
+function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
+/* C ref: youprop.h Deaf, Blind, Strangled, Underwater */
+function uprop(prop) {
+    const p = game.u.uprops[prop];
+    return !!(p && (p.intrinsic || p.extrinsic));
+}
+function Deaf() { return uprop(DEAF); }
+
+// C ref: sounds.c domonnoise()
+async function domonnoise(mtmp) {
+    let pline_msg = null, /* Monnam(mtmp) will be prepended */
+        verbl_msg = null,           /* verbalize() */
+        verbl_msg_mcan = null;      /* verbalize() if cancelled */
+    const ptr = mtmp.data;
+    let msound = ptr.msound;
+
+    /* presumably nearness and sleep checks have already been made */
+    if (Deaf())
+        return ECMD_OK;
+    /* shk_chat can handle nonverbal monsters */
+    if (is_silent(ptr) && !mtmp.isshk)
+        return ECMD_OK;
+
+    /* leader might be poly'd; if he can still speak, give leader speech */
+    if (game.quest_status?.leader_m_id
+        && mtmp.m_id === game.quest_status.leader_m_id && msound > MS_ANIMAL)
+        msound = MS_LEADER;
+    /* make sure it's your role's quest guardian; adjust if not */
+    else if (msound === MS_GUARDIAN && ptr !== mons[game.urole.guardnum])
+        throw new Error('domonnoise(): genus() for a foreign guardian not ported yet');
+    /* even polymorphed, shopkeepers retain their minds and capitalist bent */
+    else if (mtmp.isshk)
+        msound = MS_SELL;
+    /* some normally non-speaking types can/will speak if hero is similar */
+    else if (msound === MS_ORC)
+        throw new Error('domonnoise(): MS_ORC same_race() check not ported yet');
+    else if (msound === MS_MOO && !mtmp.mtame)
+        msound = MS_BELLOW;
+    /* silliness: Hallucination && mon_is_gecko() */
+    else if (Hallucination() && ptr === mons[PM_GECKO])
+        msound = MS_SELL;
+
+    /* be sure to do this before talking; the monster might teleport away, in
+     * which case we want to check its pre-teleport position
+     */
+    if (!canspotmon(mtmp))
+        throw new Error('domonnoise(): map_invisible() not ported yet');
+
+    switch (msound) {
+    case MS_BARK:
+        if (game.flags.moonphase === FULL_MOON && night()) {
+            pline_msg = "howls.";
+        } else if (mtmp.mpeaceful) {
+            if (mtmp.mtame
+                && (mtmp.mconf || mtmp.mflee || mtmp.mtrapped
+                    || game.moves > mtmp.edog.hungrytime || mtmp.mtame < 5))
+                pline_msg = "whines.";
+            else if (mtmp.mtame && mtmp.edog.hungrytime > game.moves + 1000)
+                pline_msg = "yips.";
+            else {
+                if (ptr !== mons[PM_DINGO]) /* dingos do not actually bark */
+                    pline_msg = "barks.";
+            }
+        } else {
+            pline_msg = "growls.";
+        }
+        break;
+    case MS_MEW:
+        if (mtmp.mtame) {
+            if (mtmp.mconf || mtmp.mflee || mtmp.mtrapped
+                || mtmp.mtame < 5) {
+                pline_msg = "yowls.";
+            } else if (game.moves > mtmp.edog.hungrytime) {
+                pline_msg = "meows.";
+            } else if (mtmp.edog.hungrytime > game.moves + 1000) {
+                pline_msg = "purrs.";
+            } else {
+                pline_msg = "mews.";
+            }
+            break;
+        }
+        /*FALLTHRU*/
+    case MS_GROWL:
+        pline_msg = mtmp.mpeaceful ? "snarls." : "growls!";
+        break;
+    case MS_ROAR:
+        pline_msg = mtmp.mpeaceful ? "snarls." : "roars!";
+        break;
+    case MS_SQEEK:
+        pline_msg = "squeaks.";
+        break;
+    case MS_SQAWK:
+        if (ptr === mons[PM_RAVEN] && !mtmp.mpeaceful) {
+            verbl_msg = "Nevermore!";
+        } else {
+            pline_msg = "squawks.";
+        }
+        break;
+    case MS_HISS:
+        if (!mtmp.mpeaceful) {
+            pline_msg = "hisses!";
+        } else {
+            return ECMD_OK; /* no sound */
+        }
+        break;
+    case MS_BUZZ:
+        pline_msg = mtmp.mpeaceful ? "drones." : "buzzes angrily.";
+        break;
+    case MS_GRUNT:
+        pline_msg = "grunts.";
+        break;
+    case MS_NEIGH:
+        if (mtmp.mtame < 5) {
+            pline_msg = "neighs.";
+        } else if (game.moves > mtmp.edog.hungrytime) {
+            pline_msg = "whinnies.";
+        } else {
+            pline_msg = "whickers.";
+        }
+        break;
+    case MS_MOO:
+        pline_msg = "moos.";
+        break;
+    case MS_BELLOW:
+        pline_msg = "bellows!";
+        break;
+    case MS_CHIRP:
+        pline_msg = "chirps.";
+        break;
+    case MS_WAIL:
+        pline_msg = "wails mournfully.";
+        break;
+    case MS_GROAN:
+        if (!rn2(3)) {
+            pline_msg = "groans.";
+        }
+        break;
+    case MS_GURGLE:
+        pline_msg = "gurgles.";
+        break;
+    case MS_BURBLE:
+        pline_msg = "burbles.";
+        break;
+    case MS_IMITATE:
+        pline_msg = "imitates you.";
+        break;
+    case MS_LAUGH: {
+        const laugh_msg = [
+            "giggles.", "chuckles.", "snickers.", "laughs.",
+        ];
+        pline_msg = laugh_msg[rn2(4)];
+        break;
+    }
+    case MS_MUMBLE:
+        pline_msg = "mumbles incomprehensibly.";
+        break;
+    default:
+        /* the talking monsters (MS_TRUMPET's wake_nearto(), MS_SHRIEK's
+           aggravate(), MS_BONES, MS_HUMANOID, shopkeepers, priests, the
+           quest, ...) aren't ported yet */
+        throw new Error(`domonnoise(): msound ${msound} not ported yet`);
+    }
+
+    if (pline_msg) {
+        await pline(`${Monnam(mtmp)} ${pline_msg}`);
+    } else if (mtmp.mcan && verbl_msg_mcan) {
+        await pline(`"${verbl_msg_mcan}"`); /* verbalize1() */
+    } else if (verbl_msg) {
+        if (ptr === mons[PM_DEATH])
+            throw new Error('domonnoise(): Death speech not ported yet');
+        await pline(`"${verbl_msg}"`); /* verbalize1() */
+    }
+    return ECMD_TIME;
+}
+
+// C ref: sounds.c dotalk() -- the #chat command
+export async function dotalk() {
+    const result = await dochat();
+    return result;
+}
+
+// C ref: sounds.c dochat()
+async function dochat() {
+    const u = game.u;
+    let mtmp, otmp;
+
+    if (is_silent(game.youmonst.data))
+        throw new Error('dochat(): silent hero form not ported yet');
+    if (uprop(STRANGLED)) {
+        await pline("You can't speak.  You're choking!"); /* You_cant() */
+        return ECMD_OK;
+    }
+    if (u.uswallow) {
+        await pline("They won't hear you out there.");
+        return ECMD_OK;
+    }
+    if (u.uinwater) { /* Underwater */
+        await pline("Your speech is unintelligible underwater."); /* Your() */
+        return ECMD_OK;
+    }
+    /* shop_object()/price_quote(): shopkeepers aren't created yet */
+    if (!Deaf() && !uprop(BLINDED) && game.u.ushops && game.u.ushops.length)
+        throw new Error('dochat(): shop_object() price quote not ported yet');
+
+    if (!(await getdir("Talk to whom? (in what direction)"))) {
+        /* decided not to chat */
+        return ECMD_CANCEL;
+    }
+
+    if (u.usteed && u.dz > 0) {
+        if (helpless(u.usteed)) {
+            await pline(`${Monnam(u.usteed)} seems not to notice you.`);
+            return ECMD_TIME;
+        } else
+            return await domonnoise(u.usteed);
+    }
+
+    if (u.dz) {
+        await pline(`They won't hear you ${u.dz < 0 ? "up" : "down"} there.`);
+        return ECMD_OK;
+    }
+
+    if (u.dx === 0 && u.dy === 0) {
+        await pline("Talking to yourself is a bad habit for a dungeoneer.");
+        return ECMD_OK;
+    }
+
+    const tx = u.ux + u.dx;
+    const ty = u.uy + u.dy;
+
+    if (!isok(tx, ty))
+        return ECMD_OK;
+
+    mtmp = m_at(tx, ty);
+
+    if (!mtmp || mtmp.mundetected) {
+        if ((otmp = vobj_at(tx, ty)) != null && otmp.otyp === STATUE) {
+            /* Talking to a statue */
+            if (!uprop(BLINDED)) {
+                if (Hallucination())
+                    throw new Error('dochat(): rndmonnam() not ported yet');
+                await pline("The statue seems not to notice you."); /* pline_The() */
+            }
+            return ECMD_OK;
+        }
+        const typ = game.level.at(tx, ty).typ;
+        if (!Deaf() && (IS_WALL(typ) || typ === SDOOR)) {
+            /* Talking to a wall; secret door remains hidden by behaving
+               like a wall */
+            if (uprop(BLINDED))
+                throw new Error('dochat(): blind wall talk (lastseentyp) not ported yet');
+            else if (!Hallucination()) {
+                await pline("It's like talking to a wall.");
+            } else {
+                const walltalk = [
+                    "gripes about its job.",
+                    "tells you a funny joke!",
+                    "insults your heritage!",
+                    "chuckles.",
+                    "guffaws merrily!",
+                    "deprecates your exploration efforts.",
+                    "suggests a stint of rehab...",
+                    "doesn't seem to be interested.",
+                ];
+                let idx = rn2(10);
+
+                if (idx >= walltalk.length)
+                    idx = walltalk.length - 1;
+                await pline(`The wall ${walltalk[idx]}`); /* pline_The() */
+            }
+            return ECMD_OK;
+        }
+    }
+
+    if (!mtmp || mtmp.mundetected
+        || mtmp.m_ap_type === M_AP_FURNITURE
+        || mtmp.m_ap_type === M_AP_OBJECT)
+        return ECMD_OK;
+
+    /* sleeping monsters won't talk, except priests (who wake up) */
+    if (helpless(mtmp) && !mtmp.ispriest) {
+        /* If it is unseen, the player can't tell the difference between
+           not noticing him and just not existing, so skip the message. */
+        if (canspotmon(mtmp))
+            await pline(`${Monnam(mtmp)} seems not to notice you.`);
+        return ECMD_OK;
+    }
+
+    /* if this monster is waiting for something, prod it into action */
+    mtmp.mstrategy &= ~STRAT_WAITMASK;
+
+    if (!Deaf() && mtmp.mtame && mtmp.meating) {
+        if (!canspotmon(mtmp))
+            throw new Error('dochat(): map_invisible() not ported yet');
+        await pline(`${Monnam(mtmp)} is eating noisily.`);
+        return ECMD_OK;
+    }
+    if (Deaf()) {
+        const xresponse = (game.youmonst.data.mflags1 & M1_HUMANOID)
+                    ? "falls on deaf ears"
+                    : "is inaudible";
+
+        await pline(`Any response${canspotmon(mtmp) ? " from " : ""}${
+            canspotmon(mtmp) ? mon_nam(mtmp) : ""} ${xresponse}.`);
+        return ECMD_OK;
+    }
+    return await domonnoise(mtmp);
 }

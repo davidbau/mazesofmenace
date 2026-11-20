@@ -34,7 +34,7 @@ import { restore_timer_order, restore_timers_level, run_timers } from './timeout
 import { mon_catchup_elapsed_time } from './dog.js';
 import { stored_level, saved_state_for, savefile_name, NOT_SAVED } from './save.js';
 import { vfsReadFile, vfsDeleteFile } from './storage.js';
-import { docrt, cls, see_monsters, _topline_more_pending, flush_screen, reglyph_darkroom, reset_glyphmap } from './display.js';
+import { docrt, cls, clear_glyph_buffer, see_monsters, _topline_more_pending, flush_screen, reglyph_darkroom, reset_glyphmap } from './display.js';
 import { max_rank_sz } from './botl.js';
 import { assign_graphics } from './symbols.js';
 import { pline, You } from './pline.js';
@@ -628,7 +628,6 @@ async function restgamestate(state) {
  * too and steed.c:922-928 reports any monster already on that grid slot.
  * u.uz is still the fresh process's (describe_level). */
 async function first_getlev_place_monsters(chain) {
-    restmonchn_data(chain);
     const grid = new Map();
     for (let mtmp = chain; mtmp; mtmp = mtmp.nmon) {
         const key = (mtmp.mx | 0) * 256 + (mtmp.my | 0);
@@ -670,8 +669,10 @@ export async function dorecover(save) {
     const firstLevel = saved_state_for(save.body);
     g.program_state.in_getlev = 1;
     rest_rooms(firstLevel.level);
-    await first_getlev_place_monsters(firstLevel.fmon);
+    restmonchn_data(firstLevel.fmon);
     await find_lev_obj_no_longer_held(firstLevel.fobj);
+    // draws must precede any monster-placement diagnostic's input wait.
+    await first_getlev_place_monsters(firstLevel.fmon);
     const baseTopline = g._base_topline; /* restgamestate copies saved keys over game */
     delete g._base_topline;
     await bubbles_copy_snapshot(firstLevel.__bubbles, firstLevel.level);
@@ -794,28 +795,32 @@ export async function dorecover(save) {
     // is back on the map after it; a later one on the same square wins.
     const grid = new Map();
     restmonchn_data(g.fmon);
+    worm_seg_clear_level();
+    for (let mon = g.fmon; mon; mon = mon.nmon)
+        mon._mapRemoved = true;
     for (let mon = g.fmon; mon; mon = mon.nmon) {
         if (mon.isshk) {
             restshk(mon, false);
             // C restore.c:1182-1183: rest_rooms cleared the resident slot.
             set_residency(mon, false);
         }
-        if (mon === g.u?.usteed) continue;
-        const key = (mon.mx | 0) * 256 + (mon.my | 0);
-        const othermon = grid.get(key);
-        if (othermon) {
-            await impossible('placing %s over %s at <%d,%d>, mstates:%lx %lx on %s?',
-                             minimal_monnam(mon, false), minimal_monnam(othermon, true),
-                             mon.mx, mon.my, othermon.mstate, mon.mstate, describe_level_buf(0));
-            othermon._mapRemoved = true;
+        if (mon !== g.u?.usteed) {
+            const key = (mon.mx | 0) * 256 + (mon.my | 0);
+            const othermon = grid.get(key);
+            if (othermon) {
+                await impossible('placing %s over %s at <%d,%d>, mstates:%lx %lx on %s?',
+                                 minimal_monnam(mon, false), minimal_monnam(othermon, true),
+                                 mon.mx, mon.my, othermon.mstate, mon.mstate, describe_level_buf(0));
+                othermon._mapRemoved = true;
+            }
+            delete mon._mapRemoved;
+            grid.set(key, mon);
+            if (mon.wormno) place_wsegs(mon, null);
+            if (hides_under(mon.data) && mon.mundetected)
+                hideunder(mon);
         }
-        delete mon._mapRemoved;
-        grid.set(key, mon);
-    }
-    for (let mon = g.fmon; mon; mon = mon.nmon) {
-        if (mon.wormno) place_wsegs(mon, null);
-        if (hides_under(mon.data) && mon.mundetected)
-            hideunder(mon);
+        // C restore.c:1181-1217 finishes this monster before placing the next;
+        // a steed skips placement/hiding but still needs shape restoration.
         await restore_cham(mon);
     }
     await bubbles_rest_snapshot(save.state.__bubbles);
@@ -859,6 +864,14 @@ export async function dorecover(save) {
     /* A restored game is a fresh process: the tty status window has never
      * been rendered, so a lone timebot() has no field positions to paint at. */
     g._statusEverPainted = false;
+    /* A restored game is a fresh process: gg.gbuf starts zeroed (display.c
+     * init_display), so docrt's vision_recalc(2) notice flushes (vision.c:856)
+     * paint only what newsym() has put into gbuf since, not the saved level's
+     * previous display state. */
+    /* A fresh process has a zeroed gbuf (display.c gg.gbuf); the saved level
+     * object must not carry the previous life's glyph buffer into docrt()'s
+     * first flush (vision.c:856 notice -> pline.c:273). */
+    clear_glyph_buffer();
     await docrt();
     /* C restore.c:932-933: finish docrt's notice pages before clearing them. */
     if (_topline_more_pending())

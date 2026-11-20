@@ -7,24 +7,63 @@
 // recalc_block_point(), Sokoban bookkeeping.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rnl } from './rng.js';
 import { dunlev, dunlevs_in_dungeon, In_hell } from './dungeon.js';
 import {
     ROOM, CORR, DOOR, STONE, SCORR, SDOOR, DRAWBRIDGE_UP, STAIRS, LADDER,
     IS_FURNITURE, IS_WALL, IS_POOL, IS_ROOM, LAVAPOOL, In_quest,
     CORPSTAT_NONE, MM_NOCOUNTBIRTH, MM_NOMSG,
     TOOKPLUNGE, VIASITTING, HURTLING, isok,
+    DEAF, BOLT_LIM, FORCETRAP, FORCEBUNGLE,
 } from './const.js';
 import { mons, S_UNICORN, M2_JEWELS, S_VORTEX, M1_AMORPHOUS, M1_UNSOLID,
          M1_CLING, MZ_SMALL, PM_AIR_ELEMENTAL, PM_CAVE_SPIDER,
          PM_GIANT_SPIDER, PM_IRON_GOLEM, AD_SLEE, AD_FIRE, AD_MAGM,
+         M1_MINDLESS, M1_METALLIVORE, MZ_HUGE, PM_PIT_FIEND,
        } from './monsters.js';
 import { is_flyer, is_floater, defended, resists_sleep, resists_fire,
-         resists_magm } from './mondata.js';
-import { STATUE } from './objects.js';
+         resists_magm, mon_knows_traps, mon_learns_traps,
+         mons_see_trap } from './mondata.js';
+import { STATUE, BOULDER, objects, ARROW, DART, ROCK, CORPSE, TOWEL,
+         GEMSTONE, MINERAL, RING_CLASS, IRON } from './objects.js';
+import { rnd, d } from './rng.js';
+import { FAILEDUNTRAP, W_ARMF, W_ARMH, W_ARMS, W_ARMG, W_ARMC, W_ARM, W_ARMU,
+         W_WEP, W_SWAPWEP, WT_ELF, STONE_RES } from './const.js';
+import { AD_RBRE, AD_PHYS, AT_MAGC, AT_BREA, M1_BREATHLESS, M1_ACID,
+         M2_NASTY, S_MIMIC, S_GIANT, S_DRAGON, PM_OWLBEAR, PM_BUGBEAR,
+         PM_TITANOTHERE, PM_BALUCHITHERIUM, PM_PURPLE_WORM, PM_JABBERWOCK,
+         PM_BALROG, PM_KRAKEN, PM_MASTODON, PM_ORION, PM_NORN, PM_CYCLOPS,
+         PM_LORD_SURTUR, PM_GELATINOUS_CUBE, PM_FIRE_VORTEX,
+         PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_GREMLIN,
+         PM_PIT_VIPER, PM_PAPER_GOLEM, PM_STRAW_GOLEM, PM_WOOD_GOLEM,
+         PM_LEATHER_GOLEM, PM_COCKATRICE, PM_CHICKATRICE } from './monsters.js';
+import { passes_walls, monsndx, Resists_Elem } from './mondata.js';
+import { mksobj, place_object } from './mkobj.js';
+import { stackobj } from './invent.js';
+import { dmgval } from './weapon.js';
+import { doname } from './objnam.js';
+import { monkilled, maybe_unhide_at } from './mon.js';
+import { find_mac, which_armor } from './worn.js';
+import { mtele_trap, mlevel_tele_trap } from './teleport.js';
+import { Can_fall_thru } from './mklev.js';
+import { bimanual } from './wield.js';
+
+/* C ref: mondata.h resists_ston() */
+function resists_ston(mon) { return Resists_Elem(mon, STONE_RES); }
 import { rndmonnum_adj, mkcorpstat, add_to_container, weight } from './mkobj.js';
-import { makemon } from './makemon.js';
-import { mongone } from './mon.js';
+import { makemon, sobj_at } from './makemon.js';
+import { mongone, wake_nearto } from './mon.js';
+import { newsym, pline } from './display.js';
+import { cansee, couldsee } from './vision.js';
+import { m_in_air } from './monmove.js';
+import { canseemon } from './display.js';
+import { mon_nam, Monnam } from './do_name.js';
+import { You_hear } from './sounds.js';
+import { just_an } from './objnam.js';
+import { dist2 } from './hacklib.js';
+
+/* C ref: hack.h mdistu() */
+function mdistu(mon) { return dist2(mon.mx, mon.my, game.u.ux, game.u.uy); }
 
 // C ref: mondata.h likes_gems(), is_unicorn()
 function likes_gems(ptr) { return (ptr.mflags2 & M2_JEWELS) !== 0; }
@@ -154,6 +193,1129 @@ export function check_in_air(mtmp, trflags) {
 // C ref: trap.h fixed_tele_trap()
 export function fixed_tele_trap(t) {
     return (t.ttyp === TELEP_TRAP && isok(t.launch.x, t.launch.y));
+}
+
+// C ref: trap.h enum trap_result
+export const Trap_Effect_Finished = 0;
+export const Trap_Is_Gone = 0;
+export const Trap_Caught_Mon = 1;
+export const Trap_Killed_Mon = 2;
+export const Trap_Moved_Mon = 3; /* new location, or new level */
+
+/* C ref: youprop.h Deaf */
+function Deaf() {
+    const P = game.u.uprops;
+    return !!(P[DEAF].intrinsic || P[DEAF].extrinsic
+              || game.u.uroleplay?.deaf);
+}
+/* mondata.h */
+function mindless(ptr) { return (ptr.mflags1 & M1_MINDLESS) !== 0; }
+function metallivorous(ptr) { return (ptr.mflags1 & M1_METALLIVORE) !== 0; }
+
+// C ref: trap.c trapeffect_sqky_board()
+async function trapeffect_sqky_board(mtmp, trap, trflags) {
+    /* tsnds[] / Soundeffect(): sound effects aren't ported */
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_sqky_board(): hero branch not ported yet');
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+
+        if (m_in_air(mtmp))
+            return Trap_Effect_Finished;
+        /* stepped on a squeaky board */
+        if (in_sight) {
+            if (!Deaf()) {
+                await pline(`A board beneath ${mon_nam(mtmp)} squeaks ${
+                    trapnote(trap, false)} loudly.`);
+                seetrap(trap);
+            } else if (!mindless(mtmp.data)) {
+                await pline(`${Monnam(mtmp)} stops momentarily and appears to cringe.`);
+            }
+        } else {
+            /* same near/far threshold as mzapmsg() */
+            const range = couldsee(mtmp.mx, mtmp.my) /* 9 or 5 */
+                ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+
+            await You_hear(`${trapnote(trap, false)} squeak ${
+                (mdistu(mtmp) <= range * range)
+                    ? "nearby" : "in the distance"}.`);
+        }
+        /* wake up nearby monsters */
+        await wake_nearto(mtmp.mx, mtmp.my, 40);
+    }
+    return Trap_Effect_Finished;
+}
+
+// C ref: trap.c static strings
+const a_your = ["a", "your"];
+const tower_of_flame = "tower of flame";
+const A_gush_of_water_hits = "A gush of water hits";
+
+/* C ref: mondata.h passes_rocks(), grounded(), breathless(), flaming(),
+   acidic(), extra_nasty(); obj.h stone_missile(); trap.c completelyrusts */
+function passes_rocks(ptr) { return passes_walls(ptr) && !unsolid(ptr); }
+function grounded(ptr) {
+    /* has_ceiling(&u.uz): no air or water levels are generated yet */
+    return !is_flyer(ptr) && !is_floater(ptr) && !is_clinger(ptr);
+}
+function breathless(ptr) { return (ptr.mflags1 & M1_BREATHLESS) !== 0; }
+function flaming(ptr) {
+    return ptr === mons[PM_FIRE_VORTEX] || ptr === mons[PM_FLAMING_SPHERE]
+           || ptr === mons[PM_FIRE_ELEMENTAL] || ptr === mons[PM_SALAMANDER];
+}
+function acidic(ptr) { return (ptr.mflags1 & M1_ACID) !== 0; }
+function extra_nasty(ptr) { return (ptr.mflags2 & M2_NASTY) !== 0; }
+function stone_missile(o) {
+    return ((objects[o.otyp].oc_material === GEMSTONE
+             || objects[o.otyp].oc_material === MINERAL)
+            && o.oclass !== RING_CLASS);
+}
+function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
+function attacktype(ptr, atyp) { return ptr.mattk.some(a => a.aatyp === atyp); }
+
+// C ref: trap.c wearing_iron_shoes()
+function wearing_iron_shoes(mtmp) {
+    if (mtmp === game.youmonst)
+        throw new Error('wearing_iron_shoes(): hero boots (uarmf) not ported yet');
+    const armf = which_armor(mtmp, W_ARMF);
+    return !!armf && objects[armf.otyp].oc_material === IRON;
+}
+
+// C ref: trap.c feeltrap()
+/* like seetrap() but overrides vision */
+export function feeltrap(trap) {
+    trap.tseen = 1;
+    /* map_trap(trap, 1): newsym() below redisplays the remembered trap */
+    /* in case it's beneath something, redisplay the something */
+    newsym(trap.tx, trap.ty);
+}
+
+// C ref: trap.c deltrap()
+export function deltrap(trap) {
+    const traps = ftraps();
+
+    if (is_pit(trap.ttyp) && trap.conjoined)
+        throw new Error('deltrap(): clear_conjoined_pits() not ported yet');
+    const i = traps.indexOf(trap);
+    if (i < 0)
+        throw new Error('deltrap: no preceding trap!');
+    traps.splice(i, 1);
+    if (game.level.flags.sokoban_rules
+        && (trap.ttyp === PIT || trap.ttyp === HOLE))
+        throw new Error('deltrap(): maybe_finish_sokoban() not ported yet');
+    /* dealloc_trap(trap): garbage collected */
+}
+
+// C ref: trap.c t_missile()
+/* make a single arrow/dart/rock for a trap to shoot or drop */
+function t_missile(otyp, trap) {
+    const otmp = mksobj(otyp, true, false);
+
+    otmp.quan = 1;
+    otmp.owt = weight(otmp);
+    otmp.opoisoned = 0;
+    otmp.ox = trap.tx, otmp.oy = trap.ty;
+    return otmp;
+}
+
+// C ref: trap.c thitm()
+/* Monster is hit by trap. */
+async function thitm(tlev,          /* missile's attack level */
+                     mon,           /* target */
+                     obj,           /* missile; might be Null */
+                     d_override,    /* non-zero: force hit for this amount
+                                       of damage */
+                     nocorpse) {    /* True: a trap is completely burning
+                                       up the target */
+    let strike;
+    let trapkilled = false;
+
+    if (d_override)
+        strike = 1;
+    else if (obj)
+        strike = (find_mac(mon) + tlev + obj.spe <= rnd(20));
+    else
+        strike = (find_mac(mon) + tlev <= rnd(20));
+
+    /* Actually more accurate than thitu, which doesn't take
+     * obj->spe into account.
+     */
+    if (!strike) {
+        if (obj && cansee(mon.mx, mon.my))
+            await pline(`${Monnam(mon)} is almost hit by ${doname(obj)}!`);
+    } else {
+        let dam = 1;
+        const harmless = (obj && stone_missile(obj)
+                          && passes_rocks(mon.data));
+
+        if (obj && cansee(mon.mx, mon.my))
+            await pline(`${Monnam(mon)} is hit by ${doname(obj)}${
+                harmless ? " but is not harmed." : "!"}`);
+        if (d_override) {
+            dam = d_override;
+        } else if (obj) {
+            dam = dmgval(obj, mon);
+            if (dam < 1)
+                dam = 1;
+        }
+        if (!harmless) {
+            mon.mhp -= dam;
+            if (mon.mhp <= 0) {
+                const xx = mon.mx, yy = mon.my;
+
+                await monkilled(mon, "", nocorpse ? -AD_RBRE : AD_PHYS);
+                if (mon.mhp <= 0) { /* DEADMONSTER(mon) */
+                    newsym(xx, yy);
+                    trapkilled = true;
+                }
+            }
+        } else {
+            strike = 0; /* harmless; don't use up the missile */
+        }
+    }
+    if (obj && (!strike || d_override)) {
+        place_object(obj, mon.mx, mon.my);
+        stackobj(obj);
+    } else if (obj) {
+        /* dealloc_obj(obj): garbage collected */
+    }
+
+    return trapkilled;
+}
+
+// C ref: trap.c trapeffect_arrow_trap()
+async function trapeffect_arrow_trap(mtmp, trap, trflags) {
+    let otmp;
+
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_arrow_trap(): hero branch not ported yet');
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        const see_it = cansee(mtmp.mx, mtmp.my);
+        let trapkilled = false;
+
+        if (trap.once && trap.tseen && !rn2(15)) {
+            if (in_sight && see_it)
+                await pline(`${Monnam(mtmp)} triggers a trap but nothing happens.`);
+            deltrap(trap);
+            newsym(mtmp.mx, mtmp.my);
+            return Trap_Is_Gone;
+        }
+        trap.once = 1;
+        otmp = t_missile(ARROW, trap);
+        if (in_sight)
+            seetrap(trap);
+        if (await thitm(8, mtmp, otmp, 0, false))
+            trapkilled = true;
+
+        return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
+            ? Trap_Caught_Mon : Trap_Effect_Finished;
+    }
+}
+
+// C ref: trap.c trapeffect_dart_trap()
+async function trapeffect_dart_trap(mtmp, trap, trflags) {
+    let otmp;
+
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_dart_trap(): hero branch not ported yet');
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        const see_it = cansee(mtmp.mx, mtmp.my);
+        let trapkilled = false;
+
+        if (trap.once && trap.tseen && !rn2(15)) {
+            if (in_sight && see_it)
+                await pline(`${Monnam(mtmp)} triggers a trap but nothing happens.`);
+            deltrap(trap);
+            newsym(mtmp.mx, mtmp.my);
+            return Trap_Is_Gone;
+        }
+        trap.once = 1;
+        otmp = t_missile(DART, trap);
+        if (!rn2(6))
+            otmp.opoisoned = 1;
+        if (in_sight)
+            seetrap(trap);
+        if (await thitm(7, mtmp, otmp, 0, false))
+            trapkilled = true;
+
+        return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
+            ? Trap_Caught_Mon : Trap_Effect_Finished;
+    }
+}
+
+// C ref: trap.c trapeffect_rocktrap()
+async function trapeffect_rocktrap(mtmp, trap, trflags) {
+    let otmp;
+
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_rocktrap(): hero branch not ported yet');
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        const see_it = cansee(mtmp.mx, mtmp.my);
+        let trapkilled = false;
+
+        if (trap.once && trap.tseen && !rn2(15)) {
+            if (in_sight && see_it)
+                await pline(`A trap door above ${mon_nam(mtmp)} opens, but nothing falls out!`);
+            deltrap(trap);
+            newsym(mtmp.mx, mtmp.my);
+            return Trap_Is_Gone;
+        }
+        trap.once = 1;
+        otmp = t_missile(ROCK, trap);
+        if (in_sight)
+            seetrap(trap);
+        if (await thitm(0, mtmp, otmp, d(2, 6), false))
+            trapkilled = true;
+
+        return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
+            ? Trap_Caught_Mon : Trap_Effect_Finished;
+    }
+}
+
+// C ref: trap.c trapeffect_bear_trap()
+async function trapeffect_bear_trap(mtmp, trap, trflags) {
+    const is_you = mtmp === game.youmonst,
+          forcetrap = ((trflags & FORCETRAP) !== 0
+                       || (trflags & FAILEDUNTRAP) !== 0
+                       || (is_you && (trflags & VIASITTING) !== 0));
+
+    if (is_you) {
+        throw new Error('trapeffect_bear_trap(): hero branch not ported yet');
+    } else {
+        const mptr = mtmp.data;
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        let trapkilled = false;
+
+        if (mptr.msize > MZ_SMALL && !amorphous(mptr) && !m_in_air(mtmp)
+            && !is_whirly(mptr) && !unsolid(mptr)) {
+            mtmp.mtrapped = 1;
+            if (in_sight) {
+                await pline(`${Monnam(mtmp)} is caught in ${
+                    a_your[trap.madeby_u ? 1 : 0]} bear trap!`);
+                seetrap(trap);
+            } else {
+                if (mptr === mons[PM_OWLBEAR]
+                    || mptr === mons[PM_BUGBEAR]) {
+                    /* Soundeffect(se_roar, 100) */
+                    await You_hear("the roaring of an angry bear!");
+                }
+            }
+        } else if (forcetrap) {
+            if (in_sight) {
+                await pline(`${Monnam(mtmp)} evades ${
+                    a_your[trap.madeby_u ? 1 : 0]} bear trap!`);
+                seetrap(trap);
+            }
+        }
+        if (mtmp.mtrapped && !wearing_iron_shoes(mtmp))
+            trapkilled = await thitm(0, mtmp, null, d(2, 4), false);
+
+        return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
+            ? Trap_Caught_Mon : Trap_Effect_Finished;
+    }
+}
+
+// C ref: mhitm.c sleep_monst()
+/* `mon' is hit by a sleep attack; return 1 if it's affected, 0 otherwise */
+function sleep_monst(mon, amt, how) {
+    /* reveal mimic unless already asleep or paralyzed (won't be 'busy') */
+    if (how >= 0)
+        throw new Error('sleep_monst(): seemimic()/resist() not ported yet');
+
+    if (resists_sleep(mon) || defended(mon, AD_SLEE)) {
+        /* shieldeff(mon->mx, mon->my): display effect only */
+    } else if (mon.mcanmove) {
+        finish_meating(mon); /* terminate any meal-in-progress */
+        amt += (mon.mfrozen || 0);
+        if (amt > 0) { /* sleep for N turns */
+            mon.mcanmove = 0;
+            mon.mfrozen = Math.min(amt, 127);
+        } else { /* sleep until awakened */
+            mon.msleeping = 1;
+        }
+        return 1;
+    }
+    return 0;
+}
+
+// C ref: dogmove.c finish_meating()
+function finish_meating(mtmp) {
+    mtmp.meating = 0;
+    if (mtmp.m_ap_type && mtmp.data.mlet !== S_MIMIC) {
+        /* was eating a mimic and now appearance needs resetting */
+        mtmp.m_ap_type = 0; /* M_AP_NOTHING */
+        mtmp.mappearance = 0;
+        newsym(mtmp.mx, mtmp.my);
+    }
+}
+
+// C ref: trap.c trapeffect_slp_gas_trap()
+async function trapeffect_slp_gas_trap(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_slp_gas_trap(): hero branch not ported yet');
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+
+        if (!resists_sleep(mtmp) && !breathless(mtmp.data)
+            && !helpless(mtmp)) {
+            if (sleep_monst(mtmp, rnd(25), -1) && in_sight) {
+                await pline(`${Monnam(mtmp)} suddenly falls asleep!`);
+                seetrap(trap);
+            }
+        }
+    }
+    return Trap_Effect_Finished;
+}
+
+// C ref: trap.c water_damage()
+/* Get an object wet and damage it appropriately; ER_* result */
+function water_damage(obj, ostr, force) {
+    if (!obj)
+        return 0; /* ER_NOTHING */
+    throw new Error('water_damage(): object water damage not ported yet');
+}
+
+// C ref: trap.c trapeffect_rust_trap()
+async function trapeffect_rust_trap(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_rust_trap(): hero branch not ported yet');
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        const trapkilled = false;
+        const mptr = mtmp.data;
+        let target;
+
+        if (in_sight)
+            seetrap(trap);
+        switch (rn2(5)) {
+        case 0:
+            if (in_sight)
+                throw new Error('trapeffect_rust_trap(): mbodypart() message not ported yet');
+            target = which_armor(mtmp, W_ARMH);
+            water_damage(target, null, true);
+            break;
+        case 1:
+            if (in_sight)
+                throw new Error('trapeffect_rust_trap(): mbodypart() message not ported yet');
+            target = which_armor(mtmp, W_ARMS);
+            if (water_damage(target, "shield", true) !== 0 /* ER_NOTHING */)
+                break;
+            target = mtmp.mw; /* MON_WEP(mtmp) */
+            if (target && bimanual(target))
+                water_damage(target, null, true);
+            /* mglovecheck: */
+            target = which_armor(mtmp, W_ARMG);
+            water_damage(target, null, true);
+            break;
+        case 2:
+            if (in_sight)
+                throw new Error('trapeffect_rust_trap(): mbodypart() message not ported yet');
+            water_damage(mtmp.mw, null, true);
+            /* goto mglovecheck */
+            target = which_armor(mtmp, W_ARMG);
+            water_damage(target, null, true);
+            break;
+        default:
+            if (in_sight)
+                await pline(`${A_gush_of_water_hits} ${mon_nam(mtmp)}!`);
+            for (const otmp of mtmp.minvent || [])
+                if (otmp.lamplit
+                    /* exclude weapon(s) because cases 1 and 2 do them */
+                    && (otmp.owornmask & (W_WEP | W_SWAPWEP)) === 0)
+                    throw new Error('trapeffect_rust_trap(): splash_lit() not ported yet');
+            if ((target = which_armor(mtmp, W_ARMC)) != null)
+                water_damage(target, null, true);
+            else if ((target = which_armor(mtmp, W_ARM)) != null)
+                water_damage(target, null, true);
+            else if ((target = which_armor(mtmp, W_ARMU)) != null)
+                water_damage(target, "shirt", true);
+        }
+
+        if (mptr === mons[PM_IRON_GOLEM]) { /* completelyrusts(mptr) */
+            throw new Error('trapeffect_rust_trap(): iron golem rusting away not ported yet');
+        } else if (mptr === mons[PM_GREMLIN] && rn2(3)) {
+            throw new Error('trapeffect_rust_trap(): split_mon() not ported yet');
+        }
+
+        return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
+            ? Trap_Caught_Mon : Trap_Effect_Finished;
+    }
+}
+
+// C ref: trap.c burnarmor()
+/* called when you're hit by fire (dofiretrap,buzz,zapyourself,explode);
+   returns TRUE if hit on torso */
+function burnarmor(victim) {
+    let item;
+
+    if (!victim)
+        return 0;
+    if (victim === game.youmonst)
+        throw new Error('burnarmor(): hero armor not ported yet');
+
+    /* burning damage may dry wet towel */
+    for (item of victim.minvent || [])
+        if (item.otyp === TOWEL && item.spe > 0)
+            throw new Error('burnarmor(): dry_a_towel() not ported yet');
+
+    /* burn_dmg(obj, descr) is erode_obj(obj, descr, ERODE_BURN, EF_GREASE),
+       which does nothing (ER_NOTHING) for a missing item */
+    const burn_dmg = (obj) => {
+        if (obj)
+            throw new Error('burnarmor(): erode_obj() not ported yet');
+        return 0;
+    };
+    while (true) {
+        switch (rn2(5)) {
+        case 0:
+            item = which_armor(victim, W_ARMH);
+            if (!burn_dmg(item))
+                continue;
+            break;
+        case 1:
+            item = which_armor(victim, W_ARMC);
+            if (item) {
+                burn_dmg(item);
+                return true;
+            }
+            item = which_armor(victim, W_ARM);
+            if (item) {
+                burn_dmg(item);
+                return true;
+            }
+            item = which_armor(victim, W_ARMU);
+            if (item)
+                burn_dmg(item);
+            return true;
+        case 2:
+            item = which_armor(victim, W_ARMS);
+            if (!burn_dmg(item))
+                continue;
+            break;
+        case 3:
+            item = which_armor(victim, W_ARMG);
+            if (!burn_dmg(item))
+                continue;
+            break;
+        case 4:
+            item = which_armor(victim, W_ARMF);
+            if (!burn_dmg(item))
+                continue;
+            break;
+        }
+        break; /* Out of while loop */
+    }
+
+    return false;
+}
+
+// C ref: trap.c trapeffect_fire_trap()
+async function trapeffect_fire_trap(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_fire_trap(): dofiretrap() not ported yet');
+    } else {
+        const tx = trap.tx, ty = trap.ty;
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        const see_it = cansee(tx, ty);
+        let trapkilled = false;
+        const mptr = mtmp.data;
+        const orig_dmg = d(2, 4);
+
+        if (in_sight || see_it)
+            throw new Error('trapeffect_fire_trap(): surface() message not ported yet');
+        if (resists_fire(mtmp)) {
+            /* in_sight: shieldeff() and "is uninjured" (not in sight here) */
+        } else {
+            let num = orig_dmg, alt;
+            let immolate = false;
+
+            /* paper burns very fast, assume straw is tightly packed
+               and burns a bit slower
+               (note: this is inconsistent with mattackm()'s AD_FIRE
+               damage where completelyburns() includes straw golem) */
+            switch (mptr) {
+            case mons[PM_PAPER_GOLEM]:
+                immolate = true;
+                alt = mtmp.mhpmax;
+                break;
+            case mons[PM_STRAW_GOLEM]:
+                alt = Math.trunc(mtmp.mhpmax / 2);
+                break;
+            case mons[PM_WOOD_GOLEM]:
+                alt = Math.trunc(mtmp.mhpmax / 4);
+                break;
+            case mons[PM_LEATHER_GOLEM]:
+                alt = Math.trunc(mtmp.mhpmax / 8);
+                break;
+            default:
+                alt = 0;
+                break;
+            }
+            if (alt > num)
+                num = alt;
+
+            if (await thitm(0, mtmp, null, num, immolate))
+                trapkilled = true;
+            else {
+                mtmp.mhpmax -= rn2(num + 1);
+                if (mtmp.mhp > mtmp.mhpmax)
+                    mtmp.mhp = mtmp.mhpmax;
+            }
+        }
+        if (burnarmor(mtmp) || rn2(3))
+            throw new Error('trapeffect_fire_trap(): destroy_items() not ported yet');
+        throw new Error('trapeffect_fire_trap(): burn_floor_objects() not ported yet');
+    }
+}
+
+// C ref: trap.c mselftouch()
+async function mselftouch(mon, arg, byplayer) {
+    const mwep = mon.mw; /* MON_WEP(mon) */
+
+    if (mwep && mwep.otyp === CORPSE
+        && (mwep.corpsenm === PM_COCKATRICE || mwep.corpsenm === PM_CHICKATRICE)
+        && !resists_ston(mon))
+        throw new Error('mselftouch(): minstapetrify() not ported yet');
+}
+
+// C ref: trap.c trapeffect_pit()
+async function trapeffect_pit(mtmp, trap, trflags) {
+    const ttype = trap.ttyp;
+    /* relevant_spikes is initially always true for spiked pits, but
+       set to false if the spikes are found to not be relevant */
+    let relevant_spikes = ttype === SPIKED_PIT;
+
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_pit(): hero branch not ported yet');
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        let trapkilled = false;
+        const forcetrap = ((trflags & FORCETRAP) !== 0);
+        const Sokoban = game.level.flags.sokoban_rules;
+        const inescapable = (forcetrap || (Sokoban && !trap.madeby_u));
+        const mptr = mtmp.data;
+        let fallverb;
+
+        fallverb = "falls";
+        if (!grounded(mptr) || (mtmp.wormno /* && count_wsegs(mtmp) > 5 */)) {
+            if (mtmp.wormno)
+                throw new Error('trapeffect_pit(): count_wsegs() not ported yet');
+            if (forcetrap && !Sokoban) {
+                /* openfallingtrap; not inescapable here */
+                if (in_sight) {
+                    seetrap(trap);
+                    await pline(`${Monnam(mtmp)} doesn't fall into the pit.`);
+                }
+                return Trap_Effect_Finished;
+            }
+            if (!inescapable)
+                return Trap_Effect_Finished; /* avoids trap */
+            fallverb = "is dragged"; /* sokoban pit */
+        }
+        if (!passes_walls(mptr))
+            mtmp.mtrapped = 1;
+        if (in_sight) {
+            await pline(`${Monnam(mtmp)} ${fallverb} into ${
+                a_your[trap.madeby_u ? 1 : 0]} pit!`);
+            if (mptr === mons[PM_PIT_VIPER]
+                || mptr === mons[PM_PIT_FIEND])
+                await pline("How pitiful.  Isn't that the pits?");
+            seetrap(trap);
+        }
+        await mselftouch(mtmp, "Falling, ", false);
+        if (wearing_iron_shoes(mtmp)) relevant_spikes = false;
+        if (mtmp.mhp < 1 /* DEADMONSTER(mtmp) */
+            || await thitm(0, mtmp, null, rnd(relevant_spikes ? 10 : 6), false))
+            trapkilled = true;
+
+        return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
+            ? Trap_Caught_Mon : Trap_Effect_Finished;
+    }
+}
+
+// C ref: trap.c trapeffect_hole()
+async function trapeffect_hole(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_hole(): fall_through() for the hero not ported yet');
+    } else {
+        const tt = trap.ttyp;
+        const mptr = mtmp.data;
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        const forcetrap = ((trflags & FORCETRAP) !== 0);
+        const Sokoban = game.level.flags.sokoban_rules;
+        const inescapable = (forcetrap || (Sokoban && !trap.madeby_u));
+
+        if (!Can_fall_thru(game.u.uz)) {
+            /* impossible("mintrap: %ss cannot exist on this level.") */
+            return Trap_Effect_Finished; /* don't activate it after all */
+        }
+        if (mtmp.wormno)
+            throw new Error('trapeffect_hole(): count_wsegs() not ported yet');
+        if (!grounded(mptr) || mptr.msize >= MZ_HUGE) {
+            if (forcetrap && !Sokoban) {
+                /* openfallingtrap; not inescapable here */
+                if (in_sight) {
+                    seetrap(trap);
+                    if (tt === TRAPDOOR)
+                        await pline(`A trap door opens, but ${mon_nam(mtmp)} doesn't fall through.`);
+                    else /* (tt == HOLE) */
+                        await pline(`${Monnam(mtmp)} doesn't fall through the hole.`);
+                }
+                return Trap_Effect_Finished; /* inescapable = FALSE; */
+            }
+            if (inescapable) { /* sokoban hole */
+                if (in_sight) {
+                    await pline(`${Monnam(mtmp)} seems to be yanked down!`);
+                    seetrap(trap);
+                }
+            } else
+                return Trap_Effect_Finished;
+        }
+        return trapeffect_level_telep(mtmp, trap, trflags);
+    }
+}
+
+// C ref: trap.c trapeffect_telep_trap()
+async function trapeffect_telep_trap(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_telep_trap(): tele_trap() for the hero not ported yet');
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+
+        await mtele_trap(mtmp, trap, in_sight);
+        return Trap_Moved_Mon;
+    }
+}
+
+// C ref: trap.c trapeffect_level_telep()
+async function trapeffect_level_telep(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_level_telep(): level_tele_trap() for the hero not ported yet');
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        const forcetrap = ((trflags & FORCETRAP) !== 0);
+
+        return mlevel_tele_trap(mtmp, trap, forcetrap, in_sight);
+    }
+}
+
+// C ref: trap.c mu_maybe_destroy_web()
+async function mu_maybe_destroy_web(mtmp, domsg, trap) {
+    const isyou = (mtmp === game.youmonst);
+    const mptr = mtmp.data;
+
+    if (amorphous(mptr) || is_whirly(mptr) || flaming(mptr)
+        || unsolid(mptr) || mptr === mons[PM_GELATINOUS_CUBE]) {
+        const x = trap.tx;
+        const y = trap.ty;
+
+        if (flaming(mptr) || acidic(mptr)) {
+            if (domsg) {
+                if (isyou)
+                    throw new Error('mu_maybe_destroy_web(): hero branch not ported yet');
+                else
+                    await pline(`${Monnam(mtmp)} ${
+                        (flaming(mptr)) ? "burns" : "dissolves"} ${
+                        a_your[trap.madeby_u ? 1 : 0]} spider web!`);
+            }
+            deltrap(trap);
+            newsym(x, y);
+            return true;
+        }
+        if (domsg) {
+            if (isyou) {
+                throw new Error('mu_maybe_destroy_web(): hero branch not ported yet');
+            } else {
+                await pline(`${Monnam(mtmp)} flows through ${
+                    a_your[trap.madeby_u ? 1 : 0]} spider web.`);
+                seetrap(trap);
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+// C ref: trap.c trapeffect_web()
+async function trapeffect_web(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_web(): hero branch not ported yet');
+    } else {
+        /* Monster in a web. */
+        let tear_web;
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        const forcetrap = ((trflags & FORCETRAP) !== 0);
+        const mptr = mtmp.data;
+
+        if (webmaker(mptr))
+            return Trap_Effect_Finished;
+        if (await mu_maybe_destroy_web(mtmp, in_sight, trap))
+            return Trap_Effect_Finished;
+        tear_web = false;
+        const mndx = monsndx(mptr);
+        let caught_default = true;
+        switch (mndx) {
+        case PM_OWLBEAR: /* Eric Backus */
+        case PM_BUGBEAR:
+            if (!in_sight) {
+                /* Soundeffect(se_roar, 60) */
+                await You_hear("the roaring of a confused bear!");
+                mtmp.mtrapped = 1;
+                caught_default = false;
+            }
+            break; /* FALLTHRU to default unless !in_sight */
+            /* this list is fairly arbitrary; it deliberately
+               excludes wumpus & giant/ettin zombies/mummies */
+        case PM_TITANOTHERE:
+        case PM_BALUCHITHERIUM:
+        case PM_PURPLE_WORM:
+        case PM_JABBERWOCK:
+        case PM_IRON_GOLEM:
+        case PM_BALROG:
+        case PM_KRAKEN:
+        case PM_MASTODON:
+        case PM_ORION:
+        case PM_NORN:
+        case PM_CYCLOPS:
+        case PM_LORD_SURTUR:
+            tear_web = true;
+            caught_default = false;
+            break;
+        default:
+            break;
+        }
+        if (caught_default) { /* default: */
+            if (mtmp.wormno)
+                throw new Error('trapeffect_web(): count_wsegs() not ported yet');
+            if (mptr.mlet === S_GIANT
+                /* exclude baby dragons and relatively short worms */
+                || (mptr.mlet === S_DRAGON && extra_nasty(mptr))) {
+                tear_web = true;
+            } else if (in_sight) {
+                await pline(`${Monnam(mtmp)} is caught in ${
+                    a_your[trap.madeby_u ? 1 : 0]} spider web.`);
+                seetrap(trap);
+            }
+            mtmp.mtrapped = tear_web ? 0 : 1;
+        }
+        if (tear_web) {
+            if (in_sight)
+                await pline(`${Monnam(mtmp)} tears through ${
+                    a_your[trap.madeby_u ? 1 : 0]} spider web!`);
+            deltrap(trap);
+            newsym(mtmp.mx, mtmp.my);
+        } else if (forcetrap && !mtmp.mtrapped) {
+            if (in_sight) {
+                await pline(`${Monnam(mtmp)} avoids ${
+                    a_your[trap.madeby_u ? 1 : 0]} spider web!`);
+                seetrap(trap);
+            }
+        }
+        return mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
+    }
+}
+
+// C ref: trap.c trapeffect_statue_trap()
+async function trapeffect_statue_trap(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_statue_trap(): activate_statue_trap() not ported yet');
+    } else {
+        /* monsters don't trigger statue traps */
+    }
+    return Trap_Effect_Finished;
+}
+
+// C ref: trap.c trapeffect_magic_trap()
+async function trapeffect_magic_trap(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_magic_trap(): domagictrap() not ported yet');
+    } else {
+        /* A magic trap.  Monsters usually immune. */
+        if (!rn2(21))
+            return trapeffect_fire_trap(mtmp, trap, trflags);
+    }
+    return Trap_Effect_Finished;
+}
+
+// C ref: trap.c trapeffect_anti_magic()
+async function trapeffect_anti_magic(mtmp, /* monster, possibly youmonst */
+                                     trap, /* trap->ttyp == ANTI_MAGIC */
+                                     trflags) {
+    if (wearing_iron_shoes(mtmp)) {
+        const shoes = which_armor(mtmp, W_ARMF);
+        /* iron shoes protect against antimagic traps only if
+           positively enchanted; the trap drains the enchantment
+           rather than the wearer */
+        if (shoes.spe > 0) {
+            /* no message if a monster does this, it isn't visible enough */
+            shoes.spe -= 1;
+            /* update_inventory() */
+            return Trap_Effect_Finished;
+        }
+    }
+
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_anti_magic(): hero branch not ported yet');
+    } else {
+        let trapkilled = false;
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        const see_it = cansee(mtmp.mx, mtmp.my);
+        const mptr = mtmp.data;
+
+        /* similar to hero's case, more or less */
+        if (!resists_magm(mtmp)) { /* lose spell energy */
+            if (!mtmp.mcan && (attacktype(mptr, AT_MAGC)
+                               || attacktype(mptr, AT_BREA))) {
+                mtmp.mspec_used = (mtmp.mspec_used || 0) + d(2, 6);
+                if (in_sight) {
+                    seetrap(trap);
+                    await pline(`${Monnam(mtmp)} seems lethargic.`);
+                }
+            }
+        } else { /* take some damage */
+            let dmgval2 = rnd(4);
+
+            if ((mtmp.minvent || []).some(o => o.oartifact))
+                throw new Error('trapeffect_anti_magic(): artifacts (defends_when_carried()) not ported yet');
+            if (passes_walls(mptr))
+                dmgval2 = Math.trunc((dmgval2 + 3) / 4);
+
+            if (in_sight)
+                seetrap(trap);
+            mtmp.mhp -= dmgval2;
+            if (mtmp.mhp < 1)
+                await monkilled(mtmp,
+                                in_sight
+                                ? "compression from an anti-magic field"
+                                : null,
+                                -AD_MAGM);
+            if (mtmp.mhp < 1)
+                trapkilled = true;
+            if (see_it)
+                newsym(trap.tx, trap.ty);
+        }
+        return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
+            ? Trap_Caught_Mon : Trap_Effect_Finished;
+    }
+}
+
+// C ref: trap.c trapeffect_landmine()
+async function trapeffect_landmine(mtmp, trap, trflags) {
+    let damage = rnd(16);
+    /* iron shoes protect against much of the damage from the
+       explosion, but you still take some damage (and wound legs)
+       because they can't fully block the blast */
+    if (wearing_iron_shoes(mtmp))
+        damage = Math.trunc((damage + 3) / 4);
+
+    if (mtmp === game.youmonst) {
+        throw new Error('trapeffect_landmine(): hero branch not ported yet');
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+
+        /* heavier monsters are more likely to set off a land mine; on the
+           other hand, any mon lighter than the trigger weight is immune */
+        const MINE_TRIGGER_WT = Math.trunc(WT_ELF / 2);
+        if (rn2(mtmp.data.cwt + 1) < MINE_TRIGGER_WT)
+            return Trap_Effect_Finished;
+        if (m_in_air(mtmp)) {
+            const already_seen = trap.tseen;
+
+            if (in_sight && !already_seen) {
+                await pline(`A trigger appears in a pile of soil below ${mon_nam(mtmp)}.`);
+                seetrap(trap);
+            }
+            if (rn2(3))
+                return Trap_Effect_Finished;
+            if (in_sight) {
+                newsym(mtmp.mx, mtmp.my);
+                await pline(`The air currents set ${
+                    already_seen ? "a land mine" : "it"} off!`);
+            }
+        } else if (in_sight) {
+            newsym(mtmp.mx, mtmp.my);
+            await pline(`${!Deaf() ? "KAABLAMM!!!  " : ""}${Monnam(mtmp)} triggers ${
+                a_your[trap.madeby_u ? 1 : 0]} land mine!`);
+        }
+        if (!in_sight && !Deaf())
+            await pline("Kaablamm!  You hear an explosion in the distance!");
+        throw new Error('trapeffect_landmine(): blow_up_landmine() not ported yet');
+    }
+}
+
+// C ref: trap.c clamp_hole_destination()
+export function clamp_hole_destination(dlev) {
+    const bottom = dng_bottom(dlev);
+
+    dlev.dlevel = Math.min(dlev.dlevel, bottom);
+    return dlev;
+}
+
+// C ref: trap.c trapeffect_selector()
+async function trapeffect_selector(mtmp, trap, trflags) {
+    switch (trap.ttyp) {
+    case ARROW_TRAP:
+        return trapeffect_arrow_trap(mtmp, trap, trflags);
+    case DART_TRAP:
+        return trapeffect_dart_trap(mtmp, trap, trflags);
+    case ROCKTRAP:
+        return trapeffect_rocktrap(mtmp, trap, trflags);
+    case SQKY_BOARD:
+        return trapeffect_sqky_board(mtmp, trap, trflags);
+    case BEAR_TRAP:
+        return trapeffect_bear_trap(mtmp, trap, trflags);
+    case SLP_GAS_TRAP:
+        return trapeffect_slp_gas_trap(mtmp, trap, trflags);
+    case RUST_TRAP:
+        return trapeffect_rust_trap(mtmp, trap, trflags);
+    case FIRE_TRAP:
+        return trapeffect_fire_trap(mtmp, trap, trflags);
+    case PIT:
+    case SPIKED_PIT:
+        return trapeffect_pit(mtmp, trap, trflags);
+    case HOLE:
+    case TRAPDOOR:
+        return trapeffect_hole(mtmp, trap, trflags);
+    case LEVEL_TELEP:
+        return trapeffect_level_telep(mtmp, trap, trflags);
+    case TELEP_TRAP:
+        return trapeffect_telep_trap(mtmp, trap, trflags);
+    case WEB:
+        return trapeffect_web(mtmp, trap, trflags);
+    case STATUE_TRAP:
+        return trapeffect_statue_trap(mtmp, trap, trflags);
+    case MAGIC_TRAP:
+        return trapeffect_magic_trap(mtmp, trap, trflags);
+    case ANTI_MAGIC:
+        return trapeffect_anti_magic(mtmp, trap, trflags);
+    case LANDMINE:
+        return trapeffect_landmine(mtmp, trap, trflags);
+    case MAGIC_PORTAL:
+    case POLY_TRAP:
+    case ROLLING_BOULDER_TRAP:
+    case VIBRATING_SQUARE:
+        throw new Error(`trapeffect_selector(): trap type ${trap.ttyp} not ported yet`);
+    default:
+        /* impossible("%s encountered a strange trap of type %d.") */
+        break;
+    }
+    return Trap_Effect_Finished;
+}
+
+// C ref: trap.c trapnote()
+function trapnote(trap, noprefix) {
+    const tnnames = [
+        "C note",  "D flat", "D note",  "E flat",
+        "E note",  "F note", "F sharp", "G note",
+        "G sharp", "A note", "B flat",  "B note",
+    ];
+    const tn = tnnames[trap.tnote];
+    return (!noprefix ? just_an(tn) : '') + tn;
+}
+
+// C ref: trap.c seetrap()
+export function seetrap(trap) {
+    if (!trap.tseen) {
+        trap.tseen = 1;
+        newsym(trap.tx, trap.ty);
+    }
+}
+
+// C ref: trap.c m_easy_escape_pit()
+/* can monster escape from a pit easily */
+function m_easy_escape_pit(mtmp) {
+    return (mtmp.data === mons[PM_PIT_FIEND]
+            || mtmp.data.msize >= MZ_HUGE);
+}
+
+// C ref: trap.c mintrap()
+export async function mintrap(mtmp, mintrapflags) {
+    const trap = t_at(mtmp.mx, mtmp.my);
+    const mptr = mtmp.data;
+    let trap_result = Trap_Effect_Finished;
+
+    if (!trap) {
+        mtmp.mtrapped = 0;      /* perhaps teleported? */
+    } else if (mtmp.mtrapped) { /* is currently in the trap */
+        if (!trap.tseen && cansee(mtmp.mx, mtmp.my) && canseemon(mtmp)
+            && (is_pit(trap.ttyp) || trap.ttyp === BEAR_TRAP
+                || trap.ttyp === HOLE
+                || trap.ttyp === WEB)) {
+            /* If you come upon an obviously trapped monster, then
+               you must be able to see the trap it's in too. */
+            seetrap(trap);
+        }
+
+        if (!rn2(40) || (is_pit(trap.ttyp) && m_easy_escape_pit(mtmp))) {
+            if (sobj_at(BOULDER, mtmp.mx, mtmp.my)
+                && is_pit(trap.ttyp)) {
+                if (!rn2(2)) {
+                    throw new Error('mintrap(): fill_pit() not ported yet');
+                }
+            } else {
+                if (canseemon(mtmp)) {
+                    /* set_msg_xy(mtmp->mx, mtmp->my) */
+                    if (is_pit(trap.ttyp))
+                        await pline(`${Monnam(mtmp)} climbs ${
+                            m_easy_escape_pit(mtmp) ? "easily " : ""}out of the pit.`);
+                    else if (trap.ttyp === BEAR_TRAP || trap.ttyp === WEB)
+                        throw new Error('mintrap(): trapname() not ported yet');
+                }
+                mtmp.mtrapped = 0;
+            }
+        } else if (metallivorous(mptr)) {
+            if (trap.ttyp === BEAR_TRAP || trap.ttyp === SPIKED_PIT)
+                throw new Error('mintrap(): metallivore eating a trap not ported yet');
+        }
+        trap_result = mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
+    } else {
+        const tt = trap.ttyp;
+        let forcetrap = ((mintrapflags & FORCETRAP) !== 0);
+        const forcebungle = (mintrapflags & FORCEBUNGLE) !== 0;
+        /* monster has seen such a trap before */
+        const already_seen = (mon_knows_traps(mtmp, tt)
+                              || (tt === HOLE && !mindless(mptr)));
+
+        if (fixed_tele_trap(trap)) {
+            mintrapflags |= FORCETRAP;
+            forcetrap = true;
+        }
+
+        if (mtmp === game.u.usteed) {
+            ; /* true when called from dotrap, inescapable is not an option */
+        } else if (game.level.flags.sokoban_rules && (is_pit(tt) || is_hole(tt))
+                   && !trap.madeby_u) {
+            ; /* nothing here, the trap effects will handle messaging */
+        } else if (!forcetrap) {
+            if (floor_trigger(tt) && check_in_air(mtmp, mintrapflags)) {
+                return Trap_Effect_Finished;
+            }
+            if (already_seen && rn2(4) && !forcebungle)
+                return Trap_Effect_Finished;
+        }
+
+        mon_learns_traps(mtmp, tt);
+        mons_see_trap(trap);
+
+        /* Monster is aggravated by being trapped by you.
+           Recognizing who made the trap isn't completely
+           unreasonable; everybody has their own style. */
+        if (trap.madeby_u && rnl(5))
+            throw new Error('mintrap(): setmangry() not ported yet');
+
+        trap_result = await trapeffect_selector(mtmp, trap, mintrapflags);
+
+        /* mtmp can't stay hiding under an object if trapped in non-pit
+           (mtmp hiding under object at armed bear trap location, hero
+           zaps wand of locking or spell of wizard lock at spot triggering
+           the trap and trapping mtmp there) */
+        if (!(mtmp.mhp < 1) && mtmp.mtrapped)
+            maybe_unhide_at(mtmp.mx, mtmp.my);
+    }
+    return trap_result;
 }
 
 /* mondata.h */

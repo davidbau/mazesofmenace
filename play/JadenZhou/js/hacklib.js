@@ -60,6 +60,36 @@ export function depth(uz) {
     return (dungeon.depth_start || 1) + dlevel - 1;
 }
 
+// C ref: hacklib.c ing_suffix() -- return the "ing" form of a verb
+export function ing_suffix(s) {
+    const vowel = "aeiouwy";
+    let buf = s;
+    let onoff = '';
+    const endsi = (suf) => buf.length >= suf.length
+        && strcmpi(buf.slice(buf.length - suf.length), suf) === 0;
+
+    if (endsi(" on") || endsi(" off") || endsi(" with")) {
+        const p = buf.lastIndexOf(' ');
+        onoff = buf.slice(p);
+        buf = buf.slice(0, p);
+    }
+    const n = buf.length;
+    if (n >= 2 && endsi("er")) { /* slither + ing */
+        /* nothing here */
+    } else if (n >= 3 && !vowel.includes(buf[n - 1])
+               && vowel.includes(buf[n - 2]) && !vowel.includes(buf[n - 3])) {
+        /* tip -> tipp + ing */
+        buf += buf[n - 1];
+    } else if (n >= 2 && endsi("ie")) { /* vie -> vy + ing */
+        buf = buf.slice(0, n - 2) + 'y';
+    } else if (n >= 1 && buf[n - 1] === 'e') /* grease -> greas + ing */
+        buf = buf.slice(0, n - 1);
+    buf += "ing";
+    if (onoff)
+        buf += onoff;
+    return buf;
+}
+
 // C ref: rn2(x) already in rng.js — re-export not needed
 
 // C ref: hacklib.c highc()

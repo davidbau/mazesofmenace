@@ -31,6 +31,7 @@ import {
     A_LAWFUL, POOL, MOAT, WATER, DRAWBRIDGE_UP, LAVAPOOL, LAVAWALL,
     W_NONPASSWALL, D_CLOSED, D_LOCKED, P_POLEARMS, P_SHORT_SWORD, P_SABER,
     ALTAR, COLNO, ROWNO, isok, ACCESSIBLE, IS_STWALL, IS_DOOR,
+    W_ARM, I_SPECIAL,
 } from './const.js';
 import {
     ROOMOFFSET, OBJ_AT, IS_WALL, SDOOR, SCORR, HWALL, TLCORNER, TRWALL, BLCORNER,
@@ -47,7 +48,7 @@ import { mksobj, mkobj_at, curse, bless, next_ident, set_corpsenm } from './mkob
 import {
     monsndx, set_mon_data, is_elf, is_dwarf, is_demon, is_male, is_female,
     is_neuter, is_undead, is_swimmer, is_floater, passes_walls, haseyes,
-    is_bat, little_to_big,
+    is_bat, little_to_big, pm_invisible,
 } from './mondata.js';
 import { engr_at } from './engrave.js';
 import { enexto_core } from './teleport.js';
@@ -56,8 +57,13 @@ import { M_AP_NOTHING, M_AP_MONSTER, HALLUC, TELEPAT,
          DETECT_MONSTERS } from './const.js';
 import { dist2 } from './hacklib.js';
 import { an, vtense } from './objnam.js';
-import { newsym, pline } from './display.js';
-import { canseemon, set_apparxy } from './monmove.js';
+import { newsym, pline, canseemon } from './display.js';
+import { set_apparxy } from './monmove.js';
+import { noteleport_level } from './teleport.js';
+import { newcham } from './mon.js';
+import { mpickobj } from './steal.js';
+import { add_to_minv } from './mkobj.js';
+import { m_dowear, which_armor } from './worn.js';
 
 function impossible(msg) { console.error(`impossible: ${msg}`); }
 
@@ -75,7 +81,7 @@ function sgn(n) { return (n < 0) ? -1 : (n !== 0); }
 
 // C ref: mondata.h pm_resistance(), is_placeholder()
 function pm_resistance(ptr, typ) { return (ptr.mresists & typ) !== 0; }
-function is_placeholder(ptr) {
+export function is_placeholder(ptr) {
     return (ptr === mons[PM_ORC] || ptr === mons[PM_GIANT]
             || ptr === mons[PM_ELF] || ptr === mons[PM_HUMAN]);
 }
@@ -85,7 +91,7 @@ function Is_rogue_level(lev) {
     const z = game.dungeon_topology.d_rogue_level;
     return !!((z.dlevel || z.dnum) && lev.dnum === z.dnum && lev.dlevel === z.dlevel);
 }
-function In_endgame(lev) {
+export function In_endgame(lev) {
     return lev.dnum === game.dungeon_topology.d_astral_level.dnum;
 }
 
@@ -497,7 +503,7 @@ function quest_mon_represents_role(mptr, role_pm) {
             && (mptr.msound === M.MS_LEADER || mptr.msound === M.MS_NEMESIS));
 }
 // C ref: steed.c can_saddle()
-function can_saddle(mtmp) {
+export function can_saddle(mtmp) {
     const ptr = mtmp.data;
     const steeds = [M.S_QUADRUPED, M.S_UNICORN, M.S_ANGEL, M.S_CENTAUR,
                     M.S_DRAGON, M.S_JABBERWOCK];
@@ -682,22 +688,8 @@ export function goodpos(x, y, mtmp, gpflags) {
 }
 
 // ---- inventory helpers ----
-// C ref: steal.c mpickobj() -- merging not ported; never merges
-function mpickobj(mtmp, otmp) {
-    otmp.where = 'OBJ_MINVENT';
-    otmp.ocarry = mtmp;
-    if (!mtmp.minvent) mtmp.minvent = [];
-    mtmp.minvent.push(otmp);
-    return false;
-}
-// C ref: mkobj.c add_to_minv()
-function add_to_minv(mtmp, otmp) { return mpickobj(mtmp, otmp); }
-// C ref: worn.c which_armor()
-function which_armor(mon, flag) {
-    for (const o of mon.minvent || [])
-        if (o.owornmask & flag) return o;
-    return null;
-}
+/* C ref: worn.c which_armor() lives in worn.js */
+export { which_armor };
 // C ref: invent.c findgold()
 function findgold(chain) {
     for (const o of chain || [])
@@ -1389,7 +1381,7 @@ function rnd_class(first, last) {
 }
 
 // C ref: makemon.c mbirth_limit()
-function mbirth_limit(mndx) {
+export function mbirth_limit(mndx) {
     /* There is an implicit limit of 4 for "high priest of <deity>",
      * but aligned priests can grow into high priests, thus they aren't
      * really limited to 4, so leave the default amount in place for them.
@@ -1659,6 +1651,7 @@ export function makemon(ptr, x, y, mmflags) {
         ispriest: 0, isshk: 0, isgd: 0, mstrategy: 0, malign: 0,
         wormno: 0, mtrapseen: 0, mwandexp: 0, minvent: null, nmon: null,
         mundetected: 0, mavenge: 0, movement: 0, mspeed: 0,
+        misc_worn_check: 0, mw: null, weapon_check: 0 /* NO_WEAPON_WANTED */,
     };
 
     if (mmflags & MM_EGD) mtmp.egd = {};    /* newegd() */
@@ -1841,7 +1834,7 @@ export function makemon(ptr, x, y, mmflags) {
         if (is_armed(ptr))
             m_initweap(mtmp); /* equip with weapons / armor */
         m_initinv(mtmp); /* add on a few special items incl. more armor */
-        m_dowear(mtmp, true);
+        m_dowear(mtmp, true); /* creation: synchronous, see worn.js */
 
         if (!rn2(100) && is_domestic(ptr)
             && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE)) {
@@ -1940,7 +1933,8 @@ function makemon_sensemon(mtmp) {
    not saddled, not hallucinating) is ported here */
 function makemon_Amonnam(mtmp) {
     if (mtmp.mgivenname || mtmp.isshk || mtmp.ispriest || mtmp.isminion
-        || mtmp.minvis || (mtmp.data.geno & G_UNIQ) || mtmp.misc_worn_check)
+        || mtmp.minvis || (mtmp.data.geno & G_UNIQ)
+        || ((mtmp.misc_worn_check || 0) & W_SADDLE))
         throw new Error('makemon(): x_monnam() for named/special monsters not ported yet');
     const hal = game.u.uprops?.[HALLUC];
     if (hal && hal.intrinsic)
@@ -2139,14 +2133,9 @@ export function set_mimic_sym(mtmp) {
         || (ap_type === M_AP_OBJECT && appear === O.BOULDER))
         game.vision_full_recalc = 1;
 }
-// C ref: mon.c newcham() -- not ported yet
-function newcham(mtmp, mdat, ncflags) {
-    impossible('newcham not ported');
-    return false;
-}
 // C ref: mon.c hideunder() -- concealment state only (no rolls); floor
 // objects aren't kept in a list yet, so there is nothing to hide under
-function hideunder(mtmp) {
+export function hideunder(mtmp) {
     return false;
 }
 // C ref: worm.c get_wormno()
@@ -2164,8 +2153,6 @@ function get_wormno() {
 function initworm(worm, wseg_count) {
     game.wheads[worm.wormno] = worm;
 }
-// C ref: worn.c m_dowear() -- wearing state only, no rolls; not ported yet
-function m_dowear(mon, creation) { }
 // C ref: steed.c put_saddle_on_mon()
 export function put_saddle_on_mon(saddle, mtmp) {
     if (!can_saddle(mtmp) || which_armor(mtmp, W_SADDLE)) {
@@ -2402,19 +2389,6 @@ export function set_malign(mtmp) {
 }
 
 // ---- muse.c: random items for monsters ----
-// C ref: muse.c noteleport_level()
-function noteleport_level(mon) {
-    /* demon court in Gehennom prevent others from teleporting */
-    if (In_hell(game.u.uz) && !(is_dlord(mon.data) || is_dprince(mon.data)))
-        for (const m of game.level.monsters || [])
-            if (!m.dead && (is_dlord(m.data) || is_dprince(m.data)) && m !== mon)
-                return true;
-    /* natural no-teleport level */
-    if (game.level.flags.noteleport)
-        return true;
-    return false;
-}
-
 // C ref: muse.c rnd_defensive_item()
 export function rnd_defensive_item(mtmp) {
     const pm = mtmp.data;

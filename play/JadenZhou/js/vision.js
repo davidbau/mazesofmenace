@@ -4,6 +4,7 @@
 // Contestants should port the full vision.c for complete parity.
 
 import { game } from './gstate.js';
+import { BLINDED } from './const.js';
 import {
     COLNO, ROWNO, DOOR, SDOOR, POOL,
     D_CLOSED, D_LOCKED, D_TRAPPED,
@@ -57,8 +58,17 @@ const cs_rmax0 = new Int16Array(ROWNO).fill(0);
 const cs_rmin1 = new Int16Array(ROWNO).fill(COLNO);
 const cs_rmax1 = new Int16Array(ROWNO).fill(0);
 
+// C ref: vision.c static vis_func/varg -- view_from()'s "func" callback
+let vis_func = null;
+let varg = null;
+
 function mark_visible_range(row, left, right) {
     if (left > right) return;
+    if (vis_func) {
+        for (let i = left; i <= right; i++)
+            vis_func(i, row, varg);
+        return;
+    }
     const rowp = game.cs_rows?.[row];
     if (!rowp) return;
     for (let i = left; i <= right; i++) rowp[i] = COULD_SEE;
@@ -119,6 +129,20 @@ export function vision_reset() {
     }
     game._viz_rmin = null;
     game._viz_rmax = null;
+}
+
+// C ref: vision.c recalc_block_point() -- recalc if point should be
+// blocked or unblocked.  This port's viz_clear[] and row pointers come
+// from vision_reset()'s _blocks() scan, so redo that scan instead of C's
+// incremental block_point()/unblock_point() (fill_point()/dig_point());
+// the "could see it, so do a full recalc" rule is the same.
+export function recalc_block_point(x, y) {
+    const rmin = game._viz_rmin, rmax = game._viz_rmax;
+    vision_reset();
+    game._viz_rmin = rmin;
+    game._viz_rmax = rmax;
+    if (game.viz_array?.[y]?.[x])
+        game.vision_full_recalc = 1;
 }
 
 // Bresenham quadrant path functions (C ref: vision.c q1-q4_path)
@@ -351,12 +375,15 @@ function left_side(row, left_mark, right, limitsIdx) {
 }
 
 // C ref: vision.c view_from()
-function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0) {
+function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0,
+                   func = null, arg = null) {
     game.vis_start_col = scol;
     game.vis_start_row = srow;
     game.cs_rows = cs_rows;
     game.cs_left = cs_left;
     game.cs_right = cs_right;
+    vis_func = func;
+    varg = arg;
 
     let left, right;
     if (viz_clear[srow][scol]) {
@@ -392,6 +419,52 @@ function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0) {
     }
 }
 
+// C ref: vision.c do_clear_area()
+/*
+ * Calculate all possible visible locations as viewed from the given location
+ * (srow,scol) within the range specified. Perform "func" with (x, y) args and
+ * additional argument "arg" for each square.
+ *
+ * If not centered on the hero, just forward arguments to view_from(); it
+ * will call "func" when necessary.  If the hero is the center, use the
+ * vision matrix and reduce extra work.
+ */
+export function do_clear_area(scol, srow, range, func, arg) {
+    /* If not centered on hero, do the hard work of figuring the area */
+    if (scol !== game.u.ux || srow !== game.u.uy) {
+        view_from(srow, scol, null, null, null, range, func, arg);
+        /* vis_func is only consulted by view_from()'s callees; clear it
+           so a later vision_recalc() marks could_see rows again */
+        vis_func = null;
+        varg = null;
+    } else {
+        let x, y, min_x, max_x, max_y, offset;
+        /* vision doesn't pass through water or clouds, detection should;
+           detecting(func) is False for every caller ported so far */
+        const override_vision = false;
+
+        if (range > 15 /* MAX_RADIUS */ || range < 1)
+            throw new Error(`do_clear_area:  illegal range ${range}`);
+        if (game.vision_full_recalc)
+            vision_recalc(0); /* recalc vision if dirty */
+        const limits = circle_start[range]; /* circle_ptr(range) */
+        if ((max_y = (srow + range)) >= ROWNO)
+            max_y = ROWNO - 1;
+        if ((y = (srow - range)) < 0)
+            y = 0;
+        for (; y <= max_y; y++) {
+            offset = circle_data[limits + Math.abs(y - srow)];
+            if ((min_x = (scol - offset)) < 1)
+                min_x = 1;
+            if ((max_x = (scol + offset)) >= COLNO)
+                max_x = COLNO - 1;
+            for (x = min_x; x <= max_x; x++)
+                if (couldsee(x, y) || override_vision)
+                    func(x, y, arg);
+        }
+    }
+}
+
 // C ref: vision_recalc(control)
 export function vision_recalc(control = 0) {
     const u = game.u;
@@ -412,6 +485,34 @@ export function vision_recalc(control = 0) {
 
     if (control !== 2) {
         view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+    }
+
+    /* C ref: vision.c vision_recalc() -- the Blind case: calculate the
+       could_see array even when blind so that monsters can see you, even
+       if you can't see them; only update positions we used to be able to
+       see, then skip the normal update loop */
+    const bp = u.uprops?.[BLINDED];
+    if (control !== 2 && !u.uswallow && bp && (bp.intrinsic || bp.extrinsic)
+        && !bp.blocked) {
+        const temp_array = game.viz_array; /* set viz_array so newsym() will work */
+        game.viz_array = next;
+        game.active_buf = game.active_buf === 0 ? 1 : 0;
+        const old_rmin = game._viz_rmin, old_rmax = game._viz_rmax;
+        if (temp_array) {
+            for (let row = 0; row < ROWNO; row++) {
+                const old_row = temp_array[row];
+                const start = old_rmin ? Math.min(old_rmin[row], next_rmin[row]) : next_rmin[row];
+                const stop = old_rmax ? Math.max(old_rmax[row], next_rmax[row]) : next_rmax[row];
+                for (let col = start; col <= stop; col++)
+                    if (old_row[col] & IN_SIGHT)
+                        newsym(col, row);
+            }
+        }
+        /* skip: */
+        newsym(u.ux, u.uy); /* Make sure the hero shows up! */
+        game._viz_rmin = next_rmin;
+        game._viz_rmax = next_rmax;
+        return;
     }
 
     // Compute IN_SIGHT from COULD_SEE + lighting
@@ -564,3 +665,4 @@ export function clear_path(col1, row1, col2, row2) {
     }
     return !!result;
 }
+

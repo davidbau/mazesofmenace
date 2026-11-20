@@ -24,6 +24,7 @@ import {
     TELEPORT_BANNER_C, PL_NSIZ, ROWNO, COLNO,
 } from './const.js';
 import { genl_player_setup } from './role.js';
+import { lowc } from './hacklib.js';
 import { row_refresh, bot, flush_screen, pline, docrt } from './display.js';
 import { extcmds_match } from './cmd.js';
 import { extcmdlist, ECM_NOFLAGS, ECM_IGNOREAC, ECM_EXACTMATCH } from './func_tab.js';
@@ -704,7 +705,54 @@ export async function tty_yn_function(query, resp, def) {
     t.toplin = TOPLINE_SPECIAL_PROMPT;
     t.inread++;
     if (resp) {
-        throw new Error('tty_yn_function: restricted responses not ported yet');
+        let preserve_case = false;
+        const allow_num = resp.includes('#');
+        let respbuf = resp;
+        /* normally we force lowercase, but if any uppercase letters
+           are present in the allowed response, preserve case;
+           check this before stripping the hidden choices */
+        if (/[A-Z]/.test(respbuf))
+            preserve_case = true;
+        /* any acceptable responses that follow <esc> aren't displayed */
+        const rb = respbuf.indexOf('\x1b');
+        if (rb >= 0)
+            respbuf = respbuf.slice(0, rb);
+        prompt = `${query.slice(0, 255)} [${respbuf}]`;
+        if (def && def !== '\0')
+            prompt += ` (${def})`;
+        /* not pline("%s ", prompt);
+           trailing space is wanted here in case of reprompt */
+        prompt += ' ';
+        await update_topl(prompt); /* custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY) */
+
+        do { /* loop until we get valid input */
+            q = await readchar();
+            if (!preserve_case)
+                q = lowc(q);
+            if (q === '\x10') /* ctrl-P */
+                throw new Error('tty_yn_function: ^P message history not ported yet');
+            const digit_ok = allow_num && q >= '0' && q <= '9';
+            if (q === '\x1b') {
+                if (resp.includes('q'))
+                    q = 'q';
+                else if (resp.includes('n'))
+                    q = 'n';
+                else
+                    q = def;
+                break;
+            } else if (quitchars.includes(q)) {
+                q = def;
+                break;
+            }
+            if (!resp.includes(q) && !digit_ok) {
+                /* tty_nhbell(); */
+                q = '\0';
+            } else if (q === '#' || digit_ok) {
+                throw new Error('tty_yn_function: # count responses not ported yet');
+            }
+        } while (q === '\0');
+        /* clean_up: gt.toplines is rewritten to prompt + key2txt(q) */
+        game.toplines = prompt + q;
     } else {
         /* no restriction on allowed response, so always preserve case */
         prompt = `${query} `;
@@ -714,6 +762,8 @@ export async function tty_yn_function(query, resp, def) {
     /* clean_up: */
     t.inread--;
     t.toplin = TOPLINE_NON_EMPTY;
+    if (wins()[game.WIN_MESSAGE].cury)
+        tty_clear_nhwindow(game.WIN_MESSAGE);
     return q;
 }
 
@@ -1016,6 +1066,36 @@ export async function tty_select_menu(window, how) {
         n = selected.length;
     }
     return { n, selected };
+}
+
+// C ref: wintty.c tty_message_menu()
+export async function tty_message_menu(let_, how, mesg) {
+    const t = tty();
+    /* "menu" without selection; use ordinary pline, no more() */
+    if (how === PICK_NONE) {
+        await pline(mesg);
+        return '\0';
+    }
+
+    t.dismiss_more = let_;
+    game.morc = '\0';
+    /* barebones pline(); since we're only supposed to be called after
+       response to a prompt, we'll assume that the display is up to date */
+    await tty_putstr(game.WIN_MESSAGE, 0, mesg);
+    /* if `mesg' didn't wrap (triggering --More--), force --More-- now */
+    if (t.toplin === TOPLINE_NEED_MORE) {
+        await more();
+        t.toplin = TOPLINE_NEED_MORE; /* more resets this */
+        tty_clear_nhwindow(game.WIN_MESSAGE);
+    }
+    /* normally <ESC> means skip further messages, but in this case
+       it means cancel the current prompt; any other messages should
+       continue to be output normally */
+    wins()[game.WIN_MESSAGE].flags &= ~WIN_CANCELLED;
+    t.dismiss_more = 0;
+
+    return ((how === PICK_ONE && game.morc === let_) || game.morc === '\x1b')
+        ? game.morc : '\0';
 }
 
 // C ref: wintty.c tty_display_nhwindow() (NHW_TEXT and NHW_MENU)

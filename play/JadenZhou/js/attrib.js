@@ -351,27 +351,39 @@ function Fixed_abil() {
     return !!(p && (p.intrinsic || p.extrinsic));
 }
 
+// C ref: attrib.c plusattr[], minusattr[], attrname[]
+const plusattr = [ "strong", "smart", "wise",
+                   "agile",  "tough", "charismatic" ],
+      minusattr = [ "weak",    "stupid",
+                    "foolish", "clumsy",
+                    "fragile", "repulsive" ];
+export const attrname = [ "strength", "intelligence", "wisdom",
+                          "dexterity", "constitution", "charisma" ];
+
 // C ref: attrib.c adjattrib()
 /* adjust an attribute; return True if change is made, False otherwise */
-export function adjattrib(ndx,    /* which characteristic */
-                          incr,   /* amount of change */
-                          msgflg) /* positive => no message, zero => message,
-                                   * and negative => conditional (msg if
-                                   * change made) */ {
+export async function adjattrib(ndx,    /* which characteristic */
+                                incr,   /* amount of change */
+                                msgflg) /* positive => no message, zero => message,
+                                         * and negative => conditional (msg if
+                                         * change made) */ {
     const u = game.u;
-    let old_acurr, decr;
+    let old_acurr, old_abase, old_amax, decr;
+    let abonflg, attrstr;
 
     if (Fixed_abil() || !incr)
         return false;
 
     if ((ndx === A_INT || ndx === A_WIS) && game.uarmh
         && game.uarmh.otyp === DUNCE_CAP) {
-        /* "Your cap constricts briefly, then relaxes again." (msgflg 0):
-           messages are not ported yet */
+        if (msgflg === 0)
+            await pline("Your cap constricts briefly, then relaxes again."); /* Your() */
         return false;
     }
 
     old_acurr = ACURR(ndx);
+    old_abase = ABASE(ndx);
+    old_amax = AMAX(ndx);
     u.acurr.a[ndx] += incr; /* when incr is negative, this reduces ABASE() */
     if (incr > 0) {
         if (ABASE(ndx) > AMAX(ndx)) {
@@ -379,6 +391,8 @@ export function adjattrib(ndx,    /* which characteristic */
             if (AMAX(ndx) > ATTRMAX(ndx))
                 u.acurr.a[ndx] = u.amax.a[ndx] = ATTRMAX(ndx);
         }
+        attrstr = plusattr[ndx];
+        abonflg = (ABON(ndx) < 0);
     } else { /* incr is negative */
         if (ABASE(ndx) < ATTRMIN(ndx)) {
             /*
@@ -392,10 +406,21 @@ export function adjattrib(ndx,    /* which characteristic */
             if (AMAX(ndx) < ATTRMIN(ndx))
                 u.amax.a[ndx] = ATTRMIN(ndx);
         }
+        attrstr = minusattr[ndx];
+        abonflg = (ABON(ndx) > 0);
     }
     if (ACURR(ndx) === old_acurr) {
-        /* "You're already as <attr> as you can get." / "Your innate <attr>
-           has improved." (msgflg 0): messages are not ported yet */
+        if (msgflg === 0 && game.flags.verbose) {
+            if (ABASE(ndx) === old_abase && AMAX(ndx) === old_amax) {
+                await pline(`You're ${abonflg ? "currently" : "already"} as ${
+                    attrstr} as you can get.`);
+            } else {
+                /* current stayed the same but base value changed, or
+                   base is at minimum and reduction caused max to drop */
+                await pline(`Your innate ${attrname[ndx]} has ${
+                    (incr > 0) ? "improved" : "declined"}.`); /* Your() */
+            }
+        }
         return false;
     }
 
@@ -403,8 +428,10 @@ export function adjattrib(ndx,    /* which characteristic */
     u.aexe.a[ndx] = 0;
 
     game.disp_botl = true;
-    /* You_feel("%s%s!", ...) for msgflg <= 0 and encumber_msg() once
-       in_moveloop: messages are not ported yet */
+    if (msgflg <= 0)
+        await pline(`You feel ${(incr > 1 || incr < -1) ? "very " : ""}${attrstr}!`); /* You_feel() */
+    /* encumber_msg() once in_moveloop for A_STR/A_CON: its messages are
+       not ported yet */
     return true;
 }
 
@@ -469,7 +496,7 @@ export function init_attr(np) {
 
 // C ref: attrib.c vary_init_attr()
 /* apply minor variation to attributes */
-export function vary_init_attr() {
+export async function vary_init_attr() {
     const u = game.u;
     let i;
 
@@ -477,7 +504,7 @@ export function vary_init_attr() {
         if (!rn2(20)) {
             const xd = rn2(7) - 2; /* biased variation */
 
-            adjattrib(i, xd, true);
+            await adjattrib(i, xd, true);
             if (ABASE(i) < AMAX(i))
                 u.amax.a[i] = ABASE(i);
         }
@@ -689,7 +716,7 @@ export async function exerchk() {
                     break nextattrib;
 
                 /* debugpline1("exerchk: changing %d.", i); */
-                if (adjattrib(i, mod_val, -1)) {
+                if (await adjattrib(i, mod_val, -1)) {
                     /* if you actually changed an attrib - zero accumulation */
                     u.aexe.a[i] = ax = 0;
                     /* then print an explanation */
@@ -715,4 +742,32 @@ export function change_luck(n) {
         u.uluck = LUCKMIN;
     if (u.uluck > 0 && u.uluck > LUCKMAX)
         u.uluck = LUCKMAX;
+}
+
+// C ref: attrib.c adjalign()
+export function adjalign(n) {
+    const u = game.u;
+    const newalign = u.ualign.record + n;
+
+    if (n < 0) {
+        const newabuse = (u.ualign.abuse || 0) - n;
+
+        if (newalign < u.ualign.record)
+            u.ualign.record = newalign;
+        if (newabuse > (u.ualign.abuse || 0)) {
+            u.ualign.abuse = newabuse;
+            adj_erinys(newabuse);
+        }
+    } else if (newalign > u.ualign.record) {
+        u.ualign.record = newalign;
+        const ALIGNLIM = 10 + Math.trunc(game.moves / 200); /* align.h */
+        if (u.ualign.record > ALIGNLIM)
+            u.ualign.record = ALIGNLIM;
+    }
+}
+
+// C ref: mon.c adj_erinys() -- only the first steps are ported
+function adj_erinys(abuse) {
+    if (abuse > 5)
+        throw new Error('adj_erinys(): Erinyes strengthening not ported yet');
 }

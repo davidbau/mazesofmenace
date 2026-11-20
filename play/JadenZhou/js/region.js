@@ -217,6 +217,27 @@ function make_gas_cloud(cloud, damage, inside_cloud) {
         throw new Error('make_gas_cloud(): "You are enveloped in a cloud" message not ported yet');
 }
 
+// C ref: region.c visible_region_at()
+/* Return the first visible region at <x,y>, or null */
+export function visible_region_at(x, y) {
+    for (const reg of level_regions()) {
+        if (!reg.visible || reg.ttl === -2)
+            continue;
+        if (inside_region(reg, x, y))
+            return reg;
+    }
+    return null;
+}
+
+// C ref: region.c create_gas_cloud()
+/* Create a gas cloud which starts at (x,y) and grows outward from it via
+ * breadth-first search.  Not ported yet: once created, a temporary cloud
+ * needs run_regions() aging/expiry and vision blocking, which JS lacks. */
+export function create_gas_cloud(x, y, cloudsize, damage) {
+    void x; void y; void cloudsize; void damage;
+    throw new Error('create_gas_cloud() not ported yet (needs run_regions() and vision blocking)');
+}
+
 // C ref: region.c create_gas_cloud_selection()
 /* create a single gas cloud from selection */
 export function create_gas_cloud_selection(sel, damage) {

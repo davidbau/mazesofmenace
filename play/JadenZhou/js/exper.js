@@ -10,7 +10,10 @@ import { A_WIS, MAXULEV } from './const.js';
 import {
     PM_CLERIC, PM_WIZARD, PM_HEALER, PM_KNIGHT, PM_BARBARIAN, PM_VALKYRIE,
 } from './monsters.js';
-import { ACURR } from './attrib.js';
+import { ACURR, adjabil } from './attrib.js';
+import { pline } from './display.js';
+import { Goodbye } from './role.js';
+import { resists_drli } from './mondata.js';
 
 // C ref: exper.c newuexp()
 export function newuexp(lev) {
@@ -116,4 +119,94 @@ export function newexplevel() {
     const u = game.u;
     if (u.ulevel < MAXULEV && u.uexp >= newuexp(u.ulevel))
         throw new Error('newexplevel(): pluslvl() not ported yet');
+}
+
+// C ref: attrib.c minuhpmax()
+function minuhpmax(altmin) {
+    if (altmin < 1)
+        altmin = 1;
+    return Math.max(game.u.ulevel, altmin);
+}
+
+// C ref: attrib.c setuhpmax() -- the !Upolyd case
+function setuhpmax(newmax, even_when_polyd) {
+    const u = game.u;
+    if (u.umonnum !== u.umonster && !even_when_polyd)
+        throw new Error('setuhpmax(): polymorphed hit points not ported yet');
+    if (newmax !== u.uhpmax) {
+        u.uhpmax = newmax;
+        if (u.uhpmax > (u.uhppeak || 0))
+            u.uhppeak = u.uhpmax;
+        game.disp_botl = true;
+    }
+    if (u.uhp > u.uhpmax) {
+        u.uhp = u.uhpmax;
+        game.disp_botl = true;
+    }
+}
+
+// C ref: exper.c losexp()
+export async function losexp(drainer) /* cause of death, if drain should be fatal */ {
+    const u = game.u;
+    let num, uhpmin, olduhpmax;
+
+    /* override life-drain resistance when handling an explicit
+       wizard mode request to reduce level; never fatal though */
+    if (drainer && drainer === "#levelchange")
+        drainer = null;
+    else if (resists_drli(game.youmonst))
+        return;
+
+    /* level-loss message; "Goodbye level 1." is fatal; divine anger
+       (drainer==NULL) resets a level 1 character to 0 experience points
+       without reducing level and that isn't fatal so suppress the message
+       in that situation */
+    if (u.ulevel > 1 || drainer)
+        await pline(`${Goodbye()} level ${u.ulevel}.`);
+
+    if (u.ulevel > 1) {
+        u.ulevel -= 1;
+        /* remove intrinsic abilities */
+        await adjabil(u.ulevel + 1, u.ulevel);
+        /* livelog_printf(), SoundAchievement(): not needed */
+    } else { /* u.ulevel==1 */
+        if (drainer)
+            throw new Error('losexp(): fatal level drain (done(DIED)) not ported yet');
+        /* no drainer or lifesaved */
+        u.uexp = 0;
+    }
+
+    olduhpmax = u.uhpmax;
+    uhpmin = minuhpmax(10); /* same minimum as is used by life-saving */
+    num = u.uhpinc[u.ulevel];
+    u.uhpmax -= num;
+    if (u.uhpmax < uhpmin)
+        setuhpmax(uhpmin, true);
+    /* uhpmax might try to go up if it has previously been reduced */
+    if (u.uhpmax > olduhpmax)
+        setuhpmax(olduhpmax, true);
+
+    u.uhp -= num;
+    if (u.uhp < 1)
+        u.uhp = 1;
+    else if (u.uhp > u.uhpmax)
+        u.uhp = u.uhpmax;
+
+    num = u.ueninc[u.ulevel];
+    u.uenmax -= num;
+    if (u.uenmax < 0)
+        u.uenmax = 0;
+    u.uen -= num;
+    if (u.uen < 0)
+        u.uen = 0;
+    else if (u.uen > u.uenmax)
+        u.uen = u.uenmax;
+
+    if (u.uexp > 0)
+        u.uexp = newuexp(u.ulevel) - 1;
+
+    if (u.umonnum !== u.umonster) /* Upolyd */
+        throw new Error('losexp(): polymorphed level loss not ported yet');
+
+    game.disp_botl = true;
 }

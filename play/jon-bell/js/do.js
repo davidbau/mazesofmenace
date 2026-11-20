@@ -2329,7 +2329,20 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                  * (do.c:1840), still before any bot() or map repaint. */
                 await ballfall();
             }
-            await _gl_selftouch('Falling, you');
+            {
+                const _heldFall = g._botlPaintHeld, _punBall = _st_Punished() && !welded(g.u.uball);
+                g._levelgenPaintFreeze = _oldPaint || _preSavelevPaint;
+                if (oldUz) g._botlUzFrozen = { dnum: oldUz.dnum, dlevel: oldUz.dlevel };
+                g._botlPaintHeld = true; /* do.c:1720 delay_flushing: map + bot() deferred */
+                const _botSeq0 = g._botlPaintSeq | 0;
+                try {
+                    await _gl_selftouch('Falling, you');
+                    if ((g._botlPaintSeq | 0) !== _botSeq0 && _oldPaint && g._lastPaintedBotl)
+                        Object.assign(_oldPaint, { botl: g._lastPaintedBotl, dnum: g._lastPaintedBotl.dnum, dlevel: g._lastPaintedBotl.dlevel });
+                } finally {
+                    if (!_punBall) { g._levelgenPaintFreeze = null; g._botlUzFrozen = null; g._botlPaintHeld = _heldFall; }
+                }
+            }
             do_fall_dmg = true;
         }
     }

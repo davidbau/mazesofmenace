@@ -420,7 +420,7 @@ async function mount_steed(mtmp, force) {
             else {
                 /* C topl.c:537-547 leaves the latest answered prompt painted.
                  * Keep it instead of doride's earlier force-mount question. */
-                if (!g._pending_message && !g._resultMessage)
+                if (!g._pending_message && !g._resultMessage && !g.iflags?.query_menu)
                     g._resultMessage = g._ynStaleTopline = `${qbuf} [yn] (n)`;
                 return false;
             }

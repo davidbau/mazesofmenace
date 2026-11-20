@@ -1674,7 +1674,11 @@ async function floorfood_tin() {
                 const qbuf = await safe_qbuf_invent('', `There ${verb} `, ` here; tin ${tail}?`, otmp, doname, ansimpleoname, one ? 'something' : 'things');
                 const cc = await yn_function(qbuf, 'ynq', 'n');
                 if (cc === 'y') return otmp;
-                if (cc === 'q') { g._resultMessage = g._ynStaleTopline = qbuf + ' [ynq] (n)'; return null; }
+                if (cc === 'q') {
+                    if (!g.iflags?.query_menu)
+                        g._resultMessage = g._ynStaleTopline = qbuf + ' [ynq] (n)';
+                    return null;
+                }
                 g.getobj_else = (g.getobj_else | 0) + 1;
                 g._pending_message = '';
             }
@@ -5550,7 +5554,8 @@ async function use_trap(otmp) {
         if (answer !== 'y') {
             /* a later pline overwrites the dead prompt (topl.c:257-266), so
              * park it on the stale-yn channel rather than as a pending line. */
-            game._resultMessage = game._ynStaleTopline = `${query} [yn] (n)`;
+            if (!game.iflags?.query_menu)
+                game._resultMessage = game._ynStaleTopline = `${query} [yn] (n)`;
             reset_trapset();
             return;
         }

@@ -1731,7 +1731,7 @@ const trap_engravings = [
 ];
 
 // C ref: dungeon.c Can_fall_thru()
-function Can_fall_thru(lev) {
+export function Can_fall_thru(lev) {
     return (Can_dig_down(lev) || Is_stronghold(lev));
 }
 

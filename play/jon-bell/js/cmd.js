@@ -1189,6 +1189,12 @@ async function tty_get_ext_cmd_inner() {
      * hard-wraps at column CO-1 instead of word-wrapping or paging.  Cleared on
      * every exit from the loop below. */
     g._topl_prompt_echo = true;
+    /* C getline.c:67 custompline -> vpline() pline.c:266-271: the prompt's pline
+     * refreshes dirty vision (a fog-cloud hero's m_everyturn_effect cloud,
+     * allmain.c:481) before flushing, so a later reveal_terrain pline finds the
+     * flag clear and does not repaint the hero over the terrain view. */
+    if (g.vision_full_recalc)
+        vision_recalc(0);
     await flush_screen(1);
     set_cursor(2, 0); /* override cursor after flush_screen resets it */
     /* C ref: getline.c:79-212 — every edit is echoed through putsyms(), so the
@@ -3766,15 +3772,39 @@ async function doterrain() {
         str: `${String.fromCharCode(CH_a + i)} - ${s2}`, which: i + 1,
     }));
     await _show();
-    /* C process_menu_window's PICK_ONE loop: ESC cancels, an accelerator picks
-     * that entry, space/return accepts the preselected one, anything else rings
-     * the bell and redraws.  n < 0 -> which = -1 -> no reveal. */
+    /* C process_menu_window's PICK_ONE loop (wintty.c:1334-1399,1532-1631):
+     * digits build a count, ESC while counting only stops the count, and keys
+     * outside resp are re-read inside xwaitforspace (keeping a live count). */
+    const itemAccels = items.map((_, i) => String.fromCharCode(CH_a + i)).join('');
+    let counting = false, count = 0, reset_count = true;
     let which = -1;
     for (;;) {
-        const c = await nhgetch();
-        if (c === 27) { which = -1; break; }               /* ESC */
-        if (c === 32 || c === 10 || c === 13) { which = 1; break; }
-        if (c >= CH_a && c < CH_a + items.length) { which = c - CH_a + 1; break; }
+        const raw = await nhgetch();
+        const resp = itemAccels + ' 0123456789\x1b\n\r' + (g.mapped_menu_cmds || '') + DEFAULT_MENU_CMDS;
+        if (raw !== 0 && raw !== (g._ttyDismissMore | 0)
+            && !resp.includes(String.fromCharCode(raw)))
+            continue;
+        if (raw === 27) g._ttyDismissMore = 1; /* getline.c:245-247 */
+        const c = raw >= CH_a && raw < CH_a + items.length ? raw : map_menu_cmd(raw);
+        if (reset_count) { counting = false; count = 0; }
+        else reset_count = true;
+        if (c >= 48 && c <= 57) {
+            count = count * 10 + (c - 48);
+            if (count !== 0) { counting = true; reset_count = false; }
+            await _show();
+            continue;
+        }
+        if (c === 27) {                                    /* ESC */
+            if (counting) { await _show(); continue; }     /* wintty.c:1604-1614: only stop count */
+            which = -1; break;
+        }
+        if (c === 0 || c === 32 || c === 10 || c === 13) { which = 1; break; }
+        if (c >= CH_a && c < CH_a + items.length) {
+            /* C wintty.c:1122-1134, 1756 toggle_menu_curr + cmd.c:1162-1164:
+             * without a count, picking preselected entry 1 toggles it off
+             * (n == 0 -> which = 1); with a count, it stays selected with count. */
+            which = c - CH_a + 1; break;
+        }
         if (c === 45 /* '-' */ || c === 92 /* '\\' */) {
             /* C wintty.c:1654-1695 MENU_UNSELECT_PAGE/_ALL run on a PICK_ONE
              * menu: the preselected entry is redrawn unselected ('-'). */
@@ -6190,8 +6220,12 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
     const prompt = `What do you want to ${word}?${buf ? ' [' + buf + ' or ?*]' : ' [*]'}`;
     /* C tty_yn_function cursor = strlen(qbuf) + 1 (one past the trailing space). */
     const promptCursor = prompt.length + 1;
+    /* invent.c:1920-1921 — under do-again getobj reads with readchar() and
+     * never reaches yn_function, so neither its more() nor its prompt runs. */
+    const doagainRead = !!g.gi?.in_doagain;
     if (g._pending_message && !g._topl_win_stop && !g.iflags?.debug_fuzzer /* topl.c:209 */
-        && !(g.iflags?.force_invmenu && !g.in_doagain))
+        && !doagainRead
+        && !(g.iflags?.force_invmenu && !g.gi?.in_doagain))
         // tty_yn_function pages before custompline flushes (topl.c:390-420).
         // Pending HP changes have not yet repainted the physical status line.
         // topl.c:390: more() precedes the prompt's custompline/flush_screen.
@@ -6201,10 +6235,10 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
     const savedPromptEcho = g._topl_prompt_echo;
     /* C invent.c:1922-1930 — force_invmenu skips the yn_function prompt and
      * enters the display_pickinv menu directly (oneloop). */
-    const invmenuFirst = !!(g.iflags?.force_invmenu && !g.in_doagain);
+    const invmenuFirst = !!(g.iflags?.force_invmenu && !g.gi?.in_doagain);
     let oneloop = false;
     let lastIlet = 0; /* C's ilet persists across the for(;;) loop */
-    if (!invmenuFirst) {
+    if (!invmenuFirst && !doagainRead) {
     /* topl.c:420 -> pline.c:266-274: custompline flushes pending status
      * BEFORE putmesg writes the prompt. Prompt echo holds those physical
      * rows, so enter echo mode only after that flush, even when it wraps. */
@@ -6240,7 +6274,16 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
         const _sh = g._topl_suppress_history;
         g._topl_suppress_history = true;
         let itemRaw;
-        if (invmenuFirst && !oneloop) {
+        if (doagainRead) {
+            /* invent.c:1920-1921 — `if (gi.in_doagain) ilet = readchar();`
+             * No prompt is written: the terminal still shows parse()'s
+             * clear_nhwindow(WIN_MESSAGE) (cmd.c:5147), an erased topline with
+             * the cursor homed (wintty.c tty_clear_nhwindow). */
+            g._topl_suppress_history = _sh;
+            tty_repaint(1);
+            if (g.nhDisplay) topl_park_cursor(g.nhDisplay, '');
+            itemRaw = await readchar();
+        } else if (invmenuFirst && !oneloop) {
             g._topl_suppress_history = _sh;
             oneloop = true;
             /* invent.c:1922-1927 files the bare qbuf once. Complete earlier
@@ -6274,7 +6317,7 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
         /* C topl.c:~545 tty_yn_function: `if (wins[WIN_MESSAGE]->cury)
          * tty_clear_nhwindow(WIN_MESSAGE)` -- a prompt that wrapped onto a second
          * row is erased when the answer is read; only a one-row prompt stays. */
-        g._topl_sticky = topl_park_cursor(null, prompt + ' ')[1] > 0 ? null : prompt;
+        g._topl_sticky = doagainRead || topl_park_cursor(null, prompt + ' ')[1] > 0 ? null : prompt;
         /* tty_yn_function leaves toplin == TOPLINE_SPECIAL_PROMPT (topl.c:545-548), not
          * EMPTY: the next NHW_MENU/NHW_TEXT display runs tty_clear_nhwindow(WIN_MESSAGE)
          * (wintty.c:1912-1914,1928-1930), which erases this physical row. */
@@ -9286,10 +9329,6 @@ async function display_nhwindow(win, _blocking) {
      * standing topline message before the window is drawn. */
     if (g._pending_message && !g._topl_win_stop)
         await force_more(g._pending_message);
-    // C wintty.c:1927-1940 clears WIN_MESSAGE before a text/menu window,
-    // including a single-row yn prompt left by topl.c:537-548 cleanup.
-    g._topl_sticky = null;
-    g._topl_empty_sticky = null;
     const lines = w.lines;
     const visLen = (t) => String(t ?? '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trimEnd().length;
     let longest = (w.maxcol ?? 1) - 1;
@@ -9301,6 +9340,14 @@ async function display_nhwindow(win, _blocking) {
         || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
     if (offx < 0 || clearScreen)
         offx = 0;
+    /* C wintty.c:1927-1940: the full-screen arm cl_eos()es from row 0 and
+     * sets toplin EMPTY; the overlay arm calls tty_clear_nhwindow(WIN_MESSAGE),
+     * which (wintty.c:1048-1057) erases row 0 only when toplin != EMPTY --
+     * text left physically on an already EMPTY message window stays. */
+    if (clearScreen || g._topl_sticky !== g._topl_empty_sticky) {
+        g._topl_sticky = null;
+        g._topl_empty_sticky = null;
+    }
     const MOREPROMPT = '--More--';
     const pages = [];
     for (let i = 0; i < lines.length; i += PER_PAGE)
@@ -11064,9 +11111,14 @@ async function _look_here_pile(objCnt = null, pickedSome = false, skipDfeature =
     }
     let _blindMenuSkipDf = false;
     if (_u_blind()) {
-        const _dfRaw0 = look_dfeature_at(u.ux | 0, u.uy | 0);
+        /* C computes dfeature ONCE per look_here (invent.c:4180); ice_descr ->
+         * waterbody_name -> hliquid draws the display RNG under hallucination,
+         * so reuse the caller's value rather than a second dfeature_at. */
+        let _dfText;
+        if (knownDfeature !== undefined) _dfText = knownDfeature;
+        else { const _dfRaw0 = look_dfeature_at(u.ux | 0, u.uy | 0); _dfText = _dfRaw0 ? _dfRaw0.text : null; }
         const bp = _look_here_blind_preamble(u.ux | 0, u.uy | 0,
-            _dfRaw0 ? _dfRaw0.text : null, !!g._pending_message);
+            _dfText, !!g._pending_message);
         /* C invent.c:4215-4217 returns ECMD_OK here; the caller (_dolook) must
          * see it or rhack keeps a counted ':' repeating (gm.multi stays set). */
         if (bp.cant_reach)
@@ -11837,7 +11889,7 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
          * and autopickup, including its count/capacity and trycall handling. */
         if ((obj.otyp | 0) === 326 /* SCR_SCARE_MONSTER */) {
             game.pickup_encumbrance = game._pickup_encumbrance;
-            const res = await pickup_object(obj, _menuCount > 0
+            const res = await pickup_object(obj, (_menuCount > 0 && _menuCount < (obj.quan | 0))
                 ? _menuCount : (obj.quan | 0), false);
             game._pickup_encumbrance = game.pickup_encumbrance;
             _lastPrinvLine = game._pending_message || _lastPrinvLine;
@@ -17627,7 +17679,7 @@ async function dotherecmdmenu() {
 
 async function _tip_floor_destination(box) {
     const title = menu_heading_text(`Where to tip the contents of ${(await doname(box))}`);
-    const lines = [title, '', '- * on the floor', '', '(end)'];
+    const lines = [title, '', `- * ${menucolor_text('on the floor')}`, '', '(end)']; /* pickup.c:3905 add_menu -> windows.c:1803 get_menu_coloring */
     const maxLen = `Where to tip the contents of ${(await doname(box))}`.length;
     const column = Math.min(41, 80 - maxLen - 2);
     /* tty_start_menu clears the prior ynq topline before it paints this
@@ -19577,7 +19629,17 @@ async function handler_rebind_keys_add(keyfirst) {
             if (!key || key === 27) return true;
         }
         const prevcmd = cmdbind_get(key);
-        if (!cmdstrFormatted)
+        /* C cmd.c:2356-2380: `char cmdstr[BUFSZ];` is uninitialised and built
+         * with Strcat() unless CMD_PARAM's Snprintf() overwrites it.  In
+         * handler_rebind_keys()'s "Do what?" menu, process_menu_window() zeros
+         * count[0..127] across cmdstr[0]'s stack slot (count['d'] = 0).  With
+         * menu_overlay on (cw->offx != 0), erase_menu_or_text() takes docorner()
+         * and leaves cmdstr[0] == '\0' (df-x44617f5688 step 18); with
+         * !iflags.menu_overlay (cw->offx == 0), erase_menu_or_text() calls
+         * docrt() + flush_screen(1) -> bot(), leaving non-zero stack bytes at
+         * cmdstr[0] so Strcat() fails bind_key() (4c69103fa0 step 82). */
+        const noOverlay = game.iflags?.menu_overlay === false || game.iflags?.menu_overlay === 0;
+        if (!cmdstrFormatted && noOverlay)
             cmdstr = '\u0001' + cmdstr;
         if (bind_key(key, cmdstr, true)) {
             if (prevcmd && prevcmd.cmd !== ec)

@@ -1949,12 +1949,12 @@ export const BUC_BLESSED = 1;
 export const BUC_UNCURSED = 2;
 export const BUC_CURSED = 3;
 export const BUC_UNKNOWN = 4;
-export const GETOBJ_EXCLUDE = 0;
+export const GETOBJ_EXCLUDE = -3;
 export const GETOBJ_DOWNPLAY = 1;
 export const GETOBJ_SUGGEST = 2;
-export const GETOBJ_EXCLUDE_INACCESS = 3;
-export const GETOBJ_EXCLUDE_SELECTABLE = 4;
-export const GETOBJ_EXCLUDE_NONINVENT = 5;
+export const GETOBJ_EXCLUDE_INACCESS = -1;
+export const GETOBJ_EXCLUDE_SELECTABLE = 0;
+export const GETOBJ_EXCLUDE_NONINVENT = -2;
 export const GETOBJ_ALLOWCNT = 0x01;
 export const GETOBJ_PROMPT = 0x02;
 export const GETOBJ_NOFLAGS = 0;
@@ -2895,17 +2895,37 @@ export function ismnum(pm) {
 }
 
 // ── Level classification predicates (C: dungeon.h macros) ──
-export function In_quest(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.quest_dnum; }
-export function In_endgame(uz) { const lev = uz ?? game?.u?.uz; const al = game?.astral_level; return !!lev && !!al && lev.dnum === al.dnum; }
-export function Is_astralevel(uz) { return In_endgame(uz) && (uz ?? game?.u?.uz)?.dlevel === 1; }
-export function Is_waterlevel(uz) { const lev = uz ?? game?.u?.uz; const wl = game?.water_level; return !!lev && !!wl && lev.dnum === wl.dnum && lev.dlevel === wl.dlevel; }
-export function Is_firelevel(uz) { const lev = uz ?? game?.u?.uz; const fl = game?.fire_level; return !!lev && !!fl && lev.dnum === fl.dnum && lev.dlevel === fl.dlevel; }
-export function Is_earthlevel(uz) { const lev = uz ?? game?.u?.uz; const el = game?.earth_level; return !!lev && !!el && lev.dnum === el.dnum && lev.dlevel === el.dlevel; }
-export function Is_airlevel(uz) { const lev = uz ?? game?.u?.uz; const al = game?.air_level; return !!lev && !!al && lev.dnum === al.dnum && lev.dlevel === al.dlevel; }
-export function In_mines(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.mines_dnum; }
-export function In_sokoban(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.sokoban_dnum; }
-export function In_V_tower(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.tower_dnum; }
-export function Is_stronghold(uz) { const g = game; return g?.stronghold_level && (uz ?? g?.u?.uz)?.dnum === g.stronghold_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.stronghold_level.dlevel; }
+// The special-level locations and branch dungeon numbers live in
+// game.dungeon_topology (C: svd.dungeon_topology; hack.h #defines
+// oracle_level etc. as its d_*_level fields), set by dungeon.c
+// init_dungeons()/fixup_level_locations().  Callers pass a d_level; the
+// hero's level is the default for callers that omit it.
+function dgn_topo() { return game?.dungeon_topology; }
+function lvl_arg(uz) { return uz ?? game?.u?.uz; }
+// C ref: dungeon.h Lassigned(), Lcheck(); dungeon.c on_level()
+function Lcheck(x, z) {
+    return !!(x && z && (z.dlevel || z.dnum) /* Lassigned(z) */
+              && x.dnum === z.dnum && x.dlevel === z.dlevel);
+}
+function Lcheck_topo(uz, field) { return Lcheck(lvl_arg(uz), dgn_topo()?.[field]); }
+// C ref: dungeon.c In_quest()
+export function In_quest(uz) { const t = dgn_topo(); const lev = lvl_arg(uz); return !!t && !!lev && lev.dnum === t.d_quest_dnum; }
+// C ref: dungeon.h In_endgame()
+export function In_endgame(uz) { const t = dgn_topo(); const lev = lvl_arg(uz); return !!t && !!lev && lev.dnum === t.d_astral_level.dnum; }
+// C ref: dungeon.h Is_astralevel() etc. -- Lcheck(x, &<name>_level)
+export function Is_astralevel(uz) { return Lcheck_topo(uz, 'd_astral_level'); }
+export function Is_waterlevel(uz) { return Lcheck_topo(uz, 'd_water_level'); }
+export function Is_firelevel(uz) { return Lcheck_topo(uz, 'd_fire_level'); }
+export function Is_earthlevel(uz) { return Lcheck_topo(uz, 'd_earth_level'); }
+export function Is_airlevel(uz) { return Lcheck_topo(uz, 'd_air_level'); }
+export function Is_sanctum(uz) { return Lcheck_topo(uz, 'd_sanctum_level'); }
+// C ref: dungeon.c In_mines()
+export function In_mines(uz) { const t = dgn_topo(); const lev = lvl_arg(uz); return !!t && !!lev && lev.dnum === t.d_mines_dnum; }
+// C ref: dungeon.h In_sokoban()
+export function In_sokoban(uz) { const t = dgn_topo(); const lev = lvl_arg(uz); return !!t && !!lev && lev.dnum === t.d_sokoban_dnum; }
+// C ref: dungeon.c In_V_tower()
+export function In_V_tower(uz) { const t = dgn_topo(); const lev = lvl_arg(uz); return !!t && !!lev && lev.dnum === t.d_tower_dnum; }
+export function Is_stronghold(uz) { return Lcheck_topo(uz, 'd_stronghold_level'); }
 // C ref: dungeon.c:1637 — Is_botlevel checks if level is the deepest
 // in its dungeon branch. Each branch has its own num_dunlevs.
 export function Is_botlevel(uz) {
@@ -2914,7 +2934,7 @@ export function Is_botlevel(uz) {
     const dun = game?.dungeons?.[lev.dnum];
     return !!dun && lev.dlevel === dun.num_dunlevs;
 }
-export function Is_rogue_level(uz) { const g = game; return g?.rogue_level && (uz ?? g?.u?.uz)?.dnum === g.rogue_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.rogue_level.dlevel; }
-export function Is_oracle_level(uz) { const g = game; return g?.oracle_level && (uz ?? g?.u?.uz)?.dnum === g.oracle_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.oracle_level.dlevel; }
-export function Is_knox_level(uz) { const g = game; return g?.knox_level && (uz ?? g?.u?.uz)?.dnum === g.knox_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.knox_level.dlevel; }
-export function Is_juiblex_level(uz) { return false; /* TODO */ }
+export function Is_rogue_level(uz) { return Lcheck_topo(uz, 'd_rogue_level'); }
+export function Is_oracle_level(uz) { return Lcheck_topo(uz, 'd_oracle_level'); }
+export function Is_knox_level(uz) { return Lcheck_topo(uz, 'd_knox_level'); }
+export function Is_juiblex_level(uz) { return Lcheck_topo(uz, 'd_juiblex_level'); }

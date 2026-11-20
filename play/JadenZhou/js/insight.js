@@ -194,7 +194,7 @@ function from_what(propidx) {
 
 // C ref: polyself.c body_part() -- mbodypart(&youmonst, part) for the
 // hero's own (unpolymorphed, humanoid) form
-function body_part(part) {
+export function body_part(part) {
     const mptr = game.youmonst?.data;
     if (Upolyd() || !mptr || !humanoid(mptr)
         || mptr.mlet === M.S_DOG || mptr.mlet === M.S_FELINE

@@ -1348,8 +1348,13 @@ export function pager_boulder_symbol() {
 /* C symbols.c:236-239 and pager.c:1329: class matching uses the active
  * symbol table, including control bytes, rather than the ASCII defaults. */
 export function pager_showsyms() {
-    if (rogue_graphics())
-        return rogue_showsyms();
+    if (rogue_graphics()) {
+        const symbols = rogue_showsyms();
+        if (!game._symsetDarkroomPending)
+            symbols[20] = symbols[_darkroom_alias_blank()
+                ? SYM_OFFSETS.X : 19];
+        return symbols;
+    }
     if (!generic_symset() && !ibm_mode()) {
         if (gs.showsyms) return gs.showsyms;
         /* symbols.c:236-239: overrides replace the primary ASCII defaults;
@@ -3684,9 +3689,17 @@ export function display_self() {
             const female = !!((u.umonnum | 0) !== (u.umonster | 0)
                 ? u.mfemale : game.flags?.female);
             _pendingMonGlyph = _monster_glyph_id(app, female, 'normal');
+            /* display.h:259-260 hands monnum_to_glyph(mappearance, Ugender) to
+             * show_glyph, and display.c:3050-3064 resolves that glyph's color:
+             * under has_rogue_color the FEM offset paints NO_COLOR and the MALE
+             * offset CLR_YELLOW — never mons[mappearance].mcolor.  df-x579eb297e1
+             * step 156: slime_dialogue (timeout.c:393-396) makes the female
+             * Valkyrie's own square a GLYPH_MON_FEM green slime, and C paints it
+             * uncolored on the RogueEpyx level while this port painted it green. */
+            const color = rogue_ibm_color() ? (female ? NO_COLOR : CLR_YELLOW)
+                : (app >= 0 && app < MON_MCOLOR.length) ? MON_MCOLOR[app] : 7;
             show_glyph_cell(u.ux | 0, u.uy | 0, monster_symbol(mlet),
-                (app >= 0 && app < MON_MCOLOR.length) ? MON_MCOLOR[app] : 7,
-                false, _wizmgender_attr(female), GLYPHCLS_MON);
+                color, false, _wizmgender_attr(female), GLYPHCLS_MON);
             const loc = game.level.at(u.ux, u.uy);
             loc.disp_mon_pm = app;
             loc.disp_mon_female = female;
@@ -7102,6 +7115,13 @@ export function status_xp_bot_eval() {
         ? [acurr(u, A_STR), acurr(u, A_DEX), acurr(u, A_CON),
            acurr(u, A_INT), acurr(u, A_WIS), acurr(u, A_CHA)]
         : null;
+    /* botl.c:995-997,1514: BL_TITLE formats rank_of(u.ulevel, ..., flags.female)
+     * before evaluate_and_notify_windowport() runs; refresh the painted
+     * level/gender latches before _status_temp_bot_eval() reads _statusLine1Raw(),
+     * so set_uasmon()'s update_all inside newman()/polyman() baselines the new
+     * rank rather than the pre-newman one. */
+    game._botlPaintedFemale = !!(game.flags?.female);
+    game._botlPaintedLevel = u.ulevel | 0;
     _status_temp_bot_eval();
     if (!u) return;
     /* botl.c:974-975: every bot() flips now_or_before_idx, even while
@@ -7298,7 +7318,12 @@ function _status_temp_bot_eval() {
     /* botl.c:1574-1576: BL_GOLD itself is evaluated under that update_all
      * (chg 0, time 0), so its temporary rule is dropped and the next delivery
      * is a fresh baseline (_status_temp_hilites tracks gold at paint). */
-    if (encReset) delete hist.gold;
+    if (encReset) {
+        delete hist.gold;
+        game._statusHiliteHeld = false;
+        delete game._statusHeldUhs;
+        delete game._statusHeldRow;
+    }
     let hpChgNow = false;
     game._blRndencodeNew = false;
     let gm = null;
@@ -13569,6 +13594,9 @@ export function status_reassess() {
     /* botl.c:1718: update_all survives a bot() suppressed by u.uhp == -1;
      * only evaluate_and_notify_windowport() clears it (botl.c:1679). */
     game._statusUpdateAll = true;
+    game._statusHiliteHeld = false;
+    delete game._statusHeldUhs;
+    delete game._statusHeldRow;
     delete game._statusFieldColors; // C botl.c:1719 update_all = TRUE
     /* botl.c:1574-1576: the next bot() runs with update_all, so every field
      * gets chg 0 and time 0 -- the up/down/changed temp hilites are dropped

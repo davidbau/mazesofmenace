@@ -10,7 +10,7 @@ import { NHW_MENU, PICK_NONE, PICK_ONE, PICK_ANY, MENU_ITEMFLAGS_SELECTED, MENU_
 import { pline } from './pline.js';
 import { cmdq_pop } from './cmd.js';
 import { tty_getlin } from './query.js';
-import { compressStr, dmore, windowOrigin, tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu, tty_display_and_dismiss, tty_destroy_nhwindow, textWindowRows } from './wintty.js';
+import { compressStr, dmore, mixedGlyphColumns, windowOrigin, tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu, tty_display_and_dismiss, tty_destroy_nhwindow, textWindowRows } from './wintty.js';
 export const ATR_NONE = 0;
 export const ATR_INVERSE = 1;
 // C windows.c:decode_mixed(), for the literal portions of putmixed() lines.
@@ -49,14 +49,23 @@ function clearRect(left, top, right, bottom) {
         }
     }
 }
-// C windows.c:add_menu_heading() suppresses class highlighting in disclosure
-// and passes MENU_ITEMFLAGS_SKIPMENUCOLORS so menucoloring rules leave the
-// heading's own style alone.
+// C windows.c:add_menu_heading(): iflags.menu_headings supplies the heading
+// style, suppressed during end-of-game disclosure. Menu callers that add
+// their heading rows as plain items share this helper so every heading in
+// every menu follows the configured attribute and color.
+export function menuHeadingStyle() {
+    return game.program_state.gameover
+        ? { attr: ATR_NONE, color: NO_COLOR }
+        : {
+            attr: terminalAttrFromCAttr(game.iflags.menu_headings?.attr ?? C_ATR_INVERSE),
+            color: game.iflags.menu_headings?.color ?? NO_COLOR,
+        };
+}
+// C windows.c:add_menu_heading() passes MENU_ITEMFLAGS_SKIPMENUCOLORS so
+// menucoloring rules leave the heading's own style alone.
 export function addMenuHeading(window, text) {
     tty_add_menu(window, {
-        identifier: null, text,
-        attr: game.program_state.gameover ? ATR_NONE : terminalAttrFromCAttr(game.iflags.menu_headings?.attr ?? C_ATR_INVERSE),
-        color: game.program_state.gameover ? NO_COLOR : game.iflags.menu_headings?.color ?? NO_COLOR,
+        identifier: null, text, ...menuHeadingStyle(),
         itemflags: MENU_ITEMFLAGS_SKIPMENUCOLORS,
     });
 }
@@ -146,8 +155,10 @@ export async function showInventoryWindow(sections, { pickMode = PICK_NONE, head
             for (const item of section.items)
                 tty_add_menu(window, {
                     identifier: item.key || item.value !== undefined ? item : null,
-                    text: item.text, attr: item.attr ?? ATR_NONE,
+                    text: item.text, attr: item.attr ?? ATR_NONE, color: item.color ?? NO_COLOR,
                     ...(item.key ? { selector: item.key } : {}),
+                    ...(item.groupAccelerator ? { group: item.groupAccelerator } : {}),
+                    ...(item.glyph ? { glyph: item.glyph } : {}),
                     itemflags: (item.itemflags ?? 0)
                         | (item.key === preselectedKey ? MENU_ITEMFLAGS_SELECTED : 0),
                 });
@@ -185,7 +196,7 @@ export async function showDisclosureOverlay(lines, { marker = '--More--', restor
     if (pagerStyle === 'menu') {
         return await showTextMenuOverlay(entries);
     }
-    const prose = entries.map(line => ({ ...line, text: compressStr(line.text, d.cols) }));
+    const prose = entries.map(line => ({ ...line, text: compressStr(mixedGlyphColumns(line.text), d.cols) }));
     const dataWidth = prose.reduce((widest, line) => Math.max(widest, line.text.length), 0);
     // putstr-built windows wrap prose but retain their original width
     // when deciding placement.
@@ -359,7 +370,8 @@ export async function showMultiSelectWindow({ title, sections, omitHeadings = fa
                 tty_add_menu(window, { identifier: item, text: item.text,
                     attr: item.attr ?? ATR_NONE, color: item.color ?? NO_COLOR,
                     ...(item.key ? { selector: item.key } : {}),
-                    ...(item.groupAccelerator ? { group: item.groupAccelerator } : {}), itemflags: item.itemFlags ?? 0 });
+                    ...(item.groupAccelerator ? { group: item.groupAccelerator } : {}),
+                    ...(item.glyph ? { glyph: item.glyph } : {}), itemflags: item.itemFlags ?? 0 });
             }
         }
         tty_end_menu(window, title || null);

@@ -25,11 +25,12 @@ import * as O from './objects.js';
 import { objects, OBJ_NAME, OBJ_DESCR } from './objects.js';
 import {
     NON_PM, MALE, FEMALE, NEUTRAL, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG,
-    BLINDED, HALLUC, Has_contents,
-    W_ARMOR, W_AMUL, W_WEP, W_SWAPWEP, W_QUIVER,
+    BLINDED, HALLUC, Has_contents, has_oname, ONAME,
+    W_ARMOR, W_AMUL, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, ONAME_WISH,
 } from './const.js';
 import * as M from './monsters.js';
 import { observe_object } from './o_init.js';
+import { oname } from './do_name.js';
 import { mons, LOW_PM, S_PUDDING, PM_GRAY_OOZE, PM_BLACK_PUDDING,
          PM_GRAY_DRAGON, PM_YELLOW_DRAGON } from './monsters.js';
 import {
@@ -37,7 +38,10 @@ import {
 } from './mondata.js';
 import { def_char_to_objclass } from './drawing.js';
 import { genders } from './role.js';
-import { artifact_name } from './artilist.js';
+import {
+    artifact_name, find_artifact, undiscovered_artifact, exist_artifact,
+    artifact_exists, nartifact_exist,
+} from './artifact.js';
 import { tin_details } from './eat.js';
 import {
     mksobj, mkobj, curse, weight, erosion_matters, is_flammable,
@@ -1106,6 +1110,15 @@ const Japanese_items = [
     [O.POT_BOOZE, "sake"],
 ];
 
+// C ref: objnam.c Japanese_item_name()
+export function Japanese_item_name(i, ordinaryname) {
+    for (const [item, name] of Japanese_items) {
+        if (i === item)
+            return name;
+    }
+    return ordinaryname;
+}
+
 // C ref: objnam.c wrp[], wrpsym[]
 const wrp = [
     "wand",   "ring",      "potion",     "scroll", "gem",
@@ -1979,8 +1992,14 @@ function readobjnam_postparse3(d) {
     }
 
     if (!d.oclass && d.actualn) {
+        const objtyp = { otyp: 0 };
+
         /* Perhaps it's an artifact specified by name, not type */
-        not_ported('artifact_name()');
+        d.name = artifact_name(d.actualn, objtyp, true);
+        if (d.name) {
+            d.typ = objtyp.otyp;
+            return 2; /*goto typfnd;*/
+        }
     }
 
     /* got a class, but not specific type;
@@ -2342,8 +2361,26 @@ export function readobjnam(bp, no_wish) {
     if (d.otmp.otyp === O.TIN && d.tvariety >= 0 && (rn2(4) || wizard()))
         not_ported('set_tin_variety() for a wished-for tin');
 
-    if (d.name)
-        not_ported('naming a wished-for object (oname())');
+    let aname = null;
+    if (d.name) {
+        const objtyp = { otyp: 0 };
+
+        /* an artifact name might need capitalization fixing */
+        aname = artifact_name(d.name, objtyp, true);
+        if (aname && objtyp.otyp === d.otmp.otyp)
+            d.name = aname;
+
+        /* 3.6 tribute - fix up novel */
+        if (d.otmp.otyp === O.SPE_NOVEL)
+            not_ported('lookup_novel() for a wished-for novel');
+
+        d.otmp = oname(d.otmp, d.name, ONAME_WISH);
+        /* name==aname => wished for artifact (otmp->oartifact => got it) */
+        if (d.otmp.oartifact || d.name === aname) {
+            d.otmp.quan = 1;
+            game.u.uconduct.wisharti = (game.u.uconduct.wisharti || 0) + 1; /* KMH, conduct */
+        }
+    }
 
     if (permapoisoned(d.otmp))
         d.otmp.opoisoned = 1;
@@ -2351,8 +2388,8 @@ export function readobjnam(bp, no_wish) {
     /* more wishing abuse: don't allow wishing for certain artifacts */
     /* and make them pay; charge them for the wish anyway! */
     if ((is_quest_artifact(d.otmp)
-         || (d.otmp.oartifact && not_ported('nartifact_exist()'))) && !wizard())
-        not_ported('refusing a wished-for quest artifact');
+         || (d.otmp.oartifact && rn2(nartifact_exist()) > 1)) && !wizard())
+        not_ported('refusing a wished-for artifact (artifact_exists(), "For a moment, you feel")');
 
     if (d.halfeaten && d.otmp.oclass === O.FOOD_CLASS)
         not_ported('partly eaten wished-for food (consume_oeaten())');
@@ -2485,8 +2522,13 @@ function xname_flags(obj, cxn_flags) {
     let pluralize = (obj.quan !== 1) && !(cxn_flags & 1 /* CXN_SINGULAR */);
     let buf = '';
 
-    if (Role_if_x(M.PM_SAMURAI))
-        xn_not_ported('Japanese_item_name()');
+    if (Role_if_x(M.PM_SAMURAI)) {
+        actualn = Japanese_item_name(typ, actualn);
+        if (typ === O.WOODEN_HARP || typ === O.MAGIC_HARP)
+            dn = "koto";
+    }
+    /* generic items don't have an actual-name; we shouldn't ever be called
+       for those; pacify static analyzer without resorting to impossible() */
     if (!actualn)
         actualn = (typ > 0 && typ < O.MAXOCLASSES) ? "generic" : "object?";
     if (!dn)
@@ -2504,10 +2546,17 @@ function xname_flags(obj, cxn_flags) {
     const dknown = obj.dknown;
     const bknown = obj.bknown;
 
-    if (obj.oartifact || obj.oextra?.oname)
-        xn_not_ported('artifact/named object (obj_is_pname, find_artifact)');
+    /*
+     * Maybe find a previously unseen artifact.
+     * (We use the real obj->dknown rather than the override_ID variant.)
+     */
+    if (obj.oartifact && obj.dknown)
+        find_artifact(obj);
 
-    switch (obj.oclass) {
+    /* if (obj_is_pname(obj)) goto nameit; */
+    const nameit = obj_is_pname(obj);
+
+    if (!nameit) switch (obj.oclass) {
     case O.AMULET_CLASS:
         if (!dknown)
             buf = "amulet";
@@ -2715,17 +2764,131 @@ function xname_flags(obj, cxn_flags) {
         break;
     } /* switch */
 
-    if (pluralize)
-        buf = makeplural(buf);
-    if (game.program_state?.gameover && obj.o_id)
-        xn_not_ported('end-of-game shirt/apron text');
+    if (!nameit) {
+        /* if the name should be plural, do that now */
+        if (pluralize)
+            buf = makeplural(buf);
+        if (game.program_state?.gameover && obj.o_id)
+            xn_not_ported('end-of-game shirt/apron text');
+    }
+
+    if (nameit || (has_oname(obj) && dknown)) {
+        if (!nameit)
+            buf += " named ";
+
+        /* jump directly here if obj passes the has-personal-name test */
+        /* nameit: */
+        let oname_str = ONAME(obj);
+        /* downcase "The" in "<quest-artifact-item> named The ..." */
+        if (obj.oartifact && oname_str.startsWith("The "))
+            oname_str = lowc(oname_str[0]) + oname_str.slice(1);
+        buf += oname_str;
+    }
+
+    if (!strncmpi(buf, "the ", 4))
+        buf = buf.slice(4);
+
     return buf;
 }
 
-// C ref: objnam.c add_erosion_words() -- only the no-erosion case
+// C ref: objnam.c obj_is_pname()
+export function obj_is_pname(obj) {
+    if (!obj.oartifact || !has_oname(obj))
+        return false;
+    if (!game.program_state?.gameover /* && !iflags.override_ID */) {
+        if (not_fully_identified(obj))
+            return false;
+    }
+    return true;
+}
+
+// C ref: objnam.c not_fully_identified()
+export function not_fully_identified(otmp) {
+    /* gold doesn't have any interesting attributes [yet?] */
+    if (otmp.oclass === O.COIN_CLASS)
+        return false; /* always fully ID'd */
+    /* check fundamental ID hallmarks first */
+    if (!otmp.known || !otmp.dknown
+        || (!otmp.bknown && otmp.otyp !== O.SCR_MAIL)
+        || !objects[otmp.otyp].oc_name_known)
+        return true;
+    if ((!otmp.cknown && (Is_container(otmp) || otmp.otyp === O.STATUE))
+        || (!otmp.lknown && Is_box(otmp)))
+        return true;
+    if (otmp.oartifact && undiscovered_artifact(otmp.oartifact))
+        return true;
+    /* otmp->rknown is the only item of interest if we reach here */
+    if (otmp.rknown
+        || (otmp.oclass !== O.ARMOR_CLASS && otmp.oclass !== O.WEAPON_CLASS
+            && !is_weptool(otmp)            /* (redundant) */
+            && otmp.oclass !== O.BALL_CLASS)) /* (useless) */
+        return false;
+    else /* lack of `rknown' only matters for vulnerable objects */
+        return is_damageable(otmp);
+}
+
+// C ref: objnam.c the_unique_obj()
+/* used for naming "the unique_item" instead of "a unique_item" */
+export function the_unique_obj(obj) {
+    const known = obj.known; /* || iflags.override_ID */
+
+    if (!obj.dknown /* && !iflags.override_ID */)
+        return false;
+    else if (obj.otyp === O.FAKE_AMULET_OF_YENDOR && !known)
+        return true; /* lie */
+    else
+        return !!(objects[obj.otyp].oc_unique
+                  && (known || obj.otyp === O.AMULET_OF_YENDOR));
+}
+
+// C ref: objnam.c add_erosion_words() -- returns the extended prefix
+// (C appends to its prefix buffer in place)
 function add_erosion_words(obj, prefix) {
-    if (obj.oeroded || obj.oeroded2 || (obj.rknown && obj.oerodeproof))
-        xn_not_ported('add_erosion_words()');
+    const iscrys = (obj.otyp === O.CRYSKNIFE);
+    /* iflags.override_ID (wizard-mode ^I) is not ported */
+    const rknown = obj.rknown;
+
+    if (!is_damageable(obj) && !iscrys)
+        return prefix;
+
+    /* The only cases where any of these bits do double duty are for
+     * rotted food and diluted potions, which are all not is_damageable().
+     */
+    if (obj.oeroded && !iscrys) {
+        switch (obj.oeroded) {
+        case 2:
+            prefix += "very ";
+            break;
+        case 3:
+            prefix += "thoroughly ";
+            break;
+        }
+        prefix += is_rustprone(obj) ? "rusty "
+                  : is_crackable(obj) ? "cracked "
+                    : "burnt ";
+    }
+    if (obj.oeroded2 && !iscrys) {
+        switch (obj.oeroded2) {
+        case 2:
+            prefix += "very ";
+            break;
+        case 3:
+            prefix += "thoroughly ";
+            break;
+        }
+        prefix += is_corrodeable(obj) ? "corroded " : "rotted ";
+    }
+    /* note: it is possible for an item to be both eroded and erodeproof
+       (cursed scroll of destroy armor read while confused erodeproofs an
+       item of armor without repairing existing erosion) */
+    if (rknown && obj.oerodeproof)
+        prefix += iscrys ? "fixed "
+                  : is_rustprone(obj) ? "rustproof "
+                    : is_corrodeable(obj) ? "corrodeproof "
+                      : is_flammable(obj) ? "fireproof "
+                        : is_crackable(obj) ? "tempered " /* hardened */
+                          : is_rottable(obj) ? "rotproof "
+                            : "";
     return prefix;
 }
 
@@ -2766,12 +2929,10 @@ function doname_base(obj, doname_flags) {
             prefix = "some ";
     } else if (obj.otyp === O.CORPSE) {
         /* nothing */
-    } else if (force_the) {
+    } else if (force_the || obj_is_pname(obj) || the_unique_obj(obj)) {
         if (!strncmpi(bp, "the ", 4))
             bp = bp.slice(4);
         prefix = "the ";
-    } else if (objects[obj.otyp].oc_unique || obj.oartifact) {
-        xn_not_ported('the_unique_obj()/obj_is_pname()');
     } else if (!fake_arti) {
         /* default prefix */
         prefix = "a ";
@@ -2865,6 +3026,13 @@ function doname_base(obj, doname_flags) {
             bp += " (lit)";
         break;
     case O.RING_CLASS:
+        /* ring: normal rings reach here 'naturally' */
+        if (obj.owornmask & W_RINGR)
+            bp += " (on right ";
+        if (obj.owornmask & W_RINGL)
+            bp += " (on left ";
+        if (obj.owornmask & (W_RINGL | W_RINGR)) /* either left or right */
+            bp += "hand)"; /* body_part(HAND) for an unpolymorphed hero */
         if (known && objects[obj.otyp].oc_charged)
             prefix += `${obj.spe >= 0 ? "+" : ""}${obj.spe} `;
         break;
@@ -2941,8 +3109,10 @@ function doname_base(obj, doname_flags) {
                   : (Qtyp === 2) ? "in quiver pouch"
                     : "at the ready"})`;
     }
-    if (obj.owornmask & ~(W_ARMOR | W_AMUL | W_WEP | W_SWAPWEP | W_QUIVER))
-        xn_not_ported('ring/tool/leash worn suffixes');
+    if ((obj.owornmask & ~(W_ARMOR | W_AMUL | W_WEP | W_SWAPWEP | W_QUIVER
+                           | W_RINGL | W_RINGR))
+        || ((obj.owornmask & (W_RINGL | W_RINGR)) && obj.oclass !== O.RING_CLASS))
+        xn_not_ported('meat ring/tool/leash worn suffixes');
 
     if (with_price)
         xn_not_ported('shop prices');

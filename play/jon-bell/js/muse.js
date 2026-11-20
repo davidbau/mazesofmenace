@@ -24,7 +24,7 @@ import { m_at } from './uhitm.js';
 import { exclam } from './zap.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { find_mac } from './worn.js';
-import { _zp_unturn_you, unturn_dead, cancel_monst, resist, hit, miss, dobuzz, bhito, lightdamage, BlindedTimeout, make_blinded } from './zap.js';
+import { _zp_unturn_you, unturn_dead, cancel_monst, resist, hit, miss, buzz, dobuzz, bhito, lightdamage, BlindedTimeout, make_blinded } from './zap.js';
 import { Blind } from './vision.js';
 import { monverbself } from './do_name.js';
 import { wakeup } from './mon.js';
@@ -472,14 +472,19 @@ export function mbhit_wand(mon, range, obj) {
     return mbhit(mon, range, mbhitm, bhito, obj);
 }
 
+/* C muse.c:1815-1818: the first offensive ray always misses. */
+async function buzz_force_miss(type, nd, sx, sy, dx, dy) {
+    await dobuzz(type, nd, sx, sy, dx, dy, true, false, true);
+}
+
 /* C muse.c:1826-2032 use_offensive(): act on find_offensive()'s verdict.
  * The fire-scroll arm at 1956-2004 is disabled by C's #if 0. */
 export async function use_offensive(mtmp) {
     const otmp = game.offensive;
     let i;
 
-    /* C muse.c:1834-1836 — mwandexp: a monster's FIRST attack-wand shot always
-     * misses (buzz_force_miss); mbhitm reads the same flag via game.gb.buzzer. */
+    /* C muse.c:1834-1836 selects the callback before precheck or messages. */
+    const buzzfn = mtmp.mwandexp ? buzz : buzz_force_miss;
 
     if (otmp.oclass !== POTION_CLASS && (i = await precheck(mtmp, otmp)) !== 0)
         return i;
@@ -503,12 +508,9 @@ export async function use_offensive(mtmp) {
         (game.gb ||= {}).buzzer = mtmp;
         {
             const nd = ((otmp.otyp | 0) === WAN_MAGIC_MISSILE) ? 2 : 6;
-            const forceMiss = !mtmp.mwandexp;
-            /* C muse.c:1815-1818,1834-1849: both buzz() and
-             * buzz_force_miss() pass sayhit=TRUE, saymiss=FALSE. */
-            await dobuzz(BZ_M_WAND(BZ_OFS_WAN(otmp.otyp | 0)), nd, mtmp.mx | 0, mtmp.my | 0,
+            await buzzfn(BZ_M_WAND(BZ_OFS_WAN(otmp.otyp | 0)), nd, mtmp.mx | 0, mtmp.my | 0,
                          sgn((mtmp.mux | 0) - (mtmp.mx | 0)),
-                         sgn((mtmp.muy | 0) - (mtmp.my | 0)), true, false, forceMiss);
+                         sgn((mtmp.muy | 0) - (mtmp.my | 0)));
         }
         game.gb.buzzer = 0;
         game.gc_current_wand = 0;
@@ -525,9 +527,9 @@ export async function use_offensive(mtmp) {
         game.gc_current_wand = otmp; /* needed by zhitu() (muse.c:1874) */
         {
             const nd = rn1(6, 6);
-            await dobuzz(BZ_M_WAND(BZ_OFS_AD((otmp.otyp | 0) === FROST_HORN ? AD_COLD : AD_FIRE)), nd, mtmp.mx | 0, mtmp.my | 0,
+            await buzzfn(BZ_M_WAND(BZ_OFS_AD((otmp.otyp | 0) === FROST_HORN ? AD_COLD : AD_FIRE)), nd, mtmp.mx | 0, mtmp.my | 0,
                          sgn((mtmp.mux | 0) - (mtmp.mx | 0)),
-                         sgn((mtmp.muy | 0) - (mtmp.my | 0)), true, false, !mtmp.mwandexp);
+                         sgn((mtmp.muy | 0) - (mtmp.my | 0)));
         }
         game.gb.buzzer = 0;
         game.gc_current_wand = 0;
@@ -1707,11 +1709,11 @@ function Is_mbag(o) { return o.otyp === BAG_OF_HOLDING_OTYP || o.otyp === BAG_OF
 /* C obj.h:334 Has_contents(o) = ((o)->cobj != (struct obj *) 0) */
 function Has_contents(o) { return o.cobj != null; }
 
+/* C rm.h:534: the monster grid includes long-worm tail segments as well as
+ * heads. Use the shared grid lookup for muse.c:615,432,2130,1384; a head-only
+ * fmon walk lets a monster deliberately jump onto another worm's tail. */
 function monster_at(x, y) {
-    for (let m = game.fmon; m; m = m.nmon)
-        if (!m._mapRemoved && (m.mhp | 0) > 0 && m.mx === x && m.my === y)
-            return m;
-    return null;
+    return m_at(x, y);
 }
 
 export function find_misc(mtmp) {

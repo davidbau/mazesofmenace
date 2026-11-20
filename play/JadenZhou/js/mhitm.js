@@ -5,22 +5,60 @@
 // throw a 'not ported yet' error instead of skipping their rolls.
 
 import { game } from './gstate.js';
-import { rn2, rnd, d } from './rng.js';
+import { rn2, rnd, rn1, d } from './rng.js';
 import { distmin, isok } from './hacklib.js';
 import { cansee } from './vision.js';
 import { m_at, grow_up } from './makemon.js';
 import { monkilled, zombie_maker } from './mon.js';
 import { canspotmon, newsym, pline } from './display.js';
+import { Monnam, mon_nam_too } from './do_name.js';
 import { is_elf, is_orc } from './mondata.js';
 import { M_AP_TYPE, IS_DOOR, M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED,
-         M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, NATTK, HALLUC } from './const.js';
+         M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, NATTK, HALLUC, W_SADDLE, W_ARMG,
+         NEED_WEAPON, NEED_HTH_WEAPON, P_POLEARMS, P_LANCE, ERODE_BURN,
+         ERODE_RUST, ERODE_CORRODE, CONFLICT, BLINDED } from './const.js';
 import { mons, AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH,
          AT_STNG, AT_HUGS, AT_ENGL, AT_TENT, AT_WEAP, AT_EXPL, AT_BOOM,
          AD_PHYS, AD_SSEX, AD_DISE, AD_PEST, AD_FAMN, AD_DREN, AD_STCK,
          AD_POLY, AD_DGST, G_UNIQ } from './monsters.js';
 import * as M from './monsters.js';
+import { find_mac, which_armor } from './worn.js';
+import { mon_wield_item, possibly_unwield, hitval, dmgval } from './weapon.js';
+import { mswings_verb, mhis } from './mhitu.js';
+import { objects, CORPSE, GAUNTLETS_OF_POWER, SILVER, IRON, METAL,
+         WEAPON_CLASS, TOOL_CLASS } from './objects.js';
+import { permapoisoned } from './mkobj.js';
+import { xname } from './objnam.js';
+import { ART_SNICKERSNEE } from './artilist.js';
+import { dist2 } from './hacklib.js';
+import { mon_visible } from './display.js';
+import { dmgtype, is_were, is_demon, is_vampshifter } from './mondata.js';
 
 function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
+/* C ref: youprop.h Conflict, Blind */
+function Conflict() {
+    const p = game.u.uprops[CONFLICT];
+    return !!(p.intrinsic || p.extrinsic);
+}
+function Blind() {
+    const p = game.u.uprops[BLINDED];
+    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
+}
+/* C ref: obj.h is_pole() */
+function is_pole(otmp) {
+    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
+           && (objects[otmp.otyp].oc_skill === P_POLEARMS
+               || objects[otmp.otyp].oc_skill === P_LANCE
+               || otmp.oartifact === ART_SNICKERSNEE);
+}
+// C ref: mondata.c mon_hates_silver(), hates_silver()
+function mon_hates_silver(mon) {
+    const ptr = mon.data;
+    return is_vampshifter(mon)
+        || (is_were(ptr) || ptr.mlet === M.S_VAMPIRE || is_demon(ptr)
+            || ptr === mons[M.PM_SHADE]
+            || (ptr.mlet === M.S_IMP && ptr !== mons[M.PM_TENGU]));
+}
 function DEADMONSTER(mon) { return mon.mhp < 1; }
 // C ref: monst.h mon_offmap()
 function mon_offmap(mon) {
@@ -48,44 +86,9 @@ function sticks(ptr) {
         || ptr.mattk.some((a) => a.adtyp === AD_STCK);
 }
 
-// ── monster naming subset (C ref: do_name.c x_monnam()) ──
-function pmname(ptr, gender) {
-    return ptr.pmnames[gender] || ptr.pmnames[2];
-}
-// C ref: do_name.c x_monnam(), ARTICLE_THE subset
-function x_monnam_the(mtmp) {
-    if (mtmp === game.youmonst)
-        return 'you';
-    if (!canspotmon(mtmp) && mtmp !== game.u.usteed)
-        return 'it';
-    if (mtmp.mgivenname || mtmp.isshk || mtmp.ispriest || mtmp.isminion
-        || mtmp.minvis || (mtmp.data.geno & G_UNIQ) || mtmp.misc_worn_check)
-        throw new Error('x_monnam(): named/special monsters not ported yet');
-    if (game.u.uprops[HALLUC].intrinsic)
-        throw new Error('x_monnam(): hallucination not ported yet');
-    return `the ${pmname(mtmp.data, mtmp.female ? 1 : 0)}`;
-}
-// C ref: do_name.c mon_nam()
-function mon_nam(mtmp) { return x_monnam_the(mtmp); }
-// C ref: do_name.c Monnam()
-export function Monnam(mtmp) {
-    const s = mon_nam(mtmp);
-    return s.charAt(0).toUpperCase() + s.slice(1);
-}
-// C ref: do_name.c mon_nam_too()
-function mon_nam_too(mon, other_mon) {
-    if (mon !== other_mon)
-        return mon_nam(mon);
-    throw new Error('mon_nam_too(): reflexive pronoun not ported yet');
-}
 
-// C ref: worn.c find_mac()
-export function find_mac(mon) {
-    const base = mon.data.ac;
-    if (mon.misc_worn_check)
-        throw new Error('find_mac(): monster armor not ported yet');
-    return base;
-}
+/* C ref: worn.c find_mac() lives in worn.js */
+export { find_mac };
 
 // C ref: mhitu.c getmattk()
 function getmattk(magr, mdef, indx, prev_result) {
@@ -268,7 +271,21 @@ export async function mattackm(magr, mdef) {
 
         switch (mattk.aatyp) {
         case AT_WEAP: /* "hand to hand" attacks */
-            throw new Error('mattackm(): AT_WEAP not ported yet');
+            if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1)
+                /* D: Do a ranged attack here! */
+                throw new Error('mattackm(): thrwmm() not ported yet');
+            if (magr.weapon_check === NEED_WEAPON || !magr.mw) {
+                magr.weapon_check = NEED_HTH_WEAPON;
+                if (await mon_wield_item(magr) !== 0)
+                    return M_ATTK_MISS;
+            }
+            await possibly_unwield(magr, false);
+            if ((mwep = magr.mw || null) != null) {
+                if (game.mhitm_vis)
+                    await mswingsm(magr, mdef, mwep);
+                tmp += hitval(mwep, mdef);
+            }
+            /* FALLTHRU */
         case AT_CLAW:
         case AT_KICK:
         case AT_BITE:
@@ -282,14 +299,30 @@ export async function mattackm(magr, mdef) {
             if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1)
                 /* Continue because the monster may have a ranged attack. */
                 continue;
-            /* (mwep is always null here: AT_WEAP isn't ported) */
+            /* Monsters won't attack cockatrices physically if they
+             * have a weapon instead.  This instinct doesn't work for
+             * players, or under conflict or confusion.
+             */
+            if (!magr.mconf && !Conflict() && mwep && mattk.aatyp !== AT_WEAP
+                && touch_petrifies(mdef.data)) {
+                strike = 0;
+                break;
+            }
             dieroll = rnd(20 + i);
             strike = (tmp > dieroll);
+            /* KMH -- don't accumulate to-hit bonuses */
+            if (mwep)
+                tmp -= hitval(mwep, mdef);
             if (strike) {
                 if (unsolid(mdef.data))
                     throw new Error('mattackm(): failed_grab() not ported yet');
                 res[i] = await hitmm(magr, mdef, mattk, mwep, dieroll);
-                /* pudding division needs an iron/metal mwep: not reached */
+                if ((mdef.data === mons[M.PM_BLACK_PUDDING]
+                     || mdef.data === mons[M.PM_BROWN_PUDDING])
+                    && (mwep && (objects[mwep.otyp].oc_material === IRON
+                                 || objects[mwep.otyp].oc_material === METAL))
+                    && mdef.mhp > 1 && !mdef.mcan)
+                    throw new Error('mattackm(): clone_mon() not ported yet');
             } else
                 await missmm(magr, mdef, mattk);
             break;
@@ -327,6 +360,10 @@ export async function mattackm(magr, mdef) {
 
 // C ref: mhitm.c hitmm()
 async function hitmm(magr, mdef, mattk, mwep, dieroll) {
+    const weaponhit = (mattk.aatyp === AT_WEAP
+                       || (mattk.aatyp === AT_CLAW && mwep)),
+        silverhit = (weaponhit && mwep
+                     && objects[mwep.otyp].oc_material === SILVER);
     /* compat: could_seduce() is 0 (seduction throws in getmattk()) */
     pre_mm_attack(magr, mdef);
 
@@ -358,12 +395,15 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
             }
             /* FALLTHRU */
         default:
-            buf = `${magr_name} hits`;
+            if (!weaponhit || !mwep || !mwep.oartifact)
+                buf = `${magr_name} hits`;
             break;
         }
         if (buf)
             await pline(`${buf} ${mon_nam_too(mdef, magr)}.`);
-        /* silver hit needs a weapon: not reached */
+
+        if (mon_hates_silver(mdef) && silverhit)
+            throw new Error('hitmm(): silver sears message not ported yet');
     } else
         await noises(magr, mattk);
 
@@ -381,9 +421,75 @@ function mhitm_ad_phys(magr, mattk, mdef, mhm) {
     if (pd === mons[M.PM_SHADE]) {
         throw new Error('mhitm_ad_phys(): shade_miss() not ported yet');
     } else if (mattk.aatyp === AT_KICK && (pd.mflags1 & M.M1_THICK_HIDE)) {
+        /* [no 'kicking boots' check needed; monsters with kick attacks
+           can't wear boots and monsters that wear boots don't kick] */
         mhm.damage = 0;
-    } else if (mwep) {
-        throw new Error('mhitm_ad_phys(): monster weapon damage not ported yet');
+    } else if (mwep) { /* non-Null 'mwep' implies AT_WEAP || AT_CLAW */
+        let marmg;
+
+        if (mwep.otyp === CORPSE
+            && touch_petrifies(mons[mwep.corpsenm]))
+            throw new Error('mhitm_ad_phys(): do_stone_mon() not ported yet');
+
+        mhm.damage += dmgval(mwep, mdef);
+        if ((marmg = which_armor(magr, W_ARMG)) != null
+            && marmg.otyp === GAUNTLETS_OF_POWER)
+            mhm.damage += rn1(4, 3); /* 3..6 */
+        if (mhm.damage < 1) /* is this necessary?  mhitu.c has it... */
+            mhm.damage = 1;
+        if (mwep.oartifact)
+            throw new Error('mhitm_ad_phys(): artifact_hit() not ported yet');
+        if (mhm.damage)
+            rustm(mdef, mwep);
+        if ((mwep.opoisoned || permapoisoned(mwep)) && !rn2(4))
+            throw new Error('mhitm_ad_phys(): mhitm_really_poison() not ported yet');
+    } else if (magr.data === mons[M.PM_PURPLE_WORM]
+               && pd === mons[M.PM_SHRIEKER]) {
+        /* hack to enhance mm_aggression(); we don't want purple
+           worm's bite attack to kill a shrieker because then it
+           won't swallow the corpse; but if the target survives,
+           the subsequent engulf attack should accomplish that */
+        if (mhm.damage >= mdef.mhp && mdef.mhp > 1)
+            mhm.damage = mdef.mhp - 1;
+    }
+}
+
+// C ref: mhitm.c rustm()
+export function rustm(mdef, obj) {
+    let dmgtyp = -1 /* ERODE_NONE */, chance = 1;
+
+    if (!mdef || !obj)
+        return; /* just in case */
+    /* AD_ACID and AD_ENCH are handled in passivemm() and passiveum() */
+    if (dmgtype(mdef.data, M.AD_CORR)) {
+        dmgtyp = ERODE_CORRODE;
+    } else if (dmgtype(mdef.data, M.AD_RUST)) {
+        dmgtyp = ERODE_RUST;
+    } else if (dmgtype(mdef.data, M.AD_FIRE)
+               /* steam vortex: fire resist applies, fire damage doesn't */
+               && mdef.data !== mons[M.PM_STEAM_VORTEX]) {
+        dmgtyp = ERODE_BURN;
+        chance = 6;
+    }
+
+    if (dmgtyp !== -1 && !rn2(chance))
+        throw new Error('rustm(): erode_obj() not ported yet');
+}
+
+// C ref: mhitm.c mswingsm()
+async function mswingsm(
+    magr,  /* attacker */
+    mdef,  /* defender */
+    otemp) /* attacker's weapon */
+{
+    if (game.flags.verbose && !Blind() && mon_visible(magr)) {
+        const bash = (is_pole(otemp) && otemp.oartifact !== ART_SNICKERSNEE
+                      && (dist2(magr.mx, magr.my, mdef.mx, mdef.my)
+                          <= 2));
+
+        await pline(`${Monnam(magr)} ${mswings_verb(otemp, bash)} ${
+            (otemp.quan > 1) ? "one of " : ""}${mhis(magr)} ${xname(otemp)} at ${
+            mon_nam(mdef)}.`);
     }
 }
 

@@ -8,7 +8,7 @@
 import { game } from './gstate.js';
 import { rnl } from './rng.js';
 import { pline, newsym } from './display.js';
-import { vision_reset } from './vision.js';
+import { recalc_block_point } from './vision.js';
 import { exercise } from './attrib.js';
 import { m_at } from './makemon.js';
 import { canspotmon } from './display.js';
@@ -42,13 +42,6 @@ export function cvt_sdoor_to_door(lev) {
     lev.arboreal_sdoor = 0; /* clears 'candig' */
 }
 
-/* C ref: vision.c recalc_block_point(), unblock_point() -- the JS
-   vision module keeps no incremental block map yet, so rebuild it */
-function recalc_block_point(x, y) {
-    void x, y;
-    vision_reset();
-    game.vision_full_recalc = 1;
-}
 
 /* C ref: hack.c nomul(0) */
 function nomul0() {

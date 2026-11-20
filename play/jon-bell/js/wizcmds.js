@@ -1057,6 +1057,7 @@ import { float_vs_flight } from './polyself.js'; // relocate-fns
 import { make_deaf, make_glib, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting } from './potion.js'; // relocate-fns
 import { do_mapping } from './detect.js'; // relocate-fns
 import { TtyMenu, menu_heading_text } from './tty_menu.js'; // relocate-fns
+import { menucolor_text } from './coloratt.js';
 import { get_feature_notice_ver } from './version.js'; // relocate-fns
 import { make_blinded } from './zap.js'; // relocate-fns
 import { makewish } from './zap.js'; // relocate-fns
@@ -1560,7 +1561,7 @@ export async function wiz_identify() {
     if (unid.length) {
         const PLUR = unid.length > 1 ? 's' : '';
         const windowLines = [
-            `Debug Identify -- unidentified or partially identified item${PLUR}`,
+            menucolor_text(`Debug Identify -- unidentified or partially identified item${PLUR}`),
         ];
         /* C invent.c:3244-3250 — the '_' entry.  iflags.override_ID carries the
          * ^I accelerator wiz_identify stuffed into it; visctrl(C('I')) is "^I".
@@ -1569,7 +1570,7 @@ export async function wiz_identify() {
                 + ' to permanently identify';
         if (unid.length > 1)
             sel += ` (${_binds_visctrl(g.iflags.override_ID)} for all)`;
-        windowLines.push(`_ - ${sel}`);
+        windowLines.push(`_ - ${menucolor_text(sel)}`);
         /* selection payload per rendered line; null for headings/title. */
         const lineObj = [null, WIZID_ALL];
         const wizGlyph = new Map();
@@ -1631,7 +1632,7 @@ export async function wiz_identify() {
             const stripSgr = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
             const plist = windowLines.map((ln, i) => {
                 const o = lineObj[i];
-                if (!o) return { str: stripSgr(ln), selectable: false, inverse: i > 0 };
+                if (!o) return { str: i > 0 ? stripSgr(ln) : ln, selectable: false, inverse: i > 0 };
                 return { str: ln.slice(4 + (wizGlyph.has(o) ? wizGlyph.get(o).length - 1 : 0)), glyphTxt: wizGlyph.get(o), selectable: true,
                          selector: ln[0], groupacc: o === WIZID_ALL ? String.fromCharCode(g.iflags.override_ID) : def_oc_syms_chars[o.oclass], payload: o };
             });
@@ -1839,8 +1840,8 @@ export async function wiz_identify() {
     /* C invent.c:3227-3236 — Sprintf(prompt, "Debug Identify") with no
      * " -- unidentified..." suffix (unid_cnt == 0), then the one add_menu_str. */
     const windowLines = [
-        'Debug Identify',
-        '(all items are permanently identified already)',
+        menucolor_text('Debug Identify'),
+        menucolor_text('(all items are permanently identified already)'),
     ];
     windowLines.push('(end)');
     const maxLen = windowLines.reduce((max, ln) =>

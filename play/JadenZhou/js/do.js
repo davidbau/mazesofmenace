@@ -27,6 +27,15 @@ import { m_at } from './makemon.js';
 import { mklev, place_lregion } from './mklev.js';
 import { vision_reset } from './vision.js';
 import { LR_UPTELE, LR_DOWNTELE } from './const.js';
+import { getobj, any_obj_ok, freeinv, stackobj } from './invent.js';
+import { GETOBJ_PROMPT, GETOBJ_ALLOWCNT, ECMD_FAIL, ECMD_TIME, W_ARMOR,
+         W_ACCESSORY, W_SADDLE, IS_SINK, LOST_DROPPED } from './const.js';
+import { welded, setuwep, setuqwep, setuswapwep } from './wield.js';
+import { You, newsym, stairway_at } from './display.js';
+import { can_reach_floor } from './engrave.js';
+import { doname } from './objnam.js';
+import { place_object } from './mkobj.js';
+import { encumber_msg } from './pickup.js';
 
 export const UTOTYPE_NONE = 0x00;
 export const UTOTYPE_ATSTAIRS = 0x01;
@@ -234,7 +243,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* obj_delivery(FALSE) */
     if (g.migrating_objs)
         throw new Error('goto_level(): obj_delivery() not ported yet');
-    losedogs();
+    await losedogs();
     kill_genocided_monsters(); /* for those wiped out while in limbo */
     /*
      * Expire all timers that have gone off while away.  Must be
@@ -440,6 +449,184 @@ export async function flooreffects(obj, /* the object landing on the floor */
 
     g.bhitpos = save_bhitpos;
     return res;
+}
+
+// C ref: do.c dodrop() -- the #drop command: drop one inventory item
+export async function dodrop() {
+    let result;
+
+    if (game.u.ushops)
+        throw new Error('dodrop(): sellobj_state() not ported yet');
+    result = await drop(await getobj("drop", any_obj_ok,
+                                     GETOBJ_PROMPT | GETOBJ_ALLOWCNT));
+    if (result)
+        reset_occupations();
+
+    return result;
+}
+
+/* C ref: cmd.c reset_occupations() -- reset_remarm(), reset_pick(),
+   reset_trapset(): none of their occupations is ported yet */
+function reset_occupations() {
+}
+
+// C ref: do.c canletgo() -- some common tests when trying to drop or
+// throw items
+export async function canletgo(obj, word) {
+    if (obj.owornmask & (W_ARMOR | W_ACCESSORY)) {
+        if (word)
+            throw new Error('canletgo(): Norep() not ported yet');
+        return false;
+    }
+    if (obj === game.uwep && welded(game.uwep)) {
+        if (word)
+            throw new Error('canletgo(): Norep() not ported yet');
+        return false;
+    }
+    if (obj.otyp === O.LOADSTONE && obj.cursed) {
+        throw new Error('canletgo(): cursed loadstone not ported yet');
+    }
+    if (obj.otyp === O.LEASH && obj.leashmon) {
+        if (word)
+            throw new Error('canletgo(): leash message not ported yet');
+        return false;
+    }
+    if (obj.owornmask & W_SADDLE) {
+        if (word)
+            await You(`cannot ${word} something you are sitting on.`);
+        return false;
+    }
+    return true;
+}
+
+// C ref: do.c drop()
+async function drop(obj) {
+    if (!obj)
+        return ECMD_FAIL;
+    if (!(await canletgo(obj, "drop")))
+        return ECMD_FAIL;
+    if (obj.otyp === O.CORPSE)
+        throw new Error('drop(): better_not_try_to_drop_that() not ported yet');
+    if (obj === game.uwep) {
+        if (welded(game.uwep))
+            throw new Error('drop(): weldmsg() not ported yet');
+        setuwep(null);
+    }
+    if (obj === game.uquiver) {
+        setuqwep(null);
+    }
+    if (obj === game.uswapwep) {
+        setuswapwep(null);
+    }
+
+    if (game.u.uswallow) {
+        throw new Error('drop(): dropping while engulfed not ported yet');
+    } else {
+        if ((obj.oclass === O.RING_CLASS || obj.otyp === O.MEAT_RING)
+            && IS_SINK(game.level.at(game.u.ux, game.u.uy).typ))
+            throw new Error('drop(): dosinkring() not ported yet');
+        if (!can_reach_floor(true))
+            throw new Error('drop(): dropping while unable to reach the floor not ported yet');
+        if (!IS_ALTAR(game.level.at(game.u.ux, game.u.uy).typ)
+            && (game.flags?.verbose ?? true))
+            await You(`drop ${doname(obj)}.`);
+    }
+    obj.how_lost = LOST_DROPPED;
+    await dropx(obj);
+    return ECMD_TIME;
+}
+
+// C ref: do.c dropx() -- take dropped item out of inventory; called in
+// several places - may produce output
+export async function dropx(obj) {
+    freeinv(obj);
+    if (!game.u.uswallow) {
+        if (await ship_object(obj, game.u.ux, game.u.uy, false))
+            return;
+        if (IS_ALTAR(game.level.at(game.u.ux, game.u.uy).typ))
+            throw new Error('dropx(): doaltarobj() not ported yet');
+    }
+    await dropy(obj);
+}
+
+// C ref: do.c dropy() -- put dropped object at destination; called from
+// lots of places
+export async function dropy(obj) {
+    await dropz(obj, false);
+}
+
+// C ref: do.c dropz() -- really put dropped object at its destination...
+export async function dropz(obj, with_impact) {
+    if (obj === game.uwep)
+        setuwep(null);
+    if (obj === game.uquiver)
+        setuqwep(null);
+    if (obj === game.uswapwep)
+        setuswapwep(null);
+
+    if (game.u.uswallow) {
+        throw new Error('dropz(): dropping into an engulfer not ported yet');
+    } else {
+        if (await flooreffects(obj, game.u.ux, game.u.uy, "drop"))
+            return;
+        place_object(obj, game.u.ux, game.u.uy);
+        if (with_impact)
+            throw new Error('dropz(): container_impact_dmg() not ported yet');
+        impact_disturbs_zombies(obj, with_impact);
+        if (obj === game.uball)
+            throw new Error('dropz(): drop_ball() not ported yet');
+        else if (game.level.flags?.has_shop)
+            throw new Error('dropz(): sellobj() not ported yet');
+        stackobj(obj);
+        /* Blind && Levitation: map_object() */
+        newsym(game.u.ux, game.u.uy); /* remap location under self */
+    }
+    await encumber_msg();
+}
+
+// C ref: hack.c impact_disturbs_zombies()
+function impact_disturbs_zombies(obj, violent) {
+    /* if object won't make a noticeable impact, let buried zombies rest */
+    if ((obj.owt || 0) < (violent ? 10 : 100) /* || is_flimsy(obj) */)
+        return;
+    if (game.level.buriedobjlist?.some(o => o.otyp === O.CORPSE && o.timed))
+        throw new Error('impact_disturbs_zombies(): disturb_buried_zombies() not ported yet');
+}
+
+// C ref: dokick.c down_gate()
+function down_gate(x, y) {
+    const stway = stairway_at(x, y);
+    let ttmp;
+
+    game.gate_str = null;
+    /* this matches the player restriction in goto_level() */
+    const qstart_level = game.dungeon_topology?.d_qstart_level;
+    if (qstart_level && qstart_level.dlevel && on_level(game.u.uz, qstart_level))
+        throw new Error('down_gate(): ok_to_quest() not ported yet');
+    if (stway && !stway.up && !stway.isladder) {
+        game.gate_str = "down the stairs";
+        return 'MIGR_STAIRS';
+    }
+    if (stway && !stway.up && stway.isladder) {
+        game.gate_str = "down the ladder";
+        return 'MIGR_LADDER_UP';
+    }
+    /* hole will always be flagged as seen; trap drop might or might not */
+    if ((ttmp = t_at(x, y)) && ttmp.tseen && is_hole(ttmp.ttyp)) {
+        game.gate_str = "through the trap door";
+        return 'MIGR_RANDOM';
+    }
+    return 'MIGR_NOWHERE';
+}
+
+// C ref: dokick.c ship_object() -- only the "doesn't fall" case so far
+async function ship_object(otmp, x, y, shop_floor_obj) {
+    void shop_floor_obj;
+    if (!otmp)
+        return false;
+    if (down_gate(x, y) === 'MIGR_NOWHERE')
+        return false;
+    throw new Error('ship_object(): objects falling down stairs/holes not ported yet');
 }
 
 // C ref: do.c obj_no_longer_held()

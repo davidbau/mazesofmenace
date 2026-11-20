@@ -3311,14 +3311,16 @@ export async function obj_absorb(obj1, obj2) {
                     first[flag] = second[flag] = 0;
             if (first.orotten || second.orotten)
                 first.orotten = second.orotten = 1;
-            const w1 = first.oeaten || first.owt;
-            const w2 = second.oeaten || second.owt;
+            // C mkobj.c:3725-3737: unsigned fields are assigned to int
+            // locals before age averaging, then stored back into unsigned fields.
+            const w1 = (first.oeaten || first.owt) | 0;
+            const w2 = (second.oeaten || second.owt) | 0;
             const relativeAge = Math.trunc(((game.moves - first.age) * w1
-                                          + (game.moves - second.age) * w2) / (w1 + w2));
+                                          + (game.moves - second.age) * w2) / ((w1 + w2) | 0));
             first.age = game.moves - relativeAge;
-            first.owt += w2;
+            first.owt = (first.owt + w2) >>> 0;
             if (first.oeaten || second.oeaten)
-                first.oeaten = w1 + w2;
+                first.oeaten = (w1 + w2) >>> 0;
             first.quan = 1;
             if (first.globby && second.globby) {
                 const tm1 = stop_timer(SHRINK_GLOB, { a_obj: first, a_long: null });

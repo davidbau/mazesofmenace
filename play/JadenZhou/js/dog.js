@@ -269,7 +269,7 @@ const MON_STILL_ARRIVING = 0x100;
 // C ref: dog.c losedogs()
 // Shopkeepers dismissing Kops (make_happy_shoppers()) and failed
 // arrivals going into limbo (m_into_limbo()) are not ported yet.
-export function losedogs() {
+export async function losedogs() {
     const g = game;
     const u = g.u;
     let mtmp, prev;
@@ -305,7 +305,7 @@ export function losedogs() {
             && xyloc === MIGR_EXACT_XY) {
             /* remove mtmp from migrating_mons */
             if (prev) prev.nmon = next; else g.migrating_mons = next;
-            mon_arrive(mtmp, Before_you);
+            await mon_arrive(mtmp, Before_you);
         } else {
             prev = mtmp;
         }
@@ -315,7 +315,7 @@ export function losedogs() {
     /* place pets and/or any other monsters who accompany hero */
     while ((mtmp = g.mydogs) != null) {
         g.mydogs = mtmp.nmon;
-        mon_arrive(mtmp, With_you);
+        await mon_arrive(mtmp, With_you);
     }
 
     /* time for migrating monsters to arrive */
@@ -327,7 +327,7 @@ export function losedogs() {
             /* remove mtmp from migrating_mons */
             if (prev) prev.nmon = next; else g.migrating_mons = next;
             /* note: if there's no room, it ends up on failed_arrivals list */
-            mon_arrive(mtmp, After_you);
+            await mon_arrive(mtmp, After_you);
         } else {
             prev = mtmp;
         }
@@ -343,7 +343,7 @@ export function losedogs() {
 // Only arrival with the hero (With_you) is ported; monsters migrating
 // independently (mon_catchup_elapsed_time(), the MIGR_* placement switch)
 // and long worm tails are not ported yet.
-export function mon_arrive(mtmp, when) {
+export async function mon_arrive(mtmp, when) {
     const g = game;
     const u = g.u;
     let num_segs;
@@ -389,9 +389,9 @@ export function mon_arrive(mtmp, when) {
            when there is a monster there too. */
         if (!m_at(u.ux, u.uy)
             && !rn2(mtmp.mtame ? 10 : mtmp.mpeaceful ? 5 : 2))
-            rloc_to(mtmp, u.ux, u.uy);
+            await rloc_to(mtmp, u.ux, u.uy);
         else
-            mnexto(mtmp, RLOC_NOMSG);
+            await mnexto(mtmp, RLOC_NOMSG);
         mtmp.mstate &= ~MON_STILL_ARRIVING;
         return;
     }

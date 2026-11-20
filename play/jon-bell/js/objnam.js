@@ -2356,7 +2356,7 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
     /* C objnam.c:5042-5071: glob weight and the wizard's limit override. */
     if (otmp.globby) {
         otmp.quan = 1;
-        otmp.owt = weight(otmp);
+        otmp.owt = weight(otmp) >>> 0;
         const gs = dx.gsize | 0;
         if (gs > 1)
             otmp.owt += (5 + (gs - 2) * 10) * otmp.owt;
@@ -2365,7 +2365,7 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
             if (cnt > rn1cnt && (!wizard() || game.program_state?.wizkit_wishing
                 || await yn_function('Override glob weight limit?', 'yn', 'n', true) !== 'y'))
                 cnt = rn1cnt;
-            otmp.owt *= cnt;
+            otmp.owt = Math.imul(otmp.owt, cnt) >>> 0;
         }
         cnt = 0;
     }
@@ -2671,7 +2671,8 @@ async function _finalize_wish(otmp, blessed, iscursed, uncursed, spe, spesgn, cn
         if (nut > 1) otmp.oeaten = nut >> 1;
     }
     // C objnam.c:5395-5397: finalize weight before the optional ball increment.
-    otmp.owt = weight(otmp);
+    // C objnam.c:5395 stores weight()'s signed int in unsigned obj::owt.
+    otmp.owt = weight(otmp) >>> 0;
     if (dx.very && (otmp.oclass | 0) === BALL_CLASS)
         otmp.owt += WT_IRON_BALL_INCR;
     return otmp;
@@ -4301,7 +4302,8 @@ function _xname_arm(obj, c, bufptr = null) {
         if (IFLAGS_PARTLY_EATEN_HACK() && obj.oeaten)
             buf += 'partly eaten ';
         if (obj.globby) { /* 3.7 added "medium" to replace no-prefix */
-            const owt = obj.owt | 0;
+            // C objnam.c:784-788 compares the unsigned weight field directly.
+            const owt = obj.owt >>> 0;
             buf += `${(owt <= 100) ? 'small'
                       : (owt <= 300) ? 'medium'
                         : (owt <= 500) ? 'large'

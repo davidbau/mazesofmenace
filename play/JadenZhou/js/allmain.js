@@ -21,7 +21,8 @@ import { deferred_goto } from './do.js';
 import { com_pager } from './questpgr.js';
 import { objects_globals_init } from './objects.js';
 import { init_objects } from './o_init.js';
-import { init_dungeons, depth } from './dungeon.js';
+import { init_dungeons, depth, find_level } from './dungeon.js';
+import { ask_do_tutorial } from './options.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
 import { change_luck } from './attrib.js';
 import { FULL_MOON, NEW_MOON, COLNO } from './const.js';
@@ -50,6 +51,7 @@ import { age_spells } from './spell.js';
 import { u_wipe_engr } from './engrave.js';
 import { dosearch0 } from './detect.js';
 import { set_uasmon } from './polyself.js';
+import { init_artifacts } from './artifact.js';
 
 const MON_AT = (x, y) => !!m_at(x, y); /* C ref: display.h MON_AT() */
 
@@ -83,7 +85,8 @@ export async function newgame() {
     init_dungeons();  /* must be before u_init() to avoid rndmonst()
                        * creating odd monsters for any tins and eggs
                        * in hero's initial inventory */
-    // init_artifacts(); -- not ported yet (artifact.c)
+    init_artifacts(); /* before u_init() in case $WIZKIT specifies
+                       * any artifacts */
     u_init_misc();
 
     l_nhcore_init();  /* create a Lua state that lasts until end of game */
@@ -99,10 +102,10 @@ export async function newgame() {
        at level 1 yet -- not ported yet (hack.c) */
 
     if (MON_AT(g.u.ux, g.u.uy))
-        mnexto(m_at(g.u.ux, g.u.uy), RLOC_NOMSG);
+        await mnexto(m_at(g.u.ux, g.u.uy), RLOC_NOMSG);
     makedog();
 
-    u_init_inventory_attrs();
+    await u_init_inventory_attrs();
     /* the status line's gold: botl.c shows money_cnt(invent) */
     g._goldCount = money_cnt(g.invent);
     vision_recalc(0);
@@ -264,12 +267,31 @@ function is_pool_or_lava_at_u() {
 }
 
 // C ref: hack.c unmul()
-function unmul() {
+async function unmul(msg_override) {
     const g = game;
+    g.disp_botl = true;
     g.multi = 0; /* caller will usually have done this already */
-    /* nomovemsg / afternmv / Norep("You can move again."): not ported yet */
-    g.multi_reason = null;
+    if (msg_override)
+        g.nomovemsg = msg_override;
+    else if (!g.nomovemsg)
+        g.nomovemsg = "You can move again."; /* You_can_move_again */
+    if (g.nomovemsg) {
+        await pline(g.nomovemsg);
+        /* "You survived that attempt on your life" while Upolyd: not
+           reached */
+    }
     g.nomovemsg = null;
+    g.u.usleep = 0;
+    g.multi_reason = null;
+
+    if (g.afternmv) {
+        const f = g.afternmv;
+
+        /* clear afternmv before calling it (to override the
+           encumbrance hack for levitation--see weight_cap()) */
+        g.afternmv = null;
+        await f();
+    }
 }
 
 // C ref: allmain.c regen_pw()
@@ -526,9 +548,7 @@ export async function moveloop_core() {
                 if (g.multi < 0) {
                     /* runmode_delay_output(): display timing only */
                     if (++g.multi === 0) { /* finished yet? */
-                        /* unmul((char *) 0): the nomovemsg message and
-                           afternmv callback aren't ported yet */
-                        unmul();
+                        await unmul(null);
                     }
                 }
             }
@@ -665,15 +685,26 @@ export async function moveloop_preamble(resuming) {
     g.program_state.in_moveloop = 1;
 }
 
+// C ref: allmain.c maybe_do_tutorial()
+export async function maybe_do_tutorial() {
+    const sp = find_level("tut-1");
+
+    if (!sp)
+        return;
+
+    if (await ask_do_tutorial()) {
+        /* assign_level(&u.ucamefrom, &u.uz); schedule_goto(&sp->dlevel,
+           ...); deferred_goto(); vision_recalc(0); docrt(); */
+        throw new Error('maybe_do_tutorial(): entering the tutorial is not ported yet');
+    }
+}
+
 // C ref: allmain.c moveloop()
 export async function moveloop(resuming) {
     await moveloop_preamble(resuming);
 
-    /* if (!resuming) maybe_do_tutorial(); -- the tutorial query
-       (options.c ask_do_tutorial()) is not ported yet */
-    vision_recalc(0);
-    await docrt();
-    await flush_screen(1);
+    if (!resuming)
+        await maybe_do_tutorial();
 
     for (;;) {
         await moveloop_core();

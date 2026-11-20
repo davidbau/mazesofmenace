@@ -8,14 +8,33 @@
 // u.weapon_skills[] (you.h) lives on game.u.weapon_skills.
 
 import { game } from './gstate.js';
+import { rnd, d } from './rng.js';
 import {
     P_NONE, P_NUM_SKILLS, P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_EXPERT,
     P_HEALING_SPELL, P_CLERIC_SPELL, P_ATTACK_SPELL, P_ENCHANTMENT_SPELL,
-    P_BARE_HANDED_COMBAT, P_RIDING, P_CROSSBOW, P_BOW,
+    P_BARE_HANDED_COMBAT, P_RIDING, P_CROSSBOW, P_BOW, P_SLING, P_SPEAR,
+    P_AXE, P_PICK_AXE, NO_WEAPON_WANTED, NEED_WEAPON, NEED_RANGED_WEAPON,
+    NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE, AKLYS_LIM,
+    WT_IRON_BALL_INCR, STONE_RES, NON_PM, W_ARM, W_ARMS, W_ARMG, W_WEP,
 } from './const.js';
 import { objects, WEAPON_CLASS, TOOL_CLASS, GEM_CLASS } from './objects.js';
+import * as O from './objects.js';
 import * as M from './monsters.js';
 import { spell_skilltype, skill_based_spellbook_id } from './spell.js';
+import { ART_SUNSWORD, ART_SNICKERSNEE } from './artilist.js';
+import { touch_artifact } from './artifact.js';
+import { is_weptool } from './mkobj.js';
+import { is_pool } from './makemon.js';
+import { is_swimmer, passes_walls, is_undead, is_demon, is_were,
+         is_vampshifter, Resists_Elem } from './mondata.js';
+import { dist2 } from './hacklib.js';
+import { couldsee } from './vision.js';
+import { pline } from './display.js';
+import { canseemon } from './display.js';
+import { Monnam } from './do_name.js';
+import { doname } from './objnam.js';
+import { which_armor } from './worn.js';
+import { mon_hates_silver, mon_hates_blessings } from './mondata.js';
 
 function impossible(msg) { console.error(`impossible: ${msg}`); }
 
@@ -154,4 +173,775 @@ export function skill_init(class_skill) {
 
     if (!game.u.uroleplay?.pauper) /* paupers lack advanced access to books */
         skill_based_spellbook_id();
+}
+
+// ── Monster weapons ──
+// C ref: weapon.c hitval(), dmgval(), oselect(), select_rwep(),
+// select_hwep(), possibly_unwield(), mon_wield_item(), mwepgone(),
+// setmnotwielded(), autoreturn_weapon(); wield.c mwelded();
+// mthrowu.c m_carrying().
+
+/* monst.h MON_WEP(), MON_NOWEP() */
+function MON_WEP(mon) { return mon.mw || null; }
+function MON_NOWEP(mon) { mon.mw = null; }
+/* monster inventory in C order (add_to_minv() prepends) */
+function minv(mon) { return (mon.minvent || []).slice().reverse(); }
+
+/* C ref: decl.c hands_obj -- "weapon" meaning bare hands (no propellor) */
+export const hands_obj = { otyp: O.STRANGE_OBJECT, oclass: 0, hands_obj: true };
+/* C ref: decl.h gp.propellor -- set by select_rwep() */
+export function propellor() { return game.propellor ?? null; }
+function set_propellor(p) { game.propellor = p; }
+
+/* mondata.h */
+function strongmonst(ptr) { return (ptr.mflags2 & M.M2_STRONG) !== 0; }
+function is_giant(ptr) { return (ptr.mflags2 & M.M2_GIANT) !== 0; }
+function throws_rocks(ptr) { return (ptr.mflags2 & M.M2_ROCKTHROW) !== 0; }
+function likes_gems(ptr) { return (ptr.mflags2 & M.M2_JEWELS) !== 0; }
+function mindless(ptr) { return (ptr.mflags1 & M.M1_MINDLESS) !== 0; }
+function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
+function thick_skinned(ptr) { return (ptr.mflags1 & M.M1_THICK_HIDE) !== 0; }
+function bigmonst(ptr) { return ptr.msize >= M.MZ_LARGE; }
+function is_wooden(ptr) { return ptr === M.mons[M.PM_WOOD_GOLEM]; }
+function hates_light(ptr) { return ptr === M.mons[M.PM_GREMLIN]; }
+function is_covetous(ptr) { return (ptr.mflags3 & M.M3_COVETOUS) !== 0; }
+function is_rider(ptr) {
+    return ptr === M.mons[M.PM_DEATH] || ptr === M.mons[M.PM_FAMINE]
+        || ptr === M.mons[M.PM_PESTILENCE];
+}
+function touch_petrifies(ptr) {
+    return ptr === M.mons[M.PM_COCKATRICE] || ptr === M.mons[M.PM_CHICKATRICE];
+}
+// C ref: mondata.c attacktype()
+function attacktype(ptr, atyp) {
+    return ptr.mattk.some((a) => a.aatyp === atyp);
+}
+/* C ref: monst.h resists_ston() */
+function resists_ston(mon) { return Resists_Elem(mon, STONE_RES); }
+
+/* obj.h */
+function is_art(o, art) { return !!(o && o.oartifact === art); }
+function is_spear(otmp) {
+    return otmp.oclass === WEAPON_CLASS && objects[otmp.otyp].oc_skill === P_SPEAR;
+}
+function is_axe(otmp) {
+    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
+           && objects[otmp.otyp].oc_skill === P_AXE;
+}
+function is_pick(otmp) {
+    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
+           && objects[otmp.otyp].oc_skill === P_PICK_AXE;
+}
+function greatest_erosion(otmp) {
+    const e1 = otmp.oeroded || 0, e2 = otmp.oeroded2 || 0;
+    return e1 > e2 ? e1 : e2;
+}
+/* C ref: wield.c erodeable_wep(), will_weld() */
+function erodeable_wep(optr) {
+    return optr.oclass === WEAPON_CLASS || is_weptool(optr)
+        || optr.otyp === O.HEAVY_IRON_BALL || optr.otyp === O.IRON_CHAIN;
+}
+function will_weld(optr) {
+    return !!optr.cursed && (erodeable_wep(optr) || optr.otyp === O.TIN_OPENER);
+}
+// C ref: artifact.c artifact_light()
+function artifact_light(obj) {
+    if (obj && (obj.otyp === O.GOLD_DRAGON_SCALE_MAIL
+                || obj.otyp === O.GOLD_DRAGON_SCALES)
+        && ((obj.owornmask || 0) & W_ARM) !== 0)
+        return true;
+    return !!(obj && obj.oartifact) && is_art(obj, ART_SUNSWORD);
+}
+// C ref: artifact.c shade_glare()
+function shade_glare(obj) {
+    /* any silver object is effective */
+    if (objects[obj.otyp].oc_material === O.SILVER)
+        return true;
+    /* non-silver artifacts with bonus against undead also are effective */
+    if (obj.oartifact)
+        throw new Error('shade_glare(): artifacts not ported yet');
+    /* otherwise, harmless to shades */
+    return false;
+}
+
+/* targets that provide attacker with small to-hit bonus when using a spear */
+const kebabable = [M.S_XORN, M.S_DRAGON, M.S_JABBERWOCK, M.S_NAGA, M.S_GIANT];
+
+// C ref: wield.c mwelded()
+/* test whether monster's wielded weapon is stuck to hand/paw/whatever */
+export function mwelded(obj) {
+    /* caller is responsible for making sure this is a monster's item */
+    if (obj && ((obj.owornmask || 0) & W_WEP) && will_weld(obj))
+        return true;
+    return false;
+}
+
+// C ref: weapon.c hitval()
+/*
+ *      hitval returns an integer representing the "to hit" bonuses
+ *      of "otmp" against the monster.
+ */
+export function hitval(otmp, mon) {
+    let tmp = 0;
+    const ptr = mon.data;
+    const Is_weapon = (otmp.oclass === WEAPON_CLASS || is_weptool(otmp));
+
+    if (Is_weapon)
+        tmp += (otmp.spe || 0);
+
+    /* Put weapon-specific "to hit" bonuses in below: */
+    tmp += objects[otmp.otyp].oc_hitbon;
+
+    /* Put weapon vs. monster type "to hit" bonuses in below: */
+
+    /* Blessed weapons used against undead or demons */
+    if (Is_weapon && otmp.blessed && mon_hates_blessings(mon))
+        tmp += 2;
+
+    if (is_spear(otmp) && kebabable.includes(ptr.mlet))
+        tmp += 2;
+
+    /* trident is highly effective against swimmers */
+    if (otmp.otyp === O.TRIDENT && is_swimmer(ptr)) {
+        if (is_pool(mon.mx, mon.my))
+            tmp += 4;
+        else if (ptr.mlet === M.S_EEL || ptr.mlet === M.S_SNAKE)
+            tmp += 2;
+    }
+
+    /* Picks used against xorns and earth elementals */
+    if (is_pick(otmp) && (passes_walls(ptr) && thick_skinned(ptr)))
+        tmp += 2;
+
+    /* Check specially named weapon "to hit" bonuses */
+    if (otmp.oartifact)
+        throw new Error('hitval(): spec_abon() not ported yet');
+
+    return tmp;
+}
+
+// C ref: weapon.c dmgval()
+/*
+ *      dmgval returns an integer representing the damage bonuses
+ *      of "otmp" against the monster.
+ */
+export function dmgval(otmp, mon) {
+    let tmp = 0;
+    const otyp = otmp.otyp;
+    const ptr = mon.data;
+    const Is_weapon = (otmp.oclass === WEAPON_CLASS || is_weptool(otmp));
+
+    if (otyp === O.CREAM_PIE)
+        return 0;
+
+    if (bigmonst(ptr)) {
+        if (objects[otyp].oc_wldam)
+            tmp = rnd(objects[otyp].oc_wldam);
+        switch (otyp) {
+        case O.IRON_CHAIN:
+        case O.CROSSBOW_BOLT:
+        case O.MORNING_STAR:
+        case O.PARTISAN:
+        case O.RUNESWORD:
+        case O.ELVEN_BROADSWORD:
+        case O.BROADSWORD:
+            tmp++;
+            break;
+
+        case O.FLAIL:
+        case O.RANSEUR:
+        case O.VOULGE:
+            tmp += rnd(4);
+            break;
+
+        case O.ACID_VENOM:
+        case O.HALBERD:
+        case O.SPETUM:
+            tmp += rnd(6);
+            break;
+
+        case O.BATTLE_AXE:
+        case O.BARDICHE:
+        case O.TRIDENT:
+            tmp += d(2, 4);
+            break;
+
+        case O.TSURUGI:
+        case O.DWARVISH_MATTOCK:
+        case O.TWO_HANDED_SWORD:
+            tmp += d(2, 6);
+            break;
+        }
+    } else {
+        if (objects[otyp].oc_wsdam)
+            tmp = rnd(objects[otyp].oc_wsdam);
+        switch (otyp) {
+        case O.IRON_CHAIN:
+        case O.CROSSBOW_BOLT:
+        case O.MACE:
+        case O.SILVER_MACE:
+        case O.WAR_HAMMER:
+        case O.FLAIL:
+        case O.SPETUM:
+        case O.TRIDENT:
+            tmp++;
+            break;
+
+        case O.BATTLE_AXE:
+        case O.BARDICHE:
+        case O.BILL_GUISARME:
+        case O.GUISARME:
+        case O.LUCERN_HAMMER:
+        case O.MORNING_STAR:
+        case O.RANSEUR:
+        case O.BROADSWORD:
+        case O.ELVEN_BROADSWORD:
+        case O.RUNESWORD:
+        case O.VOULGE:
+            tmp += rnd(4);
+            break;
+
+        case O.ACID_VENOM:
+            tmp += rnd(6);
+            break;
+        }
+    }
+    if (Is_weapon) {
+        tmp += (otmp.spe || 0);
+        /* negative enchantment mustn't produce negative damage */
+        if (tmp < 0)
+            tmp = 0;
+    }
+
+    if (objects[otyp].oc_material <= O.LEATHER && thick_skinned(ptr))
+        /* thick-skinned or scaled creatures don't feel it */
+        tmp = 0;
+    if (ptr === M.mons[M.PM_SHADE] && !shade_glare(otmp))
+        tmp = 0;
+
+    /* "very heavy iron ball"; weight increase is in increments */
+    if (otyp === O.HEAVY_IRON_BALL && tmp > 0) {
+        let wt = objects[O.HEAVY_IRON_BALL].oc_weight;
+
+        if (otmp.owt > wt) {
+            wt = Math.trunc((otmp.owt - wt) / WT_IRON_BALL_INCR);
+            tmp += rnd(4 * wt);
+            if (tmp > 25)
+                tmp = 25; /* objects[].oc_wldam */
+        }
+    }
+
+    /* Put weapon vs. monster type damage bonuses in below: */
+    if (Is_weapon || otmp.oclass === GEM_CLASS || otmp.oclass === O.BALL_CLASS
+        || otmp.oclass === O.CHAIN_CLASS) {
+        let bonus = 0;
+
+        if (otmp.blessed && mon_hates_blessings(mon))
+            bonus += rnd(4);
+        if (is_axe(otmp) && is_wooden(ptr))
+            bonus += rnd(4);
+        if (objects[otyp].oc_material === O.SILVER && mon_hates_silver(mon))
+            bonus += rnd(20);
+        if (artifact_light(otmp) && otmp.lamplit && hates_light(ptr))
+            bonus += rnd(8);
+
+        /* if the weapon is going to get a double damage bonus, adjust
+           this bonus so that effectively it's added after the doubling */
+        if (bonus > 1 && otmp.oartifact)
+            throw new Error('dmgval(): spec_dbon() not ported yet');
+
+        tmp += bonus;
+    }
+
+    if (tmp > 0) {
+        /* It's debatable whether a rusted blunt instrument
+           should do less damage than a pristine one, since
+           it will hit with essentially the same impact, but
+           there ought to some penalty for using damaged gear
+           so always subtract erosion even for blunt weapons. */
+        tmp -= greatest_erosion(otmp);
+        if (tmp < 1)
+            tmp = 1;
+    }
+
+    return tmp;
+}
+
+// C ref: mon.c can_touch_safely()
+function can_touch_safely(mtmp, otmp) {
+    const otyp = otmp.otyp;
+    const mdat = mtmp.data;
+
+    if (otyp === O.CORPSE && touch_petrifies(M.mons[otmp.corpsenm])
+        && !((mtmp.misc_worn_check || 0) & W_ARMG) && !resists_ston(mtmp))
+        return false;
+    if (otyp === O.CORPSE && is_rider(M.mons[otmp.corpsenm]))
+        return false;
+    if (objects[otyp].oc_material === O.SILVER && mon_hates_silver(mtmp)
+        && (otyp !== O.BELL_OF_OPENING || !is_covetous(mdat)))
+        return false;
+    if (!touch_artifact(otmp, mtmp))
+        return false;
+    return true;
+}
+
+// C ref: weapon.c oselect()
+function oselect(mtmp, type) {
+    for (const otmp of minv(mtmp)) {
+        if (otmp.otyp !== type)
+            continue;
+
+        /* never select non-cockatrice corpses */
+        if ((type === O.CORPSE || type === O.EGG)
+            && (otmp.corpsenm === NON_PM
+                || !touch_petrifies(M.mons[otmp.corpsenm])))
+            continue;
+
+        if (!can_touch_safely(mtmp, otmp))
+            continue;
+
+        return otmp;
+    }
+    return null;
+}
+
+// C ref: mthrowu.c m_carrying()
+export function m_carrying(mtmp, type) {
+    if (mtmp === game.youmonst) {
+        for (let otmp = game.invent; otmp; otmp = otmp.nobj)
+            if (otmp.otyp === type)
+                return otmp;
+        return null;
+    }
+    for (const otmp of minv(mtmp))
+        if (otmp.otyp === type)
+            return otmp;
+    return null;
+}
+
+/* C ref: obj.h is_launcher(), is_ammo(), matching_launcher(),
+   ammo_and_launcher() */
+function is_launcher(otmp) {
+    return otmp.oclass === WEAPON_CLASS && objects[otmp.otyp].oc_skill >= P_BOW
+           && objects[otmp.otyp].oc_skill <= P_CROSSBOW;
+}
+function matching_launcher(a, l) {
+    return !!l && objects[a.otyp].oc_skill === -objects[l.otyp].oc_skill;
+}
+function ammo_and_launcher(a, l) { return is_ammo(a) && matching_launcher(a, l); }
+
+// C ref: mthrowu.c m_has_launcher_and_ammo()
+/* TRUE iff mtmp is wielding a launcher and carrying matching ammo */
+export function m_has_launcher_and_ammo(mtmp) {
+    const mwep = MON_WEP(mtmp);
+
+    if (mwep && is_launcher(mwep)) {
+        for (const otmp of minv(mtmp))
+            if (ammo_and_launcher(otmp, mwep))
+                return true;
+    }
+    return false;
+}
+
+const rwep = [
+    O.DWARVISH_SPEAR, O.SILVER_SPEAR, O.ELVEN_SPEAR, O.SPEAR, O.ORCISH_SPEAR,
+    O.JAVELIN, O.SHURIKEN, O.YA, O.SILVER_ARROW, O.ELVEN_ARROW, O.ARROW,
+    O.ORCISH_ARROW, O.CROSSBOW_BOLT, O.SILVER_DAGGER, O.ELVEN_DAGGER,
+    O.DAGGER, O.ORCISH_DAGGER, O.KNIFE, O.FLINT, O.ROCK, O.LOADSTONE,
+    O.LUCKSTONE, O.DART, O.CREAM_PIE,
+];
+
+/* polearms */
+const pwep = [ O.HALBERD,       O.BARDICHE, O.SPETUM,
+               O.BILL_GUISARME, O.VOULGE,   O.RANSEUR,
+               O.GUISARME,      O.GLAIVE,   O.LUCERN_HAMMER,
+               O.BEC_DE_CORBIN, O.FAUCHARD, O.PARTISAN,
+               O.LANCE ];
+
+/* throw-and-return weapons */
+const arwep = [
+    /* { BOOMERANG, 5, 0 }, */
+    { otyp: O.AKLYS, range: AKLYS_LIM * AKLYS_LIM, tethered: 1 },
+];
+
+// C ref: weapon.c autoreturn_weapon()
+export function autoreturn_weapon(otmp) {
+    for (let i = 0; i < arwep.length; i++) {
+        if (otmp.otyp === arwep[i].otyp)
+            return arwep[i];
+    }
+    return null;
+}
+
+// C ref: weapon.c select_rwep()
+/* select a ranged weapon for the monster */
+export function select_rwep(mtmp) {
+    let otmp;
+    let mwep;
+    let mweponly;
+    let i;
+
+    const mlet = mtmp.data.mlet;
+
+    set_propellor(hands_obj);
+    if ((otmp = oselect(mtmp, O.EGG)) != null) /* cockatrice egg */
+        return otmp;
+    if (mlet === M.S_KOP) /* pies are first choice for Kops */
+        if ((otmp = oselect(mtmp, O.CREAM_PIE)) != null)
+            return otmp;
+    if (throws_rocks(mtmp.data)) /* ...boulders for giants */
+        if ((otmp = oselect(mtmp, O.BOULDER)) != null)
+            return otmp;
+
+    /* Select polearms first; they do more damage and aren't expendable.
+       But don't pick one if monster's weapon is welded, because then
+       we'd never have a chance to throw non-wielding missiles. */
+    /* The limit of 13 here is based on the monster polearm range limit
+     * (defined as 5 in mthrowu.c).  5 corresponds to a distance of 2 in
+     * one direction and 1 in another; one space beyond that would be 3 in
+     * one direction and 2 in another; 3^2+2^2=13.
+     */
+    mwep = MON_WEP(mtmp);
+    /* NO_WEAPON_WANTED means we already tried to wield and failed */
+    mweponly = (mwelded(mwep) && mtmp.weapon_check === NO_WEAPON_WANTED);
+    if (dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 13
+        && couldsee(mtmp.mx, mtmp.my)) {
+        if (is_art(mwep, ART_SNICKERSNEE)) {
+            set_propellor(mwep);
+            return mwep;
+        }
+
+        for (i = 0; i < pwep.length; i++) {
+            /* Only strong monsters can wield big (esp. long) weapons.
+             * Big weapon is basically the same as bimanual.
+             * All monsters can wield the remaining weapons.
+             */
+            if (((strongmonst(mtmp.data)
+                  && ((mtmp.misc_worn_check || 0) & W_ARMS) === 0)
+                 || !objects[pwep[i]].oc_bimanual)
+                && (objects[pwep[i]].oc_material !== O.SILVER
+                    || !mon_hates_silver(mtmp))) {
+                if ((otmp = oselect(mtmp, pwep[i])) != null
+                    && (otmp === mwep || !mweponly)) {
+                    set_propellor(otmp); /* force the monster to wield it */
+                    return otmp;
+                }
+            }
+        }
+    }
+    /* Next, try to select a throw-and-return weapon, since they are
+     * also not as expendable. Again, don't pick one if monster's
+     * weapon is welded.
+     */
+    for (i = 0; i < arwep.length; i++) {
+        const arw = arwep[i];
+
+        if (!mindless(mtmp.data) && !is_animal(mtmp.data) && !mweponly
+            && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= arw.range
+            && couldsee(mtmp.mx, mtmp.my)) {
+            if ((((mtmp.misc_worn_check || 0) & W_ARMS) === 0
+                 || !objects[arw.otyp].oc_bimanual)
+                && (objects[arw.otyp].oc_material !== O.SILVER
+                    || !mon_hates_silver(mtmp))) {
+                if ((otmp = oselect(mtmp, arw.otyp)) != null
+                    && (otmp === mwep || !mweponly)) {
+                    set_propellor(otmp); /* force the monster to wield it */
+                    return otmp;
+                }
+            }
+        }
+    }
+
+    /*
+     * other than the specific cases above, always select the
+     * most potent ranged weapon to hand.
+     */
+    for (i = 0; i < rwep.length; i++) {
+        let prop;
+
+        /* shooting gems from slings; this goes just before the darts */
+        /* (shooting rocks is already handled via the rwep[] ordering) */
+        if (rwep[i] === O.DART && !likes_gems(mtmp.data)
+            && m_carrying(mtmp, O.SLING)) { /* propellor */
+            for (const o of minv(mtmp))
+                if (o.oclass === GEM_CLASS
+                    && (o.otyp !== O.LOADSTONE || !o.cursed)) {
+                    set_propellor(m_carrying(mtmp, O.SLING));
+                    return o;
+                }
+        }
+
+        /* KMH -- This belongs here so darts will work */
+        set_propellor(hands_obj);
+
+        prop = objects[rwep[i]].oc_skill;
+        if (prop < 0) {
+            switch (-prop) {
+            case P_BOW:
+                set_propellor(oselect(mtmp, O.YUMI));
+                if (!propellor())
+                    set_propellor(oselect(mtmp, O.ELVEN_BOW));
+                if (!propellor())
+                    set_propellor(oselect(mtmp, O.BOW));
+                if (!propellor())
+                    set_propellor(oselect(mtmp, O.ORCISH_BOW));
+                break;
+            case P_SLING:
+                set_propellor(oselect(mtmp, O.SLING));
+                break;
+            case P_CROSSBOW:
+                set_propellor(oselect(mtmp, O.CROSSBOW));
+            }
+            if ((otmp = MON_WEP(mtmp)) && mwelded(otmp) && otmp !== propellor()
+                && mtmp.weapon_check === NO_WEAPON_WANTED)
+                set_propellor(null);
+        }
+        /* propellor = obj, propellor to use
+         * propellor = &hands_obj, doesn't need a propellor
+         * propellor = 0, needed one and didn't have one
+         */
+        if (propellor() != null) {
+            /* Note: cannot use m_carrying for loadstones, since it will
+             * always select the first object of a type, and maybe the
+             * monster is carrying two but only the first is unthrowable.
+             */
+            if (rwep[i] !== O.LOADSTONE) {
+                /* Don't throw a cursed weapon-in-hand or an artifact */
+                if ((otmp = oselect(mtmp, rwep[i])) && !otmp.oartifact
+                    && !(otmp === MON_WEP(mtmp) && mwelded(otmp)))
+                    return otmp;
+            } else
+                for (const o of minv(mtmp)) {
+                    if (o.otyp === O.LOADSTONE && !o.cursed)
+                        return o;
+                }
+        }
+    }
+
+    /* failure */
+    return null;
+}
+
+/* Weapons in order of preference */
+const hwep = [
+    O.CORPSE, /* cockatrice corpse */
+    O.TSURUGI, O.RUNESWORD, O.DWARVISH_MATTOCK, O.TWO_HANDED_SWORD,
+    O.BATTLE_AXE, O.KATANA, O.UNICORN_HORN, O.CRYSKNIFE, O.TRIDENT,
+    O.LONG_SWORD, O.ELVEN_BROADSWORD, O.BROADSWORD, O.SCIMITAR,
+    O.SILVER_SABER, O.MORNING_STAR, O.ELVEN_SHORT_SWORD,
+    O.DWARVISH_SHORT_SWORD, O.SHORT_SWORD, O.ORCISH_SHORT_SWORD,
+    O.SILVER_MACE, O.MACE, O.AXE, O.DWARVISH_SPEAR, O.SILVER_SPEAR,
+    O.ELVEN_SPEAR, O.SPEAR, O.ORCISH_SPEAR, O.FLAIL, O.BULLWHIP,
+    O.QUARTERSTAFF, O.JAVELIN, O.AKLYS, O.CLUB, O.PICK_AXE, O.RUBBER_HOSE,
+    O.WAR_HAMMER, O.SILVER_DAGGER, O.ELVEN_DAGGER, O.DAGGER, O.ORCISH_DAGGER,
+    O.ATHAME, O.SCALPEL, O.KNIFE, O.WORM_TOOTH,
+];
+
+// C ref: weapon.c select_hwep()
+/* select a hand to hand weapon for the monster */
+export function select_hwep(mtmp) {
+    let otmp;
+    let i;
+    const strong = strongmonst(mtmp.data);
+    const wearing_shield = ((mtmp.misc_worn_check || 0) & W_ARMS) !== 0;
+
+    /* prefer artifacts to everything else */
+    for (const o of minv(mtmp)) {
+        if (o.oclass === WEAPON_CLASS && o.oartifact
+            && touch_artifact(o, mtmp)
+            && ((strong && !wearing_shield)
+                || !objects[o.otyp].oc_bimanual))
+            return o;
+    }
+
+    if (is_giant(mtmp.data)) { /* giants just love to use clubs */
+        if ((otmp = oselect(mtmp, O.CLUB)) != null)
+            return otmp;
+    } else if (mtmp.data === M.mons[M.PM_BALROG] && game.uwep) {
+        if ((otmp = oselect(mtmp, O.BULLWHIP)) != null)
+            return otmp;
+    }
+
+    /* only strong monsters can wield big (esp. long) weapons */
+    /* big weapon is basically the same as bimanual */
+    /* all monsters can wield the remaining weapons */
+    for (i = 0; i < hwep.length; i++) {
+        if (hwep[i] === O.CORPSE && !((mtmp.misc_worn_check || 0) & W_ARMG)
+            && !resists_ston(mtmp))
+            continue;
+        if (((strong && !wearing_shield) || !objects[hwep[i]].oc_bimanual)
+            && (objects[hwep[i]].oc_material !== O.SILVER
+                || !mon_hates_silver(mtmp)))
+            if ((otmp = oselect(mtmp, hwep[i])) != null)
+                return otmp;
+    }
+
+    /* failure */
+    return null;
+}
+
+// C ref: weapon.c possibly_unwield()
+/* Called after polymorphing a monster, robbing it, etc....  Monsters
+ * otherwise never unwield stuff on their own.  Might print message.
+ */
+export async function possibly_unwield(mon, polyspot) {
+    let obj = null, mw_tmp;
+
+    if (!(mw_tmp = MON_WEP(mon)))
+        return;
+    for (const o of minv(mon))
+        if (o === mw_tmp) {
+            obj = o;
+            break;
+        }
+    if (!obj) { /* The weapon was stolen or destroyed */
+        MON_NOWEP(mon);
+        mon.weapon_check = NEED_WEAPON;
+        return;
+    }
+    if (!attacktype(mon.data, M.AT_WEAP)) {
+        setmnotwielded(mon, mw_tmp);
+        mon.weapon_check = NO_WEAPON_WANTED;
+        void polyspot;
+        /* "%s drops %s.", obj_extract_self(), flooreffects(),
+           bypass_obj(), place_object() and stackobj() */
+        throw new Error('possibly_unwield(): dropping the weapon not ported yet');
+    }
+    /* The remaining case where there is a change is where a monster
+     * is polymorphed into a stronger/weaker monster with a different
+     * choice of weapons.  This has no parallel for players.  It can
+     * be handled by waiting until mon_wield_item is actually called.
+     * Though the monster still wields the wrong weapon until then,
+     * this is OK since the player can't see it.  (FIXME: Not okay since
+     * probing can reveal it.)
+     * Note that if there is no change, setting the check to NEED_WEAPON
+     * is harmless.
+     * Possible problem: big monster with big cursed weapon gets
+     * polymorphed into little monster.  But it's not quite clear how to
+     * handle this anyway....
+     */
+    if (!(mwelded(mw_tmp) && mon.weapon_check === NO_WEAPON_WANTED))
+        mon.weapon_check = NEED_WEAPON;
+    return;
+}
+
+// C ref: weapon.c mon_wield_item()
+/* Let a monster try to wield a weapon, based on mon->weapon_check.
+ * Returns 1 if the monster took time to do it, 0 if it did not.
+ */
+export async function mon_wield_item(mon) {
+    let obj;
+    let exclaim = true; /* assume mon is planning to attack */
+
+    /* This case actually should never happen */
+    if (mon.weapon_check === NO_WEAPON_WANTED)
+        return 0;
+    switch (mon.weapon_check) {
+    case NEED_HTH_WEAPON:
+        obj = select_hwep(mon);
+        break;
+    case NEED_RANGED_WEAPON:
+        select_rwep(mon);
+        obj = propellor();
+        break;
+    case NEED_PICK_AXE:
+        obj = m_carrying(mon, O.PICK_AXE);
+        /* KMH -- allow other picks */
+        if (!obj && !which_armor(mon, W_ARMS))
+            obj = m_carrying(mon, O.DWARVISH_MATTOCK);
+        exclaim = false; /* mon is just planning to dig */
+        break;
+    case NEED_AXE:
+        /* currently, only 2 types of axe */
+        obj = m_carrying(mon, O.BATTLE_AXE);
+        if (!obj || which_armor(mon, W_ARMS))
+            obj = m_carrying(mon, O.AXE);
+        exclaim = false;
+        break;
+    case NEED_PICK_OR_AXE:
+        /* prefer pick for fewer switches on most levels */
+        obj = m_carrying(mon, O.DWARVISH_MATTOCK);
+        if (!obj)
+            obj = m_carrying(mon, O.BATTLE_AXE);
+        if (!obj || which_armor(mon, W_ARMS)) {
+            obj = m_carrying(mon, O.PICK_AXE);
+            if (!obj)
+                obj = m_carrying(mon, O.AXE);
+        }
+        exclaim = false;
+        break;
+    default:
+        impossible(`weapon_check ${mon.weapon_check} for monster?`);
+        return 0;
+    }
+    if (obj && obj !== hands_obj) {
+        const mw_tmp = MON_WEP(mon);
+
+        if (mw_tmp && mw_tmp.otyp === obj.otyp) {
+            /* already wielding it */
+            mon.weapon_check = NEED_WEAPON;
+            return 0;
+        }
+        /* Actually, this isn't necessary--as soon as the monster
+         * wields the weapon, the weapon welds itself, so the monster
+         * can know it's cursed and needn't even bother trying.
+         * Still....
+         */
+        if (mw_tmp && mwelded(mw_tmp)) {
+            if (canseemon(mon))
+                throw new Error('mon_wield_item(): welded weapon messages not ported yet');
+            mon.weapon_check = NO_WEAPON_WANTED;
+            return 1;
+        }
+        mon.mw = obj; /* wield obj */
+        setmnotwielded(mon, mw_tmp);
+        mon.weapon_check = NEED_WEAPON;
+        if (canseemon(mon)) {
+            let newly_welded;
+            let arw;
+
+            await pline(`${Monnam(mon)} wields ${doname(obj)}${exclaim ? '!' : '.'}`); /* pline_mon() */
+            if ((arw = autoreturn_weapon(obj)) != null && arw.tethered !== 0)
+                throw new Error('mon_wield_item(): tether message (the()) not ported yet');
+
+            /* 3.6.3: mwelded() predicate expects the object to have its
+               W_WEP bit set in owormmask, but the pline here and for
+               artifact_light don't want that because they'd have '(weapon
+               in hand/claw)' appended; so we set it for the mwelded test
+               and then clear it, until finally setting it for good below */
+            obj.owornmask = (obj.owornmask || 0) | W_WEP;
+            newly_welded = mwelded(obj);
+            obj.owornmask &= ~W_WEP;
+            if (newly_welded)
+                throw new Error('mon_wield_item(): "welds itself" message not ported yet');
+        }
+        if (artifact_light(obj) && !obj.lamplit)
+            throw new Error('mon_wield_item(): begin_burn() not ported yet');
+        obj.owornmask = W_WEP;
+        return 1;
+    }
+    mon.weapon_check = NEED_WEAPON;
+    return 0;
+}
+
+// C ref: weapon.c mwepgone()
+/* force monster to stop wielding current weapon, if any */
+export function mwepgone(mon) {
+    const mwep = MON_WEP(mon);
+
+    if (mwep) {
+        setmnotwielded(mon, mwep);
+        mon.weapon_check = NEED_WEAPON;
+    }
+}
+
+// C ref: weapon.c setmnotwielded()
+export function setmnotwielded(mon, obj) {
+    if (!obj)
+        return;
+    if (artifact_light(obj) && obj.lamplit)
+        throw new Error('setmnotwielded(): end_burn() not ported yet');
+    if (MON_WEP(mon) === obj)
+        MON_NOWEP(mon);
+    obj.owornmask = (obj.owornmask || 0) & ~W_WEP;
 }

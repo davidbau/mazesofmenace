@@ -1,10 +1,34 @@
 // pray.js — prayer and god-name helpers.
 // C ref: pray.c
 //
-// Only the god-name helpers needed so far (role_init(), welcome()).
+// The god-name helpers, and #pray: dopray(), can_pray(), in_trouble(),
+// prayer_done(), angrygods(), gods_upset(), godvoice(), and pleased() up
+// to its trouble fixing and boons.
 
 import { game } from './gstate.js';
-import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC } from './const.js';
+import { rn2, rn1, rnl, rnz, ROLL_FROM } from './rng.js';
+import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, IS_ALTAR, Amask2align,
+         AM_MASK, AM_SHRINE, PASSES_WALLS, STONED, SLIMED, STRANGLED, SICK,
+         BLINDED, DEAF, STUNNED, CONFUSION, HALLUC, WOUNDED_LEGS, UNCHANGING,
+         TT_LAVA, TT_BURIEDBALL, WEAK, HUNGRY, EXT_ENCUMBER, HVY_ENCUMBER,
+         A_STR, A_WIS, A_MAX, W_SADDLE, LOW_PM, SDOOR, SCORR, TIMEOUT,
+         IS_OBSTRUCTED, isok, ECMD_OK, ECMD_TIME } from './const.js';
+import { M1_NOHANDS, M2_ROCKTHROW, S_HUMAN } from './monsters.js';
+import { BOULDER, LOADSTONE, HELM_OF_OPPOSITE_ALIGNMENT, LEVITATION_BOOTS,
+         RIN_LEVITATION, GAUNTLETS_OF_FUMBLING, FUMBLE_BOOTS, SADDLE,
+         POT_WATER } from './objects.js';
+import { pline } from './display.js';
+import { In_hell } from './dungeon.js';
+import { is_demon, is_undead } from './mondata.js';
+import { ABASE, AMAX, adjattrib, adjalign, change_luck } from './attrib.js';
+import { losexp } from './exper.js';
+import { near_capacity, nomul } from './hack.js';
+import { welded, bimanual } from './wield.js';
+import { which_armor, sobj_at, is_pool, is_lava } from './makemon.js';
+import { confers_luck } from './timeout.js';
+import { level_regions, hero_inside } from './region.js';
+import { xlev_to_rank } from './botl.js';
+import { tty_yn_function } from './wintty.js';
 
 // C ref: pray.c Moloch
 const Moloch = "Moloch";
@@ -59,4 +83,653 @@ export function align_gtitle(alignment) {
     if (gnam && gnam[0] === '_')
         result = "goddess";
     return result;
+}
+
+// ── C ref: pray.c #pray: dopray(), can_pray(), in_trouble(), prayer_done(),
+//    angrygods(), gods_upset(), pleased() (the parts reached so far) ──
+
+// C ref: pray.c godvoices[]
+const godvoices = [
+    "booms out", "thunders", "rings out", "booms",
+];
+
+const PIOUS = 20;
+const DEVOUT = 14;
+const STRIDENT = 4;
+
+const TROUBLE_STONED = 14;
+const TROUBLE_SLIMED = 13;
+const TROUBLE_STRANGLED = 12;
+const TROUBLE_LAVA = 11;
+const TROUBLE_SICK = 10;
+const TROUBLE_STARVING = 9;
+const TROUBLE_REGION = 8; /* stinking cloud */
+const TROUBLE_HIT = 7;
+const TROUBLE_LYCANTHROPE = 6;
+const TROUBLE_COLLAPSING = 5;
+const TROUBLE_STUCK_IN_WALL = 4;
+const TROUBLE_CURSED_LEVITATION = 3;
+const TROUBLE_UNUSEABLE_HANDS = 2;
+const TROUBLE_CURSED_BLINDFOLD = 1;
+
+const TROUBLE_PUNISHED = (-1);
+const TROUBLE_FUMBLING = (-2);
+const TROUBLE_CURSED_ITEMS = (-3);
+const TROUBLE_SADDLE = (-4);
+const TROUBLE_BLIND = (-5);
+const TROUBLE_POISONED = (-6);
+const TROUBLE_WOUNDED_LEGS = (-7);
+const TROUBLE_HUNGRY = (-8);
+const TROUBLE_STUNNED = (-9);
+const TROUBLE_CONFUSED = (-10);
+const TROUBLE_HALLUCINATION = (-11);
+
+/* C ref: youprop.h -- intrinsic/extrinsic property tests */
+function HProp(prop) { return game.u.uprops[prop]?.intrinsic || 0; }
+function EProp(prop) { return game.u.uprops[prop]?.extrinsic || 0; }
+function uhave(prop) { return !!(HProp(prop) || EProp(prop)); }
+function Upolyd() { return game.u.umonnum !== game.u.umonster; }
+function Luck() { return (game.u.uluck || 0) + (game.u.moreluck || 0); }
+function Inhell() { return In_hell(game.u.uz); }
+/* C ref: pray.c ugod_is_angry(), on_altar(), on_shrine(), a_align() */
+function ugod_is_angry() { return game.u.ualign.record < 0; }
+function on_altar() { return IS_ALTAR(game.level.at(game.u.ux, game.u.uy).typ); }
+function on_shrine() {
+    return (game.level.at(game.u.ux, game.u.uy).altarmask & AM_SHRINE) !== 0;
+}
+function a_align(x, y) {
+    return Amask2align(game.level.at(x, y).altarmask & AM_MASK);
+}
+/* C ref: mondata.h nohands(), nolimbs(), throws_rocks() */
+function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
+function throws_rocks(ptr) { return (ptr.mflags2 & M2_ROCKTHROW) !== 0; }
+/* C ref: obj.h Cursed_obj() */
+function Cursed_obj(obj, typ) { return !!(obj && obj.otyp === typ && obj.cursed); }
+
+// C ref: engrave.c freehand()
+function freehand() {
+    const uwep = game.uwep;
+    return (!uwep || !welded(uwep)
+            || (!bimanual(uwep) && (!game.uarms || !game.uarms.cursed)));
+}
+
+// C ref: pray.c critically_low_hp()
+/* critically low hit points if hp <= 5 or hp <= maxhp/N for some N */
+export function critically_low_hp(only_if_injured) {
+    const u = game.u;
+    let divisor, hplim,
+        curhp = Upolyd() ? u.mh : u.uhp,
+        maxhp = Upolyd() ? u.mhmax : u.uhpmax;
+
+    if (only_if_injured && !(curhp < maxhp))
+        return false;
+    hplim = 15 * u.ulevel;
+    if (maxhp > hplim)
+        maxhp = hplim;
+    /* 7 used to be the unconditional divisor */
+    switch (xlev_to_rank(u.ulevel)) { /* maps 1..30 into 0..8 */
+    case 0:
+    case 1:
+        divisor = 5;
+        break; /* explvl 1 to 5 */
+    case 2:
+    case 3:
+        divisor = 6;
+        break; /* explvl 6 to 13 */
+    case 4:
+    case 5:
+        divisor = 7;
+        break; /* explvl 14 to 21 */
+    case 6:
+    case 7:
+        divisor = 8;
+        break; /* explvl 22 to 29 */
+    default:
+        divisor = 9;
+        break; /* explvl 30+ */
+    }
+    /* 5 is a magic number in TROUBLE_HIT handling below */
+    return (curhp <= 5 || curhp * divisor <= maxhp);
+}
+
+// C ref: pray.c blocked_boulder()
+function blocked_boulder(dx, dy) {
+    const u = game.u;
+    let count = 0;
+
+    for (const otmp of game.level.objects || [])
+        if (otmp.where === 'OBJ_FLOOR' && otmp.ox === u.ux + dx
+            && otmp.oy === u.uy + dy && otmp.otyp === BOULDER)
+            count += otmp.quan;
+
+    const nx = u.ux + 2 * dx, ny = u.uy + 2 * dy; /* next spot beyond boulder(s) */
+    switch (count) {
+    case 0:
+        /* no boulders--not blocked */
+        return false;
+    case 1:
+        /* possibly blocked depending on if it's pushable */
+        break;
+    case 2:
+        /* this is only approximate since multiple boulders might sink */
+        if (isok(nx, ny) && (is_pool(nx, ny) || is_lava(nx, ny))) /* is_pool_or_lava() */
+            break; /* still need Sokoban check below */
+        /*FALLTHRU*/
+    default:
+        /* more than one boulder--blocked after they push the top one;
+           don't force them to push it first to find out */
+        return true;
+    }
+
+    /* (dx && dy && Sokoban): the Sokoban branch isn't ported */
+    if (!isok(nx, ny))
+        return true;
+    if (IS_OBSTRUCTED(game.level.at(nx, ny).typ))
+        return true;
+    if (sobj_at(BOULDER, nx, ny))
+        return true;
+
+    return false;
+}
+
+// C ref: pray.c stuck_in_wall()
+/* return True if surrounded by impassible rock, regardless of the state
+   of your own location (for example, inside a doorless closet) */
+export function stuck_in_wall() {
+    const u = game.u;
+    let count = 0;
+
+    if (uhave(PASSES_WALLS))
+        return false;
+    for (let i = -1; i <= 1; i++) {
+        const x = u.ux + i;
+        for (let j = -1; j <= 1; j++) {
+            if (!i && !j)
+                continue;
+            const y = u.uy + j;
+            if (!isok(x, y)
+                || (IS_OBSTRUCTED(game.level.at(x, y).typ)
+                    && (game.level.at(x, y).typ !== SDOOR
+                        && game.level.at(x, y).typ !== SCORR))
+                || (blocked_boulder(i, j) && !throws_rocks(game.youmonst.data)))
+                ++count;
+        }
+    }
+    return (count === 8);
+}
+
+// C ref: region.c region_danger() -- only gas clouds the hero is inside
+function region_danger() {
+    for (const r of level_regions())
+        if (hero_inside(r))
+            throw new Error('region_danger(): gas cloud danger not ported yet');
+    return false;
+}
+
+// C ref: pray.c worst_cursed_item()
+function worst_cursed_item() {
+    const g = game;
+    let otmp;
+
+    /* if strained or worse, check for loadstone first */
+    if (near_capacity() >= HVY_ENCUMBER) {
+        for (otmp = g.invent; otmp; otmp = otmp.nobj)
+            if (Cursed_obj(otmp, LOADSTONE))
+                return otmp;
+    }
+    /* weapon takes precedence if it is interfering
+       with taking off a ring or putting on a shield */
+    if (welded(g.uwep) && (g.uright || bimanual(g.uwep))) { /* weapon */
+        otmp = g.uwep;
+    /* gloves come next, due to rings */
+    } else if (g.uarmg && g.uarmg.cursed) { /* gloves */
+        otmp = g.uarmg;
+    /* then shield due to two handed weapons and spells */
+    } else if (g.uarms && g.uarms.cursed) { /* shield */
+        otmp = g.uarms;
+    /* then cloak due to body armor */
+    } else if (g.uarmc && g.uarmc.cursed) { /* cloak */
+        otmp = g.uarmc;
+    } else if (g.uarm && g.uarm.cursed) { /* suit */
+        otmp = g.uarm;
+    /* if worn helmet of opposite alignment is making you an adherent
+       of the current god, he/she/it won't uncurse that for you */
+    } else if (g.uarmh && g.uarmh.cursed /* helmet */
+               && g.uarmh.otyp !== HELM_OF_OPPOSITE_ALIGNMENT) {
+        otmp = g.uarmh;
+    } else if (g.uarmf && g.uarmf.cursed) { /* boots */
+        otmp = g.uarmf;
+    } else if (g.uarmu && g.uarmu.cursed) { /* shirt */
+        otmp = g.uarmu;
+    } else if (g.uamul && g.uamul.cursed) { /* amulet */
+        otmp = g.uamul;
+    } else if (g.uleft && g.uleft.cursed) { /* left ring */
+        otmp = g.uleft;
+    } else if (g.uright && g.uright.cursed) { /* right ring */
+        otmp = g.uright;
+    } else if (g.ublindf && g.ublindf.cursed) { /* eyewear */
+        otmp = g.ublindf; /* must be non-blinding lenses */
+    /* if weapon wasn't handled above, do it now */
+    } else if (welded(g.uwep)) { /* weapon */
+        otmp = g.uwep;
+    /* active secondary weapon even though it isn't welded */
+    } else if (g.uswapwep && g.uswapwep.cursed && g.u.twoweap) {
+        otmp = g.uswapwep;
+    /* all worn items ought to be handled by now */
+    } else {
+        for (otmp = g.invent; otmp; otmp = otmp.nobj) {
+            if (!otmp.cursed)
+                continue;
+            if (otmp.otyp === LOADSTONE || confers_luck(otmp))
+                break;
+        }
+    }
+    return otmp || null;
+}
+
+// C ref: pray.c in_trouble()
+/*
+ * Return 0 if nothing particular seems wrong, positive numbers for
+ * serious trouble, and negative numbers for comparative annoyances.
+ * This returns the worst problem. There may be others, and the gods
+ * may fix more than one.
+ */
+function in_trouble() {
+    const g = game;
+    const u = g.u;
+
+    /*
+     * major troubles
+     */
+    if (HProp(STONED))
+        return TROUBLE_STONED;
+    if (HProp(SLIMED))
+        return TROUBLE_SLIMED;
+    if (HProp(STRANGLED))
+        return TROUBLE_STRANGLED;
+    if (u.utrap && u.utraptype === TT_LAVA)
+        return TROUBLE_LAVA;
+    if (HProp(SICK))
+        return TROUBLE_SICK;
+    if (u.uhs >= WEAK)
+        return TROUBLE_STARVING;
+    if (region_danger())
+        return TROUBLE_REGION;
+    if ((!Upolyd() || uhave(UNCHANGING)) && critically_low_hp(false))
+        return TROUBLE_HIT;
+    if (u.ulycn >= LOW_PM) /* ismnum(u.ulycn) */
+        return TROUBLE_LYCANTHROPE;
+    if (near_capacity() >= EXT_ENCUMBER && AMAX(A_STR) - ABASE(A_STR) > 3)
+        return TROUBLE_COLLAPSING;
+    if (stuck_in_wall())
+        return TROUBLE_STUCK_IN_WALL;
+    if (Cursed_obj(g.uarmf, LEVITATION_BOOTS)
+        || (g.uleft && g.uleft.otyp === RIN_LEVITATION)
+        || (g.uright && g.uright.otyp === RIN_LEVITATION)) {
+        if (Cursed_obj(g.uarmf, LEVITATION_BOOTS))
+            return TROUBLE_CURSED_LEVITATION;
+        /* stuck_ring(): do_wear.c isn't ported yet */
+        throw new Error('in_trouble(): stuck_ring() not ported yet');
+    }
+    if (nohands(g.youmonst.data) || !freehand()) {
+        /* for bag/box access [cf use_container()]...
+           make sure it's a case that we know how to handle;
+           otherwise "fix all troubles" would get stuck in a loop */
+        if (welded(g.uwep))
+            return TROUBLE_UNUSEABLE_HANDS;
+        if (Upolyd() && nohands(g.youmonst.data))
+            throw new Error('in_trouble(): unchanger() not ported yet');
+    }
+    if (g.ublindf && g.ublindf.cursed && EProp(BLINDED)) /* Blindfolded */
+        return TROUBLE_CURSED_BLINDFOLD;
+
+    /*
+     * minor troubles
+     */
+    if (g.uball || (u.utrap && u.utraptype === TT_BURIEDBALL)) /* Punished */
+        return TROUBLE_PUNISHED;
+    if (Cursed_obj(g.uarmg, GAUNTLETS_OF_FUMBLING)
+        || Cursed_obj(g.uarmf, FUMBLE_BOOTS))
+        return TROUBLE_FUMBLING;
+    if (worst_cursed_item())
+        return TROUBLE_CURSED_ITEMS;
+    if (u.usteed) { /* can't voluntarily dismount from a cursed saddle */
+        const otmp = which_armor(u.usteed, W_SADDLE);
+        if (Cursed_obj(otmp, SADDLE))
+            return TROUBLE_SADDLE;
+    }
+
+    if ((HProp(BLINDED) & TIMEOUT) > 1 && !(HProp(BLINDED) & ~TIMEOUT)
+        && !u.uswallow)
+        return TROUBLE_BLIND; /* attacktype_fordmg(u.ustuck AT_ENGL AD_BLND):
+                                 engulfing isn't ported */
+    /* deafness isn't its own trouble; healing magic cures deafness
+       when it cures blindness, so do the same with trouble repair */
+    if ((HProp(DEAF) & TIMEOUT) > 1)
+        return TROUBLE_BLIND;
+
+    for (let i = 0; i < A_MAX; i++)
+        if (ABASE(i) < AMAX(i))
+            return TROUBLE_POISONED;
+    if (uhave(WOUNDED_LEGS) && !u.usteed)
+        return TROUBLE_WOUNDED_LEGS;
+    if (u.uhs >= HUNGRY)
+        return TROUBLE_HUNGRY;
+    if (HProp(STUNNED) & TIMEOUT)
+        return TROUBLE_STUNNED;
+    if (HProp(CONFUSION) & TIMEOUT)
+        return TROUBLE_CONFUSED;
+    if (HProp(HALLUC) & TIMEOUT)
+        return TROUBLE_HALLUCINATION;
+    return 0;
+}
+
+// C ref: pray.c godvoice()
+async function godvoice(g_align, words) {
+    let quot = "";
+
+    if (words)
+        quot = "\"";
+    else
+        words = "";
+
+    await pline(`The voice of ${align_gname(g_align)} ${ROLL_FROM(godvoices)}: ${
+        quot}${words}${quot}`); /* pline_The() */
+}
+
+// C ref: pray.c gods_angry()
+async function gods_angry(g_align) {
+    await godvoice(g_align, "Thou hast angered me.");
+}
+
+// C ref: pray.c gods_upset() -- the g_align god is upset with you
+async function gods_upset(g_align) {
+    const u = game.u;
+    if (g_align === u.ualign.type)
+        u.ugangr++;
+    else if (u.ugangr)
+        u.ugangr--;
+    await angrygods(g_align);
+}
+
+// C ref: pray.c angrygods()
+async function angrygods(resp_god) {
+    const u = game.u;
+    let maxanger, new_ublesscnt;
+
+    if (Inhell())
+        resp_god = A_NONE;
+    u.ublessed = 0; /* lose divine protection */
+
+    /* changed from tmp = u.ugangr + abs (u.uluck) -- rph */
+    /* added test for alignment diff -dlc */
+    if (resp_god !== u.ualign.type)
+        maxanger = Math.trunc(u.ualign.record / 2)
+                   + (Luck() > 0 ? -Math.trunc(Luck() / 3) : -Luck());
+    else
+        maxanger = 3 * u.ugangr + ((Luck() > 0 || u.ualign.record >= STRIDENT)
+                                   ? -Math.trunc(Luck() / 3)
+                                   : -Luck());
+    if (maxanger < 1)
+        maxanger = 1; /* possible if bad align & good luck */
+    else if (maxanger > 15)
+        maxanger = 15; /* be reasonable */
+
+    switch (rn2(maxanger)) {
+    case 0:
+    case 1:
+        await pline(`You feel that ${align_gname(resp_god)} is ${
+            uhave(HALLUC) ? "bummed" : "displeased"}.`); /* You_feel() */
+        break;
+    case 2:
+    case 3:
+        await godvoice(resp_god, null);
+        await pline(`"Thou ${(ugod_is_angry() && resp_god === u.ualign.type)
+                              ? "hast strayed from the path"
+                              : "art arrogant"}, ${
+            game.youmonst.data.mlet === S_HUMAN ? "mortal" : "creature"}."`);
+        /* SetVoice(): speech synthesis only */
+        await verbalize("Thou must relearn thy lessons!");
+        await adjattrib(A_WIS, -1, false);
+        await losexp(null);
+        break;
+    default:
+        /* punish(), rndcurse()/attrcurse(), summon_minion() and
+           god_zaps_you() aren't ported yet */
+        throw new Error('angrygods(): anger cases 4+ not ported yet');
+    }
+    /* even though this might not be in response to prayer, set pray timer */
+    new_ublesscnt = rnz(300);
+    if (new_ublesscnt > u.ublesscnt)
+        u.ublesscnt = new_ublesscnt;
+}
+
+// C ref: pray.c pleased()
+async function pleased(g_align) {
+    const u = game.u;
+    /* don't use p_trouble, worst trouble may get fixed while praying */
+    let trouble = in_trouble(); /* what's your worst difficulty? */
+    let pat_on_head = 0;
+
+    await pline(`You feel that ${align_gname(g_align)} is ${
+        (u.ualign.record >= DEVOUT)
+            ? uhave(HALLUC) ? "pleased as punch" : "well-pleased"
+            : (u.ualign.record >= STRIDENT)
+                ? uhave(HALLUC) ? "ticklish" : "pleased"
+                : uhave(HALLUC) ? "full" : "satisfied"}.`); /* You_feel() */
+
+    /* not your deity */
+    if (on_altar() && game.p_aligntyp !== u.ualign.type) {
+        adjalign(-1);
+        return;
+    } else if (u.ualign.record < 2 && trouble <= 0)
+        adjalign(1);
+
+    if (!trouble && u.ualign.record >= DEVOUT) {
+        /* if hero was in trouble, but got better, no special favor */
+        if (game.p_trouble === 0)
+            pat_on_head = 1;
+    } else {
+        let action;
+        const prayer_luck = Math.max(Luck(), -1); /* => (prayer_luck + 2 > 0) */
+        action = rn1(prayer_luck + (on_altar() ? 3 + (on_shrine() ? 1 : 0) : 2), 1);
+        if (!on_altar())
+            action = Math.min(action, 3);
+        if (u.ualign.record < STRIDENT)
+            action = (u.ualign.record > 0 || !rnl(2)) ? 1 : 0;
+
+        switch (Math.min(action, 5)) {
+        case 5:
+        case 4:
+        case 3:
+        case 2:
+            if (trouble)
+                throw new Error('pleased(): fix_worst_trouble() not ported yet');
+            if (Math.min(action, 5) === 5)
+                pat_on_head = 1;
+            break;
+        case 1:
+            if (trouble > 0)
+                throw new Error('pleased(): fix_worst_trouble() not ported yet');
+            break;
+        case 0:
+            break; /* your god blows you off, too bad */
+        }
+    }
+
+    if (pat_on_head)
+        throw new Error('pleased(): pat_on_head boons not ported yet');
+
+    u.ublesscnt = rnz(350);
+    let kick_on_butt = u.uevent.udemigod ? 1 : 0;
+    if (u.uevent.uhand_of_elbereth)
+        kick_on_butt++;
+    if (kick_on_butt)
+        u.ublesscnt += kick_on_butt * rnz(1000);
+
+    /* the 100000-turn timeout increase: moves never get that high here */
+    if (game.moves > 100000)
+        throw new Error('pleased(): prayer timeout past turn 100000 not ported yet');
+}
+
+// C ref: pray.c water_prayer() -- the altar's water potions
+function water_prayer(bless_water) {
+    const u = game.u;
+    for (const otmp of game.level.objects || [])
+        if (otmp.where === 'OBJ_FLOOR' && otmp.ox === u.ux && otmp.oy === u.uy
+            && otmp.otyp === POT_WATER
+            && (bless_water ? !otmp.blessed : !otmp.cursed))
+            throw new Error('water_prayer(): changing holy water not ported yet');
+    return false;
+}
+
+// C ref: pray.c can_pray()
+async function can_pray(praying) /* false means no messages should be given */ {
+    const g = game;
+    const u = g.u;
+    let alignment;
+
+    g.p_aligntyp = on_altar() ? a_align(u.ux, u.uy) : u.ualign.type;
+    g.p_trouble = in_trouble();
+
+    if (is_demon(g.youmonst.data) /* ok if chaotic or none (Moloch) */
+        && (g.p_aligntyp === A_LAWFUL || g.p_aligntyp !== A_NEUTRAL)) {
+        if (praying)
+            await pline(`The very idea of praying to a ${
+                g.p_aligntyp ? "lawful" : "neutral"} god is repugnant to you.`); /* pline_The() */
+        return false;
+    }
+
+    if (praying)
+        await pline(`You begin praying to ${align_gname(g.p_aligntyp)}.`); /* You() */
+
+    if (u.ualign.type && u.ualign.type === -g.p_aligntyp)
+        alignment = -u.ualign.record; /* Opposite alignment altar */
+    else if (u.ualign.type !== g.p_aligntyp)
+        alignment = Math.trunc(u.ualign.record / 2); /* Different alignment altar */
+    else
+        alignment = u.ualign.record;
+
+    if (g.p_aligntyp === A_NONE) /* praying to Moloch */
+        g.p_type = -2;
+    else if ((g.p_trouble > 0) ? (u.ublesscnt > 200)   /* big trouble */
+             : (g.p_trouble < 0) ? (u.ublesscnt > 100) /* minor difficulty */
+               : (u.ublesscnt > 0))                    /* not in trouble */
+        g.p_type = 0;                     /* too soon... */
+    else if (Luck() < 0 || u.ugangr || alignment < 0)
+        g.p_type = 1; /* too naughty... */
+    else /* alignment >= 0 */ {
+        if (on_altar() && u.ualign.type !== g.p_aligntyp)
+            g.p_type = 2;
+        else
+            g.p_type = 3;
+    }
+
+    if (is_undead(g.youmonst.data) && !Inhell()
+        && (g.p_aligntyp === A_LAWFUL
+            || (g.p_aligntyp === A_NEUTRAL && !rn2(10))))
+        g.p_type = -1;
+
+    return !praying ? (g.p_type === 3 && !Inhell()) : true;
+}
+
+// C ref: pray.c dopray() -- the #pray command
+export async function dopray() {
+    const g = game;
+    const u = g.u;
+    let ok;
+
+    /* ParanoidPray (paranoid_confirm:pray, on by default) without
+       ParanoidConfirm: a plain y/n query */
+    if (g.flags.paranoia_pray !== false) {
+        ok = (await paranoid_query(false, "Are you sure you want to pray?"));
+        if (!ok) /* declined the "are you sure?" confirmation */
+            return ECMD_OK;
+    }
+
+    if (!u.uconduct.gnostic++) {
+        /* livelog_printf(LL_CONDUCT, "rejected atheism with a prayer") */
+    }
+
+    /* set up p_type and p_alignment */
+    if (!(await can_pray(true)))
+        return ECMD_OK;
+
+    if (g.flags.debug && g.p_type >= 0)
+        throw new Error('dopray(): wizard-mode "Force the gods to be pleased?" not ported yet');
+    nomul(-3);
+    g.multi_reason = "praying";
+    g.nomovemsg = "You finish your prayer.";
+    g.afternmv = prayer_done;
+
+    if (g.p_type === 3 && !Inhell()) {
+        /* if you've been true to your god you can't die while you pray */
+        if (!uhave(BLINDED))
+            await pline("You are surrounded by a shimmering light."); /* You() */
+        u.uinvulnerable = 1;
+    }
+
+    return ECMD_TIME;
+}
+
+// C ref: pray.c prayer_done() -- M. Stephenson (1.0.3b)
+async function prayer_done() {
+    const g = game;
+    const u = g.u;
+    const alignment = g.p_aligntyp;
+
+    u.uinvulnerable = 0;
+    if (g.p_type === -2 || g.p_type === -1)
+        throw new Error('prayer_done(): Moloch / undead prayer results not ported yet');
+    if (Inhell())
+        throw new Error('prayer_done(): Gehennom prayer not ported yet');
+
+    if (g.p_type === 0) {
+        if (on_altar() && u.ualign.type !== alignment)
+            water_prayer(false);
+        u.ublesscnt += rnz(250);
+        change_luck(-3);
+        await gods_upset(u.ualign.type);
+    } else if (g.p_type === 1) {
+        if (on_altar() && u.ualign.type !== alignment)
+            water_prayer(false);
+        await angrygods(u.ualign.type); /* naughty */
+    } else if (g.p_type === 2) {
+        if (water_prayer(false)) {
+            /* attempted water prayer on a non-coaligned altar */
+            u.ublesscnt += rnz(250);
+            change_luck(-3);
+            await gods_upset(u.ualign.type);
+        } else
+            await pleased(alignment);
+    } else {
+        /* coaligned */
+        if (on_altar()) {
+            /* pray_revive(): no pet corpse/statue revival yet */
+            for (const otmp of g.level.objects || [])
+                if (otmp.where === 'OBJ_FLOOR' && otmp.ox === u.ux
+                    && otmp.oy === u.uy && otmp.omonst?.mtame)
+                    throw new Error('prayer_done(): pray_revive() not ported yet');
+            water_prayer(true);
+        }
+        await pleased(alignment); /* nice */
+    }
+    return 1;
+}
+
+// C ref: cmd.c paranoid_query() -> paranoid_ynq() -- the !be_paranoid
+// case: a plain y/n query
+async function paranoid_query(be_paranoid, prompt) {
+    let c;
+    if (be_paranoid)
+        throw new Error('paranoid_query(): paranoid_confirm "yes" query not ported yet');
+    c = await tty_yn_function(prompt, "yn", 'n'); /* ynchars */
+    if (c !== 'y')
+        c = 'n';
+    return c === 'y';
+}
+
+// C ref: pline.c verbalize()
+async function verbalize(line) {
+    await pline(`"${line}"`);
 }

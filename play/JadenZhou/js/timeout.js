@@ -20,7 +20,7 @@ import { FEDORA, LUCKSTONE } from './objects.js';
 function Role_if(pm) { return game.urole.mnum === pm; }
 
 // C ref: artifact.c confers_luck()
-function confers_luck(obj) {
+export function confers_luck(obj) {
     /* might as well check for this too */
     if (obj.otyp === LUCKSTONE)
         return true;

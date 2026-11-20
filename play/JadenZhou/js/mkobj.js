@@ -522,6 +522,10 @@ export function splitobj(obj, num) {
         /* minvent arrays are kept oldest first (C chain reversed) */
         const inv = obj.ocarry.minvent;
         inv.splice(inv.indexOf(obj), 0, otmp);
+    } else if (obj.where === 'OBJ_INVENT') {
+        /* hero's inventory is a linked chain (gi.invent) */
+        otmp.nobj = obj.nobj;
+        obj.nobj = otmp;
     } else if (obj.where !== 'OBJ_FREE' && obj.where !== 'OBJ_LUAFREE') {
         throw new Error(`splitobj(): where=${obj.where} not ported yet`);
     }
@@ -750,10 +754,8 @@ export function bcsign(otmp) {
     return (!!otmp.blessed - !!otmp.cursed);
 }
 
-// C ref: artifact.c nartifact_exist() — no artifacts exist yet
-function nartifact_exist() {
-    return game.nartifacts_made || 0;
-}
+// nartifact_exist(): C ref artifact.c, ported in artifact.js
+import { nartifact_exist } from './artifact.js';
 
 function not_ported(what) {
     impossible(`mksobj_init: ${what} is not ported yet`);

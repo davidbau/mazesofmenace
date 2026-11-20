@@ -138,7 +138,7 @@ import { ACH_UWIN, ACH_BLND, ACH_NUDE } from './const.js';
 import { Blind, vision_recalc } from './vision.js';
 import { can_make_bones } from './bones.js'; // relocate-fns
 import { yn_function } from './cmd.js'; // relocate-fns
-import { build_window_screen, tty_window_offx } from './com_pager.js'; // relocate-fns
+import { build_window_screen, tty_window_offx, tty_text_window_utf8_line } from './com_pager.js'; // relocate-fns
 import { flush_pending_messages, topl_force_break_now } from './display.js'; // relocate-fns
 import { the } from './objnam.js'; // relocate-fns
 import { Is_container, _Upstart, _sortloot, set_cursor } from './pickup_container.js'; // relocate-fns
@@ -2617,7 +2617,10 @@ async function _container_contents_one(box, identified, all_containers, reportem
                 pageMoreRow = rows.length;
                 rows.push(' --More--');
                 pageOutput = rows.join('\n');
-            } else pageOutput = build_window_screen(lines, WIN_COL, uac, statusClipCol);
+            } else pageOutput = build_window_screen(
+                /* wintty.c:1819-1829 UTF8 linestart g_putch: first byte of every line (patch 006) */
+                lines.map((ln, i) => (i === lines.length - 1 ? ln : tty_text_window_utf8_line(ln))),
+                WIN_COL, uac, statusClipCol);
             let esc = false;
             for (;;) {
                 g._screen_output = pageOutput;

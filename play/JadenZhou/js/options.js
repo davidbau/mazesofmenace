@@ -17,6 +17,14 @@ import {
     str2role, str2race, str2gend, str2align, setrolefilter, clearrolefilter,
     RS_filter,
 } from './role.js';
+import {
+    NHW_MENU, PICK_ONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
+} from './const.js';
+import { NO_COLOR, ATR_NONE } from './terminal.js';
+import {
+    tty_create_nhwindow, tty_start_menu, tty_add_menu, add_menu_str,
+    tty_end_menu, tty_select_menu, tty_destroy_nhwindow,
+} from './wintty.js';
 
 // C ref: hacklib.c mungspaces() -- collapse runs of whitespace, trim ends
 function mungspaces(bp) {
@@ -285,6 +293,10 @@ export function parseNethackrc(rc) {
                 else if (lname === 'showexp') result.flags.showexp = value;
                 else if (lname === 'time') result.flags.time = value;
                 else if (lname === 'verbose') result.flags.verbose = value;
+                /* C ref: optlist.h safe_pet -> flags.safe_dog */
+                else if (lname === 'safe_pet') result.flags.safe_dog = value;
+                else if (lname === 'autoopen') result.flags.autoopen = value;
+                else if (lname === 'mention_walls') result.flags.mention_walls = value;
                 // C ref: options.c boolean option case opt_female ("female",
                 // alias "male"); go.opt_initial is TRUE while reading the rc
                 else if (lname.length >= 3 && !strncmpi(lname, "female", Math.max(lname.length, 3)))
@@ -296,4 +308,57 @@ export function parseNethackrc(rc) {
         }
     }
     return result;
+}
+
+// C ref: files.c nh_basename()
+function nh_basename(fname, keep_suffix) {
+    let p;
+    if ((p = fname.lastIndexOf('/')) >= 0)
+        fname = fname.slice(p + 1);
+    if ((p = fname.lastIndexOf('.')) >= 0 && !keep_suffix)
+        fname = fname.slice(0, p);
+    return fname;
+}
+
+// C ref: files.c get_configfile() -- the name of the configuration file
+// that was read (game.configfile, set at game start-up)
+function get_configfile() {
+    return game.configfile || '';
+}
+
+// C ref: options.c ask_do_tutorial()
+export async function ask_do_tutorial() {
+    let dotut = game.flags.tutorial;
+
+    if (!game.tutorial_set_in_config) {
+        let win, n, pass = 0, selected;
+        const rc = nh_basename(get_configfile(), true);
+        const norc = get_configfile() === '/dev/null';
+        const buf = `Put "OPTIONS=!tutorial" in ${(rc && !norc)
+                     ? rc : 'your configuration file'} to skip this query.`;
+        do {
+            win = tty_create_nhwindow(NHW_MENU);
+            tty_start_menu(win, MENU_BEHAVE_STANDARD);
+            tty_add_menu(win, null, 'y', 'y', 0, ATR_NONE, NO_COLOR,
+                         "Yes, do a tutorial", MENU_ITEMFLAGS_NONE);
+            tty_add_menu(win, null, 'n', 'n', 0, ATR_NONE, NO_COLOR,
+                         "No, just start play", MENU_ITEMFLAGS_NONE);
+
+            add_menu_str(win, "");
+            add_menu_str(win, buf);
+            if (pass++) /* we'll get here after <space> or <return> */
+                add_menu_str(win, "(Please choose 'y' or 'n'.)");
+
+            tty_end_menu(win, "Do you want a tutorial?");
+
+            ({ n, selected } = await tty_select_menu(win, PICK_ONE));
+            tty_destroy_nhwindow(win);
+        } while (!n);
+        if (n > 0) {
+            dotut = (selected[0].item === 'y');
+        } else { /* ESC */
+            dotut = false;
+        }
+    }
+    return dotut;
 }

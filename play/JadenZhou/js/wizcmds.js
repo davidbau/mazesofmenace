@@ -9,9 +9,12 @@
 import { game } from './gstate.js';
 import { pline } from './display.js';
 import { tty_getlin } from './wintty.js';
-import { MAXULEV, IRONBARS, ICE, Is_airlevel, Is_waterlevel } from './const.js';
+import { MAXULEV, IRONBARS, ICE, Is_airlevel, Is_waterlevel, ONAME_WISH,
+         ONAME_KNOW_ARTI } from './const.js';
 import { rn1 } from './rng.js';
-import { readobjnam } from './objnam.js';
+import { readobjnam, doname } from './objnam.js';
+import { artifact_origin, touch_artifact } from './artifact.js';
+import { place_object, obj_extract_self } from './mkobj.js';
 import { addinv } from './u_init.js';
 import { prinv } from './invent.js';
 import * as O from './objects.js';
@@ -69,8 +72,26 @@ const thats_enough_tries = "That's enough tries!";
 // (no merging, no inventory letters yet)
 async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     /* if (!Blind) observe_object(obj) -- not ported yet */
-    if (obj.oartifact)
-        throw new Error('hold_another_object(): artifacts are not ported yet');
+    if (obj.oartifact) {
+        /* place_object may change these */
+        const crysknife = (obj.otyp === O.CRYSKNIFE);
+        const oerode = obj.oerodeproof;
+        const wasUpolyd = !!game.u.mtimedone;
+
+        /* in case touching this object turns out to be fatal */
+        place_object(obj, game.u.ux, game.u.uy);
+
+        if (!touch_artifact(obj, game.youmonst)) {
+            throw new Error('hold_another_object(): dropy() of an untouchable artifact is not ported yet');
+        } else if (wasUpolyd && !game.u.mtimedone) {
+            throw new Error('hold_another_object(): losing grip on reverting form is not ported yet');
+        }
+        obj_extract_self(obj);
+        if (crysknife) {
+            obj.otyp = O.CRYSKNIFE;
+            obj.oerodeproof = oerode;
+        }
+    }
     if (game.u.Fumbling)
         throw new Error('hold_another_object(): Fumbling is not ported yet');
     if (obj.otyp === O.CORPSE && obj.wishedfor)
@@ -140,10 +161,15 @@ async function makewish() {
         break;
     }
 
-    if (otmp.oartifact)
-        throw new Error('artifact_origin() for a wished-for artifact is not ported yet');
+    if (otmp.oartifact) {
+        /* update artifact bookkeeping; doesn't produce a livelog event */
+        artifact_origin(otmp, ONAME_WISH | ONAME_KNOW_ARTI);
+    }
 
-    /* wisharti conduct handled in readobjnam(); livelog -- not ported */
+    /* wisharti conduct handled in readobjnam() */
+    /* the livelog wish text formats doname(otmp) */
+    void doname(otmp);
+    /* KMH, conduct; livelog_printf() -- no livelog */
     if (!u.uconduct.wishes) u.uconduct.wishes = 0;
     u.uconduct.wishes++;
 

@@ -97,7 +97,7 @@ function is_blade(otmp) {
             && objects[otmp.otyp].oc_skill <= P_SABER);
 }
 function is_wet_towel(o) { return o.otyp === O.TOWEL && o.spe > 0; }
-function is_graystone(obj) {
+export function is_graystone(obj) {
     return (obj.otyp === O.LUCKSTONE || obj.otyp === O.LOADSTONE
             || obj.otyp === O.FLINT || obj.otyp === O.TOUCHSTONE);
 }
@@ -123,7 +123,7 @@ function body_part_hand() {
 }
 
 /* C ref: eat.c is_edible() -- for an unpolymorphed hero */
-function is_edible(obj) {
+export function is_edible(obj) {
     if (objects[obj.otyp].oc_unique)
         return false;
     /* fire elemental, metallivore, gelatinous cube and lithivore forms */
@@ -190,7 +190,7 @@ function objtyp_is_callable(i) {
 }
 
 /* C ref: do_name.c name_ok() */
-function name_ok(obj) {
+export function name_ok(obj) {
     if (!obj || obj.oclass === O.COIN_CLASS)
         return GETOBJ_EXCLUDE;
 
@@ -201,7 +201,7 @@ function name_ok(obj) {
 }
 
 /* C ref: do_name.c call_ok() */
-function call_ok(obj) {
+export function call_ok(obj) {
     if (!obj || !objtyp_is_callable(obj.otyp))
         return GETOBJ_EXCLUDE;
 
@@ -259,7 +259,7 @@ function minimal_xname(obj) {
 }
 
 /* C ref: objnam.c simpleonames() */
-function simpleonames(obj) {
+export function simpleonames(obj) {
     let simpleoname = minimal_xname(obj);
 
     if (obj.quan !== 1)
@@ -268,7 +268,7 @@ function simpleonames(obj) {
 }
 
 /* C ref: objnam.c the() -- names that don't start with a capital letter */
-function the(str) {
+export function the(str) {
     if (!str)
         return "the []";
     if (str.toLowerCase().startsWith("the ")) {

@@ -2516,10 +2516,10 @@ async function trapeffect_vibrating_square(mtmp, trap, trflags, isYou) {
                     buf = _s_suffix(monnm) + ' '
                         + _makeplural_vs(mbodypart(mtmp, FOOT)).replace('rear ', '');
                 }
-                await pline(`You see a strange vibration beneath ${buf}.`);
+                await You_see(`a strange vibration beneath ${buf}.`);
             } else {
                 const dx = (mtmp.mx | 0) - (game.u.ux | 0), dy = (mtmp.my | 0) - (game.u.uy | 0);
-                await pline(`You see the ground vibrate ${(dx * dx + dy * dy <= 2 * 2) ? 'nearby' : 'in the distance'}.`);
+                await You_see(`the ground vibrate ${(dx * dx + dy * dy <= 2 * 2) ? 'nearby' : 'in the distance'}.`);
             }
         }
     }

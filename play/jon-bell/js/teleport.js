@@ -2707,7 +2707,14 @@ async function print_dungeon_menu() {
             return { rows, indicator: '(end)', indicatorRow: overlayLines.length - 1 };
         }
         const pageLines = pages[pageIdx] || [''];
-        const indicator = ` (${pageIdx + 1} of ${npages})`;
+        /* C wintty.c:1537-1543 + 2740-2751 — morestr is rebuilt "(N of M)"
+         * per page ONLY when npages > 1; a one-page menu keeps tty_end_menu's
+         * "(end) " (trailing space included) in EVERY placement, and this is
+         * the FULL-SCREEN arm (menu_overlay off, wintty.c:1923-1936, or a
+         * window wider than the screen), which cannot reuse the corner-overlay
+         * model above.  df-x2ac3745108 step 59 (rc !menu_overlay, the endgame
+         * planes menu) records footer " (end)" — not "(1 of 1)". */
+        const indicator = (npages > 1) ? ` (${pageIdx + 1} of ${npages})` : ' (end)';
         const rows = [];
         for (let r = 0; r < pageLines.length; r++) rows.push(pageLines[r]);
         const indicatorRow = (pageIdx === npages - 1) ? pageLines.length : (SCREEN_ROWS - 1);
@@ -2733,7 +2740,10 @@ async function print_dungeon_menu() {
         const { rows, indicator, indicatorRow } = pageRows();
         g._screen_output = rows.join('\n');
         if (overlayLines) set_cursor(overlayCol + '(end)'.length + 1, indicatorRow);
-        else set_cursor(indicator.length, indicatorRow);
+        /* dmore() advances curx by strlen(morestr) (wintty.c:1166-1167), and
+         * the one-page morestr is "(end) " WITH its trailing space, so the
+         * cursor parks one column right of the visible "(end)" text. */
+        else set_cursor(indicator.length + (npages > 1 ? 0 : 1), indicatorRow);
         g._pending_message = '';
 
         const key = await nhgetch();

@@ -4680,7 +4680,8 @@ export async function floorfood(verb, corpsecheck) {
                 return beartrap;
             } else if (c === 'q') {
                 const prompt = qbuf + " [ynq] (n)";
-                if (topl_park_cursor(null, prompt + ' ')[1] === 0)
+                if (!g.iflags?.query_menu
+                    && topl_park_cursor(null, prompt + ' ')[1] === 0)
                     g._resultMessage = g._ynStaleTopline = prompt;
                 return null;
             }
@@ -4707,7 +4708,8 @@ export async function floorfood(verb, corpsecheck) {
                 /* topl.c:547-548 clears an answered prompt when it wrapped;
                  * only a single-row prompt remains physically painted. */
                 const prompt = qbuf + " [ynq] (n)";
-                if (topl_park_cursor(null, prompt + ' ')[1] === 0)
+                if (!g.iflags?.query_menu
+                    && topl_park_cursor(null, prompt + ' ')[1] === 0)
                     g._resultMessage = g._ynStaleTopline = prompt;
                 return null;
             }
@@ -4726,7 +4728,8 @@ export async function floorfood(verb, corpsecheck) {
             } else if (c === 'q') {
                 /* same stale-prompt handling as the sibling 'q' returns */
                 const prompt = qbuf + " [ynq] (n)";
-                if (topl_park_cursor(null, prompt + ' ')[1] === 0)
+                if (!g.iflags?.query_menu
+                    && topl_park_cursor(null, prompt + ' ')[1] === 0)
                     g._resultMessage = g._ynStaleTopline = prompt;
                 return null;
             }
@@ -4766,7 +4769,8 @@ export async function floorfood(verb, corpsecheck) {
                  * prompt + key2txt(q) (topl.c:537-539); the painted stale copy
                  * must not be filed a second time. */
                 const prompt = qbuf + " [ynq] (n)";
-                if (topl_park_cursor(null, prompt + ' ')[1] === 0) {
+                if (!g.iflags?.query_menu
+                    && topl_park_cursor(null, prompt + ' ')[1] === 0) {
                     g._resultMessage = g._ynStaleTopline = prompt;
                     g._topl_suppress_once = true;
                 }

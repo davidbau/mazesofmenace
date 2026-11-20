@@ -2,7 +2,7 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
-import { cansee, vision_recalc } from './vision.js';
+import { cansee, couldsee, vision_recalc } from './vision.js';
 import { tty_putstr, tty_display_nhwindow } from './wintty.js';
 import { rank } from './botl.js';
 import { ACURR } from './attrib.js';
@@ -14,13 +14,14 @@ import {
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, SEE_INVIS,
+    BLINDED, INFRAVISION, TELEPAT, WARN_OF_MON, DETECT_MONSTERS,
 } from './const.js';
 import { HALLUC, Is_waterlevel, isok, IS_STWALL } from './const.js';
 import {
     objects, BOULDER, STATUE, CORPSE, POTION_CLASS, FIRST_REAL_GEM,
     LAST_GLASS_GEM, FIRST_SPELL, LAST_SPELL,
 } from './objects.js';
-import { mons } from './monsters.js';
+import { mons, M3_INFRAVISIBLE, M1_MINDLESS } from './monsters.js';
 import { def_oc_syms } from './drawing.js';
 import { observe_object } from './o_init.js';
 import { is_pool } from './makemon.js';
@@ -74,7 +75,7 @@ function terrain_glyph(loc, x, y) {
 }
 
 // C ref: stairs.c stairway_at()
-function stairway_at(x, y) {
+export function stairway_at(x, y) {
     for (let s = game.stairs; s; s = s.next)
         if (s.sx === x && s.sy === y) return s;
     return null;
@@ -677,16 +678,67 @@ export function mon_visible(mon) {
     return (!mon.minvis || See_invisible) && !mon.mundetected;
 }
 
-// C ref: display.h canseemon(), canspotmon() -- seen at a spot in sight;
-// infravision, telepathy, detection and warning (sensemon()) are not
-// ported yet
-function canseemon(mon) {
-    return cansee(mon.mx, mon.my) && mon_visible(mon);
+/* C ref: youprop.h -- the hero's property tests canspotmon() needs */
+function uprop(p) {
+    const P = game.u?.uprops?.[p];
+    return !!(P && (P.intrinsic || P.extrinsic));
 }
+/* C ref: youprop.h Blind -- ((HBlinded || EBlinded) && !BBlinded) */
+function Blind() {
+    const P = game.u?.uprops?.[BLINDED];
+    return !!(P && (P.intrinsic || P.extrinsic) && !P.blocked);
+}
+
+// C ref: display.h _see_with_infrared()
+function see_with_infrared(mon) {
+    return !Blind() && uprop(INFRAVISION)
+           && (mon.data.mflags3 & M3_INFRAVISIBLE) !== 0
+           && couldsee(mon.mx, mon.my);
+}
+
+// C ref: display.h _canseemon()
+export function canseemon(mon) {
+    if (mon.wormno)
+        throw new Error('canseemon(): worm_known() not ported yet');
+    return (cansee(mon.mx, mon.my) || see_with_infrared(mon))
+           && mon_visible(mon);
+}
+
+// C ref: display.h _tp_sensemon()
+function tp_sensemon(mon) {
+    const u = game.u;
+    const P = u.uprops?.[TELEPAT];
+    const Blind_telepat = !!(P && (P.intrinsic || P.extrinsic));
+    const Unblind_telepat = !!(P && P.extrinsic);
+    const mdistu = (mon.mx - u.ux) ** 2 + (mon.my - u.uy) ** 2;
+    return (mon.data.mflags1 & M1_MINDLESS) === 0
+           && ((Blind() && Blind_telepat)
+               || (Unblind_telepat
+                   && mdistu <= (u.unblind_telepat_range ?? 0)));
+}
+
+// C ref: display.h MATCH_WARN_OF_MON()
+function MATCH_WARN_OF_MON(mon) {
+    const wt = game.context.warntype || {};
+    return uprop(WARN_OF_MON)
+           && (((wt.obj ?? 0) & mon.data.mflags2) !== 0
+               || ((wt.polyd ?? 0) & mon.data.mflags2) !== 0
+               || (!!wt.species && wt.species === mon.data));
+}
+
+// C ref: display.h _sensemon()
+export function sensemon(mon) {
+    const u = game.u;
+    if (u.uinwater)
+        throw new Error('sensemon(): Underwater not ported yet');
+    return (!u.uswallow || mon === u.ustuck)
+           && (uprop(DETECT_MONSTERS) || tp_sensemon(mon)
+               || MATCH_WARN_OF_MON(mon));
+}
+
+// C ref: display.h canspotmon()
 export function canspotmon(mon) {
-    if (canseemon(mon))
-        return true;
-    throw new Error('canspotmon(): see_with_infrared()/sensemon() not ported yet');
+    return canseemon(mon) || sensemon(mon);
 }
 
 // C ref: display.c display_monster() -- the plain case: the monster's own
@@ -720,7 +772,7 @@ function covers_objects(x, y) {
 // C ref: display.h vobj_at() -> level.objects[x][y], the top of the pile.
 // game.level.objects is fobj (newest first); place_object() puts a
 // non-boulder under any boulders, so a boulder is on top when there is one.
-function vobj_at(x, y) {
+export function vobj_at(x, y) {
     let top = null;
     for (const o of game.level?.objects || []) {
         if (o.ox !== x || o.oy !== y || o.where !== 'OBJ_FLOOR') continue;
@@ -1288,3 +1340,11 @@ export async function pline(msg) {
         await flush_screen(1); /* %% */
     await tty_putstr(game.WIN_MESSAGE, 0, msg);
 }
+
+// C ref: pline.c You(), Your(), You_cant(), pline_The(), There() --
+// pline() with the C prefix prepended
+export async function You(line) { await pline(`You ${line}`); }
+export async function Your(line) { await pline(`Your ${line}`); }
+export async function You_cant(line) { await pline(`You can't ${line}`); }
+export async function pline_The(line) { await pline(`The ${line}`); }
+export async function There(line) { await pline(`There ${line}`); }

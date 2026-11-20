@@ -1647,6 +1647,11 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
             if (!'^><|.,@~'.includes(ch)) reset_count = false;
             continue;
         }
+        /* wintty.c:1519-1535,1646-1695: the menu cmds in resp (select/invert/
+         * page keys) are accepted by xwaitforspace, so the loop turns over
+         * (reset_count stays TRUE: a live count ends) even though PICK_ONE
+         * ignores them (wintty.c:1646-1651 PICK_ANY-only). */
+        if ('<>^|,.~@'.includes(ch)) continue;
         /* Unrecognised accelerator: bell, no redraw, read again. */
         reset_count = false;
     }

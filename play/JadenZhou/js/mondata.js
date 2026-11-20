@@ -10,11 +10,15 @@ import { strncmpi, strcmpi, strstri } from './hacklib.js';
 import { NON_PM, MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
          FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
          ACID_RES, STONE_RES, DRAIN_RES, ANTIMAGIC, BLND_RES, ALL_TRAPS,
-         NO_TRAP, W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP, W_ARMC,
+         NO_TRAP, W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP, W_ARMC, W_ARM,
        } from './const.js';
-import { objects, ALCHEMY_SMOCK, WEAPON_CLASS } from './objects.js';
+import { objects, ALCHEMY_SMOCK, WEAPON_CLASS, GRAY_DRAGON_SCALES,
+         YELLOW_DRAGON_SCALES, GRAY_DRAGON_SCALE_MAIL,
+         YELLOW_DRAGON_SCALE_MAIL } from './objects.js';
 import { is_weptool } from './mkobj.js';
+import { which_armor } from './worn.js';
 import { title_to_mon } from './botl.js';
+import { clear_path } from './vision.js';
 import {
     mons, NATTK, AT_ANY, AD_DRLI, M1_FLY, M1_SWIM, M1_WALLWALK, M1_NOEYES,
     M1_REGEN, M1_SEE_INVIS, M1_TPORT, M1_TPORT_CNTRL, M2_UNDEAD, M2_WERE,
@@ -96,6 +100,32 @@ export function is_vampshifter(mon) {
         || mon.cham === PM_VLAD_THE_IMPALER;
 }
 
+// C ref: mondata.c mon_hates_silver()
+/* True if specific monster is especially affected by silver weapons */
+export function mon_hates_silver(mon) {
+    return (is_vampshifter(mon) || hates_silver(mon.data));
+}
+
+// C ref: mondata.c hates_silver()
+/* True if monster-type is especially affected by silver weapons */
+export function hates_silver(ptr) {
+    return (is_were(ptr) || ptr.mlet === M.S_VAMPIRE || is_demon(ptr)
+            || ptr === M.mons[M.PM_SHADE]
+            || (ptr.mlet === M.S_IMP && ptr !== M.mons[M.PM_TENGU]));
+}
+
+// C ref: mondata.c mon_hates_blessings()
+/* True if specific monster is especially affected by blessed objects */
+export function mon_hates_blessings(mon) {
+    return (is_vampshifter(mon) || hates_blessings(mon.data));
+}
+
+// C ref: mondata.c hates_blessings()
+/* True if monster-type is especially affected by blessed objects */
+export function hates_blessings(ptr) {
+    return (is_undead(ptr) || is_demon(ptr));
+}
+
 // C ref: mondata.c set_mon_data()
 export function set_mon_data(mon, ptr) {
     const g = game;
@@ -123,6 +153,13 @@ export function set_mon_data(mon, ptr) {
     return;
 }
 
+/* C ref: obj.h Is_dragon_scales(), Is_dragon_mail(), Is_dragon_armor() */
+function Is_dragon_armor(obj) {
+    return (obj.otyp >= GRAY_DRAGON_SCALES && obj.otyp <= YELLOW_DRAGON_SCALES)
+        || (obj.otyp >= GRAY_DRAGON_SCALE_MAIL
+            && obj.otyp <= YELLOW_DRAGON_SCALE_MAIL);
+}
+
 // C ref: mondata.c defended()
 /* is 'mon' (possibly youmonst) protected against damage type 'adtype' via
    wielded weapon or worn dragon scales? [or by virtue of being a dragon?] */
@@ -142,13 +179,11 @@ export function defended(mon, adtyp) {
         throw new Error('defended(): dragon scales (defends()) not ported yet');
     } else {
         /* ordinary case: not an adult dragon */
-        if (!is_you)
-            throw new Error('defended(): which_armor() not ported yet');
-        o = g.uarm;
+        o = is_you ? g.uarm : which_armor(mon, W_ARM);
     }
     /* is 'mon' wearing dragon scales that protect against 'adtyp'? */
-    if (o)
-        throw new Error('defended(): Is_dragon_armor()/defends() not ported yet');
+    if (o && Is_dragon_armor(o))
+        throw new Error('defended(): defends() not ported yet');
 
     return false;
 }
@@ -287,6 +322,26 @@ export function mon_learns_traps(mtmp, ttyp) {
         mtmp.mtrapseen = 0;
     else
         mtmp.mtrapseen |= (1 << (ttyp - 1));
+}
+
+// C ref: mondata.c mons_see_trap()
+/* monsters see a trap trigger, and remember it */
+export function mons_see_trap(ttmp) {
+    const tx = ttmp.tx, ty = ttmp.ty;
+    const maxdist = game.level.at(tx, ty).lit ? 7 * 7 : 2;
+
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        if ((mtmp.data.mflags1 & M.M1_ANIMAL) /* is_animal */
+            || (mtmp.data.mflags1 & M.M1_MINDLESS) /* mindless */
+            || !haseyes(mtmp.data) || !mtmp.mcansee)
+            continue;
+        const dx = mtmp.mx - tx, dy = mtmp.my - ty;
+        if (dx * dx + dy * dy > maxdist)
+            continue;
+        if (!clear_path(mtmp.mx, mtmp.my, tx, ty)) /* m_cansee() */
+            continue;
+        mon_learns_traps(mtmp, ttmp.ttyp);
+    }
 }
 
 // C ref: mondata.c resists_drli()

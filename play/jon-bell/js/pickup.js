@@ -2995,7 +2995,7 @@ async function _tip_target_destination(box) {
     const title = menu_heading_text(titleText.slice(0, 78)); // C tty_end_menu:2730
     const targets = [];
     const targetRows = [];
-    const lines = [title, '', '- * on the floor', ''];
+    const lines = [title, '', `- * ${menucolor_text('on the floor')}`, '']; /* pickup.c:3905 add_menu -> windows.c:1803 get_menu_coloring */
     let handsAvailable = null;
     for (let obj = game.invent; obj; obj = obj.nobj) {
         if (obj === box) continue;
@@ -3007,7 +3007,7 @@ async function _tip_target_destination(box) {
         if (handsAvailable === null) handsAvailable = await u_handsy();
         const excluded = !handsAvailable || (obj.olocked && obj.lknown);
         const letter = typeof obj.invlet === 'number' ? String.fromCharCode(obj.invlet) : obj.invlet;
-        lines.push(`${excluded ? '    ' : `${letter} - `}${await doname(obj)}`.slice(0, 78));
+        lines.push(`${excluded ? '    ' : `${letter} - `}${menucolor_text((await doname(obj)).slice(0, 74))}`);
         if (!excluded) { targets.push(obj); targetRows.push(lines[lines.length - 1]); }
     }
     lines.push('(end)');

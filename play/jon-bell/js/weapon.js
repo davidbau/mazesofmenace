@@ -333,7 +333,10 @@ async function enhance_menu(items, prompt, pickOne) {
      * offx == 10 / maxrow >= rows goes full-screen.  Same placement as
      * cmd.js tty_menu_pick_one_ext. */
     let overlayCol = 0, overlayRows = 0;
-    if (npages === 1 && all.length + 1 < SCREEN_ROWS) {
+    /* C wintty.c:1927 — `!iflags.menu_overlay` drops the menu to offx 0 and a
+     * cleared screen, however short it is. */
+    const noOverlay = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
+    if (npages === 1 && all.length + 1 < SCREEN_ROWS && !noOverlay) {
         let maxlen = 5;
         for (let n = 0; n < all.length; n++) {
             const body = accel[n] ? `${accel[n]} - ${all[n].text}` : all[n].text;

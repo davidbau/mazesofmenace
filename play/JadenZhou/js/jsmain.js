@@ -12,7 +12,7 @@
 import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
-import { early_init, newgame, moveloop_preamble, moveloop_core } from './allmain.js';
+import { early_init, newgame, moveloop_preamble, moveloop_core, maybe_do_tutorial } from './allmain.js';
 import { parseNethackrc, set_playmode } from './options.js';
 import { wd_message } from './sys.js';
 import { plnamesuffix } from './role.js';
@@ -100,7 +100,8 @@ export class NethackGame {
            game without OPTIONS=name asks "Who are you?" */
         g.plname = opts.name || '';
         /* boolean options that default to on (optlist.h) */
-        g.flags = { verbose: true, legacy: true, acoustics: true, ...opts.flags };
+        g.flags = { verbose: true, legacy: true, acoustics: true, tutorial: true,
+                    safe_dog: true, autoopen: true, ...opts.flags };
         g.iflags = { ...opts.iflags };
         g.pl_character = opts.pl_character || '';
         /* the fixed clock calendar.c getlt() reads */
@@ -111,6 +112,9 @@ export class NethackGame {
         g.pl_race = opts.pl_race || '';
         if (opts.preferred_pet) g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set) g.tutorial_set_in_config = true;
+        /* C ref: files.c configfile -- the unix default ".nethackrc"
+           in the home directory */
+        g.configfile = '.nethackrc';
 
         // Initialize hero struct (zeroed again by u_init_misc())
         g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0, uroleplay: {} };
@@ -158,7 +162,7 @@ export class NethackGame {
         /* C ref: unixmain.c main() -> moveloop(0) -> moveloop_preamble();
            the caller drives moveloop_core() itself */
         await moveloop_preamble(false);
-        /* maybe_do_tutorial(): not ported yet */
+        await maybe_do_tutorial();
     }
 
     _installCaptureHook() {

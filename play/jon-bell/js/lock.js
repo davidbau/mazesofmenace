@@ -306,7 +306,7 @@ export async function doopen_indir(x, y) {
                     cmdq_add_ec(CQ_CANNED, 'dokick');
                     cmdq_add_dir(CQ_CANNED, Math.sign(cx - g.u.ux), Math.sign(cy - g.u.uy), 0);
                     res = ECMD_OK;
-                } else if (!g._pending_message && !g._resultMessage) {
+                } else if (!g._pending_message && !g._resultMessage && !g.iflags?.query_menu) {
                     /* C topl.c:536-548 leaves the answered prompt painted when
                      * nothing else is printed afterwards — whatever the answer
                      * ('n' and 'q' alike; key2txt is not echoed to the screen). */

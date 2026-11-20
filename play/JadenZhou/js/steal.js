@@ -3,15 +3,21 @@
 // invent.c carry_obj_effects(); worn.c extract_from_minvent()
 
 import { game } from './gstate.js';
-import { add_to_minv, obj_extract_self, place_object } from './mkobj.js';
+import { add_to_minv, obj_extract_self, place_object, unknow_object } from './mkobj.js';
+import { canseemon } from './display.js';
 import * as O from './objects.js';
 import { cansee } from './vision.js';
 import { newsym, pline } from './display.js';
 import { distant_name, doname } from './objnam.js';
-import { Monnam } from './mhitm.js';
+import { Monnam } from './do_name.js';
 import { stackobj } from './invent.js';
 import { flooreffects, obj_no_longer_held } from './do.js';
 import { droppables } from './dogmove.js';
+import { LOST_NONE, LOST_THROWN, LOST_DROPPED, LOST_STOLEN, W_ARM, W_WEP,
+         W_SADDLE } from './const.js';
+import { update_mon_extrinsics, update_mon_extrinsics_sync } from './worn.js';
+import { mwepgone } from './weapon.js';
+import { check_gear_next_turn } from './mon.js';
 
 // C ref: invent.c carry_obj_effects()
 function carry_obj_effects(obj) {
@@ -44,8 +50,25 @@ export function mpickobj(mtmp, otmp) {
        and if it's eventually dropped in a shop, shk will claim it */
     otmp.no_charge = 0;
     /* some object handling is only done if mtmp isn't a pet */
-    if (!mtmp.mtame)
-        throw new Error('mpickobj(): non-pet pickup (unknow_object()) not ported yet');
+    if (!mtmp.mtame) {
+        /* if monst is unseen, some info hero knows about this object becomes
+           lost; continual pickup and drop by pets makes this too annoying if
+           it is applied to them; when engulfed (where monster can't be seen
+           because vision is disabled), or when held (or poly'd and holding)
+           while blind, behave as if the monster can be 'seen' by touch */
+        if (!canseemon(mtmp) && mtmp !== game.u.ustuck)
+            unknow_object(otmp);
+        /* if otmp has flags set for how it left hero's inventory, change
+           those flags; if thrown, now stolen and autopickup might override
+           pickup_types and autopickup exceptions based on 'pickup_stolen'
+           rather than 'pickup_thrown'; if previously stolen, stays stolen;
+           if previously dropped, now forgotten and autopickup will operate
+           normally regardless of the setting for 'dropped_nopick' */
+        if (otmp.how_lost === LOST_THROWN)
+            otmp.how_lost = LOST_STOLEN;
+        else if (otmp.how_lost === LOST_DROPPED)
+            otmp.how_lost = LOST_NONE;
+    }
     /* Must do carrying effects on object prior to add_to_minv() */
     carry_obj_effects(otmp);
     /* add_to_minv() might free otmp [if merged with something else],
@@ -57,18 +80,48 @@ export function mpickobj(mtmp, otmp) {
 // C ref: worn.c extract_from_minvent() -- removing worn or wielded gear
 // (update_mon_extrinsics(), mwepgone()) is not ported yet
 /* Remove an object from a monster's inventory. */
-function extract_from_minvent(mon, obj, do_extrinsics, silently) {
+function extract_from_minvent(
+    mon,
+    obj,
+    do_extrinsics, /* whether to call update_mon_extrinsics */
+    silently)      /* doesn't affect all possible messages,
+                    * just update_mon_extrinsics's */
+{
     const unwornmask = obj.owornmask || 0;
 
-    void do_extrinsics; /* only used for worn gear */
-    void silently;
+    /*
+     * At its core this is just obj_extract_self(), but it also handles
+     * any updates that need to happen if the gear is equipped or in
+     * some other sort of state that needs handling.
+     * Note that like obj_extract_self(), this leaves obj free.
+     */
+
     if (obj.where !== 'OBJ_MINVENT')
         throw new Error('extract_from_minvent called on object not in minvent');
-    if (unwornmask)
-        throw new Error('extract_from_minvent(): worn or wielded gear not ported yet');
+    /* handle gold dragon scales/scale-mail (lit when worn) before clearing
+       obj->owornmask because artifact_light() expects that to be W_ARM */
+    if ((unwornmask & W_ARM) !== 0 && obj.lamplit
+        && (obj.otyp === O.GOLD_DRAGON_SCALE_MAIL
+            || obj.otyp === O.GOLD_DRAGON_SCALES))
+        throw new Error('extract_from_minvent(): end_burn() not ported yet');
+
     obj_extract_self(obj);
     obj.owornmask = 0;
+    if (unwornmask) {
+        if (!(mon.mhp < 1) && do_extrinsics) { /* !DEADMONSTER(mon) */
+            if (!silently)
+                throw new Error('extract_from_minvent(): update_mon_extrinsics() messages not ported yet');
+            update_mon_extrinsics_sync(mon, obj, false);
+        }
+        mon.misc_worn_check = (mon.misc_worn_check || 0) & ~unwornmask;
+        /* give monster a chance to wear other equipment on its next
+           move instead of waiting until it picks something up */
+        check_gear_next_turn(mon);
+    }
     obj_no_longer_held(obj);
+    if (unwornmask & W_WEP) {
+        mwepgone(mon); /* unwields and sets weapon_check to NEED_WEAPON */
+    }
 }
 
 // C ref: steal.c mdrop_obj()
@@ -81,8 +134,11 @@ export async function mdrop_obj(mon, obj, verbosely) {
     const obj_name = distant_name(obj, doname);
 
     extract_from_minvent(mon, obj, false, true);
-    /* don't charge for an owned saddle on dead steed: the saddle is worn,
-       which extract_from_minvent() doesn't handle yet */
+    /* don't charge for an owned saddle on dead steed (provided
+        that the hero is within the same shop at the time) */
+    if (unwornmask && mon.mtame && (unwornmask & W_SADDLE) !== 0
+        && !obj.unpaid && game.level.flags?.has_shop)
+        throw new Error('mdrop_obj(): costly_spot() saddle check not ported yet');
     /* obj_no_longer_held(obj); -- done by place_object */
     if (verbosely && cansee(omx, omy))
         await pline(`${Monnam(mon)} drops ${obj_name}.`); /* pline_mon() */
@@ -90,9 +146,11 @@ export async function mdrop_obj(mon, obj, verbosely) {
         place_object(obj, omx, omy);
         stackobj(obj);
     }
-    /* do this last, after placing obj on floor: update_mon_extrinsics()
-       for worn gear -- unreachable, extract_from_minvent() stops on it */
-    void unwornmask;
+    /* do this last, after placing obj on floor; removing steed's saddle
+       throws rider, possibly inflicting fatal damage and producing bones; this
+       is why we had to call extract_from_minvent() with do_intrinsics=FALSE */
+    if (!(mon.mhp < 1) && unwornmask) /* !DEADMONSTER(mon) */
+        await update_mon_extrinsics(mon, obj, false, true);
 }
 
 // C ref: steal.c relobj()

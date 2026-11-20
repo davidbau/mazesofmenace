@@ -5,7 +5,9 @@
 // monnear(), mon_allowflags().
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rn1 } from './rng.js';
+import * as MM from './monsters.js';
+import { SPECIAL_PM, NUMMONS } from './monsters.js';
 import {
     MSLOW, MFAST, NORMAL_SPEED, LOW_PM, I_SPECIAL, CONFLICT, INVIS,
     DISPLACED, COLNO, ROWNO, IS_OBSTRUCTED, IS_TREE, IS_WATERWALL, IS_DOOR,
@@ -15,15 +17,19 @@ import {
     ALLOW_SANCT, ALLOW_SSM, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_BARS,
     NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, NOGARLIC,
     M_AP_MONSTER, MON_DETACH, W_AMUL, NON_PM, NATTK, Is_rogue_level,
-    G_GENOD,
+    G_GENOD, STRAT_WAITMASK, STRAT_WAITFORU, BOLT_LIM, W_ARM,
 } from './const.js';
 import { dist2 } from './hacklib.js';
 import { vision_recalc, cansee } from './vision.js';
 import { newsym, pline } from './display.js';
 import { m_at, sobj_at, is_pool, is_lava, may_passwall, accessible,
-         nonliving, is_golem, is_mplayer } from './makemon.js';
+         nonliving, is_golem, is_mplayer, closed_door, hideunder,
+         In_endgame, is_placeholder, mbirth_limit, newmonhp,
+         pm_to_cham } from './makemon.js';
+import { is_male, is_female, is_neuter, pm_invisible } from './mondata.js';
 import { set_mon_data } from './mondata.js';
-import { Monnam } from './mhitm.js';
+import { Monnam, noit_mon_nam } from './do_name.js';
+import { m_dowear, which_armor } from './worn.js';
 import {
     MS_NEMESIS, AT_BOOM, G_FREQ, AD_RBRE, AD_DCAY, AD_DGST, AD_FIRE,
     PM_LIZARD, PM_VLAD_THE_IMPALER, PM_WEREJACKAL, PM_HUMAN_WEREJACKAL,
@@ -36,7 +42,7 @@ import { hastrack } from './track.js';
 import { mon_knows_traps } from './mondata.js';
 import { monsndx, is_flyer, is_floater, is_swimmer, passes_walls,
          perceives, is_were, is_human, is_undead, is_vampshifter,
-         dmgtype } from './mondata.js';
+         dmgtype, is_elf, is_dwarf } from './mondata.js';
 import {
     mons, S_EEL, S_UNICORN, S_GHOST, S_VORTEX, S_ZOMBIE, S_LICH,
     M1_NOHANDS, M1_TUNNEL, M1_NEEDPICK, M1_AMORPHOUS, M1_UNSOLID,
@@ -46,12 +52,24 @@ import {
     PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_FLOATING_EYE, PM_PURPLE_WORM,
     PM_BABY_PURPLE_WORM, PM_SHRIEKER, PM_GHOUL, PM_SKELETON,
     PM_AIR_ELEMENTAL, M1_ANIMAL, M1_MINDLESS, S_MUMMY,
+    PM_FLESH_GOLEM, G_UNIQ,
 } from './monsters.js';
 import { BOULDER, CLOVE_OF_GARLIC, CREDIT_CARD, SKELETON_KEY,
-         LOCK_PICK, EGG } from './objects.js';
+         LOCK_PICK, EGG, CORPSE, AMULET_OF_LIFE_SAVING, GRAY_DRAGON_SCALES,
+         YELLOW_DRAGON_SCALES, GRAY_DRAGON_SCALE_MAIL,
+         YELLOW_DRAGON_SCALE_MAIL, TIN, GLOB_OF_GREEN_SLIME, CARROT,
+         objects } from './objects.js';
+import { NO_NC_FLAGS, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES,
+         POISON_RES, STONE_RES } from './const.js';
+import { corpse_intrinsic, should_givit } from './eat.js';
+import { delobj } from './invent.js';
+import { grow_up } from './makemon.js';
 import { dead_species } from './mkobj.js';
 import { kill_egg } from './timeout.js';
-import { dochugw, onscary, mon_regen, m_everyturn_effect } from './monmove.js';
+import { relobj } from './steal.js';
+import { dochugw, onscary, mon_regen, m_everyturn_effect,
+         mon_track_clear } from './monmove.js';
+import { canseemon } from './display.js';
 
 /* monster inventory: makemon.js keeps mon->minvent as an array in pickup
    order; C prepends, so walk it newest first */
@@ -126,7 +144,7 @@ function m_calcdistress(mtmp) {
 
     /* possibly polymorph shapechangers and lycanthropes */
     if (mtmp.cham !== undefined && mtmp.cham >= LOW_PM) /* ismnum() */
-        throw new Error('m_calcdistress(): decide_to_shapeshift() not ported yet');
+        decide_to_shapeshift(mtmp);
     if (is_were(mtmp.data))
         throw new Error('m_calcdistress(): were_change() not ported yet');
 
@@ -188,24 +206,11 @@ function mon_leaving_level(mon) {
     }
 }
 
-// C ref: steal.c relobj() -- only an empty inventory is handled here:
-// m_detach() is synchronous, while the full port (steal.js relobj(), whose
-// mdrop_obj() can give a message) is async; switch to it once m_detach()
-// is made async for mondead()
-function relobj(mtmp, show, is_pet) {
-    const omx = mtmp.mx, omy = mtmp.my;
-
-    void is_pet;
-    if (mtmp.isgd)
-        throw new Error('relobj(): vault guard gold not ported yet');
-    if (mtmp.minvent && mtmp.minvent.length)
-        throw new Error('relobj(): mdrop_obj() not ported yet');
-
-    if (show && cansee(omx, omy))
-        newsym(omx, omy);
-}
-
 // C ref: mon.c m_detach()
+// The inventory drop for a death (steal.c relobj(), whose mdrop_obj() can
+// give a message) is async: with due_to_death this returns a promise that
+// mondead() awaits; mongone() (due_to_death FALSE, called from level
+// creation) runs synchronously.
 function m_detach(mtmp, mptr, due_to_death) {
     if (mtmp.mleashed)
         throw new Error('m_detach(): m_unleash() not ported yet');
@@ -219,36 +224,44 @@ function m_detach(mtmp, mptr, due_to_death) {
     mtmp.mhp = 0; /* simplify some tests: force mhp to 0 */
     if (mtmp.iswiz)
         throw new Error('m_detach(): wizdeadorgone() not ported yet');
+
+    const after_relobj = () => {
+        if (game.stealmid && mtmp.m_id === game.stealmid)
+            throw new Error('m_detach(): thiefdead() not ported yet');
+        if (mtmp.isshk)
+            throw new Error('m_detach(): shkgone() not ported yet');
+        if (mtmp.wormno)
+            throw new Error('m_detach(): wormgone() not ported yet');
+        /* In_endgame(&u.uz): MON_ENDGAME_FREE -- the endgame isn't reached */
+
+        mtmp.mstate = (mtmp.mstate || 0) | MON_DETACH;
+        game.purge_monsters = (game.purge_monsters || 0) + 1;
+
+        if (mtmp === game.u.usteed)
+            throw new Error('m_detach(): dismount_steed() not ported yet');
+    };
+
     if (due_to_death) {
         if (mtmp.data.msound === MS_NEMESIS)
             throw new Error('m_detach(): nemdead() not ported yet');
         if (mtmp.data.msound === MS_LEADER)
             throw new Error('m_detach(): leaddead() not ported yet');
         /* release (drop onto map) all objects carried by mtmp */
-        relobj(mtmp, 1, false); /* drop mtmp->minvent, issue newsym(mx,my) */
+        return relobj(mtmp, 1, false) /* drop mtmp->minvent, issue newsym(mx,my) */
+            .then(after_relobj);
     }
-
-    if (game.stealmid && mtmp.m_id === game.stealmid)
-        throw new Error('m_detach(): thiefdead() not ported yet');
-    if (mtmp.isshk)
-        throw new Error('m_detach(): shkgone() not ported yet');
-    if (mtmp.wormno)
-        throw new Error('m_detach(): wormgone() not ported yet');
-    /* In_endgame(&u.uz): MON_ENDGAME_FREE -- the endgame isn't reached */
-
-    mtmp.mstate = (mtmp.mstate || 0) | MON_DETACH;
-    game.purge_monsters = (game.purge_monsters || 0) + 1;
-
-    if (mtmp === game.u.usteed)
-        throw new Error('m_detach(): dismount_steed() not ported yet');
+    after_relobj();
+    return undefined;
 }
 
 // C ref: mon.c mlifesaver()
 /* find the worn amulet of life saving which will save a monster */
 function mlifesaver(mon) {
     if (!nonliving(mon.data) || is_vampshifter(mon)) {
-        if (mon.misc_worn_check & W_AMUL)
-            throw new Error('mlifesaver(): which_armor() not ported yet');
+        const otmp = which_armor(mon, W_AMUL);
+
+        if (otmp && otmp.otyp === AMULET_OF_LIFE_SAVING)
+            return otmp;
     }
     return null;
 }
@@ -317,7 +330,7 @@ export async function mondead(mtmp) {
 
     /* remove 'mtmp' from play; it will stay on the fmon list until end of
        current move, then dmonsfree() will get rid of it */
-    m_detach(mtmp, mptr, true);
+    await m_detach(mtmp, mptr, true);
 }
 
 // C ref: mon.c corpse_chance()
@@ -398,7 +411,7 @@ export async function monkilled(mdef, fltxt, how) {
                       : (how === AD_DCAY && completelyrots(mptr)) ? 'rot'
                         : null;
         if (rxt)
-            throw new Error('monkilled(): noit_mon_nam() not ported yet');
+            await pline(`May ${noit_mon_nam(mdef)} ${rxt} in peace.`);
     }
 }
 /* C ref: mondata.h completelyburns(), completelyrusts(), completelyrots() */
@@ -473,7 +486,7 @@ async function movemon_singlemon(mtmp) {
             || dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) > (3 * 3)) {
             mtmp.misc_worn_check &= ~I_SPECIAL;
             const oldworn = mtmp.misc_worn_check;
-            m_dowear(mtmp, false);
+            await m_dowear(mtmp, false);
             if (mtmp.misc_worn_check !== oldworn || !mtmp.mcanmove)
                 return false; /* is spending this turn equipping */
         }
@@ -529,6 +542,445 @@ function dmonsfree() {
     }
 }
 
+/* mondata.h */
+function polyok(ptr) { return (ptr.mflags2 & MM.M2_NOPOLY) === 0; }
+function is_shapeshifter(ptr) { return (ptr.mflags2 & MM.M2_SHAPESHIFTER) !== 0; }
+function notake(ptr) { return (ptr.mflags1 & MM.M1_NOTAKE) !== 0; }
+function has_head(ptr) { return (ptr.mflags1 & MM.M1_NOHEAD) === 0; }
+function is_vampire(ptr) { return ptr.mlet === MM.S_VAMPIRE; }
+/* C ref: mondata.h ismnum() */
+function ismnum(mndx) { return mndx >= LOW_PM && mndx < NUMMONS; }
+function throws_rocks(ptr) { return (ptr.mflags2 & M2_ROCKTHROW) !== 0; }
+/* C ref: ncflags for newcham() (monst.h) */
+const NC_SHOW_MSG = 0x01;
+const NC_VIA_WAND_OR_SPELL = 0x02;
+
+// C ref: mon.c pickvampshape()
+function pickvampshape(mon) {
+    let mndx = mon.cham, wolfchance = 10;
+    /* avoid picking monsters with lowercase display symbols ('d' for wolf
+       and 'v' for fog cloud) on rogue level*/
+    const uppercase_only = Is_rogue_level(game.u.uz);
+
+    switch (mndx) {
+    case MM.PM_VLAD_THE_IMPALER:
+        /* ensure Vlad can keep carrying the Candelabrum */
+        /* if (mon_has_special(mon)) break; */
+        throw new Error('pickvampshape(): mon_has_special() not ported yet');
+    case MM.PM_VAMPIRE_LEADER: /* vampire lord or Vlad can become wolf */
+        if (!rn2(wolfchance) && !uppercase_only
+            /* don't pick a walking form if that would lead to immediate
+               drowning or immolation and reversion to vampire form */
+            && !(is_pool(mon.mx, mon.my) || is_lava(mon.mx, mon.my))) {
+            mndx = MM.PM_WOLF;
+            break;
+        }
+        /*FALLTHRU*/
+    case MM.PM_VAMPIRE: /* any vampire can become fog or bat */
+        mndx = (!rn2(4) && !uppercase_only) ? MM.PM_FOG_CLOUD : MM.PM_VAMPIRE_BAT;
+        break;
+    }
+
+    /* return to base form if chosen poly target has been genocided
+       or randomly if already in an alternate form (to prevent always
+       switching back and forth between bat and fog) */
+    if ((game.mvitals[mndx].mvflags & G_GENOD) !== 0
+        || (mon.data !== mons[mon.cham] && !rn2(4)))
+        return mon.cham;
+
+    return mndx;
+}
+
+// C ref: mon.c isspecmon()
+/* nonshapechangers who warrant special polymorph handling */
+function isspecmon(mon) {
+    return !!(mon.isshk || mon.ispriest || mon.isgd
+              || (game.quest_status?.leader_m_id
+                  && mon.m_id === game.quest_status.leader_m_id));
+}
+
+// C ref: mon.c validspecmon()
+/* restrict certain special monsters (shopkeepers, aligned priests,
+   vault guards) to forms that allow them to behave sensibly (catching
+   gold, speaking?) so that they don't need too much extra code */
+function validspecmon(mon, mndx) {
+    if (mndx === NON_PM)
+        return true; /* caller wants random */
+
+    if (!accept_newcham_form(mon, mndx))
+        return false; /* geno'd or !polyok */
+
+    if (isspecmon(mon)) {
+        const ptr = mons[mndx];
+
+        /* reject notake because object manipulation is expected
+           and nohead because speech capability is expected */
+        if (notake(ptr) || !has_head(ptr))
+            return false;
+        /* [should we check ptr->msound here too?] */
+    }
+    return true; /* potential new form is ok */
+}
+
+// C ref: mon.c select_newcham_form()
+export function select_newcham_form(mon) {
+    let mndx = NON_PM, tryct;
+
+    switch (mon.cham) {
+    case MM.PM_SANDESTIN:
+        if (rn2(7))
+            throw new Error('select_newcham_form(): pick_nasty() not ported yet');
+        break;
+    case MM.PM_DOPPELGANGER:
+        throw new Error('select_newcham_form(): doppelganger forms not ported yet');
+    case MM.PM_CHAMELEON:
+        if (!rn2(3))
+            throw new Error('select_newcham_form(): pick_animal() not ported yet');
+        break;
+    case MM.PM_VLAD_THE_IMPALER:
+    case MM.PM_VAMPIRE_LEADER:
+    case MM.PM_VAMPIRE:
+        mndx = pickvampshape(mon);
+        break;
+    case NON_PM: /* ordinary */
+      {
+        const m_armr = which_armor(mon, W_ARM);
+
+        if (m_armr && m_armr.otyp >= GRAY_DRAGON_SCALES
+            && m_armr.otyp <= YELLOW_DRAGON_SCALES) /* Is_dragon_scales() */
+            mndx = MM.PM_GRAY_DRAGON + m_armr.otyp - GRAY_DRAGON_SCALES;
+        else if (m_armr && m_armr.otyp >= GRAY_DRAGON_SCALE_MAIL
+                 && m_armr.otyp <= YELLOW_DRAGON_SCALE_MAIL) /* Is_dragon_mail() */
+            mndx = MM.PM_GRAY_DRAGON + m_armr.otyp - GRAY_DRAGON_SCALE_MAIL;
+      }
+        break;
+    }
+
+    /* for debugging: allow control of polymorphed monster */
+    if (game.flags.debug && game.iflags.mon_polycontrol)
+        throw new Error('select_newcham_form(): wiz_force_cham_form() not ported yet');
+
+    /* if no form was specified above, pick one at random now */
+    if (mndx === NON_PM) {
+        tryct = 50;
+        do {
+            mndx = rn1(SPECIAL_PM - LOW_PM, LOW_PM);
+            /* assert(ismnum(mndx); */
+        } while (--tryct > 0 && !validspecmon(mon, mndx)
+                 /* try harder to select uppercase monster on rogue level */
+                 && (tryct > 40 && Is_rogue_level(game.u.uz)
+                     && !isupper_monsym(mons[mndx])));
+    }
+    return mndx;
+}
+/* C ref: isupper(monsym(ptr)) -- monsym() is def_monsyms[mlet].sym */
+function isupper_monsym(ptr) {
+    /* defsym.h MONSYMS, indexed by mlet (S_ANT = 1) */
+    const ch = " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@ '&;:~]"[ptr.mlet] ?? '';
+    return ch >= 'A' && ch <= 'Z';
+}
+
+// C ref: mon.c accept_newcham_form()
+/* this used to be inline within newcham() but monpolycontrol needs it too */
+function accept_newcham_form(mon, mndx) {
+    if (mndx === NON_PM)
+        return null;
+    const mdat = mons[mndx];
+    if ((game.mvitals[mndx].mvflags & G_GENOD) !== 0)
+        return null;
+    if (is_placeholder(mdat))
+        return null;
+    /* select_newcham_form() might deliberately pick a player
+       character type (random selection never does) which
+       polyok() rejects, so we need a special case here */
+    if (is_mplayer(mdat))
+        return mdat;
+    /* shapeshifters are rejected by polyok() but allow a shapeshifter
+       to take on its 'natural' form */
+    if (is_shapeshifter(mdat)
+        && ismnum(mon.cham) && mdat === mons[mon.cham])
+        return mdat;
+    /* polyok() rules out M2_PNAME, M2_WERE, and all humans except Kops */
+    return polyok(mdat) ? mdat : null;
+}
+
+// C ref: mon.c mgender_from_permonst()
+/* shapechanger might take on a shape that forces gender change */
+export function mgender_from_permonst(mtmp, mdat) {
+    if (is_male(mdat)) {
+        mtmp.female = false;
+    } else if (is_female(mdat)) {
+        mtmp.female = true;
+    } else if (!is_neuter(mdat)) {
+        /* usually leave as-is; same chance to change as polymorphing hero;
+           vampires use controlled shapechange (from their perspective, even
+           if it is random from the player's perspective) and don't undergo
+           gender change */
+        if (!rn2(10) && !(is_vampire(mdat) || is_vampshifter(mtmp)))
+            mtmp.female = !mtmp.female;
+    }
+}
+
+// C ref: mon.c decide_to_shapeshift()
+export function decide_to_shapeshift(mon) {
+    let ptr = null;
+    let mndx;
+    const was_female = mon.female;
+    let dochng = false;
+
+    if (!is_vampshifter(mon)) {
+        /* regular shapeshifter; 'ptr' is Null */
+        if (!mon.mspec_used && !rn2(6)) {
+            dochng = true;
+            mon.mspec_used = 3 + rn2(10);
+        }
+    } else if (!(mon.mstrategy & STRAT_WAITFORU)) {
+        /* The vampire has to be in good health (mhp) to maintain
+         * its shifted form.
+         *
+         * If we're shifted and getting low on hp, maybe shift back, or
+         * if we're a fog cloud at full hp, maybe pick a different shape.
+         * If we're not already shifted and in good health, maybe shift.
+         */
+        if (mon.data.mlet !== MM.S_VAMPIRE) {
+            if ((mon.mhp <= Math.trunc((mon.mhpmax + 5) / 6)) && rn2(4)
+                && ismnum(mon.cham)) {
+                ptr = mons[mon.cham];
+                dochng = true;
+            } else if (mon.data === mons[MM.PM_FOG_CLOUD]
+                       && mon.mhp === mon.mhpmax && !rn2(4)
+                       && (!canseemon(mon)
+                           || dist2(mon.mx, mon.my, game.u.ux, game.u.uy)
+                              > BOLT_LIM * BOLT_LIM)) {
+                /* if a fog cloud, maybe change to wolf or vampire bat;
+                   those are more likely to take damage--at least when
+                   tame--and then switch back to vampire; they'll also
+                   switch to fog cloud if they encounter a closed door */
+                mndx = pickvampshape(mon);
+                if (ismnum(mndx)) {
+                    ptr = mons[mndx];
+                    dochng = (ptr !== mon.data);
+                }
+            }
+            if (dochng && (mon.data.mflags1 & MM.M1_AMORPHOUS) /* amorphous */
+                && closed_door(mon.mx, mon.my))
+                throw new Error('decide_to_shapeshift(): enexto()/rloc_to() not ported yet');
+        } else {
+            if (mon.mhp >= Math.trunc(9 * mon.mhpmax / 10) && !rn2(6)
+                && (!canseemon(mon)
+                    || dist2(mon.mx, mon.my, game.u.ux, game.u.uy)
+                       > BOLT_LIM * BOLT_LIM))
+                dochng = true; /* 'ptr' stays Null */
+        }
+    }
+    if (dochng) {
+        if (newcham(mon, ptr, NC_SHOW_MSG)) {
+            /* for vampshift, override the 10% chance for sex change
+               (by forcing original gender in case that occurred) */
+            if (is_vampshifter(mon)) {
+                ptr = mon.data;
+                if (!is_male(ptr) && !is_female(ptr) && !is_neuter(ptr))
+                    mon.female = was_female;
+            }
+        }
+    }
+}
+
+// C ref: mon.c newcham()
+/* make a chameleon take on another shape, or a polymorph target
+   (possibly self-inflicted) become a different monster;
+   returns 1 if it actually changes form */
+export function newcham(mtmp, mdat, ncflags) {
+    const polyspot = ((ncflags & NC_VIA_WAND_OR_SPELL) !== 0);
+    /* "The oldmon turns into a newmon!" */
+    const msg = ((ncflags & NC_SHOW_MSG) !== 0);
+    let hpn, hpd, mndx, tryct;
+    const olddata = mtmp.data;
+
+    /* seenorsensed = canspotmon(mtmp), oldname and l_oldname are only
+       used by the messages below, which aren't ported yet */
+    if (msg)
+        throw new Error('newcham(): NC_SHOW_MSG messages not ported yet');
+
+    /* Riders are immune to polymorph and green slime
+       (but apparent Rider might actually be a doppelganger) */
+    if (mtmp.cham === NON_PM) { /* not a shapechanger */
+        if (is_rider(olddata))
+            return 0;
+        /* make Nazgul and erinyes immune too, to reduce chance of
+           anomalous extinction feedback during final disclosure */
+        if (mbirth_limit(monsndx(olddata)) < 120 /* MAXMONNO */)
+            return 0;
+        /* cancelled shapechangers become uncancelled prior
+           to being given a new shape */
+        if (mtmp.mcan /* && !Protection_from_shape_changers */) {
+            mtmp.cham = pm_to_cham(monsndx(mtmp.data));
+            if (mtmp.cham !== NON_PM)
+                mtmp.mcan = 0;
+        }
+    }
+
+    /* mdat = 0 -> caller wants a random monster shape */
+    if (!mdat) {
+        /* select_newcham_form() loops when resorting to random but
+           it doesn't always pick that so we still retry here too */
+        tryct = 20;
+        do {
+            mndx = select_newcham_form(mtmp);
+            mdat = accept_newcham_form(mtmp, mndx);
+            /* for the first several tries we require upper-case on
+               the rogue level (after that, we take whatever we get) */
+            if (tryct > 15 && Is_rogue_level(game.u.uz)
+                && mdat && !isupper_monsym(mdat))
+                mdat = null;
+            if (mdat)
+                break;
+        } while (--tryct > 0);
+        if (!tryct)
+            return 0;
+    } else if (game.mvitals[monsndx(mdat)].mvflags & G_GENOD)
+        return 0; /* passed in mdat is genocided */
+
+    if (mdat === olddata)
+        return 0; /* still the same monster */
+
+    mgender_from_permonst(mtmp, mdat);
+    /* Endgame mplayers start out as "Foo the Bar", but some of the
+     * titles are inappropriate when polymorphed, particularly into
+     * the opposite sex.  Player characters don't use ranks when
+     * polymorphed, so dropping rank for mplayers seems reasonable.
+     */
+    if (In_endgame(game.u.uz) && is_mplayer(olddata) && mtmp.mgivenname)
+        throw new Error('newcham(): endgame mplayer names not ported yet');
+
+    if (mtmp.wormno) /* throw tail away */
+        throw new Error('newcham(): wormgone() not ported yet');
+    if ((mtmp.m_ap_type || 0) && mdat.mlet !== MM.S_MIMIC)
+        throw new Error('newcham(): seemimic() not ported yet');
+
+    /* (this code used to try to adjust the monster's health based on
+       a normal one of its type but there are too many special cases
+       which need to be handled in order to do that correctly, so just
+       give the new form the same proportion of HP as its old one had) */
+    hpn = mtmp.mhp;
+    hpd = mtmp.mhpmax;
+    /* set level and hit points */
+    newmonhp(mtmp, monsndx(mdat));
+    /* new hp: same fraction of max as before */
+    mtmp.mhp = Math.trunc((hpn * mtmp.mhp) / hpd);
+    /* sanity check (potential overflow) */
+    if (mtmp.mhp < 0 || mtmp.mhp > mtmp.mhpmax)
+        mtmp.mhp = mtmp.mhpmax;
+    /* unlikely but not impossible; a 1HD creature with 1HP that changes
+       into a 0HD creature will require this statement */
+    if (!mtmp.mhp)
+        mtmp.mhp = 1;
+
+    /* take on the new form... */
+    set_mon_data(mtmp, mdat);
+
+    if (mtmp.mleashed)
+        throw new Error('newcham(): leashed monsters not ported yet');
+
+    /* emits_light(olddata) != emits_light(mtmp->data): light sources
+       aren't ported yet */
+    if (!mtmp.perminvis || pm_invisible(olddata))
+        mtmp.perminvis = pm_invisible(mdat);
+    mtmp.minvis = mtmp.invis_blkd ? 0 : mtmp.perminvis;
+    if (mtmp.mundetected)
+        hideunder(mtmp);
+    if (game.u.ustuck === mtmp)
+        throw new Error('newcham(): engulfing/sticky hero not ported yet');
+
+    if (mdat === mons[MM.PM_LONG_WORM])
+        throw new Error('newcham(): get_wormno()/initworm() not ported yet');
+
+    mtmp.meverseen = 0; /* never seen mon in present shape; newsym() ->
+                         * display_monster() may change it right back */
+    newsym(mtmp.mx, mtmp.my);
+
+    /* when polymorph trap/wand/potion produces a vampire, turn in into
+       a full-fledged vampshifter unless shape-changing is blocked */
+    if (mtmp.cham === NON_PM && mdat.mlet === MM.S_VAMPIRE
+        /* && !Protection_from_shape_changers */)
+        mtmp.cham = pm_to_cham(monsndx(mdat));
+
+    /* possibly_unwield(mtmp, polyspot), mon_break_armor(mtmp, polyspot),
+       mselftouch(): only matter for a monster with a wielded weapon or
+       worn armor */
+    if (mtmp.mw || ((mtmp.misc_worn_check || 0) & ~I_SPECIAL))
+        throw new Error('newcham(): possibly_unwield()/mon_break_armor() not ported yet');
+    check_gear_next_turn(mtmp);
+
+    /* former giants can't continue carrying boulders */
+    if (mtmp.minvent?.length && !throws_rocks(mdat))
+        throw new Error('newcham(): dropping boulders not ported yet');
+    if (mtmp === game.u.usteed)
+        throw new Error('newcham(): poly_steed() not ported yet');
+
+    /* old form might not have been affected by Elbereth but perhaps the
+       new form is */
+    if (game.context?.mon_moving)
+        throw new Error('newcham(): set_apparxy()/monflee() for a moving monster not ported yet');
+
+    return 1;
+}
+// C ref: mon.c check_gear_next_turn()
+/* setting misc_worn_check's I_SPECIAL bit flags a monster to reassess
+   and potentially re-equip gear at the start of its next move */
+export function check_gear_next_turn(mon) {
+    mon.misc_worn_check = (mon.misc_worn_check || 0) | I_SPECIAL;
+}
+
+// C ref: mon.c wake_msg()
+async function wake_msg(mtmp, interesting) {
+    if (mtmp.msleeping && canseemon(mtmp)) {
+        await pline(`${Monnam(mtmp)} wakes up${interesting ? "!" : "."}${
+            mtmp.data === mons[PM_FLESH_GOLEM] ? " It's alive!" : ""}`);
+    }
+}
+
+// C ref: mon.c wake_nearto_core()
+/* Wake up monsters near some particular location. */
+async function wake_nearto_core(x, y, distance, petcall) {
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        if (DEADMONSTER(mtmp))
+            continue;
+        if (distance === 0 || dist2(mtmp.mx, mtmp.my, x, y) < distance) {
+            /* sleep for N turns uses mtmp->mfrozen, but so does paralysis
+               so we leave mfrozen monsters alone */
+            await wake_msg(mtmp, false);
+            mtmp.msleeping = 0; /* wake indeterminate sleep */
+            if (!(mtmp.data.geno & G_UNIQ))
+                mtmp.mstrategy &= ~STRAT_WAITMASK; /* wake 'meditation' */
+            if (game.context.mon_moving || !petcall)
+                continue;
+            if (mtmp.mtame) {
+                if (!mtmp.isminion)
+                    mtmp.edog.whistletime = game.moves;
+                /* Fix up a pet who is stuck "fleeing" its master */
+                mon_track_clear(mtmp);
+            }
+        }
+    }
+    disturb_buried_zombies(x, y);
+}
+
+// C ref: mon.c wake_nearto()
+export async function wake_nearto(x, y, distance) {
+    await wake_nearto_core(x, y, distance, false);
+}
+
+// C ref: hack.c disturb_buried_zombies()
+function disturb_buried_zombies(x, y) {
+    for (const otmp of game.level.buriedobjlist || []) {
+        if (otmp.otyp === CORPSE && otmp.timed
+            && otmp.ox >= x - 1 && otmp.ox <= x + 1
+            && otmp.oy >= y - 1 && otmp.oy <= y + 1)
+            throw new Error('disturb_buried_zombies(): ZOMBIFY_MON timers not ported yet');
+    }
+}
+
 // ── C ref: mon.c monnear() ──
 // Is the square close enough for the monster to move or attack into?
 export function monnear(mon, x, y) {
@@ -544,21 +996,6 @@ function NODIAG(monnum) { return monnum === PM_GRID_BUG; }
 /* mondata.h */
 function verysmall(ptr) { return ptr.msize < MZ_SMALL; }
 
-// C ref: worn.c m_dowear() -- only the early returns are ported
-function m_dowear(mon, creation) {
-    /* Note the restrictions here are the same as in dowear in do_wear.c
-     * except for the additional restriction on intelligence. */
-    if (verysmall(mon.data) || (mon.data.mflags1 & M1_NOHANDS) !== 0
-        || (mon.data.mflags1 & M1_ANIMAL) !== 0)
-        return;
-    /* give mummies a chance to wear their wrappings
-     * and let skeletons wear their initial armor */
-    if ((mon.data.mflags1 & M1_MINDLESS) !== 0
-        && (!creation || (mon.data.mlet !== S_MUMMY
-                          && mon.data !== mons[PM_SKELETON])))
-        return;
-    throw new Error('m_dowear(): m_dowear_type() not ported yet');
-}
 function bigmonst(ptr) { return ptr.msize >= MZ_LARGE; }
 function slithy(ptr) { return (ptr.mflags1 & M1_SLITHY) !== 0; }
 function amorphous(ptr) { return (ptr.mflags1 & M1_AMORPHOUS) !== 0; }
@@ -692,7 +1129,7 @@ function may_dig(x, y) {
              && ((lev.wall_info ?? 0) & W_NONDIGGABLE));
 }
 /* C ref: hack.c bad_rock() */
-function bad_rock(mdat, x, y) {
+export function bad_rock(mdat, x, y) {
     return (/* (Sokoban && sobj_at(BOULDER, x, y)) || */
             (IS_OBSTRUCTED(game.level.at(x, y).typ)
              && (!tunnels(mdat) || needspick(mdat) || !may_dig(x, y))
@@ -735,12 +1172,66 @@ export function zombie_maker(mon) {
     }
     return false;
 }
+// C ref: mon.c zombie_form()
+/* Return monster index of zombie monster which this monster could
+   be turned into, or NON_PM if it doesn't have a direct counterpart.
+   Sort of the zombie-specific inverse of undead_to_corpse. */
+export function zombie_form(pm) {
+    switch (pm.mlet) {
+    case S_ZOMBIE: /* when already a zombie/ghoul/skeleton, will stay as is */
+        return NON_PM;
+    case MM.S_KOBOLD:
+        return MM.PM_KOBOLD_ZOMBIE;
+    case MM.S_ORC:
+        return MM.PM_ORC_ZOMBIE;
+    case MM.S_GIANT:
+        if (pm === mons[MM.PM_ETTIN])
+            return MM.PM_ETTIN_ZOMBIE;
+        return MM.PM_GIANT_ZOMBIE;
+    case MM.S_HUMAN:
+    case S_KOP:
+        if (is_elf(pm))
+            return MM.PM_ELF_ZOMBIE;
+        return MM.PM_HUMAN_ZOMBIE;
+    case MM.S_HUMANOID:
+        if (is_dwarf(pm))
+            return MM.PM_DWARF_ZOMBIE;
+        else
+            break;
+    case MM.S_GNOME:
+        return MM.PM_GNOME_ZOMBIE;
+    }
+    return NON_PM;
+}
+// C ref: dungeon.h Is_stronghold() -- Lcheck(x, &stronghold_level)
+function Is_stronghold(lev) {
+    const z = game.dungeon_topology.d_stronghold_level;
+    return !!(z && (z.dlevel || z.dnum)
+              && lev.dnum === z.dnum && lev.dlevel === z.dlevel);
+}
 /* C ref: mon.c mm_2way_aggression() */
 function mm_2way_aggression(magr, mdef) {
-    /* On_W_tower_level(): the Wizard's tower isn't ported yet */
-    /* liches/zombies vs things that can be zombified */
-    if (zombie_maker(magr))
-        throw new Error('mm_2way_aggression(): zombie_form() not ported yet');
+    /* On_W_tower_level(): the Wizard's tower isn't generated by this
+       port yet, so the tower check never applies */
+    /* liches/zombies vs things that can be zombified
+
+       Note: avoid this on the Castle level, partly for balance reasons
+       (the monster-versus-monster fights clear out significant portions of
+       the Castle and make it easier than it should be), partly for flavor
+       reasons (monsters who attacked other monsters to zombify them would
+       have been counterattacked to death long before the hero arrived).
+
+       Also don't include unique monsters in this, otherwise it leads to
+       them waking up early (e.g. because a zombie decided to attack the
+       Wizard of Yendor). */
+    if (zombie_maker(magr) && zombie_form(mdef.data) !== NON_PM) {
+        if (magr.mgenmklev && mdef.mgenmklev)
+            return 0;
+        if (!Is_stronghold(game.u.uz)
+            && !((magr.data.geno & G_UNIQ) !== 0)
+            && !((mdef.data.geno & G_UNIQ) !== 0))
+            return (ALLOW_M | ALLOW_TM);
+    }
     return 0;
 }
 /* C ref: mon.c mm_aggression() */
@@ -1043,4 +1534,195 @@ export function kill_genocided_monsters() {
     kill_eggs(g.level.objects);
     kill_eggs(g.migrating_objs);
     kill_eggs(g.level.buriedobjlist);
+}
+
+// C ref: mon.c healmon()
+/* heal a monster (or the hero); returns amount of hit points restored */
+export function healmon(mtmp, amt, overheal) {
+    if (mtmp === game.youmonst) {
+        throw new Error('healmon(): healup() for the hero not ported yet');
+    } else {
+        const oldhp = mtmp.mhp;
+        if (mtmp.mhp + amt > mtmp.mhpmax + overheal) {
+            mtmp.mhpmax += overheal;
+            mtmp.mhp = mtmp.mhpmax;
+        } else {
+            mtmp.mhp += amt;
+            if (mtmp.mhp > mtmp.mhpmax)
+                mtmp.mhpmax = mtmp.mhp;
+        }
+        return mtmp.mhp - oldhp;
+    }
+}
+
+/* C ref: obj.h ofood(), polyfood(), mlevelgain(), mhealup();
+   mon.c mstoning(); mondata.h flesh_petrifies() */
+function ofood(o) {
+    return o.otyp === CORPSE || o.otyp === EGG || o.otyp === TIN;
+}
+function polyfood(obj) {
+    return (ofood(obj) && obj.corpsenm >= LOW_PM
+            && (pm_to_cham(obj.corpsenm) !== NON_PM
+                || dmgtype(mons[obj.corpsenm], MM.AD_POLY)));
+}
+function mlevelgain(obj) { return ofood(obj) && obj.corpsenm === MM.PM_WRAITH; }
+function mhealup(obj) { return ofood(obj) && obj.corpsenm === MM.PM_NURSE; }
+function flesh_petrifies(pm) {
+    return pm === mons[MM.PM_COCKATRICE] || pm === mons[MM.PM_CHICKATRICE]
+           || pm === mons[MM.PM_MEDUSA];
+}
+function mstoning(obj) {
+    return (ofood(obj) && obj.corpsenm >= LOW_PM && obj.corpsenm < NUMMONS
+            && flesh_petrifies(mons[obj.corpsenm]));
+}
+
+// C ref: mon.c m_consume_obj()
+/* monster mtmp eats object otmp; caller handles messages */
+export async function m_consume_obj(mtmp, otmp) {
+    const ispet = mtmp.mtame;
+
+    /* non-pet: Heal up to the object's weight in hp */
+    if (!ispet && mtmp.mhp < mtmp.mhpmax) {
+        healmon(mtmp, objects[otmp.otyp].oc_weight, 0);
+    }
+    if (otmp.cobj && otmp.cobj.length) /* Has_contents(otmp) */
+        throw new Error('m_consume_obj(): meatbox() not ported yet');
+    if (otmp === game.uball || otmp === game.uchain) {
+        throw new Error('m_consume_obj(): unpunish() not ported yet');
+    } else {
+        const vis = canseemon(mtmp);
+        const corpsenm = (otmp.otyp === CORPSE ? otmp.corpsenm : NON_PM);
+
+        const deadmimic = (otmp.otyp === CORPSE
+                           && (corpsenm === MM.PM_SMALL_MIMIC
+                               || corpsenm === MM.PM_LARGE_MIMIC
+                               || corpsenm === MM.PM_GIANT_MIMIC));
+        const slimer = (otmp.otyp === GLOB_OF_GREEN_SLIME);
+        const poly = polyfood(otmp);
+        const grow = mlevelgain(otmp);
+        const heal = mhealup(otmp);
+        const eyes = (otmp.otyp === CARROT);
+        const mstone = mstoning(otmp);
+        const otyp = otmp.otyp;
+        delobj(otmp); /* munch */
+        if (poly || slimer) {
+            const ptr = slimer ? mons[MM.PM_GREEN_SLIME] : null;
+
+            newcham(mtmp, ptr, vis ? NC_SHOW_MSG : NO_NC_FLAGS);
+        }
+        if (grow) {
+            if ((ispet && mtmp.m_lev < mtmp.data.mlevel + 15)
+                || !ispet)
+                grow_up(mtmp, null);
+        }
+        if (mstone)
+            throw new Error('m_consume_obj(): monster stoning not ported yet');
+        if (heal)
+            healmon(mtmp, mtmp.mhpmax, 0);
+        if ((eyes || heal) && !mtmp.mcansee)
+            throw new Error('m_consume_obj(): mcureblindness() not ported yet');
+        if (ispet && deadmimic)
+            throw new Error('m_consume_obj(): quickmimic() not ported yet');
+        if (otyp === EGG && corpsenm === MM.PM_PYROLISK)
+            throw new Error('m_consume_obj(): explode() not ported yet');
+        if (corpsenm !== NON_PM)
+            await mon_givit(mtmp, mons[corpsenm]);
+    }
+}
+
+// C ref: mon.c mon_give_prop()
+/* give monster property prop */
+async function mon_give_prop(mtmp, prop) {
+    let msg = null;
+    let intrinsic = 0; /* MR_* constant */
+
+    /* Pets don't have all the fields that the hero does, so they can't get
+       all the same intrinsics.  If it happens to choose strength gain or
+       teleport control or whatever, ignore it. */
+    switch (prop) {
+    case FIRE_RES:
+        msg = "%s shivers slightly.";
+        break;
+    case COLD_RES:
+        msg = "%s looks quite warm.";
+        break;
+    case SLEEP_RES:
+        msg = "%s looks wide awake.";
+        break;
+    case DISINT_RES:
+        msg = "%s looks very firm.";
+        break;
+    case SHOCK_RES:
+        msg = "%s crackles with static electricity.";
+        break;
+    case POISON_RES:
+        msg = "%s looks healthy.";
+        break;
+    default:
+        return; /* can't give it */
+    }
+    /* res_to_mr() */
+    intrinsic = (FIRE_RES <= prop && prop <= STONE_RES) ? (1 << (prop - 1)) : 0;
+
+    /* Don't give message if it already had this property intrinsically, but
+       still do grant the intrinsic if it only had it from mresists.
+       Do print the message if it only had this property extrinsically, which
+       is why mon_resistancebits isn't used here. */
+    if ((mtmp.data.mresists | (mtmp.mintrinsics ?? 0)) & intrinsic)
+        msg = null;
+
+    if (intrinsic)
+        mtmp.mintrinsics = (mtmp.mintrinsics ?? 0) | intrinsic;
+
+    if (canseemon(mtmp) && msg) {
+        await pline(msg.replace('%s', Monnam(mtmp)));
+    }
+}
+
+// C ref: mon.c mon_givit()
+/* Maybe give an intrinsic to monster from eating corpse that confers it. */
+export async function mon_givit(mtmp, ptr) {
+    const prop = corpse_intrinsic(ptr);
+
+    if (mtmp.mhp < 1) /* DEADMONSTER(mtmp) */
+        return;
+
+    if (ptr === mons[MM.PM_STALKER])
+        throw new Error('mon_givit(): stalker invisibility not ported yet');
+
+    if (prop === 0)
+        return; /* no intrinsic from this corpse */
+
+    if (!should_givit(prop, ptr))
+        return; /* failed die roll */
+
+    await mon_give_prop(mtmp, prop);
+}
+
+// C ref: mon.c maybe_unhide_at()
+/* force a hidden monster or hero out of hiding when its cover goes away */
+export function maybe_unhide_at(x, y) {
+    let mtmp;
+    let undetected = false, trapped = false;
+
+    if ((mtmp = m_at(x, y)) != null) {
+        undetected = mtmp.mundetected;
+        trapped = mtmp.mtrapped;
+    } else if (game.u.ux === x && game.u.uy === y) {
+        mtmp = game.youmonst;
+        undetected = game.u.uundetected;
+        trapped = game.u.utrap;
+    } else {
+        return;
+    }
+
+    if (undetected) {
+        const hides_under = (mtmp.data.mflags1 & MM.M1_CONCEAL) !== 0;
+
+        if (hides_under && OBJ_AT(x, y) && !trapped)
+            throw new Error('maybe_unhide_at(): can_hide_under_obj() not ported yet');
+        if ((hides_under && (!OBJ_AT(x, y) || trapped))
+            || (mtmp.data.mlet === S_EEL && !is_pool(x, y)))
+            throw new Error('maybe_unhide_at(): hideunder() not ported yet');
+    }
 }

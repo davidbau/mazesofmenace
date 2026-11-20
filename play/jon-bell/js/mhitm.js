@@ -951,7 +951,7 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
                 if (Resists_Elem(magr, COLD_RES)) {
                     if (canseemon(magr)) {
                         await pline_mon(magr, '%s is mildly chilly.', Monnam_dm(magr));
-                        golemeffects_pm(magr, _AD_COLD, tmp);
+                        await golemeffects_pm(magr, _AD_COLD, tmp);
                     }
                     tmp = 0;
                     break;
@@ -966,7 +966,7 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
                 if (Resists_Elem(magr, FIRE_RES)) {
                     if (canseemon(magr)) {
                         await pline_mon(magr, '%s is mildly warmed.', Monnam_dm(magr));
-                        golemeffects_pm(magr, _AD_FIRE, tmp);
+                        await golemeffects_pm(magr, _AD_FIRE, tmp);
                     }
                     tmp = 0;
                     break;
@@ -978,7 +978,7 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
                 if (Resists_Elem(magr, SHOCK_RES)) {
                     if (canseemon(magr)) {
                         await pline_mon(magr, '%s is mildly tingled.', Monnam_dm(magr));
-                        golemeffects_pm(magr, _AD_ELEC, tmp);
+                        await golemeffects_pm(magr, _AD_ELEC, tmp);
                     }
                     tmp = 0;
                     break;

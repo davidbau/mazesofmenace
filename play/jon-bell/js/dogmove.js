@@ -580,15 +580,11 @@ export function obj_extract_floor(obj) {
 import { acid_damage } from './trap.js';
 function MON_WEP_dm(mon) {
     /* C MON_WEP(mon) = mon->mw (the wielded weapon). */
-    if (mon.mw) return mon.mw;
-    for (let o = mon.minvent; o; o = o.nobj)
-        if (((o.owornmask | 0) & W_WEP) !== 0) return o;
-    return null;
+    return mon.mw;
 }
 export function droppables(mon) {
-    const mndx = (mon.mndx ?? mon.mnum ?? -1) | 0;
-    const mrow = (mndx >= 0 && mndx < _MONS.length) ? _MONS[mndx] : null;
-    const mflags1 = mrow ? (mrow[6] | 0) : 0;
+    // C dogmove.c:48-58 tests this monster's current permonst directly.
+    const mflags1 = mon.data.mflags1 | 0;
     const isAnimalOrMindless = !!(mflags1 & (M1_ANIMAL | M1_MINDLESS));
 
     /* dummy keeper sentinel: a non-null marker meaning "already have one". */
@@ -606,8 +602,7 @@ export function droppables(mon) {
         const needspick = (mflags1 & M1_NEEDPICK) !== 0;
         if (!tunnels || !needspick)
             pickaxe = DUMMY;
-        const msize = (mndx >= 0 && mndx < MONS_MSIZE.length) ? (MONS_MSIZE[mndx] | 0) : MZ_SMALL;
-        if ((mflags1 & M1_NOHANDS) || msize < MZ_SMALL)
+        if ((mflags1 & M1_NOHANDS) || mon.data.msize < MZ_SMALL)
             key = DUMMY;
     }
     if (wep) {
@@ -2576,8 +2571,8 @@ export async function dog_move(mtmp, after) {
                 /* C dogmove.c:1118-1126, all four disjuncts.  Conflict has no
                  * source in this port (see m_avoid_kicked_loc above), so
                  * !Conflict is TRUE throughout. */
-                const def_msound = (mndx_def >= 0 && mndx_def < _MSOUND.length)
-                    ? (_MSOUND[mndx_def] | 0) : 0;
+                // C dogmove.c:1125-1126 reads the defender's current data.
+                const def_msound = mtmp2.data.msound;
                 if (def_mlev >= balk
                     || ((mtmp2.mtame | 0) && (mtmp.mtame | 0) && !_conflict_dm())
                     || (max_passive_dmg(mtmp2, mtmp) >= agr_mhp)
