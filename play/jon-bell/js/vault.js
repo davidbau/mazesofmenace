@@ -214,7 +214,7 @@ export async function paygd(silently) {
 
     if (game.u.uinvault) {
         if (!silently)
-            Your("%ld %s goes into the Magic Memory Vault.", umoney, currency(umoney));
+            await Your("%ld %s goes into the Magic Memory Vault.", umoney, currency(umoney));
         gdx = game.u.ux;
         gdy = game.u.uy;
     } else {
@@ -223,7 +223,7 @@ export async function paygd(silently) {
         } else {
             await mnexto(grd, RLOC_NOMSG);
             if (!silently)
-                pline("%s remits your gold to the vault.", Monnam(grd));
+                await pline("%s remits your gold to the vault.", Monnam(grd));
             gdx = game.level.rooms[EGD(grd).vroom].lx + rn2(2);
             gdy = game.level.rooms[EGD(grd).vroom].ly + rn2(2);
             const buf = "To Croesus: here's the gold recovered from " + game.plname + " the " + monPmname(game.u.umonster | 0, game.flags.female ? FEMALE : MALE) + ".";

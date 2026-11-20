@@ -425,6 +425,194 @@ function ch_ksound(basestr) {
     return false;
 }
 
+// C ref: objnam.c obj_typename()
+export function obj_typename(otyp) {
+    let buf;
+    const ocl = objects[otyp];
+    let actualn = OBJ_NAME(ocl);
+    const dn = OBJ_DESCR(ocl);
+    const un = ocl.oc_uname;
+    let nn = ocl.oc_name_known;
+
+    if (Role_if_x(M.PM_SAMURAI))
+        throw new Error('obj_typename(): Japanese_item_name() is not ported yet');
+    /* generic items don't have an actual-name; we shouldn't ever be called
+       for those; pacify static analyzer without resorting to impossible() */
+    if (!actualn)
+        actualn = (otyp > 0 && otyp < O.MAXOCLASSES) ? "generic" : "object?";
+
+    buf = ''; /* redundant */
+    switch (ocl.oc_class) {
+    case O.COIN_CLASS:
+        return actualn; /* "gold piece" */
+    case O.POTION_CLASS:
+        buf = "potion";
+        break;
+    case O.SCROLL_CLASS:
+        buf = "scroll";
+        break;
+    case O.WAND_CLASS:
+        buf = "wand";
+        break;
+    case O.SPBOOK_CLASS:
+        if (otyp !== O.SPE_NOVEL) {
+            buf = "spellbook";
+        } else {
+            buf = !nn ? "book" : "novel";
+            nn = 0;
+        }
+        break;
+    case O.RING_CLASS:
+        buf = "ring";
+        break;
+    case O.AMULET_CLASS:
+        if (nn)
+            buf = actualn;
+        else
+            buf = "amulet";
+        if (un)
+            buf += ` called ${un}`; /* xcalled(buf, ..., "", un) */
+        if (dn)
+            buf += ` (${dn})`;
+        return buf;
+    case O.ARMOR_CLASS:
+        if (ocl.oc_subtyp === O.ARM_GLOVES || ocl.oc_subtyp === O.ARM_BOOTS)
+            buf = "pair of ";
+        else if (otyp >= O.GRAY_DRAGON_SCALES && otyp <= O.YELLOW_DRAGON_SCALES)
+            buf = "set of ";
+        /*FALLTHRU*/
+    default:
+        if (nn) {
+            buf += actualn;
+            if (GemStone_x(otyp))
+                buf += " stone";
+            if (un) /* 3: length of " (" + ")" which will enclose 'dn' */
+                buf += ` called ${un}`; /* xcalled() */
+            if (dn)
+                buf += ` (${dn})`;
+        } else {
+            buf += dn ? dn : actualn;
+            if (ocl.oc_class === O.GEM_CLASS)
+                buf += (ocl.oc_material === O.MINERAL) ? " stone" : " gem";
+            if (un)
+                buf += ` called ${un}`; /* xcalled() */
+        }
+        return buf;
+    }
+    /* here for ring/scroll/potion/wand */
+    if (nn) {
+        if (ocl.oc_unique)
+            buf = actualn; /* avoid spellbook of Book of the Dead */
+        else
+            buf += ` of ${actualn}`;
+    }
+    if (un) /* 3: length of " (" + ")" which will enclose 'dn' */
+        buf += ` called ${un}`; /* xcalled() */
+    if (dn)
+        buf += ` (${dn})`;
+    return buf;
+}
+
+// C ref: objnam.c vtense()
+/* return form of the verb (input plural) for present tense 3rd person subj */
+export function vtense(subj, verb) {
+    let buf, bspot;
+    let len, ltmp;
+    let spot;
+
+    /*
+     * verb is given in plural (without trailing s).  Return as input
+     * if subj appears to be plural.  Add special cases as necessary.
+     * Many hard cases can already be handled by using otense() instead.
+     * If this gets much bigger, consider decomposing makeplural.
+     * Note: monster names are not expected here (except before corpse).
+     *
+     * Special case: allow null sobj to get the singular 3rd person
+     * present tense form so we don't duplicate this code elsewhere.
+     */
+    let sing = !subj;
+    if (subj) {
+        if (!strncmpi(subj, "a ", 2) || !strncmpi(subj, "an ", 3)) {
+            sing = true;
+        } else {
+            spot = -1;
+            for (let sp = subj.indexOf(' '); sp >= 0; sp = subj.indexOf(' ', sp + 1)) {
+                const t = subj.slice(sp);
+                if (!strncmpi(t, " of ", 4) || !strncmpi(t, " from ", 6)
+                    || !strncmpi(t, " called ", 8) || !strncmpi(t, " named ", 7)
+                    || !strncmpi(t, " labeled ", 9)) {
+                    if (sp !== 0)
+                        spot = sp - 1;
+                    break;
+                }
+            }
+            len = subj.length;
+            if (spot < 0)
+                spot = len - 1;
+
+            /*
+             * plural: anything that ends in 's', but not '*us' or '*ss'.
+             * Guess at a few other special cases that makeplural creates.
+             */
+            if ((lowc(subj[spot]) === 's' && spot !== 0
+                 && !"us".includes(lowc(subj[spot - 1])))
+                || !BSTRNCMPI(subj, spot - 3, "eeth", 4)
+                || !BSTRNCMPI(subj, spot - 3, "feet", 4)
+                || !BSTRNCMPI(subj, spot - 1, "ia", 2)
+                || !BSTRNCMPI(subj, spot - 1, "ae", 2)) {
+                /* check for special cases to avoid false matches */
+                len = spot + 1;
+                for (const spec of special_subjs) {
+                    ltmp = spec.length;
+                    if (len === ltmp && !strncmpi(spec, subj, len)) {
+                        sing = true;
+                        break;
+                    }
+                    /* also check for <prefix><space><special_subj>
+                       to catch things like "the invisible erinys" */
+                    if (len > ltmp && subj[spot - ltmp] === ' '
+                        && !strncmpi(spec, subj.slice(spot - ltmp + 1), ltmp)) {
+                        sing = true;
+                        break;
+                    }
+                }
+                if (!sing)
+                    return verb;
+            }
+            /*
+             * 3rd person plural doesn't end in telltale 's';
+             * 2nd person singular behaves as if plural.
+             */
+            if (!sing && (!strcmpi(subj, "they") || !strcmpi(subj, "you")))
+                return verb;
+        }
+    }
+
+    /* sing: */
+    buf = verb;
+    len = buf.length;
+    bspot = len - 1;
+
+    if (!strcmpi(buf, "are")) {
+        buf = Strcasecpy(buf, 0, "is");
+    } else if (!strcmpi(buf, "have")) {
+        buf = Strcasecpy(buf, bspot - 1, "s");
+    } else if ("zxs".includes(lowc(buf[bspot]))
+               || (len >= 2 && lowc(buf[bspot]) === 'h'
+                   && "cs".includes(lowc(buf[bspot - 1])))
+               || (len === 2 && lowc(buf[bspot]) === 'o')) {
+        /* Ends in z, x, s, ch, sh; add an "es" */
+        buf = Strcasecpy(buf, bspot + 1, "es");
+    } else if (lowc(buf[bspot]) === 'y' && !vowels.includes(lowc(buf[bspot - 1]))) {
+        /* like "y" case in makeplural */
+        buf = Strcasecpy(buf, bspot, "ies");
+    } else {
+        buf = Strcasecpy(buf, bspot + 1, "s");
+    }
+
+    return buf;
+}
+
 // C ref: objnam.c makeplural()
 export function makeplural(oldstr) {
     let excess = null;

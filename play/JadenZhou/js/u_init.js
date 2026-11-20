@@ -24,6 +24,8 @@ import { set_uasmon } from './polyself.js';
 import { newhp, adjabil, adjattrib, init_attr, vary_init_attr } from './attrib.js';
 import { newpw } from './exper.js';
 import { initialspell, num_spells } from './spell.js';
+import { skill_init } from './weapon.js';
+import { discover_object } from './o_init.js';
 
 /* C ref: spell.h SPELL_LEV_PW() */
 function SPELL_LEV_PW(lvl) { return (lvl) * 5; }
@@ -718,21 +720,6 @@ function Is_container(o) { return o.otyp >= O.LARGE_BOX && o.otyp <= O.BAG_OF_TR
 function is_graystone(obj) {
     return (obj.otyp === O.LUCKSTONE || obj.otyp === O.LOADSTONE
             || obj.otyp === O.FLINT || obj.otyp === O.TOUCHSTONE);
-}
-
-// C ref: o_init.c discover_object() -- only the known/encountered flags;
-// the disco[] discoveries list is not ported yet
-function discover_object(oindx, mark_as_known, mark_as_encountered,
-                         credit_hero) {
-    if (!objects[oindx].oc_name_known
-        || (mark_as_encountered && !objects[oindx].oc_encountered)) {
-        if (mark_as_known)
-            objects[oindx].oc_name_known = 1;
-        if (mark_as_encountered)
-            objects[oindx].oc_encountered = 1;
-        /* credit_hero -> exercise(A_WIS, TRUE): never set by u_init */
-        void credit_hero;
-    }
 }
 
 // C ref: invent.c addinv(), addinv_core0() -- inventory letter and chain
@@ -1494,8 +1481,9 @@ export function u_init_skills_discoveries() {
     for (otmp = game.invent; otmp; otmp = otmp.nobj)
         ini_inv_use_obj(otmp);
 
-    /* skill_init(skills_for_role()) -- weapon.c not ported yet */
-    /* if (u.uroleplay.pauper) pauper_reinit(); -- not ported yet */
+    skill_init(skills_for_role());
+    if (u.uroleplay?.pauper)
+        throw new Error('u_init_skills_discoveries(): pauper_reinit() not ported yet');
 
     /* If we have at least one spell, force starting Pw to be enough,
        so hero can cast the level 1 spell they should have */

@@ -218,7 +218,7 @@ import { tended_shop, dopay, delete_contents, costly_spot } from './shk.js';
 import { in_rooms } from './hack.js';
 import { shkgone, obfree } from "./shk.js";
 import { couldsee, cansee } from './vision.js';
-import { dist2, s_suffix, strstri, strNsubst } from './hacklib.js';
+import { dist2, nh_snprintf, s_suffix, strstri, strNsubst } from './hacklib.js';
 import { drain_en, monkilled_trap, mintrap, t_at, acid_damage, fill_pit } from './trap.js';
 import { m_carrying, m_useup, m_useupall } from './mthrowu.js';
 import { mon_adjust_speed } from './worn.js';
@@ -5697,7 +5697,9 @@ export async function hmon_hitmon_msg_silver(hmd, mon) {
         else if (hmd.silverobj && hmd.saved_oname) {
             const name = hmd.saved_oname;
             const buf = {
-                value: `Your ${strstri(name, 'silver') ? '' : 'silver '}${name} ${vtense(name, 'sear')}`.slice(0, 255),
+                value: nh_snprintf(null, 256, 'Your %s%s %s',
+                    strstri(name, 'silver') ? '' : 'silver ',
+                    name, vtense(name, 'sear')),
             };
             strNsubst(buf, '%', '%%', 0);
             fmt = buf.value + ' %s!'.slice(0, Math.max(0, 255 - buf.value.length));

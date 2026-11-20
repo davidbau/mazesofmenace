@@ -16,7 +16,7 @@ import {
 import { objects } from './objects.js';
 import * as M from './monsters.js';
 import { mons } from './monsters.js';
-import { weight, erosion_matters, Is_candle } from './mkobj.js';
+import { weight, erosion_matters, Is_candle, obj_extract_self } from './mkobj.js';
 import { itemactions } from './iactions.js';
 import {
     tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
@@ -173,7 +173,7 @@ const oth_names = ["Bagged/Boxed items"];
 
 // C ref: options.c def_inv_order[] (flags.inv_order defaults to it;
 // the inv_order option is not parsed yet)
-const def_inv_order = [
+export const def_inv_order = [
     O.COIN_CLASS, O.AMULET_CLASS, O.WEAPON_CLASS, O.ARMOR_CLASS,
     O.FOOD_CLASS, O.SCROLL_CLASS, O.SPBOOK_CLASS, O.POTION_CLASS,
     O.RING_CLASS, O.WAND_CLASS, O.TOOL_CLASS, O.GEM_CLASS, O.ROCK_CLASS,
@@ -200,7 +200,7 @@ export function let_to_name(let_, unpaid, showsym) {
 }
 
 // C ref: windows.c add_menu_heading()
-function add_menu_heading(tmpwin, buf) {
+export function add_menu_heading(tmpwin, buf) {
     let attr = game.iflags?.menu_headings?.attr ?? ATR_INVERSE,
         color = game.iflags?.menu_headings?.color ?? NO_COLOR;
 
@@ -494,6 +494,20 @@ export function mergable(otmp, /* potential 'into' stack */
     return true;
 }
 
+// C ref: invent.c stackobj()
+/* try to merge obj with another object on the floor at its spot; the
+   pile (level.objects[x][y] via nexthere) is read top first from the
+   floor chain game.level.objects */
+export function stackobj(obj) {
+    for (const otmp of (game.level.objects || []).slice()) {
+        if (otmp.ox !== obj.ox || otmp.oy !== obj.oy
+            || otmp.where !== 'OBJ_FLOOR')
+            continue;
+        if (otmp !== obj && merged({ otmp: obj, obj: otmp }))
+            break;
+    }
+}
+
 // C ref: invent.c merged() -- 'r' is { otmp, obj } (C: potmp, pobj);
 // returns 1 when obj was merged into otmp
 export function merged(r) {
@@ -517,8 +531,8 @@ export function merged(r) {
             otmp.owt = weight(otmp);
         if (!has_oname(otmp) && has_oname(obj))
             throw new Error('merged(): oname() is not ported yet');
-        if (obj.where !== 'OBJ_FREE')
-            throw new Error('merged(): obj_extract_self() is not ported yet');
+        obj_extract_self(obj);
+
         if (obj.pickup_prev && otmp.where === 'OBJ_INVENT')
             otmp.pickup_prev = 1;
         /* really should merge the timeouts */
@@ -552,7 +566,7 @@ export function merged(r) {
             && (obj.how_lost || 0) !== LOST_THROWN
             && (otmp.how_lost || 0) !== LOST_THROWN)
             throw new Error('merged(): "You learn more about your items" is not ported yet');
-        /* obfree(obj, otmp): nothing to free */
+        obj.where = 'OBJ_DELETED'; /* obfree(obj, otmp): free(obj), bill->otmp */
         return 1;
     }
     return 0;

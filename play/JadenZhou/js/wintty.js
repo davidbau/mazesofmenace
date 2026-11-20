@@ -24,7 +24,7 @@ import {
     TELEPORT_BANNER_C, PL_NSIZ, ROWNO, COLNO,
 } from './const.js';
 import { genl_player_setup } from './role.js';
-import { row_refresh, bot, flush_screen, pline } from './display.js';
+import { row_refresh, bot, flush_screen, pline, docrt } from './display.js';
 import { extcmds_match } from './cmd.js';
 import { extcmdlist, ECM_NOFLAGS, ECM_IGNOREAC, ECM_EXACTMATCH } from './func_tab.js';
 
@@ -232,20 +232,16 @@ export function tty_clear_nhwindow(window) {
 }
 
 // C ref: wintty.c erase_menu_or_text()
-function erase_menu_or_text(window, cw, clear) {
+async function erase_menu_or_text(window, cw, clear) {
     if (cw.offx === 0) {
         if (cw.offy) {
             tty_curs(window, 1, 0);
             cl_eos();
         } else if (clear) {
             term_clear_screen();
-        } else if (!game.level || game.program_state?.in_role_selection) {
-            throw new Error('erase_menu_or_text: docrt() before the map exists is not ported yet');
         } else {
-            /* docrt(); flush_screen(1); -- cls() then the map is redrawn
-               from the glyph buffer and the status lines with botlx set */
-            term_clear_screen();
-            docorner(0, tty().rows, 0);
+            await docrt();
+            await flush_screen(1);
         }
     } else {
         docorner(cw.offx, cw.maxrow + 1, 0);
@@ -288,7 +284,7 @@ function docorner(xmin, ymax, ystart_offset) {
 }
 
 // C ref: wintty.c tty_dismiss_nhwindow()
-function tty_dismiss_nhwindow(window) {
+async function tty_dismiss_nhwindow(window) {
     const cw = wins()[window];
 
     switch (cw.type) {
@@ -312,7 +308,7 @@ function tty_dismiss_nhwindow(window) {
             if (game.program_state?.in_role_selection)
                 clearscreen = true;
 
-            erase_menu_or_text(window, cw, clearscreen);
+            await erase_menu_or_text(window, cw, clearscreen);
             cw.active = 0;
         }
         break;
@@ -321,19 +317,24 @@ function tty_dismiss_nhwindow(window) {
 }
 
 // C ref: wintty.c tty_destroy_nhwindow()
-export function tty_destroy_nhwindow(window) {
+export async function tty_destroy_nhwindow(window) {
     const cw = wins()[window];
 
     if (cw.active)
-        tty_dismiss_nhwindow(window);
+        await tty_dismiss_nhwindow(window);
     wins()[window] = null;
 }
 
-// C ref: wintty.c tty_putstr() (NHW_BASE and NHW_MESSAGE)
+// C ref: wintty.c tty_putstr() (NHW_BASE, NHW_MESSAGE, NHW_MENU, NHW_TEXT);
+// the message window and a full NHW_TEXT page may wait for a key, so
+// callers await this
 export function tty_putstr(window, attr, str) {
     const cw = wins()[window];
     const t = tty();
 
+    if (str == null
+        || ((cw.flags & WIN_CANCELLED) && (cw.type !== NHW_MESSAGE)))
+        return;
     switch (cw.type) {
     case NHW_MESSAGE:
         /* update_topl() may wait at --More--, so callers await this */
@@ -355,40 +356,55 @@ export function tty_putstr(window, attr, str) {
         term_end_attr(attr);
         break;
     case NHW_MENU:
-    case NHW_TEXT: {
-        /* H2344_BROKEN */
-        if (cw.type === NHW_TEXT && (cw.cury + cw.offy) === t.rows - 1)
-            throw new Error('tty_putstr: NHW_TEXT page-at-a-time output not ported yet');
-        /* always grows one at a time */
-        if (!cw.data)
-            cw.data = [];
-        while (cw.cury >= cw.rows) {
-            cw.rows += 12;
-            for (let i = cw.data.length; i < cw.rows; i++)
-                cw.data[i] = null;
-        }
-        const n0 = str.length + 1;
-        /* data[i] = { attr, str }: C keeps attr + 1 in the first byte */
-        cw.data[cw.cury] = { attr, str };
-
-        if (n0 > cw.maxcol)
-            cw.maxcol = n0;
-        if (++cw.cury > cw.maxrow)
-            cw.maxrow = cw.cury;
-        if (n0 > t.cols) { /* CO */
-            /* attempt to break the line */
-            let i;
-            for (i = t.cols - 1; i && str[i] !== ' ' && str[i] !== '\n';)
-                i--;
-            if (i) {
-                cw.data[cw.cury - 1].str = str.slice(0, ++i);
-                tty_putstr(window, attr, str.slice(i));
-            }
-        }
-        break;
-    }
+    case NHW_TEXT:
+        return tty_putstr_menu_text(window, cw, attr, str);
     default:
         throw new Error(`tty_putstr: window type ${cw.type} not ported yet`);
+    }
+}
+
+// C ref: wintty.c tty_putstr() -- the NHW_MENU and NHW_TEXT case
+async function tty_putstr_menu_text(window, cw, attr, str) {
+    const t = tty();
+    let i;
+
+    /* H2344_BROKEN */
+    if (cw.type === NHW_TEXT && (cw.cury + cw.offy) === t.rows - 1) {
+        /* not a menu, so save memory and output 1 page at a time */
+        cw.maxcol = t.cols; /* force full-screen mode */
+        await tty_display_nhwindow(window, true);
+        for (i = 0; i < cw.maxrow; i++)
+            if (cw.data[i])
+                cw.data[i] = null;
+        cw.maxrow = cw.cury = 0;
+    }
+    /* always grows one at a time, but alloc 12 at a time */
+    if (!cw.data)
+        cw.data = [];
+    if (cw.cury >= cw.rows) {
+        cw.rows += 12;
+        for (i = cw.maxrow; i < cw.rows; i++)
+            cw.data[i] = null;
+    }
+    const n0 = str.length + 1;
+    /* data[i] = { attr, str }: C keeps attr + 1 in the first byte */
+    cw.data[cw.cury] = { attr, str };
+
+    if (n0 > cw.maxcol)
+        cw.maxcol = n0;
+    if (++cw.cury > cw.maxrow)
+        cw.maxrow = cw.cury;
+    if (n0 > t.cols) { /* CO */
+        /* attempt to break the line */
+        for (i = t.cols - 1; i && str[i] !== ' ' && str[i] !== '\n';)
+            i--;
+        if (i) {
+            /* cw->data[cw->cury - 1][++i] = '\0': the stored copy is
+               offset by the attribute byte, so it ends before str[i-1] */
+            ++i;
+            cw.data[cw.cury - 1].str = str.slice(0, i - 1);
+            await tty_putstr(window, attr, str.slice(i));
+        }
     }
 }
 
@@ -988,7 +1004,7 @@ export async function tty_select_menu(window, how) {
     cw.how = how;
     await tty_display_nhwindow(window, true);
     cancelled = !!(cw.flags & WIN_CANCELLED);
-    tty_dismiss_nhwindow(window); /* does not destroy window data */
+    await tty_dismiss_nhwindow(window); /* does not destroy window data */
 
     const selected = [];
     if (cancelled) {
@@ -1041,7 +1057,7 @@ export async function tty_display_nhwindow(window, blocking) {
         /* H2344_BROKEN; iflags.menu_overlay is on by default */
         if (cw.maxrow >= t.rows || game.iflags?.menu_overlay === false) {
             cw.offx = 0;
-            if (cw.offy) {
+            if (cw.offy || game.iflags?.menu_overlay !== false) {
                 tty_curs(window, 1, 0);
                 cl_eos();
             } else

@@ -2,7 +2,8 @@
 // C ref: hack.c
 //
 // Ported so far: weight_cap(), inv_weight(), calc_capacity(),
-// near_capacity().
+// near_capacity(); in_rooms(), move_update() and check_special_room() (its
+// shop and special room messages aren't ported yet).
 
 import { game } from './gstate.js';
 import { ACURR, acurrstr } from './attrib.js';
@@ -13,6 +14,7 @@ import {
     isok, HALLUC, STONED, SLIMED, STRANGLED, SICK, M_AP_FURNITURE, M_AP_OBJECT,
     CONFUSION, STUNNED, BLINDED, WWALKING, STONE, ROOM, CORR, ICE, LAVAWALL,
     IS_OBSTRUCTED, IS_AIR, IS_WATERWALL,
+    COLNO, ROWNO, ROOMOFFSET, NO_ROOM, SHARED, SHARED_PLUS, OROOM, SHOPBASE,
 } from './const.js';
 import { S_NYMPH, M2_STRONG, M2_ROCKTHROW, MZ_HUMAN, AT_BOOM, M1_HIDE,
          PM_GRID_BUG } from './monsters.js';
@@ -466,4 +468,134 @@ export function nomul(nval) {
         g.multi_reason = null;
     end_running(true);
     /* cmdq_clear(CQ_CANNED): the command queue isn't ported yet */
+}
+
+// C ref: hack.c in_rooms()
+/* returns the room numbers (each + ROOMOFFSET) the spot is in, as a string
+   of character codes like C's char buf; typewanted 0 means any room type */
+export function in_rooms(x, y, typewanted) {
+    const rooms = game.level.rooms;
+    let ptr = '';
+    let typefound;
+    let step;
+
+    const goodtype = (rno) =>
+        (!typewanted
+         || (typefound = rooms[rno - ROOMOFFSET].rtype) === typewanted
+         || (typewanted === SHOPBASE && typefound > SHOPBASE));
+
+    let rno = game.level.at(x, y)?.roomno ?? NO_ROOM;
+    switch (rno) {
+    case NO_ROOM:
+        return ptr;
+    case SHARED:
+        step = 2;
+        break;
+    case SHARED_PLUS:
+        step = 1;
+        break;
+    default: /* i.e. a regular room # */
+        if (goodtype(rno))
+            ptr = String.fromCharCode(rno) + ptr;
+        return ptr;
+    }
+
+    let min_x = x - 1;
+    let max_x = x + 1;
+    if (x < 1)
+        min_x += step;
+    else if (x >= COLNO)
+        max_x -= step;
+
+    let min_y = y - 1;
+    let max_y_offset = 2;
+    if (min_y < 0) {
+        min_y += step;
+        max_y_offset -= step;
+    } else if ((min_y + max_y_offset) >= ROWNO)
+        max_y_offset -= step;
+
+    for (x = min_x; x <= max_x; x += step) {
+        for (let yy = 0; yy <= max_y_offset; yy += step) {
+            rno = game.level.at(x, min_y + yy)?.roomno ?? NO_ROOM;
+            if (rno >= ROOMOFFSET && !ptr.includes(String.fromCharCode(rno))
+                && goodtype(rno))
+                ptr = String.fromCharCode(rno) + ptr;
+        }
+    }
+    return ptr;
+}
+
+// C ref: hack.c move_update()
+export function move_update(newlev) {
+    const u = game.u;
+    const rooms = game.level.rooms;
+
+    u.urooms0 = u.urooms || '';
+    u.ushops0 = u.ushops || '';
+    if (newlev) {
+        u.urooms = '';
+        u.uentered = '';
+        u.ushops = '';
+        u.ushops_entered = '';
+        u.ushops_left = u.ushops0;
+        return;
+    }
+    u.urooms = in_rooms(u.ux, u.uy, 0);
+
+    let entered = '', shops = '', shops_entered = '';
+    for (const c of u.urooms) {
+        if (!u.urooms0.includes(c))
+            entered += c;
+        if (rooms[c.charCodeAt(0) - ROOMOFFSET].rtype >= SHOPBASE) { /* IS_SHOP() */
+            shops += c;
+            if (!u.ushops0.includes(c))
+                shops_entered += c;
+        }
+    }
+    u.uentered = entered;
+    u.ushops = shops;
+    u.ushops_entered = shops_entered;
+
+    /* filter u.ushops0 -> u.ushops_left */
+    let left = '';
+    for (const c of u.ushops0)
+        if (!u.ushops.includes(c))
+            left += c;
+    u.ushops_left = left;
+}
+
+// C ref: hack.c check_special_room()
+/* possibly deliver a one-time room entry message; the shop and special
+   room messages aren't ported yet */
+export function check_special_room(newlev) {
+    const u = game.u;
+    const rooms = game.level.rooms;
+
+    move_update(newlev);
+
+    if (u.ushops0)
+        throw new Error('check_special_room(): u_left_shop() not ported yet');
+
+    /* the 'entered Mine Town' achievement */
+    if (game.level.flags?.has_town && !game.context?.achieveo?.minetn_reached
+        && u.uz.dnum === game.dungeon_topology.d_mines_dnum) /* In_mines() */
+        throw new Error('check_special_room(): in_town() not ported yet');
+
+    if (!u.uentered && !u.ushops_entered) /* implied by newlev */
+        return; /* no entrance messages necessary */
+
+    /* Did we just enter a shop? */
+    if (u.ushops_entered)
+        throw new Error('check_special_room(): u_entered_shop() not ported yet');
+
+    for (const c of u.uentered) {
+        const roomno = c.charCodeAt(0) - ROOMOFFSET, rt = rooms[roomno].rtype;
+
+        /* Did we just enter some other special room? */
+        if (rt !== OROOM)
+            throw new Error('check_special_room(): special room entry not ported yet');
+        /* default: msg_given = (rt == TEMPLE || rt >= SHOPBASE), so FALSE;
+           rt = 0: nothing else changes */
+    }
 }

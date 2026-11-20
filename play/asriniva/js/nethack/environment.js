@@ -49,7 +49,6 @@ import {enableItemNaming} from './item-naming.js';
 import {enableMonsterCreation} from './monster-creation.js';
 import {enableMonsterInventory} from './monster-inventory.js';
 import {enableWorldPosition} from './world-position.js';
-import {createEnvironmentInputs} from '../c-runtime/environment-inputs.js';
 import {nativeStateFor} from './native/state-bridge.js';
 import {NativeTypedState} from './native/typed-state.js';
 import {enableLuaSandbox} from './lua-sandbox.js';
@@ -132,9 +131,9 @@ import {enableGameStartup} from './game-startup.js';
 
 export function createStandaloneEnvironment(options={}) {
     const base=createJsRuntime({...options,resizable:options.resizable??true}),{memory}=base,nativeRngFormat=base.libc.format;
-    const inputs=createEnvironmentInputs(base,options.environment);
+    const inputs=base.environmentInputs;
     const {transport,functions,bitfields,ctypes,services}=createNetHackRuntime(base,records,inputs.getenv);
-    const variables=createEnvironmentServices(base.memory,{get:inputs.getenv,set:inputs.setEnvironment},base.libc);
+    const variables=createEnvironmentServices(base.memory,{get:inputs.getenv,set:inputs.setBytes},base.libc);
     Object.assign(services,{setenv:variables.setenv,unsetenv:variables.unsetenv});if(typeof services.getenv!=='function')services.getenv=variables.getenv;
     const ENV={...options.environment},diagnostics=[];
     Object.assign(services,{ENV,FS:base.FS,printErr:message=>diagnostics.push(String(message))});

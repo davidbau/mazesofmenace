@@ -33,11 +33,17 @@ import {
     MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_NOVICTIM,
     STRAT_WAITFORU, D_NODOOR, D_BROKEN, D_ISOPEN, D_LOCKED, D_TRAPPED, D_SECRET, DOOR,
     W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, W_RANDOM,
+    IS_FURNITURE, FOUNTAIN, SINK, POOL, THRONE, TREE,
+    F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED,
+    TREE_LOOTED, TREE_SWARM, MATCH_WALL, IS_STWALL,
 } from './const.js';
-import { splev_chr2typ, luaL_checkstring } from './nhlua.js';
-import { set_levltyp, set_levltyp_lit } from './mkmaze.js';
+import { splev_chr2typ, luaL_checkstring, check_mapchr, get_table_mapchr, get_table_mapchr_opt } from './nhlua.js';
+import { set_levltyp, set_levltyp_lit, SET_LIT_NOCHANGE } from './mkmaze.js';
 import { flood_fill_rm, litstate_rnd } from './mkmap.js';
-import { selection_new, selection_setpoint } from './selvar.js';
+import {
+    selection_new, selection_setpoint, selection_getpoint, selection_getbounds,
+    selection_clear, selection_iterate, l_selection_check,
+} from './selvar.js';
 import {
     get_table_int_opt, get_table_str_opt, get_table_option, nhl_error,
     luaL_checkoption, luaL_checkinteger, lua_type, LUA_TNIL, LUA_TSTRING,
@@ -52,7 +58,7 @@ import {
     NON_PM, MALE, FEMALE, NEUTRAL, G_EXTINCT, G_GONE, LR_TELE, LR_UPTELE,
     LR_DOWNTELE, LR_MONGEN, M_AP_OBJECT, M_AP_MONSTER, M_AP_FURNITURE,
     NO_MM_FLAGS, MM_NOTAIL, MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER,
-    MM_NOCOUNTBIRTH,
+    MM_NOCOUNTBIRTH, M_AP_NOTHING, PROT_FROM_SHAPE_CHANGERS,
 } from './const.js';
 import {
     mons, NUMMONS, LOW_PM, MAXMCLASSES, G_UNIQ, G_NOGEN, G_IGNORE, S_EEL, S_GHOST,
@@ -63,6 +69,7 @@ import {
     objects, OBJ_NAME, OBJ_DESCR, NUM_OBJECTS, STRANGE_OBJECT, STATUE, EGG,
     CORPSE, TIN, FIGURINE, RANDOM_CLASS, COIN_CLASS, RING_CLASS,
     POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS, MAXOCLASSES,
+    BOULDER,
 } from './objects.js';
 import {
     name_to_monplus, is_male, is_female, monsndx, is_vampshifter, is_vampire, is_swimmer, is_flyer,
@@ -71,7 +78,9 @@ import {
 import {
     def_char_to_monclass, def_monsyms, def_char_to_objclass,
 } from './drawing.js';
-import { mkclass, makemon, set_malign, m_at } from './makemon.js';
+import { mkclass, makemon, set_malign, m_at, sobj_at } from './makemon.js';
+import { t_at } from './trap.js';
+import { create_gas_cloud_selection } from './region.js';
 import { enexto } from './teleport.js';
 import { strcmpi, strncmpi, strstri } from './hacklib.js';
 import { induced_align } from './dungeon.js';
@@ -103,14 +112,14 @@ const AM_SPLEV_CO = 0x20;
 const AM_SPLEV_NONCO = 0x40;
 const AM_SPLEV_RANDOM = 0x80;
 
-// sp_lev.h alignment codes
-const SPLEV_LEFT = 1;
-const SPLEV_H_LEFT = 2;
-const SPLEV_CENTER = 3;
-const SPLEV_H_RIGHT = 4;
-const SPLEV_RIGHT = 5;
-const TOP = 1;
-const BOTTOM = 5;
+// C ref: sp_lev.c alignment codes (#define SPLEV_LEFT ... BOTTOM)
+export const SPLEV_LEFT = 1;
+export const SPLEV_H_LEFT = 2;
+export const SPLEV_CENTER = 3;
+export const SPLEV_H_RIGHT = 4;
+export const SPLEV_RIGHT = 5;
+export const TOP = 1;
+export const BOTTOM = 5;
 
 // C ref: sp_lev.c reset_xystart_size()
 export function reset_xystart_size() {
@@ -260,7 +269,7 @@ function get_table_boolean_opt(tbl, name, defval) {
 }
 
 // C ref: sp_lev.c get_coord()
-function get_coord(v) {
+export function get_coord(v) {
     if (lua_type(v) === LUA_TNIL || typeof v !== 'object')
         return null;
     if (Array.isArray(v) && v.length === 2)
@@ -852,6 +861,313 @@ function sel_set_ter(x, y, terr) {
     }
 }
 
+// C ref: sp_lev.c random_wdir()
+export function random_wdir() {
+    const wdirs = [W_NORTH, W_SOUTH, W_EAST, W_WEST];
+    return wdirs[rn2(4)];
+}
+
+// C ref: sp_lev.c sel_set_feature()
+function sel_set_feature(x, y, arg) {
+    if (!isok(x, y)) {
+        return;
+    }
+    if (IS_FURNITURE(game.level.at(x, y).typ))
+        return;
+    game.level.at(x, y).typ = arg;
+}
+
+// C ref: sp_lev.c l_table_getset_feature_flag()
+function l_table_getset_feature_flag(tbl, x, y, name, flag) {
+    let val = get_table_boolean_opt(tbl, name, -2);
+
+    if (val !== -2) {
+        if (val === -1)
+            val = rn2(2);
+        const lev = game.level.at(x, y);
+        if (val)
+            lev.flags = (lev.flags || 0) | flag;
+        else
+            lev.flags = (lev.flags || 0) & ~flag;
+    }
+}
+
+// C ref: sp_lev.c lspo_feature()
+/* feature("fountain", x, y); */
+/* feature("fountain", {x,y}); */
+/* feature({ type="fountain", x=NN, y=NN }); */
+/* feature({ type="fountain", coord={NN, NN} }); */
+/* feature({ type="tree", coord={NN, NN}, swarm=true, looted=false }); */
+export function lspo_feature(...args) {
+    const features = ['fountain', 'sink', 'pool', 'throne', 'tree'];
+    const features2i = [FOUNTAIN, SINK, POOL, THRONE, TREE, STONE];
+    let x, y;
+    let typ;
+    const argc = args.length;
+    let can_have_flags = FALSE;
+    let fcoord;
+    let humidity;
+
+    create_des_coder();
+
+    if (argc === 1 && lua_type(args[0]) === LUA_TSTRING) {
+        typ = features2i[luaL_checkoption(args[0], null, features)];
+        x = y = -1;
+    } else if (argc === 2 && lua_type(args[0]) === LUA_TSTRING
+               && lua_type(args[1]) === LUA_TTABLE) {
+        typ = features2i[luaL_checkoption(args[0], null, features)];
+        const c = get_coord(args[1]);
+        x = c ? c.x : 0;
+        y = c ? c.y : 0;
+    } else if (argc === 3) {
+        typ = features2i[luaL_checkoption(args[0], null, features)];
+        x = luaL_checkinteger(args[1]);
+        y = luaL_checkinteger(args[2]);
+    } else {
+        const tbl = args[0];
+        if (lua_type(tbl) !== LUA_TTABLE)
+            nhl_error(null, 'Wrong parameters'); /* lcheck_param_table() */
+
+        ({ x, y } = get_table_xy_or_coord(tbl));
+        typ = features2i[get_table_option(tbl, 'type', null, features)];
+        can_have_flags = TRUE;
+    }
+
+    if (x === -1 && y === -1) {
+        fcoord = SP_COORD_PACK_RANDOM(0);
+        humidity = DRY; /* pick a regular space, no rock or other furniture */
+    } else {
+        fcoord = SP_COORD_PACK(x, y);
+        humidity = ANY_LOC; /* assume the author knows what they're doing */
+    }
+    const c = { x, y };
+    get_location_coord(c, humidity, game.coder.croom, fcoord);
+    x = c.x, y = c.y;
+
+    if (typ === STONE)
+        impossible('feature has unknown type param.');
+    else
+        sel_set_feature(x, y, typ);
+
+    if (game.level.at(x, y).typ !== typ || !can_have_flags)
+        return 0;
+
+    const tbl = args[0];
+    switch (typ) {
+    default:
+        break;
+    case FOUNTAIN:
+        l_table_getset_feature_flag(tbl, x, y, 'looted', F_LOOTED);
+        l_table_getset_feature_flag(tbl, x, y, 'warned', F_WARNED);
+        break;
+    case SINK:
+        l_table_getset_feature_flag(tbl, x, y, 'pudding', S_LPUDDING);
+        l_table_getset_feature_flag(tbl, x, y, 'dishwasher', S_LDWASHER);
+        l_table_getset_feature_flag(tbl, x, y, 'ring', S_LRING);
+        break;
+    case THRONE:
+        l_table_getset_feature_flag(tbl, x, y, 'looted', T_LOOTED);
+        break;
+    case TREE:
+        l_table_getset_feature_flag(tbl, x, y, 'looted', TREE_LOOTED);
+        l_table_getset_feature_flag(tbl, x, y, 'swarm', TREE_SWARM);
+        break;
+    }
+
+    return 0;
+}
+
+// C ref: sp_lev.c lspo_gas_cloud()
+/* gas_cloud({ selection=SELECTION }); */
+/* gas_cloud({ selection=SELECTION, damage=N }); */
+/* gas_cloud({ selection=SELECTION, damage=N, ttl=N }); */
+export function lspo_gas_cloud(...args) {
+    let x = 0, y = 0;
+    let sel = null;
+    const argc = args.length;
+    let damage = 0;
+    let ttl = -2;
+
+    create_des_coder();
+
+    if (argc === 1 && lua_type(args[0]) === LUA_TTABLE) {
+        const tbl = args[0];
+        let reg;
+
+        ({ x, y } = get_table_xy_or_coord(tbl));
+        if (x === -1 && y === -1) {
+            sel = l_selection_check(tbl.selection);
+        }
+        damage = get_table_int_opt(tbl, 'damage', 0);
+        ttl = get_table_int_opt(tbl, 'ttl', -2);
+        if (!sel) {
+            /* create_gas_cloud(x, y, 1, damage) (region.c) */
+            nhl_error(null, 'des.gas_cloud: create_gas_cloud() is not ported yet');
+        } else
+            reg = create_gas_cloud_selection(sel, damage);
+        if (ttl > -2)
+            reg.ttl = ttl;
+    } else {
+        nhl_error(null, 'wrong parameters');
+    }
+
+    return 0;
+}
+
+// C ref: sp_lev.c lspo_replace_terrain()
+/*
+ * replace_terrain({ x1=NN,y1=NN, x2=NN,y2=NN, fromterrain=MAPCHAR,
+ *                   toterrain=MAPCHAR, lit=N, chance=NN });
+ * replace_terrain({ region={x1,y1, x2,y2}, fromterrain=MAPCHAR,
+ *                   toterrain=MAPCHAR, lit=N, chance=NN });
+ * replace_terrain({ selection=selection.area(2,5, 40,10),
+ *                   fromterrain=MAPCHAR, toterrain=MAPCHAR });
+ * replace_terrain({ selection=SEL, mapfragment=[[...]],
+ *                   toterrain=MAPCHAR });
+ */
+export function lspo_replace_terrain(...args) {
+    let sel = null;
+    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
+    const tbl = args[0];
+
+    create_des_coder();
+
+    if (lua_type(tbl) !== LUA_TTABLE)
+        nhl_error(null, 'Wrong parameters'); /* lcheck_param_table() */
+
+    const totyp = get_table_mapchr(tbl, 'toterrain');
+
+    if (totyp >= MAX_TYPE)
+        return 0;
+
+    const fromtyp = get_table_mapchr_opt(tbl, 'fromterrain', INVALID_TYPE);
+
+    if (fromtyp === INVALID_TYPE) {
+        /* mapfragment matching (mapfrag_error, mapfrag_match): not
+           ported yet */
+        nhl_error(null, 'des.replace_terrain: mapfragment is not ported yet');
+    }
+
+    const chance = get_table_int_opt(tbl, 'chance', 100);
+    const tolit = get_table_int_opt(tbl, 'lit', SET_LIT_NOCHANGE);
+    let x1 = get_table_int_opt(tbl, 'x1', -1);
+    let y1 = get_table_int_opt(tbl, 'y1', -1);
+    let x2 = get_table_int_opt(tbl, 'x2', -1);
+    let y2 = get_table_int_opt(tbl, 'y2', -1);
+
+    if (x1 === -1 && y1 === -1 && x2 === -1 && y2 === -1) {
+        const r = get_table_region(tbl, 'region', TRUE);
+        if (r)
+            ({ x1, y1, x2, y2 } = r);
+    }
+
+    if (x1 === -1 && y1 === -1 && x2 === -1 && y2 === -1) {
+        if (lua_type(tbl.selection) !== LUA_TNIL)
+            sel = l_selection_check(tbl.selection);
+    }
+
+    if (!sel) {
+        sel = selection_new();
+
+        if (x1 === -1 && y1 === -1 && x2 === -1 && y2 === -1) {
+            selection_clear(sel, 1);
+        } else {
+            const r1 = { x: x1, y: y1 }, r2 = { x: x2, y: y2 };
+            get_location(r1, ANY_LOC, game.coder.croom);
+            get_location(r2, ANY_LOC, game.coder.croom);
+            for (let x = Math.max(r1.x, 0); x <= Math.min(r2.x, COLNO - 1); x++)
+                for (let y = Math.max(r1.y, 0); y <= Math.min(r2.y, ROWNO - 1); y++)
+                    selection_setpoint(x, y, sel, 1);
+        }
+    }
+
+    selection_getbounds(sel, rect);
+
+    for (let x = Math.max(1, rect.lx); x <= rect.hx; x++)
+        for (let y = rect.ly; y <= rect.hy; y++)
+            if (selection_getpoint(x, y, sel)) {
+                const typ = game.level.at(x, y).typ;
+                if (((fromtyp === MATCH_WALL && IS_STWALL(typ))
+                     || typ === fromtyp)
+                    && rn2(100) < chance)
+                    set_levltyp_lit(x, y, totyp, tolit);
+            }
+
+    return 0;
+}
+
+// C ref: sp_lev.c lspo_terrain()
+/*
+ * [lit_state: 1 On, 0 Off, -1 random, -2 leave as-is]
+ * terrain({ x=NN, y=NN, typ=MAPCHAR, lit=lit_state });
+ * terrain({ coord={X, Y}, typ=MAPCHAR, lit=lit_state });
+ * terrain({ selection=SELECTION, typ=MAPCHAR, lit=lit_state });
+ * terrain( SELECTION, MAPCHAR [, lit_state ] );
+ * terrain({x,y}, MAPCHAR);
+ * terrain(x,y, MAPCHAR);
+ */
+export function lspo_terrain(...args) {
+    const tmpterrain = {};
+    let x = 0, y = 0;
+    let sel = null;
+    const argc = args.length;
+
+    create_des_coder();
+    tmpterrain.tlit = SET_LIT_NOCHANGE;
+    tmpterrain.ter = INVALID_TYPE;
+
+    if (argc === 1) {
+        const tbl = args[0];
+        if (lua_type(tbl) !== LUA_TTABLE)
+            nhl_error(null, 'Wrong parameters'); /* lcheck_param_table() */
+
+        const t = get_table_xy_or_coord(tbl);
+        x = t.x, y = t.y;
+        if (t.x === -1 && t.y === -1) {
+            sel = l_selection_check(tbl.selection);
+        }
+        tmpterrain.ter = get_table_mapchr(tbl, 'typ');
+        tmpterrain.tlit = get_table_int_opt(tbl, 'lit', SET_LIT_NOCHANGE);
+    } else if (argc === 2 && lua_type(args[0]) === LUA_TTABLE
+               && lua_type(args[1]) === LUA_TSTRING) {
+        tmpterrain.ter = check_mapchr(luaL_checkstring(args[1]));
+        const c = get_coord(args[0]);
+        if (c) {
+            x = c.x;
+            y = c.y;
+        }
+    } else if (argc === 2) {
+        sel = l_selection_check(args[0]);
+        tmpterrain.ter = check_mapchr(luaL_checkstring(args[1]));
+    } else if (argc === 3) {
+        x = luaL_checkinteger(args[0]);
+        y = luaL_checkinteger(args[1]);
+        tmpterrain.ter = check_mapchr(luaL_checkstring(args[2]));
+    } else {
+        nhl_error(null, 'wrong parameters');
+    }
+
+    if (tmpterrain.ter === INVALID_TYPE)
+        nhl_error(null, 'Erroneous map char');
+
+    if (sel) {
+        selection_iterate(sel, sel_set_ter, tmpterrain);
+    } else {
+        const c = { x, y };
+        get_location_coord(c, ANY_LOC, game.coder.croom,
+                           SP_COORD_PACK(x, y));
+        x = c.x, y = c.y;
+        if (!isok(x, y)) {
+            nhl_error(null, 'terrain coord not ok');
+            /*NOTREACHED*/
+            return 0;
+        }
+        sel_set_ter(x, y, tmpterrain);
+    }
+
+    return 0;
+}
+
 // C ref: sp_lev.c l_push_wid_hei_table()
 function l_push_wid_hei_table(wid, hei) {
     return { width: wid, height: hei };
@@ -1071,18 +1387,20 @@ export function lspo_map(...args) {
 }
 
 // C ref: sp_lev.c get_table_region()
-function get_table_region(tbl, name, add_xstart) {
+/* returns the region's corners, or null when 'optional' and the field is
+   nil (C then leaves *x1..*y2 unchanged) */
+function get_table_region(tbl, name, optional) {
     const v = tbl[name];
-    if (lua_type(v) !== 5 /* LUA_TTABLE */ || v.length !== 4)
-        nhl_error(null, `Region '${name}' is not a table of 4 integers`);
-    let x1 = luaL_checkinteger(v[0]);
-    let y1 = luaL_checkinteger(v[1]);
-    let x2 = luaL_checkinteger(v[2]);
-    let y2 = luaL_checkinteger(v[3]);
-    if (add_xstart) {
-        x1 += game.xstart; y1 += game.ystart;
-        x2 += game.xstart; y2 += game.ystart;
-    }
+    if (optional && lua_type(v) === LUA_TNIL)
+        return null;
+    if (lua_type(v) !== 5 /* LUA_TTABLE */)
+        nhl_error(null, `bad argument (table expected, got ${typeof v})`);
+    if (v.length !== 4)
+        nhl_error(null, 'Not a region');
+    const x1 = luaL_checkinteger(v[0]);
+    const y1 = luaL_checkinteger(v[1]);
+    const x2 = luaL_checkinteger(v[2]);
+    const y2 = luaL_checkinteger(v[3]);
     return { x1, y1, x2, y2 };
 }
 
@@ -1518,6 +1836,29 @@ let container_obj = new Array(MAX_CONTAINMENT).fill(null);
 let container_idx = 0;
 let invent_carrying_monster = null;
 
+// C ref: youprop.h Protection_from_shape_changers
+function Protection_from_shape_changers() {
+    const prot = game.u.uprops[PROT_FROM_SHAPE_CHANGERS];
+    return !!(prot.intrinsic || prot.extrinsic);
+}
+
+// C ref: sp_lev.c m_bad_boulder_spot()
+function m_bad_boulder_spot(x, y) {
+    /* avoid trap locations */
+    if (t_at(x, y))
+        return TRUE;
+    /* try to avoid locations which already have a boulder (this won't
+       actually work; we get called before objects have been placed...) */
+    if (sobj_at(BOULDER, x, y))
+        return TRUE;
+    /* avoid closed doors */
+    const lev = game.level.at(x, y);
+    if (IS_DOOR(lev.typ) && (lev.doormask & (D_CLOSED | D_LOCKED)) !== 0)
+        return TRUE;
+    /* spot is ok */
+    return FALSE;
+}
+
 // C ref: sp_lev.c pm_to_humidity()
 function pm_to_humidity(pm) {
     let loc = DRY;
@@ -1620,11 +1961,66 @@ function create_monster(m, croom) {
         if (m.name)
             nhl_error(null, 'create_monster: christen_monst() is not ported yet');
 
+        /*
+         * This doesn't complain if an attempt is made to give a
+         * non-mimic/non-shapechanger an appearance or to give a
+         * shapechanger a non-monster shape, it just refuses to comply.
+         */
         if (m.appear_as
             && ((mtmp.data.mlet === S_MIMIC)
                 /* shapechanger (chameleons, et al, and vampires) */
-                || (mtmp.cham >= LOW_PM && m.appear === M_AP_MONSTER)))
-            nhl_error(null, 'create_monster: appear_as is not ported yet');
+                || (mtmp.cham >= LOW_PM && m.appear === M_AP_MONSTER))
+            && !Protection_from_shape_changers()) {
+            let i;
+
+            switch (m.appear) {
+            case M_AP_NOTHING:
+                impossible(
+                 `create_monster: mon has an appearance, "${m.appear_as}", but no type`);
+                break;
+
+            case M_AP_FURNITURE:
+                /* defsyms[].explanation lookup: not ported yet */
+                nhl_error(null, 'create_monster: furniture appear_as is not ported yet');
+                break;
+
+            case M_AP_OBJECT:
+                for (i = 0; i < NUM_OBJECTS; i++)
+                    if (OBJ_NAME(objects[i])
+                        && OBJ_NAME(objects[i]) === m.appear_as)
+                        break;
+                if (i === NUM_OBJECTS) {
+                    impossible(`create_monster: can't find object "${m.appear_as}"`);
+                } else {
+                    mtmp.m_ap_type = M_AP_OBJECT;
+                    mtmp.mappearance = i;
+                    /* try to avoid placing mimic boulder on a trap */
+                    if (i === BOULDER && m.x < 0
+                        && m_bad_boulder_spot(x, y)) {
+                        /* remove_monster() + get_location() retry loop:
+                           not ported yet */
+                        nhl_error(null, 'create_monster: mimic boulder relocation is not ported yet');
+                    }
+                }
+                break;
+
+            case M_AP_MONSTER:
+                /* select_newcham_form(), validvamp(), set_mon_data():
+                   not ported yet */
+                nhl_error(null, 'create_monster: monster appear_as is not ported yet');
+                break;
+
+            default:
+                impossible(
+                  `create_monster: unimplemented mon appear type [${m.appear},"${m.appear_as}"]`);
+                break;
+            }
+            /* if (does_block(x, y, &levl[x][y])) block_point(x, y);
+               -- the JS vision has no block_point(); a mimicked boulder
+               blocks, so recompute vision instead (as set_mimic_sym) */
+            if (mtmp.m_ap_type === M_AP_OBJECT && mtmp.mappearance === BOULDER)
+                game.vision_full_recalc = 1;
+        }
 
         mtmp.female = m.female;
         if (m.peaceful > BOOL_RANDOM) {
@@ -2579,6 +2975,19 @@ export function lspo_exclusion(tbl) {
     return 0;
 }
 
+// C ref: sp_lev.c cvt_to_abscoord()
+/* turn a coordinate relative to the current map or room into an absolute
+   svl.level.locations coordinate */
+export function cvt_to_abscoord(c) {
+    if (game.coder && game.coder.croom) {
+        c.x += game.coder.croom.lx;
+        c.y += game.coder.croom.ly;
+    } else {
+        c.x += game.xstart;
+        c.y += game.ystart;
+    }
+}
+
 // C ref: sp_lev.c cvt_to_relcoord()
 /* inverse of cvt_to_abscoord; turn an absolute svl.level.locations coordinate
  * into one relative to the current map or room. */
@@ -2624,5 +3033,9 @@ export function l_register_des(L) {
     des.exclusion = lspo_exclusion;
     des.trap = lspo_trap;
     des.door = lspo_door;
+    des.terrain = lspo_terrain;
+    des.feature = lspo_feature;
+    des.gas_cloud = lspo_gas_cloud;
+    des.replace_terrain = lspo_replace_terrain;
     L.globals.des = des;
 }

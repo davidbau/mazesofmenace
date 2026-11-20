@@ -38,7 +38,12 @@ export function createStandaloneProgram({layouts,runtime={},stdio:stdioOptions={
    if(started)throw new Error('A standalone program instance runs once');
    if(!Array.isArray(argv)||argv.some(arg=>typeof arg!=='string'))throw new TypeError('Program arguments must be strings');
    started=true;const args=[programName,...argv],vector=env.memory.calloc(args.length+1,8);
-   args.forEach((arg,i)=>env.memory.view.setBigUint64(vector+i*8,BigInt(env.services.literal(arg)),true));
+   // The host passes UTF-8 process arguments to main, including the player name.
+   const encoder = new TextEncoder();
+   args.forEach((arg, i) => {
+    const pointer = env.memory.cstring(encoder.encode(arg));
+    env.memory.view.setBigUint64(vector + i * 8, BigInt(pointer), true);
+   });
    return env.services.main(args.length,vector);
   },
  };

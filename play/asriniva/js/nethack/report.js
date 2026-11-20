@@ -4,6 +4,7 @@ import * as report from '../ported/report.js';
 import * as md4 from '../ported/nhmd4.js';
 import {createReportState,createReportEnvironment} from './bindings/report.js';
 import {withCEnvironment} from '../c-runtime/context.js';
+import {readFilePath} from '../c-runtime/file-path.js';
 import {VFSError} from '../c-runtime/vfs.js';
 
 export function enableReport(environment,layouts){
@@ -29,7 +30,7 @@ export function enableReport(environment,layouts){
    if(typeof services.readlink==='function'||environment.hasFunction('readlink'))return Number(resolve('readlink')(text(path),address(out),Number(size)));
    // CVFS has only regular files/directories. Preserve actual lookup errors;
    // an existing nonsymlink is EINVAL, exactly as POSIX readlink specifies.
-   try{if(Number(size)<=0)throw new VFSError('EINVAL');environment.filesystem.stat(memory.readString(text(path)));throw new VFSError('EINVAL');}
+   try{if(Number(size)<=0)throw new VFSError('EINVAL');environment.filesystem.stat(readFilePath(memory,text(path)));throw new VFSError('EINVAL');}
    catch(error){if(!(error instanceof VFSError))throw error;environment.libc.errno=error.errno;return-1;}
   },
  };

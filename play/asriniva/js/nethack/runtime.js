@@ -5,6 +5,7 @@
  * Layouts are the configured LP64 layouts, independently checked by the native
  * runtime test. Existing translated function bodies are imported unchanged.
  */
+import { createEnvironmentInputs } from '../c-runtime/environment-inputs.js';
 import { CMemory } from '../c-runtime/heap.js';
 import { createCStdlib } from '../c-runtime/stdlib.js';
 import { createCTime } from '../c-runtime/time.js';
@@ -35,7 +36,6 @@ export function createJsRuntime(options = {}) {
     const libc = createCStdlib(memory,options.libc);
     const clock = createCTime({ now: options.now, native: true, timeZone: options.timeZone });
     const filesystem = new CVFS(options.filesystem);
-    const environment = new Map();
     const expressions = new Map();
     const dateBuffer = memory.malloc(15);
     const services = Object.assign({}, libc, clock, {
@@ -87,15 +87,9 @@ export function createJsRuntime(options = {}) {
             expressions.delete(address);
         },
     });
-    services.nh_getenv = name => name === 'NETHACK_RECORDING_EPOCH' ? 0 : environment.get(name) || 0;
+    const environmentInputs = createEnvironmentInputs({memory}, options.environment);
+    services.nh_getenv = name => name === 'NETHACK_RECORDING_EPOCH' ? 0 : environmentInputs.getenv(name);
     services.datestr = () => dateBuffer;
-    function setEnvironment(name, value) {
-        const previous = environment.get(name);
-        if (value === null || value === undefined) environment.delete(name);
-        else environment.set(name, memory.cstring(String(value)));
-        if (previous) memory.free(previous);
-    }
-    for (const [name, value] of Object.entries(options.environment || {})) setEnvironment(name, value);
     const call = (functions, name, args) => {
         if (typeof functions[name] !== 'function') throw new RangeError(`Unknown translated function ${name}`);
         return withCEnvironment(services, functions[name], ...args);
@@ -154,7 +148,7 @@ export function createJsRuntime(options = {}) {
         return value;
     }
     return {
-        memory, libc, services, clock, filesystem, FS: filesystem.FS, setEnvironment,
+        memory, libc, services, clock, filesystem, FS: filesystem.FS, environmentInputs, setEnvironment: environmentInputs.setEnvironment,
         alloc: (name, ...args) => allocation[name](...args),
         strutil: (name, ...args) => call(strings, name, args),
         posixregex: (name, ...args) => call(regex, name, args),

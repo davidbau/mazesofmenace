@@ -213,6 +213,12 @@ export function themerms_lua(L) {
     const lua_random = (line, ...args) => withRngCaller(
         `random src=nhlib.lua:${args.length === 1 ? 8 : 10} parent=lua(themerms.lua:${line})`,
         () => G.math.random(...args));
+    // math.random from a fill's contents function, which themeroom_fill()
+    // calls from Lua as themeroom_fills[pick].contents(rm): Lua names that
+    // frame after the field, "contents".
+    const fill_random = (line, ...args) => withRngCaller(
+        `random src=nhlib.lua:${args.length === 1 ? 8 : 10} parent=contents(themerms.lua:${line})`,
+        () => G.math.random(...args));
 
     // local postprocess = { };
     let postprocess = [];
@@ -225,8 +231,13 @@ export function themerms_lua(L) {
                 des.terrain(ice, 'I');
                 if (percent(25)) {
                     const mintime = 1000 - (nh.level_difficulty() * 100);
+                    // ice:iterate() calls ice_melter from C, so Lua cannot
+                    // name its frame (the recorder falls back to "nh.rn2")
+                    // and the parent frame is the C method "iterate".
                     const ice_melter = function(x, y) {
-                        nh.start_timer_at(x, y, 'melt-ice', mintime + nh.rn2(1000));
+                        nh.start_timer_at(x, y, 'melt-ice', mintime + withRngCaller(
+                            'nh.rn2 src=themerms.lua:54 parent=iterate([C]:-1)',
+                            () => nh.rn2(1000)));
                     };
                     ice.iterate(ice_melter);
                 }
@@ -349,9 +360,9 @@ export function themerms_lua(L) {
                              'priest', 'monk', 'knight', 'healer',
                              'cavewoman', 'caveman', 'barbarian',
                              'archeologist'];
-                let idx = lua_random(183, mon.length);
+                let idx = fill_random(183, mon.length);
                 for (let i = 1, n = d(5, 5); i <= n; i++) {
-                    if (percent(10)) { idx = lua_random(185, mon.length); }
+                    if (percent(10)) { idx = fill_random(185, mon.length); }
                     des.object({ id: 'corpse', montype: mon[idx - 1] });
                 }
             },

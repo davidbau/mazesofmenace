@@ -7,13 +7,9 @@ import {VFSError,O_WRONLY,O_RDWR,O_CREAT,O_TRUNC,O_EXCL,O_APPEND,O_CLOEXEC,O_LAR
 import {address} from './memory.js';
 import {CMemory} from './heap.js';
 import {scanFormatted} from './scanf.js';
+import {readFilePath} from './file-path.js';
+export {readFilePath};
 const sdkUtf8Decoder=new TextDecoder();
-const filePathDecoder=new TextDecoder('utf-8',{ignoreBOM:true});
-export function readFilePath(memory,p) {
-    if(typeof p==='string')return p;
-    p=address(p);
-    return p?filePathDecoder.decode(memory.readBytes(p,memory.strlen(p))):'';
-}
 // Pinned SDK libstrings.js TEXTDECODER=1/default-assertions UTF8ToString.
 // CMemory's byte-string operations deliberately keep their Latin1 contract.
 export function readSdkUtf8(memory,p){

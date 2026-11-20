@@ -70,6 +70,11 @@ const CLASS_NAMES = new Set(['alnum', 'alpha', 'blank', 'cntrl', 'digit',
 const DARWIN_CLASS_NAMES = new Set(['rune', 'ideogram', 'phonogram', 'special']);
 // Names for single-byte collating elements in the macOS C locale.
 const nativeCollatingElements = new Map(Object.entries({
+  NUL: 0, SOH: 1, STX: 2, ETX: 3, EOT: 4, ENQ: 5, ACK: 6, BEL: 7,
+  BS: 8, HT: 9, LF: 10, VT: 11, FF: 12, CR: 13, SO: 14, SI: 15,
+  DLE: 16, DC1: 17, DC2: 18, DC3: 19, DC4: 20, NAK: 21, SYN: 22, ETB: 23,
+  CAN: 24, EM: 25, SUB: 26, ESC: 27, FS: 28, GS: 29, RS: 30, US: 31,
+  IS4: 28, IS3: 29, IS2: 30, IS1: 31, 'full-stop': '.', 'circumflex-accent': '^', 'low-line': '_',
   alert: 7, backspace: 8, tab: 9, newline: 10, 'vertical-tab': 11,
   'form-feed': 12, 'carriage-return': 13, DEL: 127,
   space: ' ', 'exclamation-mark': '!', 'quotation-mark': '"', 'number-sign': '#',
@@ -149,8 +154,8 @@ class Parser {
     let name = '';
     while (this.peek() && !(this.peek() === delimiter && this.peek(1) === 93))
       name += String.fromCharCode(this.bytes[this.at++]);
-    const value = name.length === 1 && name.charCodeAt(0) <= 127
-      ? name.charCodeAt(0) : nativeCollatingElements.get(name);
+    const value = name.length === 1
+      ? codeUnit(name.charCodeAt(0)) : nativeCollatingElements.get(name);
     if (!this.peek() || value === undefined) fail(REG_ECOLLATE);
     this.at += 2;
     return { value, equivalent: delimiter === 61, collating: delimiter === 46 };

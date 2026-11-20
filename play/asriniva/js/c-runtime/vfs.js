@@ -77,12 +77,22 @@ function decode(value, maximum) {
   return bytes;
 }
 
+// Canonical decomposition plus caseless comparison, including expanding folds
+// such as ß/SS. Fold one scalar at a time to avoid contextual final sigma.
+function foldedFileName(name) {
+  let folded = '';
+  for (const ch of name.normalize('NFD'))
+    folded += ch === 'ı' ? ch : ch.toLowerCase().toUpperCase();
+  return folded.normalize('NFD');
+}
+
 export class CVFS {
   constructor({ clock = () => 0, maximumFileBytes = 64 * 1024 * 1024,
-    maximumDescriptors = 4096, storage = null, persistenceKey = 'teleport-js-vfs-v1', ignorePermissions = false } = {}) {
+    maximumDescriptors = 4096, storage = null, persistenceKey = 'teleport-js-vfs-v1', ignorePermissions = false, caseInsensitiveDirectory = null } = {}) {
     if (typeof clock !== 'function' || !integer(maximumFileBytes) || maximumFileBytes < 0
       || !integer(maximumDescriptors) || maximumDescriptors < 1 || typeof persistenceKey !== 'string' || typeof ignorePermissions !== 'boolean')
       throw new TypeError('Invalid VFS configuration');
+    this.caseInsensitiveDirectory = caseInsensitiveDirectory;
     this.clock = clock; this.maximumFileBytes = maximumFileBytes;
     this.maximumDescriptors = maximumDescriptors; this.storage = storage;
     this.ignorePermissions = ignorePermissions;
@@ -116,6 +126,14 @@ export class CVFS {
     const parts = path.split('/').filter(Boolean);
     return parts;
   }
+  _entryName(parent, requested) {
+    if (parent.children.has(requested) || !this.caseInsensitiveDirectory
+        || this._path(parent) !== this.caseInsensitiveDirectory) return requested;
+    const folded = foldedFileName(requested);
+    for (const name of parent.children.keys())
+      if (foldedFileName(name) === folded) return name;
+    return requested;
+  }
   _walk(parts, missingLast = false) {
     let node = this.root;
     for (let i = 0; i < parts.length; ++i) {
@@ -124,7 +142,7 @@ export class CVFS {
       this._permissions(node, 'x');
       if (part === '.') continue;
       if (part === '..') { node = node.parent; continue; }
-      const next = node.children.get(part);
+      const next = node.children.get(this._entryName(node, part));
       if (!next) {
         if (missingLast && i === parts.length - 1) return null;
         fail('ENOENT');
@@ -143,7 +161,7 @@ export class CVFS {
     if (!name) fail('EBUSY', path);
     const parent = this._walk(parts);
     if (parent.type !== 'dir') fail('ENOTDIR', path);
-    return { parent, name };
+    return { parent, name: this._entryName(parent, name), requestedName: name };
   }
   _changed(node) { node.mtime = node.ctime = this._now(); }
   _permissions(node, requested) {
@@ -205,7 +223,7 @@ export class CVFS {
       if (part === '..') { node = node.parent; continue; }
       if (node.type !== 'dir') fail('ENOTDIR', path);
       this._permissions(node, 'x');
-      let next = node.children.get(part);
+      let next = node.children.get(this._entryName(node, part));
       if (!next) {
         this._permissions(node, 'w');
         next = this._node('dir', mode, node, part); node.children.set(part, next); this._changed(node);
@@ -253,7 +271,19 @@ export class CVFS {
     const ancestor = (parent, child) => parent === '/' || parent === child || child.startsWith(parent + '/');
     if (ancestor(normalize(source), this._path(to.parent))) fail('EINVAL', destination);
     if (ancestor(normalize(destination), this._path(from.parent))) fail('ENOTEMPTY', destination);
-    if (node === replaced) return;
+    if (node === replaced) {
+      if (from.requestedName !== to.requestedName && to.name !== to.requestedName) {
+        this._permissions(from.parent, 'wx');
+        const oldPath = this._path(node);
+        from.parent.children.delete(from.name);
+        node.name = to.requestedName;
+        to.parent.children.set(node.name, node);
+        if (this.currentPath === oldPath || this.currentPath.startsWith(oldPath + '/'))
+          this.currentPath = this._path(node) + this.currentPath.slice(oldPath.length);
+        this._changed(to.parent);
+      }
+      return;
+    }
     this._permissions(from.parent, 'wx'); this._permissions(to.parent, 'wx');
     if (node.type === 'dir') {
       for (let parent = to.parent;; parent = parent.parent) {
@@ -270,9 +300,11 @@ export class CVFS {
         if (replaced.children.size) fail('ENOTEMPTY', destination);
       }
     }
-    from.parent.children.delete(from.name); to.parent.children.set(to.name, node);
+    from.parent.children.delete(from.name);
+    if (to.name !== to.requestedName) to.parent.children.delete(to.name);
+    to.parent.children.set(to.requestedName, node);
     this._changed(from.parent); this._changed(to.parent);
-    node.parent = to.parent; node.name = to.name;
+    node.parent = to.parent; node.name = to.requestedName;
   }
   open(path, flags = O_RDONLY, mode = 0o666) {
     if (typeof flags === 'string') {
@@ -462,7 +494,7 @@ export class CVFS {
     if (this.descriptors.size) fail('EBUSY');
     if (!snapshot || snapshot.version !== 1 || !Array.isArray(snapshot.entries) || typeof snapshot.cwd !== 'string') fail('EINVAL');
     const replacement = new CVFS({ clock: this.clock, maximumFileBytes: this.maximumFileBytes,
-      maximumDescriptors: this.maximumDescriptors, ignorePermissions: true });
+      maximumDescriptors: this.maximumDescriptors, caseInsensitiveDirectory: this.caseInsensitiveDirectory, ignorePermissions: true });
     const seen = new Set();
     for (const entry of snapshot.entries) {
       if (!entry || typeof entry.path !== 'string' || !entry.path.startsWith('/') || seen.has(entry.path)
@@ -473,7 +505,8 @@ export class CVFS {
       seen.add(entry.path);
       if (entry.path === '/') {
         if (entry.type !== 'dir') fail('EINVAL');
-      } else if (entry.type === 'dir') replacement.mkdir(entry.path, entry.mode);
+      } else if (replacement._walk(replacement._parts(entry.path), true)) fail('EINVAL');
+      else if (entry.type === 'dir') replacement.mkdir(entry.path, entry.mode);
       else if (entry.type === 'null') replacement.installNullDevice(entry.path, entry.mode);
       else replacement.writeFile(entry.path, decode(entry.base64, this.maximumFileBytes), { mode: entry.mode });
     }

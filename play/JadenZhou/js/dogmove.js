@@ -24,7 +24,7 @@ import { mons } from './monsters.js';
 import * as O from './objects.js';
 import { objects } from './objects.js';
 import { splitobj, obj_extract_self } from './mkobj.js';
-import { mpickobj } from './steal.js';
+import { mpickobj, relobj } from './steal.js';
 import { distant_name, doname } from './objnam.js';
 import { newsym, pline } from './display.js';
 import { Monnam } from './mhitm.js';
@@ -413,7 +413,7 @@ export function can_carry(mtmp, otmp) {
 }
 
 // ── C ref: dogmove.c droppables() ──
-function droppables(mon) {
+export function droppables(mon) {
     /*
      * 'key|pickaxe|&c = &dummy' is used to make various creatures
      * that can't use a key/pick-axe/&c behave as if they are already
@@ -548,8 +548,13 @@ async function dog_invent(mtmp, edog, udist) {
      * Use udist+1 so steed won't cause divide by zero. */
     if (droppables(mtmp)) {
         if (!rn2(udist + 1) || !rn2(edog.apport))
-            if (rn2(10) < edog.apport)
-                throw new Error('dog_invent(): relobj() not ported yet');
+            if (rn2(10) < edog.apport) {
+                await relobj(mtmp, mtmp.minvis ? 1 : 0, true);
+                if (edog.apport > 1)
+                    edog.apport--;
+                edog.dropdist = udist; /* hpscdi!jon */
+                edog.droptime = game.moves;
+            }
     } else {
         const here = objects_at(omx, omy);
         const obj = here[0];

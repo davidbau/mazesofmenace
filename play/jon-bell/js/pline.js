@@ -8,7 +8,7 @@ import './cmd.js'; // relocate-fns
 import { Unaware, _You, _disp_Blind, _live_deaf, _pline_body, you_buf_message } from './display.js';
 import './options.js'; // retain initialization order through the cmd/options cycle
 import { livelog_add } from './files.js'; // relocate-fns
-import { strNsubst } from './hacklib.js'; // relocate-fns
+import { nh_snprintf, strNsubst } from './hacklib.js'; // relocate-fns
 import { ENV } from './hostenv.js'; // relocate-fns
 import { is_youmonst } from './mhitm.js'; // relocate-fns
 import { pushRngLogEntry } from './rng.js'; // relocate-fns
@@ -60,7 +60,7 @@ export async function impossible(s, ...args) {
     if (state.in_impossible)
         throw new Error('panic: impossible called impossible');
     state.in_impossible = 1;
-    const pbuf = nh_sprintf(s, args).slice(0, BUFSZ - 1);
+    const pbuf = nh_snprintf(null, BUFSZ, s, ...args);
     paniclog('impossible', pbuf);
     if (game.iflags?.debug_fuzzer === 1) // fuzzer_impossible_panic
         throw new Error('panic: ' + pbuf);
@@ -107,7 +107,7 @@ export function gamelog_add(glflags, gltime, msg) {
 /* C pline.c:514-525: chronicle keeps the original formatted message; only
  * the live log replaces tabs, which otherwise delimit its fields. */
 export function livelog_printf(ll_type, line, ...args) {
-    const buf = { value: nh_sprintf(line, args).split('\0', 1)[0].slice(0, BUFSZ * 2 - 1) };
+    const buf = { value: nh_snprintf(null, BUFSZ * 2, line, ...args) };
     gamelog_add(ll_type, game.moves | 0, buf.value);
     strNsubst(buf, "\t", "_", 0);
     livelog_add(ll_type, buf.value);

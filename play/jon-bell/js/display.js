@@ -72,7 +72,8 @@ import { getnow } from './calendar.js';
 import { nextmbuf } from './do_name.js';
 import { TER_DETECT, TER_MAP } from './const.js';
 import { nh_basename } from './files.js';
-import { pmatch } from './strutil.js';
+import { pmatch, nh_sprintf } from './strutil.js';
+export { nh_sprintf };
 import { status_fieldname, COND_NAMES, map_menu_cmd } from './options.js';
 import { newuexp } from './exper.js';
 import { classifyTerrain } from './terrain-status.js';
@@ -85,7 +86,7 @@ import { invocation_pos } from './hack.js';
 import { set_msg_xy } from './pline.js';
 import { waterbody_name } from './pager.js';
 import { On_stairs } from './stairs.js';
-import { strNsubst, fuzzymatch } from './hacklib.js';
+import { nh_snprintf, strNsubst, fuzzymatch } from './hacklib.js';
 import { Inhell } from './makemon.js';
 import { glyph_to_cmap, glyphmap } from './glyphs.js';
 import { symbol_name, primary_showsym, primary_unicode_symbol, rogue_showsyms, symset_cell, defsym_char, SYM_OFFSETS } from './symbols.js';
@@ -558,7 +559,7 @@ function _wall_impossible(fmt, ...args) {
     if (state.in_impossible)
         throw new Error('panic: impossible called impossible');
     state.in_impossible = 1;
-    const text = nh_sprintf(fmt, args).slice(0, BUFSZ - 1);
+    const text = nh_snprintf(null, BUFSZ, fmt, ...args);
     paniclog('impossible', text);
     if (game.iflags?.debug_fuzzer === 1)
         throw new Error('panic: ' + text);
@@ -6508,13 +6509,13 @@ function _statusLine2Parts() {
                             (_p2s && _p2s.confused !== undefined)
                                 ? !!_p2s.confused : undefined,
                             (_p2s && _p2s.flying !== undefined) ? !!_p2s.flying
-                                /* a --More-- page shows the last bot() paint's Fly: switch_terrain's
-                                 * "You start flying." (hack.c:3205) plines before the arrival bot() */
-                                : ((game._pending_message || '').endsWith('--More--') && game._botlPaintedFlying != null
-                                   /* mount_steed (steed.c:354-382): the "You mount" page is raised after
-                                    * bot() saw u.usteed (Ride is live here), so a flying steed's Fly
-                                    * (youprop.h Flying) is live too, not the pre-mount paint */
-                                   && !(u.usteed && _live_flying())
+                                /* C botl.c:202/1194: Flying reflects the last bot() paint until
+                                 * disp.botl triggers another paint (steed polymorph in poly_steed
+                                 * updates u.usteed without SET_BOTL). Preserve the mount_steed
+                                 * --More-- page exception where Ride+Fly already appear live. */
+                                : (game._botlPaintedFlying != null
+                                   && !((game._pending_message || '').endsWith('--More--')
+                                        && u.usteed && _live_flying())
                                    ? !!game._botlPaintedFlying : undefined),
                             (_p2s && _p2s.sickType !== undefined) ? _p2s.sickType | 0
                                 // potion.c:165-175 clears usick_type before the cure pline.
@@ -13680,60 +13681,6 @@ export function putmsghistory(msg, _restoring) {
     // C topl.c:677-715: remember_topl() stores every nonempty topline,
     // including consecutive identical messages (topl.c:170-191).
     _msg_history_arr().push(text);
-}
-export function nh_sprintf(fmt, args) {
-    let i = 0;
-    return String(fmt).replace(
-        /%([-+#0]*)([0-9]*)(?:\.([0-9]+))?(hh|h|ll|l|L|z|j|t)?([diouxXeEfgGaAcs%]|$)/g,
-        (spec, flags, width, prec, len, conv) => {
-            if (conv === '') return '';
-            if (conv === '%') return '%';
-            const a = args[i++];
-            let s;
-            switch (conv) {
-            case 's':
-                s = (a == null) ? '' : String(a);
-                if (prec !== undefined) s = s.slice(0, Number(prec));
-                break;
-            case 'c':
-                s = (typeof a === 'number') ? String.fromCharCode(a) : String(a);
-                break;
-            case 'd': case 'i':
-                /* C's %d is int and wraps at 32 bits, which `| 0` reproduces;
-                 * %ld is long and must NOT wrap — vault.js's
-                 * Your("%ld gold pieces...", umoney) is the case that would
-                 * otherwise print a negative purse. */
-                s = typeof a === 'bigint'
-                    ? BigInt.asIntN(len ? 64 : 32, a).toString()
-                    : String(len ? Math.trunc(Number(a) || 0) : (Number(a) | 0));
-                break;
-            case 'u':
-                s = String(len ? (Math.trunc(Number(a) || 0) >>> 0)
-                               : ((Number(a) | 0) >>> 0));
-                break;
-            case 'o': s = ((Number(a) | 0) >>> 0).toString(8); break;
-            case 'x': s = ((Number(a) | 0) >>> 0).toString(16); break;
-            case 'X': s = ((Number(a) | 0) >>> 0).toString(16).toUpperCase(); break;
-            case 'f': case 'F':
-                s = Number(a).toFixed(prec === undefined ? 6 : Number(prec));
-                break;
-            default:
-                /* Unrecognised: give the argument back rather than losing it. */
-                s = String(a);
-                break;
-            }
-            if (flags.includes('+') && 'dif'.includes(conv) && !s.startsWith('-'))
-                s = '+' + s;
-            const w = Number(width || 0);
-            if (s.length < w) {
-                if (flags.includes('-')) s = s.padEnd(w, ' ');
-                else if (flags.includes('0') && conv !== 's' && conv !== 'c')
-                    s = (s.startsWith('-') ? '-' + s.slice(1).padStart(w - 1, '0')
-                                           : s.padStart(w, '0'));
-                else s = s.padStart(w, ' ');
-            }
-            return s;
-        });
 }
 
 

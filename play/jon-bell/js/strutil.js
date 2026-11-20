@@ -71,3 +71,58 @@ export function pmatch(patrn, strng) {
 export function pmatchi(patrn, strng) {
     return pmatch_internal(patrn, strng, true);
 }
+
+export function nh_sprintf(fmt, args) {
+    let i = 0;
+    return String(fmt).replace(
+        /%([-+#0]*)([0-9]*)(?:\.([0-9]+))?(hh|h|ll|l|L|z|j|t)?([diouxXeEfgGaAcs%]|$)/g,
+        (spec, flags, width, prec, len, conv) => {
+            if (conv === '') return '';
+            if (conv === '%') return '%';
+            const a = args[i++];
+            let s;
+            switch (conv) {
+            case 's':
+                s = (a == null) ? '' : String(a).split('\0', 1)[0];
+                if (prec !== undefined) s = s.slice(0, Number(prec));
+                break;
+            case 'c':
+                s = (typeof a === 'number') ? String.fromCharCode(a) : String(a);
+                break;
+            case 'd': case 'i':
+                /* C's %d is int and wraps at 32 bits, which `| 0` reproduces;
+                 * %ld is long and must NOT wrap — vault.js's
+                 * Your("%ld gold pieces...", umoney) is the case that would
+                 * otherwise print a negative purse. */
+                s = typeof a === 'bigint'
+                    ? BigInt.asIntN(len ? 64 : 32, a).toString()
+                    : String(len ? Math.trunc(Number(a) || 0) : (Number(a) | 0));
+                break;
+            case 'u':
+                s = String(len ? (Math.trunc(Number(a) || 0) >>> 0)
+                               : ((Number(a) | 0) >>> 0));
+                break;
+            case 'o': s = ((Number(a) | 0) >>> 0).toString(8); break;
+            case 'x': s = ((Number(a) | 0) >>> 0).toString(16); break;
+            case 'X': s = ((Number(a) | 0) >>> 0).toString(16).toUpperCase(); break;
+            case 'f': case 'F':
+                s = Number(a).toFixed(prec === undefined ? 6 : Number(prec));
+                break;
+            default:
+                /* Unrecognised: give the argument back rather than losing it. */
+                s = String(a);
+                break;
+            }
+            if (flags.includes('+') && 'dif'.includes(conv) && !s.startsWith('-'))
+                s = '+' + s;
+            const w = Number(width || 0);
+            if (s.length < w) {
+                if (flags.includes('-')) s = s.padEnd(w, ' ');
+                else if (flags.includes('0') && conv !== 's' && conv !== 'c')
+                    s = (s.startsWith('-') ? '-' + s.slice(1).padStart(w - 1, '0')
+                                           : s.padStart(w, '0'));
+                else s = s.padStart(w, ' ');
+            }
+            return s;
+        });
+}

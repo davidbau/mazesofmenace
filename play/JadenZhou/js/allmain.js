@@ -423,7 +423,10 @@ export async function moveloop_core() {
                 if (P[GLIB].intrinsic) /* Glib */
                     throw new Error('moveloop_core(): glibr() not ported yet');
                 await nh_timeout();
-                /* run_regions(): regions aren't ported yet (none exist) */
+                /* run_regions(): not ported yet (region.js). The only regions
+                   so far are the themed Cloud room's harmless permanent gas
+                   clouds; run_regions() rolls no dice for those (it only
+                   ages/expires them and prints dissipation messages). */
 
                 if (u.ublesscnt)
                     u.ublesscnt--;

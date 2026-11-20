@@ -15,6 +15,7 @@ import { readobjnam } from './objnam.js';
 import { addinv } from './u_init.js';
 import { prinv } from './invent.js';
 import * as O from './objects.js';
+import { create_particular } from './read.js';
 
 // C ref: wizcmds.c wiz_level_change() -- #levelchange
 export async function wiz_level_change() {
@@ -170,6 +171,25 @@ async function makewish() {
 
 // C ref: wizcmds.c wiz_wish() -- ^W
 /* Unlimited wishes for debug mode by Paul Polderman */
+// C ref: wizcmds.c wiz_genesis() -- #wizgenesis - generate monster(s); a
+// count prefix will be honored
+export async function wiz_genesis() {
+    if (game.flags?.debug) {
+        const mongen_saved = game.iflags.debug_mongen;
+
+        game.iflags.debug_mongen = false;
+        game.makemon_want_msg = true; /* see makemon()'s Norep() comment */
+        try {
+            await create_particular();
+        } finally {
+            game.makemon_want_msg = false;
+        }
+        game.iflags.debug_mongen = mongen_saved;
+    } else
+        throw new Error('wiz_genesis(): unavailcmd message not ported yet');
+    return 0; /* ECMD_OK */
+}
+
 export async function wiz_wish() {
     const g = game;
     if (g.flags.debug) {

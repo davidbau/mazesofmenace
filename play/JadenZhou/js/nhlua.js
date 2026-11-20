@@ -39,9 +39,9 @@ import { dungeon_lua } from './dungeon_lua.js';
 import { nhcore_lua } from './nhcore_lua.js';
 import { themerms_lua } from './themerms_lua.js';
 import { quest_lua } from './quest_lua.js';
-import { l_register_des } from './sp_lev.js';
+import { l_register_des, get_coord, cvt_to_abscoord } from './sp_lev.js';
 import { l_selection_register } from './selvar.js';
-import { l_obj_register } from './nhlobj.js';
+import { l_obj_register, nhl_get_timertype } from './nhlobj.js';
 import { level_difficulty } from './dungeon.js';
 
 // C's impossible() (pline.c) is not ported yet.
@@ -201,6 +201,35 @@ export function splev_chr2typ(c) {
     return C.INVALID_TYPE;
 }
 
+// C ref: nhlua.c check_mapchr()
+export function check_mapchr(s) {
+    if (s && s.length === 1)
+        return splev_chr2typ(s[0]);
+    return C.INVALID_TYPE;
+}
+
+// C ref: nhlua.c get_table_mapchr()
+export function get_table_mapchr(tbl, name) {
+    const ter = get_table_str(tbl, name);
+    const typ = check_mapchr(ter);
+    if (typ === C.INVALID_TYPE)
+        nhl_error(null, 'Erroneous map char');
+    return typ;
+}
+
+// C ref: nhlua.c get_table_mapchr_opt()
+export function get_table_mapchr_opt(tbl, name, defval) {
+    const ter = get_table_str_opt(tbl, name, '');
+    let typ;
+    if (ter) {
+        typ = check_mapchr(ter);
+        if (typ === C.INVALID_TYPE)
+            nhl_error(null, 'Erroneous map char');
+    } else
+        typ = defval;
+    return typ;
+}
+
 // C ref: nhlua.c get_table_int()
 /* get mandatory integer value from table */
 export function get_table_int(tbl, name) {
@@ -307,6 +336,58 @@ function nhl_get_debug_themerm_name(...args) {
     nhl_error(null, 'Wrong args');
 }
 
+// C ref: nhlua.c nhl_get_xy_params()
+/* x,y from the arguments (x, y) or ({x, y}); null if neither */
+function nhl_get_xy_params(args) {
+    const argc = args.length;
+    let ret = null;
+
+    if (argc === 2) {
+        ret = { x: Math.trunc(Number(args[0]) || 0),
+                y: Math.trunc(Number(args[1]) || 0) }; /* lua_tointeger */
+    } else if (argc === 1 && lua_type(args[0]) === LUA_TTABLE) {
+        ret = get_coord(args[0]);
+    }
+    return ret;
+}
+
+// C ref: timeout.h timer_is_pos()
+function timer_is_pos(ttype) { return ttype === 'MELT_ICE_AWAY'; }
+
+// C ref: timeout.c spot_stop_timers() -- the timer queue is not ported
+// yet; like obj.timer (nhlobj.js), a location's pending level timer is
+// kept in levl[x][y].timer = { when, action }
+function spot_stop_timers(x, y, func_index) {
+    const lev = game.level.at(x, y);
+    if (lev.timer && lev.timer.action === func_index)
+        lev.timer = null; /* no cleanup function for MELT_ICE_AWAY */
+}
+
+// C ref: nhlua.c nhl_timer_start_at()
+/* start timer at location x,y */
+/* nh.start_timer_at(x,y, "melt-ice", 10); */
+function nhl_timer_start_at(...args) {
+    const timertype = nhl_get_timertype(args[args.length - 2]);
+    const when = Math.trunc(Number(args[args.length - 1]) || 0); /* lua_tointeger */
+
+    const xy = nhl_get_xy_params(args.slice(0, args.length - 2));
+    if (!xy) {
+        nhl_error(null, 'nhl_timer_start_at: Wrong args');
+        /*NOTREACHED*/
+        return 0;
+    }
+
+    cvt_to_abscoord(xy);
+    const x = xy.x, y = xy.y;
+
+    if (timer_is_pos(timertype) && C.isok(x, y)) {
+        spot_stop_timers(x, y, timertype);
+        /* start_timer(when, TIMER_LEVEL, MELT_ICE_AWAY, long_to_any(where)) */
+        game.level.at(x, y).timer = { when, action: timertype };
+    }
+    return 0;
+}
+
 // C ref: nhlua.c nhl_functions[] — the "nh" table. Only some functions
 // are ported so far.
 const nhl_functions = {
@@ -315,6 +396,7 @@ const nhl_functions = {
     random: nhl_random,
     level_difficulty: nhl_level_difficulty,
     debug_themerm: nhl_get_debug_themerm_name,
+    start_timer_at: nhl_timer_start_at,
 };
 
 // The hand-ported Lua scripts by file name: the files nhl_loadlua() can

@@ -52,6 +52,12 @@ import {
 import { engr_at } from './engrave.js';
 import { enexto_core } from './teleport.js';
 import { newedog } from './dog.js';
+import { M_AP_NOTHING, M_AP_MONSTER, HALLUC, TELEPAT,
+         DETECT_MONSTERS } from './const.js';
+import { dist2 } from './hacklib.js';
+import { an, vtense } from './objnam.js';
+import { newsym, pline } from './display.js';
+import { canseemon, set_apparxy } from './monmove.js';
 
 function impossible(msg) { console.error(`impossible: ${msg}`); }
 
@@ -1785,7 +1791,10 @@ export function makemon(ptr, x, y, mmflags) {
             && !game.u.uhave.amulet && rn2(5))
             mtmp.msleeping = true;
     } else {
-        /* if (byyou) { newsym(); set_apparxy(); }: display not ported */
+        if (byyou) {
+            newsym(mtmp.mx, mtmp.my);
+            set_apparxy(mtmp);
+        }
     }
     if (is_dprince(ptr) && ptr.msound === M.MS_BRIBE) {
         mtmp.mpeaceful = mtmp.minvis = mtmp.perminvis = 1;
@@ -1857,10 +1866,89 @@ export function makemon(ptr, x, y, mmflags) {
     /* deliver_obj_to_mon(): migrating objects not ported yet */
 
     if (!game.in_mklev) {
-        /* newsym() and the "<mon> appears" message: not ported yet */
+        newsym(mtmp.mx, mtmp.my); /* make sure the mon shows up */
+        if (!(mmflags & MM_NOMSG)) {
+            let what = null;
+            /* MM_NOEXCLAM is used for #wizgenesis (^G) */
+            let exclaim = !(mmflags & MM_NOEXCLAM);
+            const ap_type = mtmp.m_ap_type || M_AP_NOTHING;
+
+            if ((canseemon(mtmp) && (ap_type === M_AP_NOTHING
+                                     || ap_type === M_AP_MONSTER))
+                || makemon_sensemon(mtmp)) {
+                what = makemon_Amonnam(mtmp);
+                if (ap_type === M_AP_MONSTER)
+                    exclaim = true;
+            } else if (canseemon(mtmp)) {
+                /* mimic masquerading as furniture or object and not sensed */
+                throw new Error('makemon(): mhidden_description() not ported yet');
+            }
+            if (what) {
+                /* set_msg_xy(mtmp->mx, mtmp->my): accessibility only */
+                const msg = `${what}${exclaim ? " suddenly" : ""} `
+                    /* 'what' might be "gold pieces" so need plural verb */
+                    + `${vtense(what, "appear")}`
+                    + `${(dist2(x, y, game.u.ux, game.u.uy) <= 2) /* next2u() */
+                         ? " next to you"
+                         : (dist2(x, y, game.u.ux, game.u.uy) <= (BOLT_LIM * BOLT_LIM))
+                           ? " close by" : ""}`
+                    + `${exclaim ? '!' : '.'}`;
+                /* Norep(): pline() waits at --More-- and so is async in this
+                   port while makemon() is not; the message is handed to the
+                   caller, which prints it with makemon_flush_msg().  Only
+                   create_particular() does so far; for other callers the
+                   message is not ported yet */
+                if (game.makemon_want_msg)
+                    game.makemon_msg = msg;
+            }
+        }
+        /* if discernable and a threat, stop fiddling while Rome burns */
+        if (game.occupation)
+            throw new Error('makemon(): dochugw() for an occupied hero not ported yet');
+
+        /* TODO: unify with teleport appears msg */
     }
 
     return mtmp;
+}
+
+/* C ref: zap.c BOLT_LIM */
+const BOLT_LIM = 8;
+
+// makemon()'s "<mon> appears" message, printed by the caller once makemon()
+// returns (see the Norep() comment in makemon())
+export async function makemon_flush_msg() {
+    const msg = game.makemon_msg;
+    game.makemon_msg = null;
+    if (msg)
+        await pline(msg);
+}
+
+/* C ref: display.h sensemon() -- telepathy, extended detection and
+   warning are not ported yet */
+function makemon_sensemon(mtmp) {
+    void mtmp;
+    const tel = game.u.uprops?.[TELEPAT], det = game.u.uprops?.[DETECT_MONSTERS];
+    if ((tel && (tel.intrinsic || tel.extrinsic))
+        || (det && (det.intrinsic || det.extrinsic)))
+        throw new Error('makemon(): sensemon() not ported yet');
+    return false;
+}
+
+/* C ref: do_name.c Amonnam() -- x_monnam(mtmp, ARTICLE_A, NULL, 0, FALSE)
+   capitalized; only the plain case (no name, not unique, not invisible,
+   not saddled, not hallucinating) is ported here */
+function makemon_Amonnam(mtmp) {
+    if (mtmp.mgivenname || mtmp.isshk || mtmp.ispriest || mtmp.isminion
+        || mtmp.minvis || (mtmp.data.geno & G_UNIQ) || mtmp.misc_worn_check)
+        throw new Error('makemon(): x_monnam() for named/special monsters not ported yet');
+    const hal = game.u.uprops?.[HALLUC];
+    if (hal && hal.intrinsic)
+        throw new Error('makemon(): x_monnam() while hallucinating not ported yet');
+    const ptr = mtmp.data;
+    const name = ptr.pmnames[mtmp.female ? 1 : 0] || ptr.pmnames[2];
+    const bp = an(name);
+    return bp.charAt(0).toUpperCase() + bp.slice(1);
 }
 // C ref: monst.h STRAT_* bits
 const STRAT_APPEARMSG = 0x80000000;

@@ -1,7 +1,8 @@
 // exper.js — experience levels, and energy gained per level.
 // C ref: exper.c
 //
-// Only what hero initialization needs so far: newuexp(), enermod(), newpw().
+// Only what hero initialization needs so far: newuexp(), enermod(), newpw();
+// and more_experienced(), newexplevel() (pluslvl() is not ported yet).
 
 import { game } from './gstate.js';
 import { rnd, rn1 } from './rng.js';
@@ -78,4 +79,41 @@ export function newpw() {
             en = lim;
     }
     return en;
+}
+
+// C ref: exper.c more_experienced()
+export function more_experienced(exper, rexp) {
+    const u = game.u;
+    const oldexp = u.uexp,
+        oldrexp = u.urexp,
+        newexp = oldexp + exper,
+        rexpincr = 4 * exper + rexp,
+        newrexp = oldrexp + rexpincr;
+
+    /* cap experience and score on wraparound: JS numbers don't wrap */
+
+    if (newexp !== oldexp) {
+        u.uexp = newexp;
+        if (game.flags.showexp)
+            game.disp_botl = true;
+        /* even when experience points aren't being shown, experience level
+           might be highlighted with a percentage highlight rule and that
+           percentage depends upon experience points:
+           if (!disp.botl && exp_percent_changing()) disp.botl = TRUE;
+           exp_percent_changing() is FALSE without status hilite rules */
+    }
+    /* newrexp will always differ from oldrexp unless they're LONG_MAX */
+    if (newrexp !== oldrexp) {
+        u.urexp = newrexp;
+        /* SCORE_ON_BOTL (showscore) isn't ported */
+    }
+    if (u.urexp >= ((game.urole.mnum === PM_WIZARD) ? 1000 : 2000))
+        game.flags.beginner = false;
+}
+
+// C ref: exper.c newexplevel()
+export function newexplevel() {
+    const u = game.u;
+    if (u.ulevel < MAXULEV && u.uexp >= newuexp(u.ulevel))
+        throw new Error('newexplevel(): pluslvl() not ported yet');
 }

@@ -178,10 +178,10 @@ async function deliver_by_window(msg, how) {
 
     /* copynchars() stops at each newline */
     for (const in_line of msg.split('\n'))
-        tty_putstr(datawin, 0, convert_line(in_line));
+        await tty_putstr(datawin, 0, convert_line(in_line));
 
     await tty_display_nhwindow(datawin, true);
-    tty_destroy_nhwindow(datawin);
+    await tty_destroy_nhwindow(datawin);
 }
 
 // C ref: questpgr.c deliver_by_pline() -- not ported yet (pline output

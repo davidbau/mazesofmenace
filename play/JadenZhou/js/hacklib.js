@@ -90,6 +90,19 @@ export function s_suffix(s) {
     return buf;
 }
 
+// C ref: hacklib.c isqrt()
+/* integer square root function without using floating point */
+export function isqrt(val) {
+    let rt = 0;
+    let odd = 1;
+    while (val >= odd) {
+        val = val - odd;
+        odd = odd + 2;
+        rt = rt + 1;
+    }
+    return rt;
+}
+
 // C ref: hacklib.c mungspaces()
 /* remove excess whitespace from a string buffer (in place in C; JS strings
    are immutable, so the munged string is returned) */

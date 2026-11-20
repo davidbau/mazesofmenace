@@ -18,7 +18,11 @@ export function enableTerminal(environment,layout,{onCapture,preservePublishedSa
     });
     const buffers=metadata.bufferSizes.map((n,i)=>environment.allocateGlobal('termcap.'+metadata.bufferKeys[i],n));
     const nativeOwner=nativeStateFor(environment),schemas=Object.entries(metadata.schemas),frames=[],callbackIds=new Map(),local=Object.create(services);
+    const utf8 = new TextDecoder('utf-8', {ignoreBOM: true});
     const appendFrame=(screen,x,y,animation)=>{
+        // The recorder reads each terminal payload as UTF-8, including malformed byte sequences.
+        if (/[^\x00-\x7f]/.test(screen))
+            screen = utf8.decode(Uint8Array.from(screen, ch => ch.charCodeAt(0)));
         const frame={screen,cursor:[Number(x),Number(y),1],animation:Boolean(animation)};
         frames.push(frame);if(onCapture)onCapture(frame);
     };

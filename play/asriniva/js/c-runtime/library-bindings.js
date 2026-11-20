@@ -1,5 +1,6 @@
 // Linear-memory and filesystem ABI bindings for JavaScript library implementations.
 // Shared by the pure-JavaScript runtime and the mixed Emscripten backend.
+import { decodeFilePath } from './file-path.js';
 import { createTerminfo } from '../libraries/terminfo/index.js';
 import { compressUnixZ, decompressUnixZ } from '../libraries/compress/unix-z.js';
 import { compilePosixRegex, execPosixRegex, nativeRegexError, posixRegexError, freePosixRegex } from '../libraries/regex/posix.js';
@@ -146,7 +147,14 @@ export function createLibraryBindings({ regex = false, regexDialect = 'native' }
         },
         compressFile(services, filename, compressed, unpack) {
             ++calls[unpack ? 'decompress' : 'compress'];
-            const plain = string(services, filename), packed = string(services, compressed);
+            const heap = services.heap();
+            const pathAt = pointer => {
+                const start = Number(pointer);
+                if (!start) return null;
+                const end = heap.indexOf(0, start);
+                return decodeFilePath(heap.subarray(start, end < 0 ? heap.length : end));
+            };
+            const plain = pathAt(filename), packed = pathAt(compressed);
             const source = unpack ? packed : plain, destination = unpack ? plain : packed;
             let input, output, status = 1;
             try {

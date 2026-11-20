@@ -328,7 +328,7 @@ const timer_enum = [
     'BURN_OBJECT', 'HATCH_EGG', 'FIG_TRANSFORM', 'SHRINK_GLOB',
     'MELT_ICE_AWAY',
 ];
-function nhl_get_timertype(v) {
+export function nhl_get_timertype(v) {
     const ret = timerstr.indexOf(luaL_checkstring(v));
     if (ret < 0)
         nhl_error(null, "Unknown timer type");

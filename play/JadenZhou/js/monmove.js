@@ -1359,7 +1359,8 @@ export async function m_move(mtmp, after) {
             throw new Error('m_move(): mdisplacem() not ported yet');
 
         /* if (!m_in_out_region(mtmp, nix, niy)) return MMOVE_DONE:
-           regions aren't ported yet (none exist) */
+           m_in_out_region() is not ported yet; gas clouds, the only
+           regions so far, have no can_enter/can_leave callbacks */
 
         if ((mfp.info[chi] & ALLOW_ROCK) && m_can_break_boulder(mtmp))
             throw new Error('m_move(): m_break_boulder() not ported yet');

@@ -188,7 +188,10 @@ function mon_leaving_level(mon) {
     }
 }
 
-// C ref: steal.c relobj() -- only an empty inventory is ported
+// C ref: steal.c relobj() -- only an empty inventory is handled here:
+// m_detach() is synchronous, while the full port (steal.js relobj(), whose
+// mdrop_obj() can give a message) is async; switch to it once m_detach()
+// is made async for mondead()
 function relobj(mtmp, show, is_pet) {
     const omx = mtmp.mx, omy = mtmp.my;
 
@@ -799,7 +802,9 @@ export function mfndpos(mon, data, flag) {
     if (mdat === mons[PM_FLOATING_EYE]) /* prefers to avoid heat */
         lavaok = false;
     const thrudoor = ((flag & (ALLOW_WALL | BUSTDOOR)) !== 0);
-    /* poison gas regions aren't ported yet (none exist) */
+    /* poison gas regions: visible_region_at() is not ported yet; the
+       only regions so far are harmless clouds (S_cloud), which mfndpos()
+       does not avoid */
 
     if (flag & ALLOW_DIG)
         throw new Error('mfndpos(): ALLOW_DIG not ported yet');

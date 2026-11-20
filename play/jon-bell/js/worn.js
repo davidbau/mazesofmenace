@@ -823,7 +823,7 @@ export function clear_bypasses() {
 
     // Clear bypass on migrating objects
     const gm = game.gm || {};
-    clear_bypass(gm.migrating_objs || null);
+    clear_bypass(gm.migrating_objs || game.migrating_objs || null);
 
     // Clear bypass on buried objects
     // C: clear_bypass(svl.level.buriedobjlist).  `.svl` is never assigned in
@@ -836,11 +836,11 @@ export function clear_bypasses() {
 
     // Clear bypass on billed objects
     const gb = game.gb || {};
-    clear_bypass(gb.billobjs || null);
+    clear_bypass(gb.billobjs || game.billobjs || null);
 
     // Clear bypass on deleted objects
     const go = game.go || {};
-    clear_bypass(go.objs_deleted || null);
+    clear_bypass(go.objs_deleted || game.objs_deleted || null);
 
     // Clear bypass on monsters and their inventories
     for (let mtmp = fmon; mtmp; mtmp = mtmp.nmon) {
@@ -856,12 +856,12 @@ export function clear_bypasses() {
     }
 
     // Clear bypass on migrating monsters' inventories
-    for (let mtmp = gm.migrating_mons || null; mtmp; mtmp = mtmp.nmon) {
+    for (let mtmp = gm.migrating_mons || game.migrating_mons || null; mtmp; mtmp = mtmp.nmon) {
         clear_bypass(mtmp.minvent || null);
     }
 
     // Clear bypass on mydogs (pets being led during level change)
-    for (let mtmp = gm.mydogs || null; mtmp; mtmp = mtmp.nmon) {
+    for (let mtmp = gm.mydogs || game.mydogs || null; mtmp; mtmp = mtmp.nmon) {
         clear_bypass(mtmp.minvent || null);
     }
 

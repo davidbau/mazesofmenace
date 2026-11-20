@@ -19,6 +19,10 @@ import { wiz_level_change, wiz_wish } from './wizcmds.js';
 import { ddoinv } from './invent.js';
 import { cmd_safety_prevention, nomul } from './hack.js';
 import { IS_DOOR, IS_FURNITURE } from './const.js';
+import { dovspell, docast } from './spell.js';
+import { dodiscovered } from './o_init.js';
+import { doattributes } from './insight.js';
+import { wiz_genesis } from './wizcmds.js';
 
 // C ref: cmd.c extcmds_match() -- the indices of the extcmdlist[]
 // entries matching findstr
@@ -183,6 +187,15 @@ export async function rhack(key) {
         /* C ref: cmd.c Cmd 'i' -> invent.c ddoinv(); ECMD_OK, no time */
         await ddoinv();
         game.context.move = 0;
+    } else if (ch === '+' || ch === '\\' || ch === '\x18' || ch === 'Z'
+               || (ch === '\x07' && game.flags?.debug)) {
+        /* C ref: cmd.c Cmd '+' dovspell(), '\\' dodiscovered(),
+           ^X doattributes(), 'Z' docast(), ^G (wizard mode) wiz_genesis();
+           ECMD_TIME takes a move */
+        const fn = (ch === '+') ? dovspell : (ch === '\\') ? dodiscovered
+                   : (ch === '\x18') ? doattributes
+                   : (ch === 'Z') ? docast : wiz_genesis;
+        game.context.move = ((await fn()) & 1) ? 1 : 0;
     } else {
         /* every other command is not ported yet ('#' doextcmd() and 's'
            dosearch() wait for the tutorial query, without which keys

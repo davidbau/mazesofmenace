@@ -19,9 +19,10 @@ import * as O from './objects.js';
 import { objects } from './objects.js';
 import { P_NONE, P_SHURIKEN, P_BOW, FIRE_RES, G_GONE, G_GENOD } from './const.js';
 import { rndmonst_adj } from './makemon.js';
-import { monsndx, little_to_big, big_to_little } from './mondata.js';
+import { monsndx, little_to_big, big_to_little, is_human } from './mondata.js';
 import * as M from './monsters.js';
 import { assign_candy_wrapper } from './read.js';
+import { noveltitle } from './do_name.js';
 import {
     mons, LOW_PM, SPECIAL_PM, G_UNIQ, G_NOGEN, G_HELL, G_NOHELL, G_NOCORPSE,
     M2_MALE, M2_FEMALE, M2_NEUTER, MZ_SMALL, S_TROLL,
@@ -33,6 +34,8 @@ import {
     PM_ETTIN_MUMMY, PM_ETTIN, PM_LIZARD, PM_LICHEN, PM_DEATH, PM_FAMINE,
     PM_PESTILENCE,
 } from './monsters.js';
+import { merged } from './invent.js';
+import { obj_no_longer_held } from './do.js';
 
 function impossible(msg) { console.error(`impossible: ${msg}`); }
 
@@ -577,7 +580,7 @@ export function add_to_minv(mon, obj) {
     if (!mon.minvent) mon.minvent = [];
     /* merge if possible (C walks the chain newest first) */
     for (const otmp of mon.minvent.slice().reverse())
-        if (merged_minv(otmp, obj))
+        if (merged({ otmp, obj }))
             return 1; /* obj merged and then free'd */
     /* else insert; don't bother forcing it to end of chain
        (JS minvent arrays are oldest first: newest goes last) */
@@ -585,30 +588,6 @@ export function add_to_minv(mon, obj) {
     obj.ocarry = mon;
     mon.minvent.push(obj);
     return 0; /* obj on mon's inventory chain */
-}
-
-// C ref: invent.c merged() -- only coin merging is ported; mergable()
-// for other objects is not
-function merged_minv(otmp, obj) {
-    if (obj === otmp || obj.otyp !== otmp.otyp
-        || obj.nomerge || otmp.nomerge || !objects[obj.otyp].oc_merge)
-        return false;
-    if (obj.oclass !== O.COIN_CLASS)
-        throw new Error('merged(): mergable() not ported yet');
-    /* coins of the same kind will always merge */
-    if (!obj.lamplit && !obj.globby)
-        otmp.age = Math.trunc(((otmp.age * otmp.quan) + (obj.age * obj.quan))
-                              / (otmp.quan + obj.quan));
-    if (!otmp.globby)
-        otmp.quan += obj.quan;
-    /* temporary special case for gold objects!!!! */
-    otmp.owt = weight(otmp);
-    otmp.bknown = 0;
-    if (!otmp.oname && obj.oname)
-        otmp.oname = obj.oname;
-    obj_extract_self(obj);
-    obj.where = 'OBJ_DELETED'; /* obfree(obj, otmp) */
-    return true;
 }
 
 // C ref: mkobj.c may_generate_eroded()
@@ -677,7 +656,8 @@ export function mksobj_at(otyp, x, y, init, artif) {
 // C ref: mkobj.c place_object() -- the level's floor object chain (fobj)
 // is game.level.objects, newest first; per-square piles are read from it
 // in the same order (boulder-first pile ordering isn't ported yet).
-function place_object(otmp, x, y) {
+export function place_object(otmp, x, y) {
+    obj_no_longer_held(otmp);
     otmp.ox = x;
     otmp.oy = y;
     otmp.where = 'OBJ_FLOOR';
@@ -1173,10 +1153,15 @@ function mksobj_init(otmp, artif) {
         case O.BAG_OF_TRICKS:
             otmp.spe = rn1(18, 3); /* 0..17 + 3 => 3..20 */
             break;
-        case O.FIGURINE:
-            not_ported('figurine monster type (rndmonnum_adj)');
+        case O.FIGURINE: {
+            let tryct = 0;
+            /* figurines are slightly harder monsters */
+            do
+                otmp.corpsenm = rndmonnum_adj(5, 10);
+            while (is_human(mons[otmp.corpsenm]) && tryct++ < 30);
             blessorcurse(otmp, 4);
             break;
+        }
         case O.BELL_OF_OPENING:
             otmp.spe = 3;
             break;
@@ -1230,8 +1215,14 @@ function mksobj_init(otmp, artif) {
             /* mk_artifact() with otmp and A_NONE will never return NULL */
             not_ported('mk_artifact()');
         }
-        /* simulate lacquered armor for samurai: Role_if(PM_SAMURAI) is
-           checked by role code that is not wired here yet */
+        /* simulate lacquered armor for samurai */
+        if (game.urole.mnum === M.PM_SAMURAI /* Role_if(PM_SAMURAI) */
+            && otmp.otyp === O.SPLINT_MAIL
+            && ((game.moves ?? 1) <= 1
+                || game.u.uz.dnum === game.dungeon_topology.d_quest_dnum)) {
+            /* In_quest(&u.uz) */
+            otmp.oerodeproof = otmp.rknown = 1;
+        }
         break;
     case WAND_CLASS:
         if (otmp.otyp === O.WAN_WISHING)
@@ -1351,10 +1342,17 @@ export function mksobj(otyp, init, artif) {
     case O.LEASH:
         otmp.leashmon = 0; /* overloads corpsenm, which was set to NON_PM */
         break;
-    case O.SPE_NOVEL:
-        otmp.novelidx = -1;
-        not_ported('noveltitle()');
+    case O.SPE_NOVEL: {
+        otmp.novelidx = -1; /* "none of the above"; will be changed */
+        const novidx = { v: otmp.novelidx };
+        const title = noveltitle(novidx);
+        otmp.novelidx = novidx.v;
+        /* otmp = oname(otmp, title, ONAME_NO_FLAGS): a novel is never an
+           artifact (no artilist[] entry has otyp SPE_NOVEL), so oname()
+           only does new_oname() + Strcpy(ONAME(otmp), title) */
+        otmp.oname = title;
         break;
+    }
     }
 
     /* unique objects may have an associated artifact entry */

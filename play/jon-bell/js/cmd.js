@@ -326,7 +326,7 @@ import { nxtobj, sobj_at } from './invent.js';
 import { place_lregion } from './mkmaze.js';
 import { In_hell, level_difficulty, u_on_newpos, u_on_rndspot, Is_special, shop_string } from './dungeon.js';
 import { u_on_upstairs, u_on_dnstairs, u_on_sstairs, stairway_find_from } from './stairs.js';
-import { ing_suffix, mungspaces, upstart, digit, letter, lowc, strsubst, visctrl } from './hacklib.js';
+import { ing_suffix, mungspaces, nh_snprintf, upstart, digit, letter, lowc, strsubst, visctrl } from './hacklib.js';
 import { wake_msg, set_ustuck, kill_genocided_monsters, hideunder, maybe_unhide_at, wake_nearto, setmangry, minliquid, egg_type_from_parent, rescham, iter_mons } from './mon.js';
 import { obj_ice_effects } from './mkobj.js';
 import { attach_fig_transform_timeout } from './timeout.js';
@@ -19562,7 +19562,7 @@ async function handler_rebind_keys_add(keyfirst) {
             ec = EXTCMDLIST[i - 1];
             if (ec.flags & 0x4000 /* CMD_PARAM */) {
                 const parambuf = mungspaces(await getlin(`Command ${ec.name} requires a parameter:`));
-                cmdstr = `${ec.name}(${parambuf})`;
+                cmdstr = nh_snprintf(null, BUFSZ - 1, '%s(%s)', ec.name, parambuf);
                 cmdstrFormatted = true;
             } else {
                 cmdstr = ec.name;

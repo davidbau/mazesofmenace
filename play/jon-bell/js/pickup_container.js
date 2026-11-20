@@ -967,8 +967,6 @@ async function menu_loot_takeout(box, eligible) {
  * rows are keyed by each object's OWN invlet, not by a fresh a/b/c run. */
 async function menu_loot_putin(eligible) {
     return await _menu_loot_items(game.invent, eligible, 'Put in', !!(game.flags?.invlet_constant ?? true));
-    return await _menu_loot_items(game.invent, eligible, 'Put in',
-                                  (game.flags?.invlet_constant ?? true) !== false);
 }
 /* The body shared by both directions.  `chainHead` is the nobj chain
  * query_objlist walks (container contents or gi.invent) and `contents` is the
@@ -1234,6 +1232,7 @@ export async function use_container_impl(cobjRef, held, more_containers) {
              * MENU_FULL (the default) the TYPE filter menu comes first. */
             g.pickup_encumbrance = 0;
             /* C pickup.c:3200-3201,3230-3260 traditional_loot(FALSE). */
+            add_valid_menu_class(0);
             let tradRetry = 0, tradDone = false;
             if (g.flags?.menu_style === MENU_TRADITIONAL) {
                 const q = await query_classes('take out', obj.cobj, false, true);
@@ -1249,7 +1248,7 @@ export async function use_container_impl(cobjRef, held, more_containers) {
                 : _menu_style_is_full()
                 ? await query_category_takeout(obj)
                 : _no_category_sel();
-            if (!sel.autopick && !sel.allCategories && sel.classes.size === 0) {
+            if (!tradRetry && !sel.autopick && !sel.allCategories && sel.classes.size === 0) {
                 /* C: return ECMD_OK from menu_loot — no menu, no cknown. */
             } else if (sel.autopick) {
                 /* C menu_loot autopick walks the container's internal nobj
@@ -1271,7 +1270,8 @@ export async function use_container_impl(cobjRef, held, more_containers) {
             } else {
                 const eligible = [];
                 for (let o = obj.cobj; o; o = o.nobj)
-                    if (_qc_allow(o, sel)) eligible.push(o);
+                    if (tradRetry === -3 ? allow_category(o) : _qc_allow(o, sel))
+                        eligible.push(o);
                 /* C pickup.c:3360 — `if (!put_in) current_container->cknown = 1`
                  * runs before query_objlist, i.e. whether or not the filter
                  * matches anything. */
@@ -1292,6 +1292,7 @@ export async function use_container_impl(cobjRef, held, more_containers) {
                     }
                 }
             }
+            add_valid_menu_class(0);
         }
     }
 
@@ -1406,6 +1407,7 @@ export async function use_container_impl(cobjRef, held, more_containers) {
             g.pickup_encumbrance = 0;
             /* C pickup.c:3200-3201 traditional_loot(FALSE), as in the
              * out-only path above. */
+            add_valid_menu_class(0);
             let tradRetry = 0, tradDone = false;
             if (g.flags?.menu_style === MENU_TRADITIONAL) {
                 const cc = g.current_container;
@@ -1423,7 +1425,7 @@ export async function use_container_impl(cobjRef, held, more_containers) {
                 : _menu_style_is_full()
                 ? await query_category_takeout(g.current_container)
                 : _no_category_sel();
-            if (!sel.autopick && !sel.allCategories && sel.classes.size === 0) {
+            if (!tradRetry && !sel.autopick && !sel.allCategories && sel.classes.size === 0) {
                 /* menu_loot cancelled before learning the contents */
             } else if (sel.autopick) {
                 g.current_container.cknown = 1;
@@ -1444,7 +1446,8 @@ export async function use_container_impl(cobjRef, held, more_containers) {
                 const box = g.current_container;
                 const eligible = [];
                 for (let o = box.cobj; o; o = o.nobj)
-                    if (_qc_allow(o, sel)) eligible.push(o);
+                    if (tradRetry === -3 ? allow_category(o) : _qc_allow(o, sel))
+                        eligible.push(o);
                 box.cknown = 1;
                 if (eligible.length) {
                     const selected = await menu_loot_takeout(box, eligible);
@@ -1461,6 +1464,7 @@ export async function use_container_impl(cobjRef, held, more_containers) {
                     }
                 }
             }
+            add_valid_menu_class(0);
         }
     }
 

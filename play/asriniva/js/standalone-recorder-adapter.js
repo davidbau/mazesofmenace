@@ -29,9 +29,20 @@ export async function runSegment(input,{preservePublishedSaveCursor=true}={}){
   if(isolatedWorker)for(const name of names)delete globalThis[name];
   for(const name of names)Object.defineProperty(globalThis,name,{configurable:true,value:name==='WebAssembly'?new Proxy({},{get:deny}):deny});
   const[{createStandaloneProgram},{CExit}]=await Promise.all([import('./nethack/program.js'),import('./nethack/functions.js')]);
-  program=createStandaloneProgram({layouts,terminalOptions:{preservePublishedSaveCursor},assets:installed,directories:[profile.home,'/nethack/save'],runtime:{now:()=>epoch*1000,timeZone:profile.timeZone,initialBytes:1024,maximumBytes:128*1024*1024,environment:env},readKey(){if(keyIndex>=moves.length)throw exhausted;const key=moves.charCodeAt(keyIndex++);return key===13?10:key;}});
+  program=createStandaloneProgram({layouts,terminalOptions:{preservePublishedSaveCursor},assets:installed,directories:[profile.home,'/nethack/save'],runtime:{filesystem:{caseInsensitiveDirectory:'/nethack/save'},now:()=>epoch*1000,timeZone:profile.timeZone,initialBytes:1024,maximumBytes:128*1024*1024,environment:env},readKey(){if(keyIndex>=moves.length)throw exhausted;const key=moves.charCodeAt(keyIndex++);return key===13?10:key;}});
   program.environment.filesystem.chdir('/nethack');const baseline=program.environment.fileBaseline();if(previous)program.environment.restoreFiles(previous);
-  const name=/(?:^|[=\s,])name\s*:\s*([^,\n]+)/im.exec(input.nethackrc??'')?.[1]?.trim()||'';
+  let name = '';
+  // Match the recorder's -u selection from OPTIONS lines, including an empty first name.
+  for (const rawLine of (input.nethackrc ?? '').split('\n')) {
+   const line = rawLine.trim();
+   if (!/^OPTIONS ?=/i.test(line)) continue;
+   const option = line.slice(line.indexOf('=') + 1).split(',')
+    .map(value => value.trim()).find(value => /^name:/i.test(value));
+   if (option !== undefined) {
+    name = option.slice(5).trim();
+    break;
+   }
+  }
   try{const status=program.run(['-u',name],{programName:'nethack'});if(status)throw Error('Standalone recorder exited with status '+status);}catch(e){if(e!==exhausted&&!(e instanceof CExit&&e.status===0))throw e;}
   try{rng=new TextDecoder().decode(program.environment.filesystem.readFile('/rng.log')).split('\n').filter(Boolean).map(line=>line.replace(/^\d+\s+/,'').replace(/\s*=\s*/g,'='));}catch(e){if(e.code!=='ENOENT')throw e;}
   for(const frame of program.terminal.frames){const value={screen:frame.screen,cursor:frame.cursor};if(frame.animation)pending.push(value);else{screens.push(value.screen);cursors.push(value.cursor);animations.push(pending);pending=[];}}

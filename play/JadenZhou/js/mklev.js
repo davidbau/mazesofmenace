@@ -22,8 +22,10 @@ import { nhl_init, nhl_loadlua, nhl_done, nhl_pcall_handle,
          NHLpa_panic, NHLpa_impossible } from './nhlua.js';
 import { litstate_rnd } from './mkmap.js';
 import { make_engr_at, wipe_engr_at, make_grave, random_engraving } from './engrave.js';
-import { create_des_coder, reset_xystart_size, fill_special_room, inside_room } from './sp_lev.js';
+import { create_des_coder, reset_xystart_size, fill_special_room, inside_room,
+         SPLEV_LEFT, SPLEV_CENTER, SPLEV_RIGHT, TOP, BOTTOM } from './sp_lev.js';
 import { getbones } from './bones.js';
+import { set_wall_state } from './display.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -958,9 +960,71 @@ export function create_room(x, y, w, h, xal, yal, rtype, rlit) {
             wtmp = ddx.v + 1;
             htmp = ddy.v + 1;
             r2 = { lx: xabs - 1, ly: yabs - 1, hx: xabs + wtmp, hy: yabs + htmp };
-        } else {
-            // positioned room (not used for seed8000)
-            return false;
+        } else { /* Only some parameters are random */
+            let rndpos = 0;
+
+            if (xtmp < 0 && ytmp < 0) { /* Position is RANDOM */
+                xtmp = rnd(5);
+                ytmp = rnd(5);
+                rndpos = 1;
+            }
+            if (wtmp < 0 || htmp < 0) { /* Size is RANDOM */
+                wtmp = rn1(15, 3);
+                htmp = rn1(8, 2);
+            }
+            if (xaltmp === -1) /* Horizontal alignment is RANDOM */
+                xaltmp = rnd(3);
+            if (yaltmp === -1) /* Vertical alignment is RANDOM */
+                yaltmp = rnd(3);
+
+            /* Try to generate real (absolute) coordinates here! */
+
+            xabs = Math.trunc(((xtmp - 1) * COLNO) / 5) + 1;
+            yabs = Math.trunc(((ytmp - 1) * ROWNO) / 5) + 1;
+            switch (xaltmp) {
+            case SPLEV_LEFT:
+                break;
+            case SPLEV_RIGHT:
+                xabs += Math.trunc(COLNO / 5) - wtmp;
+                break;
+            case SPLEV_CENTER:
+                xabs += Math.trunc((Math.trunc(COLNO / 5) - wtmp) / 2);
+                break;
+            }
+            switch (yaltmp) {
+            case TOP:
+                break;
+            case BOTTOM:
+                yabs += Math.trunc(ROWNO / 5) - htmp;
+                break;
+            case SPLEV_CENTER:
+                yabs += Math.trunc((Math.trunc(ROWNO / 5) - htmp) / 2);
+                break;
+            }
+
+            if (xabs + wtmp - 1 > COLNO - 2)
+                xabs = COLNO - wtmp - 3;
+            if (xabs < 2)
+                xabs = 2;
+            if (yabs + htmp - 1 > ROWNO - 2)
+                yabs = ROWNO - htmp - 3;
+            if (yabs < 2)
+                yabs = 2;
+
+            /* Try to find a rectangle that fit our room ! */
+
+            r2 = { lx: xabs - 1, ly: yabs - 1,
+                   hx: xabs + wtmp + rndpos, hy: yabs + htmp + rndpos };
+            r1 = get_rect(r2);
+
+            /* check_room() may move xabs/yabs; C leaves wtmp/htmp as is */
+            const lowx = { v: xabs }, ddx = { v: wtmp };
+            const lowy = { v: yabs }, ddy = { v: htmp };
+            if (r1 && !check_room(lowx, ddx, lowy, ddy, vault)) {
+                r1 = null;
+            }
+            xabs = lowx.v;
+            yabs = lowy.v;
         }
     } while (++trycnt <= 100 && !r1);
     if (!r1) return false;
@@ -2710,7 +2774,7 @@ function bound_digging() {
         }
 }
 
-function set_wall_state() { /* no-op for contest */ }
+/* set_wall_state(): display.c, in display.js */
 
 function level_finalize_topology() {
     bound_digging();

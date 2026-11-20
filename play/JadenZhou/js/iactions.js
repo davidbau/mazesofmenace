@@ -1008,7 +1008,7 @@ export async function itemactions(otmp) {
         act = res.selected[0].item;
         itemactions_pushkeys(otmp, act);
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
 
     /* finish the 'i' command:  no time elapses and cancelling without
        selecting an action doesn't matter */

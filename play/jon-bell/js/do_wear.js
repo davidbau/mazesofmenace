@@ -59,7 +59,7 @@ import { y_monnam, x_monnam } from './do_name.js';
 import { float_vs_flight, body_part } from './polyself.js';
 import { breakarm, num_horns, can_be_strangled } from './mondata.js';
 import { ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION } from './const.js';
-import { s_suffix, sgn } from './hacklib.js';
+import { nh_snprintf, s_suffix, sgn } from './hacklib.js';
 import { hcolor } from './mhitm.js';
 import { hliquid } from './do_name.js';
 import { Breathless, region_danger, key2txt } from './cmd.js';
@@ -832,7 +832,7 @@ export async function wielding_corpse(obj, how, voluntary) {
             ? gloves_simple_name(how)
             : petrify_simpleonames(how).replace('set of ', '')}`
         : 'resistance timing out';
-    await corpse_instapetrify(`${hbuf} while wielding ${petrify_killer_xname(obj)}`.slice(0, BUFSZ - 1)); /* Snprintf(kbuf, sizeof kbuf) */
+    await corpse_instapetrify(nh_snprintf(null, BUFSZ, '%s while wielding %s', hbuf, petrify_killer_xname(obj))); /* Snprintf(kbuf, sizeof kbuf) */
     if (!stone_resistant())
         await remove_worn_item(obj, false);
 }

@@ -2,6 +2,7 @@
 // hacklib.js — Utility functions.
 // C ref: hacklib.c, dungeon.c helpers
 import { game } from './gstate.js';
+import { nh_sprintf } from './strutil.js';
 export { deepest_lev_reached, depth } from './dungeon.js'; // relocate-fns
 export { isok } from './const.js';
 
@@ -764,4 +765,13 @@ export function what_datamodel_is_this(retidx, szshort, szint, szlong, szll, szp
             return model[retidx === 0 ? 5 : 6];
     }
     return 'Unknown';
+}
+
+/* C ref: hacklib.c:854-875 — nh_snprintf(func, line, str, size, fmt, ...):
+ * bounded vsnprintf wrapper that always NUL-terminates within size bytes
+ * (at most size - 1 characters). */
+export function nh_snprintf(_str, size, fmt, ...args) {
+    const max = Math.max(0, (size >>> 0) - 1);
+    const out = c_string(nh_sprintf(c_string(String(fmt)), args));
+    return out.slice(0, max);
 }

@@ -26,16 +26,25 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import {
     lua_error, lua_type, LUA_TFUNCTION, luaL_checkinteger, luaL_checkstring,
-    splev_chr2typ, nhl_pcall_handle, NHLpa_impossible,
+    luaL_checkoption, splev_chr2typ, nhl_pcall_handle, NHLpa_impossible,
+    LuaUserdata,
 } from './nhlua.js';
 import {
     COLNO, ROWNO, isok, ROOMOFFSET, MAX_TYPE, MATCH_WALL, IS_STWALL,
-    INVALID_TYPE,
+    INVALID_TYPE, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, W_RANDOM,
 } from './const.js';
-import { update_croom, cvt_to_relcoord } from './sp_lev.js';
+import { update_croom, cvt_to_relcoord, random_wdir } from './sp_lev.js';
 
-// C ref: selvar.h struct selectionvar — a Lua "selection" userdata.
-class Selvar {}
+// C ref: selvar.h struct selectionvar — a Lua "selection" userdata
+// (nhlsel.c l_selection_push_new: luaL_setmetatable(L, "selection")).
+// l_selection_register() makes Selvar a LuaUserdata subclass (a static
+// 'extends' would be evaluated during the nhlua.js/selvar.js import cycle).
+const selection_metatable = { __name: 'selection' };
+class Selvar {
+    constructor() {
+        this.metatable = selection_metatable;
+    }
+}
 
 // C ref: selvar.c selection_new()
 export function selection_new() {
@@ -313,6 +322,67 @@ export function selection_rndcoord(ov, c, removeit) {
     return 0;
 }
 
+// C ref: selvar.c selection_do_grow()
+export function selection_do_grow(ov, dir) {
+    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
+
+    if (!ov)
+        return;
+
+    const tmp = selection_new();
+
+    if (dir === W_RANDOM)
+        dir = random_wdir();
+
+    selection_getbounds(ov, rect);
+
+    for (let x = Math.max(0, rect.lx - 1); x <= Math.min(COLNO - 1, rect.hx + 1); x++)
+        for (let y = Math.max(0, rect.ly - 1); y <= Math.min(ROWNO - 1, rect.hy + 1); y++) {
+            /* note:  dir is a mask of multiple directions, but the only
+               way to specify diagonals is by including the two adjacent
+               orthogonal directions, which effectively specifies three-
+               way growth [WEST|NORTH => WEST plus WEST|NORTH plus NORTH] */
+            if (((dir & W_WEST) && selection_getpoint(x + 1, y, ov))
+                || (((dir & (W_WEST | W_NORTH)) === (W_WEST | W_NORTH))
+                    && selection_getpoint(x + 1, y + 1, ov))
+                || ((dir & W_NORTH) && selection_getpoint(x, y + 1, ov))
+                || (((dir & (W_NORTH | W_EAST)) === (W_NORTH | W_EAST))
+                    && selection_getpoint(x - 1, y + 1, ov))
+                || ((dir & W_EAST) && selection_getpoint(x - 1, y, ov))
+                || (((dir & (W_EAST | W_SOUTH)) === (W_EAST | W_SOUTH))
+                    && selection_getpoint(x - 1, y - 1, ov))
+                || ((dir & W_SOUTH) && selection_getpoint(x, y - 1, ov))
+                || (((dir & (W_SOUTH | W_WEST)) === (W_SOUTH | W_WEST))
+                    && selection_getpoint(x + 1, y - 1, ov))) {
+                selection_setpoint(x, y, tmp, 1);
+            }
+        }
+
+    selection_getbounds(tmp, rect);
+
+    for (let x = rect.lx; x <= rect.hx; x++)
+        for (let y = rect.ly; y <= rect.hy; y++)
+            if (selection_getpoint(x, y, tmp))
+                selection_setpoint(x, y, ov, 1);
+
+    selection_free(tmp, true);
+}
+
+// C ref: selvar.c selection_iterate()
+export function selection_iterate(ov, func, arg) {
+    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
+
+    if (!ov)
+        return;
+
+    selection_getbounds(ov, rect);
+
+    for (let x = rect.lx; x <= rect.hx; x++)
+        for (let y = rect.ly; y <= rect.hy; y++)
+            if (isok(x, y) && selection_getpoint(x, y, ov))
+                func(x, y, arg);
+}
+
 // C ref: selvar.c selection_from_mkroom()
 export function selection_from_mkroom(croom) {
     const sel = selection_new();
@@ -334,7 +404,7 @@ export function selection_from_mkroom(croom) {
 // --- nhlsel.c: the Lua binding ---
 
 // C ref: nhlsel.c l_selection_check()
-function l_selection_check(v) {
+export function l_selection_check(v) {
     /* luaL_checktype(L, index, LUA_TUSERDATA); luaL_checkudata() */
     if (!(v instanceof Selvar))
         lua_error('selection expected');
@@ -462,6 +532,21 @@ function l_selection_getbounds(...args) {
     return { lx: rect.lx, ly: rect.ly, hx: rect.hx, hy: rect.hy };
 }
 
+// C ref: nhlsel.c l_selection_grow()
+/* local s = selection.grow(sel); */
+/* local s = selection.grow(sel, "north"); */
+function l_selection_grow(...args) {
+    const growdirs = ['all', 'random', 'north', 'west', 'east', 'south'];
+    const growdirs2i = [W_ANY, W_RANDOM, W_NORTH, W_WEST, W_EAST, W_SOUTH, 0];
+
+    l_selection_check(args[0]);
+    const dir = growdirs2i[luaL_checkoption(args[1], 'all', growdirs)];
+
+    const sel = l_selection_clone(args[0]);
+    selection_do_grow(sel, dir);
+    return sel;
+}
+
 // C ref: nhlsel.c l_selection_filter_mapchar()
 /* local s = selection.filter_mapchar(sel, mapchar, lit); */
 function l_selection_filter_mapchar(...args) {
@@ -543,9 +628,14 @@ export function l_selection_register(L) {
     selection.percentage = l_selection_filter_percent;
     selection.rndcoord = l_selection_rndcoord;
     selection.filter_mapchar = l_selection_filter_mapchar;
+    selection.grow = l_selection_grow;
     selection.iterate = (...args) => l_selection_iterate(L, args);
     selection.bounds = l_selection_getbounds;
     selection.room = l_selection_room;
+
+    /* luaL_newmetatable(L, "selection"): selections are userdata */
+    Object.setPrototypeOf(Selvar.prototype, LuaUserdata.prototype);
+    selection_metatable.__index = selection;
 
     /* metatable.__index points at the selection method table:
        sel:fn(...) is selection.fn(sel, ...) */
