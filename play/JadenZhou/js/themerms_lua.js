@@ -15,7 +15,7 @@
 
 import { game } from './gstate.js';
 import { withRngCaller } from './rng.js';
-import { lua_error } from './nhlua.js';
+import { lua_error, lua_callmeth } from './nhlua.js';
 
 // The des.map() maps, verbatim from themerms.lua.
 const MAP_L_shaped = `-----xxx
@@ -303,7 +303,7 @@ export function themerms_lua(L) {
             name: 'Buried treasure',
             contents: function(rm) {
                 des.object({ id: 'chest', buried: true, contents: function(otmp) {
-                    const xobj = otmp.totable();
+                    const xobj = lua_callmeth(otmp, 'totable');
                     // keep track of the last buried treasure
                     if (xobj.NO_OBJ === undefined) {
                         postprocess.push({ handler: G.make_dig_engraving,
@@ -331,8 +331,8 @@ export function themerms_lua(L) {
                     shuffle(zombifiable);
                     const o = des.object({ id: 'corpse', montype: zombifiable[0],
                                            buried: true });
-                    o.stop_timer('rot-corpse');
-                    o.start_timer('zombify-mon', withRngCaller(
+                    lua_callmeth(o, 'stop_timer', 'rot-corpse');
+                    lua_callmeth(o, 'start_timer', 'zombify-mon', withRngCaller(
                         'random src=nhlib.lua:10 parent=contents(themerms.lua:167)',
                         () => G.math.random(990, 1010)));
                 }
@@ -362,7 +362,11 @@ export function themerms_lua(L) {
                 for (let i = 1, n = d(5, 5); i <= n; i++) {
                     des.object({ id: 'statue' });
                 }
-                for (let i = 1, n = d(3); i <= n; i++) {
+                // d(3) tail-calls math.random: tagged with this frame
+                const n3 = withRngCaller(
+                    'nh.random src=nhlib.lua:10 parent=contents(themerms.lua:197)',
+                    () => d(3));
+                for (let i = 1, n = n3; i <= n; i++) {
                     des.trap('statue');
                 }
             },
@@ -666,7 +670,7 @@ export function themerms_lua(L) {
                     const itm = G.obj.new(escape_items[withRngCaller(
                         'random src=nhlib.lua:8 parent=lua(themerms.lua:793)',
                         () => G.math.random(escape_items.length)) - 1]);
-                    const itmcls = itm.class();
+                    const itmcls = lua_callmeth(itm, 'class');
                     let box;
                     if (itmcls.material === 'glass') {
                         // explicitly force chest to be unlocked
@@ -676,7 +680,7 @@ export function themerms_lua(L) {
                         // accept random locked/unlocked state
                         box = des.object({ id: 'chest', coord: chest_spots[0] });
                     }
-                    box.addcontent(itm);
+                    lua_callmeth(box, 'addcontent', itm);
                     for (let i = 2; i <= chest_spots.length; i++) {
                         des.object({ id: 'chest', coord: chest_spots[i - 1] });
                     }

@@ -1,4 +1,4 @@
-// js/crt/scanf.js: sscanf / fscanf (transpiler-design.md 5). Hand-written runtime.
+// js/crt/scanf.js: sscanf / fscanf (method/design.md 5). Hand-written runtime.
 // Darwin (FreeBSD) vfscanf semantics for the conversions NetHack uses:
 // %d %i %u %o %x %c %s %[...] %n with widths, the h/hh/l/ll/z size modifiers,
 // %% and *, whitespace and literal matching. Returns the number of

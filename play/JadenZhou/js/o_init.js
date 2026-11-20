@@ -20,7 +20,7 @@ import {
     LAST_REAL_GEM, TURQUOISE, AQUAMARINE, FLUORITE, SAPPHIRE, DIAMOND, EMERALD,
     HELMET, HELM_OF_TELEPATHY, LEATHER_GLOVES, GAUNTLETS_OF_DEXTERITY,
     CLOAK_OF_PROTECTION, CLOAK_OF_DISPLACEMENT, SPEED_BOOTS, LEVITATION_BOOTS,
-    POT_WATER, WAN_NOTHING,
+    POT_WATER, WAN_NOTHING, FIRST_OBJECT,
 } from './objects.js';
 
 // C's panic() (end.c), impossible() and raw_printf() (pline.c) are not
@@ -335,4 +335,37 @@ export function objdescr_is(obj, descr) {
 // call this one.)
 export function oinit() {
     setgemprobs(game.u.uz);
+}
+
+// C ref: o_init.c observe_object() -- make the object dknown and mark it as
+// encountered
+export function observe_object(obj, Hallucination) {
+    const oindx = obj.otyp;
+
+    /* skip for generic objects and for STRANGE_OBJECT */
+    if (oindx >= FIRST_OBJECT && !Hallucination) {
+        obj.dknown = 1;
+        discover_object(oindx, FALSE, TRUE, FALSE);
+    }
+}
+
+// C ref: o_init.c discover_object() -- the known/encountered flags; the
+// disco[] discoveries list (and so the Samurai Japanese_item_name() case,
+// which only adds to it) is not ported yet
+export function discover_object(oindx, mark_as_known, mark_as_encountered,
+                                credit_hero) {
+    if (oindx < FIRST_OBJECT) /* don't discover generic objects */
+        return;
+
+    if ((!objects[oindx].oc_name_known && mark_as_known)
+        || (!objects[oindx].oc_encountered && mark_as_encountered)) {
+        if (mark_as_encountered)
+            objects[oindx].oc_encountered = 1;
+
+        if (!objects[oindx].oc_name_known && mark_as_known) {
+            objects[oindx].oc_name_known = 1;
+            if (credit_hero)
+                throw new Error('discover_object(): exercise(A_WIS) credit not ported yet');
+        }
+    }
 }

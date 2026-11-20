@@ -1,5 +1,5 @@
 // js/jsmain.js: glue between the contest API and the transpiled NetHack
-// (transpiler-design.md 8.3). Hand-written; replaced the template skeleton
+// (method/design.md 8.3). Hand-written; replaced the template skeleton
 // when the generated build first ran end to end (decision D5).
 //
 // One segment = one run of the recorder's process (js/nhprocess.js), and we

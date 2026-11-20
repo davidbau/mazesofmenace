@@ -12,7 +12,9 @@ export function makeLocation() {
         lit: false,        // is this cell lit?
         waslit: false,     // was this cell lit last time we checked?
         flags: 0,          // door flags, wall flags, etc.
-        doormask: 0,       // door state (D_NODOOR, D_CLOSED, etc.)
+        // C ref: rm.h #define doormask flags -- door state is the flags field
+        get doormask() { return this.flags; },
+        set doormask(v) { this.flags = v; },
         seenv: 0,          // which angles the hero has seen this wall from
         horizontal: false, // is this a horizontal wall?
         edge: false,       // is this at the edge of the map?

@@ -1,5 +1,5 @@
 // js/crt/mem.js: pointer representations of the object world
-// (transpiler-design.md 3.3). Hand-written runtime.
+// (method/design.md 3.3). Hand-written runtime.
 
 import { CTrap } from './int.js';
 

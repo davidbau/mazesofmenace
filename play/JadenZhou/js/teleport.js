@@ -6,11 +6,16 @@
 // teleport.c.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rnl } from './rng.js';
+import { pline } from './display.js';
+import { tty_getlin } from './wintty.js';
+import { In_endgame, In_quest, In_mines, TELEPORT_CONTROL, STUNNED, CONFUSION } from './const.js';
+import { dunlevs_in_dungeon, In_hell, depth, get_level, on_level } from './dungeon.js';
+import { schedule_goto, UTOTYPE_NONE } from './do.js';
 import {
     COLNO, ROWNO, ZAP_POS, isok, GP_ALLOW_XY, GP_CHECKSCARY, NO_MM_FLAGS,
     CC_NO_FLAGS, CC_INCL_CENTER, CC_UNSHUFFLED, CC_RING_PAIRS, CC_SKIP_MONS,
-    CC_SKIP_INACCS,
+    CC_SKIP_INACCS, RLOC_NOMSG,
 } from './const.js';
 import { mons } from './monsters.js';
 import { set_mon_data } from './mondata.js';
@@ -207,6 +212,11 @@ export function mnexto(mtmp, rlocflags) {
     return;
 }
 
+// C ref: teleport.c rloc_to()
+export function rloc_to(mtmp, x, y) {
+    rloc_to_flag(mtmp, x, y, RLOC_NOMSG);
+}
+
 // C ref: teleport.c rloc_to_flag()
 // Only the map bookkeeping is ported; display updates, steed/ustuck
 // handling and the relocation messages are not ported yet.
@@ -214,4 +224,137 @@ function rloc_to_flag(mtmp, x, y, rlocflags) {
     mtmp.mx = x;
     mtmp.my = y;
     place_monster(mtmp, x, y); /* put monster down */
+}
+
+// C ref: teleport.c level_tele() -- the prompt for the destination; the
+// teleport itself (schedule_goto()/goto_level()), random_levtport, the
+// wizard-mode level menu and lev_by_name() are not ported yet
+export async function level_tele() {
+    const g = game;
+    const u = g.u;
+    const wizard = !!g.flags?.debug;
+    let newlev = 0;
+    let buf = '';
+
+    if ((u.uhave?.amulet || In_endgame(u.uz) /* || In_sokoban(&u.uz) */)
+        && !wizard) {
+        await pline("You feel very disoriented for a moment."); /* You_feel() */
+        return;
+    }
+    const Teleport_control = !!(u.uprops[TELEPORT_CONTROL]?.intrinsic
+                                || u.uprops[TELEPORT_CONTROL]?.extrinsic);
+    const Stunned = !!(u.uprops[STUNNED]?.intrinsic || u.uprops[STUNNED]?.extrinsic);
+    const Confusion = !!(u.uprops[CONFUSION]?.intrinsic || u.uprops[CONFUSION]?.extrinsic);
+    if ((Teleport_control && !Stunned) || wizard) {
+        let qbuf = "To what level do you want to teleport?";
+        let trycnt = 0;
+        const digit = (c) => c >= '0' && c <= '9';
+
+        do {
+            /* iflags.menu_requested ('m ^V') is not ported yet */
+            if (++trycnt === 2) {
+                if (wizard)
+                    qbuf += " [type a number, name, or ? for a menu]";
+                else
+                    qbuf += " [type a number or name]";
+            }
+            buf = await tty_getlin(qbuf);
+            if (buf === "*") {
+                return; /* goto random_levtport -- not ported yet */
+            } else if (Confusion && rnl(5)) {
+                await pline("Oops...");
+                return; /* goto random_levtport -- not ported yet */
+            } else if (buf === "\x1b") { /* cancelled */
+                return;
+            }
+            if (!/^-?\d+$/.test(buf))
+                return; /* '?' menu and lev_by_name() -- not ported yet */
+            newlev = parseInt(buf, 10); /* atoi() */
+        } while (!newlev && !digit(buf[0])
+                 && (buf[0] !== '-' || !digit(buf[1])) && trycnt < 10);
+
+        /* no dungeon escape via this route */
+        if (newlev === 0)
+            throw new Error('level_tele(): "Go to Nowhere" not ported yet');
+
+        /* if in Knox and the requested level > 0, stay put.
+         * we let negative values requests fall into the "heaven" loop.
+         */
+        /* single_level_branch(): Is_knox() */
+        if (g.dungeon_topology.d_knox_level
+            && on_level(u.uz, g.dungeon_topology.d_knox_level) && newlev > 0)
+            throw new Error('level_tele(): single_level_branch() not ported yet');
+        /* if in Quest, the player sees "Home 1", etc., on the status
+         * line, instead of the logical depth of the level.  controlled
+         * level teleport request is likely to be relativized to the
+         * status line, and consequently it should be incremented to
+         * the value of the logical depth of the target level.
+         *
+         * we let negative values requests fall into the "heaven" handling.
+         */
+        if (In_quest(u.uz) && newlev > 0)
+            newlev = newlev + g.dungeons[u.uz.dnum].depth_start - 1;
+    } else { /* involuntary level tele */
+        /* random_levtport: random_teleport_level() -- not ported yet */
+        throw new Error('level_tele(): random_levtport not ported yet');
+    }
+
+    /* u.utrap && u.utraptype == TT_BURIEDBALL: punishment not ported */
+
+    /* if (!next_to_u() && !force_dest): leashed pets aren't ported yet;
+       next_to_u() is TRUE without them */
+    if (In_endgame(u.uz)) /* must already be wizard */
+        throw new Error('level_tele(): level teleport in the endgame not ported yet');
+
+    /* svk.killer.name[0] = 0: still alive, so far... */
+
+    if (newlev < 0)
+        throw new Error('level_tele(): teleporting above the dungeon not ported yet');
+
+    /* escape_by_flying, force_dest (wizard menu): not reached */
+    const newlevel = { dnum: 0, dlevel: 0 };
+    const topo = g.dungeon_topology;
+    if (u.uz.dnum === topo.d_medusa_level.dnum
+        && newlev >= g.dungeons[u.uz.dnum].depth_start
+                     + dunlevs_in_dungeon(u.uz)) {
+        throw new Error('level_tele(): find_hell() not ported yet');
+    } else {
+        /* FIXME: we should avoid using hard-coded knowledge of
+           which branches don't connect to anything deeper;
+           mainly used to distinguish "can't get there from here"
+           vs "from anywhere" rather than to control destination */
+        const qbranch = In_quest(u.uz) ? topo.d_qstart_level
+                        : In_mines(u.uz) ? topo.d_mineend_level
+                          : topo.d_sanctum_level;
+        let deepest = g.dungeons[qbranch.dnum].depth_start
+                      + dunlevs_in_dungeon(qbranch) - 1;
+
+        /* if invocation did not yet occur, teleporting into
+         * the last level of Gehennom is forbidden.
+         */
+        if (!wizard && In_hell(u.uz) && !u.uevent?.invoked
+            && newlev >= deepest) {
+            newlev = deepest - 1;
+            await pline("Sorry...");
+        }
+        /* no teleporting out of quest dungeon */
+        if (In_quest(u.uz) && newlev < depth(topo.d_qstart_level))
+            newlev = depth(topo.d_qstart_level);
+        /* the player thinks of levels purely in logical terms, so
+         * we must translate newlev to a number relative to the
+         * current dungeon.
+         */
+        get_level(newlevel, newlev);
+
+        if (on_level(newlevel, u.uz) && newlev !== depth(u.uz)) {
+            /* You_cant(get_there_from, ...) */
+            await pline(`You can't get there from ${(newlev > deepest)
+                                                    ? "anywhere" : "here"}.`);
+            return;
+        }
+    }
+
+    schedule_goto(newlevel, UTOTYPE_NONE, null,
+                  g.flags.verbose ? "You materialize on a different level!"
+                                  : null);
 }

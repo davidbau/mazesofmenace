@@ -1,4 +1,4 @@
-// js/crt/heaplibc.js: libc for heap-world code (transpiler-design.md 7).
+// js/crt/heaplibc.js: libc for heap-world code (method/design.md 7).
 // Hand-written runtime.
 //
 // Heap-world modules call these with heap addresses (Numbers) directly, with no
@@ -123,7 +123,7 @@ export const __stdinp = H.data(8), __stdoutp = H.data(8), __stderrp = H.data(8);
 
 // ---------- math (Darwin libm; JS Math is correctly rounded where libm is for
 // sqrt, floor, ceil, fabs, fmod; the transcendental functions may differ in
-// the last place: transpiler-design.md risk R5, not reached by recorded games) ----------
+// the last place: method/design.md risk R5, not reached by recorded games) ----------
 export const abs = (x) => (x < 0 ? -x | 0 : x);
 export const fabs = Math.abs, floor = Math.floor, ceil = Math.ceil, sqrt = Math.sqrt;
 export const fmod = (x, y) => x % y;

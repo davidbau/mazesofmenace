@@ -6,6 +6,15 @@
 
 import * as M from './monsters.js';
 import { game } from './gstate.js';
+import { strncmpi, strcmpi, strstri } from './hacklib.js';
+import { NON_PM, MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
+         FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
+         ACID_RES, STONE_RES, DRAIN_RES, ANTIMAGIC, BLND_RES, ALL_TRAPS,
+         NO_TRAP, W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP, W_ARMC,
+       } from './const.js';
+import { objects, ALCHEMY_SMOCK, WEAPON_CLASS } from './objects.js';
+import { is_weptool } from './mkobj.js';
+import { title_to_mon } from './botl.js';
 import {
     mons, NATTK, AT_ANY, AD_DRLI, M1_FLY, M1_SWIM, M1_WALLWALK, M1_NOEYES,
     M1_REGEN, M1_SEE_INVIS, M1_TPORT, M1_TPORT_CNTRL, M2_UNDEAD, M2_WERE,
@@ -14,7 +23,7 @@ import {
     PM_FLOATING_EYE, PM_MIND_FLAYER, PM_MASTER_MIND_FLAYER, PM_BAT,
     PM_GIANT_BAT, PM_VAMPIRE_BAT, PM_STALKER, PM_BLACK_LIGHT, PM_DEATH,
     PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER, PM_GRAY_DRAGON,
-    PM_YELLOW_DRAGON, LOW_PM,
+    PM_YELLOW_DRAGON, LOW_PM, AD_MAGM, AD_RBRE,
 } from './monsters.js';
 
 // C ref: mondata.h monsndx(ptr) -- ((ptr)->pmidx)
@@ -144,6 +153,142 @@ export function defended(mon, adtyp) {
     return false;
 }
 
+// C ref: monst.h mon_resistancebits()
+function mon_resistancebits(mon) {
+    return (mon.data.mresists | (mon.mextrinsics ?? 0)
+            | (mon.mintrinsics ?? 0));
+}
+
+// C ref: mondata.c Resists_Elem()
+/* returns True if monster resists the given element (property index) */
+export function Resists_Elem(mon, propindx) {
+    const g = game, u = g.u;
+    const is_you = (mon === g.youmonst);
+    let u_resist = 0, damgtype = 0, rsstmask = 0;
+
+    switch (propindx) {
+    case FIRE_RES:   /* 1 */
+    case COLD_RES:   /* 2 */
+    case SLEEP_RES:  /* 3 */
+    case DISINT_RES: /* 4 */
+    case SHOCK_RES:  /* 5 */
+    case POISON_RES: /* 6 */
+    case ACID_RES:   /* 7 */
+    case STONE_RES:  /* 8 */
+        damgtype = propindx + 1; /* valid for propindx 1..8, damgtype 2..9 */
+        rsstmask = 1 << (propindx - 1); /* valid for propindx 1..8 */
+        u_resist = u.uprops[propindx].intrinsic
+                   || u.uprops[propindx].extrinsic;
+        break;
+
+    /* accept these, but we expect callers to use their routines directly */
+    case ANTIMAGIC:
+        return resists_magm(mon);
+    case DRAIN_RES:
+        return resists_drli(mon);
+    case BLND_RES:
+        throw new Error('Resists_Elem(): resists_blnd() not ported yet');
+
+    default:
+        /* impossible("Resists_Elem(%d), unexpected property type") */
+        return false;
+    }
+
+    if (is_you ? u_resist : ((mon_resistancebits(mon) & rsstmask) !== 0))
+        return true;
+    /* check for resistance granted by wielded weapon */
+    let o = is_you ? g.uwep : mon.mw;
+    if (o && o.oartifact)
+        throw new Error('Resists_Elem(): artifact defends() not ported yet');
+    /* check for resistance granted by worn or carried items */
+    let slotmask = W_ARMOR | W_ACCESSORY;
+    if (!is_you /* assumes monsters don't wield non-weapons */
+        || (g.uwep && (g.uwep.oclass === WEAPON_CLASS || is_weptool(g.uwep))))
+        slotmask |= W_WEP;
+    if (is_you && u.twoweap)
+        slotmask |= W_SWAPWEP;
+    for (o of invent_chain(mon, is_you))
+        if (((o.owornmask & slotmask) !== 0
+             && objects[o.otyp].oc_oprop === propindx)
+            || ((o.owornmask & W_ARMC) === W_ARMC
+                /* worn apron confers a pair of resistances but
+                   objects[ALCHEMY_SMOCK].oc_oprop can only represent one;
+                   we check both so won't need to know which one that is */
+                && o.otyp === ALCHEMY_SMOCK
+                && (propindx === POISON_RES || propindx === ACID_RES)))
+            return true;
+        else if (o.oartifact)
+            throw new Error('Resists_Elem(): defends_when_carried() not ported yet');
+    return false;
+}
+/* C ref: monst.h resists_fire()/resists_sleep() */
+export function resists_fire(mon) { return Resists_Elem(mon, FIRE_RES); }
+export function resists_sleep(mon) { return Resists_Elem(mon, SLEEP_RES); }
+
+/* hero inventory is a nobj chain; monster minvent is an array in pickup
+   order (C prepends, so walk it newest first) */
+function invent_chain(mon, is_you) {
+    if (is_you) {
+        const out = [];
+        for (let o = game.invent; o; o = o.nobj) out.push(o);
+        return out;
+    }
+    return (mon.minvent || []).slice().reverse();
+}
+
+// C ref: mondata.c resists_magm()
+/* TRUE if monster is magic-missile (actually, general magic) resistant */
+export function resists_magm(mon) {
+    const ptr = mon.data;
+    const g = game, u = g.u;
+    const is_you = (mon === g.youmonst);
+
+    /* as of 3.2.0:  gray dragons, Angels, Oracle, Yeenoghu */
+    if (dmgtype(ptr, AD_MAGM) || ptr === mons[M.PM_BABY_GRAY_DRAGON]
+        || dmgtype(ptr, AD_RBRE)) /* Chromatic Dragon */
+        return true;
+    /* check for magic resistance granted by wielded weapon */
+    let o = is_you ? g.uwep : mon.mw;
+    if (o && o.oartifact)
+        throw new Error('resists_magm(): artifact defends() not ported yet');
+    /* check for magic resistance granted by worn or carried items */
+    let slotmask = W_ARMOR | W_ACCESSORY;
+    if (!is_you /* assumes monsters don't wield non-weapons */
+        || (g.uwep && (g.uwep.oclass === WEAPON_CLASS || is_weptool(g.uwep))))
+        slotmask |= W_WEP;
+    if (is_you && u.twoweap)
+        slotmask |= W_SWAPWEP;
+    for (o of invent_chain(mon, is_you))
+        if ((o.owornmask & slotmask) !== 0
+            && objects[o.otyp].oc_oprop === ANTIMAGIC)
+            return true;
+        else if (o.oartifact)
+            throw new Error('resists_magm(): defends_when_carried() not ported yet');
+    return false;
+}
+
+// C ref: mondata.c mon_knows_traps()
+/* does monster mtmp know traps of type ttyp */
+export function mon_knows_traps(mtmp, ttyp) {
+    if (ttyp === ALL_TRAPS)
+        return !!mtmp.mtrapseen;
+    else if (ttyp === NO_TRAP)
+        return !mtmp.mtrapseen;
+    else
+        return ((mtmp.mtrapseen & (1 << (ttyp - 1))) !== 0);
+}
+
+// C ref: mondata.c mon_learns_traps()
+/* monster mtmp learns all traps of type ttyp */
+export function mon_learns_traps(mtmp, ttyp) {
+    if (ttyp === ALL_TRAPS)
+        mtmp.mtrapseen = ~0;
+    else if (ttyp === NO_TRAP)
+        mtmp.mtrapseen = 0;
+    else
+        mtmp.mtrapseen |= (1 << (ttyp - 1));
+}
+
 // C ref: mondata.c resists_drli()
 export function resists_drli(mon) {
     const ptr = mon.data;
@@ -261,4 +406,187 @@ export function big_to_little(montype) {
             break;
         }
     return montype;
+}
+
+// C ref: mondata.c name_to_mon()
+/* figure out what type of monster a user-supplied string is specifying;
+   ignore anything past the monster name */
+export function name_to_mon(in_str, gender_name_var) {
+    return name_to_monplus(in_str, null, gender_name_var);
+}
+
+// C ref: mondata.c name_to_monplus() names[] (struct alt_spl)
+const alt_spl_names = [
+    /* Alternate spellings */
+    ['grey dragon', M.PM_GRAY_DRAGON, NEUTRAL],
+    ['baby grey dragon', M.PM_BABY_GRAY_DRAGON, NEUTRAL],
+    ['grey unicorn', M.PM_GRAY_UNICORN, NEUTRAL],
+    ['grey ooze', M.PM_GRAY_OOZE, NEUTRAL],
+    ['gray-elf', M.PM_GREY_ELF, NEUTRAL],
+    ['mindflayer', M.PM_MIND_FLAYER, NEUTRAL],
+    ['master mindflayer', M.PM_MASTER_MIND_FLAYER, NEUTRAL],
+    /* More alternates; priest and priestess are separate monster
+       types but that isn't the case for {aligned,high} priests */
+    ['aligned priest', M.PM_ALIGNED_CLERIC, MALE],
+    ['aligned priestess', M.PM_ALIGNED_CLERIC, FEMALE],
+    ['high priest', M.PM_HIGH_CLERIC, MALE],
+    ['high priestess', M.PM_HIGH_CLERIC, FEMALE],
+    /* Inappropriate singularization by -ves check above */
+    ['master of thief', M.PM_MASTER_OF_THIEVES, NEUTRAL],
+    /* Potential misspellings where we want to avoid falling back
+       to the rank title prefix (input has been singularized) */
+    ['master thief', M.PM_MASTER_OF_THIEVES, NEUTRAL],
+    ['master of assassin', M.PM_MASTER_ASSASSIN, NEUTRAL],
+    ['master-lich', M.PM_MASTER_LICH, NEUTRAL], /* cf arch-lich */
+    ['masterlich', M.PM_MASTER_LICH, NEUTRAL], /* cf demilich */
+    /* Outdated names */
+    ['invisible stalker', M.PM_STALKER, NEUTRAL],
+    ['high-elf', M.PM_ELVEN_MONARCH, NEUTRAL], /* PM_HIGH_ELF is obsolete */
+    /* other misspellings or incorrect words */
+    ['wood-elf', M.PM_WOODLAND_ELF, NEUTRAL],
+    ['wood elf', M.PM_WOODLAND_ELF, NEUTRAL],
+    ['woodland nymph', M.PM_WOOD_NYMPH, NEUTRAL],
+    ['halfling', M.PM_HOBBIT, NEUTRAL], /* potential guess for polyself */
+    ['genie', M.PM_DJINNI, NEUTRAL], /* potential guess for ^G/#wizgenesis */
+    /* prefix used to workaround duplicate monster names for
+       monsters with alternate forms */
+    ['human wererat', M.PM_HUMAN_WERERAT, NEUTRAL],
+    ['human werejackal', M.PM_HUMAN_WEREJACKAL, NEUTRAL],
+    ['human werewolf', M.PM_HUMAN_WEREWOLF, NEUTRAL],
+    /* for completeness */
+    ['rat wererat', M.PM_WERERAT, NEUTRAL],
+    ['jackal werejackal', M.PM_WEREJACKAL, NEUTRAL],
+    ['wolf werewolf', M.PM_WEREWOLF, NEUTRAL],
+    /* Hyphenated names -- it would be nice to handle these via
+       fuzzymatch() but it isn't able to ignore trailing stuff */
+    ['ki rin', M.PM_KI_RIN, NEUTRAL],
+    ['kirin', M.PM_KI_RIN, NEUTRAL],
+    ['uruk hai', M.PM_URUK_HAI, NEUTRAL],
+    ['orc captain', M.PM_ORC_CAPTAIN, NEUTRAL],
+    ['woodland elf', M.PM_WOODLAND_ELF, NEUTRAL],
+    ['green elf', M.PM_GREEN_ELF, NEUTRAL],
+    ['grey elf', M.PM_GREY_ELF, NEUTRAL],
+    ['gray elf', M.PM_GREY_ELF, NEUTRAL],
+    ['elf lady', M.PM_ELF_NOBLE, FEMALE],
+    ['elf lord', M.PM_ELF_NOBLE, MALE],
+    ['elf noble', M.PM_ELF_NOBLE, NEUTRAL],
+    ['olog hai', M.PM_OLOG_HAI, NEUTRAL],
+    ['arch lich', M.PM_ARCH_LICH, NEUTRAL],
+    ['archlich', M.PM_ARCH_LICH, NEUTRAL],
+    /* Some irregular plurals */
+    ['incubi', M.PM_AMOROUS_DEMON, MALE],
+    ['succubi', M.PM_AMOROUS_DEMON, FEMALE],
+    ['violet fungi', M.PM_VIOLET_FUNGUS, NEUTRAL],
+    ['homunculi', M.PM_HOMUNCULUS, NEUTRAL],
+    ['baluchitheria', M.PM_BALUCHITHERIUM, NEUTRAL],
+    ['lurkers above', M.PM_LURKER_ABOVE, NEUTRAL],
+    ['cavemen', M.PM_CAVE_DWELLER, MALE],
+    ['cavewomen', M.PM_CAVE_DWELLER, FEMALE],
+    ['watchmen', M.PM_WATCHMAN, NEUTRAL],
+    ['djinn', M.PM_DJINNI, NEUTRAL],
+    ['mumakil', M.PM_MUMAK, NEUTRAL],
+    ['erinyes', M.PM_ERINYS, NEUTRAL],
+];
+
+// C ref: mondata.c name_to_monplus()
+/* figure out what type of monster a user-supplied string is specifying;
+   remainder_p.p gets whatever is past the monster name (C: a pointer into
+   in_str); gender_name_var.v gets the gender of the matched name */
+export function name_to_monplus(in_str, remainder_p, gender_name_var) {
+    let i;
+    let mntmp = NON_PM;
+    let str, off = 0; /* C: str == buf + off */
+    let len, mgend, matchgend = -1;
+    let slen;
+    let exact_match = false;
+    let s;
+
+    if (remainder_p)
+        remainder_p.p = null;
+
+    if (in_str.startsWith('a '))
+        off = 2;
+    else if (in_str.startsWith('an '))
+        off = 3;
+    else if (in_str.startsWith('the '))
+        off = 4;
+    str = in_str.slice(off);
+
+    slen = str.length;
+
+    if ((s = strstri(str, 'vortices')) >= 0)
+        str = str.slice(0, s + 4) + 'ex';
+    /* be careful with "ies"; "priest", "zombies" */
+    else if (slen > 3 && !strcmpi(str.slice(slen - 3), 'ies')
+             && (slen < 7 || strcmpi(str.slice(slen - 7), 'zombies')))
+        str = str.slice(0, slen - 3) + 'y';
+    /* luckily no monster names end in fe or ve with ves plurals */
+    else if (slen > 3 && !strcmpi(str.slice(slen - 3), 'ves'))
+        str = str.slice(0, slen - 3) + 'f';
+
+    slen = str.length; /* length possibly needs recomputing */
+
+    for (const [name, pm_val, genderhint] of alt_spl_names) {
+        len = name.length;
+        if (!strncmpi(str, name, len)
+            /* force full word (which could conceivably be possessive) */
+            && (len >= str.length || str[len] === ' ' || str[len] === '\'')) {
+            if (remainder_p)
+                remainder_p.p = in_str.slice(off + len);
+            if (gender_name_var)
+                gender_name_var.v = genderhint;
+            return pm_val;
+        }
+    }
+
+    for (len = 0, i = LOW_PM; i < M.NUMMONS; i++) {
+        for (mgend = MALE; mgend < NUM_MGENDERS; mgend++) {
+            const pmname = mons[i].pmnames[mgend];
+
+            if (!pmname)
+                continue;
+
+            const m_i_len = pmname.length;
+            if (m_i_len > len && !strncmpi(pmname, str, m_i_len)) {
+                const rest = str.slice(m_i_len);
+                if (m_i_len === slen) {
+                    mntmp = i;
+                    len = m_i_len;
+                    matchgend = mgend;
+                    exact_match = true;
+                    break; /* exact match */
+                } else if (slen > m_i_len
+                           && (str[m_i_len] === ' '
+                               || !strcmpi(rest, 's')
+                               || !strncmpi(rest, 's ', 2)
+                               || !strcmpi(rest, '\'')
+                               || !strncmpi(rest, '\' ', 2)
+                               || !strcmpi(rest, '\'s')
+                               || !strncmpi(rest, '\'s ', 3)
+                               || !strcmpi(rest, 'es')
+                               || !strncmpi(rest, 'es ', 3))) {
+                    mntmp = i;
+                    len = m_i_len;
+                    matchgend = mgend;
+                }
+            }
+        }
+        if (exact_match)
+            break;
+    }
+    /* FIXME: some titles have gender; title_to_mon() doesn't propagate it */
+    if (mntmp === NON_PM) {
+        const tout = {};
+        mntmp = title_to_mon(str, tout);
+        len = tout.title_length;
+    }
+    if (len && remainder_p)
+        remainder_p.p = in_str.slice(off + len);
+    if (gender_name_var && matchgend !== -1) {
+        /* don't override with neuter if caller has already specified male
+           or female and we've matched the neuter name */
+        if (gender_name_var.v === -1 || matchgend !== NEUTRAL)
+            gender_name_var.v = matchgend;
+    }
+    return mntmp;
 }

@@ -1,17 +1,24 @@
 // attrib.js — attribute and intrinsic-ability routines.
 // C ref: attrib.c, include/attrib.h
 //
-// Ported so far: the innate-ability tables, role_abil(), postadjabil(),
+// Ported so far: acurrstr(), exercise(), exerper(), exerchk(),
+// the innate-ability tables, role_abil(), postadjabil(),
 // adjabil(), newhp(), acurr(), adjattrib(), rnd_attr(),
 // init_attr_role_redist(), init_attr(), vary_init_attr().
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, rn1 } from './rng.js';
+import { near_capacity } from './hack.js';
+import { pline } from './display.js';
 import {
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, MAXULEV, STR19, FROMEXPER,
     FROMRACE, FROMOUTSIDE, INTRINSIC, SEARCHING, STEALTH, FAST,
     POISON_RES, WARNING, SLEEP_RES, SEE_INVIS, FIRE_RES, COLD_RES, SHOCK_RES,
     TELEPORT_CONTROL, INFRAVISION, A_MAX, STR18, FIXED_ABIL,
+    SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, MOD_ENCUMBER,
+    HVY_ENCUMBER, EXT_ENCUMBER, CLAIRVOYANT, REGENERATION, SICK, VOMITING,
+    CONFUSION, HALLUC, HALLUC_RES, WOUNDED_LEGS, FUMBLING, STUNNED, TIMEOUT,
+    LUCKMIN, LUCKMAX,
 } from './const.js';
 import {
     PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVE_DWELLER, PM_HEALER, PM_KNIGHT,
@@ -474,4 +481,238 @@ export function vary_init_attr() {
             if (ABASE(i) < AMAX(i))
                 u.amax.a[i] = ABASE(i);
         }
+}
+
+// C ref: attrib.c acurrstr()
+/* condense clumsy ACURR(A_STR) value into value that fits into formulas */
+export function acurrstr() {
+    const str = ACURR(A_STR); /* 3..125 after massaging by acurr() */
+    let result; /* 3..25 */
+
+    if (str <= STR18(0)) /* <= 18; max(,3) here is redundant */
+        result = Math.max(str, 3); /* 3..18 */
+    else if (str <= STR19(21)) /* <= 121 */
+        /* this converts
+           18/01..18/31 into 19,
+           18/32..18/81 into 20,
+           18/82..18/100 and 19..21 into 21 */
+        result = 19 + Math.trunc(str / 50); /* map to 19..21 */
+    else /* convert 122..125; min(,125) here is redundant */
+        result = Math.min(str, 125) - 100; /* 22..25 */
+
+    return result;
+}
+
+// C ref: role.h Role_if()
+function Role_if(pm) { return game.urole.mnum === pm; }
+
+const AVAL = 50; /* tune value for exercise gains */
+
+/* C ref: attrib.h AEXE() */
+function AEXE(x) { return game.u.aexe.a[x]; }
+
+// C ref: attrib.c exercise()
+export function exercise(i, inc_or_dec) {
+    const u = game.u;
+
+    /* debugpline0("Exercise:"); */
+    if (i === A_INT || i === A_CHA)
+        return; /* can't exercise these */
+
+    /* no physical exercise while polymorphed; the body's temporary */
+    if (u.umonnum !== u.umonster /* Upolyd */ && i !== A_WIS)
+        return;
+
+    if (Math.abs(AEXE(i)) < AVAL) {
+        /*
+         *      Law of diminishing returns (Part I):
+         *
+         *      Gain is harder at higher attribute values.
+         *      79% at "3" --> 0% at "18"
+         *      Loss is even at all levels (50%).
+         *
+         *      Note: *YES* ACURR is the right one to use.
+         */
+        u.aexe.a[i] += (inc_or_dec) ? ((rn2(19) > ACURR(i)) ? 1 : 0) : -rn2(2);
+    }
+    if (game.moves > 0 && (i === A_STR || i === A_CON)) {
+        /* encumber_msg(): messages about encumbrance changes are not
+           ported yet (no rolls) */
+    }
+}
+
+// C ref: attrib.c exerper()
+/* hunger values - from eat.c */
+function exerper() {
+    const g = game;
+    const u = g.u;
+    const uprops = u.uprops;
+
+    if (!(g.moves % 10)) {
+        /* Hunger Checks */
+        const hs = (u.uhunger > 1000) ? SATIATED
+                 : (u.uhunger > 150) ? NOT_HUNGRY
+                   : (u.uhunger > 50) ? HUNGRY
+                     : (u.uhunger > 0) ? WEAK
+                       : FAINTING;
+
+        /* debugpline0("exerper: Hunger checks"); */
+        switch (hs) {
+        case SATIATED:
+            exercise(A_DEX, false);
+            if (Role_if(PM_MONK))
+                exercise(A_WIS, false);
+            break;
+        case NOT_HUNGRY:
+            exercise(A_CON, true);
+            break;
+        case WEAK:
+            exercise(A_STR, false);
+            if (Role_if(PM_MONK)) /* fasting */
+                exercise(A_WIS, true);
+            break;
+        case FAINTING:
+        case FAINTED:
+            exercise(A_CON, false);
+            break;
+        }
+
+        /* Encumbrance Checks */
+        /* debugpline0("exerper: Encumber checks"); */
+        switch (near_capacity()) {
+        case MOD_ENCUMBER:
+            exercise(A_STR, true);
+            break;
+        case HVY_ENCUMBER:
+            exercise(A_STR, true);
+            exercise(A_DEX, false);
+            break;
+        case EXT_ENCUMBER:
+            exercise(A_DEX, false);
+            exercise(A_CON, false);
+            break;
+        }
+    }
+
+    /* status checks */
+    if (!(g.moves % 5)) {
+        /* C ref: youprop.h property macros */
+        const HClairvoyant = uprops[CLAIRVOYANT].intrinsic;
+        const BClairvoyant = uprops[CLAIRVOYANT].blocked;
+        const HRegeneration = uprops[REGENERATION].intrinsic;
+        const Sick = uprops[SICK].intrinsic;
+        const Vomiting = uprops[VOMITING].intrinsic;
+        const Confusion = uprops[CONFUSION].intrinsic;
+        const Hallucination = uprops[HALLUC].intrinsic
+            && !(uprops[HALLUC_RES].intrinsic || uprops[HALLUC_RES].extrinsic);
+        const Wounded_legs = uprops[WOUNDED_LEGS].intrinsic
+            || uprops[WOUNDED_LEGS].extrinsic;
+        const Fumbling = uprops[FUMBLING].intrinsic || uprops[FUMBLING].extrinsic;
+        const HStun = uprops[STUNNED].intrinsic;
+
+        /* debugpline0("exerper: Status checks"); */
+        if ((HClairvoyant & (INTRINSIC | TIMEOUT)) && !BClairvoyant)
+            exercise(A_WIS, true);
+        if (HRegeneration)
+            exercise(A_STR, true);
+
+        if (Sick || Vomiting)
+            exercise(A_CON, false);
+        if (Confusion || Hallucination)
+            exercise(A_WIS, false);
+        if ((Wounded_legs && !u.usteed) || Fumbling || HStun)
+            exercise(A_DEX, false);
+    }
+}
+
+/* exercise/abuse text (must be in attribute order, not botl order);
+   phrased as "You must have been [][0]." or "You haven't been [][1]." */
+const exertext = [
+    [ "exercising diligently", "exercising properly" ],           /* Str */
+    [ null, null ],                                               /* Int */
+    [ "very observant", "paying attention" ],                     /* Wis */
+    [ "working on your reflexes", "working on reflexes lately" ], /* Dex */
+    [ "leading a healthy life-style", "watching your health" ],   /* Con */
+    [ null, null ],                                               /* Cha */
+];
+
+// C ref: attrib.c exerchk()
+export async function exerchk() {
+    const g = game;
+    const u = g.u;
+    let i, ax, mod_val, lolim, hilim;
+
+    /*  Check out the periodic accumulations */
+    exerper();
+
+    /*  Are we ready for a test? */
+    if (g.moves >= g.context.next_attrib_check && !g.multi) {
+        /* debugpline0("exerchk: testing."); */
+        /*
+         *      Law of diminishing returns (Part II):
+         *
+         *      The effects of "exercise" and "abuse" wear
+         *      off over time.  Even if you *don't* get an
+         *      increase/decrease, you lose some of the
+         *      accumulated effects.
+         */
+        for (i = 0; i < A_MAX; ++i) {
+            ax = AEXE(i);
+            /* nothing to do here if no exercise or abuse has occurred
+               (Int and Cha always fall into this category) */
+            if (!ax)
+                continue; /* ok to skip nextattrib */
+
+            mod_val = Math.sign(ax); /* +1 or -1; used below */
+            /* no further effect for exercise if at max or abuse if at min;
+               can't exceed 18 via exercise even if actual max is higher */
+            lolim = ATTRMIN(i); /* usually 3; might be higher */
+            hilim = ATTRMAX(i); /* usually 18; maybe lower or higher */
+            if (hilim > 18)
+                hilim = 18;
+            nextattrib: {
+                if ((ax < 0) ? (ABASE(i) <= lolim) : (ABASE(i) >= hilim))
+                    break nextattrib;
+                /* can't exercise non-Wisdom while polymorphed; previous
+                   exercise/abuse gradually wears off without impact then */
+                if (u.umonnum !== u.umonster /* Upolyd */ && i !== A_WIS)
+                    break nextattrib;
+
+                /*
+                 *  Law of diminishing returns (Part III):
+                 *
+                 *  You don't *always* gain by exercising.
+                 *  [MRS 92/10/28 - Treat Wisdom specially for balance.]
+                 */
+                if (rn2(AVAL) > ((i !== A_WIS) ? Math.trunc(Math.abs(ax) * 2 / 3)
+                                               : Math.abs(ax)))
+                    break nextattrib;
+
+                /* debugpline1("exerchk: changing %d.", i); */
+                if (adjattrib(i, mod_val, -1)) {
+                    /* if you actually changed an attrib - zero accumulation */
+                    u.aexe.a[i] = ax = 0;
+                    /* then print an explanation */
+                    await pline(`You ${(mod_val > 0) ? "must have been" : "haven't been"} ${
+                        exertext[i][(mod_val > 0) ? 0 : 1]}.`);
+                }
+            }
+            /* nextattrib: */
+            /* this used to be ``AEXE(i) /= 2'' but that would produce
+               platform-dependent rounding/truncation for negative vals */
+            u.aexe.a[i] = Math.trunc(Math.abs(ax) / 2) * mod_val;
+        }
+        g.context.next_attrib_check += rn1(200, 800);
+        /* debugpline1("exerchk: next check at %ld.", ...); */
+    }
+}
+
+// C ref: attrib.c change_luck()
+export function change_luck(n) {
+    const u = game.u;
+    u.uluck += n;
+    if (u.uluck < 0 && u.uluck < LUCKMIN)
+        u.uluck = LUCKMIN;
+    if (u.uluck > 0 && u.uluck > LUCKMAX)
+        u.uluck = LUCKMAX;
 }

@@ -15,7 +15,7 @@ import {
     A_STR, A_CON,
 } from './const.js';
 import * as K from './const.js';
-import { MAXSPELL, objects } from './objects.js';
+import { MAXSPELL, objects, OBJ_DESCR } from './objects.js';
 import * as O from './objects.js';
 import * as M from './monsters.js';
 import { mksobj, mkobj } from './mkobj.js';
@@ -23,8 +23,14 @@ import { aligns } from './role.js';
 import { set_uasmon } from './polyself.js';
 import { newhp, adjabil, adjattrib, init_attr, vary_init_attr } from './attrib.js';
 import { newpw } from './exper.js';
+import { initialspell, num_spells } from './spell.js';
+
+/* C ref: spell.h SPELL_LEV_PW() */
+function SPELL_LEV_PW(lvl) { return (lvl) * 5; }
 import { init_uhunger } from './eat.js';
+import { inv_weight } from './hack.js';
 import { max_rank_sz } from './botl.js';
+import { assigninvlet, reorder_invent, merged } from './invent.js';
 
 // C ref: you.h struct you -- the JS equivalent of memset(&u, 0, sizeof u).
 // Every numeric field reads as 0, nested structs are zero-filled objects.
@@ -729,18 +735,39 @@ function discover_object(oindx, mark_as_known, mark_as_encountered,
     }
 }
 
-// C ref: invent.c addinv() -- appends to the hero's inventory chain;
-// merging with an existing stack and inventory letters are not ported yet
-function addinv(obj) {
-    obj.where = 'OBJ_INVENT';
-    obj.nobj = null;
-    if (!game.invent) {
-        game.invent = obj;
-    } else {
-        let otmp = game.invent;
-        while (otmp.nobj) otmp = otmp.nobj;
-        otmp.nobj = obj;
+// C ref: invent.c addinv(), addinv_core0() -- inventory letter and chain
+// insertion and merging with an existing stack (merged()); addinv_core1/2()
+// side effects and update_inventory() are not ported yet
+export function addinv(obj) {
+    /* merge with quiver in preference to any other inventory slot
+       in case quiver and wielded weapon are both eligible; adding
+       extra to quivered stack is more useful than to wielded one */
+    if (game.uquiver) {
+        const r = { otmp: game.uquiver, obj };
+        if (merged(r)) {
+            game.uquiver = r.otmp;
+            return r.otmp; /* goto added */
+        }
     }
+    /* merge if possible; find end of chain in the process */
+    let prev = null;
+    for (let otmp = game.invent; otmp; prev = otmp, otmp = otmp.nobj) {
+        const r = { otmp, obj };
+        if (merged(r))
+            return r.otmp; /* goto added */
+    }
+    /* didn't merge, so insert into chain */
+    assigninvlet(obj);
+    if ((game.flags?.invlet_constant ?? true) || !prev) {
+        obj.nobj = game.invent; /* insert at beginning */
+        game.invent = obj;
+        if (game.flags?.invlet_constant ?? true)
+            reorder_invent();
+    } else {
+        prev.nobj = obj; /* insert at end */
+        obj.nobj = null;
+    }
+    obj.where = 'OBJ_INVENT';
     return obj;
 }
 
@@ -1284,9 +1311,6 @@ function hidden_gold(even_if_unknown) {
     return 0;
 }
 
-// C ref: invent.c inv_weight(), weight_cap() -- not ported yet; the
-// carrying-capacity boost below needs them
-function inv_weight() { return 0; }
 
 // C ref: u_init.c u_init_carry_attr_boost()
 /* boost STR and CON until hero can carry inventory */
@@ -1356,7 +1380,7 @@ function bimanual(otmp) {
 function is_armcat(otmp, cat) {
     return (otmp.oclass === O.ARMOR_CLASS && objects[otmp.otyp].oc_armcat === cat);
 }
-function OBJ_DESCR(obj) { return obj.oc_descr; }
+/* objclass.h OBJ_DESCR(): imported from objects.js */
 function greatest_erosion(otmp) {
     return Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
 }
@@ -1421,8 +1445,8 @@ function ini_inv_use_obj(obj) {
             setuswapwep(obj);
         }
     }
-    /* if (obj->oclass == SPBOOK_CLASS && obj->otyp != SPE_BLANK_PAPER)
-           initialspell(obj); -- spell.c not ported yet */
+    if (obj.oclass === O.SPBOOK_CLASS && obj.otyp !== O.SPE_BLANK_PAPER)
+        initialspell(obj);
 }
 
 // C ref: do_wear.c find_ac()
@@ -1465,6 +1489,7 @@ export function find_ac() {
 /* side effects of starting inventory (e.g. discovering it) and skills (both
    those based on role and those based on starting inventory) */
 export function u_init_skills_discoveries() {
+    const u = game.u;
     let otmp;
     for (otmp = game.invent; otmp; otmp = otmp.nobj)
         ini_inv_use_obj(otmp);
@@ -1473,8 +1498,9 @@ export function u_init_skills_discoveries() {
     /* if (u.uroleplay.pauper) pauper_reinit(); -- not ported yet */
 
     /* If we have at least one spell, force starting Pw to be enough,
-       so hero can cast the level 1 spell they should have:
-       num_spells() needs initialspell() (spell.c), not ported yet */
+       so hero can cast the level 1 spell they should have */
+    if (num_spells() && (u.uenmax < SPELL_LEV_PW(1)))
+        u.uen = u.uenmax = u.uenpeak = u.ueninc[u.ulevel] = SPELL_LEV_PW(1);
 
     find_ac(); /* get initial ac value */
 }

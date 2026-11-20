@@ -1,4 +1,4 @@
-// js/crt/ctype.js: <ctype.h> in the "C" locale, Darwin (transpiler-design.md 5).
+// js/crt/ctype.js: <ctype.h> in the "C" locale, Darwin (method/design.md 5).
 // Hand-written runtime. The argument is an int: a byte value 0..255 or EOF (-1);
 // on Darwin, bytes 128..255 have no class in the C locale (verified natively in
 // tests/crt/string.test.mjs). Results are 0 or nonzero; we return 0/1 and the

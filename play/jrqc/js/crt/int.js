@@ -1,6 +1,6 @@
 // js/crt/int.js: exact C integer semantics for the recorder's ABI
 // (LP64, arm64 Darwin: the reference recorder is an arm64 binary on Apple
-// Silicon; transpiler-design.md 3.1). Hand-written runtime.
+// Silicon; method/design.md 3.1). Hand-written runtime.
 //
 // Representation:
 //   char, short, int and their unsigned forms: a Number holding the exact value.

@@ -66,6 +66,8 @@ const EMPTY = Object.freeze({ kind: 'empty' });
 const MAX_STATES = 1000000;
 const CLASS_NAMES = new Set(['alnum', 'alpha', 'blank', 'cntrl', 'digit',
   'graph', 'lower', 'print', 'punct', 'space', 'upper', 'xdigit']);
+// Additional character classes recognized by Darwin in the C locale.
+const DARWIN_CLASS_NAMES = new Set(['rune', 'ideogram', 'phonogram', 'special']);
 // Names for single-byte collating elements in the macOS C locale.
 const nativeCollatingElements = new Map(Object.entries({
   alert: 7, backspace: 8, tab: 9, newline: 10, 'vertical-tab': 11,
@@ -98,6 +100,11 @@ function inClass(c, name) {
     case 'lower': return c >= 97 && c <= 122;
     case 'print': return c >= 32 && c <= 126;
     case 'punct': return c >= 33 && c <= 126 && !alpha(c) && !digit(c);
+    // The C locale classifies all non-NUL ASCII bytes as runes.
+    case 'rune': return c > 0 && c <= 127;
+    case 'ideogram':
+    case 'phonogram':
+    case 'special': return false;
     case 'space': return c === 32 || c >= 9 && c <= 13;
     case 'upper': return c >= 65 && c <= 90;
     case 'xdigit': return digit(c) || c >= 65 && c <= 70 || c >= 97 && c <= 102;
@@ -163,7 +170,8 @@ class Parser {
         let name = '';
         while (this.peek() && this.peek() !== 58 && name.length < 14)
           name += String.fromCharCode(this.bytes[this.at++]);
-        if (!CLASS_NAMES.has(name) || this.peek() !== 58 || this.peek(1) !== 93) fail(REG_ECTYPE);
+        const known = CLASS_NAMES.has(name) || this.native && DARWIN_CLASS_NAMES.has(name);
+        if (!known || this.peek() !== 58 || this.peek(1) !== 93) fail(REG_ECTYPE);
         this.at += 2; classes.push(name);
         if (negate && classes.length > 64) fail(REG_ESPACE);
       } else {

@@ -131,7 +131,7 @@ import { fuzzymatch, push_front, truncateByteString } from './hacklib.js';
 import { hu_stat } from './eat.js';
 import { observe_object } from './o_init.js';
 import { can_reach_floor, engr_at, engr_can_be_felt } from './engrave.js';
-import { status_version } from './version.js';
+import { status_version, VI_NUMBER } from './version.js';
 import { is_weptool } from './obj.js';
 import { cmap_to_type } from './mkroom.js';
 import { newuexp } from './exper.js';
@@ -6520,7 +6520,13 @@ function _statusFieldData(field, valueSnapshot = null) {
             value: u?.uexp ?? 0,
             percent: _statusExperiencePercentage(u),
         };
-    case 'version': return { text: status_version(game.flags) };
+    case 'version':
+        // compare_blstats() compares this row by flags.versinfo, not by its
+        // text; see the BL_TERRAIN note in _collectStatusHilites().
+        return {
+            text: status_version(game.flags),
+            compareValue: game.flags?.versinfo ?? VI_NUMBER,
+        };
     case 'weapon': return { text: weapon_status(game) };
     case 'armor': return { text: armor_status(game) };
     case 'terrain': return { text: _terrainStatus(game) };
@@ -6982,10 +6988,15 @@ function _collectStatusHilites(layouts, onlyField = null) {
         // BL_ARMOR and the cheat never fires. Moving between wall types,
         // which all read "Wall", is therefore no change
         // (recordings/botl.c/terrain-wall-change;
-        // scripts/terrain-status-compare.test.mjs).
+        // scripts/terrain-status-compare.test.mjs). The same shift puts
+        // terrain's entry, fld BL_TERRAIN, in blstats[][BL_VERS], so the
+        // cheat fires there instead: the version compares flags.versinfo
+        // as an int, and a versinfo change that leaves the text alone, such
+        // as adding the unavailable branch bit, is still a change
+        // (recordings/botl.c/version-change-same-text).
         let change = previousCompareValue == null || compareValue == null
             ? 0 : Math.sign(compareValue - previousCompareValue);
-        if (data.value == null && text != null && previousText != null
+        if (compareValue == null && text != null && previousText != null
             && text !== previousText)
             change = previousText > text ? 1 : -1;
         if (data.percentChange) change = data.percentChange;
@@ -7411,7 +7422,9 @@ export function docorner(xmin, ymax, ystartBetweenMenuPages = 0, state = game) {
             const color = browserGlyphs
                 ? presentation.displayColor ?? presentation.color ?? NO_COLOR
                 : presentation.color ?? NO_COLOR;
-            display.setCell(x - 1, screenRow, ch, color, attr);
+            // tty_print_glyph()'s g_putch(), whose capture map_glyphinfo()
+            // has already applied (symbols.js symbol_at()).
+            display.putCaptured(x - 1, screenRow, ch, color, attr);
             if (overStatus) {
                 recordScreenOverlay(x - 1, screenRow, ch, color, attr);
             }
@@ -7450,7 +7463,8 @@ function writeStatusRows(
             column < Math.min(text.length, display.cols);
             ++column) {
             const style = styles[index]?.[column];
-            display.setCell(
+            // tty_putstatusfield() prints each byte as a char.
+            display.putch(
                 column,
                 screenRow,
                 text[column],
@@ -7517,8 +7531,8 @@ export function recordRawShadowCells(cells, state = game) {
 function _applyScreenOverlay(display) {
     const overlay = game._screenOverlay;
     if (!overlay?.size) return;
-    for (const { column, row, ch, color, attr } of overlay.values())
-        display.setCell(column, row, ch, color, attr);
+    for (const cell of overlay.values())
+        display.restoreCell(cell.column, cell.row, cell);
 }
 
 // The field each status column belongs to. botl.c formats every field after
@@ -7742,9 +7756,17 @@ function _buildScreenOutput(cursorOnHero = true) {
         const rowZeroLength = Math.min(
             msgRows ? msgRows[0].length : msg.length, display.cols,
         );
+        // Recorder patch 006 ignores a control or signed high-bit TTY byte
+        // after the source cursor has advanced past it (GameDisplay.putch()),
+        // so restore the physical cell which clearScreen() temporarily
+        // erased instead of projecting the byte. A mixed line's first cell
+        // is redotoplin()'s g_putch() glyph, which the capture keeps.
+        const mixedFirstCell = game._ttyMixedFirstCell;
+        const skipsCell = (c) => !(c === 0 && mixedFirstCell)
+            && nomux_putch_byte(msg.charCodeAt(c)) === null;
         let skippedMessageCells = null;
         for (let c = 0; c < rowZeroLength; ++c) {
-            if (msg[c] === '\0') {
+            if (skipsCell(c)) {
                 skippedMessageCells ??= [];
                 skippedMessageCells[c] = { ...display.grid[0][c] };
             }
@@ -7752,21 +7774,12 @@ function _buildScreenOutput(cursorOnHero = true) {
         if (!bufferedOnly) display.clearScreen();
         // Message line
         for (let c = 0; !bufferedOnly && c < rowZeroLength; c++) {
-            // Recorder patch 006 ignores signed high-bit TTY bytes after the
-            // source cursor has advanced. tty_message.js represents each such
-            // byte as NUL, so restore the physical cell which clearScreen()
-            // temporarily erased instead of projecting the marker.
-            if (msg[c] === '\0') {
-                const cell = skippedMessageCells[c];
-                display.setCell(c, 0, cell.ch, cell.color, cell.attr);
-            } else {
-                display.setCell(
-                    c, 0,
-                    c === 0 && game._ttyMixedFirstCell
-                        ? game._ttyMixedFirstCell : msg[c],
-                    NO_COLOR, 0,
-                );
-            }
+            if (skipsCell(c))
+                display.restoreCell(c, 0, skippedMessageCells[c]);
+            else if (c === 0 && mixedFirstCell)
+                display.putCaptured(c, 0, mixedFirstCell);
+            else
+                display.putch(c, 0, msg[c]);
         }
         // Map — write characters to grid (DEC → Unicode for browser display)
         const browserGlyphs = Boolean(display.spans);
@@ -7843,7 +7856,8 @@ function _buildScreenOutput(cursorOnHero = true) {
                             : loc.disp_attr ?? 0,
                     );
                 }
-                display.setCell(
+                // The cell tty_print_glyph() last printed here.
+                display.putCaptured(
                     x - 1,
                     offset + 1,
                     ch,
@@ -7858,17 +7872,14 @@ function _buildScreenOutput(cursorOnHero = true) {
         }
         // topl_putsym('\n') cleared each continuation row from column 0
         // before writing it, and flush_screen() reprints only changed map
-        // cells, so the wrapped text stays over the map.  A NUL is
-        // ttyByteText()'s marker for a high or control byte, which the
-        // capture leaves as the cleared blank.
+        // cells, so the wrapped text stays over the map.  The capture
+        // leaves a high or control byte as the cleared blank.
         for (let row = 1; !bufferedOnly && msgRows && row < msgRows.length
             && row < display.rows; ++row) {
             display.clearRow(row);
             const text = msgRows[row];
-            for (let c = 0; c < Math.min(text.length, display.cols); ++c) {
-                if (text[c] !== '\0')
-                    display.setCell(c, row, text[c], NO_COLOR, 0);
-            }
+            for (let c = 0; c < Math.min(text.length, display.cols); ++c)
+                display.putch(c, row, text[c]);
         }
         // C's flush_screen() still redraws the map while botl.c bot() returns
         // early with gb.bot_disabled.  Keep that suppression visible in the
@@ -7887,14 +7898,8 @@ function _buildScreenOutput(cursorOnHero = true) {
                 for (let column = 0; column < display.cols; ++column) {
                     if (printedOverStatus.has(`${firstRow + row}:${column}`))
                         continue;
-                    const cell = savedStatusCells[row][column];
-                    display.setCell(
-                        column,
-                        firstRow + row,
-                        cell.ch,
-                        cell.color,
-                        cell.attr,
-                    );
+                    display.restoreCell(column, firstRow + row,
+                        savedStatusCells[row][column]);
                 }
             }
         }
@@ -8425,7 +8430,7 @@ function writeErasedStatusRows(display) {
             column < Math.min(text.length, display.cols);
             ++column) {
             const style = styles[index]?.[column];
-            display.setCell(column, screenRow, text[column],
+            display.putch(column, screenRow, text[column],
                 style?.color ?? NO_COLOR, style?.attr ?? ATR_NONE);
         }
     }
@@ -8585,26 +8590,24 @@ export function status_hilite2str(rule) {
         const value = Number(BigInt.asIntN(32, BigInt(rule.value ?? 0)));
         if (['<', '<=', '=', '>=', '>'].includes(rel)) behavior = `${rel}${value}${rule.behavior === 'percentage' ? '%' : ''}`;
         else if (rule.behavior === 'percentage') {
-            // C: impossible("hl->behavior=percentage, rel error");
-            note_unported('pline.c impossible');
+            sync_impossible('hl->behavior=percentage, rel error', game);
         } else {
-            // C: impossible("hl->behavior=absolute, rel error");
-            note_unported('pline.c impossible');
+            sync_impossible('hl->behavior=absolute, rel error', game);
         }
     } else if (rule.behavior === 'changed') {
         if (rel === '<') behavior = 'down';
         else if (rel === '>') behavior = 'up';
         else if (rel === '=') behavior = 'changed';
-        // C: impossible("hl->behavior=updown, rel error");
-        else note_unported('pline.c impossible');
+        else sync_impossible('hl->behavior=updown, rel error', game);
     } else if (rule.behavior === 'text') {
         if (rel === '=' && rule.text) behavior = rule.text;
-        // C: impossible("hl->behavior=textmatch, rel or textmatch error");
-        else note_unported('pline.c impossible');
+        else {
+            sync_impossible(
+                'hl->behavior=textmatch, rel or textmatch error', game);
+        }
     } else if (rule.behavior === 'condition') {
         if (rel === '=') behavior = conditionbitmask2str(rule.value);
-        // C: impossible("hl->behavior=condition, rel error");
-        else note_unported('pline.c impossible');
+        else sync_impossible('hl->behavior=condition, rel error', game);
     } else if (rule.behavior === 'always') behavior = 'always';
     else if (rule.behavior === 'critical') behavior = 'criticalhp';
     let color = (clr2colorname(rule.style.color) ?? '').replaceAll(' ', '-');

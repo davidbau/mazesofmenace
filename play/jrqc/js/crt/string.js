@@ -1,5 +1,5 @@
 // js/crt/string.js: <string.h> and <stdlib.h> string/number parsing on byte
-// pointers (transpiler-design.md 5). Hand-written runtime.
+// pointers (method/design.md 5). Hand-written runtime.
 //
 // Pointers are BytePtr (js/crt/mem.js); NULL is null. Functions returning a
 // pointer into an argument return a BytePtr into the same buffer. Reading or

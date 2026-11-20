@@ -1,4 +1,4 @@
-// js/crt/stdio.js: <stdio.h> (transpiler-design.md 5). Hand-written runtime.
+// js/crt/stdio.js: <stdio.h> (method/design.md 5). Hand-written runtime.
 // A FILE is a standard stream (bytes go to a sink the host sets) or a stream
 // over a file-system node (fs.js). Buffering is not modeled: every write
 // reaches the node at once, and a stream's file is flushed to storage when it

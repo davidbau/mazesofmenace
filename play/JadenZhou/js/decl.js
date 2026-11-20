@@ -18,6 +18,8 @@ export function decl_globals_init() {
     g.youmonst = { data: null, mnum: 0, m_id: 0, cham: 0, movement: 0 };
     /* hero's equipment pointers (uwep, uarm, ...) start out null */
     g.uwep = g.uarm = g.uarmg = g.uarmh = null;
+    /* gm.multi: count of turns the hero is busy (0 = free) */
+    g.multi = 0;
     /* svq.quest_status */
     g.quest_status = {};
 }

@@ -541,3 +541,26 @@ export function init_vision_globals() {
     game.cs_left = null;
     game.cs_right = null;
 }
+
+// C ref: vision.c clear_path() -- is the straight line between the two
+// points clear of vision-blocking terrain (endpoints excluded)?
+export function clear_path(col1, row1, col2, row2) {
+    let result;
+
+    if (col1 < col2) {
+        if (row1 > row2) {
+            result = q1_path(row1, col1, row2, col2);
+        } else {
+            result = q4_path(row1, col1, row2, col2);
+        }
+    } else {
+        if (row1 > row2) {
+            result = q2_path(row1, col1, row2, col2);
+        } else if (row1 === row2 && col1 === col2) {
+            result = 1;
+        } else {
+            result = q3_path(row1, col1, row2, col2);
+        }
+    }
+    return !!result;
+}

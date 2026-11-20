@@ -204,6 +204,7 @@ import {
 import { Blind, Hallucination } from './youprop.js';
 import { lcase, lowc, strncmpi } from './hacklib.js';
 import { ttyPline } from './tty_message.js';
+import { impossible } from './pline.js';
 
 // mhidden_description() is owned by pager.c.  Keep this compatibility export
 // for status-line and startup callers while pager.js remains the sole JS
@@ -661,6 +662,36 @@ export function queueVisionMonsterNotices(state) {
 // text in pline.c's gy.you_buf (js/tty_message.js reads it back).
 const NOTICE_MON_YOU_BUF = 'You %s %s.';
 
+// C ref: pline.c impossible() (584-633), called from code the port runs
+// synchronously: objnam.c doname() reaching shk.c unpaid_cost(), for one.
+// C prints the report at once, inside the calling function, and its
+// vpline() flushes the map as it stood then. The port cannot wait for the
+// print there, so the report joins this queue with the frame of that moment,
+// and emitGlyphUpdateNotices() prints it through impossible() at the next
+// drain: before the next message, menu, text window or prompt
+// (js/tty_message.js emitQueuedNotices()), and at the command loop's turn
+// boundaries. A synchronous port of C code that calls impossible() reports
+// through source_steps.js sync_impossible(), which calls this.
+// The notice fields of a projected copy of the game state, one that plans
+// an action without performing it (invent.js preflight_addinv_sequence(),
+// hack.js's projected arrival pickup). C runs that code once, for real; a
+// report the projection's synchronous code raises, such as shk.c
+// same_price()'s for an unpaid stack on no bill, goes to this queue of its
+// own and is discarded with the copy instead of printing twice.
+export function projectionNoticeFields() {
+    return { _glyphUpdateNotices: [], _glyphNoticeFrameTracker: null };
+}
+
+export function queueImpossibleNotice(text, state) {
+    const glyphFrame = takeNoticeGlyphFrame(state);
+    (state._glyphUpdateNotices ??= []).push({
+        message: text,
+        impossible: true,
+        glyphFrame,
+    });
+    state._flushAfterQueuedNotice = null;
+}
+
 export async function emitGlyphUpdateNotices(state, env = {}) {
     const pline = env.pline ?? ttyPline;
     if (state._emittingGlyphUpdateNotices) return [];
@@ -679,7 +710,8 @@ export async function emitGlyphUpdateNotices(state, env = {}) {
             if (index)
                 applyGlyphFrameChanges(state, notice.glyphFrame.changes, dirty);
             if (notice.youBuf) (state.gy ??= {}).you_buf = notice.youBuf;
-            await pline(notice.message, state);
+            if (notice.impossible) await impossible(notice.message, state);
+            else await pline(notice.message, state);
             lastFlushedIndex = index;
             // ttyPline() normally performed this flush itself. Keep injected
             // callbacks and subsequent sparse frames source-equivalent too.

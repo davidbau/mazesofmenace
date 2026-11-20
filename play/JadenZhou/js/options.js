@@ -10,6 +10,7 @@
 
 import { game } from './gstate.js';
 import { ROLE_NONE, ROLE_RANDOM, RS_ROLE, RS_RACE, RS_GENDER, RS_ALGNMNT, PL_NSIZ } from './const.js';
+
 import { strncmpi, strcmpi } from './hacklib.js';
 import { authorize_wizard_mode, authorize_explore_mode } from './sys.js';
 import {

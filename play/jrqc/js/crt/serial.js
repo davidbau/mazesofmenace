@@ -1,4 +1,4 @@
-// js/crt/serial.js: object-world values as save-file bytes (transpiler-design.md 3.6).
+// js/crt/serial.js: object-world values as save-file bytes (method/design.md 3.6).
 // Hand-written runtime.
 //
 // NetHack writes whole structs with bwrite (sfstruct.c historical_sfo_*) and

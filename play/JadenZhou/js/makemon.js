@@ -9,6 +9,7 @@
 // Not ported yet: m_initgrp (groups), newcham (shapechangers),
 // set_mimic_sym, rndghostname, worm segments, qt_montype() for the quest.
 
+import { christen_monst, rndghostname } from './do_name.js';
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { level_difficulty, Is_special, In_hell } from './dungeon.js';
@@ -31,11 +32,22 @@ import {
     W_NONPASSWALL, D_CLOSED, D_LOCKED, P_POLEARMS, P_SHORT_SWORD, P_SABER,
     ALTAR, COLNO, ROWNO, isok, ACCESSIBLE, IS_STWALL, IS_DOOR,
 } from './const.js';
+import {
+    ROOMOFFSET, OBJ_AT, IS_WALL, SDOOR, SCORR, HWALL, TLCORNER, TRWALL, BLCORNER,
+    TDWALL, CROSSWALL, TUWALL, M_AP_OBJECT, M_AP_FURNITURE,
+    ZOO, VAULT, DELPHI, TEMPLE, SHOPBASE, FODDERSHOP,
+    TRUE, FALSE, Align2amask,
+} from './const.js';
+import { ROLL_FROM } from './rng.js';
+import { depth } from './dungeon.js';
+import { mkobj, rndmonnum, can_be_hatched } from './mkobj.js';
+import { t_at } from './trap.js';
+import { get_shop_item } from './shknam.js';
 import { mksobj, mkobj_at, curse, bless, next_ident, set_corpsenm } from './mkobj.js';
 import {
     monsndx, set_mon_data, is_elf, is_dwarf, is_demon, is_male, is_female,
     is_neuter, is_undead, is_swimmer, is_floater, passes_walls, haseyes,
-    is_bat,
+    is_bat, little_to_big,
 } from './mondata.js';
 import { engr_at } from './engrave.js';
 import { enexto_core } from './teleport.js';
@@ -422,7 +434,7 @@ function noncorporeal(ptr) { return ptr.mlet === M.S_GHOST; }
 function is_whirly(ptr) {
     return ptr.mlet === M.S_VORTEX || ptr === mons[M.PM_AIR_ELEMENTAL];
 }
-function is_golem(ptr) { return ptr.mlet === M.S_GOLEM; }
+export function is_golem(ptr) { return ptr.mlet === M.S_GOLEM; }
 function is_rider(ptr) {
     return ptr === mons[M.PM_DEATH] || ptr === mons[M.PM_FAMINE]
            || ptr === mons[M.PM_PESTILENCE];
@@ -434,11 +446,11 @@ function is_ndemon(ptr) {
 }
 function is_unicorn(ptr) { return ptr.mlet === M.S_UNICORN && likes_gems(ptr); }
 function weirdnonliving(ptr) { return is_golem(ptr) || ptr.mlet === M.S_VORTEX; }
-function nonliving(ptr) {
+export function nonliving(ptr) {
     return is_undead(ptr) || ptr === mons[M.PM_MANES] || weirdnonliving(ptr);
 }
 function unique_corpstat(ptr) { return (ptr.geno & G_UNIQ) !== 0; }
-function is_mplayer(ptr) {
+export function is_mplayer(ptr) {
     return ptr.pmidx >= M.PM_ARCHEOLOGIST && ptr.pmidx <= M.PM_WIZARD;
 }
 // C ref: mondata.h is_home_elemental()
@@ -503,7 +515,7 @@ function Is_earthlevel() { return on_lev(game.dungeon_topology.d_earth_level); }
 
 // ---- map / monster-position helpers ----
 // C ref: hack.h u_at()
-function u_at(x, y) { return game.u.ux === x && game.u.uy === y; }
+export function u_at(x, y) { return game.u.ux === x && game.u.uy === y; }
 // C ref: display.h m_at(); MON_AT() -- level monsters are kept in
 // game.level.monsters (C keeps a grid; a list with mx/my is equivalent)
 export function m_at(x, y) {
@@ -512,7 +524,7 @@ export function m_at(x, y) {
         if (m.mx === x && m.my === y && !m.dead) return m;
     return null;
 }
-function MON_AT(x, y) { return !!m_at(x, y); }
+export function MON_AT(x, y) { return !!m_at(x, y); }
 // C ref: mon.c place_monster()
 export function place_monster(mon, x, y) {
     mon.mx = x;
@@ -522,20 +534,20 @@ export function place_monster(mon, x, y) {
 }
 // C ref: invent.c sobj_at() -- floor object chains aren't ported; uses
 // game.level.objects when something has put objects there
-function sobj_at(otyp, x, y) {
+export function sobj_at(otyp, x, y) {
     for (const o of game.level.objects || [])
         if (o.otyp === otyp && o.ox === x && o.oy === y) return o;
     return null;
 }
 // C ref: dbridge.c is_pool(), is_lava()
-function is_pool(x, y) {
+export function is_pool(x, y) {
     if (!isok(x, y)) return false;
     const typ = game.level.at(x, y).typ;
     return typ === POOL || typ === MOAT || typ === WATER
            || (typ === DRAWBRIDGE_UP
                && ((game.level.at(x, y).drawbridgemask ?? 0) & 0x07) === 0x01);
 }
-function is_lava(x, y) {
+export function is_lava(x, y) {
     if (!isok(x, y)) return false;
     const typ = game.level.at(x, y).typ;
     return typ === LAVAPOOL || typ === LAVAWALL
@@ -543,24 +555,25 @@ function is_lava(x, y) {
                && ((game.level.at(x, y).drawbridgemask ?? 0) & 0x07) === 0x02);
 }
 // C ref: hack.c accessible(); lock.c closed_door(); hack.c may_passwall()
-function accessible(x, y) { return ACCESSIBLE(game.level.at(x, y).typ); }
-function closed_door(x, y) {
+export function accessible(x, y) { return ACCESSIBLE(game.level.at(x, y).typ); }
+export function closed_door(x, y) {
     const loc = game.level.at(x, y);
     return IS_DOOR(loc.typ) && ((loc.doormask ?? 0) & (D_LOCKED | D_CLOSED)) !== 0;
 }
-function may_passwall(x, y) {
+export function may_passwall(x, y) {
     const loc = game.level.at(x, y);
     return !(IS_STWALL(loc.typ) && ((loc.wall_info ?? 0) & W_NONPASSWALL));
 }
 // C ref: engrave.c sengr_at()
-function sengr_at(s, x, y, strict) {
+export function sengr_at(s, x, y, strict) {
     const ep = engr_at(x, y);
     if (ep && ep.engr_type !== HEADSTONE && ep.engr_time <= game.moves) {
-        const txt = String(ep.engr_txt?.[0] ?? ep.engr_txt ?? '');
-        return strict ? txt.toLowerCase() === s.toLowerCase()
-                      : txt.toLowerCase().includes(s.toLowerCase());
+        const txt = String(ep.engr_txt?.actual_text ?? '');
+        if (strict ? txt.toLowerCase() === s.toLowerCase()
+                   : txt.toLowerCase().includes(s.toLowerCase()))
+            return ep;
     }
-    return false;
+    return null;
 }
 const HEADSTONE = 6; /* C ref: engrave.h */
 // C ref: region.c is_exclusion_zone() -- no exclusion zones are set up on
@@ -1533,7 +1546,7 @@ function makemon_rnd_goodpos(mon, gpflags, cc) {
 }
 
 // C ref: mon.c pm_to_cham()
-function pm_to_cham(mndx) {
+export function pm_to_cham(mndx) {
     let mcham = NON_PM;
     switch (mndx) {
     case M.PM_CHAMELEON:
@@ -1644,7 +1657,10 @@ export function makemon(ptr, x, y, mmflags) {
 
     if (mmflags & MM_EGD) mtmp.egd = {};    /* newegd() */
     if (mmflags & MM_EPRI) mtmp.epri = {};  /* newepri() */
-    if (mmflags & MM_ESHK) mtmp.eshk = {};  /* neweshk() */
+    if (mmflags & MM_ESHK) {                /* neweshk() */
+        if (!mtmp.mextra) mtmp.mextra = {};
+        mtmp.mextra.eshk = { bill_p: null };
+    }
     if (mmflags & MM_EMIN) mtmp.emin = {};  /* newemin() */
     if (mmflags & MM_EDOG) newedog(mtmp);
     if (mmflags & MM_ASLEEP)
@@ -1752,8 +1768,7 @@ export function makemon(ptr, x, y, mmflags) {
         if (game.context.no_of_wizards === 1 && Is_earthlevel())
             mitem = O.SPE_DIG;
     } else if (mndx === M.PM_GHOST && !(mmflags & MM_NONAME)) {
-        /* mtmp = christen_monst(mtmp, rndghostname()): not ported yet */
-        impossible('makemon: rndghostname not ported');
+        mtmp = christen_monst(mtmp, rndghostname());
     } else if (mndx === M.PM_CROESUS) {
         mitem = O.TWO_HANDED_SWORD;
     } else if (ptr.msound === M.MS_NEMESIS) {
@@ -1860,9 +1875,182 @@ function m_initgrp(mtmp, x, y, n, mmflags) {
 function m_initsgrp(mtmp, x, y, mmflags) { m_initgrp(mtmp, x, y, 3, mmflags); }
 function m_initlgrp(mtmp, x, y, mmflags) { m_initgrp(mtmp, x, y, 10, mmflags); }
 
-// C ref: mondata.c set_mimic_sym() -- not ported yet (mimics don't
-// generate at the depths reached so far)
-function set_mimic_sym(mtmp) { impossible('set_mimic_sym not ported'); }
+// C ref: makemon.c syms[]
+const syms = [
+    O.MAXOCLASSES,  O.MAXOCLASSES,     O.RING_CLASS,   O.WAND_CLASS,   O.WEAPON_CLASS,
+    O.FOOD_CLASS,   O.COIN_CLASS,      O.SCROLL_CLASS, O.POTION_CLASS, O.ARMOR_CLASS,
+    O.AMULET_CLASS, O.TOOL_CLASS,      O.ROCK_CLASS,   O.GEM_CLASS,    O.SPBOOK_CLASS,
+    M.S_MIMIC_DEF,  M.S_MIMIC_DEF,
+];
+// C ref: defsym.h pchar indices used by set_mimic_sym()
+const S_vwall = 1, S_hwall = 2, S_vcdoor = 15, S_hcdoor = 16, S_upstair = 25,
+    S_dnstair = 26, S_altar = 33, S_grave = 34, S_throne = 35, S_sink = 36,
+    S_fountain = 37;
+
+// C ref: makemon.c set_mimic_sym()
+export function set_mimic_sym(mtmp) {
+    let typ, roomno, rt;
+    let appear, ap_type;
+    let s_sym;
+    let otmp;
+    let mx, my;
+    const levl = (x, y) => game.level.at(x, y);
+    let assign = false;
+
+    if (!mtmp /* || Protection_from_shape_changers */)
+        return;
+    mx = mtmp.mx;
+    my = mtmp.my;
+    typ = levl(mx, my).typ;
+    /* only valid for INSIDE of room */
+    roomno = levl(mx, my).roomno - ROOMOFFSET;
+    if (roomno >= 0)
+        rt = game.level.rooms[roomno].rtype;
+    else
+        rt = 0; /* roomno < 0 case for GCC_WARN */
+
+    if (OBJ_AT(mx, my)) {
+        ap_type = M_AP_OBJECT;
+        appear = game.level.objects.find(o => o.ox === mx && o.oy === my).otyp;
+    } else if (IS_DOOR(typ) || IS_WALL(typ) || typ === SDOOR || typ === SCORR) {
+        ap_type = M_AP_FURNITURE;
+        /*
+         *  If there is a wall to the left that connects to this
+         *  location, then the mimic mimics a horizontal closed door.
+         *  This does not allow doors to be in corners of rooms.
+         *  Since rogue has no closed doors, mimic a wall there
+         *  (yes, mimics can end up on this level by various means).
+         */
+        if (mx !== 0 && (levl(mx - 1, my).typ === HWALL
+                         || levl(mx - 1, my).typ === TLCORNER
+                         || levl(mx - 1, my).typ === TRWALL
+                         || levl(mx - 1, my).typ === BLCORNER
+                         || levl(mx - 1, my).typ === TDWALL
+                         || levl(mx - 1, my).typ === CROSSWALL
+                         || levl(mx - 1, my).typ === TUWALL))
+            appear = Is_rogue_level(game.u.uz) ? S_hwall : S_hcdoor;
+        else
+            appear = Is_rogue_level(game.u.uz) ? S_vwall : S_vcdoor;
+    } else if (game.level.flags.is_maze_lev
+               && !(In_mines(game.u.uz)
+                    && (() => { throw new Error('set_mimic_sym(): in_town() not ported yet'); })())
+               && !In_sokoban(game.u.uz) && rn2(2)) {
+        ap_type = M_AP_OBJECT;
+        appear = O.STATUE;
+    } else if (roomno < 0 && !t_at(mx, my)) {
+        ap_type = M_AP_OBJECT;
+        appear = O.BOULDER;
+    } else if (rt === ZOO || rt === VAULT) {
+        ap_type = M_AP_OBJECT;
+        appear = O.GOLD_PIECE;
+    } else if (rt === DELPHI) {
+        if (rn2(2)) {
+            ap_type = M_AP_OBJECT;
+            appear = O.STATUE;
+        } else {
+            ap_type = M_AP_FURNITURE;
+            appear = S_fountain;
+        }
+    } else if (rt === TEMPLE) {
+        ap_type = M_AP_FURNITURE;
+        appear = S_altar;
+
+    /*
+     * We won't bother with beehives, morgues, barracks, throne rooms
+     * since they shouldn't contain too many mimics anyway...
+     */
+
+    } else if (rt >= SHOPBASE) {
+        if (rn2(10) >= depth(game.u.uz)) {
+            s_sym = M.S_MIMIC_DEF; /* -> STRANGE_OBJECT */
+            assign = true; /* goto assign_sym */
+        } else {
+            s_sym = get_shop_item(rt - SHOPBASE);
+            if (s_sym < 0) {
+                ap_type = M_AP_OBJECT;
+                appear = -s_sym;
+            } else if (rt === FODDERSHOP && s_sym > O.MAXOCLASSES) {
+                /* health food store usually generates pseudo-class
+                   VEGETARIAN_CLASS which is MAXOCLASSES+1; we don't bother
+                   trying to select among all possible vegetarian food items */
+                ap_type = M_AP_OBJECT;
+                appear = rn2(2) ? O.LUMP_OF_ROYAL_JELLY : O.SLIME_MOLD;
+            } else {
+                if (s_sym === O.RANDOM_CLASS || s_sym >= O.MAXOCLASSES)
+                    s_sym = syms[rn2(syms.length - 2) + 2];
+                assign = true; /* goto assign_sym */
+            }
+        }
+    } else {
+        s_sym = ROLL_FROM(syms);
+        assign = true;
+    }
+    if (assign) {
+ /* assign_sym: */
+        if (s_sym === O.MAXOCLASSES) {
+            const furnsyms = [
+                S_upstair, S_upstair, S_dnstair, S_dnstair,
+                S_altar, S_grave, S_throne, S_sink,
+            ];
+
+            ap_type = M_AP_FURNITURE;
+            appear = ROLL_FROM(furnsyms);
+        } else {
+            ap_type = M_AP_OBJECT;
+            if (s_sym === M.S_MIMIC_DEF) {
+                appear = O.STRANGE_OBJECT;
+            } else if (s_sym === O.COIN_CLASS) {
+                appear = O.GOLD_PIECE;
+            } else {
+                otmp = mkobj(s_sym, FALSE);
+                appear = otmp.otyp;
+                /* make sure container contents are free'ed */
+                /* obfree(otmp, (struct obj *) 0): JS garbage-collects it */
+            }
+        }
+    }
+    mtmp.m_ap_type = ap_type;
+    mtmp.mappearance = appear;
+    /* when appearing as an object based on a monster type, pick a shape */
+    if (ap_type === M_AP_OBJECT
+        && (appear === O.STATUE || appear === O.FIGURINE
+            || appear === O.CORPSE || appear === O.EGG || appear === O.TIN)) {
+        let mndx = rndmonnum();
+        const nocorpse_ndx = (game.mvitals[mndx].mvflags & M.G_NOCORPSE) !== 0;
+
+        if (appear === O.CORPSE && nocorpse_ndx)
+            mndx = rn1(M.PM_WIZARD - M.PM_ARCHEOLOGIST + 1, M.PM_ARCHEOLOGIST);
+        else if ((appear === O.EGG && !can_be_hatched(mndx))
+                 || (appear === O.TIN && nocorpse_ndx))
+            mndx = NON_PM; /* revert to generic egg or empty tin */
+
+        if (!mtmp.mextra) mtmp.mextra = {}; /* newmcorpsenm(mtmp) */
+        mtmp.mextra.mcorpsenm = mndx;
+    } else if (ap_type === M_AP_OBJECT && appear === O.SLIME_MOLD) {
+        if (!mtmp.mextra) mtmp.mextra = {}; /* newmcorpsenm(mtmp) */
+        mtmp.mextra.mcorpsenm = game.context.current_fruit;
+        /* if no objects of this fruit type have been created yet,
+           context.current_fruit is available for re-use when the player
+           assigns a new fruit name; override that--having a mimic as the
+           current_fruit is equivalent to creating an instance of that
+           fruit (no-op if a fruit of this type has actually been made) */
+        game.flags.made_fruit = TRUE;
+    } else if (ap_type === M_AP_FURNITURE && appear === S_altar) {
+        const algn = rn2(3) - 1; /* -1 (A_Cha) or 0 (A_Neu) or +1 (A_Law) */
+
+        if (!mtmp.mextra) mtmp.mextra = {}; /* newmcorpsenm(mtmp) */
+        mtmp.mextra.mcorpsenm = (In_hell(game.u.uz) && rn2(3)) ? AM_NONE : Align2amask(algn);
+    } else if (mtmp.mextra?.mcorpsenm !== undefined) { /* has_mcorpsenm() */
+        /* don't retain stale value from a previously mimicked shape */
+        mtmp.mextra.mcorpsenm = NON_PM;
+    }
+
+    /* if (does_block(mx, my, &levl[mx][my])) block_point(mx, my);
+       -- the JS vision has no block_point(); recompute vision instead */
+    if ((ap_type === M_AP_FURNITURE && (appear === S_hcdoor || appear === S_vcdoor))
+        || (ap_type === M_AP_OBJECT && appear === O.BOULDER))
+        game.vision_full_recalc = 1;
+}
 // C ref: mon.c newcham() -- not ported yet
 function newcham(mtmp, mdat, ncflags) {
     impossible('newcham not ported');
@@ -1906,6 +2094,79 @@ export function put_saddle_on_mon(saddle, mtmp) {
     mtmp.misc_worn_check = (mtmp.misc_worn_check || 0) | W_SADDLE;
     saddle.owornmask = W_SADDLE;
     saddle.leashmon = mtmp.m_id;
+}
+
+// C ref: makemon.c grow_up()
+/* monster earned experience and will gain some hit points; it might also
+   grow into a bigger monster (baby to adult, soldier to officer, etc) */
+export function grow_up(mtmp, victim) {
+    let max_increase, cur_increase, lev_limit, hp_threshold;
+    const ptr = mtmp.data;
+
+    /* monster died after killing enemy but before calling this function */
+    /* currently possible if killing a gas spore */
+    if (mtmp.mhp < 1) /* DEADMONSTER() */
+        return null;
+
+    const oldtype = monsndx(ptr);
+    const newtype = (oldtype === M.PM_KILLER_BEE && !victim) ? M.PM_QUEEN_BEE
+                                                             : little_to_big(oldtype);
+
+    /* growth limits differ depending on method of advancement */
+    if (victim) { /* killed a monster */
+        hp_threshold = mtmp.m_lev * 8; /* normal limit */
+        if (!mtmp.m_lev)
+            hp_threshold = 4;
+        else if (is_golem(ptr)) /* strange creatures */
+            hp_threshold = (Math.trunc(mtmp.mhpmax / 10) + 1) * 10 - 1;
+        else if (is_home_elemental(ptr))
+            hp_threshold *= 3;
+        lev_limit = Math.trunc(3 * ptr.mlevel / 2); /* same as adj_lev() */
+        /* If they can grow up, be sure the level is high enough for that */
+        if (oldtype !== newtype && mons[newtype].mlevel > lev_limit)
+            lev_limit = mons[newtype].mlevel;
+        /* number of hit points to gain; unlike for the player, we put
+           the limit at the bottom of the next level rather than the top */
+        max_increase = rnd(victim.m_lev + 1);
+        if (mtmp.mhpmax + max_increase > hp_threshold + 1)
+            max_increase = Math.max((hp_threshold + 1) - mtmp.mhpmax, 0);
+        cur_increase = (max_increase > 1) ? rn2(max_increase) : 0;
+    } else {
+        /* a gain level potion or wraith corpse; always go up a level
+           unless already at maximum */
+        max_increase = cur_increase = rnd(8);
+        hp_threshold = 0; /* smaller than `mhpmax + max_increase' */
+        lev_limit = 50;   /* recalc below */
+    }
+
+    mtmp.mhpmax += max_increase;
+    mtmp.mhp += cur_increase;
+    if (mtmp.mhpmax <= hp_threshold)
+        return ptr; /* doesn't gain a level */
+
+    if (is_mplayer(ptr))
+        lev_limit = 30; /* same as player */
+    else if (lev_limit < 5)
+        lev_limit = 5; /* arbitrary */
+    else if (lev_limit > 49)
+        lev_limit = (ptr.mlevel > 49 ? 50 : 49);
+
+    if (++mtmp.m_lev >= mons[newtype].mlevel && newtype !== oldtype)
+        throw new Error('grow_up(): growing into a new form not ported yet');
+
+    /* sanity checks */
+    if (mtmp.m_lev > lev_limit) {
+        mtmp.m_lev--; /* undo increment */
+        /* HP might have been allowed to grow when it shouldn't */
+        if (mtmp.mhpmax === hp_threshold + 1)
+            mtmp.mhpmax--;
+    }
+    if (mtmp.mhpmax > 50 * 8)
+        mtmp.mhpmax = 50 * 8; /* absolute limit */
+    if (mtmp.mhp > mtmp.mhpmax)
+        mtmp.mhp = mtmp.mhpmax;
+
+    return ptr;
 }
 
 // C ref: makemon.c mongets()

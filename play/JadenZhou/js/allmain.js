@@ -2,26 +2,29 @@
 // C ref: allmain.c — newgame, welcome, moveloop_preamble, moveloop,
 // moveloop_core.
 //
-// Uses fastforward.js (fastforward_step) for the seed8000 rolls of the
-// turn-cycle parts not ported yet (movemon, rest of the new-turn block).
-// Real mklev.js handles level generation for screen parity.
+// movemon() (mon.c/monmove.c), the once-per-turn and the
+// once-per-hero-took-time blocks are real.
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { mklev, u_on_upstairs } from './mklev.js';
 import { l_nhcore_init } from './nhlua.js';
-import { rhack } from './cmd.js';
+import { rhack, domove } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
-import { fastforward_step, FF_MOVEMON, FF_NEWTURN } from './fastforward.js';
-import { mcalcmove } from './mon.js';
+import { mcalcmove, mcalcdistress, movemon } from './mon.js';
+import { initrack, settrack } from './track.js';
 import { m_at, makemon } from './makemon.js';
 import { mnexto } from './teleport.js';
 import { makedog } from './dog.js';
+import { deferred_goto } from './do.js';
 import { com_pager } from './questpgr.js';
 import { objects_globals_init } from './objects.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons, depth } from './dungeon.js';
+import { phase_of_the_moon, friday_13th } from './calendar.js';
+import { change_luck } from './attrib.js';
+import { FULL_MOON, NEW_MOON, COLNO } from './const.js';
 import { mons, monst_globals_init, LOW_PM, NUMMONS, G_NOCORPSE } from './monsters.js';
 import { decl_globals_init } from './decl.js';
 import { sys_early_init } from './sys.js';
@@ -30,7 +33,23 @@ import { u_init_misc, u_init_inventory_attrs, u_init_skills_discoveries,
          money_cnt } from './u_init.js';
 import { align_str } from './insight.js';
 import { A_CURRENT, A_ORIGINAL, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, RLOC_NOMSG, NORMAL_SPEED, NO_MM_FLAGS,
-         FAST, INTRINSIC } from './const.js';
+         FAST, INTRINSIC, UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER,
+         EXT_ENCUMBER, GLIB, TELEPORT, POLYMORPH, UNCHANGING, SEARCHING, WARNING,
+         CLAIRVOYANT, ENERGY_REGENERATION, MAGICAL_BREATHING, REGENERATION,
+         SLEEPY, MAXULEV, A_WIS, A_INT, A_CON, A_DEX, NON_PM, ROOMOFFSET, VAULT,
+         TT_LAVA, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP,
+         Is_waterlevel, Is_airlevel, In_endgame } from './const.js';
+import { rn1 } from './rng.js';
+import { S_EEL, PM_WIZARD } from './monsters.js';
+import { ACURR, exerchk } from './attrib.js';
+import { near_capacity, lookaround, end_running } from './hack.js';
+import { nh_timeout } from './timeout.js';
+import { dosounds } from './sounds.js';
+import { gethungry } from './eat.js';
+import { age_spells } from './spell.js';
+import { u_wipe_engr } from './engrave.js';
+import { dosearch0 } from './detect.js';
+import { set_uasmon } from './polyself.js';
 
 const MON_AT = (x, y) => !!m_at(x, y); /* C ref: display.h MON_AT() */
 
@@ -47,6 +66,9 @@ export function early_init() {
 export async function newgame() {
     const g = game;
     let i;
+
+    g.context.next_attrib_check = 600; /* arbitrary first setting */
+    g.context.tribute = { enabled: true, bookstock: false }; /* turn on 3.6 tributes */
 
     g.mvitals = [];
     for (i = LOW_PM; i < NUMMONS; i++)
@@ -95,7 +117,7 @@ export async function newgame() {
        isn't ported yet */
 
     if (g.flags.legacy) {
-        com_pager(g.u.uroleplay.pauper ? "pauper_legacy" : "legacy");
+        await com_pager(g.u.uroleplay.pauper ? "pauper_legacy" : "legacy");
     }
 
     /* Success! */
@@ -186,20 +208,160 @@ function u_calc_moveamt(wtcap) {
         }
     }
 
-    /* switch (wtcap): encumbrance reduction -- near_capacity() isn't
-       ported yet, so wtcap is always UNENCUMBERED */
+    switch (wtcap) {
+    case UNENCUMBERED:
+        break;
+    case SLT_ENCUMBER:
+        moveamt -= Math.trunc(moveamt / 4);
+        break;
+    case MOD_ENCUMBER:
+        moveamt -= Math.trunc(moveamt / 2);
+        break;
+    case HVY_ENCUMBER:
+        moveamt -= Math.trunc((moveamt * 3) / 4);
+        break;
+    case EXT_ENCUMBER:
+        moveamt -= Math.trunc((moveamt * 7) / 8);
+        break;
+    default:
+        break;
+    }
 
     u.umovement += moveamt;
     if (u.umovement < 0)
         u.umovement = 0;
 }
 
+/* C ref: allmain.c static mvl_wtcap, mvl_change */
+let mvl_wtcap = 0;
+let mvl_change = 0;
+
+/* C ref: you.h Upolyd */
+function Upolyd() { return game.u.umonnum !== game.u.umonster; }
+
+// C ref: calendar.c night()
+function night() {
+    /* getlt() and the hour of the (fixed) game clock: calendar.c isn't
+       ported yet */
+    throw new Error('night(): calendar.c not ported yet');
+}
+
+/* C ref: vault.c vault_occupied(u.urooms) */
+function vault_occupied_urooms() {
+    for (const ch of game.u.urooms || '') {
+        const r = ch.charCodeAt(0);
+        if (game.level.rooms[r - ROOMOFFSET].rtype === VAULT)
+            return r;
+    }
+    return 0;
+}
+
+/* is the hero's spot one where pooleffects() would act (water/lava)? */
+function is_pool_or_lava_at_u() {
+    const typ = game.level.at(game.u.ux, game.u.uy).typ;
+    return typ === POOL || typ === MOAT || typ === WATER || typ === LAVAPOOL
+           || typ === LAVAWALL || typ === DRAWBRIDGE_UP;
+}
+
+// C ref: hack.c unmul()
+function unmul() {
+    const g = game;
+    g.multi = 0; /* caller will usually have done this already */
+    /* nomovemsg / afternmv / Norep("You can move again."): not ported yet */
+    g.multi_reason = null;
+    g.nomovemsg = null;
+}
+
+// C ref: allmain.c regen_pw()
+async function regen_pw(wtcap) {
+    const g = game;
+    const u = g.u;
+    const P = u.uprops;
+    const Energy_regeneration = P[ENERGY_REGENERATION].intrinsic
+                                || P[ENERGY_REGENERATION].extrinsic;
+
+    if (u.uen < u.uenmax
+        && ((wtcap < MOD_ENCUMBER
+             && (!(g.moves % Math.trunc((MAXULEV + 8 - u.ulevel)
+                              * (g.urole.mnum === PM_WIZARD ? 3 : 4)
+                              / 6)))) || Energy_regeneration)) {
+        let upper = Math.trunc((ACURR(A_WIS) + ACURR(A_INT)) / 15) + 1;
+
+        if (P[MAGICAL_BREATHING].extrinsic) /* EMagical_breathing */
+            upper += 2;
+
+        u.uen += rn1(upper, 1);
+        if (u.uen > u.uenmax)
+            u.uen = u.uenmax;
+        g.disp_botl = true;
+        if (u.uen === u.uenmax) {
+            /* interrupt_multi("You feel full of energy."): multi-turn
+               counts aren't ported yet */
+        }
+    }
+}
+
+// C ref: allmain.c regen_hp()
+async function regen_hp(wtcap) {
+    const g = game;
+    const u = g.u;
+    const P = u.uprops;
+    let heal = 0;
+    const encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved);
+    /* C ref: allmain.c U_CAN_REGEN() */
+    const Regeneration = P[REGENERATION].intrinsic || P[REGENERATION].extrinsic;
+    const Sleepy = P[SLEEPY].intrinsic || P[SLEEPY].extrinsic;
+    const U_CAN_REGEN = () => (Regeneration || (Sleepy && u.usleep));
+
+    if (Upolyd()) {
+        /* polymorphed hero: polymorphing isn't ported yet */
+        throw new Error('regen_hp(): Upolyd not ported yet');
+    } else {
+        /* [when this code was in-line within moveloop(), there was
+           no !Upolyd check here, so poly'd hero recovered lost u.uhp
+           once u.mh reached u.mhmax; that may have been convenient
+           for the player, but it didn't make sense for gameplay...] */
+        if (u.uhp < u.uhpmax && (encumbrance_ok || U_CAN_REGEN())) {
+            heal = ((u.ulevel + ACURR(A_CON)) > rn2(100)) ? 1 : 0;
+
+            if (U_CAN_REGEN())
+                heal += 1;
+            if (Sleepy && u.usleep)
+                heal++;
+
+            if (heal) {
+                g.disp_botl = true;
+                u.uhp += heal;
+                if (u.uhp > u.uhpmax)
+                    u.uhp = u.uhpmax;
+                /* stop voluntary multi-turn activity if now fully healed:
+                   interrupt_multi("You are in full health.") -- multi-turn
+                   counts aren't ported yet */
+            }
+        }
+    }
+}
+
+// C ref: allmain.c overexert_hp()
+function overexert_hp() {
+    const u = game.u;
+
+    if (!Upolyd() ? (u.uhp > 1) : (u.mh > 1)) {
+        if (!Upolyd()) u.uhp -= 1; else u.mh -= 1;
+        game.disp_botl = true;
+    } else {
+        /* You("pass out from exertion!"); exercise(A_CON, FALSE);
+           fall_asleep(-10, FALSE): not ported yet */
+        throw new Error('overexert_hp(): fall_asleep() not ported yet');
+    }
+}
+
 // C ref: allmain.c moveloop_core()
 export async function moveloop_core() {
     const g = game;
     const u = g.u;
+    const P = u.uprops;
     let monscanmove = false;
-    const mvl_wtcap = 0; /* UNENCUMBERED; near_capacity() not ported yet */
 
     /* get_nh_event(), maybe_shuffle_customizations(), dobjsfree(),
        clear_bypasses(), sanity_check(), makewish(): not ported yet */
@@ -213,16 +375,13 @@ export async function moveloop_core() {
 
             g.context.mon_moving = 1;
             do {
-                /* movemon(): not ported yet; seed8000's recorded
-                   monster-movement rolls are replayed instead */
-                fastforward_step(g.moves, FF_MOVEMON);
-                monscanmove = false;
+                monscanmove = await movemon();
                 if (u.umovement >= NORMAL_SPEED)
                     break; /* it's now your turn */
             } while (monscanmove);
             g.context.mon_moving = 0;
 
-            /* mvl_wtcap = near_capacity(): not ported yet */
+            mvl_wtcap = near_capacity();
 
             if (!monscanmove && u.umovement < NORMAL_SPEED) {
                 /* both hero and monsters are out of steam this round */
@@ -230,8 +389,7 @@ export async function moveloop_core() {
 
                 /* set up for a new turn */
                 g.were_changes = 0;
-                /* mcalcdistress(): adjust monsters' trap, blind, etc --
-                   not ported yet */
+                mcalcdistress(); /* adjust monsters' trap, blind, etc */
 
                 /* reallocate movement rations to monsters; don't need
                    to skip dead monsters here because they will have
@@ -245,22 +403,170 @@ export async function moveloop_core() {
                 maybe_generate_rnd_mon();
 
                 u_calc_moveamt(mvl_wtcap);
-                /* settrack(): not ported yet */
+                settrack();
 
                 g.moves++;
                 /* 'moves' is misnamed; it represents turns; hero_seq is
                    a value that is distinct every time the hero moves */
                 g.hero_seq = g.moves << 3;
 
-                /* once-per-turn things (l_nhcore_call, nh_timeout,
-                   regen_hp, regen_pw, exerchk, dosounds, ...) are not
-                   ported yet; seed8000's recorded rolls for them are
-                   replayed instead (indexed by the turn just ended) */
-                fastforward_step(g.moves - 1, FF_NEWTURN);
+                /* if (flags.time && !context.run) disp.time_botl = TRUE:
+                   the status line redraws its turn counter itself */
+
+                /********************************/
+                /* once-per-turn things go here */
+                /********************************/
+
+                /* l_nhcore_call(NHCORE_MOVELOOP_TURN): nhcore.lua sets no
+                   moveloop_turn callback */
+
+                if (P[GLIB].intrinsic) /* Glib */
+                    throw new Error('moveloop_core(): glibr() not ported yet');
+                await nh_timeout();
+                /* run_regions(): regions aren't ported yet (none exist) */
+
+                if (u.ublesscnt)
+                    u.ublesscnt--;
+
+                /* One possible result of prayer is healing.  Whether or
+                 * not you get healed depends on your current hit points.
+                 * If you are allowed to regenerate during the prayer,
+                 * the end-of-prayer calculation messes up on this.
+                 * Another possible result is rehumanization, which
+                 * requires that encumbrance and movement rate be
+                 * recalculated.
+                 */
+                if (u.uinvulnerable) {
+                    /* for the moment at least, you're in tiptop shape */
+                    mvl_wtcap = UNENCUMBERED;
+                } else if (!Upolyd() ? (u.uhp < u.uhpmax)
+                           : (u.mh < u.mhmax
+                              || g.youmonst.data.mlet === S_EEL)) {
+                    /* maybe heal */
+                    await regen_hp(mvl_wtcap);
+                }
+
+                /* moving around while encumbered is hard work */
+                if (mvl_wtcap > MOD_ENCUMBER && u.umoved) {
+                    if (!(mvl_wtcap < EXT_ENCUMBER ? g.moves % 30
+                          : g.moves % 10)) {
+                        overexert_hp();
+                    }
+                }
+
+                await regen_pw(mvl_wtcap);
+
+                if (!u.uinvulnerable) {
+                    if ((P[TELEPORT].intrinsic || P[TELEPORT].extrinsic) /* Teleportation */
+                        && !rn2(85)) {
+                        /* tele(): teleportation isn't ported yet */
+                        throw new Error('moveloop_core(): tele() not ported yet');
+                    }
+                    const Polymorph = P[POLYMORPH].intrinsic || P[POLYMORPH].extrinsic;
+                    /* delayed change may not be valid anymore */
+                    if ((mvl_change === 1 && !Polymorph)
+                        || (mvl_change === 2 && u.ulycn === NON_PM))
+                        mvl_change = 0;
+                    if (Polymorph && !rn2(100))
+                        mvl_change = 1;
+                    else if (u.ulycn >= LOW_PM /* ismnum(u.ulycn) */ && !Upolyd()
+                             && !rn2(80 - (20 * night())))
+                        mvl_change = 2;
+                    if (mvl_change && !(P[UNCHANGING].intrinsic || P[UNCHANGING].extrinsic)) {
+                        if (g.multi >= 0) {
+                            /* stop_occupation(); polyself(POLY_NOFLAGS) /
+                               you_were(): polymorphing isn't ported yet */
+                            throw new Error('moveloop_core(): polyself() not ported yet');
+                        }
+                    }
+                }
+
+                if ((P[SEARCHING].intrinsic || P[SEARCHING].extrinsic) /* Searching */
+                    && !g.level.flags.noautosearch
+                    && g.multi >= 0)
+                    await dosearch0(1);
+                if (P[WARNING].intrinsic || P[WARNING].extrinsic) /* Warning */
+                    /* warnreveal(): needs warning_of() and mfind0() */
+                    throw new Error('moveloop_core(): warnreveal() not ported yet');
+                if (g.were_changes) {
+                    /* update innate intrinsics (mainly Drain_resistance) */
+                    set_uasmon();
+                }
+                /* mkot_trap_warn(): only acts while wielding the Master
+                   Key of Thievery; artifacts aren't ported yet */
+                await dosounds();
+                /* do_storms(): only acts on the Plane of Air (not ported) */
+                await gethungry();
+                age_spells();
+                await exerchk();
+                /* invault(): vault_occupied(u.urooms) -- u.urooms is never
+                   set by the JS port yet (hero can't be in a vault) */
+                if (vault_occupied_urooms())
+                    throw new Error('moveloop_core(): invault() not ported yet');
+                else
+                    u.uinvault = 0;
+                if (u.uhave.amulet)
+                    throw new Error('moveloop_core(): amulet() not ported yet');
+                if (!rn2(40 + (ACURR(A_DEX) * 3)))
+                    u_wipe_engr(rnd(3));
+                if (u.uevent.udemigod && !u.uinvulnerable) {
+                    /* intervene(): not ported yet */
+                    throw new Error('moveloop_core(): intervene() not ported yet');
+                }
+                /* vision will be updated as bubbles move */
+                if (Is_waterlevel(u.uz) || Is_airlevel(u.uz))
+                    throw new Error('moveloop_core(): movebubbles() not ported yet');
+                else if (g.level.flags.fumaroles)
+                    throw new Error('moveloop_core(): fumaroles() not ported yet');
+
+                /* when immobile, count is in turns */
+                if (g.multi < 0) {
+                    /* runmode_delay_output(): display timing only */
+                    if (++g.multi === 0) { /* finished yet? */
+                        /* unmul((char *) 0): the nomovemsg message and
+                           afternmv callback aren't ported yet */
+                        unmul();
+                    }
+                }
             }
         } while (u.umovement < NORMAL_SPEED); /* hero can't move */
 
-        /* once-per-hero-took-time things: not ported yet */
+        /******************************************/
+        /* once-per-hero-took-time things go here */
+        /******************************************/
+
+        g.hero_seq++; /* moves*8 + n for n == 1..7 */
+
+        /* encumber_msg(): messages about encumbrance changes are not
+           ported yet (no rolls) */
+
+        if (g.moves >= g.context.seer_turn) {
+            const HC = P[CLAIRVOYANT];
+            if ((u.uhave.amulet || ((HC.intrinsic || HC.extrinsic) && !HC.blocked))
+                && !In_endgame(u.uz))
+                /* do_vicinity_map(): not ported yet */
+                throw new Error('moveloop_core(): do_vicinity_map() not ported yet');
+            /* we maintain this counter even when clairvoyance isn't
+               taking place; on average, go again 30 turns from now */
+            g.context.seer_turn = g.moves + rn1(31, 15); /*15..45*/
+        }
+        /* [fast hero who gets multiple moves per turn ends up sinking
+           multiple times per turn; is that what we really want?] */
+        if (u.utrap && u.utraptype === TT_LAVA)
+            throw new Error('moveloop_core(): sink_into_lava() not ported yet');
+        /* when/if hero escapes from lava, he can't just stay there */
+        else if (!u.umoved) {
+            /* (void) pooleffects(FALSE): only acts when the hero is in
+               or over water or lava; not ported yet */
+            if (is_pool_or_lava_at_u())
+                throw new Error('moveloop_core(): pooleffects() not ported yet');
+        }
+
+        /* vision while buried or underwater is updated here */
+        if (u.uinwater || u.uburied)
+            throw new Error('moveloop_core(): under_water() not ported yet');
+
+        /* see_nearby_monsters(): display only, not ported yet */
     } /* actual time passed */
 
     /* once-per-player-input things go here */
@@ -275,24 +581,60 @@ export async function moveloop_core() {
 
     g.context.move = 1;
 
-    // Read and execute one command
-    await rhack(0);
+    /* if (gm.multi >= 0 && go.occupation): occupations aren't ported yet */
+
+    u.umoved = 0;
+
+    if (g.multi > 0) {
+        await lookaround();
+        /* runmode_delay_output(): display timing only */
+        if (!g.multi) {
+            /* lookaround may clear multi */
+            g.context.move = 0;
+            return;
+        }
+        if (g.context.mv) {
+            if (g.multi < COLNO && !--g.multi)
+                end_running(true);
+            await domove();
+        } else {
+            /* --gm.multi; rhack(gc.cmd_key): command counts aren't
+               ported yet */
+            throw new Error('moveloop_core(): repeat count rhack() not ported yet');
+        }
+    } else if (g.multi === 0) {
+        /* ckmailstatus(): MAIL isn't ported */
+        await rhack(0);
+    }
+    // C ref: allmain.c moveloop_core()
+    if (g.u.utotype)       /* change dungeon level */
+        await deferred_goto(); /* after rhack() */
 
     // Clear message after command is processed
     g._pending_message = '';
 }
 
 // C ref: allmain.c moveloop_preamble()
-export function moveloop_preamble(resuming) {
+export async function moveloop_preamble(resuming) {
     const g = game;
     const u = g.u;
 
     /* if (resuming && iflags.deferred_X) enter_explore_mode(): restore
        isn't ported yet */
 
-    /* side-effects from the real world: phase_of_the_moon() and
-       friday_13th() (calendar.c) with their luck changes and messages
-       are not ported yet */
+    /* side-effects from the real world */
+    g.flags.moonphase = phase_of_the_moon();
+    if (g.flags.moonphase === FULL_MOON) {
+        await pline("You are lucky!  Full moon tonight."); /* You() */
+        change_luck(1);
+    } else if (g.flags.moonphase === NEW_MOON) {
+        await pline("Be careful!  New moon tonight.");
+    }
+    g.flags.friday13 = friday_13th();
+    if (g.flags.friday13) {
+        await pline("Watch out!  Bad things can happen on Friday the 13th.");
+        change_luck(-1);
+    }
 
     if (!resuming) { /* new game */
         g.program_state.beyond_savefile_load = 1; /* for TTY_PERM_INVENT */
@@ -307,6 +649,7 @@ export function moveloop_preamble(resuming) {
         /* give hero initial movement points; new game only--for restore,
            pending movement points were included in the save file */
         u.umovement = NORMAL_SPEED;
+        initrack();
         /* initrack(): not ported yet */
     }
     g.disp_botlx = true; /* for STATUS_HILITES */
@@ -321,7 +664,10 @@ export function moveloop_preamble(resuming) {
 
 // C ref: allmain.c moveloop()
 export async function moveloop(resuming) {
-    moveloop_preamble(resuming);
+    await moveloop_preamble(resuming);
+
+    /* if (!resuming) maybe_do_tutorial(); -- the tutorial query
+       (options.c ask_do_tutorial()) is not ported yet */
     vision_recalc(0);
     await docrt();
     await flush_screen(1);

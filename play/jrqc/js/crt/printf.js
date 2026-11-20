@@ -1,5 +1,5 @@
 // js/crt/printf.js: C formatted output, byte-exact with Darwin libc
-// (transpiler-design.md 5). Hand-written runtime.
+// (method/design.md 5). Hand-written runtime.
 //
 // One engine (cformat) for sprintf/snprintf/vsnprintf/fprintf and the macOS
 // fortified forms (__builtin___sprintf_chk etc.). Formats and %s arguments are

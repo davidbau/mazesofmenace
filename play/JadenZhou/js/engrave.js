@@ -14,7 +14,11 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn2_fnptr } from './rng.js';
 import { DUST, BURN, ENGR_BLOOD, HEADSTONE, N_ENGRAVE, ICE, ROOM, GRAVE } from './const.js';
 import { getrumor, get_rnd_text, ENGRAVEFILE, EPITAPHFILE, MD_PAD_RUMORS } from './rumors.js';
-import { t_at } from './trap.js';
+import { t_at, is_pit, is_hole } from './trap.js';
+import { LEVITATION, FLYING, TT_PIT, Is_airlevel, Is_waterlevel } from './const.js';
+import { AD_STCK, AD_WRAP, AT_ENGL, AT_HUGS, M1_HIDE, M1_CLING, S_MIMIC,
+         MZ_HUGE } from './monsters.js';
+import { dmgtype, is_flyer } from './mondata.js';
 import { set_levltyp } from './mkmaze.js';
 
 const BUFSZ = 256;
@@ -224,4 +228,79 @@ export function make_grave(x, y, str) {
         str = get_rnd_text(EPITAPHFILE, buf, rn2_fnptr, MD_PAD_RUMORS);
     make_engr_at(x, y, str, null, 0, HEADSTONE);
     return;
+}
+
+/* C ref: mondata.c attacktype(); mondata.h sticks(), is_hider(),
+   is_clinger(), ceiling_hider() */
+function attacktype(ptr, atyp) {
+    for (let i = 0; i < ptr.mattk.length; i++)
+        if (ptr.mattk[i].aatyp === atyp) return true;
+    return false;
+}
+function sticks(ptr) {
+    return dmgtype(ptr, AD_STCK)
+           || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
+           || attacktype(ptr, AT_HUGS);
+}
+function ceiling_hider(ptr) {
+    return (ptr.mflags1 & M1_HIDE) !== 0
+           && ((((ptr.mflags1 & M1_CLING) !== 0) && ptr.mlet !== S_MIMIC)
+               || is_flyer(ptr)); /* lurker above */
+}
+
+// C ref: trap.c uteetering_at_seen_pit()
+function uteetering_at_seen_pit(trap) {
+    const u = game.u;
+    return (trap && is_pit(trap.ttyp) && trap.tseen
+            && u.ux === trap.tx && u.uy === trap.ty
+            && !(u.utrap && u.utraptype === TT_PIT));
+}
+
+// C ref: trap.c uescaped_shaft()
+function uescaped_shaft(trap) {
+    const u = game.u;
+    return (trap && is_hole(trap.ttyp) && trap.tseen
+            && u.ux === trap.tx && u.uy === trap.ty);
+}
+
+// C ref: engrave.c can_reach_floor()
+/* can hero reach the floor? */
+export function can_reach_floor(check_pit) {
+    const g = game;
+    const u = g.u;
+    let t;
+    /* C ref: youprop.h Levitation, Flying (BFlying: not ported yet) */
+    const lev = u.uprops[LEVITATION];
+    const Levitation = (lev.intrinsic || lev.extrinsic) && !lev.blocked;
+    const Flying = u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic;
+
+    if (u.uswallow
+        || (u.ustuck && !sticks(g.youmonst.data)
+            /* assume that arms are pinned rather than that the hero
+               has been lifted up above the floor */
+            && attacktype(u.ustuck.data, AT_HUGS))
+        || (Levitation && !(Is_airlevel(u.uz) || Is_waterlevel(u.uz))))
+        return false;
+    /* Restricted/unskilled riders can't reach the floor */
+    if (u.usteed) {
+        /* P_SKILL(P_RIDING) < P_BASIC: weapon skills aren't ported yet */
+        throw new Error('can_reach_floor(): P_SKILL() not ported yet');
+    }
+    if (u.uundetected && ceiling_hider(g.youmonst.data))
+        return false;
+
+    if (Flying || g.youmonst.data.msize >= MZ_HUGE)
+        return true;
+
+    if (check_pit && (t = t_at(u.ux, u.uy)) != null
+        && (uteetering_at_seen_pit(t) || uescaped_shaft(t)))
+        return false;
+
+    return true;
+}
+
+// C ref: engrave.c u_wipe_engr()
+export function u_wipe_engr(cnt) {
+    if (can_reach_floor(true))
+        wipe_engr_at(game.u.ux, game.u.uy, cnt, false);
 }

@@ -1,4 +1,4 @@
-// js/crt/fs.js: the file system the C program sees (transpiler-design.md 5, 8.1).
+// js/crt/fs.js: the file system the C program sees (method/design.md 5, 8.1).
 // Hand-written runtime.
 //
 // Layers, by path:

@@ -63,9 +63,12 @@ export function nhlib_lua(L) {
     G.d = function d(dice, faces) {
         if (faces === undefined) {
             // -- 1-arg form: argument "dice" is actually the number of faces
-            return withRngCaller(
-                'random src=nhlib.lua:10 parent=d(nhlib.lua:32)',
-                () => G.math.random(1, dice));
+            // return math.random(1, dice) is a Lua tail call (and so is
+            // math.random's own nh.random call): d's frame is gone, and the
+            // recorder tags the roll "nh.random src=nhlib.lua:10
+            // parent=<d's caller>". The caller supplies that tag with
+            // withRngCaller around its d() call.
+            return G.math.random(1, dice);
         } else {
             let sum = 0;
             for (let i = 1; i <= dice; i++) {

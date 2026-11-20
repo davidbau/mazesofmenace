@@ -30,7 +30,7 @@ import {
     TBR_STAIR, TBR_NO_UP, TBR_NO_DOWN, TBR_PORTAL,
     BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL,
     TOWN, HELLISH, MAZELIKE, ROGUELIKE, UNCONNECTED, D_ALIGN_MASK,
-    D_ALIGN_NONE, D_ALIGN_CHAOTIC, D_ALIGN_NEUTRAL, D_ALIGN_LAWFUL,
+    D_ALIGN_NONE, D_ALIGN_CHAOTIC, D_ALIGN_NEUTRAL, D_ALIGN_LAWFUL, Align2amask,
 } from './const.js';
 import {
     nhl_init, nhl_loadlua, nhl_done, lua_type, lua_istable, lua_len,
@@ -1059,6 +1059,23 @@ export function Is_special(lev) {
     return null;
 }
 
+// C ref: dungeon.c induced_align()
+/* return an alignment mask */
+export function induced_align(pct) {
+    const lev = Is_special(game.u.uz);
+
+    if (lev && lev.flags.align)
+        if (rn2(100) < pct)
+            return lev.flags.align;
+
+    if (game.dungeons[game.u.uz.dnum].flags.align)
+        if (rn2(100) < pct)
+            return game.dungeons[game.u.uz.dnum].flags.align;
+
+    const al = rn2(3) - 1;
+    return Align2amask(al);
+}
+
 // C ref: dungeon.c In_hell()
 export function In_hell(lev) {
     return game.dungeons[lev.dnum].flags.hellish ? true : false;
@@ -1094,6 +1111,52 @@ export function deepest_lev_reached(noquest) {
             ret = depth(tmp);
     }
     return ret;
+}
+
+// C ref: dungeon.c get_level()
+export function get_level(newlevel, levnum) {
+    let br;
+    let dgn = game.u.uz.dnum;
+    const dungeons = game.dungeons;
+
+    if (levnum <= 0) {
+        /* can only currently happen in endgame */
+        levnum = game.u.uz.dlevel;
+    } else if (levnum > (dungeons[dgn].depth_start
+                         + dungeons[dgn].num_dunlevs - 1)) {
+        /* beyond end of dungeon, jump to last level */
+        levnum = dungeons[dgn].num_dunlevs;
+    } else {
+        /* The desired level is in this dungeon or a "higher" one. */
+
+        /*
+         * Branch up the tree until we reach a dungeon that contains the
+         * levnum.
+         */
+        if (levnum < dungeons[dgn].depth_start) {
+            do {
+                /*
+                 * Find the parent dungeon of this dungeon.
+                 *
+                 * This assumes that end2 is always the "child" and it is
+                 * unique.
+                 */
+                for (br = game.branches; br; br = br.next)
+                    if (br.end2.dnum === dgn)
+                        break;
+                if (!br)
+                    throw new Error('get_level: can\'t find parent dungeon');
+
+                dgn = br.end1.dnum;
+            } while (levnum < dungeons[dgn].depth_start);
+        }
+
+        /* We're within the same dungeon; calculate the level. */
+        levnum = levnum - dungeons[dgn].depth_start + 1;
+    }
+
+    newlevel.dnum = dgn;
+    newlevel.dlevel = levnum;
 }
 
 // C ref: dungeon.c builds_up()

@@ -8,7 +8,7 @@
 import { game } from './gstate.js';
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
+import { init_rect, rnd_rect, get_rect, split_rects, within_bounded_area } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { Is_branchlev, In_hell, level_difficulty, on_level, dungeon_branch,
          dunlev, dunlevs_in_dungeon, Is_special,
@@ -36,7 +36,8 @@ import {
     SPACE_POS, isok, W_NONDIGGABLE, FILL_NORMAL,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
     A_LAWFUL, Align2amask,
-    LR_UPTELE, NHL_SB_SAFE, G_GONE, SHOPBASE, COURT, LEPREHALL, ZOO, TEMPLE,
+    LR_UPTELE, LR_TELE, LR_DOWNTELE, LR_BRANCH, LR_PORTAL, LR_DOWNSTAIR,
+    LR_UPSTAIR, AIR, MAX_TYPE, NHL_SB_SAFE, G_GONE, SHOPBASE, COURT, LEPREHALL, ZOO, TEMPLE,
     BEEHIVE, MORGUE, ANTHOLE, BARRACKS, SWAMP, COCKNEST, DUST, MARK,
     TAINT_AGE, MM_NOGRP, NO_MM_FLAGS, MKTRAP_NOFLAGS, MKTRAP_SEEN,
     MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
@@ -51,14 +52,15 @@ import {
     SCR_ENCHANT_WEAPON, SCR_ENCHANT_ARMOR, SCR_CONFUSE_MONSTER,
     SCR_SCARE_MONSTER, WAN_DIGGING, SPE_HEALING, LARGE_BOX, CHEST,
     FOOD_RATION, CRAM_RATION, LEMBAS_WAFER,
-    ARROW, DART, TALLOW_CANDLE, WAX_CANDLE, objects,
+    ARROW, DART, TALLOW_CANDLE, WAX_CANDLE, objects, WAND_CLASS, SPBOOK_CLASS,
 } from './objects.js';
 import {
     SPBOOK_no_NOVEL, next_ident, blessorcurse, curse, mksobj, mksobj_at,
     mkobj, mkobj_at, mkgold, mkcorpstat, rndmonnum, set_corpsenm,
     CORPSTAT_INIT,
 } from './mkobj.js';
-import { mkclass, makemon } from './makemon.js';
+import { mkclass, makemon, m_at } from './makemon.js';
+import { shtypes } from './shknam.js';
 import {
     NO_TRAP, TRAPNUM, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, LANDMINE,
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT,
@@ -77,7 +79,8 @@ const ydir = [0, -1, -1, -1, 0, 1, 1, 1];
 
 // Stairway list management
 function stairway_add(x, y, up, isladder, dest) {
-    const node = { sx: x, sy: y, up, isladder, tolev: { ...dest }, next: game.stairs };
+    const node = { sx: x, sy: y, up, isladder, tolev: { ...dest },
+                   u_traversed: false, next: game.stairs };
     game.stairs = node;
 }
 
@@ -97,49 +100,160 @@ function stairway_find_special_dir(up) {
 
 // ── Hero placement (C ref: stairs.c, mkmaze.c) ──
 
-function u_on_newpos(x, y) {
-    game.u.ux = x;
-    game.u.uy = y;
+// C ref: dungeon.c u_on_newpos()
+export function u_on_newpos(x, y) {
+    const u = game.u;
+    if (!isok(x, y)) /* validate location */
+        throw new Error(`u_on_newpos: trying to place hero off map <${x},${y}>`);
+    u.ux = x;
+    u.uy = y;
+    /* cliparound(u.ux, u.uy): CLIPPING is display only */
+    u.uundetected = 0;
+    /* ridden steed always shares hero's location */
+    if (u.usteed)
+        u.usteed.mx = u.ux, u.usteed.my = u.uy;
+    /* when changing levels, don't leave old position set with
+       stale values from previous level */
+    if (u.uz0 && !on_level(u.uz, u.uz0)) {
+        u.ux0 = u.ux, u.uy0 = u.uy;
+        /* map_location(u.ux, u.uy, FALSE): display only, the arrival
+           docrt() redraws the map */
+        if (game.iflags) game.iflags.terrain_typ = MAX_TYPE; /* "none of the above" value */
+    } else {
+        /* see_nearby_objects(): display only */
+    }
+    /* earth_sense(): no rolls; buried-object feedback isn't ported yet */
 }
 
-// C ref: mkmaze.c bad_location — simplified for skeleton
-function bad_location(x, y, nlx, nly, nhx, nhy) {
-    const loc = game.level?.at(x, y);
-    if (!loc) return true;
-    // Excluded region
-    if (nlx && x >= nlx && x <= nhx && y >= nly && y <= nhy) return true;
-    // Must be ROOM or (CORR in maze)
-    if (loc.typ !== ROOM && !(loc.typ === CORR && game.level?.flags?.is_maze_lev))
-        return true;
+// C ref: mkmaze.c is_exclusion_zone()
+function is_exclusion_zone(type, x, y) {
+    let ez = game.exclusion_zones;
+
+    while (ez) {
+        if (((type === LR_DOWNTELE
+              && (ez.zonetype === LR_DOWNTELE || ez.zonetype === LR_TELE))
+             || (type === LR_UPTELE
+                 && (ez.zonetype === LR_UPTELE || ez.zonetype === LR_TELE))
+             || type === ez.zonetype)
+            && within_bounded_area(x, y, ez.lx, ez.ly, ez.hx, ez.hy))
+            return true;
+        ez = ez.next;
+    }
     return false;
 }
 
-// C ref: mkmaze.c place_lregion — place hero (LR_UPTELE/LR_DOWNTELE)
-export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
-    if (!lx) {
-        lx = 1; hx = COLNO - 1; ly = 0; hy = ROWNO - 1;
-    }
-    if (lx < 1) lx = 1;
-    if (hx > COLNO - 1) hx = COLNO - 1;
-    if (ly < 0) ly = 0;
-    if (hy > ROWNO - 1) hy = ROWNO - 1;
+// C ref: mkmaze.c bad_location()
+/*
+ * Bad if:
+ *      pos is occupied OR
+ *      pos is inside restricted region (nlx,nly,nhx,nhy) OR
+ *      NOT (pos is corridor and a maze level OR pos is a room OR pos is air)
+ */
+function bad_location(x, y, nlx, nly, nhx, nhy) {
+    const typ = game.level.at(x, y).typ;
+    return !!(occupied(x, y)
+              || within_bounded_area(x, y, nlx, nly, nhx, nhy)
+              || !((typ === CORR && game.level.flags.is_maze_lev)
+                   || typ === ROOM
+                   || typ === AIR));
+}
 
-    // Probabilistic search
-    for (let trycnt = 0; trycnt < 200; trycnt++) {
-        const x = rn1((hx - lx) + 1, lx);
-        const y = rn1((hy - ly) + 1, ly);
-        if (!bad_location(x, y, nlx, nly, nhx, nhy)) {
-            u_on_newpos(x, y);
+// C ref: mkmaze.c place_lregion()
+/* pick a location in area (lx, ly, hx, hy) but not in (nlx, nly, nhx, nhy)
+   and place something (based on rtype) in that region */
+export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
+    let trycnt;
+    let oneshot;
+    let x, y;
+
+    if (!lx) { /* default to whole level */
+        /*
+         * if there are rooms and this a branch, let place_branch choose
+         * the branch location (to avoid putting branches in corridors).
+         */
+        if (rtype === LR_BRANCH && game.level.nroom)
+            throw new Error('place_lregion(): LR_BRANCH not ported yet');
+
+        lx = 1; /* column 0 is not used */
+        hx = COLNO - 1;
+        ly = 0; /* 3.6.0 and earlier erroneously had 1 here */
+        hy = ROWNO - 1;
+    }
+
+    /* clamp the area to the map */
+    if (lx < 1)
+        lx = 1;
+    if (hx > COLNO - 1)
+        hx = COLNO - 1;
+    if (ly < 0)
+        ly = 0;
+    if (hy > ROWNO - 1)
+        hy = ROWNO - 1;
+
+    /* first a probabilistic approach */
+
+    oneshot = (lx === hx && ly === hy);
+    for (trycnt = 0; trycnt < 200; trycnt++) {
+        x = rn1((hx - lx) + 1, lx);
+        y = rn1((hy - ly) + 1, ly);
+        if (put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev))
             return;
+    }
+
+    /* then a deterministic one */
+
+    for (x = lx; x <= hx; x++)
+        for (y = ly; y <= hy; y++)
+            if (put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, true, lev))
+                return;
+
+    /* impossible("Couldn't place lregion type %d!", rtype) */
+}
+
+// C ref: mkmaze.c put_lregion_here()
+function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
+    let mtmp;
+
+    if (bad_location(x, y, nlx, nly, nhx, nhy)
+        || is_exclusion_zone(rtype, x, y)) {
+        if (!oneshot) {
+            return false; /* caller should try again */
+        } else {
+            /* Must make do with the only location possible;
+               avoid failure due to a misplaced trap.
+               It might still fail if there's a dungeon feature here. */
+            const t = t_at(x, y);
+
+            if (t)
+                throw new Error('put_lregion_here(): deltrap() not ported yet');
+            if (bad_location(x, y, nlx, nly, nhx, nhy)
+                || is_exclusion_zone(rtype, x, y))
+                return false;
         }
     }
-    // Deterministic fallback
-    for (let x = lx; x <= hx; x++)
-        for (let y = ly; y <= hy; y++)
-            if (!bad_location(x, y, nlx, nly, nhx, nhy)) {
-                u_on_newpos(x, y);
-                return;
-            }
+    switch (rtype) {
+    case LR_TELE:
+    case LR_UPTELE:
+    case LR_DOWNTELE:
+        /* "something" means the player in this case */
+        if ((mtmp = m_at(x, y)) != null) {
+            /* move the monster if no choice, or just try again */
+            if (oneshot)
+                throw new Error('put_lregion_here(): rloc() not ported yet');
+            else
+                return false;
+        }
+        u_on_newpos(x, y);
+        break;
+    case LR_PORTAL:
+        throw new Error('put_lregion_here(): mkportal() not ported yet');
+    case LR_DOWNSTAIR:
+    case LR_UPSTAIR:
+        throw new Error('put_lregion_here(): mkstairs() not ported yet');
+    case LR_BRANCH:
+        throw new Error('put_lregion_here(): place_branch() not ported yet');
+    }
+    return true;
 }
 
 // C ref: stairs.c u_on_upstairs — place hero on upstairs or fallback
@@ -163,12 +277,16 @@ function oinit() { /* no-op for contest */ }
 // ============================================================
 
 
-// C ref: mkobj.c place_object() -- floor object chains are not ported
-// yet; the location is recorded on the object.
+// C ref: mkobj.c place_object() -- the level's floor object chain (fobj)
+// is game.level.objects, newest first; per-square piles are read from it
+// in the same order (boulder-first pile ordering isn't ported yet).
 function place_object(otmp, x, y) {
     otmp.ox = x;
     otmp.oy = y;
     otmp.where = 'OBJ_FLOOR';
+    /* otmp->nobj = fobj; fobj = otmp; */
+    if (!game.level.objects) game.level.objects = [];
+    game.level.objects.unshift(otmp);
 }
 // C ref: mkobj.c dealloc_obj() -- nothing to free in JS
 function dealloc_obj(otmp) { /* garbage collected */ }
@@ -231,6 +349,8 @@ function clear_level_structures() {
     g.level = new GameMap();
     g.level.nroom = 0;
     g.level.rooms = [];
+    g.level.nsubroom = 0;
+    g.level.subrooms = [];
     g.made_branch = false;
     g.smeq = new Array(MAXNROFROOMS + 1).fill(0);
     g.level.doorindex = 0;
@@ -367,11 +487,18 @@ async function makelevel() {
         do_mkroom(COCKNEST);
 
     /* skip0: */
-    /* prevstairs = gs.stairs: used to test for place_branch() success */
+    const prevstairs = game.stairs; /* used to test for place_branch() success */
     /* Place multi-dungeon branch. */
     if (branchp) {
         place_branch(branchp);
     }
+
+    /* for main dungeon level 1, the stairs up where the hero starts
+       are branch stairs; treat them as if hero had just come down
+       them by marking them as having been traversed; most recently
+       created stairway is held in 'gs.stairs' */
+    if (g.u.uz.dnum === 0 && g.u.uz.dlevel === 1 && game.stairs !== prevstairs)
+        game.stairs.u_traversed = true;
 
     /* some levels have specially generated items in ordinary
        rooms (intended to be indistinguishable from the normally
@@ -487,10 +614,157 @@ function mk_knox_portal(x, y) {
     place_branch(br, x, y);
 }
 
-// C ref: mkroom.c do_mkroom() — not ported yet (only reached below
-// dungeon level 1).
+// C ref: mkroom.c isbig()
+function isbig(sroom) {
+    const area = (sroom.hx - sroom.lx + 1)
+                        * (sroom.hy - sroom.ly + 1);
+
+    return (area > 20);
+}
+
+// C ref: mkroom.c do_mkroom()
 function do_mkroom(roomtype) {
-    console.error(`impossible: do_mkroom(${roomtype}) is not ported yet`);
+    if (roomtype >= SHOPBASE) {
+        mkshop(); /* someday, we should be able to specify shop type */
+    } else {
+        /* mkzoo()/mkswamp()/mktemple() are not ported yet */
+        console.error(`impossible: do_mkroom(${roomtype}) is not ported yet`);
+    }
+}
+
+// C ref: mkroom.c mkshop()
+function mkshop() {
+    const g = game;
+    let sroom;
+    let i = -1;
+    const ep = null; /* (wizard) nh_getenv("SHOPTYPE"): the JS port has no
+                      * environment */
+
+    /* gottype: */
+    for (let ri = 0;; ri++) {
+        sroom = g.level.rooms[ri];
+        /* return from this loop: cannot find any eligible room to be a shop
+         * continue: sroom is ineligible
+         * break: sroom is eligible
+         */
+        if (!sroom || sroom.hx < 0)
+            return;
+        if (ri >= g.level.nroom) {
+            console.error('impossible: rooms[] not closed by -1?');
+            return;
+        }
+        if (sroom.rtype !== OROOM)
+            continue;
+        if (has_dnstairs(sroom) || has_upstairs(sroom))
+            continue;
+        if (sroom.doorct === 1 || (is_wizard_mode() && ep && sroom.doorct !== 0)) {
+            if (invalid_shop_shape(sroom))
+                continue;
+            else
+                break;
+        }
+    }
+    if (!sroom.rlit) {
+        for (let x = sroom.lx - 1; x <= sroom.hx + 1; x++)
+            for (let y = sroom.ly - 1; y <= sroom.hy + 1; y++)
+                g.level.at(x, y).lit = 1;
+        sroom.rlit = 1;
+    }
+
+    if (i < 0) { /* shoptype not yet determined */
+        let j;
+
+        /* pick a shop type at random */
+        for (j = rnd(100), i = 0; (j -= shtypes[i].prob) > 0; i++)
+            continue;
+
+        /* big rooms cannot be wand or book shops,
+         * - so make them general stores
+         */
+        if (isbig(sroom) && (shtypes[i].symb === WAND_CLASS
+                             || shtypes[i].symb === SPBOOK_CLASS))
+            i = 0;
+    }
+    sroom.rtype = SHOPBASE + i;
+
+    /* set room bits before stocking the shop */
+    topologize(sroom);
+
+    /* The shop used to be stocked here, but this no longer happens--all we do
+       is set its rtype, and it gets stocked at the end of makelevel() along
+       with other special rooms. */
+    sroom.needfill = FILL_NORMAL;
+}
+
+// C ref: mkroom.c has_dnstairs()
+function has_dnstairs(sroom) {
+    let stway = game.stairs;
+
+    while (stway) {
+        if (!stway.up && inside_room(sroom, stway.sx, stway.sy))
+            return true;
+        stway = stway.next;
+    }
+    return false;
+}
+
+// C ref: mkroom.c has_upstairs()
+function has_upstairs(sroom) {
+    let stway = game.stairs;
+
+    while (stway) {
+        if (stway.up && inside_room(sroom, stway.sx, stway.sy))
+            return true;
+        stway = stway.next;
+    }
+    return false;
+}
+
+// C ref: mkroom.c invalid_shop_shape()
+function invalid_shop_shape(sroom) {
+    const doorx = game.level.doors[sroom.fdoor].x;
+    const doory = game.level.doors[sroom.fdoor].y;
+    let insidex = 0, insidey = 0, insidect = 0;
+
+    /* First, identify squares inside the room and next to the door. */
+    for (let x = Math.max(doorx - 1, sroom.lx);
+         x <= Math.min(doorx + 1, sroom.hx); x++) {
+        for (let y = Math.max(doory - 1, sroom.ly);
+             y <= Math.min(doory + 1, sroom.hy); y++) {
+            if (game.level.at(x, y).typ === ROOM) {
+                insidex = x;
+                insidey = y;
+                insidect++;
+            }
+        }
+    }
+    if (insidect < 1) {
+        console.error('impossible: invalid_shop_shape: no squares inside door?');
+        return true;
+    }
+    /* if insidect > 1, then the shopkeeper already has alternate
+     * squares to move to so we don't need to check further. */
+    if (insidect === 1) {
+        /* But if it is 1, scan all adjacent squares for other squares
+         * that are part of this room. */
+        insidect = 0;
+        for (let x = Math.max(insidex - 1, sroom.lx);
+             x <= Math.min(insidex + 1, sroom.hx); x++) {
+            for (let y = Math.max(insidey - 1, sroom.ly);
+                 y <= Math.min(insidey + 1, sroom.hy); y++) {
+                if (x === insidex && y === insidey)
+                    continue;
+                if (game.level.at(x, y).typ === ROOM)
+                    insidect++;
+            }
+        }
+        if (insidect === 1) {
+            /* shopkeeper standing just inside the door can only move
+             * to one other square; this cannot be a shop. */
+            return true;
+        }
+    }
+    return false;
 }
 
 // C ref: mkroom.c antholemon() — not ported yet (only reached below
@@ -727,6 +1001,26 @@ export function add_room(lowx, lowy, hix, hiy, lit, rtype, special) {
 }
 
 // C ref: mklev.c do_room_or_subroom()
+// C ref: mklev.c add_subroom()
+/* C keeps gs.subrooms in svr.rooms[] after the MAXNROFROOMS+1 room slots,
+   so a subroom's roomno indexes svr.rooms[] too; JS mirrors that layout in
+   game.level.rooms[] and also lists them in game.level.subrooms[]. */
+export function add_subroom(proom, lowx, lowy, hix, hiy, lit, rtype, special) {
+    const g = game;
+    if (!g.level.subrooms) g.level.subrooms = [];
+    if (!g.level.nsubroom) g.level.nsubroom = 0;
+    const croom = {
+        roomnoidx: MAXNROFROOMS + 1 + g.level.nsubroom,
+        needfill: 0,
+    };
+    do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, rtype, special,
+                       false);
+    proom.sbrooms[proom.nsubrooms++] = croom;
+    g.level.subrooms[g.level.nsubroom] = croom;
+    g.level.rooms[croom.roomnoidx] = croom;
+    g.level.nsubroom++;
+}
+
 function do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, _rtype, special, is_room) {
     const map = game.level;
     if (!lowx) lowx++;
@@ -788,8 +1082,12 @@ function sort_rooms() {
     const oldToNew = new Array(n).fill(0);
     const liveRooms = g.level.rooms.slice(0, n)
         .sort((a, b) => (a?.lx || 0) - (b?.lx || 0));
+    /* gs.subrooms live after the room slots and are not sorted */
+    const subrooms = g.level.rooms.slice(MAXNROFROOMS + 1);
     g.level.rooms = liveRooms;
     if (n < MAXNROFROOMS) g.level.rooms[n] = { hx: -1 };
+    for (let i = 0; i < subrooms.length; i++)
+        if (subrooms[i]) g.level.rooms[MAXNROFROOMS + 1 + i] = subrooms[i];
     for (let i = 0; i < n; i++) {
         if (g.level.rooms[i]) {
             oldToNew[g.level.rooms[i].roomnoidx] = i;
@@ -829,6 +1127,9 @@ export function topologize(croom) {
             const loc = game.level.at(x, y);
             if (loc) { loc.edge = true; loc.roomno = loc.roomno ? SHARED : roomno; }
         }
+    /* gs.subrooms */
+    for (let subindex = 0; subindex < (croom.nsubrooms || 0); subindex++)
+        topologize(croom.sbrooms[subindex]);
 }
 
 // ============================================================
@@ -1047,9 +1348,15 @@ export function add_door(x, y, aroom) {
     aroom.doorct++;
     for (let tmp = g.level.doorindex; tmp > aroom.fdoor; tmp--)
         g.level.doors[tmp] = g.level.doors[tmp - 1];
-    for (const broom of g.level.rooms || []) {
+    for (let i = 0; i < g.level.nroom; i++) {
+        const broom = g.level.rooms[i];
         if (!broom || broom.hx <= 0 || broom === aroom || !(broom.doorct > 0)) continue;
         if ((broom.fdoor ?? 0) >= aroom.fdoor) broom.fdoor++;
+    }
+    for (let i = 0; i < (g.level.nsubroom || 0); i++) {
+        const broom = g.level.subrooms[i];
+        if (broom !== aroom && broom.doorct && broom.fdoor >= aroom.fdoor)
+            broom.fdoor++;
     }
     g.level.doors[aroom.fdoor] = { x, y };
     g.level.doorindex++;
@@ -1065,7 +1372,8 @@ function bydoor(x, y) {
     return false;
 }
 
-function okdoor(x, y) {
+// C ref: mklev.c okdoor()
+export function okdoor(x, y) {
     const map = game.level;
     const loc = map.at(x, y);
     if (!loc) return false;

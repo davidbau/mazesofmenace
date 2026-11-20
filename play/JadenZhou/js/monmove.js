@@ -1,0 +1,1521 @@
+// monmove.js — monster movement: dochugw(), dochug(), m_move(), postmov(),
+// distfleeck(), onscary(), set_apparxy() and their helpers.
+// C ref: monmove.c (plus small helpers from mondata.h, mthrowu.c, muse.c,
+// mhitu.c, vision.c, dogmove.c as noted)
+//
+// Branches that need code no session reaches yet throw a
+// 'not ported yet' error instead of skipping their rolls.
+
+import { game } from './gstate.js';
+import { rn2, rnd } from './rng.js';
+import { dist2, distmin } from './hacklib.js';
+import { cansee, couldsee, clear_path } from './vision.js';
+import { newsym } from './display.js';
+import { wipe_engr_at } from './engrave.js';
+import { acurrstr } from './attrib.js';
+import {
+    m_at, MON_AT, place_monster, sobj_at, is_pool, is_lava, accessible,
+    closed_door, sengr_at, u_at,
+} from './makemon.js';
+import { monsndx, is_flyer, is_floater, is_swimmer, passes_walls, haseyes,
+         perceives, can_teleport, is_undead, is_human, is_vampshifter,
+         dmgtype } from './mondata.js';
+import { mfndpos, monnear, mon_allowflags } from './mon.js';
+import { gettrack } from './track.js';
+import { dog_move, can_carry, can_touch_safely, curr_mon_load,
+         max_mon_load } from './dogmove.js';
+import * as OBJ from './objects.js';
+import * as M from './monsters.js';
+import { mons } from './monsters.js';
+import { objects, BOULDER, ROCK, SCR_SCARE_MONSTER, GOLD_PIECE, CORPSE,
+         GEM_CLASS, MINERAL, GEMSTONE, WEAPON_CLASS, ARMOR_CLASS,
+         FOOD_CLASS, AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS,
+         RING_CLASS, SPBOOK_CLASS, ROCK_CLASS, BALL_CLASS,
+         CREDIT_CARD, SKELETON_KEY, LOCK_PICK } from './objects.js';
+import {
+    MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE, MMOVE_NOMOVES,
+    ALLOW_U, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK, NOTONL, MTSZ, BOLT_LIM,
+    STRAT_ARRIVE, STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE,
+    INVIS, STEALTH, AGGRAVATE_MONSTER, CONFLICT, W_ARTI, M_AP_FURNITURE,
+    M_AP_OBJECT, NON_PM, IS_DOOR, IS_ALTAR, IRONBARS, isok, SHOPBASE,
+    DISPLACED, HALLUC, SEE_INVIS, D_LOCKED, D_CLOSED, D_TRAPPED, M_AP_MONSTER,
+    COLNO, ROWNO, IS_OBSTRUCTED, MFAST,
+} from './const.js';
+import { STRANGE_OBJECT, WAN_STRIKING } from './objects.js';
+import { ART_EXCALIBUR } from './artilist.js';
+import { In_hell } from './dungeon.js';
+
+/* monster inventory: makemon.js keeps mon->minvent as an array in pickup
+   order; C prepends, so walk it newest first */
+function minv(mon) { return (mon.minvent || []).slice().reverse(); }
+
+// ── small helpers (C ref: youprop.h / mondata.h / display.h macros) ──
+
+/* C ref: youprop.h -- (H* || E*) && !B* */
+function uhave(prop) {
+    const p = game.u.uprops[prop];
+    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
+}
+function Invis() { return uhave(INVIS); }
+function Stealth() { return uhave(STEALTH); }
+function Aggravate_monster() { return uhave(AGGRAVATE_MONSTER); }
+/* C ref: youprop.h Conflict -- (HConflict || EConflict) */
+function Conflict() {
+    const p = game.u.uprops[CONFLICT];
+    return !!(p.intrinsic || p.extrinsic);
+}
+function Displaced() { return uhave(DISPLACED); }
+function Underwater() { return !!game.u.uinwater; }
+function Upolyd() { return game.u.umonnum !== game.u.umonster; }
+function Hallucination() { return uhave(HALLUC); }
+
+/* mondata.h */
+function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
+function mindless(ptr) { return (ptr.mflags1 & M.M1_MINDLESS) !== 0; }
+function nohands(ptr) { return (ptr.mflags1 & M.M1_NOHANDS) !== 0; }
+function verysmall(ptr) { return ptr.msize < M.MZ_SMALL; }
+function tunnels(ptr) { return (ptr.mflags1 & M.M1_TUNNEL) !== 0; }
+function needspick(ptr) { return (ptr.mflags1 & M.M1_NEEDPICK) !== 0; }
+function hides_under(ptr) { return (ptr.mflags1 & M.M1_CONCEAL) !== 0; }
+function is_hider(ptr) { return (ptr.mflags1 & M.M1_HIDE) !== 0; }
+function amorphous(ptr) { return (ptr.mflags1 & M.M1_AMORPHOUS) !== 0; }
+function is_rider(ptr) {
+    const n = monsndx(ptr);
+    return n === M.PM_DEATH || n === M.PM_FAMINE || n === M.PM_PESTILENCE;
+}
+function is_covetous(ptr) { return (ptr.mflags3 & M.M3_COVETOUS) !== 0; }
+function is_wanderer(ptr) { return (ptr.mflags2 & M.M2_WANDER) !== 0; }
+function is_mercenary(ptr) { return (ptr.mflags2 & M.M2_MERC) !== 0; }
+function likes_gold(ptr) { return (ptr.mflags2 & M.M2_GREEDY) !== 0; }
+function likes_gems(ptr) { return (ptr.mflags2 & M.M2_JEWELS) !== 0; }
+function likes_objs(ptr) { return (ptr.mflags2 & M.M2_COLLECT) !== 0 || is_armed(ptr); }
+function likes_magic(ptr) { return (ptr.mflags2 & M.M2_MAGIC) !== 0; }
+function throws_rocks(ptr) { return (ptr.mflags2 & M.M2_ROCKTHROW) !== 0; }
+function is_unicorn(ptr) { return ptr.mlet === M.S_UNICORN && likes_gems(ptr); }
+function likes_lava(ptr) {
+    return ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER];
+}
+function metallivorous(ptr) { return (ptr.mflags1 & M.M1_METALLIVORE) !== 0; }
+function is_armed(ptr) { return attacktype(ptr, M.AT_WEAP); }
+function unique_corpstat(ptr) { return (ptr.geno & M.G_UNIQ) !== 0; }
+function corpse_eater(ptr) {
+    const n = monsndx(ptr);
+    return n === M.PM_PURPLE_WORM || n === M.PM_BABY_PURPLE_WORM
+        || n === M.PM_GHOUL || n === M.PM_PIRANHA;
+}
+function is_watch(ptr) {
+    const n = monsndx(ptr);
+    return n === M.PM_WATCHMAN || n === M.PM_WATCH_CAPTAIN;
+}
+function is_mind_flayer(ptr) {
+    const n = monsndx(ptr);
+    return n === M.PM_MIND_FLAYER || n === M.PM_MASTER_MIND_FLAYER;
+}
+/* C ref: mondata.c attacktype() */
+function attacktype(ptr, atyp) {
+    for (const a of ptr.mattk)
+        if (a.aatyp === atyp) return true;
+    return false;
+}
+/* C ref: mondata.h noattacks() -- via mondata.c noattacks() */
+function noattacks(ptr) {
+    for (const a of ptr.mattk) {
+        /* AT_BOOM "passive attack" (gas spore's explosion upon death)
+           isn't an attack as far as our callers are concerned */
+        if (a.aatyp === M.AT_BOOM) continue;
+        if (a.aatyp) return false;
+    }
+    return true;
+}
+/* C ref: mondata.c can_track() */
+function can_track(ptr) {
+    if (game.uwep && game.uwep.oartifact === ART_EXCALIBUR)
+        return true;
+    return haseyes(ptr);
+}
+/* C ref: monmove.c flees_light() macro */
+function flees_light(mtmp) {
+    return mtmp.data === mons[M.PM_GREMLIN]
+        && (game.uwep && game.uwep.lamplit) /* artifact_light(uwep) */
+        && couldsee(mtmp.mx, mtmp.my);
+}
+/* C ref: monst.h helpless() */
+function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
+/* C ref: mondata.h is_lminion() */
+function is_lminion(mon) {
+    return (mon.data.mflags2 & M.M2_MINION) !== 0 && mon.data.maligntyp >= 0
+        /* mon_aligntyp(mon) == A_LAWFUL */
+        && mon.data.maligntyp > 0;
+}
+/* C ref: display.h canseemon() -- infravision and worm tails aren't
+   ported yet; this is the plain line-of-sight case */
+export function canseemon(mon) {
+    const See_invisible = uhave(SEE_INVIS);
+    return cansee(mon.mx, mon.my) && (!mon.minvis || See_invisible)
+           && !mon.mundetected;
+}
+/* C ref: display.h canspotmon() -- telepathy/warning not ported yet */
+function canspotmon(mon) { return canseemon(mon); }
+/* C ref: monmove.h m_canseeu() */
+function m_canseeu(m) {
+    return ((!Invis() || perceives(m.data))
+            && !(Underwater() || game.u.uburied || m.mburied))
+        ? couldsee(m.mx, m.my) : false;
+}
+/* C ref: hack.h mdistu() */
+function mdistu(mon) { return dist2(mon.mx, mon.my, game.u.ux, game.u.uy); }
+/* C ref: mon.c m_in_air() */
+function m_in_air(mtmp) {
+    return is_flyer(mtmp.data) || is_floater(mtmp.data)
+        || ((mtmp.data.mflags1 & M.M1_CLING) !== 0
+            && false /* has_ceiling() && mundetected: not ported yet */
+            && mtmp.mundetected);
+}
+/* C ref: obj.h OBJ_AT() -- floor objects live in game.level.objects */
+function OBJ_AT(x, y) {
+    for (const o of game.level.objects || [])
+        if (o.ox === x && o.oy === y && o.where !== 'gone') return true;
+    return false;
+}
+function objects_at(x, y) {
+    return (game.level.objects || []).filter(o => o.ox === x && o.oy === y);
+}
+/* C ref: hack.c in_rooms(x, y, SHOPBASE) used as a boolean */
+function in_shop(x, y) {
+    if (!game.level.flags?.has_shop) return false;
+    throw new Error('in_rooms(SHOPBASE): shops not ported yet');
+}
+/* C ref: mthrowu.c m_carrying() */
+function m_carrying(mtmp, type) {
+    for (const otmp of minv(mtmp))
+        if (otmp.otyp === type) return otmp;
+    return null;
+}
+/* C ref: monmove.c monhaskey() */
+function monhaskey(mon, for_unlocking) {
+    if (for_unlocking && m_carrying(mon, CREDIT_CARD))
+        return true;
+    return !!(m_carrying(mon, SKELETON_KEY) || m_carrying(mon, LOCK_PICK));
+}
+
+// ── C ref: monmove.c dochugw() ──
+export async function dochugw(mtmp, chug) {
+    const g = game;
+    /* skip canspotmon() if occupation is Null */
+    const rd = chug ? await dochug(mtmp) : 0;
+
+    /* check whether hero notices monster and stops current activity:
+       occupations aren't ported yet */
+    if (g.occupation && !rd)
+        throw new Error('dochugw(): stop_occupation check not ported yet');
+
+    return rd;
+}
+
+// ── C ref: monmove.c onscary() ──
+export function onscary(x, y, mtmp) {
+    const u = game.u;
+    /* <0,0> is used by musical scaring;
+     * it doesn't care about scrolls or engravings or dungeon branch */
+    const auditory_scare = (x === 0 && y === 0),
+          magical_scare = !auditory_scare;
+
+    /* creatures who are directly resistant to any type of scaring:
+     * Rodney, lawful minions, Angels, the Riders */
+    if (mtmp.iswiz || is_lminion(mtmp) || mtmp.data === mons[M.PM_ANGEL]
+        || is_rider(mtmp.data))
+        return false;
+
+    /* creatures who are directly resistant to magical scaring
+     * based on the mere presence of something at a location:
+     * humans etc.
+     * uniques have ascended their base monster instincts */
+    if (magical_scare
+        && (mtmp.data.mlet === M.S_HUMAN || unique_corpstat(mtmp.data)))
+        return false;
+
+    /* creatues who resist scaring under particular circumstances:
+     * shopkeepers inside their own shop
+     * priests inside their own temple */
+    if (mtmp.isshk || mtmp.ispriest)
+        throw new Error('onscary(): inhishop()/inhistemple() not ported yet');
+
+    if (auditory_scare)
+        return true;
+
+    /* should this still be true for defiled/molochian altars? */
+    if (IS_ALTAR(game.level.at(x, y).typ)
+        && (mtmp.data.mlet === M.S_VAMPIRE || is_vampshifter(mtmp)))
+        return true;
+
+    /* the scare monster scroll doesn't have any of the below
+     * restrictions, being its own source of power */
+    if (sobj_at(SCR_SCARE_MONSTER, x, y))
+        return true;
+
+    /*
+     * Creatures who don't (or can't) fear a written Elbereth: ...
+     */
+    const ep = sengr_at("Elbereth", x, y, true);
+    if (!ep) return false;
+    if (!(u_at(x, y)
+          || (Displaced() && mtmp.mux === x && mtmp.muy === y)
+          || (ep.guardobjects && OBJ_AT(x, y) /* vobj_at() */)))
+        return false;
+    if (mtmp.isshk || mtmp.isgd || !mtmp.mcansee || mtmp.mpeaceful
+        || mtmp.data === mons[M.PM_MINOTAUR])
+        return false;
+    /* Inhell || In_endgame(&u.uz): the endgame isn't ported yet */
+    if (In_hell(u.uz))
+        return false;
+    return true;
+}
+
+// ── C ref: monmove.c mon_regen() ──
+export function mon_regen(mon, digest_meal) {
+    if (game.moves % 20 === 0 || (mon.data.mflags1 & M.M1_REGEN))
+        if (mon.mhp < mon.mhpmax) mon.mhp++; /* healmon(mon, 1, 0) */
+    if (mon.mspec_used)
+        mon.mspec_used--;
+    if (digest_meal) {
+        if (mon.meating) {
+            mon.meating--;
+            if (mon.meating <= 0)
+                finish_meating(mon);
+        }
+    }
+}
+
+// C ref: dog.c finish_meating()
+function finish_meating(mtmp) {
+    mtmp.meating = 0;
+    if (mtmp.m_ap_type && mtmp.mappearance && mtmp.cham === NON_PM)
+        throw new Error('finish_meating(): seemimic() not ported yet');
+}
+
+// ── C ref: monmove.c disturb() ──
+function disturb(mtmp) {
+    /*
+     * + Ettins are hard to surprise.
+     * + Nymphs, jabberwocks, and leprechauns do not easily wake up.
+     */
+    if (couldsee(mtmp.mx, mtmp.my) && mdistu(mtmp) <= 100
+        && (!Stealth() || (mtmp.data === mons[M.PM_ETTIN] && rn2(10)))
+        && (!(mtmp.data.mlet === M.S_NYMPH
+              || mtmp.data === mons[M.PM_JABBERWOCK]
+              || mtmp.data.mlet === M.S_LEPRECHAUN) || !rn2(50))
+        && (Aggravate_monster()
+            || (mtmp.data.mlet === M.S_DOG || mtmp.data.mlet === M.S_HUMAN)
+            || (!rn2(7) && mtmp.m_ap_type !== M_AP_FURNITURE
+                && mtmp.m_ap_type !== M_AP_OBJECT))) {
+        /* wake_msg(mtmp, !mtmp->mpeaceful): the message needs the tty
+           message line; not ported yet */
+        if (canseemon(mtmp) || !mtmp.mpeaceful)
+            throw new Error('disturb(): wake_msg() not ported yet');
+        mtmp.msleeping = 0;
+        return 1;
+    }
+    return 0;
+}
+
+// ── C ref: monmove.c monflee() ──
+function monflee(mtmp, fleetime, first, fleemsg) {
+    throw new Error('monflee() not ported yet');
+}
+
+// ── C ref: monmove.c distfleeck() ──
+function distfleeck(mtmp, out) {
+    const u = game.u;
+    let seescaryx, seescaryy;
+    let sawscary = false;
+    const bravegremlin = (rn2(5) === 0);
+
+    out.inrange = (dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy)
+                   <= (BOLT_LIM * BOLT_LIM));
+    out.nearby = out.inrange && monnear(mtmp, mtmp.mux, mtmp.muy);
+
+    /* Note: if your image is displaced, the monster sees the Elbereth
+     * at your displaced position, thus never attacking your displaced
+     * position, but possibly attacking you by accident.  If you are
+     * invisible, it sees the Elbereth at your real position, thus never
+     * running into you by accident but possibly attacking the spot
+     * where it guesses you are.
+     */
+    if (!mtmp.mcansee || (Invis() && !perceives(mtmp.data))) {
+        seescaryx = mtmp.mux;
+        seescaryy = mtmp.muy;
+    } else {
+        seescaryx = u.ux;
+        seescaryy = u.uy;
+    }
+
+    sawscary = onscary(seescaryx, seescaryy, mtmp);
+    if (out.nearby && (sawscary
+                       || (flees_light(mtmp) && !bravegremlin)
+                       || (!mtmp.mpeaceful && in_your_sanctuary(mtmp, 0, 0)))) {
+        out.scared = 1;
+        monflee(mtmp, rnd(rn2(7) ? 10 : 100), true, true);
+    } else
+        out.scared = 0;
+}
+
+// C ref: priest.c in_your_sanctuary()
+function in_your_sanctuary(mon, x, y) {
+    if (!game.level.flags?.has_temple) return false;
+    throw new Error('in_your_sanctuary(): temples not ported yet');
+}
+
+// ── C ref: monmove.c set_apparxy() ──
+export function set_apparxy(mtmp) {
+    const u = game.u;
+    let mx = mtmp.mux, my = mtmp.muy;
+
+    /* pet knows your smell; grabber still has hold of you; monsters which
+       know where you are don't suddenly forget, if you haven't moved away */
+    if (mtmp.mtame || mtmp === u.ustuck || u_at(mx, my)) {
+        mtmp.mux = u.ux;
+        mtmp.muy = u.uy;
+        return;
+    }
+
+    const notseen = (!mtmp.mcansee || (Invis() && !perceives(mtmp.data)));
+    const notthere = (Displaced() && mtmp.data !== mons[M.PM_DISPLACER_BEAST]);
+    let displ;
+    /* add cases as required.  eg. Displacement ... */
+    if (Underwater()) {
+        displ = 1;
+    } else if (notseen) {
+        /* Xorns can smell quantities of valuable metal
+           like that in solid gold coins, treat as seen */
+        const umoney = money_cnt(game.invent);
+        displ = (mtmp.data === mons[M.PM_XORN] && umoney) ? 0 : 1;
+    } else if (notthere) {
+        displ = couldsee(mx, my) ? 2 : 1;
+    } else {
+        displ = 0;
+    }
+    if (!displ) {
+        mtmp.mux = u.ux;
+        mtmp.muy = u.uy;
+        return;
+    }
+
+    /* without something like the following, invisibility and displacement
+       are too powerful */
+    const gotu = notseen ? !rn2(3) : notthere ? !rn2(4) : false;
+
+    if (!gotu) {
+        let try_cnt = 0;
+
+        do {
+            if (++try_cnt > 200) {
+                mx = u.ux;
+                my = u.uy;
+                break; /* punt */
+            }
+            mx = u.ux - displ + rn2(2 * displ + 1);
+            my = u.uy - displ + rn2(2 * displ + 1);
+        } while (!isok(mx, my)
+                 || (displ !== 2 && mx === mtmp.mx && my === mtmp.my)
+                 || ((mx !== u.ux || my !== u.uy) && !passes_walls(mtmp.data)
+                     && !(accessible(mx, my)
+                          || (closed_door(mx, my)
+                              && (can_ooze(mtmp) || can_fog(mtmp)))))
+                 || !couldsee(mx, my));
+    } else {
+        mx = u.ux;
+        my = u.uy;
+    }
+
+    mtmp.mux = mx;
+    mtmp.muy = my;
+}
+
+// C ref: invent.c money_cnt()
+function money_cnt(otmp) {
+    for (; otmp; otmp = otmp.nobj)
+        if (otmp.oclass === objects[GOLD_PIECE].oc_class && otmp.otyp === GOLD_PIECE)
+            return otmp.quan;
+    return 0;
+}
+// C ref: monmove.c can_ooze()
+function can_ooze(mtmp) {
+    if (!amorphous(mtmp.data) || minv(mtmp).length /* stuff_prevents_passage */)
+        throw new Error('can_ooze(): stuff_prevents_passage() not ported yet');
+    return true;
+}
+// C ref: monmove.c can_fog()
+function can_fog(mtmp) {
+    if ((mtmp.data.mflags2 & M.M2_SHAPESHIFTER) !== 0 && is_vampshifter(mtmp))
+        throw new Error('can_fog(): vampshifters not ported yet');
+    return false;
+}
+
+// ── C ref: muse.c find_defensive() (the early-outs) ──
+function find_defensive(mtmp, tryescape) {
+    game.m_defensive = null;
+    game.m_has_defense = 0;
+    if (is_animal(mtmp.data) || mindless(mtmp.data))
+        return false;
+    if (!tryescape && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) > 25)
+        return false;
+    throw new Error('find_defensive() not ported yet');
+}
+// ── C ref: muse.c find_misc() (the early-outs) ──
+function find_misc(mtmp) {
+    const u = game.u;
+    game.m_misc = null;
+    game.m_has_misc = 0;
+    if (is_animal(mtmp.data) || mindless(mtmp.data))
+        return false;
+    if (u.uswallow && mtmp === u.ustuck)
+        return false;
+    if (dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) > 36)
+        return false;
+    throw new Error('find_misc() not ported yet');
+}
+// ── C ref: muse.c find_offensive() (the early-outs) ──
+function find_offensive(mtmp) {
+    const u = game.u;
+    game.m_offensive = null;
+    game.m_has_offense = 0;
+    if (mtmp.mpeaceful || is_animal(mtmp.data) || mindless(mtmp.data)
+        || nohands(mtmp.data))
+        return false;
+    if (u.uswallow)
+        return false;
+    if (in_your_sanctuary(mtmp, 0, 0))
+        return false;
+    throw new Error('find_offensive() not ported yet');
+}
+// ── C ref: mhitu.c ranged_attk_available() ──
+function ranged_attk_available(mtmp) {
+    for (const a of mtmp.data.mattk) {
+        if (a.aatyp === M.AT_SPIT || a.aatyp === M.AT_BREA
+            || a.aatyp === M.AT_MAGC || a.aatyp === M.AT_GAZE)
+            throw new Error('ranged_attk_available(): m_seenres() not ported yet');
+    }
+    return false;
+}
+
+// ── C ref: mon.c m_respond() ──
+function m_respond(mtmp) {
+    if (mtmp.data.msound === M.MS_SHRIEK
+        && !(Math.abs(mtmp.mx - game.u.ux) > 1 || Math.abs(mtmp.my - game.u.uy) > 1))
+        throw new Error('m_respond_shrieker() not ported yet');
+    if (mtmp.data === mons[M.PM_MEDUSA] && couldsee(mtmp.mx, mtmp.my))
+        throw new Error('m_respond_medusa() not ported yet');
+    if (mtmp.data === mons[M.PM_ERINYS] && !mtmp.mpeaceful && m_canseeu(mtmp))
+        throw new Error('aggravate() not ported yet');
+}
+
+// ── C ref: monmove.c dochug() ──
+export async function dochug(mtmp) {
+    const u = game.u;
+    let mdat;
+    let status = MMOVE_NOTHING;
+    const d = { inrange: 0, nearby: 0, scared: 0 };
+    let panicattk = false;
+
+    /*
+     * PHASE ONE: Pre-movement adjustments
+     */
+
+    mdat = mtmp.data;
+
+    if (mtmp.mstrategy & STRAT_ARRIVE)
+        throw new Error('dochug(): m_arrival() not ported yet');
+    /* check for waitmask status change */
+    if ((mtmp.mstrategy & STRAT_WAITFORU)
+        && (m_canseeu(mtmp) || mtmp.mhp < mtmp.mhpmax))
+        mtmp.mstrategy &= ~STRAT_WAITFORU;
+
+    /* update quest status flags */
+    if (mdat.msound === M.MS_NEMESIS)
+        throw new Error('quest_stat_check() not ported yet');
+
+    if (!mtmp.mcanmove || (mtmp.mstrategy & STRAT_WAITMASK)) {
+        if (Hallucination())
+            newsym(mtmp.mx, mtmp.my);
+        if (mtmp.mcanmove && (mtmp.mstrategy & STRAT_CLOSE)
+            && !mtmp.msleeping && monnear(mtmp, u.ux, u.uy))
+            throw new Error('quest_talk() not ported yet');
+        return 0; /* other frozen monsters can't do anything */
+    }
+
+    /* there is a chance we will wake it */
+    if (mtmp.msleeping && !disturb(mtmp)) {
+        if (Hallucination())
+            newsym(mtmp.mx, mtmp.my);
+        return 0;
+    }
+
+    /* not frozen or sleeping: wipe out texts written in the dust */
+    wipe_engr_at(mtmp.mx, mtmp.my, 1, false);
+
+    /* confused monsters get unconfused with small probability */
+    if (mtmp.mconf && !rn2(50))
+        mtmp.mconf = 0;
+
+    /* stunned monsters get un-stunned with larger probability */
+    if (mtmp.mstun && !rn2(10))
+        mtmp.mstun = 0;
+
+    /* Some monsters teleport. Teleportation costs a turn. */
+    if (mtmp.mflee && !rn2(40) && can_teleport(mdat) && !mtmp.iswiz)
+        throw new Error('dochug(): rloc() not ported yet');
+
+    /* some monsters have special abilities */
+    m_respond(mtmp);
+
+    /* fleeing monsters might regain courage */
+    if (mtmp.mflee && !mtmp.mfleetim && mtmp.mhp === mtmp.mhpmax
+        && !rn2(25))
+        mtmp.mflee = 0;
+
+    /* Cease conflict-induced swallow/grab if conflict has ended. */
+    if (mtmp === u.ustuck && mtmp.mpeaceful && !mtmp.mconf && !Conflict())
+        throw new Error('dochug(): release_hero() not ported yet');
+
+    /*
+     * PHASE TWO: Special Movements and Actions
+     */
+
+    /* The monster decides where it thinks you are. */
+    set_apparxy(mtmp);
+
+    /* Monsters that want to acquire things may teleport, so do it before
+       inrange is set. This costs a turn only if mstate is set.  */
+    if (is_covetous(mdat))
+        throw new Error('dochug(): tactics() not ported yet');
+
+    /* check distance and scariness of attacks */
+    distfleeck(mtmp, d);
+
+    /* search for and potentially use defensive or miscellaneous items. */
+    if (find_defensive(mtmp, false)) {
+        throw new Error('use_defensive() not ported yet');
+    } else if (find_misc(mtmp)) {
+        throw new Error('use_misc() not ported yet');
+    }
+
+    /* Demonic Blackmail! */
+    if (d.nearby && mdat.msound === M.MS_BRIBE && mtmp.mpeaceful
+        && !mtmp.mtame && !u.uswallow)
+        throw new Error('dochug(): demon_talk() not ported yet');
+
+    /* the watch will look around and see if you are up to no good :-) */
+    if (is_watch(mdat)) {
+        throw new Error('watch_on_duty() not ported yet');
+    /* mind flayers can make psychic attacks! */
+    } else if (is_mind_flayer(mdat) && !rn2(20)) {
+        throw new Error('mind_blast() not ported yet');
+    }
+
+    /* If monster is nearby you, and has to wield a weapon, do so. */
+    if ((!mtmp.mpeaceful || Conflict()) && d.inrange
+        && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8
+        && attacktype(mdat, M.AT_WEAP))
+        throw new Error('dochug(): mon_wield_item() not ported yet');
+
+    /*
+     * PHASE THREE: Now the actual movement phase
+     */
+
+    if (mdat === mons[M.PM_KILLER_BEE] || mdat === mons[M.PM_GELATINOUS_CUBE])
+        throw new Error('dochug(): bee_eat_jelly()/gelcube_digests() not ported yet');
+
+    /* A monster that passes the following checks has the opportunity
+       to move. Movement itself is handled by the m_move() function. */
+    if (!d.nearby || mtmp.mflee || d.scared || mtmp.mconf || mtmp.mstun
+        || (mtmp.minvis && !rn2(3))
+        || (mdat.mlet === M.S_LEPRECHAUN && leprechaun_check(mtmp))
+        || (is_wanderer(mdat) && !rn2(4)) || (Conflict() && !mtmp.iswiz)
+        || (!mtmp.mcansee && !rn2(4)) || mtmp.mpeaceful) {
+
+        /* Possibly cast an undirected spell if not attacking you */
+        if (!mtmp.mspec_used
+            && dist2(mtmp.mx, mtmp.my, u.ux, u.uy) <= 49) {
+            for (const a of mdat.mattk) {
+                if (a.aatyp === M.AT_MAGC
+                    && (a.adtyp === M.AD_SPEL || a.adtyp === M.AD_CLRC))
+                    throw new Error('dochug(): castmu() not ported yet');
+            }
+        }
+
+        if (!status)
+            status = await m_move(mtmp, 0);
+        /* if (mon_offmap(mtmp)) return 1: migration isn't ported yet */
+        if (status !== MMOVE_DIED)
+            distfleeck(mtmp, d); /* recalc */
+
+        switch (status) { /* for pets, cases 0 and 3 are equivalent */
+        case MMOVE_NOMOVES:
+            if (d.scared)
+                panicattk = true;
+            /*FALLTHRU*/
+        case MMOVE_NOTHING: /* no movement, but it can still attack you */
+        case MMOVE_DONE: /* absolutely no movement */
+            /* vault guard might have vanished */
+            if (mtmp.isgd)
+                throw new Error('dochug(): vault guards not ported yet');
+            /* During hallucination, monster appearance should
+             * still change - even if it doesn't move.
+             */
+            if (Hallucination())
+                newsym(mtmp.mx, mtmp.my);
+            break;
+        case MMOVE_MOVED: /* monster moved */
+            /* if confused grabber has wandered off, let go */
+            if (mtmp === u.ustuck)
+                throw new Error('dochug(): unstuck() not ported yet');
+            /* if (grounded(mdat)) disturb_buried_zombies(): no buried
+               zombies are ported yet */
+            /* Maybe it stepped on a trap and fell asleep... */
+            if (helpless(mtmp))
+                return 0;
+            /* Monsters can move and then shoot on same turn;
+               our hero can't.  Is that fair? */
+            if (!d.nearby
+                && (ranged_attk_available(mtmp)
+                    || attacktype(mdat, M.AT_WEAP)
+                    || find_offensive(mtmp)))
+                break;
+            /* a monster that's digesting you can move at the
+             * same time -dlc
+             */
+            if (u.uswallow && mtmp === u.ustuck) /* engulfing_u(mtmp) */
+                throw new Error('dochug(): mattacku() not ported yet');
+            return 0;
+        case MMOVE_DIED: /* monster died */
+            return 1;
+        }
+    }
+
+    /*
+     * PHASE FOUR: Standard Attacks
+     */
+
+    /* Now, attack the player if possible - one attack set per monst */
+    if (status !== MMOVE_DONE && (!mtmp.mpeaceful
+                                  || (Conflict() && resist_conflict_nyi()))) {
+        if (((d.inrange && !d.scared) || panicattk) && !noattacks(mdat)
+            /* [is this hp check really needed?] */
+            && (Upolyd() ? u.mh : u.uhp) > 0)
+            throw new Error('dochug(): mattacku() not ported yet');
+        if (mtmp.wormno)
+            throw new Error('dochug(): wormhitu() not ported yet');
+    }
+    /* special speeches for quest monsters */
+    if (!helpless(mtmp) && d.nearby
+        && (mdat.msound === M.MS_LEADER || mdat.msound === M.MS_NEMESIS
+            || mdat.msound === M.MS_GUARDIAN))
+        throw new Error('quest_talk() not ported yet');
+    /* extra emotional attack for vile monsters */
+    if (d.inrange && mtmp.data.msound === M.MS_CUSS && !mtmp.mpeaceful
+        && couldsee(mtmp.mx, mtmp.my) && !mtmp.minvis && !rn2(5))
+        throw new Error('cuss() not ported yet');
+
+    /* note: can't get here when monster is dead, so this always returns 0 */
+    return (status === MMOVE_DIED) ? 1 : 0;
+}
+
+/* (mdat->mlet == S_LEPRECHAUN && !findgold(invent)
+    && (findgold(mtmp->minvent) || rn2(2))) */
+function leprechaun_check(mtmp) {
+    throw new Error('dochug(): leprechaun findgold() not ported yet');
+}
+function resist_conflict_nyi() {
+    throw new Error('resist_conflict() not ported yet');
+}
+
+// ── C ref: monmove.c mon_track_add() ──
+export function mon_track_add(mtmp, x, y) {
+    if (!mtmp.mtrack) mon_track_clear(mtmp);
+    for (let j = MTSZ - 1; j > 0; j--)
+        mtmp.mtrack[j] = mtmp.mtrack[j - 1];
+    mtmp.mtrack[0] = { x, y };
+}
+// ── C ref: monmove.c mon_track_clear() ──
+export function mon_track_clear(mtmp) {
+    mtmp.mtrack = Array.from({ length: MTSZ }, () => ({ x: 0, y: 0 }));
+}
+
+// ── C ref: monmove.c m_avoid_kicked_loc() ──
+export function m_avoid_kicked_loc(mtmp, nx, ny) {
+    const kl = game.kickedloc;
+    if ((mtmp.mpeaceful || mtmp.mtame)
+        && mtmp.mcansee
+        && !mtmp.mconf && !mtmp.mstun
+        && !Conflict()
+        && kl && isok(kl.x, kl.y)
+        && nx === kl.x && ny === kl.y
+        && Math.abs(nx - game.u.ux) <= 1 && Math.abs(ny - game.u.uy) <= 1)
+        return true;
+    return false;
+}
+
+// ── C ref: monmove.c should_displace() ──
+export function should_displace(mtmp, mfp, ggx, ggy) {
+    let shortest_with_displacing = -1;
+    let shortest_without_displacing = -1;
+    let count_without_displacing = 0;
+
+    for (let i = 0; i < mfp.cnt; i++) {
+        const nx = mfp.poss[i].x;
+        const ny = mfp.poss[i].y;
+        const ndist = dist2(nx, ny, ggx, ggy);
+        if (MON_AT(nx, ny) && (mfp.info[i] & ALLOW_MDISP)
+            && !(mfp.info[i] & ALLOW_M)
+            && !undesirable_disp(mtmp, nx, ny)) {
+            if (shortest_with_displacing === -1
+                || (ndist < shortest_with_displacing))
+                shortest_with_displacing = ndist;
+        } else {
+            if ((shortest_without_displacing === -1)
+                || (ndist < shortest_without_displacing))
+                shortest_without_displacing = ndist;
+            count_without_displacing++;
+        }
+    }
+    if (shortest_with_displacing > -1
+        && (shortest_with_displacing < shortest_without_displacing
+            || !count_without_displacing))
+        return true;
+    return false;
+}
+function undesirable_disp(mtmp, x, y) {
+    throw new Error('undesirable_disp() not ported yet');
+}
+
+// ── C ref: mthrowu.c linedup() ──
+function linedup(ax, ay, bx, by, boulderhandling) {
+    const tbx = ax - bx, tby = ay - by;
+    game.tbx = tbx;
+    game.tby = tby;
+
+    /* sometimes displacement makes a monster think that you're at its
+       own location; prevent it from throwing and zapping in that case */
+    if (!tbx && !tby)
+        return false;
+
+    /* straight line, orthogonal to the map or diagonal */
+    if ((!tbx || !tby || Math.abs(tbx) === Math.abs(tby))
+        && distmin(tbx, tby, 0, 0) < BOLT_LIM) {
+        if (u_at(ax, ay) ? couldsee(bx, by) : clear_path(ax, ay, bx, by))
+            return true;
+        /* don't have line of sight, but might still be lined up
+           if that lack of sight is due solely to boulders */
+        if (boulderhandling === 0)
+            return false;
+        const dx = Math.sign(ax - bx), dy = Math.sign(ay - by);
+        let boulderspots = 0;
+        do {
+            /* <bx,by> is guaranteed to eventually converge with <ax,ay> */
+            bx += dx, by += dy;
+            if (blocking_terrain(bx, by))
+                return false;
+            if (sobj_at(BOULDER, bx, by))
+                ++boulderspots;
+        } while (bx !== ax || by !== ay);
+        /* reached target position without encountering obstacle */
+        if (boulderhandling === 1 || rn2(2 + boulderspots) < 2)
+            return true;
+    }
+    return false;
+}
+// C ref: mthrowu.c blocking_terrain()
+function blocking_terrain(x, y) {
+    const loc = game.level.at(x, y);
+    if (!isok(x, y) || IS_OBSTRUCTED(loc.typ) || closed_door(x, y))
+        return true;
+    return false;
+}
+
+// ── C ref: mthrowu.c m_lined_up() / lined_up() ──
+function lined_up(mtmp) {
+    const u = game.u;
+    const tx = mtmp.mux, ty = mtmp.muy;
+    const ignore_boulders = (throws_rocks(mtmp.data)
+                             || m_carrying(mtmp, WAN_STRIKING));
+
+    /* hero concealment usually trumps monst awareness of being lined up */
+    if (Upolyd() && rn2(25)
+        && (u.uundetected || (game.youmonst.m_ap_type
+                              && game.youmonst.m_ap_type !== M_AP_MONSTER)))
+        return false;
+
+    /* [no callers care about the 1 vs 2 situation any more] */
+    return linedup(tx, ty, mtmp.mx, mtmp.my, ignore_boulders ? 1 : 2);
+}
+
+// ── C ref: monmove.c m_balks_at_approaching() ──
+function m_balks_at_approaching(oldappr, mtmp, pr) {
+    const x = mtmp.mx, y = mtmp.my, ux = mtmp.mux, uy = mtmp.muy;
+    const edist = dist2(x, y, ux, uy);
+
+    pr.min = 0;
+    pr.max = 0;
+
+    /* peaceful, far away, or can't see you */
+    if (mtmp.mpeaceful || (edist >= 5 * 5) || !m_canseeu(mtmp))
+        return oldappr;
+
+    /* has ammo+launcher */
+    if (minv(mtmp).length)
+        throw new Error('m_balks_at_approaching(): m_has_launcher_and_ammo() not ported yet');
+
+    /* can attack from distance, and hp loss or attack not used */
+    if (ranged_attk_available(mtmp)
+        && ((mtmp.mhp < Math.trunc((mtmp.mhpmax + 1) / 3))
+            || !mtmp.mspec_used))
+        return -1;
+
+    return oldappr; /* leaves appr unchanged */
+}
+
+// ── C ref: dogmove.c could_reach_item() ──
+function could_reach_item(mon, nx, ny) {
+    if ((!is_pool(nx, ny) || is_swimmer(mon.data))
+        && (!is_lava(nx, ny) || likes_lava(mon.data))
+        && (!sobj_at(BOULDER, nx, ny) || throws_rocks(mon.data)))
+        return true;
+    return false;
+}
+
+const practical = [WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS, FOOD_CLASS];
+const magical = [AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS,
+                 RING_CLASS, SPBOOK_CLASS];
+
+// ── C ref: monmove.c mon_would_take_item() ──
+function mon_would_take_item(mtmp, otmp) {
+    /* pctload = (curr_mon_load(mtmp) * 100) / max_mon_load(mtmp) */
+    const pctload = () => Math.trunc((curr_mon_load(mtmp) * 100)
+                                     / max_mon_load(mtmp));
+
+    if (otmp === game.uball || otmp === game.uchain)
+        return false;
+    if (mtmp.mtame && otmp.cursed)
+        return false; /* note: will get overridden if mtmp will eat otmp */
+    if (is_unicorn(mtmp.data) && objects[otmp.otyp].oc_material !== GEMSTONE)
+        return false;
+    if (!mindless(mtmp.data) && !is_animal(mtmp.data) && pctload() < 75
+        && searches_for_item(mtmp, otmp))
+        return true;
+    if (likes_gold(mtmp.data) && otmp.otyp === GOLD_PIECE && pctload() < 95)
+        return true;
+    if (likes_gems(mtmp.data) && otmp.oclass === GEM_CLASS
+        && objects[otmp.otyp].oc_material !== MINERAL && pctload() < 85)
+        return true;
+    if (likes_objs(mtmp.data) && practical.includes(otmp.oclass)
+        && pctload() < 75)
+        return true;
+    if (likes_magic(mtmp.data) && magical.includes(otmp.oclass)
+        && pctload() < 85)
+        return true;
+    if (throws_rocks(mtmp.data) && otmp.otyp === BOULDER
+        && pctload() < 50 /* && !Sokoban */)
+        return true;
+    if (mtmp.data === mons[M.PM_GELATINOUS_CUBE]
+        && otmp.oclass !== ROCK_CLASS && otmp.oclass !== BALL_CLASS)
+        throw new Error('mon_would_take_item(): gelatinous cube not ported yet');
+
+    return false;
+}
+// ── C ref: muse.c searches_for_item() ──
+function searches_for_item(mon, obj) {
+    const typ = obj.otyp;
+    const O = OBJ;
+
+    /* don't let monsters interact with protected items on the floor */
+    if (obj.where === 'OBJ_FLOOR'
+        && (obj.ox === mon.mx && obj.oy === mon.my)
+        && onscary(obj.ox, obj.oy, mon)) {
+        return false;
+    }
+
+    if (is_animal(mon.data) || mindless(mon.data)
+        || mon.data === mons[M.PM_GHOST]) /* don't loot bones piles */
+        return false;
+
+    if (typ === O.WAN_MAKE_INVISIBLE || typ === O.POT_INVISIBILITY)
+        return (!mon.minvis && !mon.invis_blkd
+                && !attacktype(mon.data, M.AT_GAZE));
+    if (typ === O.WAN_SPEED_MONSTER || typ === O.POT_SPEED)
+        return (mon.mspeed !== MFAST);
+
+    switch (obj.oclass) {
+    case O.WAND_CLASS:
+        if (obj.spe <= 0)
+            return false;
+        if (typ === O.WAN_DIGGING)
+            return !is_floater(mon.data);
+        if (typ === O.WAN_POLYMORPH)
+            return (mons[monsndx(mon.data)].difficulty < 6);
+        if (objects[typ].oc_dir === O.RAY || typ === O.WAN_STRIKING
+            || typ === O.WAN_UNDEAD_TURNING
+            || typ === O.WAN_TELEPORTATION || typ === O.WAN_CREATE_MONSTER)
+            return true;
+        break;
+    case O.POTION_CLASS:
+        if (typ === O.POT_HEALING || typ === O.POT_EXTRA_HEALING
+            || typ === O.POT_FULL_HEALING || typ === O.POT_POLYMORPH
+            || typ === O.POT_GAIN_LEVEL || typ === O.POT_PARALYSIS
+            || typ === O.POT_SLEEPING || typ === O.POT_ACID
+            || typ === O.POT_CONFUSION)
+            return true;
+        if (typ === O.POT_BLINDNESS && !attacktype(mon.data, M.AT_GAZE))
+            return true;
+        break;
+    case O.SCROLL_CLASS:
+        if (typ === O.SCR_TELEPORTATION || typ === O.SCR_CREATE_MONSTER
+            || typ === O.SCR_EARTH || typ === O.SCR_FIRE)
+            return true;
+        break;
+    case O.AMULET_CLASS:
+        if (typ === O.AMULET_OF_LIFE_SAVING)
+            throw new Error('searches_for_item(): nonliving() not ported yet');
+        if (typ === O.AMULET_OF_REFLECTION || typ === O.AMULET_OF_GUARDING)
+            return true;
+        break;
+    case O.TOOL_CLASS:
+        if (typ === O.PICK_AXE)
+            return needspick(mon.data);
+        if (typ === O.UNICORN_HORN)
+            return (!obj.cursed && !is_unicorn(mon.data)
+                    && mon.data !== mons[M.PM_KI_RIN]);
+        if (typ === O.FROST_HORN || typ === O.FIRE_HORN)
+            throw new Error('searches_for_item(): can_blow() not ported yet');
+        if (typ >= O.LARGE_BOX && typ <= O.BAG_OF_TRICKS /* Is_container */
+            && !((typ === O.BAG_OF_HOLDING || typ === O.BAG_OF_TRICKS) /* Is_mbag */
+                 && obj.cursed)
+            && !obj.olocked)
+            return true;
+        if (typ === O.EXPENSIVE_CAMERA)
+            return (obj.spe > 0);
+        break;
+    case O.FOOD_CLASS:
+        if (typ === O.CORPSE || typ === O.TIN)
+            throw new Error('searches_for_item(): cures_stoning() not ported yet');
+        if (typ === O.EGG && obj.corpsenm >= 0)
+            return (obj.corpsenm === M.PM_COCKATRICE
+                    || obj.corpsenm === M.PM_CHICKATRICE); /* touch_petrifies */
+        break;
+    default:
+        break;
+    }
+
+    return false;
+}
+
+// ── C ref: monmove.c mon_would_consume_item() ──
+function mon_would_consume_item(mtmp, otmp) {
+    if (otmp.otyp === CORPSE && corpse_eater(mtmp.data))
+        throw new Error('mon_would_consume_item(): corpse eaters not ported yet');
+
+    if (mtmp.mtame && mtmp.edog)
+        throw new Error('mon_would_consume_item(): dogfood() not ported yet');
+
+    return false;
+}
+
+const SQSRCHRADIUS = 5;
+
+// ── C ref: monmove.c m_search_items() ──
+function m_search_items(mtmp, st) {
+    let minr = SQSRCHRADIUS; /* not too far away */
+    const omx = mtmp.mx, omy = mtmp.my;
+    const ptr = mtmp.data;
+
+    /* cut down the search radius if it thinks character is closer. */
+    if (distmin(mtmp.mux, mtmp.muy, omx, omy) < SQSRCHRADIUS
+        && !mtmp.mpeaceful)
+        minr--;
+    /* guards shouldn't get too distracted */
+    if (!mtmp.mpeaceful && is_mercenary(ptr))
+        minr = 1;
+
+    /* in shop, usually skip */
+    let skip = false;
+    if (in_shop(omx, omy) && (rn2(25) || mtmp.isshk))
+        skip = true;
+
+    if (!skip) {
+        /* distmin() gives a rectangular area */
+        const hmx = Math.min(COLNO - 1, omx + minr);
+        const hmy = Math.min(ROWNO - 1, omy + minr);
+        const lmx = Math.max(1, omx - minr);
+        const lmy = Math.max(0, omy - minr);
+
+        for (let xx = lmx; xx <= hmx; xx++) {
+            for (let yy = lmy; yy <= hmy; yy++) {
+                /* no object here */
+                if (!OBJ_AT(xx, yy))
+                    continue;
+                /* found an object closer already */
+                if (minr < distmin(omx, omy, xx, yy))
+                    continue;
+                if (!could_reach_item(mtmp, xx, yy))
+                    continue;
+                /* hiders avoid hero's line of sight */
+                if (hides_under(ptr) && cansee(xx, yy))
+                    continue;
+                /* don't get stuck circling around object that's
+                   underneath an immobile or hidden monster;
+                   paralysis victims excluded */
+                const mtoo = m_at(xx, yy);
+                if (mtoo
+                    && (helpless(mtoo) || mtoo.mundetected
+                        || (mtoo.mappearance && !mtoo.iswiz)
+                        || !mtoo.data.mmove))
+                    continue;
+                /* Don't get stuck circling an Elbereth */
+                if (onscary(xx, yy, mtmp))
+                    continue;
+                /* ignore obj if there's a trap and monster knows it */
+                if (game.level.traps?.some?.(t => t.tx === xx && t.ty === yy)
+                    && mtmp.mtrapseen)
+                    throw new Error('m_search_items(): mon_knows_traps() not ported yet');
+                /* avoid getting stuck on eg. items in niches */
+                if (!clear_path(mtmp.mx, mtmp.my, xx, yy)) /* m_cansee() */
+                    continue;
+
+                /* costly_spot(xx, yy): no shops are ported yet (in_shop()
+                   above throws when the level has one) */
+
+                /* look through the items on this location */
+                for (const otmp of objects_at(xx, yy)) {
+                    /* monsters may pick rocks up, but won't go out of
+                       their way to grab them */
+                    if (otmp.otyp === ROCK)
+                        continue;
+                    /* is_mines_prize/is_soko_prize: those levels aren't
+                       ported yet */
+                    if (((mon_would_take_item(mtmp, otmp)
+                          && (can_carry(mtmp, otmp) > 0))
+                         || mon_would_consume_item(mtmp, otmp))
+                        && can_touch_safely(mtmp, otmp)) {
+                        minr = distmin(omx, omy, xx, yy);
+                        st.ggx = otmp.ox;
+                        st.ggy = otmp.oy;
+                        if (st.ggx === omx && st.ggy === omy) {
+                            st.mmoved = MMOVE_DONE; /* actually unnecessary */
+                            return true;
+                        }
+                        /* found an item of interest; skip the rest of
+                           the pile */
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /* finish_search: */
+    if (minr < SQSRCHRADIUS && st.appr === -1) {
+        if (distmin(omx, omy, mtmp.mux, mtmp.muy) <= 3) {
+            st.ggx = mtmp.mux;
+            st.ggy = mtmp.muy;
+        } else
+            st.appr = 1;
+    }
+    return false;
+}
+
+// ── C ref: monmove.c m_move() ──
+export async function m_move(mtmp, after) {
+    const u = game.u;
+    let appr;
+    let ggx, ggy, nix, niy;
+    let chcnt;
+    let can_tunnel = false;
+    let can_open = false, can_unlock = false;
+    let getitems = false;
+    let avoid = false;
+    let better_with_displacing = false;
+    let ptr;
+    let chi, mmoved = MMOVE_NOTHING;
+    const pr = { min: 0, max: 0 };
+    let flag;
+    let omx = mtmp.mx, omy = mtmp.my;
+
+    if (!mtmp.mtrack) mon_track_clear(mtmp);
+
+    if (mtmp.mtrapped)
+        throw new Error('m_move(): mintrap() not ported yet');
+    ptr = mtmp.data; /* mintrap() can change mtmp->data -dlc */
+
+    if (mtmp.meating) {
+        mtmp.meating--;
+        if (mtmp.meating <= 0)
+            finish_meating(mtmp);
+        return MMOVE_DONE; /* still eating */
+    }
+    if (hides_under(ptr) && OBJ_AT(mtmp.mx, mtmp.my))
+        throw new Error('m_move(): can_hide_under_obj() not ported yet');
+
+    /* set up pre-move visibility flags */
+    const seenflgs = (canseemon(mtmp) ? 1 : 0) | (canspotmon(mtmp) ? 2 : 0);
+
+    /* Where does 'mtmp' think you are?  Not necessary if m_move() called
+       from this file, but needed for other calls of m_move(). */
+    set_apparxy(mtmp); /* set mtmp->mux, mtmp->muy */
+
+    /* if (!Is_rogue_level(&u.uz)): the rogue level isn't ported yet */
+    can_tunnel = tunnels(ptr);
+    can_open = !(nohands(ptr) || verysmall(ptr));
+    can_unlock = ((can_open && monhaskey(mtmp, true))
+                  || mtmp.iswiz || is_rider(ptr));
+    if (mtmp.wormno)
+        throw new Error('m_move(): long worms not ported yet');
+    /* my dog gets special treatment */
+    if (mtmp.mtame) {
+        return postmov(mtmp, ptr, omx, omy, await dog_move(mtmp, after),
+                       seenflgs, can_tunnel, can_unlock, can_open);
+    }
+
+    /* and the acquisitive monsters get special treatment */
+    if (is_covetous(ptr))
+        throw new Error('m_move(): covetous monsters not ported yet');
+
+    /* likewise for shopkeeper, guard, or priest */
+    if (mtmp.isshk || mtmp.isgd || mtmp.ispriest)
+        throw new Error('m_move(): shk_move()/gd_move()/pri_move() not ported yet');
+
+    /* teleport if that lies in our nature */
+    if (ptr === mons[M.PM_TENGU] && !rn2(5) && !mtmp.mcan)
+        throw new Error('m_move(): tengu rloc() not ported yet');
+
+    /* not_special: */
+    if (u.uswallow && !mtmp.mflee && u.ustuck !== mtmp)
+        return MMOVE_MOVED;
+    omx = mtmp.mx;
+    omy = mtmp.my;
+    ggx = mtmp.mux;
+    ggy = mtmp.muy;
+    appr = mtmp.mflee ? -1 : 1;
+    if (mtmp.mconf || (u.uswallow && mtmp === u.ustuck) /* engulfing_u */) {
+        appr = 0;
+    } else {
+        const lev = game.level;
+        const should_see = (couldsee(omx, omy)
+                            && (lev.at(ggx, ggy).lit || !lev.at(omx, omy).lit)
+                            && (dist2(omx, omy, ggx, ggy) <= 36));
+
+        if (!mtmp.mcansee
+            || (should_see && Invis() && !perceives(ptr) && rn2(11))
+            || (game.youmonst.m_ap_type === M_AP_OBJECT
+                && game.youmonst.mappearance === STRANGE_OBJECT)
+            || u.uundetected
+            || (game.youmonst.m_ap_type === M_AP_OBJECT
+                && game.youmonst.mappearance === GOLD_PIECE && !likes_gold(ptr))
+            || (mtmp.mpeaceful && !mtmp.isshk) /* allow shks to follow */
+            || ((monsndx(ptr) === M.PM_STALKER || ptr.mlet === M.S_BAT
+                 || ptr.mlet === M.S_LIGHT) && !rn2(3)))
+            appr = 0;
+
+        if (appr === 1 && ptr.mlet === M.S_LEPRECHAUN)
+            throw new Error('m_move(): leppie_avoidance() not ported yet');
+
+        /* hostiles with ranged weapon or attack try to stay away */
+        appr = m_balks_at_approaching(appr, mtmp, pr);
+
+        if (!should_see && can_track(ptr)) {
+            const cp = gettrack(omx, omy);
+            if (cp) {
+                ggx = cp.x;
+                ggy = cp.y;
+            }
+        }
+    }
+
+    if ((!mtmp.mpeaceful || !rn2(10)) /* && (!Is_rogue_level(&u.uz)) */) {
+        const in_line = (lined_up(mtmp)
+             && (distmin(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy)
+                 <= (throws_rocks(game.youmonst.data) ? 20
+                                                      : (Math.trunc(acurrstr() / 2) + 1))));
+
+        if (appr !== 1 || !in_line) {
+            /* Monsters in combat won't pick stuff up, avoiding the
+             * situation where you toss arrows at it and it has nothing
+             * better to do than pick the arrows up.
+             */
+            getitems = true;
+        }
+    }
+
+    if (getitems) {
+        const st = { ggx, ggy, mmoved, appr };
+        const found = m_search_items(mtmp, st);
+        ggx = st.ggx; ggy = st.ggy; mmoved = st.mmoved; appr = st.appr;
+        if (found)
+            return postmov(mtmp, ptr, omx, omy, mmoved,
+                           seenflgs, can_tunnel, can_unlock, can_open);
+    }
+
+    /* don't tunnel if hostile and close enough to prefer a weapon */
+    if (can_tunnel && needspick(ptr)
+        && ((!mtmp.mpeaceful || Conflict())
+            && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8))
+        can_tunnel = false;
+
+    nix = omx;
+    niy = omy;
+    flag = mon_allowflags(mtmp);
+    const mfp = { cnt: 0, poss: [], info: [] };
+    {
+        let nearer;
+        let ndist, nidist;
+
+        const cnt = mfndpos(mtmp, mfp, flag);
+        if (cnt === 0 && !is_unicorn(mtmp.data)) {
+            if (find_defensive(mtmp, true))
+                throw new Error('m_move(): use_defensive() not ported yet');
+            return MMOVE_NOMOVES;
+        }
+        chcnt = 0;
+        const jcnt = Math.min(MTSZ, cnt - 1);
+        chi = -1;
+        nidist = dist2(nix, niy, ggx, ggy);
+        /* allow monsters be shortsighted on some levels for balance */
+        if (!mtmp.mpeaceful && game.level.flags?.shortsighted
+            && nidist > (couldsee(nix, niy) ? 144 : 36) && appr === 1)
+            appr = 0;
+        if (is_unicorn(ptr))
+            throw new Error('m_move(): unicorns not ported yet');
+        better_with_displacing = should_displace(mtmp, mfp, ggx, ggy);
+        for (let i = 0; i < cnt; i++) {
+            if (avoid && (mfp.info[i] & NOTONL))
+                continue;
+            const nx = mfp.poss[i].x;
+            const ny = mfp.poss[i].y;
+
+            if (m_avoid_kicked_loc(mtmp, nx, ny))
+                continue;
+
+            if (MON_AT(nx, ny) && (mfp.info[i] & ALLOW_MDISP)
+                && !(mfp.info[i] & ALLOW_M) && !better_with_displacing)
+                continue;
+            let skip = false;
+            if (appr !== 0) {
+                for (let j = 0; j < jcnt; j++) {
+                    const mtrk = mtmp.mtrack[j];
+                    if (nx === mtrk.x && ny === mtrk.y)
+                        if (rn2(4 * (cnt - j))) {
+                            skip = true; /* goto nxti */
+                            break;
+                        }
+                }
+            }
+            if (skip) continue;
+
+            nearer = ((ndist = dist2(nx, ny, ggx, ggy)) < nidist);
+
+            if ((appr === 1 && nearer) || (appr === -1 && !nearer)
+                || (!appr && !rn2(++chcnt))
+                || (appr === -2
+                    && ((ndist <= pr.min && !nearer)
+                        || (ndist >= pr.max && nearer)))
+                || (mmoved === MMOVE_NOTHING)) {
+                nix = nx;
+                niy = ny;
+                nidist = ndist;
+                chi = i;
+                mmoved = MMOVE_MOVED;
+            }
+            /* nxti: */
+        }
+    }
+
+    if (mmoved !== MMOVE_NOTHING) {
+        if (mmoved === MMOVE_MOVED && !u_at(nix, niy) && u.ustuck === mtmp)
+            throw new Error('m_move(): itsstuck() not ported yet');
+
+        if (mmoved === MMOVE_MOVED && can_tunnel && needspick(ptr))
+            throw new Error('m_move(): m_digweapon_check() not ported yet');
+
+        /* If ALLOW_U is set, either it's trying to attack you, or it
+         * thinks it is.  In either case, attack this spot in preference to
+         * all others.
+         */
+        if (mfp.info[chi] & ALLOW_U) {
+            nix = mtmp.mux;
+            niy = mtmp.muy;
+        }
+        if (u_at(nix, niy)) {
+            mtmp.mux = u.ux;
+            mtmp.muy = u.uy;
+            return MMOVE_NOTHING;
+        }
+        /* The monster may attack another based on 1 of 2 conditions:
+         * 1 - It may be confused.
+         * 2 - It may mistake the monster for your (displaced) image.
+         */
+        if ((mfp.info[chi] & ALLOW_M) !== 0
+            || (nix === mtmp.mux && niy === mtmp.muy))
+            throw new Error('m_move(): m_move_aggress() not ported yet');
+
+        if ((mfp.info[chi] & ALLOW_MDISP) !== 0)
+            throw new Error('m_move(): mdisplacem() not ported yet');
+
+        /* if (!m_in_out_region(mtmp, nix, niy)) return MMOVE_DONE:
+           regions aren't ported yet (none exist) */
+
+        if ((mfp.info[chi] & ALLOW_ROCK) && m_can_break_boulder(mtmp))
+            throw new Error('m_move(): m_break_boulder() not ported yet');
+
+        m_postmove_effect(mtmp);
+
+        /* move a normal monster */
+        /* remove_monster(omx, omy): game.level.monsters is a list keyed
+           by mx/my, so place_monster() moving it is enough */
+        place_monster(mtmp, nix, niy);
+        /* msg_mon_movement(): a11y.mon_movement is off by default */
+
+        /* maybe_unhide_at(mtmp->mx, mtmp->my): no hidden monsters yet */
+        if (mtmp.mundetected || game.level.monsters?.some?.(m => m !== mtmp
+                                     && m.mx === nix && m.my === niy && m.mundetected))
+            throw new Error('m_move(): maybe_unhide_at() not ported yet');
+
+        mon_track_add(mtmp, omx, omy);
+    } else {
+        /* (is_unicorn handled above); long worms aren't ported yet */
+    }
+    return postmov(mtmp, ptr, omx, omy, mmoved,
+                   seenflgs, can_tunnel, can_unlock, can_open);
+}
+
+// C ref: monmove.c m_can_break_boulder()
+function m_can_break_boulder(mtmp) {
+    return (is_rider(mtmp.data)
+            || (!mtmp.mspec_used
+                && (mtmp.isshk || mtmp.ispriest
+                    || (mtmp.data.msound === M.MS_LEADER))));
+}
+
+// C ref: monmove.c m_postmove_effect()
+function m_postmove_effect(mtmp) {
+    if (mtmp.data === mons[M.PM_HEZROU]
+        || (mtmp.data === mons[M.PM_STEAM_VORTEX] && !mtmp.mcan))
+        throw new Error('m_postmove_effect(): create_gas_cloud() not ported yet');
+}
+// C ref: monmove.c m_everyturn_effect()
+export function m_everyturn_effect(mtmp) {
+    if (mtmp.data === mons[M.PM_FOG_CLOUD])
+        throw new Error('m_everyturn_effect(): create_gas_cloud() not ported yet');
+}
+
+// ── C ref: monmove.c postmov() ──
+function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
+                 can_tunnel, can_unlock, can_open) {
+    /* notice_mon(mtmp): a11y.mon_notices is off by default */
+
+    if (mmoved === MMOVE_MOVED) {
+        const nix = mtmp.mx, niy = mtmp.my;
+        const lev = game.level;
+        if (is_vampshifter(mtmp) && !amorphous(mtmp.data)
+            && IS_DOOR(lev.at(nix, niy).typ)
+            && ((lev.at(nix, niy).doormask & (D_LOCKED | D_CLOSED)) !== 0)
+            && can_fog(mtmp))
+            throw new Error('postmov(): vamp_shift() not ported yet');
+
+        newsym(omx, omy); /* update the old position */
+        /* trapret = mintrap(mtmp, NO_TRAP_FLAGS) */
+        if (game.level.traps?.some?.(t => t.tx === mtmp.mx && t.ty === mtmp.my))
+            throw new Error('postmov(): mintrap() not ported yet');
+        ptr = mtmp.data; /* in case mintrap() caused polymorph */
+
+        /* open a door, or crash through it, if 'mtmp' can */
+        if (IS_DOOR(lev.at(mtmp.mx, mtmp.my).typ)
+            && !passes_walls(ptr) /* doesn't need to open doors */
+            && !can_tunnel) {     /* taken care of below */
+            const here = lev.at(mtmp.mx, mtmp.my);
+            if ((here.doormask & (D_LOCKED | D_CLOSED | D_TRAPPED)) !== 0)
+                throw new Error('postmov(): door opening not ported yet');
+        } else if (lev.at(mtmp.mx, mtmp.my).typ === IRONBARS) {
+            throw new Error('postmov(): iron bars not ported yet');
+        } /* doors and bars */
+
+        /* possibly dig */
+        if (can_tunnel)
+            throw new Error('postmov(): mdig_tunnel() not ported yet');
+
+        /* set also in domove(), hack.c */
+        if (game.u.uswallow && mtmp === game.u.ustuck) {
+            throw new Error('postmov(): engulfer movement not ported yet');
+        } else {
+            newsym(mtmp.mx, mtmp.my);
+        }
+    } /* mmoved==MMOVE_MOVED */
+
+    if (mmoved === MMOVE_MOVED || mmoved === MMOVE_DONE) {
+        if (OBJ_AT(mtmp.mx, mtmp.my) && mtmp.mcanmove) {
+            /* Maybe a rock mole just ate some metal object */
+            if (metallivorous(ptr))
+                throw new Error('postmov(): meatmetal() not ported yet');
+            /* Maybe a cube ate just about anything */
+            if (ptr === mons[M.PM_GELATINOUS_CUBE])
+                throw new Error('postmov(): meatobj() not ported yet');
+            /* Maybe a purple worm ate a corpse */
+            if (corpse_eater(ptr))
+                throw new Error('postmov(): meatcorpse() not ported yet');
+
+            if (mpickstuff(mtmp))
+                mmoved = MMOVE_DONE;
+
+            if (mtmp.minvis)
+                newsym(mtmp.mx, mtmp.my);
+        }
+
+        /* maybe_spin_web(mtmp) */
+        if (webmaker(ptr))
+            throw new Error('postmov(): maybe_spin_web() not ported yet');
+
+        if (hides_under(ptr) || ptr.mlet === M.S_EEL)
+            throw new Error('postmov(): hideunder() not ported yet');
+        if (mtmp.isshk)
+            throw new Error('postmov(): after_shk_move() not ported yet');
+    }
+    return mmoved;
+}
+// ── C ref: mon.c mpickstuff() ──
+function mpickstuff(mtmp) {
+    /* prevent shopkeepers from leaving the door of their shop */
+    if (mtmp.isshk)
+        throw new Error('mpickstuff(): inhishop() not ported yet');
+
+    /* non-tame monsters normally don't go shopping */
+    if (!mtmp.mtame && in_shop(mtmp.mx, mtmp.my) && rn2(25))
+        return false;
+
+    /* item in a pool, but monster can't swim */
+    if (!could_reach_item(mtmp, mtmp.mx, mtmp.my))
+        return false;
+
+    for (const otmp of objects_at(mtmp.mx, mtmp.my)) {
+        /* avoid special items (is_mines_prize/is_soko_prize): those
+           levels aren't ported yet */
+
+        /* Nymphs take everything.  Most monsters don't pick up corpses. */
+        if (mon_would_take_item(mtmp, otmp)) {
+            if (otmp.otyp === CORPSE && mtmp.data.mlet !== M.S_NYMPH
+                /* let a handful of corpse types thru to can_carry() */
+                && !(otmp.corpsenm === M.PM_COCKATRICE
+                     || otmp.corpsenm === M.PM_CHICKATRICE)
+                && otmp.corpsenm !== M.PM_LIZARD
+                && !(mons[otmp.corpsenm].mflags1 & M.M1_ACID))
+                continue;
+            if (!can_touch_safely(mtmp, otmp))
+                continue;
+            const carryamt = can_carry(mtmp, otmp);
+            if (carryamt === 0)
+                continue;
+            throw new Error('mpickstuff(): splitobj()/mpickobj() not ported yet');
+        }
+    }
+    return false;
+}
+
+function webmaker(ptr) {
+    return ptr === mons[M.PM_CAVE_SPIDER] || ptr === mons[M.PM_GIANT_SPIDER];
+}

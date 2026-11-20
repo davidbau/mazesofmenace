@@ -89,3 +89,73 @@ export function s_suffix(s) {
         buf += "'s";
     return buf;
 }
+
+// C ref: hacklib.c mungspaces()
+/* remove excess whitespace from a string buffer (in place in C; JS strings
+   are immutable, so the munged string is returned) */
+export function mungspaces(bp) {
+    let out = '';
+    let was_space = true;
+
+    for (let c of bp) {
+        if (c === '\n')
+            break; /* treat newline the same as end-of-string */
+        if (c === '\t')
+            c = ' ';
+        if (c !== ' ' || !was_space)
+            out += c;
+        was_space = (c === ' ');
+    }
+    if (was_space && out.length > 0)
+        out = out.slice(0, -1);
+    return out;
+}
+
+// C ref: hacklib.c str_start_is()
+/* determine whether 'str' starts with 'chkstr', possibly ignoring case */
+export function str_start_is(str, chkstr, caseblind) {
+    for (let i = 0; ; i++) {
+        if (i >= str.length)
+            return (i >= chkstr.length); /* chkstr >= str */
+        else if (i >= chkstr.length)
+            return true; /* chkstr < str */
+        const t1 = caseblind ? lowc(str[i]) : str[i];
+        const t2 = caseblind ? lowc(chkstr[i]) : chkstr[i];
+        if (t1 !== t2)
+            return false;
+    }
+}
+
+// C ref: hacklib.c strstri()
+/* case insensitive substring search; returns the index of the match in
+   'str' (C returns a pointer) or -1 (C: NULL) */
+export function strstri(str, sub) {
+    return str.toLowerCase().indexOf(sub.toLowerCase());
+}
+
+// C ref: hacklib.c fuzzymatch()
+/* compare two strings for equality, ignoring the presence of specified
+   characters (typically whitespace) and possibly ignoring case */
+export function fuzzymatch(s1, s2, ignore_chars, caseblind) {
+    let i1 = 0, i2 = 0;
+    let c1, c2;
+
+    do {
+        while ((c1 = (i1 < s1.length ? s1[i1++] : '')) !== ''
+               && ignore_chars.includes(c1))
+            continue;
+        while ((c2 = (i2 < s2.length ? s2[i2++] : '')) !== ''
+               && ignore_chars.includes(c2))
+            continue;
+        if (!c1 || !c2)
+            break; /* stop when end of either string is reached */
+
+        if (caseblind) {
+            c1 = lowc(c1);
+            c2 = lowc(c2);
+        }
+    } while (c1 === c2);
+
+    /* match occurs only when the end of both strings has been reached */
+    return (!c1 && !c2);
+}

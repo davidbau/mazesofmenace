@@ -1,5 +1,5 @@
 // js/crt/time.js: time(), localtime(), mktime() as the recorder sees them
-// (transpiler-design.md 5; CLAUDE.md 2.4 "Time"). Hand-written runtime.
+// (method/design.md 5; CLAUDE.md 2.4 "Time"). Hand-written runtime.
 //
 // Recorder environment (docs/recording-environment.md, transpiler/out/stage1-findings.md):
 //   - TZ=America/New_York, Darwin libc (tzcode) semantics.

@@ -41,6 +41,7 @@ import { themerms_lua } from './themerms_lua.js';
 import { quest_lua } from './quest_lua.js';
 import { l_register_des } from './sp_lev.js';
 import { l_selection_register } from './selvar.js';
+import { l_obj_register } from './nhlobj.js';
 import { level_difficulty } from './dungeon.js';
 
 // C's impossible() (pline.c) is not ported yet.
@@ -53,6 +54,34 @@ export const LUA_TNUMBER = 3;
 export const LUA_TSTRING = 4;
 export const LUA_TTABLE = 5;
 export const LUA_TFUNCTION = 6;
+export const LUA_TUSERDATA = 7;
+
+// A full userdata (lua_newuserdata()) with its metatable: the JS port's
+// stand-in for C structs handed to Lua (e.g. struct _lua_obj).
+export class LuaUserdata {
+    constructor(metatable, fields) {
+        this.metatable = metatable;
+        Object.assign(this, fields);
+    }
+}
+
+// lauxlib.h luaL_checkudata() — the userdata at 'v' if its metatable is
+// the one registered as 'tname'
+export function luaL_checkudata(v, tname) {
+    if (!(v instanceof LuaUserdata) || v.metatable?.__name !== tname)
+        lua_error(`${tname} expected, got ${lua_typename(v)}`);
+    return v;
+}
+
+// Lua method call syntax: ud:name(...) looks up 'name' through the
+// userdata's metatable __index and calls it with ud as first argument.
+export function lua_callmeth(ud, name, ...args) {
+    const index = (ud instanceof LuaUserdata) ? ud.metatable?.__index : null;
+    const fn = index ? index[name] : undefined;
+    if (typeof fn !== 'function')
+        lua_error(`attempt to call a nil value (method '${name}')`);
+    return fn(ud, ...args);
+}
 
 // A Lua error raised by ported code (C: lua_error()). The protected calls in
 // nhl_loadlua() catch it, as lua_pcall() would.
@@ -65,6 +94,7 @@ export function lua_error(msg) {
 // lua.h lua_type()
 export function lua_type(v) {
     if (v === undefined || v === null) return LUA_TNIL;
+    if (v instanceof LuaUserdata) return LUA_TUSERDATA;
     switch (typeof v) {
     case 'boolean': return LUA_TBOOLEAN;
     case 'number': return LUA_TNUMBER;
@@ -76,7 +106,7 @@ export function lua_type(v) {
 
 function lua_typename(v) {
     return ['nil', 'boolean', 'userdata', 'number', 'string', 'table',
-            'function'][lua_type(v)];
+            'function', 'userdata'][lua_type(v)];
 }
 
 // lua.h lua_istable()
@@ -348,7 +378,7 @@ export function nhl_init(sbi) {
     /* init_nhc_data(L), init_u_data(L): not ported yet */
     l_selection_register(L);
     l_register_des(L);
-    /* l_obj_register(L): not ported yet */
+    l_obj_register(L);
 
     /* nhlib.lua assumes the math table exists. */
     if (lua_type(L.globals.math) !== LUA_TTABLE) {

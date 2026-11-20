@@ -1,5 +1,5 @@
 // js/crt/bridge.js: value conversion between the object world (NetHack) and
-// the heap world (Lua) (transpiler-design.md 7.3). Hand-written runtime; the
+// the heap world (Lua) (method/design.md 7.3). Hand-written runtime; the
 // per-function descriptors are generated (transpiler/emit/bridge.mjs ->
 // nh/luabridge.js) from the C types.
 //

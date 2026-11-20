@@ -1,4 +1,4 @@
-// js/crt/ucell.js: union cells (transpiler-design.md 3.4.2, decision D1).
+// js/crt/ucell.js: union cells (method/design.md 3.4.2, decision D1).
 // Hand-written runtime.
 //
 // A union that the punning check (transpiler/out/union-pun.md) cannot prove

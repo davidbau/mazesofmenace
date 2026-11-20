@@ -297,12 +297,12 @@ function is_multigen(otmp) {
 
 // C ref: artifact.c permapoisoned() — is_art(obj, ART_GRIMTOOTH); no
 // artifacts are created yet
-function permapoisoned(obj) {
+export function permapoisoned(obj) {
     return !!(obj && obj.oartifact && false);
 }
 
 // C ref: obj.h is_poisonable()
-function is_poisonable(otmp) {
+export function is_poisonable(otmp) {
     return ((otmp.oclass === WEAPON_CLASS
              && objects[otmp.otyp].oc_skill >= -P_SHURIKEN
              && objects[otmp.otyp].oc_skill <= -P_BOW)
@@ -310,12 +310,12 @@ function is_poisonable(otmp) {
 }
 
 // C ref: obj.h is_weptool()
-function is_weptool(o) {
+export function is_weptool(o) {
     return (o.oclass === TOOL_CLASS && objects[o.otyp].oc_skill !== P_NONE);
 }
 
 // C ref: obj.h Is_candle()
-function Is_candle(otmp) {
+export function Is_candle(otmp) {
     return (otmp.otyp === O.TALLOW_CANDLE || otmp.otyp === O.WAX_CANDLE);
 }
 
@@ -323,6 +323,40 @@ function Is_candle(otmp) {
 function Is_pudding(o) {
     return (o.otyp === O.GLOB_OF_GRAY_OOZE || o.otyp === O.GLOB_OF_BROWN_PUDDING
             || o.otyp === O.GLOB_OF_GREEN_SLIME || o.otyp === O.GLOB_OF_BLACK_PUDDING);
+}
+
+// C ref: mkobj.c dknowns[]
+const dknowns = [O.WAND_CLASS, O.RING_CLASS, O.POTION_CLASS, O.SCROLL_CLASS,
+                 O.GEM_CLASS, O.SPBOOK_CLASS, O.WEAPON_CLASS, O.TOOL_CLASS,
+                 O.VENOM_CLASS];
+
+// C ref: mkobj.c clear_dknown()
+/* set obj->dknown to 0 for most types of objects, to 1 otherwise */
+export function clear_dknown(obj) {
+    /* note: this is an unobserving not an observing, so don't call
+       observe_object even if dknown is being set to 1 */
+    obj.dknown = dknowns.includes(obj.oclass) ? 0 : 1;
+    if ((obj.otyp >= O.ELVEN_SHIELD && obj.otyp <= O.ORCISH_SHIELD)
+        || obj.otyp === O.SHIELD_OF_REFLECTION
+        || objects[obj.otyp].oc_merge)
+        obj.dknown = 0;
+    /* globs always have dknown flag set (to maximize merging) but for new
+       object, globby flag won't be set yet so isn't available to check */
+    if (Is_pudding(obj))
+        obj.dknown = 1;
+}
+
+// C ref: mkobj.c unknow_object()
+/* some init for a brand new object, or partial re-init when hero loses
+   potentially known info about an object */
+export function unknow_object(obj) {
+    clear_dknown(obj); /* obj->dknown = 0; */
+
+    obj.bknown = obj.rknown = 0;
+    obj.cknown = obj.lknown = 0;
+    obj.tknown = 0;
+    /* [object types which don't use the known flag have it set True] */
+    obj.known = objects[obj.otyp].oc_uses_known ? 0 : 1;
 }
 
 // C ref: mkobj.c is_flammable()
@@ -354,23 +388,23 @@ export function is_rottable(otmp) {
 
 // C ref: objclass.h is_rustprone(), is_crackable(), is_corrodeable(),
 // is_damageable()
-function is_rustprone(otmp) { return objects[otmp.otyp].oc_material === O.IRON; }
-function is_crackable(otmp) {
+export function is_rustprone(otmp) { return objects[otmp.otyp].oc_material === O.IRON; }
+export function is_crackable(otmp) {
     return (objects[otmp.otyp].oc_material === O.GLASS
             && otmp.oclass === ARMOR_CLASS); /* erosion_matters() */
 }
-function is_corrodeable(otmp) {
+export function is_corrodeable(otmp) {
     return (objects[otmp.otyp].oc_material === O.COPPER
             || objects[otmp.otyp].oc_material === O.IRON);
 }
-function is_damageable(otmp) {
+export function is_damageable(otmp) {
     return (is_rustprone(otmp) || is_flammable(otmp)
             || is_rottable(otmp) || is_corrodeable(otmp)
             || is_crackable(otmp));
 }
 
 // C ref: objnam.c erosion_matters()
-function erosion_matters(obj) {
+export function erosion_matters(obj) {
     switch (obj.oclass) {
     case TOOL_CLASS:
         return is_weptool(obj) ? true : false;
@@ -402,6 +436,179 @@ export function next_ident() {
         game.context.ident = rnd(2) + 1; /* id 1 is reserved */
 
     return res;
+}
+
+// C ref: shk.c oid_price_adjustment()
+/* used by nextoid() so that a split-off stack keeps the same price
+   adjustment as its parent */
+function oid_price_adjustment(obj, oid) {
+    let res = 0;
+    const otyp = obj.otyp;
+
+    if (!(obj.dknown && objects[otyp].oc_name_known)
+        && (obj.oclass !== O.GEM_CLASS || objects[otyp].oc_material !== O.GLASS)) {
+        res = ((oid % 4) === 0) ? 1 : 0; /* id%4 ==0 -> +1, ==1..3 -> 0 */
+    }
+    return res;
+}
+
+// C ref: mkobj.c nextoid()
+/* when splitting a stack that has o_id-based shop prices, pick an
+   o_id value for the new stack that will maintain the same price */
+function nextoid(oldobj, newobj) {
+    let trylimit = 256; /* limit of 4 suffices at present */
+    let oid = (game.context.ident - 1) >>> 0; /* loop increment will reverse -1 */
+    let newdif;
+
+    const olddif = oid_price_adjustment(oldobj, oldobj.o_id);
+    do {
+        oid = (oid + 1) >>> 0;
+        if (!oid) /* avoid using 0 (in case value wrapped) */
+            ++oid;
+        newdif = oid_price_adjustment(newobj, oid);
+    } while (newdif !== olddif && --trylimit >= 0);
+    game.context.ident = oid; /* update 'last ident used' */
+    next_ident(); /* increment context.ident for next use */
+    return oid; /* caller will use this ident */
+}
+
+// C ref: mkobj.c copy_oextra()
+/* oextra fields live directly on the JS object; the struct copy in
+   splitobj() already carried them, so only deep-copy the mutable ones */
+function copy_oextra(obj2, obj1) {
+    if (!obj2 || !obj1)
+        return;
+    if (obj1.omonst)
+        obj2.omonst = { ...obj1.omonst };
+}
+
+// C ref: mkobj.c splitobj()
+/*
+ * Split obj so that it gets size gets reduced by num. The quantity num is
+ * put in the object structure delivered by this call.  The returned object
+ * has its wornmask cleared and is positioned just following the original
+ * in the nobj chain (and nexthere chain when on the floor).
+ */
+export function splitobj(obj, num) {
+    /* can't split containers */
+    if ((obj.cobj && obj.cobj.length) || num <= 0 || obj.quan <= num)
+        throw new Error(`splitobj [num=${num} quan=${obj.quan}]`);
+
+    const otmp = { ...obj }; /* copies whole structure */
+    delete otmp.oextra;
+    otmp.o_id = nextoid(obj, otmp);
+    otmp.timed = 0; /* not timed, yet */
+    otmp.lamplit = 0; /* ditto */
+    otmp.owornmask = 0; /* new object isn't worn */
+    obj.quan -= num;
+    obj.owt = weight(obj);
+    otmp.quan = num;
+    otmp.owt = weight(otmp); /* -= obj->owt ? */
+    otmp.lua_ref_cnt = 0;
+    otmp.pickup_prev = 0;
+
+    if (!game.context.objsplit) game.context.objsplit = {};
+    game.context.objsplit.parent_oid = obj.o_id;
+    game.context.objsplit.child_oid = otmp.o_id;
+    /* obj->nobj = otmp; (and obj->nexthere = otmp when on the floor):
+       insert into chain: obj -> otmp -> next */
+    if (obj.where === 'OBJ_FLOOR') {
+        const fobj = game.level.objects || [];
+        fobj.splice(fobj.indexOf(obj) + 1, 0, otmp);
+    } else if (obj.where === 'OBJ_MINVENT') {
+        /* minvent arrays are kept oldest first (C chain reversed) */
+        const inv = obj.ocarry.minvent;
+        inv.splice(inv.indexOf(obj), 0, otmp);
+    } else if (obj.where !== 'OBJ_FREE' && obj.where !== 'OBJ_LUAFREE') {
+        throw new Error(`splitobj(): where=${obj.where} not ported yet`);
+    }
+    /* lua isn't tracking the split off portion even if it happens to
+       be tracking the original */
+    if (otmp.where === 'OBJ_LUAFREE')
+        otmp.where = 'OBJ_FREE';
+    if (obj.unpaid)
+        throw new Error('splitobj(): splitbill() not ported yet');
+    copy_oextra(otmp, obj);
+    if (otmp.omid)
+        delete otmp.omid; /* free_omid(): only one association with m_id */
+    if (obj.timed)
+        throw new Error('splitobj(): obj_split_timers() not ported yet');
+    if (obj.lamplit)
+        throw new Error('splitobj(): obj_split_light_source() not ported yet');
+    return otmp;
+}
+
+// C ref: mkobj.c obj_extract_self()
+/* the cases monster pickup reaches: floor objects live in
+   game.level.objects, monster inventory in mon.minvent */
+export function obj_extract_self(obj) {
+    switch (obj.where) {
+    case 'OBJ_FREE':
+    case 'OBJ_LUAFREE':
+        break;
+    case 'OBJ_FLOOR': { /* remove_object() */
+        const fobj = game.level.objects || [];
+        const i = fobj.indexOf(obj);
+        if (i >= 0)
+            fobj.splice(i, 1);
+        obj.where = 'OBJ_FREE';
+        break;
+    }
+    case 'OBJ_MINVENT': {
+        const inv = obj.ocarry.minvent || [];
+        const i = inv.indexOf(obj);
+        if (i >= 0)
+            inv.splice(i, 1);
+        obj.where = 'OBJ_FREE';
+        obj.ocarry = null;
+        break;
+    }
+    default:
+        throw new Error(`obj_extract_self: where=${obj.where} is not ported yet`);
+    }
+}
+
+// C ref: mkobj.c add_to_minv()
+/* add obj to mon's inventory; returns 1 if obj was merged (and freed) */
+export function add_to_minv(mon, obj) {
+    if (obj.where !== 'OBJ_FREE')
+        throw new Error(`add_to_minv: obj where=${obj.where}, not free`);
+
+    if (!mon.minvent) mon.minvent = [];
+    /* merge if possible (C walks the chain newest first) */
+    for (const otmp of mon.minvent.slice().reverse())
+        if (merged_minv(otmp, obj))
+            return 1; /* obj merged and then free'd */
+    /* else insert; don't bother forcing it to end of chain
+       (JS minvent arrays are oldest first: newest goes last) */
+    obj.where = 'OBJ_MINVENT';
+    obj.ocarry = mon;
+    mon.minvent.push(obj);
+    return 0; /* obj on mon's inventory chain */
+}
+
+// C ref: invent.c merged() -- only coin merging is ported; mergable()
+// for other objects is not
+function merged_minv(otmp, obj) {
+    if (obj === otmp || obj.otyp !== otmp.otyp
+        || obj.nomerge || otmp.nomerge || !objects[obj.otyp].oc_merge)
+        return false;
+    if (obj.oclass !== O.COIN_CLASS)
+        throw new Error('merged(): mergable() not ported yet');
+    /* coins of the same kind will always merge */
+    if (!obj.lamplit && !obj.globby)
+        otmp.age = Math.trunc(((otmp.age * otmp.quan) + (obj.age * obj.quan))
+                              / (otmp.quan + obj.quan));
+    if (!otmp.globby)
+        otmp.quan += obj.quan;
+    /* temporary special case for gold objects!!!! */
+    otmp.owt = weight(otmp);
+    otmp.bknown = 0;
+    if (!otmp.oname && obj.oname)
+        otmp.oname = obj.oname;
+    obj_extract_self(obj);
+    obj.where = 'OBJ_DELETED'; /* obfree(obj, otmp) */
+    return true;
 }
 
 // C ref: mkobj.c may_generate_eroded()
@@ -467,16 +674,20 @@ export function mksobj_at(otyp, x, y, init, artif) {
     return otmp;
 }
 
-// C ref: mkobj.c place_object() — the floor object lists are not ported
-// yet; the location is recorded on the object.
+// C ref: mkobj.c place_object() -- the level's floor object chain (fobj)
+// is game.level.objects, newest first; per-square piles are read from it
+// in the same order (boulder-first pile ordering isn't ported yet).
 function place_object(otmp, x, y) {
     otmp.ox = x;
     otmp.oy = y;
     otmp.where = 'OBJ_FLOOR';
+    /* otmp->nobj = fobj; fobj = otmp; */
+    if (!game.level.objects) game.level.objects = [];
+    game.level.objects.unshift(otmp);
 }
 
 // C ref: o_init.c rnd_class()
-function rnd_class(first, last) {
+export function rnd_class(first, last) {
     let i, x, sum = 0;
 
     if (last > first) {
@@ -586,12 +797,79 @@ function Is_mbag(otmp) {
 
 // C ref: mkobj.c add_to_container() -- container chains are kept as a
 // plain array on the box (no merging yet)
-function add_to_container(container, obj) {
+export function add_to_container(container, obj) {
     obj.where = 'OBJ_CONTAINED';
     obj.ocontainer = container;
     if (!container.cobj) container.cobj = [];
     container.cobj.unshift(obj);
     return obj;
+}
+
+// C ref: obj.h Is_container()
+export function Is_container(otmp) {
+    return otmp.otyp >= O.LARGE_BOX && otmp.otyp <= O.BAG_OF_TRICKS;
+}
+
+// C ref: mkobj.c weight()
+/*
+ * Calculate the weight of the given object.  This will recursively follow
+ * and calculate the weight of any containers.  (C's container chain is a
+ * plain array, obj.cobj, here.)
+ */
+export function weight(obj) {
+    let wt = objects[obj.otyp].oc_weight; /* weight of 1 'otyp' */
+
+    if (obj.quan < 1) {
+        impossible(`Calculating weight of ${obj.quan} objects?`);
+        return 0;
+    }
+    /* glob absorption means that merging globs combines their weight
+       while quantity stays 1 */
+    if (obj.globby)
+        return obj.owt;
+    if (Is_container(obj) || obj.otyp === O.STATUE) {
+        let cwt;
+
+        if (obj.otyp === O.STATUE && obj.corpsenm >= LOW_PM) {
+            const msize = mons[obj.corpsenm].msize, /* 0..7 */
+                  minwt = (msize + msize + 1) * 100;
+
+            /* default statue weight is 1.5 times corpse weight */
+            wt = Math.trunc(3 * mons[obj.corpsenm].cwt / 2);
+            if (wt < minwt)
+                wt = minwt;
+            /* this has no effect because statues don't stack */
+            wt *= obj.quan;
+        }
+
+        cwt = 0; /* contents weight */
+        for (const contents of (obj.cobj || []))
+            cwt += weight(contents);
+        if (obj.otyp === O.BAG_OF_HOLDING)
+            cwt = obj.cursed ? (cwt * 2)
+                  : obj.blessed ? Math.trunc((cwt + 3) / 4)
+                    : Math.trunc((cwt + 1) / 2); /* uncursed */
+
+        return wt + cwt;
+    }
+    if (obj.otyp === O.CORPSE && obj.corpsenm >= LOW_PM) {
+        wt = obj.quan * mons[obj.corpsenm].cwt;
+        if (obj.oeaten)
+            not_ported('eaten_stat()');
+        return wt;
+    } else if (obj.oclass === O.FOOD_CLASS && obj.oeaten) {
+        not_ported('eaten_stat()');
+        return obj.quan * wt;
+    } else if (obj.oclass === O.COIN_CLASS) {
+        /* 5.0: always weigh at least 1 unit; used to yield 0 for 1..49 */
+        wt = Math.trunc((obj.quan + 50) / 100);
+        return Math.max(wt, 1);
+    } else if (obj.otyp === O.HEAVY_IRON_BALL && obj.owt !== 0) {
+        return obj.owt; /* kludge for "very" heavy iron ball */
+    } else if (obj.otyp === O.CANDELABRUM_OF_INVOCATION && obj.spe) {
+        return wt + obj.spe * objects[O.TALLOW_CANDLE].oc_weight;
+    }
+    return (wt ? wt * obj.quan : (obj.quan + 1) >> 1);
 }
 
 // C ref: mkobj.c mkbox_cnts()
@@ -689,7 +967,7 @@ function nonrotting_corpse(mnum) {
 // C ref: eat.c set_tin_variety()
 /* set a tin's variety; HEALTHY_TIN (tin_variety()) is not reached by
    object creation and is not ported yet */
-function set_tin_variety(obj, forcetype) {
+export function set_tin_variety(obj, forcetype) {
     let r;
     const mnum = obj.corpsenm;
 
@@ -708,7 +986,7 @@ function set_tin_variety(obj, forcetype) {
 }
 
 // C ref: mon.c can_be_hatched()
-function can_be_hatched(mnum) {
+export function can_be_hatched(mnum) {
     /* ranger quest nemesis has the oviparous bit set, making it
        be possible to wish for eggs of that unique monster; turn
        such into ordinary eggs rather than forbidding them outright */
@@ -729,7 +1007,7 @@ function can_be_hatched(mnum) {
 }
 
 // C ref: mon.c dead_species()
-function dead_species(m_idx, egg) {
+export function dead_species(m_idx, egg) {
     /* generic eggs are unhatchable and have corpsenm of NON_PM */
     if (m_idx < 0)
         return true;
@@ -1029,6 +1307,7 @@ export function mksobj(otyp, init, artif) {
         spe: 0, blessed: 0, cursed: 0, oeroded: 0, oeroded2: 0,
         oerodeproof: 0, greased: 0, oartifact: 0, owt: 0,
     };
+    unknow_object(otmp); /* set up dknown and known: non-0 for some things */
 
     if (init)
         mksobj_init(otmp, artif);
@@ -1082,7 +1361,7 @@ export function mksobj(otyp, init, artif) {
     if (objects[otyp].oc_unique && !otmp.oartifact) {
         not_ported('mk_artifact() for unique objects');
     }
-    otmp.owt = objects[otyp].oc_weight; /* weight(otmp) */
+    otmp.owt = weight(otmp);
     return otmp;
 }
 

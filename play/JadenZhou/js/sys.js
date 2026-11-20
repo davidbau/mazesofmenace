@@ -7,6 +7,7 @@
 // (games/lib/nethackdir/sysconf) that the ported code uses are set here.
 
 import { game } from './gstate.js';
+import { pline } from './display.js';
 
 // C ref: sys.c sys_early_init() + sysconf (WIZARDS, EXPLORERS, GENERICUSERS)
 export function sys_early_init() {
@@ -49,4 +50,29 @@ export function authorize_explore_mode() {
     }
     game.iflags.explore_error_flag = true; /* not allowed into explore mode */
     return false;
+}
+
+// C ref: pline.c You() -- pline() with "You " prepended
+async function You(line) {
+    await pline(`You ${line}`);
+}
+
+// C ref: unixmain.c wd_message()
+export async function wd_message() {
+    const sysopt = game.sysopt;
+
+    if (game.iflags.wiz_error_flag) {
+        if (sysopt.wizards && sysopt.wizards[0]) {
+            throw new Error('wd_message(): build_english_list() not ported yet');
+        } else {
+            await You("cannot access debug (wizard) mode.");
+        }
+        game.flags.debug = false; /* (paranoia) */
+        if (!game.iflags.explore_error_flag)
+            await pline("Entering explore/discovery mode instead.");
+    } else if (game.iflags.explore_error_flag) {
+        await You("cannot access explore mode."); /* same as enter_explore_mode */
+        game.flags.explore = game.iflags.deferred_X = false; /* (more paranoia) */
+    } else if (game.flags.explore)
+        await You("are in non-scoring explore/discovery mode.");
 }

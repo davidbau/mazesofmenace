@@ -14,10 +14,13 @@ import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
 import { early_init, newgame, moveloop_preamble, moveloop_core } from './allmain.js';
 import { parseNethackrc, set_playmode } from './options.js';
+import { wd_message } from './sys.js';
 import { plnamesuffix } from './role.js';
 import { tty_init_nhwindows, tty_player_selection } from './wintty.js';
 import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
+import { fruitadd } from './objnam.js';
+import { objects, OBJ_NAME, SLIME_MOLD } from './objects.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -97,9 +100,14 @@ export class NethackGame {
            game without OPTIONS=name asks "Who are you?" */
         g.plname = opts.name || '';
         /* boolean options that default to on (optlist.h) */
-        g.flags = { verbose: true, legacy: true, ...opts.flags };
+        g.flags = { verbose: true, legacy: true, acoustics: true, ...opts.flags };
         g.iflags = { ...opts.iflags };
         g.pl_character = opts.pl_character || '';
+        /* the fixed clock calendar.c getlt() reads */
+        g.datetime = this._datetime;
+        /* symset option (options.c optfn_symset); the default is the
+           plain ASCII symbol set */
+        g.symset_name = opts.symset || null;
         g.pl_race = opts.pl_race || '';
         if (opts.preferred_pet) g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set) g.tutorial_set_in_config = true;
@@ -108,6 +116,13 @@ export class NethackGame {
         g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0, uroleplay: {} };
         g.context = { move: 0 };
         g.program_state = {};
+        /* C ref: options.c initoptions_init() -- default fruit name;
+           initoptions_finish() -- fruitadd(pl_fruit) */
+        /* since this is done before init_objects(), do partial init here */
+        objects[SLIME_MOLD].oc_name_idx = SLIME_MOLD;
+        g.pl_fruit = OBJ_NAME(objects[SLIME_MOLD]);
+        g.ffruit = null;
+        fruitadd(g.pl_fruit, null);
         g.moves = 0; /* C: svm.moves stays 0 until u_init_role() sets it to 1 */
 
         // Initialize PRNG
@@ -139,9 +154,11 @@ export class NethackGame {
 
         // Run game startup
         await newgame();
+        await wd_message();
         /* C ref: unixmain.c main() -> moveloop(0) -> moveloop_preamble();
            the caller drives moveloop_core() itself */
-        moveloop_preamble(false);
+        await moveloop_preamble(false);
+        /* maybe_do_tutorial(): not ported yet */
     }
 
     _installCaptureHook() {
@@ -214,10 +231,10 @@ export class NethackGame {
 // this segment. The harness concatenates them itself. Cross-segment
 // C-side state (bones, record file, save) lives in `input.storage`.
 export async function runSegment(input) {
-    const { seed, nethackrc, storage } = input;
+    const { seed, nethackrc, storage, datetime } = input;
     const moves = input.moves || '';
 
-    const nhGame = new NethackGame({ seed, nethackrc, storage });
+    const nhGame = new NethackGame({ seed, datetime, nethackrc, storage });
 
     const display = new GameDisplay(null);
     display.onEmptyQueue = () => { throw new Error('Input queue empty - test may be missing keystrokes'); };
@@ -225,7 +242,24 @@ export async function runSegment(input) {
 
     for (const ch of moves) display.pushKey(ch.charCodeAt(0));
 
-    await nhGame.start();
+    // Any error stops the game where it is, keeping the screens and rolls
+    // produced so far: unported C ("not ported yet"), or a panic reached
+    // because state already diverged from C. Stopping can only truncate
+    // output; it never invents or skips rolls, so it cannot create matches.
+    // Without this, one late crash would discard a whole session's screens.
+    const stop = (e) => {
+        const msg = String(e?.message || e);
+        if (msg.includes('Input queue empty')) return;
+        if (msg.includes('not ported yet')) nhGame.notPortedError = e;
+        nhGame.stopError = e;
+    };
+
+    try {
+        await nhGame.start();
+    } catch (e) {
+        stop(e);
+        return nhGame;
+    }
 
     // Drive the game loop until input is exhausted. The judge looks
     // at game.getScreens() afterwards; whatever the contestant
@@ -235,8 +269,8 @@ export async function runSegment(input) {
         try {
             await moveloop_core();
         } catch (e) {
-            if (String(e?.message || '').includes('Input queue empty')) break;
-            throw e;
+            stop(e);
+            break;
         }
     }
 

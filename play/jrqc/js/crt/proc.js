@@ -1,4 +1,4 @@
-// js/crt/proc.js: the process the C program runs in (transpiler-design.md 5, 6.4).
+// js/crt/proc.js: the process the C program runs in (method/design.md 5, 6.4).
 // Hand-written runtime: environment, arguments, exit, keyboard input, and the
 // POSIX process calls NetHack makes (identity, signals, fork/exec, terminal
 // modes). Values describe the recorder's process (docs/recording-environment.md):

@@ -1,5 +1,5 @@
 // js/nhprocess.js: one run of the recorder's NetHack process over the
-// transpiled build (transpiler-design.md 8.3). Hand-written glue, shared by
+// transpiled build (method/design.md 8.3). Hand-written glue, shared by
 // js/jsmain.js (runSegment: scripted keys, screens and RNG collected as the
 // recorder collects them) and js/allmain.js (interactive play).
 //

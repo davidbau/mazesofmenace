@@ -1,4 +1,4 @@
-// js/crt/heap.js: the byte heap of heap-world code (transpiler-design.md 3.5, 7).
+// js/crt/heap.js: the byte heap of heap-world code (method/design.md 3.5, 7).
 // Hand-written runtime.
 //
 // Heap-world modules (the Lua 5.4.8 TUs) keep all their data in one
@@ -98,7 +98,7 @@ export function enter(n) {
 // Blocks have a 16-byte header (size at -16). Free blocks are kept per exact
 // size class (sizes rounded up to 16); a freed block is reused for the next
 // request of its class. Addresses only matter to Lua's pointer hashing, which
-// does not reach recorded output (transpiler-design.md 7, risk R4).
+// does not reach recorded output (method/design.md 7, risk R4).
 const heapStart = stackTop;
 let brk = heapStart;
 let freeLists = new Map();

@@ -1,4 +1,4 @@
-// js/crt/va.js: C variadic arguments (transpiler-design.md 4.4). Hand-written runtime.
+// js/crt/va.js: C variadic arguments (method/design.md 4.4). Hand-written runtime.
 // A variadic call passes its extra arguments, already converted to their C
 // promoted types by the emitter, as a VaList. va_arg reads the next one.
 import { CTrap } from './int.js';

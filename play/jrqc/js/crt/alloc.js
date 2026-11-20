@@ -1,4 +1,4 @@
-// js/crt/alloc.js: malloc and friends in the object world (transpiler-design.md 3.7).
+// js/crt/alloc.js: malloc and friends in the object world (method/design.md 3.7).
 // Hand-written runtime.
 //
 // malloc(n) returns a RawBlock: n untyped bytes. C code then casts the void *

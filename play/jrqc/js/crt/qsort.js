@@ -1,4 +1,4 @@
-// js/crt/qsort.js: Darwin libc qsort, ported exactly (transpiler-design.md 5).
+// js/crt/qsort.js: Darwin libc qsort, ported exactly (method/design.md 5).
 // Hand-written runtime.
 //
 // Source: apple-oss-distributions/Libc, stdlib/FreeBSD/qsort.c and heapsort.c

@@ -6,6 +6,8 @@
 
 import { game } from './gstate.js';
 import { roles } from './role.js';
+import { str_start_is } from './hacklib.js';
+import { NON_PM } from './const.js';
 
 // C ref: botl.c xlev_to_rank()
 /* convert experience level (1..30) to rank index (0..8) */
@@ -72,6 +74,39 @@ export function rank_of(lev, monnum, female) {
 // C ref: botl.c rank()
 export function rank() {
     return rank_of(game.u.ulevel, game.urole.mnum, game.flags.female);
+}
+
+// C ref: botl.c title_to_mon()
+/* monster index of the role whose rank title 'str' starts with; the rank
+   index and title length are returned in 'out' (C: int pointers) */
+export function title_to_mon(str, out) {
+    let i, j;
+
+    /* Loop through each of the roles */
+    for (i = 0; roles[i].name.m; i++) {
+        /* loop through each of the rank titles for role #i */
+        for (j = 0; j < 9; j++) {
+            if (roles[i].rank[j].m
+                && str_start_is(str, roles[i].rank[j].m, true)) {
+                if (out) {
+                    out.rank_indx = j;
+                    out.title_length = roles[i].rank[j].m.length;
+                }
+                return roles[i].mnum;
+            }
+            if (roles[i].rank[j].f
+                && str_start_is(str, roles[i].rank[j].f, true)) {
+                if (out) {
+                    out.rank_indx = j;
+                    out.title_length = roles[i].rank[j].f.length;
+                }
+                return roles[i].mnum;
+            }
+        }
+    }
+    if (out)
+        out.title_length = 0;
+    return NON_PM;
 }
 
 // C ref: botl.c max_rank_sz()
