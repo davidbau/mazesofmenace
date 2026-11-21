@@ -1917,7 +1917,7 @@ export async function playChargen(ctx) {
                 continue;
             }
             if (k === 21) { prompt.erase(buf.length); buf = ''; continue; }
-            if (k >= 32 && k < 127 && buf.length < 80) {
+            if (k >= 32 && k !== 127 /* getline.c:165: unsigned compare, high bytes accepted */ && buf.length < 80) {
                 buf += String.fromCharCode(k);
                 prompt.append(String.fromCharCode(k));
             }
@@ -2014,7 +2014,7 @@ export async function playChargen(ctx) {
                     continue;
                 }
                 if (k === 21) { prompt.erase(buf.length); buf = ''; continue; }
-                if (k >= 32 && k < 127 && buf.length < 80) {
+                if (k >= 32 && k !== 127 /* getline.c:165: unsigned compare, high bytes accepted */ && buf.length < 80) {
                     buf += String.fromCharCode(k);
                     prompt.append(String.fromCharCode(k));
                 }

@@ -457,7 +457,7 @@ function is_giant(ptr) { return (ptr.mflags2 & M.M2_GIANT) !== 0; }
 // C ref: eat.c intrinsic_possible()
 /* intrinsic_possible() returns TRUE iff a monster can potentially
  * convey an intrinsic to the hero (or a pet) when its corpse is eaten */
-function intrinsic_possible(type, ptr) {
+export function intrinsic_possible(type, ptr) {
     let res = 0;
 
     switch (type) {

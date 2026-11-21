@@ -1,8 +1,9 @@
 // priest.js -- temple priests.
 // C ref: priest.c -- priestini(), p_coaligned(), mon_aligntyp().
 //
-// Ported so far: what mktemple() needs at level creation. Priest movement
-// (pri_move), temple entry (intemple) and donations are not ported yet.
+// Ported so far: what mktemple() needs at level creation, and the movement
+// of priests and shopkeepers (move_special(), pri_move()). Temple entry
+// (intemple) and donations are not ported yet.
 
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
@@ -20,6 +21,24 @@ import { which_armor } from './worn.js';
 import { mon_learns_traps } from './mondata.js';
 import { rloc } from './teleport.js';
 import { pm_good_location } from './sp_lev.js';
+import { mfndpos } from './mon.js';
+import { mon_allowflags } from './mon.js';
+import { place_monster } from './makemon.js';
+import { newsym, pline } from './display.js';
+import { Your } from './display.js';
+import { mon_nam } from './do_name.js';
+import { dist2 } from './hacklib.js';
+import { in_rooms, check_special_room } from './hack.js';
+import { inhishop } from './shk.js';
+import { mattacku } from './mhitu.js';
+import { m_canseeu } from './monmove.js';
+import { monnear } from './mon.js';
+import {
+    IS_ROOM, IS_ALTAR, AM_SHRINE, TEMPLE, NOTONL, ALLOW_M, ALLOW_ROCK,
+    INVIS, DISPLACED, CONFLICT, A_CHA, u_at,
+} from './const.js';
+import { ACURR } from './attrib.js';
+import { rnd } from './rng.js';
 
 // C ref: hack.c xdir[], ydir[]; DIR_CLAMP()
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1, 0, 0];
@@ -117,4 +136,204 @@ export function forget_temple_entry(priest) {
 // C ref: priest.c p_coaligned()
 export function p_coaligned(priest) {
     return (game.u.ualign.type === mon_aligntyp(priest));
+}
+
+/* C ref: youprop.h Invis, Displaced, Conflict */
+function Invis() {
+    const p = game.u.uprops[INVIS];
+    return !!(p && (p.intrinsic || p.extrinsic) && !p.blocked);
+}
+function Displaced() {
+    const p = game.u.uprops[DISPLACED];
+    return !!(p && (p.intrinsic || p.extrinsic));
+}
+function Conflict() {
+    const p = game.u.uprops[CONFLICT];
+    return !!(p && (p.intrinsic || p.extrinsic));
+}
+/* C ref: mondata.c resist_conflict() */
+function resist_conflict(mtmp) {
+    /* always a small chance at 19 */
+    const resist_chance = Math.min(19, (ACURR(A_CHA) - mtmp.m_lev
+                                        + game.u.ulevel));
+
+    return (rnd(20) > resist_chance);
+}
+/* C ref: hacklib.c online2(); hack.h onlineu() */
+function onlineu(xx, yy) {
+    const dx = xx - game.u.ux, dy = yy - game.u.uy;
+    return (!dy || !dx || dy === dx || dy === -dx);
+}
+
+// C ref: priest.c move_special()
+/*
+ * Move for priests and shopkeepers.  Called from shk_move() and pri_move().
+ * Valid returns are  1: moved  0: didn't  -1: let m_move do it  -2: died.
+ */
+export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
+                                   omx, omy, ggx, ggy) {
+    let nx, ny, nix, niy;
+    let i;
+    let chcnt, cnt;
+    const mfp = {};
+    let ninfo = 0;
+    let allowflags;
+
+    if (omx === ggx && omy === ggy)
+        return 0;
+    if (mtmp.mconf) {
+        avoid = false;
+        appr = 0;
+    }
+
+    nix = omx;
+    niy = omy;
+    allowflags = mon_allowflags(mtmp);
+    cnt = mfndpos(mtmp, mfp, allowflags);
+
+    let skip_check = false;
+    if (mtmp.isshk && avoid && uondoor) { /* perhaps we cannot avoid him */
+        for (i = 0; i < cnt; i++)
+            if (!(mfp.info[i] & NOTONL)) {
+                skip_check = true; /* goto pick_move */
+                break;
+            }
+        if (!skip_check)
+            avoid = false;
+    }
+
+    const GDIST = (x, y) => dist2(x, y, ggx, ggy);
+    for (;;) {
+        /* pick_move: */
+        chcnt = 0;
+        for (i = 0; i < cnt; i++) {
+            nx = mfp.poss[i].x;
+            ny = mfp.poss[i].y;
+            if (IS_ROOM(game.level.at(nx, ny).typ)
+                || (mtmp.isshk && (!in_his_shop || mtmp.mextra.eshk.following))) {
+                if (avoid && (mfp.info[i] & NOTONL) && !(mfp.info[i] & ALLOW_M))
+                    continue;
+                if ((!appr && !rn2(++chcnt))
+                    || (appr && GDIST(nx, ny) < GDIST(nix, niy))
+                    || (mfp.info[i] & ALLOW_M)) {
+                    nix = nx;
+                    niy = ny;
+                    ninfo = mfp.info[i];
+                }
+            }
+        }
+        if (mtmp.ispriest && avoid && nix === omx && niy === omy
+            && onlineu(omx, omy)) {
+            /* might as well move closer as long it's going to stay
+             * lined up */
+            avoid = false;
+            continue; /* goto pick_move */
+        }
+        break;
+    }
+
+    if (nix !== omx || niy !== omy) {
+
+        if (ninfo & ALLOW_ROCK) {
+            throw new Error('move_special(): m_break_boulder() not ported yet');
+        } else if (ninfo & ALLOW_M) {
+            /* mtmp is deciding it would like to attack this turn.
+             * Returns from m_move_aggress don't correspond to the same things
+             * as this function should return, so we need to translate. */
+            throw new Error('move_special(): m_move_aggress() not ported yet');
+        }
+
+        if (m_at(nix, niy) || u_at(nix, niy))
+            return 0;
+        /* remove_monster(omx, omy): place_monster() moves it */
+        place_monster(mtmp, nix, niy);
+        newsym(nix, niy);
+        if (mtmp.isshk && !in_his_shop && inhishop(mtmp))
+            await check_special_room(false);
+        return 1;
+    }
+    return 0;
+}
+
+// C ref: priest.c temple_occupied()
+export function temple_occupied(array) {
+    for (const c of array)
+        if (game.level.rooms[c.charCodeAt(0) - ROOMOFFSET].rtype === TEMPLE)
+            return c;
+    return '';
+}
+
+// C ref: priest.c histemple_at()
+function histemple_at(priest, x, y) {
+    return !!(priest && priest.ispriest
+              && (String.fromCharCode(priest.epri.shroom)
+                  === (in_rooms(x, y, TEMPLE)[0] || '\0'))
+              && on_level(priest.epri.shrlevel, game.u.uz));
+}
+
+// C ref: priest.c inhistemple()
+export function inhistemple(priest) {
+    /* make sure we have a priest */
+    if (!priest || !priest.ispriest)
+        return false;
+    /* priest must be on right level and in right room */
+    if (!histemple_at(priest, priest.mx, priest.my))
+        return false;
+    /* temple room must still contain properly aligned altar */
+    return has_shrine(priest);
+}
+
+// C ref: priest.c pri_move()
+/*
+ * pri_move: return 1: moved  0: didn't  -1: let m_move do it  -2: died
+ */
+export async function pri_move(priest) {
+    let ggx, ggy;
+    let avoid = true;
+
+    const omx = priest.mx;
+    const omy = priest.my;
+
+    if (!histemple_at(priest, omx, omy))
+        return -1;
+
+    const temple = priest.epri.shroom;
+
+    ggx = priest.epri.shrpos.x;
+    ggy = priest.epri.shrpos.y;
+
+    ggx += rn1(3, -1); /* mill around the altar */
+    ggy += rn1(3, -1);
+
+    if (!priest.mpeaceful
+        || (Conflict() && !resist_conflict(priest))) {
+        if (monnear(priest, game.u.ux, game.u.uy)) {
+            if (Displaced())
+                await Your(`displaced image doesn't fool ${mon_nam(priest)}!`);
+            await mattacku(priest);
+            return 0;
+        } else if ((game.u.urooms || '').includes(String.fromCharCode(temple))) {
+            /* chase player if inside temple & can see him */
+            if (priest.mcansee && m_canseeu(priest)) {
+                ggx = game.u.ux;
+                ggy = game.u.uy;
+            }
+            avoid = false;
+        }
+    } else if (Invis())
+        avoid = false;
+
+    return await move_special(priest, false, true, false, avoid, omx, omy,
+                              ggx, ggy);
+}
+
+// C ref: priest.c has_shrine()
+function has_shrine(pri) {
+    if (!pri || !pri.ispriest)
+        return false;
+    const epri_p = pri.epri;
+    const lev = game.level.at(epri_p.shrpos.x, epri_p.shrpos.y);
+    if (!IS_ALTAR(lev.typ) || !(lev.altarmask & AM_SHRINE))
+        return false;
+    return (epri_p.shralign === Amask2align(lev.altarmask & ~AM_SHRINE));
 }

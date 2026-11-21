@@ -17,15 +17,15 @@
 // table with the selection prepended, so sel.fn(a) is selection.fn(sel, a)
 // and selection.fn() (no selection) is the static call.
 //
-// Not ported yet: the remaining selection methods (get, set, line, randline,
-// rect, fillrect/area, grow, match, floodfill, circle, ellipse, gradient,
-// describe_size) and the metatable operators; each method raises a Lua
-// error until it is ported.
+// Not ported yet: the remaining selection methods (get, randline,
+// floodfill, circle, ellipse, gradient, describe_size) and the metatable
+// operators other than | and & (__bor, __band; see nhlua.js lua_bor());
+// each method raises a Lua error until it is ported.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import {
-    lua_error, lua_type, LUA_TFUNCTION, luaL_checkinteger, luaL_checkstring,
+    lua_error, lua_type, LUA_TFUNCTION, LUA_TNUMBER, luaL_checkinteger, luaL_checkstring,
     luaL_checkoption, splev_chr2typ, nhl_pcall_handle, NHLpa_impossible,
     LuaUserdata,
 } from './nhlua.js';
@@ -33,7 +33,11 @@ import {
     COLNO, ROWNO, isok, ROOMOFFSET, MAX_TYPE, MATCH_WALL, IS_STWALL,
     INVALID_TYPE, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, W_RANDOM,
 } from './const.js';
-import { update_croom, cvt_to_relcoord, random_wdir } from './sp_lev.js';
+import {
+    update_croom, cvt_to_relcoord, random_wdir, get_location_coord, ANY_LOC,
+    SP_COORD_PACK, SP_COORD_PACK_RANDOM, mapfrag_fromstr, mapfrag_error,
+    mapfrag_match,
+} from './sp_lev.js';
 
 // C ref: selvar.h struct selectionvar — a Lua "selection" userdata
 // (nhlsel.c l_selection_push_new: luaL_setmetatable(L, "selection")).
@@ -368,6 +372,173 @@ export function selection_do_grow(ov, dir) {
     selection_free(tmp, true);
 }
 
+// C ref: selvar.c selection_do_line()
+export function selection_do_line(x1, y1, x2, y2, ov) {
+    let d0, dx, dy, ai, bi, xi, yi;
+
+    if (x1 < x2) {
+        xi = 1;
+        dx = x2 - x1;
+    } else {
+        xi = -1;
+        dx = x1 - x2;
+    }
+    if (y1 < y2) {
+        yi = 1;
+        dy = y2 - y1;
+    } else {
+        yi = -1;
+        dy = y1 - y2;
+    }
+
+    selection_setpoint(x1, y1, ov, 1);
+
+    if (!dx && !dy) {
+        /* single point - already all done */
+        ;
+    } else if (dx > dy) {
+        ai = (dy - dx) * 2;
+        bi = dy * 2;
+        d0 = bi - dx;
+        do {
+            if (d0 >= 0) {
+                y1 += yi;
+                d0 += ai;
+            } else
+                d0 += bi;
+            x1 += xi;
+            selection_setpoint(x1, y1, ov, 1);
+        } while (x1 !== x2);
+    } else {
+        ai = (dx - dy) * 2;
+        bi = dx * 2;
+        d0 = bi - dy;
+        do {
+            if (d0 >= 0) {
+                x1 += xi;
+                d0 += ai;
+            } else
+                d0 += bi;
+            y1 += yi;
+            selection_setpoint(x1, y1, ov, 1);
+        } while (y1 !== y2);
+    }
+}
+
+// C ref: selvar.c selection_do_randline()
+export function selection_do_randline(x1, y1, x2, y2, rough, rec, ov) {
+    let mx, my;
+    let dx, dy;
+
+    if (rec < 1 || (x2 === x1 && y2 === y1))
+        return;
+
+    if (rough > Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1)))
+        rough = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
+
+    if (rough < 2) {
+        mx = Math.trunc((x1 + x2) / 2);
+        my = Math.trunc((y1 + y2) / 2);
+    } else {
+        do {
+            dx = rn2(rough) - Math.trunc(rough / 2);
+            dy = rn2(rough) - Math.trunc(rough / 2);
+            mx = Math.trunc((x1 + x2) / 2) + dx;
+            my = Math.trunc((y1 + y2) / 2) + dy;
+        } while ((mx > COLNO - 1 || mx < 0 || my < 0 || my > ROWNO - 1));
+    }
+
+    if (!selection_getpoint(mx, my, ov)) {
+        selection_setpoint(mx, my, ov, 1);
+    }
+
+    rough = Math.trunc((rough * 2) / 3);
+
+    rec--;
+
+    selection_do_randline(x1, y1, mx, my, rough, rec, ov);
+    selection_do_randline(mx, my, x2, y2, rough, rec, ov);
+
+    selection_setpoint(x2, y2, ov, 1);
+}
+
+// C ref: selvar.c set_selection_floodfillchk()
+let selection_flood_check_func = null;
+export function set_selection_floodfillchk(f) {
+    selection_flood_check_func = f;
+}
+
+// C ref: selvar.c sel_flood_havepoint()
+/* check whethere <x,y> is already in xs[],ys[] */
+function sel_flood_havepoint(x, y, xs, ys, n) {
+    while (n > 0) {
+        --n;
+        if (xs[n] === x && ys[n] === y)
+            return true;
+    }
+    return false;
+}
+
+// C ref: selvar.c selection_floodfill()
+export function selection_floodfill(ov, x, y, diagonals) {
+    const tmp = selection_new();
+    const SEL_FLOOD_STACK = (COLNO * ROWNO);
+    let idx = 0;
+    const dx = new Array(SEL_FLOOD_STACK);
+    const dy = new Array(SEL_FLOOD_STACK);
+    const SEL_FLOOD = (nx, ny) => {
+        if (idx < SEL_FLOOD_STACK) {
+            dx[idx] = nx;
+            dy[idx] = ny;
+            idx++;
+        } else
+            throw new Error('panic: floodfill stack overrun');
+    };
+    const SEL_FLOOD_CHKDIR = (mx, my, sel) => {
+        if (isok(mx, my)
+            && selection_flood_check_func(mx, my)
+            && !selection_getpoint(mx, my, sel)
+            && !sel_flood_havepoint(mx, my, dx, dy, idx))
+            SEL_FLOOD(mx, my);
+    };
+
+    if (!selection_flood_check_func) {
+        selection_free(tmp, true);
+        return;
+    }
+    SEL_FLOOD(x, y);
+    do {
+        idx--;
+        x = dx[idx];
+        y = dy[idx];
+        if (isok(x, y)) {
+            selection_setpoint(x, y, ov, 1);
+            selection_setpoint(x, y, tmp, 1);
+        }
+        SEL_FLOOD_CHKDIR((x + 1), y, tmp);
+        SEL_FLOOD_CHKDIR((x - 1), y, tmp);
+        SEL_FLOOD_CHKDIR(x, (y + 1), tmp);
+        SEL_FLOOD_CHKDIR(x, (y - 1), tmp);
+        if (diagonals) {
+            SEL_FLOOD_CHKDIR((x + 1), (y + 1), tmp);
+            SEL_FLOOD_CHKDIR((x - 1), (y - 1), tmp);
+            SEL_FLOOD_CHKDIR((x - 1), (y + 1), tmp);
+            SEL_FLOOD_CHKDIR((x + 1), (y - 1), tmp);
+        }
+    } while (idx > 0);
+    selection_free(tmp, true);
+}
+
+// C ref: sp_lev.c floodfillchk_match_under(), set_floodfillchk_match_under()
+let floodfillchk_match_under_typ = 0;
+function floodfillchk_match_under(x, y) {
+    return (floodfillchk_match_under_typ === game.level.at(x, y).typ);
+}
+export function set_floodfillchk_match_under(typ) {
+    floodfillchk_match_under_typ = typ;
+    set_selection_floodfillchk(floodfillchk_match_under);
+}
+
 // C ref: selvar.c selection_iterate()
 export function selection_iterate(ov, func, arg) {
     const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
@@ -446,6 +617,283 @@ function l_selection_numpoints(...args) {
                 ret++;
 
     return ret;
+}
+
+// C ref: nhlsel.c l_selection_setpoint()
+/* selection.set(sel, x, y); */
+/* selection.set(sel, x, y, value); */
+/* local sel = selection.set(); */
+/* local sel = sel:set(); */
+/* local sel = selection.set(sel); */
+function l_selection_setpoint(...args) {
+    let sel = null;
+    let x = -1, y = -1;
+    let val = 1;
+    const argc = args.length;
+    let crd = 0;
+
+    if (argc === 0) {
+        sel = l_selection_new();
+    } else if (argc === 1) {
+        sel = l_selection_check(args[0]);
+    } else if (argc === 2) {
+        x = luaL_checkinteger(args[0]);
+        y = luaL_checkinteger(args[1]);
+        sel = l_selection_new();
+    } else {
+        sel = l_selection_check(args[0]);
+        x = luaL_checkinteger(args[1]);
+        y = luaL_checkinteger(args[2]);
+        val = lua_type(args[3]) === 0 /* LUA_TNIL */ ? 1
+            : luaL_checkinteger(args[3]); /* luaL_optinteger(L, 4, 1) */
+    }
+
+    if (!sel || !sel.map) {
+        lua_error('Selection setpoint error'); /* nhl_error() */
+        /*NOTREACHED*/
+        return 0;
+    }
+
+    if (x === -1 && y === -1)
+        crd = SP_COORD_PACK_RANDOM(0);
+    else
+        crd = SP_COORD_PACK(x, y);
+    const c = { x, y };
+    get_location_coord(c, ANY_LOC, game.coder ? game.coder.croom : null, crd);
+    selection_setpoint(c.x, c.y, sel, val);
+    return sel;
+}
+
+// C ref: rect.c rect_bounds()
+function rect_bounds(r1, r2, r3) {
+    r3.lx = Math.min(r1.lx, r2.lx);
+    r3.ly = Math.min(r1.ly, r2.ly);
+    r3.hx = Math.max(r1.hx, r2.hx);
+    r3.hy = Math.max(r1.hy, r2.hy);
+}
+
+// C ref: nhlsel.c l_selection_and()
+/* local sel = selection.area(4,5, 40,10) & selection.rect(7,8, 60,14); */
+export function l_selection_and(...args) {
+    const sela = l_selection_check(args[0]);
+    const selb = l_selection_check(args[1]);
+    const selr = selection_new(); /* l_selection_push_new() */
+    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
+
+    rect_bounds(sela.bounds, selb.bounds, rect);
+
+    for (let x = rect.lx; x <= rect.hx; x++)
+        for (let y = rect.ly; y <= rect.hy; y++) {
+            const val = (selection_getpoint(x, y, sela)
+                         & selection_getpoint(x, y, selb));
+
+            selection_setpoint(x, y, selr, val);
+        }
+
+    return selr;
+}
+
+// C ref: nhlsel.c l_selection_or()
+/* local sel = selection.area(4,5, 40,10) | selection.rect(7,8, 60,14); */
+export function l_selection_or(...args) {
+    const sela = l_selection_check(args[0]);
+    const selb = l_selection_check(args[1]);
+    const selr = selection_new(); /* l_selection_push_new() */
+    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
+
+    rect_bounds(sela.bounds, selb.bounds, rect);
+
+    for (let x = rect.lx; x <= rect.hx; x++)
+        for (let y = rect.ly; y <= rect.hy; y++) {
+            const val = (selection_getpoint(x, y, sela)
+                         | selection_getpoint(x, y, selb));
+
+            selection_setpoint(x, y, selr, val);
+        }
+    selr.bounds = { ...rect };
+
+    return selr;
+}
+
+// C ref: nhlsel.c params_sel_2coords()
+/* function(selection, x1,y1, x2,y2) */
+/* selection:function(x1,y1, x2,y2) */
+/* returns { sel, x1, y1, x2, y2 }, or null if the params are bad */
+function params_sel_2coords(args) {
+    const argc = args.length;
+
+    if (argc === 4) {
+        return { sel: l_selection_new(),
+                 x1: luaL_checkinteger(args[0]), y1: luaL_checkinteger(args[1]),
+                 x2: luaL_checkinteger(args[2]), y2: luaL_checkinteger(args[3]) };
+    } else if (argc === 5) {
+        return { sel: l_selection_check(args[0]),
+                 x1: luaL_checkinteger(args[1]), y1: luaL_checkinteger(args[2]),
+                 x2: luaL_checkinteger(args[3]), y2: luaL_checkinteger(args[4]) };
+    }
+    return null;
+}
+
+// the two get_location_coord() calls the line/rect/fillrect methods make
+function sel_2coords_abs(p) {
+    const croom = game.coder ? game.coder.croom : null;
+    const c1 = { x: p.x1, y: p.y1 }, c2 = { x: p.x2, y: p.y2 };
+
+    get_location_coord(c1, ANY_LOC, croom, SP_COORD_PACK(p.x1, p.y1));
+    get_location_coord(c2, ANY_LOC, croom, SP_COORD_PACK(p.x2, p.y2));
+    return { x1: c1.x, y1: c1.y, x2: c2.x, y2: c2.y };
+}
+
+// C ref: nhlsel.c l_selection_line()
+/* local s = selection.line(sel, x1,y1, x2,y2); */
+/* local s = selection.line(x1,y1, x2,y2); */
+/* s:line(x1,y1, x2,y2); */
+function l_selection_line(...args) {
+    const p = params_sel_2coords(args);
+
+    if (!p)
+        lua_error('selection.line: illegal arguments'); /* nhl_error() */
+
+    const { x1, y1, x2, y2 } = sel_2coords_abs(p);
+    const sel = selection_clone(p.sel); /* l_selection_clone() */
+    selection_do_line(x1, y1, x2, y2, sel);
+    return sel;
+}
+
+// C ref: nhlsel.c l_selection_rect()
+/* local s = selection.rect(sel, x1,y1, x2,y2); */
+function l_selection_rect(...args) {
+    const p = params_sel_2coords(args);
+
+    if (!p)
+        lua_error('selection.rect: illegal arguments'); /* nhl_error() */
+
+    const { x1, y1, x2, y2 } = sel_2coords_abs(p);
+    const sel = selection_clone(p.sel); /* l_selection_clone() */
+    selection_do_line(x1, y1, x2, y1, sel);
+    selection_do_line(x1, y1, x1, y2, sel);
+    selection_do_line(x2, y1, x2, y2, sel);
+    selection_do_line(x1, y2, x2, y2, sel);
+    return sel;
+}
+
+// C ref: nhlsel.c l_selection_fillrect()
+/* local s = selection.fillrect(sel, x1,y1, x2,y2); */
+/* local s = selection.fillrect(x1,y1, x2,y2); */
+/* s:fillrect(x1,y1, x2,y2); */
+/* selection.area(x1,y1, x2,y2); */
+function l_selection_fillrect(...args) {
+    const p = params_sel_2coords(args);
+
+    if (!p)
+        lua_error('selection.fillrect: illegal arguments'); /* nhl_error() */
+
+    const { x1, y1, x2, y2 } = sel_2coords_abs(p);
+    const sel = selection_clone(p.sel); /* l_selection_clone() */
+    if (x1 === x2) {
+        for (let y = y1; y <= y2; y++)
+            selection_setpoint(x1, y, sel, 1);
+    } else {
+        for (let y = y1; y <= y2; y++)
+            selection_do_line(x1, y, x2, y, sel);
+    }
+    return sel;
+}
+
+// C ref: nhlsel.c l_selection_randline()
+/* local s = selection.randline(sel, x1,y1, x2,y2, roughness); */
+/* local s = selection.randline(x1,y1, x2,y2, roughness); */
+function l_selection_randline(...args) {
+    const argc = args.length;
+    let sel = null;
+    let x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+    let roughness = 7;
+
+    if (argc === 6) {
+        sel = l_selection_check(args[0]);
+        x1 = luaL_checkinteger(args[1]);
+        y1 = luaL_checkinteger(args[2]);
+        x2 = luaL_checkinteger(args[3]);
+        y2 = luaL_checkinteger(args[4]);
+        roughness = luaL_checkinteger(args[5]);
+    } else if (argc === 5 && lua_type(args[0]) === LUA_TNUMBER) {
+        x1 = luaL_checkinteger(args[0]);
+        y1 = luaL_checkinteger(args[1]);
+        x2 = luaL_checkinteger(args[2]);
+        y2 = luaL_checkinteger(args[3]);
+        roughness = luaL_checkinteger(args[4]);
+        sel = l_selection_new();
+    }
+
+    const c = sel_2coords_abs({ x1, y1, x2, y2 });
+    sel = selection_clone(sel); /* l_selection_clone() */
+    selection_do_randline(c.x1, c.y1, c.x2, c.y2, roughness, 12, sel);
+    return sel;
+}
+
+// C ref: nhlsel.c l_selection_flood()
+/* local s = selection.floodfill(x,y); */
+/* local s = selection.floodfill(x,y, diagonals); */
+function l_selection_flood(...args) {
+    const argc = args.length;
+    let sel = null;
+    let x = 0, y = 0;
+    let diagonals = false;
+
+    if (argc === 2 || argc === 3) {
+        x = luaL_checkinteger(args[0]);
+        y = luaL_checkinteger(args[1]);
+        if (argc === 3)
+            diagonals = !!args[2] && args[2] !== undefined; /* lua_toboolean() */
+        sel = l_selection_new();
+    } else {
+        lua_error('wrong parameters'); /* nhl_error() */
+        /*NOTREACHED*/
+    }
+
+    const c = { x, y };
+    get_location_coord(c, ANY_LOC, game.coder ? game.coder.croom : null,
+                       SP_COORD_PACK(x, y));
+
+    if (isok(c.x, c.y)) {
+        set_floodfillchk_match_under(game.level.at(c.x, c.y).typ);
+        selection_floodfill(sel, c.x, c.y, diagonals);
+    }
+    return sel;
+}
+
+// C ref: nhlsel.c l_selection_match()
+/* local s = selection.match([[...]]); */
+function l_selection_match(...args) {
+    const argc = args.length;
+    let sel = null;
+    let mf = null;
+
+    if (argc === 1) {
+        let err;
+        const mapstr = luaL_checkstring(args[0]);
+        sel = l_selection_new();
+
+        mf = mapfrag_fromstr(mapstr);
+
+        if ((err = mapfrag_error(mf)) !== null) {
+            lua_error(err); /* nhl_error() */
+            /*NOTREACHED*/
+        }
+    } else {
+        lua_error('wrong parameters'); /* nhl_error() */
+        /*NOTREACHED*/
+    }
+
+    for (let y = 0; y <= sel.hei; y++)
+        for (let x = 1; x < sel.wid; x++)
+            selection_setpoint(x, y, sel, mapfrag_match(mf, x, y) ? 1 : 0);
+
+    /* unless the (0, 1) coordinate is a match, this would wind up with a
+       selection with lx=COLNO, hx=0, etc, so fix the boundaries */
+    selection_recalc_bounds(sel);
+
+    return sel;
 }
 
 // C ref: nhlsel.c l_selection_not()
@@ -623,6 +1071,14 @@ export function l_selection_register(L) {
         selection[name] = selection_not_ported(name);
     selection.new = l_selection_new;
     selection.clone = l_selection_clone;
+    selection.set = l_selection_setpoint;
+    selection.line = l_selection_line;
+    selection.rect = l_selection_rect;
+    selection.fillrect = l_selection_fillrect;
+    selection.area = l_selection_fillrect;
+    selection.match = l_selection_match;
+    selection.randline = l_selection_randline;
+    selection.floodfill = l_selection_flood;
     selection.numpoints = l_selection_numpoints;
     selection.negate = l_selection_not;
     selection.percentage = l_selection_filter_percent;
@@ -636,6 +1092,8 @@ export function l_selection_register(L) {
     /* luaL_newmetatable(L, "selection"): selections are userdata */
     Object.setPrototypeOf(Selvar.prototype, LuaUserdata.prototype);
     selection_metatable.__index = selection;
+    selection_metatable.__band = l_selection_and;
+    selection_metatable.__bor = l_selection_or;
 
     /* metatable.__index points at the selection method table:
        sel:fn(...) is selection.fn(sel, ...) */

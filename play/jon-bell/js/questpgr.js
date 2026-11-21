@@ -19,7 +19,7 @@
 // for its (separate, array-form) cuss() com_pager.
 import { pline } from './pline.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { game } from './gstate.js';
-import { s_suffix as _s_suffix } from './hacklib.js';
+import { s_suffix as _s_suffix, upstart } from './hacklib.js';
 import { permonstTemplate, monPmname } from './makemon.js';
 import { NEUTRAL, MIN_QUEST_LEVEL, BUFSZ, A_LAWFUL, NHW_MENU, NHW_TEXT } from './const.js';
 /* C ref: obj.h OBJ_* chain ids + Has_contents(); questpgr.c:66-70
@@ -3936,7 +3936,7 @@ export function convert_line(in_line) {
     return out;
 }
 
-function _highc(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+function _highc(s) { return s ? upstart(s) : s; }
 
 /* C questpgr.c:436 deliver_by_window(msg, how) — one nhwindow, one putstr per
  * converted line, display_nhwindow(datawin, TRUE). */

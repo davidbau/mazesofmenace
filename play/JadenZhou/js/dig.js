@@ -172,3 +172,13 @@ export function bury_an_obj(otmp, dealloced) {
     add_to_buried(otmp);
     return otmp2;
 }
+
+// C ref: dig.c holetime()
+/* When will hole be finished? Very rough indication used by shopkeeper. */
+export function holetime() {
+    /* dig() (the digging occupation) is not ported yet, so go.occupation
+       cannot be dig() */
+    if (!game.occupation || game.occupation.name !== 'dig' || !game.u.ushops)
+        return -1;
+    throw new Error('holetime(): digging effort not ported yet');
+}

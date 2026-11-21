@@ -3430,7 +3430,7 @@ async function seffect_earth(sobj) {
         } else {
             const avalanche = 'avalanche';
             const matbuf = sblessed ? makeplural(avalanche) : an(avalanche);
-            await pline(`${matbuf.charAt(0).toUpperCase() + matbuf.slice(1)} of boulders ${sblessed ? 'materialize' : 'materializes'} ${sblessed ? 'around' : 'above'} you!`);
+            await pline(`${upstart(matbuf)} of boulders ${sblessed ? 'materialize' : 'materializes'} ${sblessed ? 'around' : 'above'} you!`);
         }
         g._gk_known = true;
         sokoban_guilt_er();
@@ -3599,7 +3599,7 @@ function create_particular_parse(str) {
     /* check "female" before "male" to avoid false hit mid-word */
     if (strip('female ')) d.fem = _CP_FEMALE;
     if (strip('male '))   d.fem = _CP_MALE;
-    bufp = bufp.trim().replace(/\s+/g, ' ');   /* mungspaces */
+    bufp = mungspaces(bufp);   /* hacklib.c:142 */
 
     /* initial disposition */
     const lc = bufp.toLowerCase();

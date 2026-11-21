@@ -1566,7 +1566,7 @@ async function _handle_sqky_board_mon(mtmp, trap, nix, niy) {
                 _mark_seen = true; /* C seetrap follows pline_mon */
             } else if ((mtmp.data.mflags1 & M1_MINDLESS_MV) === 0) {
                 const _nm = mon_nam(mtmp);
-                _msg = `${_nm.charAt(0).toUpperCase()}${_nm.slice(1)} stops momentarily and appears to cringe.`;
+                _msg = `${upstart(_nm)} stops momentarily and appears to cringe.`;
             }
         } else {
             /* C trap.c:1458-1469: out-of-sight monster — You_hear("...squeak...").

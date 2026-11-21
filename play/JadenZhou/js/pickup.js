@@ -39,7 +39,9 @@ import { the } from './iactions.js';
 import { xname } from './objnam.js';
 import { autokey, AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_UNTRAP,
          AUTOUNLOCK_FORCE } from './lock.js';
-import { costly_spot } from './insight.js';
+import { costly_spot, addtobill } from './shk.js';
+import { in_rooms } from './hack.js';
+import { SHOPBASE } from './const.js';
 import { money_cnt } from './u_init.js';
 import { max_capacity, calc_capacity, inv_cnt } from './hack.js';
 import { weight, splitobj, obj_extract_self } from './mkobj.js';
@@ -1541,10 +1543,34 @@ export async function pick_obj(otmp) {
     if (fromfloor)
         newsym(ox, oy);
 
-    if (robshop)
-        throw new Error('pick_obj(): addtobill() for a shop item not ported yet');
+    /* for shop items, addinv() needs to be after addtobill() (so that
+       object merger can take otmp->unpaid into account) but before
+       remote_robbery() (which calls rob_shop() which calls setpaid()
+       after moving costs of unpaid items to shop debt; setpaid()
+       calls clear_unpaid() for lots of object chains, but 'otmp' isn't
+       on any of those between obj_extract_self() and addinv(); for
+       3.6.0, 'otmp' remained flagged as an unpaid item in inventory
+       and triggered impossible() every time inventory was examined) */
+    let rob = robshop;
+    let fakeshop = '';
+    if (rob) {
+        /* addtobill cares about your location rather than the object's;
+           usually they'll be the same, but not when using telekinesis
+           (if ever implemented) or a grappling hook */
+        const saveushops = u.ushops;
+        fakeshop = in_rooms(ox, oy, SHOPBASE).slice(0, 1);
+        u.ushops = fakeshop;
+        /* sets obj->unpaid if necessary */
+        await addtobill(otmp, true, false, false);
+        u.ushops = saveushops;
+        rob = otmp.unpaid && !(u.ushops || '').includes(fakeshop || '\0');
+    }
 
     const result = await addinv(otmp);
+    /* if you're taking a shop item from outside the shop, make shk notice */
+    if (rob)
+        throw new Error('pick_obj(): remote_burglary() not ported yet');
+
     return result;
 }
 

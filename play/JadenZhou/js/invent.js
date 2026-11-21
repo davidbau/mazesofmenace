@@ -6,7 +6,7 @@ import { game } from './gstate.js';
 import { pline, You, pline_The, newsym, There } from './display.js';
 import { obj_resists } from './dogmove.js';
 import { maybe_unhide_at } from './mon.js';
-import { doname, makeplural } from './objnam.js';
+import { doname, doname_with_price, makeplural } from './objnam.js';
 import { rn2 } from './rng.js';
 import { ing_suffix } from './hacklib.js';
 import { body_part, hidden_gold, currency, empty_handed } from './insight.js';
@@ -48,7 +48,8 @@ import { confers_luck } from './timeout.js';
 import { set_moreluck } from './attrib.js';
 import { setnotworn } from './worn.js';
 import { food_disappears } from './eat.js';
-import { costly_spot, shop_keeper } from './insight.js';
+import { costly_spot, shop_keeper, inside_shop, inhishop, next_shkp, onbill,
+         same_price } from './shk.js';
 import {
     tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
     tty_select_menu, tty_message_menu, tty_yn_function, tty_display_nhwindow,
@@ -642,14 +643,7 @@ export function useup(obj) {
     }
 }
 
-// C ref: shk.c onbill() -- the bill entry for obj, if any; shop bills
-// aren't ported yet, so only an empty bill is handled
-function onbill(obj, shkp, silent) {
-    void silent;
-    if (shkp && shkp.mextra?.eshk?.billct)
-        throw new Error('onbill(): shop bill entries not ported yet');
-    return null;
-}
+/* C ref: shk.c onbill() -- in shk.js */
 
 // C ref: shk.c obfree()
 /* delete obj from the game; 'merge' is the stack it merged into, if any */
@@ -674,13 +668,18 @@ export function obfree(obj, merge) {
         obj.next_boulder = 0;
 
     let shkp = null;
-    if (obj.unpaid)
-        throw new Error('obfree(): unpaid object (next_shkp()/onbill()) not ported yet');
+    if (obj.unpaid) {
+        /* look for a shopkeeper who owns this object */
+        for (shkp = next_shkp(game.fmon, true); shkp;
+             shkp = next_shkp(shkp.nmon, true))
+            if (onbill(obj, shkp, true))
+                break;
+    }
     /* sanity check, in case obj is on bill but not marked 'unpaid' */
     if (!shkp)
         shkp = shop_keeper(game.u.ushops ? (game.u.ushops.charCodeAt(0) || 0) : 0);
     if (onbill(obj, shkp, false)) {
-        /* bill handling: not reached (onbill() throws for a non-empty bill) */
+        throw new Error('obfree(): used-up or merged bill entry not ported yet');
     } else {
         /* not on bill; a merged-away stack with a higher price adjustment
            passes its o_id on (oid_price_adjustment()) */
@@ -749,9 +748,21 @@ export function merge_choice(objlist, obj) {
        have when carried are different from what they are now; prevent
        that from eliciting an incorrect result from mergable() */
     const save_nocharge = obj.no_charge;
+    let shkp;
     if (objlist === game.invent && obj.where === 'OBJ_FLOOR'
-        && game.level.flags?.has_shop)
-        throw new Error('merge_choice(): shop_keeper(inside_shop()) not ported yet');
+        && (shkp = shop_keeper(inside_shop(obj.ox, obj.oy))) != null) {
+        if (obj.no_charge)
+            obj.no_charge = 0;
+        /* A billable object won't have its `unpaid' bit set, so would
+           erroneously seem to be a candidate to merge with a similar
+           ordinary object.  That's no good, because once it's really
+           picked up, it won't merge after all.  It might merge with
+           another unpaid object, but we can't check that here (depends
+           too much upon shk's bill) and if it doesn't merge it would
+           end up in the '#' overflow inventory slot, so reject it now. */
+        else if (inhishop(shkp))
+            return null;
+    }
     do {
         if (mergable(objlist, obj))
             break;
@@ -1441,9 +1452,7 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
             await pline(fbuf);
         await read_engr_at(u.ux, u.uy); /* Eric Backus */
         const otmp = here[0];
-        if (otmp.unpaid || game.level.flags?.has_shop)
-            throw new Error('look_here(): doname_with_price() not ported yet');
-        await You(`${verb} here ${doname(otmp)}.`);
+        await You(`${verb} here ${doname_with_price(otmp)}.`);
         game.iflags.last_msg = 'PLNMSG_ONE_ITEM_HERE';
         if (otmp.otyp === O.CORPSE)
             feel_cockatrice(otmp, false);
@@ -1458,9 +1467,7 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
         for (const otmp of here) {
             if (will_feel_cockatrice(otmp, false))
                 throw new Error('look_here(): felt_cockatrice not ported yet');
-            if (otmp.unpaid || game.level.flags?.has_shop)
-                throw new Error('look_here(): doname_with_price() not ported yet');
-            await tty_putstr(tmpwin, 0, doname(otmp));
+            await tty_putstr(tmpwin, 0, doname_with_price(otmp));
         }
         await tty_display_nhwindow(tmpwin, true);
         await tty_destroy_nhwindow(tmpwin);
@@ -1839,8 +1846,8 @@ export function mergable(otmp, /* potential 'into' stack */
         return false;
 
     /* don't merge surcharged item with base-cost item */
-    if (obj.unpaid)
-        throw new Error('mergable(): same_price() is not ported yet');
+    if (obj.unpaid && !same_price(obj, otmp))
+        return false;
 
     /* some additional information is always incompatible */
     if (obj.oextra?.omonst || obj.oextra?.omid

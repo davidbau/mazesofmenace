@@ -37,6 +37,8 @@ export function Strlen_(str, file, line) {
  * tail-recurses via `goto pmatch_top`, and reads one past the end as '\0',
  * which JS string indexing gives back as undefined, so the sentinel is
  * explicit here. */
+/* hacklib.c lowc(): ASCII-only fold (kept local: hacklib.js imports this module). */
+const _lowc = (c) => (c >= 'A' && c <= 'Z') ? String.fromCharCode(c.charCodeAt(0) | 32) : c;
 export function pmatch_internal(patrn, strng, ci) {
     let pi = 0, si = 0;
     for (;;) {
@@ -53,8 +55,8 @@ export function pmatch_internal(patrn, strng, ci) {
                    ? pmatch_internal(patrn.slice(pi - 1), strng.slice(si), ci)
                    : false);
         /* check single character & single-char wildcard */
-        const pc = ci ? String(p).toLowerCase() : p;
-        const sc = ci ? String(s).toLowerCase() : s;
+        const pc = ci ? _lowc(String(p)) : p; /* pmatchi: lowc, ASCII-only */
+        const sc = ci ? _lowc(String(s)) : s;
         if (pc !== sc && (p !== '?' || s === '\0'))
             return false;
         /* else: goto pmatch_top (tail recursion) */

@@ -14,7 +14,7 @@ import { Is_branchlev, In_hell, level_difficulty, on_level, dungeon_branch,
          dunlev, dunlevs_in_dungeon, Is_special,
          at_dgn_entrance, insert_branch, is_wizard_mode,
          induced_align, find_level } from './dungeon.js';
-import { makemaz } from './mkmaze.js';
+import { makemaz, mazexy, mkportal } from './mkmaze.js';
 import { PM_LEPRECHAUN, PM_KILLER_BEE, PM_SOLDIER, PM_COCKATRICE, S_HUMAN,
          PM_ELF, PM_DWARF, PM_ORC, PM_GNOME, PM_HUMAN, PM_ARCHEOLOGIST,
          PM_WIZARD, PM_GIANT_SPIDER, mons } from './monsters.js';
@@ -45,7 +45,8 @@ import {
     LR_UPSTAIR, AIR, MAX_TYPE, NHL_SB_SAFE, G_GONE, SHOPBASE, COURT, LEPREHALL, ZOO, TEMPLE,
     BEEHIVE, MORGUE, ANTHOLE, BARRACKS, SWAMP, COCKNEST, DUST, MARK,
     TAINT_AGE, MM_NOGRP, NO_MM_FLAGS, MKTRAP_NOFLAGS, MKTRAP_SEEN,
-    MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
+    MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM, LA_UP, LA_DOWN,
+    BR_PORTAL, BR_NO_END1, BR_NO_END2,
 } from './const.js';
 
 // Object classes and object numbers: objects.js
@@ -207,8 +208,9 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
          * if there are rooms and this a branch, let place_branch choose
          * the branch location (to avoid putting branches in corridors).
          */
-        if (rtype === LR_BRANCH && game.level.nroom)
-            throw new Error('place_lregion(): LR_BRANCH not ported yet');
+        if (rtype === LR_BRANCH && game.level.nroom) {
+            place_branch(Is_branchlev(game.u.uz), 0, 0);
+        }
 
         lx = 1; /* column 0 is not used */
         hx = COLNO - 1;
@@ -282,12 +284,15 @@ function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
         u_on_newpos(x, y);
         break;
     case LR_PORTAL:
-        throw new Error('put_lregion_here(): mkportal() not ported yet');
+        mkportal(x, y, lev.dnum, lev.dlevel);
+        break;
     case LR_DOWNSTAIR:
     case LR_UPSTAIR:
-        throw new Error('put_lregion_here(): mkstairs() not ported yet');
+        mkstairs(x, y, rtype, null, false); /* (char) rtype: LR_UPSTAIR is 1 */
+        break;
     case LR_BRANCH:
-        throw new Error('put_lregion_here(): place_branch() not ported yet');
+        place_branch(Is_branchlev(game.u.uz), x, y);
+        break;
     }
     return true;
 }
@@ -350,8 +355,7 @@ function place_object(otmp, x, y) {
 function dealloc_obj(otmp) { /* garbage collected */ }
 /* weight(), add_to_container(): mkobj.js; sobj_at(): makemon.js;
    add_to_buried(): dig.js */
-// C ref: mkmaze.c mazexy() -- only reached with MKTRAP_MAZEFLAG (mazes)
-function mazexy(cc) { throw new Error('mazexy: not ported yet'); }
+/* mazexy(): mkmaze.js */
 
 
 // in_rooms stub
@@ -558,7 +562,7 @@ async function makelevel() {
         const prevstairs = game.stairs; /* used to test for place_branch() success */
         /* Place multi-dungeon branch. */
         if (branchp) {
-            place_branch(branchp);
+            place_branch(branchp, 0, 0);
         }
 
         /* for main dungeon level 1, the stairs up where the hero starts
@@ -627,7 +631,8 @@ function themerooms_post_level_generate() {
     g.iflags.in_lua = g.in_mk_themerooms = false;
 
     wallification(1, 0, COLNO - 1, ROWNO - 1);
-    /* gc.coder is freed by C here; the JS coder is garbage collected */
+    if (g.coder)
+        g.coder = null; /* free(gc.coder), gc.coder = NULL */
 }
 
 // C ref: mklev.c ROOM_IS_FILLABLE()
@@ -2046,7 +2051,7 @@ function join(a, b, nxcor) {
 }
 
 // C ref: mklev.c makecorridors()
-function makecorridors() {
+export function makecorridors() {
     const g = game;
     let any = true;
     for (let i = 0; i < g.level.nroom; i++) g.smeq[i] = i;
@@ -2187,18 +2192,34 @@ function generate_stairs_find_room() {
     return g.level.rooms[rn2(g.level.nroom)];
 }
 
-function mkstairs(x, y, up, croom) {
+// C ref: mklev.c mkstairs()
+export function mkstairs(x, y, up, croom, force) {
     const g = game;
-    const loc = g.level.at(x, y);
-    if (loc) {
-        loc.typ = STAIRS;
-        loc.ladder = up ? 1 : 2;
+
+    if (!x || !isok(x, y)) {
+        /* impossible("mkstairs:  bogus stair attempt at <%d,%d>", x, y) */
+        return;
     }
+    if (force)
+        g.level.at(x, y).typ = ROOM;
+    /* ltyp = levl[x][y].typ: impossible() if not ROOM, CORR or ICE */
+
+    /*
+     * We can't make a regular stair off an end of the dungeon.  This
+     * attempt can happen when a special level is placed at an end and
+     * has an up or down stair specified in its description file.
+     */
+    if (dunlev(g.u.uz) === (up ? 1 : dunlevs_in_dungeon(g.u.uz)))
+        return;
+
     const dest = {
-        dnum: g.u?.uz?.dnum ?? 0,
-        dlevel: (g.u?.uz?.dlevel ?? 1) + (up ? -1 : 1),
+        dnum: g.u.uz.dnum,
+        dlevel: g.u.uz.dlevel + (up ? -1 : 1),
     };
     stairway_add(x, y, !!up, false, dest);
+
+    set_levltyp(x, y, STAIRS);
+    g.level.at(x, y).ladder = up ? LA_UP : LA_DOWN;
     if (up) g.level.upstair = { x, y };
     else g.level.dnstair = { x, y };
 }
@@ -2283,7 +2304,7 @@ export function Can_fall_thru(lev) {
 }
 
 // C ref: dungeon.c Can_dig_down()
-function Can_dig_down(lev) {
+export function Can_dig_down(lev) {
     return (!game.level.flags.hardfloor
             && !Is_botlevel(lev)
             && !Invocation_lev(lev));
@@ -2301,7 +2322,7 @@ function Is_stronghold(lev) {
 }
 
 // C ref: dungeon.c Invocation_lev()
-function Invocation_lev(lev) {
+export function Invocation_lev(lev) {
     return (In_hell(lev)
             && lev.dlevel === game.dungeons[lev.dnum].num_dunlevs - 1);
 }
@@ -2389,30 +2410,86 @@ function is_branchlev() {
     return Is_branchlev(game.u.uz);
 }
 
+// C ref: mklev.c find_branch_room()
 function find_branch_room(mp) {
-    const croom = generate_stairs_find_room();
-    if (croom) somexyspace(croom, mp);
+    let croom = null;
+
+    if (game.level.nroom === 0) {
+        mazexy(mp); /* already verifies location */
+    } else {
+        croom = generate_stairs_find_room();
+        if (!somexyspace(croom, mp))
+            console.error('impossible: Can\'t place branch!');
+    }
     return croom;
 }
 
-function place_branch(branchp) {
-    const g = game;
-    const mp = { x: 0, y: 0 };
-    const croom = find_branch_room(mp);
-    if (croom && mp.x > 0) {
-        const on_end1 = (branchp.end1?.dnum === g.u?.uz?.dnum
-            && branchp.end1?.dlevel === g.u?.uz?.dlevel);
-        const dest = on_end1 ? branchp.end2 : branchp.end1;
-        const goes_up = on_end1 ? !!branchp.end1_up : !branchp.end1_up;
-        const loc = g.level?.at(mp.x, mp.y);
-        if (loc) {
-            loc.typ = STAIRS;
-            loc.ladder = goes_up ? 1 : 2;
-        }
-        stairway_add(mp.x, mp.y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
-        if (goes_up) g.level.upstair = { x: mp.x, y: mp.y };
-        else g.level.dnstair = { x: mp.x, y: mp.y };
+// C ref: mklev.c pos_to_room()
+/* Find the room for (x,y).  Return null if not in a room. */
+function pos_to_room(x, y) {
+    for (let i = 0; i < game.level.nroom; i++) {
+        const curr = game.level.rooms[i];
+        if (inside_room(curr, x, y))
+            return curr;
     }
+    return null;
+}
+
+// C ref: mklev.c place_branch()
+/* If given a branch, randomly place a special stair or portal. */
+export function place_branch(br, x, y) {
+    const g = game;
+    const m = { x: 0, y: 0 };
+    let dest;
+    let make_stairs;
+
+    /*
+     * Return immediately if there is no branch to make or we have
+     * already made one.  This routine can be called twice when
+     * a special level is loaded that specifies an SSTAIR location
+     * as a favored spot for a branch.
+     */
+    if (!br || g.made_branch)
+        return;
+
+    if (!x) { /* find random coordinates for branch */
+        /* br_room = find_branch_room(&m); */
+        find_branch_room(m); /* sets m via mazexy() or somexy() */
+        x = m.x;
+        y = m.y;
+    } else {
+        pos_to_room(x, y);
+    }
+
+    if (on_level(br.end1, g.u.uz)) {
+        /* we're on end1 */
+        make_stairs = br.type !== BR_NO_END1;
+        dest = br.end2;
+    } else {
+        /* we're on end2 */
+        make_stairs = br.type !== BR_NO_END2;
+        dest = br.end1;
+    }
+
+    if (br.type === BR_PORTAL) {
+        /* iflags.debug_fuzzer && u.ucamefrom: no fuzzer here */
+        mkportal(x, y, dest.dnum, dest.dlevel);
+    } else if (make_stairs) {
+        const goes_up = on_level(br.end1, g.u.uz) ? !!br.end1_up
+                                                  : !br.end1_up;
+
+        stairway_add(x, y, goes_up, false, dest);
+        set_levltyp(x, y, STAIRS);
+        g.level.at(x, y).ladder = goes_up ? LA_UP : LA_DOWN;
+        if (goes_up) g.level.upstair = { x, y };
+        else g.level.dnstair = { x, y };
+    }
+    /*
+     * Set made_branch to TRUE even if we didn't make a stairwell (i.e.
+     * make_stairs is false) since there is currently only one branch
+     * per level, if we failed once, we're going to fail again on the
+     * next call.
+     */
     g.made_branch = true;
 }
 
@@ -2459,7 +2536,7 @@ function wall_cleanup(x1, y1, x2, y2) {
                 loc.typ = STONE;
         }
 }
-function fix_wall_spines(x1, y1, x2, y2) {
+export function fix_wall_spines(x1, y1, x2, y2) {
     const spineArray = [VWALL, HWALL, HWALL, HWALL,
         VWALL, TRCORNER, TLCORNER, TDWALL,
         VWALL, BRCORNER, BLCORNER, TUWALL,
@@ -2483,7 +2560,7 @@ function fix_wall_spines(x1, y1, x2, y2) {
             if (bits) loc.typ = spineArray[bits];
         }
 }
-function wallification(x1, y1, x2, y2) {
+export function wallification(x1, y1, x2, y2) {
     wall_cleanup(x1, y1, x2, y2);
     fix_wall_spines(x1, y1, x2, y2);
 }
@@ -3270,7 +3347,8 @@ export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob,
 // Level finalize topology
 // ============================================================
 
-function get_level_extends() {
+// C ref: mkmaze.c get_level_extends()
+export function get_level_extends() {
     const map = game.level;
     let xmin = 0, xmax = COLNO - 1, ymin = 0, ymax = ROWNO - 1;
     let found = false, nonwall = false;
@@ -3281,6 +3359,8 @@ function get_level_extends() {
         }
     }
     xmin -= (nonwall || !game.level?.flags?.is_maze_lev) ? 2 : 1;
+    if (xmin < 0)
+        xmin = 0;
     found = false; nonwall = false;
     for (xmax = COLNO - 1; !found && xmax >= 0; xmax--) {
         for (let y = 0; y <= ROWNO - 1; y++) {
@@ -3289,6 +3369,8 @@ function get_level_extends() {
         }
     }
     xmax += (nonwall || !game.level?.flags?.is_maze_lev) ? 2 : 1;
+    if (xmax >= COLNO)
+        xmax = COLNO - 1;
     found = false; nonwall = false;
     for (ymin = 0; !found && ymin <= ROWNO - 1; ymin++) {
         for (let x = xmin; x <= xmax; x++) {

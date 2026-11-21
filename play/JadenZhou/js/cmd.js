@@ -50,6 +50,7 @@ import { doapply, dorub, dojump } from './apply.js';
 import { doeat } from './eat.js';
 import { dowear, doputon, dotakeoff, ia_dotakeoff } from './do_wear.js';
 import { dodrink } from './potion.js';
+import { dopay } from './shk.js';
 import { dotogglepickup, doset_simple, doset } from './options.js';
 import { doread } from './read.js';
 import { dohelp, dowhatis } from './pager.js';
@@ -130,6 +131,7 @@ const cmd_funcs = {
     dotakeoff: () => dotakeoff(),
     ia_dotakeoff: () => ia_dotakeoff(),
     dodrink: () => dodrink(),
+    dopay: () => dopay(),
     dolook: () => dolook(),
     doread: () => doread(),
     dowield: () => dowield(),

@@ -717,7 +717,7 @@ export async function dorecover(nhfp) {
 
     /* Success! */
     await welcome(false);
-    check_special_room(false);
+    await check_special_room(false);
     return 1;
 }
 

@@ -63,6 +63,9 @@ import { STRANGE_OBJECT, WAN_STRIKING } from './objects.js';
 import { ART_EXCALIBUR, ART_SNICKERSNEE } from './artilist.js';
 import { In_hell } from './dungeon.js';
 import { stop_occupation } from './allmain.js';
+import { shk_move, costly_spot, after_shk_move, inhishop } from './shk.js';
+import { in_rooms } from './hack.js';
+import { pri_move } from './priest.js';
 
 /* monster inventory: makemon.js keeps mon->minvent as an array in pickup
    order; C prepends, so walk it newest first */
@@ -218,8 +221,7 @@ function objects_at(x, y) {
 }
 /* C ref: hack.c in_rooms(x, y, SHOPBASE) used as a boolean */
 function in_shop(x, y) {
-    if (!game.level.flags?.has_shop) return false;
-    throw new Error('in_rooms(SHOPBASE): shops not ported yet');
+    return !!in_rooms(x, y, SHOPBASE);
 }
 /* C ref: mthrowu.c m_carrying() */
 function m_carrying(mtmp, type) {
@@ -1190,8 +1192,7 @@ function m_search_items(mtmp, st) {
                 if (!clear_path(mtmp.mx, mtmp.my, xx, yy)) /* m_cansee() */
                     continue;
 
-                /* costly_spot(xx, yy): no shops are ported yet (in_shop()
-                   above throws when the level has one) */
+                const costly = costly_spot(xx, yy);
 
                 /* look through the items on this location */
                 for (const otmp of objects_at(xx, yy)) {
@@ -1201,6 +1202,9 @@ function m_search_items(mtmp, st) {
                         continue;
                     /* is_mines_prize/is_soko_prize: those levels aren't
                        ported yet */
+                    /* skip shop merchandise */
+                    if (costly && !otmp.no_charge)
+                        continue;
                     if (((mon_would_take_item(mtmp, otmp)
                           && (can_carry(mtmp, otmp) > 0))
                          || mon_would_consume_item(mtmp, otmp))
@@ -1297,8 +1301,28 @@ export async function m_move(mtmp, after) {
         throw new Error('m_move(): covetous monsters not ported yet');
 
     /* likewise for shopkeeper, guard, or priest */
-    if (mtmp.isshk || mtmp.isgd || mtmp.ispriest)
-        throw new Error('m_move(): shk_move()/gd_move()/pri_move() not ported yet');
+    if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) {
+        if (mtmp.isgd)
+            throw new Error('m_move(): gd_move() not ported yet');
+        const xm = mtmp.isshk ? await shk_move(mtmp)
+                   : await pri_move(mtmp);
+
+        switch (xm) {
+        case -2:
+            return MMOVE_DIED;
+        case -1:
+            mmoved = MMOVE_NOTHING; /* shk follow hero outside shop */
+            break;
+        default:
+            /* impossible("unknown shk/gd/pri_move return value (%d)", xm) */
+            /*FALLTHRU*/
+        case 0:
+        case 1:
+            return await postmov(mtmp, ptr, omx, omy,
+                                 (xm !== 1) ? MMOVE_NOTHING : MMOVE_MOVED,
+                                 seenflgs, can_tunnel, can_unlock, can_open);
+        }
+    }
 
     /* teleport if that lies in our nature */
     if (ptr === mons[M.PM_TENGU] && !rn2(5) && !mtmp.mcan)
@@ -1681,16 +1705,17 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
 
         if (hides_under(ptr) || ptr.mlet === M.S_EEL)
             throw new Error('postmov(): hideunder() not ported yet');
-        if (mtmp.isshk)
-            throw new Error('postmov(): after_shk_move() not ported yet');
+        if (mtmp.isshk) {
+            await after_shk_move(mtmp);
+        }
     }
     return mmoved;
 }
 // ── C ref: mon.c mpickstuff() ──
 async function mpickstuff(mtmp) {
     /* prevent shopkeepers from leaving the door of their shop */
-    if (mtmp.isshk)
-        throw new Error('mpickstuff(): inhishop() not ported yet');
+    if (mtmp.isshk && inhishop(mtmp))
+        return false;
 
     /* non-tame monsters normally don't go shopping */
     if (!mtmp.mtame && in_shop(mtmp.mx, mtmp.my) && rn2(25))

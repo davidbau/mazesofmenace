@@ -67,7 +67,7 @@ import { canseemon, canspotmon, newsym, map_trap, tmp_at, obj_to_glyph, remember
 import { bot } from './botl.js';
 import { pline, pline_xy, Norep, You_hear, You_hear as _trap_You_hear, livelog_printf } from './pline.js';
 import { cansee, clear_path, couldsee, recalc_block_point, Blind, vision_recalc } from './vision.js';
-import { sgn, distmin, s_suffix as _s_suffix, dist2 } from './hacklib.js';
+import { sgn, distmin, s_suffix as _s_suffix, dist2, upstart } from './hacklib.js';
 import { depth } from './dungeon.js';
 import { in_rooms, relobj_md } from './mklev.js';
 import { obj_ice_effects, is_flammable, dealloc_obj, place_object, remove_object } from './mkobj.js';
@@ -3138,7 +3138,7 @@ function _thitu_stone_missile(o) { /* obj.h:274 */
 }
 /* C hacklib.c upstart — capitalise first letter in place. */
 function upstart_local(s) {
-    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+    return s ? upstart(s) : s;
 }
 /* C ref: trap.c:2069 trapeffect_telep_trap. */
 async function trapeffect_telep_trap(mtmp, trap, trflags, isYou) {

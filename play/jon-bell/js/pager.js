@@ -1678,7 +1678,22 @@ async function _do_look_from_screen(quick) {
             : 'Pick a monster, object or location.';
         const tipWillShow = g.flags.tips !== false
             && !(game.context.tips && game.context.tips[TIP_GETPOS]);
-        if ((tipWillShow || verbose) && !g.iflags?.debug_fuzzer) {
+        /* C ref: wintty.h:99-100 — WIN_STOP and WIN_CANCELLED are the SAME
+         * bit (1).  When the ESC that dismissed the LAST queued --More-- page
+         * left it set on WIN_MESSAGE (topl.c:232-235), every pline of this
+         * prelude takes update_topl's skip arms (topl.c:257,262-271,303):
+         * nothing is painted and nothing pages.  The tip window's own
+         * wintty.c:1975-1977 tty_display_nhwindow(WIN_MESSAGE, TRUE) then hits
+         * wintty.c:1918's `if (cw->flags & WIN_CANCELLED) return;` — the bit
+         * WIN_STOP set — so NO more() is raised and NO dismiss key is read:
+         * the tip text window paints fullscreen directly over whatever was
+         * standing (df-xa6445dfb5d step 53: ESC pages "raven x4--More--",
+         * the mention joins and preMsg are TAIL-SUPPRESSED, and the next
+         * recorded frame is the tip window itself).  Only when the bit is
+         * clear (no ESC at the last page) does the tip's WIN_MESSAGE display
+         * reach topl.c:230 more() and page the standing preMsg. */
+        const winStopLive = !!(g._topl_win_stop || g._topl_win_stop_armed);
+        if ((tipWillShow || verbose) && !g.iflags?.debug_fuzzer && !winStopLive) {
             // pager.c:1905-1908 uses pline; vpline (pline.c:282) records
             // the prompt even when its display is paged separately below.
             g._prevmsg = preMsg;
@@ -1694,7 +1709,12 @@ async function _do_look_from_screen(quick) {
              * message window; the next pline("Pick ...") appends to it and
              * only pages if that combined topline does not fit. */
             /* pager.c:1908 always uses pline, even before the first pick.
-             * Its prevmsg update (pline.c:282) also ends Norep suppression. */
+             * Its prevmsg update (pline.c:282) also ends Norep suppression.
+             * Under winStopLive this pline takes update_topl's skip arms
+             * (topl.c:262-303): the standing topline is remembered, preMsg
+             * lands in the invisible buffer, nothing paints, nothing pages,
+             * no dismiss key — the tip window opens straight over the
+             * standing line (the df-xa6445dfb5d shape above). */
             await pline(preMsg);
             lookDescriptionPending = false;
             await flush_screen(1);
@@ -1714,7 +1734,10 @@ async function _do_look_from_screen(quick) {
         } else if (instrMsg && goalMsg) {
             /* getpos.c:845 pline, then curs()+flush_screen(0) (848-854)
              * commits it to the real screen, forcing getpos.c:861's pline
-             * to more() the already-shown instructions line first. */
+             * to more() the already-shown instructions line first.
+             * (winStopLive is stale here by design: goalMsg implies tipShown,
+             * and the tip's select_menu read ran through xwaitforspace ->
+             * tty_nhgetch, which cleared WIN_STOP — wintty.c:4065-4066.) */
             const _showInstrMore = async () => {
                 // getpos.c:845 pline -> pline.c:282, before more() reads.
                 g._prevmsg = instrMsg;
@@ -1728,9 +1751,16 @@ async function _do_look_from_screen(quick) {
             g._prevmsg = goalMsg; // getpos.c:861 pline -> pline.c:282.
             g._pending_message = goalMsg;
             await flush_screen(1);
-        } else if (instrMsg) {
+        } else if (instrMsg && !winStopLive) {
             g._prevmsg = instrMsg; // getpos.c:845 pline -> pline.c:282.
             g._pending_message = instrMsg;
+            await flush_screen(1);
+        } else if (instrMsg) {
+            /* winStopLive and no tip read happened (goalMsg empty), so
+             * nothing cleared WIN_STOP: getpos.c:845's pline takes the
+             * update_topl skip arms (topl.c:262-303) — no paint, no page,
+             * no dismiss read. */
+            await pline(instrMsg);
             await flush_screen(1);
         } else if (goalMsg) {
             /* getpos.c:861 pline() appends to a standing topline (update_topl),

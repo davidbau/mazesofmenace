@@ -2505,17 +2505,17 @@ export async function wiz_intrinsic() {
      * message window.  That recalculation can announce newly sensed
      * monsters (vision.c:856), and its pline flushes the darkened map.
      * docrt(true) records cls()'s page and physical frame at that point. */
-    const pendingAtCls = g._pending_message || '';
     await docrt(true);
-    /* docrt()'s own diagnostics (see_monsters -> newsym() impossible(),
-     * display.c:930-935) are plined AFTER cls()'s more(): the last of them
-     * stands on the topline instead of being paged (topl.c:300). */
-    const postCls = !!pendingAtCls
-        && String(g._pending_message).startsWith(pendingAtCls + '  ');
+    /* C display.c:1740-1757: vision shutdown can pline before cls(), and
+     * redraw can pline after it. MSGTYP_STOP may acknowledge and replace
+     * the earlier text, so a saved string cannot identify that boundary.
+     * docrt registers cls()'s explicit message break. The pager consumes
+     * every such break (including a final empty page); only a notice after
+     * the last break is left standing, as topl.c:300 requires. */
     let standing = false;
     if (g._pending_message) {
         standing = !!await force_more_pages(g._pending_message, true, false,
-                                            postCls ? pendingAtCls : null);
+                                            '');
     }
     if (!standing) g._pending_message = '';
     /* C wizcmds.c:1092-1095: docrt() then return ECMD_OK — no flush_screen here;

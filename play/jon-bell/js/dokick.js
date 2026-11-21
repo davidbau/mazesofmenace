@@ -1598,7 +1598,7 @@ async function really_kick_object(x, y, kickedobj) {
 
     if (slide && !_Blind_dk()) {
         const _dn2 = await doname(kickedobj);
-        await pline(`Whee!  ${_dn2.charAt(0).toUpperCase() + _dn2.slice(1)} ${otense(kickedobj, 'slide')} across the ${surface(x, y)}.`);
+        await pline(`Whee!  ${upstart(_dn2)} ${otense(kickedobj, 'slide')} across the ${surface(x, y)}.`);
     }
 
     obj_extract_self(kickedobj);

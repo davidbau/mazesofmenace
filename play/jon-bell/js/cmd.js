@@ -326,7 +326,7 @@ import { nxtobj, sobj_at } from './invent.js';
 import { place_lregion } from './mkmaze.js';
 import { In_hell, level_difficulty, u_on_newpos, u_on_rndspot, Is_special, shop_string } from './dungeon.js';
 import { u_on_upstairs, u_on_dnstairs, u_on_sstairs, stairway_find_from } from './stairs.js';
-import { ing_suffix, mungspaces, nh_snprintf, upstart, digit, letter, lowc, strsubst, visctrl } from './hacklib.js';
+import { ing_suffix, mungspaces, nh_snprintf, upstart, digit, letter, lowc, strsubst, visctrl, strncmpi } from './hacklib.js';
 import { wake_msg, set_ustuck, kill_genocided_monsters, hideunder, maybe_unhide_at, wake_nearto, setmangry, minliquid, egg_type_from_parent, rescham, iter_mons } from './mon.js';
 import { obj_ice_effects } from './mkobj.js';
 import { attach_fig_transform_timeout } from './timeout.js';
@@ -983,7 +983,10 @@ async function tty_menu_pick_one_ext(entries, title, statusClipCol) {
     const mlist = [];
     for (const e of entries) {
         lineAccel[lines.length] = e.acc;
-        lines.push(` ${e.acc} - ${e.text}`);
+        let body = menucolor_text(e.text);
+        if (body !== e.text)
+            body = body.replace(/ {5,}/g, (m) => `\x1b[${m.length}C`);
+        lines.push(` ${e.acc} - ${body}`);
         mlist.push({ str: `${e.acc} - ${e.text}`, acc: e.acc });
     }
     const SCREEN_ROWS = 24, PER_PAGE = SCREEN_ROWS - 1;
@@ -3390,7 +3393,7 @@ export const flooreffects_pudding_merge_message = pudding_merge_message;
  * doname(), same shape as this file's Yname2() at cmd.js:40178. */
 async function _Doname2(obj) {
     const s = await doname(obj);
-    return s ? (s.charAt(0).toUpperCase() + s.slice(1)) : s;
+    return s ? (upstart(s)) : s;
 }
 const _doaltarobj_Doname2 = _Doname2;
 
@@ -3907,6 +3910,11 @@ async function doextlist(restoreExtPrompt = false) {
     const CMD_M_PREFIX = 0x0080;
     let menumode = 0, onelist = 0, searchbuf = '';
     const ttyBlanks = (s) => s.replace(/ {5,}/g, m => `\x1b[${m.length}C`);
+    const strRow = (s) => ' ' + ttyBlanks(menucolor_text(s));
+    /* cmd.c:592-632 add_menu() with an identifier: get_menu_coloring() sees the
+     * RAW str and the tty opens the colour at str[4], after the "%c - " that
+     * tty_add_menu bakes on (wintty.c:2596-2600, :1449-1456). */
+    const selRow = (sel, s) => ` ${sel} - ${menucolor_text(s)}`;
     /* wintty.c:1921-1922 tty_display_nhwindow(NHW_MENU): a standing topline
      * (docrt's notice_all_mons announcements) gets its --More-- first. */
     if (!restoreExtPrompt) await menu_entry_page();
@@ -3917,17 +3925,17 @@ async function doextlist(restoreExtPrompt = false) {
         if (searchlabel.length + searchbuf.length + ' ("")'.length < QBUFSZ)
             searchlabel += ` ("${searchbuf}")`;
         const records = [
-            { text: ' Extended Commands List' },
+            { text: strRow('Extended Commands List') },
             { text: ' ' },
-            { text: ` a - Switch to ${menumode ? 'including' : 'excluding'} commands that don't autocomplete`, selector: 'a' },
+            { text: selRow('a', `Switch to ${menumode ? 'including' : 'excluding'} commands that don't autocomplete`), selector: 'a' },
             { text: searchbuf
-                ? ` s - ${searchlabel}`
-                : ' : - Search extended commands', selector: searchbuf ? 's' : ':',
+                ? selRow('s', searchlabel)
+                : selRow(':', 'Search extended commands'), selector: searchbuf ? 's' : ':',
               /* cmd.c:607-628: the other letter is the group accelerator */
               groupacc: searchbuf ? ':' : 's' },
         ];
         if (wizard()) records.push({
-            text: ` z - Switch to showing ${onelist ? 'debugging commands in separate section' : 'all alphabetically, including debugging commands'}`,
+            text: selRow('z', `Switch to showing ${onelist ? 'debugging commands in separate section' : 'all alphabetically, including debugging commands'}`),
             selector: 'z',
         });
         records.push({ text: ' ' });
@@ -3965,16 +3973,16 @@ async function doextlist(restoreExtPrompt = false) {
                     tag = `[${flags & CMD_M_PREFIX ? 'm' : ''}${flags & AUTOCOMPLETE ? 'A' : ''}]`;
                 {
                     const raw = `  ${efp.name.padEnd(14)} ${tag.padStart(4)} ${desc}`;
-                    records.push({ text: ttyBlanks(raw), raw });
+                    records.push({ text: strRow(raw.slice(1)), raw });
                 }
                 n++;
             }
             if (n) records.push({ text: ' ' });
         }
-        if (searchbuf && !n) records.push({ text: ' no matches' });
+        if (searchbuf && !n) records.push({ text: strRow('no matches') });
         else {
-            records.push({ text: ' [A] Command autocompletes' });
-            records.push({ text: ` [m] Command accepts '${visctrl(cmd_from_func('do_reqmenu'))}' prefix` });
+            records.push({ text: strRow('[A] Command autocompletes') });
+            records.push({ text: strRow(`[m] Command accepts '${visctrl(cmd_from_func('do_reqmenu'))}' prefix`) });
         }
 
         /* wintty.c:2728-2734 tty_end_menu cuts any entry whose strlen + 2 exceeds cols
@@ -3984,7 +3992,7 @@ async function doextlist(restoreExtPrompt = false) {
             const plain = r.raw ?? r.text;
             if (!plain.includes('\x1b') && plain.length > 79) {
                 const cut = plain.slice(0, 79);
-                if (r.raw !== undefined) { r.raw = cut; r.text = ttyBlanks(cut); } else r.text = cut;
+                if (r.raw !== undefined) { r.raw = cut; r.text = strRow(cut.slice(1)); } else r.text = cut;
             }
         }
         const pages = [];
@@ -4077,7 +4085,9 @@ async function doextlist(restoreExtPrompt = false) {
                  * this page searches the stored "%c - %s" of selectable rows;
                  * PICK_ONE finishes with the first hit. */
                 const mlist = records.filter(r => r.selector)
-                    .map(r => ({ str: `${r.selector} - ${r.text.replace(/^ [a-z:] - /, '')}`, rec: r }));
+                    /* wintty.c:1700-1730 pmatchi() matches the STORED dash form,
+                     * which never carries the menucolor SGR pair. */
+                    .map(r => ({ str: `${r.selector} - ${r.text.replace(/^ [a-z:] - /, '').replace(/\x1b\[[0-9;]*m/g, '')}`, rec: r }));
                 let hit = null;
                 await menu_search_case('ONE', mlist,
                     () => rows.slice(), (curr) => { hit = curr.rec; });
@@ -4275,6 +4285,10 @@ export async function doprev_message(liveTopline) {
         }
         let morc, paged = false;
         do {
+            if (_pmw === 's' && g._prevmsg_next === -1) {
+                _blankFirst = true;
+                g._prevmsg_next = history.length - 1;
+            }
             /* topl.c:106-107 redotoplin(gt.toplines): inside hooked_tty_getlin
              * gt.toplines is the live "query buf" line (getline.c:82), not the
              * blank a SUPPRESS_HISTORY line leaves behind. */
@@ -4293,6 +4307,8 @@ export async function doprev_message(liveTopline) {
                     + (g._prevmsg_cycleEmpty ? 1 : 0));
                 if (g._prevmsg_next < _floor)
                     g._prevmsg_next = g._prevmsg_cycleEmpty ? -1 : history.length - 1;
+            } else if (_pmw === 's') {
+                _blankFirst = false;
             }
             g._pending_message = text;
             g._topl_history_recall = text;
@@ -4479,7 +4495,13 @@ export async function doprev_message(liveTopline) {
     if (_pmw !== 'f') g._ttyDismissMore = 0;
     g._pending_message = '';
     // wintty.c:982,3684-3687: erase the corner even when getlin disables bot().
-    if (WIN_COL > 0) docorner_status_rows(WIN_COL - 1, endRow + 1);
+    if (WIN_COL > 0) {
+        /* wintty.c:982,3684-3705: docorner clears the map rows too.
+         * row_refresh skips unexplored glyphs (display.c:2182-2185), so
+         * custom S_unexplored paint stays erased under the history window. */
+        docorner_blank_utf8_captures(WIN_COL - 1, endRow + 1);
+        docorner_status_rows(WIN_COL - 1, endRow + 1);
+    }
     if (WIN_COL === 0) {
         /* offx == 0, offy == 0: erase_menu_or_text's docrt() arm (wintty.c:978);
          * docrt -> cls() raises botlx, so flush_screen's bot() repaints T:. */
@@ -7741,7 +7763,7 @@ export async function build_enlightenment_lines(final = 0, mode = BASICENLIGHTEN
     /* ── title ── insight.c:375 "%s the %s's attributes:" ── */
     let nm = String(g.plname ?? g.u?.plname ?? '');
     if (nm.length)
-        nm = nm[0].toUpperCase() + nm.slice(1); /* highc(*tmpbuf) */
+        nm = upstart(nm); /* highc(*tmpbuf) */
     const roleM = g.urole?.name?.m ?? 'Wizard';
     const roleF = g.urole?.name?.f ?? roleM;
     const female = Upolyd(u) ? !!u.mfemale : !!g.flags?.female; /* insight.c:399 */
@@ -11748,8 +11770,10 @@ export function _sortloot_within_class(atTile, oc, loot = true) {
         // formatting a known tin can consume RNG via tin_variety().
         if (m1.str === null) m1.str = loot_xname(m1.o);
         if (m2.str === null) m2.str = loot_xname(m2.o);
-        const n1 = m1.str.toLowerCase(), n2 = m2.str.toLowerCase();
-        if (n1 !== n2) return n1 < n2 ? -1 : 1;
+        /* invent.c:493 strcmpi == strncmpi(a, b, -1): ASCII-only folding, signed
+         * char compare, so a byte >= 0x80 sorts BEFORE every ASCII character. */
+        const namcmp = strncmpi(m1.str, m2.str, -1);
+        if (namcmp !== 0) return namcmp;
         d = bucx(m2.o) - bucx(m1.o);          /* bigger is better */
         if (d) return d;
         d = (m2.o.greased | 0) - (m1.o.greased | 0);
@@ -16800,7 +16824,7 @@ import { ENV } from './hostenv.js';
 function _Yname2(obj) {
     const s = yname(obj);
     /* C hacklib.c highc(c) — uppercase the first character only. */
-    return (s && s.length) ? (s[0].toUpperCase() + s.slice(1)) : s;
+    return (s && s.length) ? (upstart(s)) : s;
 }
 
 
@@ -19727,7 +19751,7 @@ export async function handler_rebind_keys() {
 }
 
 function mungspaces_paranoid(s) {
-    return String(s).trim().replace(/\s+/g, ' ');
+    return mungspaces(String(s)); /* hacklib.c:142: only ' ' and '\t' collapse */
 }
 
 async function read_getlin(prompt) {
@@ -19759,11 +19783,31 @@ async function read_getlin(prompt) {
     /* pline.c:282: custompline files the "%s " prompt in gp.prevmsg, so a later
      * identical Norep() is not suppressed. */
     g._prevmsg = `${prompt} `;
-    const paint = async () => {
-        g._pending_message = buf ? `${prompt} ${buf}` : prompt;
-        g._topl_prompt_written = `${prompt} ${buf}`;
+    /* getline.c:79-212 — the live cursor is the PHYSICAL ttyDisplay cursor
+     * left by the putsyms() edits, not a relayout of "query buffer": once the
+     * echo wraps and "\b" erases the continuation row the cursor stays at
+     * [0,1] (topl.c:310-318) while a relayout parks at [79,0] (df-xd7d64ca8ae). */
+    const cur = topl_cursor_walker([0, 0]);
+    let walked = '';
+    const paint = async (fresh) => {
+        const text = `${prompt} ${buf}`;
+        g._pending_message = buf ? text : prompt;
+        g._topl_prompt_written = text;
         await flush_screen(1);
-        if (g.nhDisplay) topl_park_cursor(g.nhDisplay, `${prompt} ${buf}`);
+        if (g.nhDisplay) {
+            if (fresh) {
+                cur.rewrite(text); /* getline.c:67/91-95/126-140: putsyms from home */
+            } else {
+                /* getline.c:152-156/:174 — net backs+puts of the edit delta. */
+                let common = 0;
+                while (common < walked.length && common < text.length
+                       && walked[common] === text[common]) common++;
+                cur.removetopl(walked.length - common);
+                cur.puts(text.length - common);
+            }
+            [g.nhDisplay.cursorCol, g.nhDisplay.cursorRow] = cur.get();
+        }
+        walked = text;
     };
     const finish = (answer) => {
         // getline.c:80,213-226 leaves only the final query+answer in gt.toplines.
@@ -19779,14 +19823,14 @@ async function read_getlin(prompt) {
         return answer;
     };
     try {
-        await paint();
+        await paint(true); /* getline.c:67 custompline paints the query from home */
         let doprev = false, prevIdx = 0;
         for (;;) {
             const key = await nhgetch();
             if (key === 27 || key === 3) {
                 if (buf) {
                     buf = '';
-                    await paint();
+                    await paint(true); /* getline.c:91-95 clear + re-add from home */
                     continue;
                 }
                 return finish('\x1b');
@@ -19853,13 +19897,13 @@ async function read_getlin(prompt) {
                 await doprev_message(`${prompt} ${buf}`);
                 g._prevmsg_combo = 0; /* getline.c:126 cw->maxcol = cw->maxrow */
                 doprev = false;
-                await paint();
+                await paint(true); /* getline.c:126-131 clear + addtopl from home */
             } else if (doprev) {
                 /* getline.c:134-142 — any other key after a recall re-issues
                  * the query (clear_nhwindow + addtopl(query) + " " + buffer)
                  * before the key itself is processed. */
                 doprev = false;
-                await paint();
+                await paint(true);
             }
             if (key === 10 || key === 13)
                 return finish(buf);
@@ -19869,7 +19913,7 @@ async function read_getlin(prompt) {
                 continue;
             }
             /* getline.c:169: bufp - obufp < COLNO */
-            if (key >= 32 && key <= 126 && buf.length < BUFSZ - 1 && buf.length < COLNO) {
+            if (key >= 32 && key !== 127 /* ' ' <= (unsigned char) c && c != '\177' (getline.c:165) */ && buf.length < BUFSZ - 1 && buf.length < COLNO) {
                 buf += String.fromCharCode(key);
                 await paint();
             }

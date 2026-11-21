@@ -1110,7 +1110,7 @@ export async function movemon() {
 
 // ── C ref: mon.c dmonsfree() ──
 // really free dead monsters
-function dmonsfree() {
+export function dmonsfree() {
     let prev = null;
     for (let m = game.fmon; m; m = m.nmon) {
         if (DEADMONSTER(m) && !m.isgd) {

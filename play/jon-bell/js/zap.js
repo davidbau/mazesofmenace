@@ -58,7 +58,7 @@ import { mkobj, mksobj, dealloc_oextra } from './mkobj.js';
 import { makemon } from './makemon.js';
 import { engr_at, del_engr_at, make_engr_at, wipe_engr_at, random_engraving } from './engrave.js';
 import { sobj_at } from './invent.js';
-import { lowc } from './hacklib.js';
+import { lowc, lcase, mungspaces } from './hacklib.js';
 import { m_respond, hideunder, healmon, normal_shape, minliquid, mlifesaver } from './mon.js';
 import { MKOBJ_OC_MAGIC, MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { OC_CHARGED } from './oc_cost_data.js';
@@ -265,7 +265,7 @@ import { LAVAPOOL, LAVAWALL, IRONBARS, DRAWBRIDGE_UP, ICE, VWALL, HWALL,
          M_SEEN_ACID } from './const.js';
 import { hcolor } from './mhitm.js';
 import { hliquid } from './do_name.js';
-import { You_hear, You_feel } from './pline.js';
+import { You_hear, You_feel, pline_The } from './pline.js';
 import { docrt } from './display.js';
 import { urgent_pline } from './pline.js';
 import { knowninvisible } from './display.js';
@@ -1005,7 +1005,7 @@ async function maybe_destroy_item(obj, dmgtyp) {
  * shk_your() + cxname(obj), which js/do_wear.js:3967 already carries. */
 function _Yname2(obj) {
     const s = yname(obj);
-    return s ? s[0].toUpperCase() + s.slice(1) : s;
+    return s ? upstart(s) : s;
 }
 
 /* C monflag.h:95,97 — M1_BREATHLESS / M1_NOEYES, read off the hero's current
@@ -6319,8 +6319,8 @@ export function wish_history_add(buf) {
         const idx = (wish_history_idx + i) % MAX_WISH_HISTORY;
         // C tests the allocated pointer: an empty wish is still an entry.
         if (wish_history[idx] === null) continue;
-        if (buf.slice(0, wish_history[idx].length).toLowerCase()
-            === wish_history[idx].toLowerCase()) break;
+        if (lcase(buf.slice(0, wish_history[idx].length))
+            === lcase(wish_history[idx])) break;
     }
     if (i === MAX_WISH_HISTORY) {
         const idx = (wish_history_idx + i) % MAX_WISH_HISTORY;
@@ -6943,7 +6943,7 @@ export async function burn_floor_objects(x, y, give_feedback, u_caused) {
                         pline(`${delquan} ${buf2} burn.`);
                     else {
                         const an_buf = an(buf1);
-                        pline(`${an_buf.charAt(0).toUpperCase() + an_buf.slice(1)} burns.`);
+                        pline(`${upstart(an_buf)} burns.`);
                     }
                 }
             }
@@ -7814,8 +7814,8 @@ export async function makewish() {
          *     if (buf[0] == '\033') buf[0] = '\0';
          *     else if (!strcmpi(buf, "help")) { wishcmdassist(MAXWISHTRY - tries);
          *                                       buf[0] = '\0'; goto retry; } */
-        const wishstr = (buf === '\x1b') ? '' : buf.trim().replace(/\s+/g, ' ');
-        if (wishstr.toLowerCase() === 'help') {
+        const wishstr = (buf === '\x1b') ? '' : mungspaces(buf); /* hacklib.c:142: only ' ' and '\t' are space; U+00A0 etc. are text */
+        if (lcase(wishstr) === 'help') {
             await wishcmdassist(MAXWISHTRY - tries);
             continue;
         }
@@ -7956,10 +7956,10 @@ export async function makewish() {
 }
 
 export async function do_enlightenment_effect() {
-    await pline('You feel self-knowledgeable...');
+    await You_feel('self-knowledgeable...');
     /* C zap.c:2528: a MSGTYPE-hidden pline leaves no message to page. */
     await display_message_window();
     await enlightenment_menu(MAGICENLIGHTENMENT);
-    await pline('The feeling subsides.');
+    await pline_The('feeling subsides.');
     await exercise(A_WIS, true);
 }

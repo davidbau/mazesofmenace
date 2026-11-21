@@ -353,7 +353,12 @@ export async function light_sources_sanity_check() {
         if (!(ls.id.a_obj ?? ls.id.a_monst))
             await panic('insane light source: no id!');
         if (ls.type === LS_OBJECT) {
-            const otmp = ls.id.a_obj;
+            // C light.c:617-619 dereferences the current allocation at the
+            // saved address. A dangling source can outlive an oil potion and
+            // its chunk can already hold another object (muse_unslime).
+            let otmp = ls.id.a_obj;
+            while (otmp.freed_chunk && otmp.occupant)
+                otmp = otmp.occupant;
             if (!ls_find_oid(otmp))
                 await panic(`insane light source: can't find obj #${otmp.o_id >>> 0}!`);
         } else if (ls.type === LS_MONSTER) {

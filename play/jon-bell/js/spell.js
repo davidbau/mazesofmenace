@@ -51,7 +51,7 @@ import { explode } from './explode.js';
 import { m_at } from './uhitm.js';
 import { cansee } from './vision.js';
 import { canspotmon } from './display.js';
-import { distmin } from './hacklib.js';
+import { distmin, upstart } from './hacklib.js';
 import { isok, Is_waterlevel, ZAP_POS, IS_DOOR, D_ISOPEN, EXPL_FIERY, EXPL_FROSTY } from './const.js';
 import { yn_function } from './cmd.js';
 import { MENU_TRADITIONAL } from './const.js';
@@ -2796,7 +2796,7 @@ export async function cast_chain_lightning() {
                         if (!canseemon(mon) && !game.gn.notonhead) map_invisible(zap.x, zap.y);
                     }
                 } else if (canseemon(mon)) {
-                    await pline(`${mon_nam(mon).replace(/^./, (c) => c.toUpperCase())} resists.`);
+                    await pline(`${upstart(mon_nam(mon))} resists.`);
                 }
                 if ((mon.mhp | 0) >= 1) {
                     game.context.forcefight = (game.context.forcefight | 0) + 1;

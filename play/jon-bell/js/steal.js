@@ -4,7 +4,7 @@
 import { rn1 } from './rng.js';
 import { rn2 } from './rnd.js';
 import { game } from './gstate.js';
-import { s_suffix } from './hacklib.js';
+import { s_suffix, upstart } from './hacklib.js';
 import { cancel_don, donning, Ring_gone, Amulet_off, Blindf_off, Armor_off, Boots_off, Cloak_off, Gloves_off, Helmet_off, Shield_off, Shirt_off, bimanual } from './do_wear.js';
 import { yname } from './objnam.js';
 import {
@@ -309,7 +309,7 @@ export async function maybe_absorb_item(mon, obj, ochance, achance) {
             if (bimanual(obj))
                 hand_s = makeplural(hand_s);
             const name = yname(obj);
-            await pline(`${name.charAt(0).toUpperCase() + name.slice(1)} ${otense(obj, 'are')} pulled from your ${hand_s}!`);
+            await pline(`${upstart(name)} ${otense(obj, 'are')} pulled from your ${hand_s}!`);
         }
         await freeinv(obj);
         await encumber_msg();

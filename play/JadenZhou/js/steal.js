@@ -12,7 +12,9 @@ import { distant_name, doname } from './objnam.js';
 import { Monnam } from './do_name.js';
 import { stackobj, carry_obj_effects } from './invent.js';
 import { flooreffects, obj_no_longer_held } from './do.js';
-import { droppables } from './dogmove.js';
+import { droppables, obj_resists } from './dogmove.js';
+import { artifact_exists } from './artifact.js';
+import { ONAME_NO_FLAGS } from './const.js';
 import { LOST_NONE, LOST_THROWN, LOST_DROPPED, LOST_STOLEN, W_ARM, W_WEP,
          W_SADDLE } from './const.js';
 import { update_mon_extrinsics, update_mon_extrinsics_sync } from './worn.js';
@@ -184,6 +186,35 @@ function extract_from_minvent(
     obj_no_longer_held(obj);
     if (unwornmask & W_WEP) {
         mwepgone(mon); /* unwields and sets weapon_check to NEED_WEAPON */
+    }
+}
+
+// C ref: steal.c mdrop_special_objs()
+/* the Amulet, invocation tools, and Rider corpses resist even when
+   artifacts and ordinary objects are given 0% resistance chance;
+   current role's quest artifact is rescued too--quest artifacts
+   for the other roles are not */
+export function mdrop_special_objs(mon) {
+    /* C walks mon->minvent from its head, the newest object; JS minvent
+       arrays are oldest first */
+    for (const obj of (mon.minvent || []).slice().reverse()) {
+        if (obj_resists(obj, 0, 0) || (obj.oartifact && obj.oartifact === game.urole.questarti))
+            throw new Error('mdrop_special_objs(): rescuing special objects not ported yet');
+    }
+}
+
+// C ref: mkobj.c discard_minvent()
+export function discard_minvent(mtmp, uncreate_artifacts) {
+    let otmp;
+
+    while ((otmp = (mtmp.minvent && mtmp.minvent.length)
+                   ? mtmp.minvent[mtmp.minvent.length - 1] : null) !== null) {
+        /* this has now become very similar to m_useupall()... */
+        extract_from_minvent(mtmp, otmp, true, true);
+        if (uncreate_artifacts && otmp.oartifact)
+            artifact_exists(otmp, otmp.oextra?.oname || '' /* safe_oname() */,
+                            false, ONAME_NO_FLAGS);
+        otmp.where = 'OBJ_DELETED'; /* obfree(otmp, (struct obj *) 0) */
     }
 }
 

@@ -159,7 +159,7 @@ export function weapon_status() {
          || ((uwep.oclass | 0) === 6 /* TOOL_CLASS */ && skill !== 0 /* P_NONE */))
         && bimanual(uwep) && res[0] !== '2' && res.slice(0, 3).toLowerCase() !== 'two')
         out += '2H-';
-    out += res[0].toUpperCase() + res.slice(1);
+    out += upstart(res);
     const outbuf = { value: out };
     strNsubst(outbuf, ' ', '-', 0);
     return outbuf.value;

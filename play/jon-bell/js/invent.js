@@ -41,7 +41,7 @@ import './cmd.js'; // relocate-fns
 import { instapetrify, mbodypart } from './cmd.js';
 import { force_decor } from './pickup.js'; // relocate-fns
 import { ECMD_OK, ECMD_TIME, ICE, Is_airlevel, Is_waterlevel, LOOKHERE_NOFLAGS, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, PLNMSG_ONE_ITEM_HERE, STOMACH, STONE_RES, is_pit } from './const.js'; // relocate-fns
-import { s_suffix } from './hacklib.js'; // relocate-fns
+import { s_suffix, upstart, lcase } from './hacklib.js'; // relocate-fns
 import { displayLookWindow } from './look-window.js'; // relocate-fns
 import { _dfeature_at, _is_lava_local, _surface_at, _surface_lk, read_engr_at } from './look.js'; // relocate-fns
 import { is_pool } from './dbridge.js';
@@ -1412,7 +1412,7 @@ export async function stackobj(obj) {
 
 /* C ref: hacklib.c:804 strstri() — case-insensitive substring search */
 function strstri_cmd(haystack, needle) {
-    const idx = String(haystack ?? '').toLowerCase().indexOf(String(needle ?? '').toLowerCase());
+    const idx = lcase(String(haystack ?? '')).indexOf(lcase(String(needle ?? '')));
     return idx >= 0 ? idx : null;
 }
 
@@ -2887,7 +2887,7 @@ export async function askchain(objchn, olets, allflag, fn, ckfn, mx, word) {
                 safeq_xprn_ctx.dot = !nodot;
                 let qpfx = '';
                 if (first) {
-                    if (take_out || put_in) qpfx = word[0].toUpperCase() + word.slice(1) + ': ';
+                    if (take_out || put_in) qpfx = upstart(word) + ': ';
                     first = false;
                 }
                 const q = await safe_qbuf_invent('', qpfx, '?', otmp,

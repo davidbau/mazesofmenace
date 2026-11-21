@@ -1594,7 +1594,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                         let whom = mon_nam(mtmp);
                         let what = The(xname(uwep));
                         if ((uwep.quan | 0) > 1)
-                            what = an(await singular(uwep, xname)).replace(/^./, (c) => c.toUpperCase());
+                            what = upstart(an(await singular(uwep, xname)));
                         if (!(((hmd.mdat?.mflags1) | 0) & 0x00001000 /* !haseyes */)
                             && (hmd.mdat?.pmidx | 0) !== PM_FLOATING_EYE_UH)
                             whom = s_suffix(whom) + " " + mbodypart(mtmp, 2 /* FACE */);
@@ -5750,7 +5750,7 @@ function hmon_hitmon_lightobj(obj, mon) {
 export async function hmon_hitmon_msg_lightobj(hmd, mon) {
     let whom = mon_nam(mon);
     const spotted = canspotmon(mon);
-    if (!spotted) whom = whom.charAt(0).toUpperCase() + whom.slice(1);
+    if (!spotted) whom = upstart(whom);
     if (!noncorporeal(hmd.mdat) && !amorphous(hmd.mdat))
         whom = s_suffix(whom) + ' flesh';
     const prefix = hmd.saved_oname

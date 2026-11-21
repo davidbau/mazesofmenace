@@ -425,56 +425,10 @@ export function currency(amount) {
     return res;
 }
 
-// C ref: shk.c costly_spot()
-/* is <x,y> a spot inside a tended shop where items cost money? */
-export function costly_spot(x, y) {
-    if (!game.level.flags?.has_shop)
-        return false;
-    const shkrooms = in_rooms(x, y, SHOPBASE);
-    const shkp = shop_keeper(shkrooms.length ? shkrooms.charCodeAt(0) : 0);
-    if (!shkp || !inhishop(shkp))
-        return false;
-    const eshkp = shkp.mextra.eshk;
-    return (inside_shop(x, y) !== NO_ROOM
-            && !(x === eshkp.shk.x && y === eshkp.shk.y));
-}
-
-// C ref: shk.c shop_keeper()
-/* return the shopkeeper for rooms[rmno-2]; returns Null if there isn't one */
-export function shop_keeper(rmno) {
-    const shkp = (rmno >= ROOMOFFSET)
-        ? (game.level.rooms?.[rmno - ROOMOFFSET]?.resident || null) : null;
-    if (shkp) {
-        if (shkp.mextra?.eshk) {
-            /* ANGRY(shkp): !mpeaceful */
-            if (!shkp.mpeaceful && !shkp.mextra.eshk.surcharge)
-                throw new Error('shop_keeper(): rile_shk() not ported yet');
-        } else {
-            throw new Error('shop_keeper(): shop resident not shopkeeper');
-        }
-    }
-    return shkp;
-}
-
-// C ref: shk.c inhishop()
-export function inhishop(shkp) {
-    const eshkp = shkp.mextra.eshk;
-
-    if (!on_level(eshkp.shoplevel, game.u.uz))
-        return false;
-    const shkrooms = in_rooms(shkp.mx, shkp.my, SHOPBASE);
-    return shkrooms.includes(String.fromCharCode(eshkp.shoproom));
-}
-
-// C ref: shk.c inside_shop()
-export function inside_shop(x, y) {
-    const loc = game.level.at(x, y);
-    let rno = loc.roomno;
-    if ((rno < ROOMOFFSET) || loc.edge
-        || !((game.level.rooms?.[rno - ROOMOFFSET]?.rtype ?? 0) >= SHOPBASE))
-        rno = NO_ROOM;
-    return rno;
-}
+// C ref: shk.c costly_spot(), shop_keeper(), inhishop(), inside_shop()
+// live in shk.js
+export { costly_spot, shop_keeper, inhishop, inside_shop } from './shk.js';
+import { costly_spot } from './shk.js';
 
 // C ref: wield.c empty_handed()
 /* description of hands when not wielding anything */

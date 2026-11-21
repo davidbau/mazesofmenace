@@ -320,7 +320,7 @@ import { W_ARMG as W_ARMG_MU } from './const.js';
  * must use the REAL vision test, so import it under an alias rather than let
  * the stub shadow it; the gaze arms are left on the stub, out of scope here. */
 import { couldsee as couldsee_mu } from './vision.js';
-import { dist2, s_suffix, strsubst } from './hacklib.js';
+import { dist2, s_suffix, strsubst, upstart } from './hacklib.js';
 import { acurr } from './attrib.js';
 import { weight as weight_mu } from './weight.js';
 import { calc_capacity } from './hack.js';
@@ -3746,7 +3746,7 @@ async function summonmu_mu(mtmp, youseeit = false) {
                     const buf = (visible.value | 0) === 1
                         ? `${an(genericwere.value)} appears`
                         : `${makeplural(genericwere.value)} appear`;
-                    await pline(`${buf.charAt(0).toUpperCase()}${buf.slice(1)}${from_nowhere}!`);
+                    await pline(`${upstart(buf)}${from_nowhere}!`);
                 }
             } /* else no help came; but you didn't know it tried */
         }

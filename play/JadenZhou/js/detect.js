@@ -16,6 +16,10 @@ import { COLNO, ROWNO, SVALL, TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL,
 import { NO_COLOR, CLR_GRAY } from './terminal.js';
 import { recalc_block_point } from './vision.js';
 import { exercise } from './attrib.js';
+import { map_background, map_object, map_trap } from './display.js';
+import { sobj_at } from './makemon.js';
+import { STONE, W_NONDIGGABLE, W_NONPASSWALL } from './const.js';
+import { BOULDER } from './objects.js';
 import { m_at } from './makemon.js';
 import { canspotmon, sensemon, warning_of, Blind, map_invisible,
          glyph_is_invisible } from './display.js';
@@ -435,5 +439,46 @@ export async function reveal_terrain(which_subset) {
         await browse_map(which_subset, "anything of interest");
 
         await map_redisplay();
+    }
+}
+
+// C ref: detect.c skip_premap_detect()
+function skip_premap_detect(x, y) {
+    const lev = game.level.at(x, y);
+
+    if ((lev.typ === STONE)
+        && ((lev.wall_info || 0) & (W_NONDIGGABLE | W_NONPASSWALL)) !== 0)
+        return true;
+    return false;
+}
+
+// C ref: detect.c premap_detect()
+/* Pre-map (the sokoban) levels */
+export function premap_detect() {
+    let obj;
+
+    /* Map the background and boulders */
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            if (skip_premap_detect(x, y))
+                continue;
+            const lev = game.level.at(x, y);
+            lev.seenv = SVALL;
+            lev.waslit = true;
+            if (lev.typ === SDOOR) {
+                /* see rm.h for explanation: wall_info and doormask are
+                   the same field (flags) in C */
+                lev.wall_info = 0;
+                lev.flags = 0;
+            }
+            map_background(x, y, 1);
+            if ((obj = sobj_at(BOULDER, x, y)) !== null)
+                map_object(obj, 1);
+        }
+
+    /* Map the traps */
+    for (const ttmp of (game.level.traps || [])) {
+        ttmp.tseen = 1;
+        map_trap(ttmp, 1);
     }
 }

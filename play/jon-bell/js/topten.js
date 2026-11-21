@@ -151,7 +151,7 @@ import { KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, NHW_TEXT, PANICKED } from '.
 import { game, wizard, discover } from './gstate.js';
 import { raw_print } from './rawterm.js';
 import { fopen_datafile, unlock_file } from './files.js'; // relocate-fns
-import { copynchars, onlyspace, ordin } from './hacklib.js'; // relocate-fns
+import { copynchars, onlyspace, ordin, upstart } from './hacklib.js'; // relocate-fns
 export { copynchars } from './hacklib.js'; // relocate-fns
 /**
  * void formatkiller(char *buf, unsigned siz, int how, boolean incl_helpless)
@@ -376,7 +376,7 @@ export function outentry(rank, t1, so) {
 
     /* Quit, starved, ascended and escaped have no second line. */
     if (second_line) {
-        let bp = `  ${death.charAt(0).toUpperCase()}${death.slice(1)}.`;
+        let bp = `  ${upstart(death)}.`;
         /* 'record' stores "Killed by Mr. Foo; the shopkeeper" with a semicolon
            to keep the comma out of the file; put the comma back for display. */
         bp = bp.replace('; the ', ', the ');

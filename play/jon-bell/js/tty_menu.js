@@ -274,6 +274,15 @@ export class TtyMenu {
 
     _renderPage(page) {
         this._gnewOverlay = null; /* a page redraw clears the window first */
+        /* C wintty.c:1406-1410 process_menu_window: a full-screen (offx 0)
+         * page opens with term_clear_screen(), which wipes the WHOLE physical
+         * terminal -- the frozen pre-arrival frame a goto_level prompt was
+         * showing (do.c:1720's delay window) is gone from C's screen the
+         * moment this menu draws.  Retire the freeze so nothing can put those
+         * bytes back (the dismissal's docrt then leaves the terminal blank
+         * until do.c:1841, see the dismissal below). */
+        if (!this.overlay)
+            game._levelgenPaintFreeze = null;
         this._lines = this._drawPage(page);
         this._pageLines = this._lines.length;
         this.morestr = this.npages > 1 ? `(${page + 1} of ${this.npages})` : this.msave;
@@ -502,6 +511,20 @@ export class TtyMenu {
         }
 
         if (!this.overlay && !this.baseWindow) {
+            /* C display.c:2223-2226: while delay_flushing is on (goto_level's
+             * flush_screen(-1) window, do.c:1720-1841), the flush_screen(1)
+             * at wintty.c:979 returns BEFORE bot() and the gnew loop -- it
+             * paints NOTHING.  docrt()'s cls() (display.c:1748) has already
+             * wiped the whole terminal, so the dismissal leaves a BLANK
+             * screen that stays blank until do.c:1841's flush_screen(-1)
+             * ends the delay and repaints.  This menu can only be dismissed
+             * under that delay from inside the window (losedogs ->
+             * control_mon_tele's getpos -> the TIP_GETPOS window), so arm the
+             * phys-blank and drop the flush's repaint.  _goto_level_docrt's
+             * finally (do.js) clears the flag right before the resume paint,
+             * which is C's exact timeline. */
+            const _postponedFlush = !!game._botlPaintHeld;
+            if (_postponedFlush) game._physBlankToDocrt = true;
             const { docrt, flush_screen, status_r1_menu_docrt } = await import('./display.js');
             /* windows.c:1859-1863: select_menu() holds gb.bot_disabled over
              * the whole tty_select_menu, docrt() included, so a pline raised
@@ -517,8 +540,11 @@ export class TtyMenu {
                 await docrt(false, game._screen_output);
                 /* wintty.c:978-979 flushes the map before select_menu() restores
                  * bot processing (windows.c:1861-1863). Consume its pending glyphs
-                 * now, so the next bot() paints over the already printed map. */
-                await flush_screen(1);
+                 * now, so the next bot() paints over the already printed map.
+                 * Under delay_flushing C's flush returned at display.c:2225
+                 * before painting anything, so there is nothing to consume. */
+                if (!_postponedFlush)
+                    await flush_screen(1);
             } finally {
                 game._bot_disabled = oldBotDisabled;
             }

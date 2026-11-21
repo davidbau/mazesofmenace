@@ -82,7 +82,8 @@ import { Is_container, erosion_matters, is_flammable } from './mkobj.js';
 import { TRAP_NOT_IMMUNE, TRAP_CLEARLY_IMMUNE, TRAP_HIDDEN_IMMUNE,
          In_endgame, In_sokoban, Is_earthlevel, FIRE_RES } from './const.js';
 import { AMULET_OF_YENDOR, SCR_FIRE, SPE_FIREBALL } from './objects.js';
-import { vtense } from './objnam.js';
+import { vtense, makeplural } from './objnam.js';
+import { LEG, BOTH_SIDES } from './const.js';
 import { on_level, at_dgn_entrance } from './dungeon.js';
 import { is_neuter } from './mondata.js';
 import { ART_MAGICBANE } from './artilist.js';
@@ -311,6 +312,49 @@ export async function set_wounded_legs(side, timex) {
        5.0: both legs will ultimately heal together */
     W.extrinsic |= side;
     await encumber_msg();
+}
+
+// C ref: do.c heal_legs()
+export async function heal_legs(
+    how) /* 0: ordinary, 1: dismounting steed, 2: limbs turn to stone */
+{
+    const u = game.u;
+    const W = u.uprops[WOUNDED_LEGS];
+
+    if (Wounded_legs()) {
+        game.disp_botl = true;
+        if (u.atemp.a[A_DEX] < 0)
+            u.atemp.a[A_DEX]++;
+
+        /* when mounted, wounded legs applies to the steed;
+           during petrification countdown, "your limbs turn to stone"
+           before the final stages and that calls us (how==2) to cure
+           wounded legs, but we want to suppress the feel better message */
+        if (!u.usteed && how !== 2) {
+            let legs = body_part(LEG);
+
+            if ((W.extrinsic & BOTH_SIDES) === BOTH_SIDES)
+                legs = makeplural(legs);
+            /* this used to say "somewhat better" but that was
+               misleading since legs are being fully healed */
+            await pline(`Your ${legs} ${vtense(legs, "feel")} better.`);
+        }
+
+        W.intrinsic = W.extrinsic = 0;
+
+        /* Wounded_legs reduces carrying capacity, so we want
+           an encumbrance check when they're healed.  However,
+           while dismounting, first steed's legs get healed,
+           then hero is dropped to floor and a new encumbrance
+           check is made [in dismount_steed()].  So don't give
+           encumbrance feedback during the dismount stage
+           because it could seem to be shown out of order and
+           it might be immediately contradicted [able to carry
+           more when steed becomes healthy, then possible floor
+           feedback, then able to carry less when back on foot]. */
+        if (how === 0)
+            await encumber_msg();
+    }
 }
 
 // C ref: trap.c set_utrap()

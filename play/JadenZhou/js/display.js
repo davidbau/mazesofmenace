@@ -1048,7 +1048,7 @@ function obj_is_piletop(obj) {
 }
 
 // C ref: display.c map_object()
-function map_object(obj, show) {
+export function map_object(obj, show) {
     const x = obj.ox, y = obj.oy;
     const loc = game.level.at(x, y);
     let glyph = obj_to_glyph(obj, newsym_rn2);
@@ -1191,7 +1191,7 @@ export function unmap_object(x, y) {
 }
 
 // C ref: display.c map_background()
-function map_background(x, y, show) {
+export function map_background(x, y, show) {
     const loc = game.level.at(x, y);
     const tg = terrain_glyph(loc, x, y);
     if (game.level.flags?.hero_memory)
@@ -1238,7 +1238,7 @@ const TRAP_DEFSYMS = [
  * Map the trap and print it out if directed.  This routine assumes that the
  * hero can physically see the location.
  */
-function map_trap(trap, show) {
+export function map_trap(trap, show) {
     const x = trap.tx, y = trap.ty;
     const [ch, color] = TRAP_DEFSYMS[trap.ttyp - 1]; /* trap_to_glyph(trap) */
     const glyph = { ch, color, decgfx: false, trap: true };

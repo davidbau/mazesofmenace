@@ -13,12 +13,14 @@ import { pline } from './display.js';
 import {
     FULL_MOON, TIMEOUT, LAST_PROP, STONED, SLIMED, VOMITING, STRANGLED, SICK,
     LEVITATION, PASSES_WALLS, MAGICAL_BREATHING, SLEEPY, FAST, FUMBLING,
-    FLYING, INTRINSIC,
+    FLYING, INTRINSIC, WOUNDED_LEGS,
 } from './const.js';
 import { PM_ARCHEOLOGIST } from './monsters.js';
 import { FEDORA, LUCKSTONE } from './objects.js';
 import { stone_luck } from './attrib.js';
 import { carrying } from './invent.js';
+import { heal_legs } from './trap.js';
+import { stop_occupation } from './allmain.js';
 import { spec_ability, SPFX_LUCK } from './artifact.js';
 
 /* C ref: role.h Role_if() */
@@ -116,6 +118,10 @@ export async function nh_timeout() {
             }
             case FLYING:
                 /* timed Flying is via #wizintrinsic only */
+                break;
+            case WOUNDED_LEGS:
+                await heal_legs(0);
+                await stop_occupation();
                 break;
             case SICK:
             case SLEEPY:

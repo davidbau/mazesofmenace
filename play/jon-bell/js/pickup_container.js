@@ -37,7 +37,7 @@ import { paranoid_ynq } from './cmd.js';
 import { Ysimple_name2 } from './objnam.js';
 
 const COIN_CLASS = 12; /* objclass.h COIN_CLASS — gold */
-import { strncmpi } from './hacklib.js';
+import { strncmpi, upstart } from './hacklib.js';
 import { game } from './gstate.js';
 import { update_inventory } from './invent.js';
 import { chest_trap } from './trap.js';
@@ -385,7 +385,7 @@ function _strcmpi(a, b) {
  * thesimpleoname prefixes "the"; upstart capitalises the first letter. */
 function _Upstart(str) {
     if (!str) return str;
-    return str.charAt(0).toUpperCase() + str.slice(1);
+    return upstart(str);
 }
 
 const _MENU_SELECT_ALL = 0x2e /* '.' */, _MENU_UNSELECT_ALL = 0x2d /* '-' */,

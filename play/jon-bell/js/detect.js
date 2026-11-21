@@ -124,14 +124,8 @@ const hides_under = (ptr) => (((ptr?.mflags1 | 0) & M1_CONCEAL) !== 0);
 function _unconstrainMap(u) {
     const saved = { uinwater: u.uinwater | 0, uburied: u.uburied | 0,
                     uswallow: u.uswallow | 0 };
-    u.uinwater = 0; u.uburied = 0; u.uswallow = 0;
+    unconstrain_map();
     return saved;
-}
-
-function _reconstrainMap(u, saved) {
-    u.uinwater = saved.uinwater;
-    u.uburied = saved.uburied;
-    u.uswallow = saved.uswallow;
 }
 
 /* C detect.c:1609-1635 foundone(). The port carries glyph families rather
@@ -208,7 +202,7 @@ export async function do_vicinity_map(sobj) {
             refresh = true;
         }
     } finally {
-        _reconstrainMap(u, saved);
+        reconstrain_map_rd();
         detectProp.extrinsic = savedDetect;
         if (g.viz_array?.[u.uy]) g.viz_array[u.uy][u.ux] = savedViz;
     }
@@ -617,11 +611,14 @@ function reveal_terrain_getglyph(x, y, which_subset, swallowed = false) {
                 : loc.remembered_glyph.objpile ? objpile_attr(true) /* MG_OBJPILE, paint-time hilite_pile */
                 : (loc.remembered_glyph.attr | 0) }
         : null;
+    /* C detect.c:2205 reads glyph identity, including objects, traps and
+     * terrain whose configured symbol is blank.  The shared getter also
+     * distinguishes an unpainted cell from a painted S_darkroom. */
     /* C detect.c:2204 `glyph = !swallowed ? glyph_at(x, y) : levl_glyph` — a
      * swallowed hero (fog cloud, engulfer) has no display buffer to read, so
      * the remembered glyph stands in for it. */
     glyph = swallowed ? levl_glyph
-        : (loc.disp_ch && (loc.disp_ch !== ' ' || loc.disp_cls === GLYPHCLS_MON))
+        : _glyph_at(x, y)
         ? { ch: loc.disp_glyph_ch ?? loc.disp_ch, color: loc.disp_glyph_color ?? loc.disp_color,
             decgfx: loc.disp_glyph_decgfx ?? !!loc.disp_decgfx,
             attr: loc.disp_attr | 0, cls: loc.disp_cls || GLYPHCLS_CMAP,
@@ -633,12 +630,6 @@ function reveal_terrain_getglyph(x, y, which_subset, swallowed = false) {
              * displayed cloud cell whose producer left disp_cmap unset. */
             cmap: loc.disp_cmap ?? (loc.disp_cls === GLYPHCLS_CMAP ? glyph_cmap_at(x, y) : undefined) }
         : null;
-    if (!glyph && !swallowed && loc.disp_ch === ' ' && loc.disp_cls !== GLYPHCLS_MON
-        && loc.typ === ROOM && levl_glyph && levl_glyph.ch === ' '
-        && levl_glyph.color === CLR_BLACK) {
-        const tg = terrain_glyph(loc, x, y);
-        return { ch: tg.ch, color: NO_COLOR, decgfx: tg.dec, cls: GLYPHCLS_CMAP };
-    }
     /* C detect.c:2204 — glyph_at() returns the display glyph itself, so a
      * terrain glyph kept as-is (an engraved corridor, S_engrcorr) still carries
      * the MG_BW_ENGR flag that wintty.c:3930 paints ATR_INVERSE.  The attribute
@@ -728,8 +719,6 @@ function reveal_terrain_getglyph(x, y, which_subset, swallowed = false) {
     }
     } /* !full */
     if (glyph) {
-        const isRoomFloor = (glyph.ch === '.' && !glyph.decgfx)
-                         || (glyph.ch === '~' && glyph.decgfx);
         const S_room = 19, S_darkroom = 20, S_corr = 22, S_litcorr = 23;
         // C detect.c:2282-2284 tests glyph identity even when S_darkroom
         // paints blank (!dark_room), including memory revealed under a monster.
@@ -737,10 +726,9 @@ function reveal_terrain_getglyph(x, y, which_subset, swallowed = false) {
             glyph = cmap_glyph(S_room); // S_darkroom -> S_room
         else if (glyph.cls === GLYPHCLS_CMAP && glyph.cmap === S_litcorr)
             glyph = cmap_glyph(S_corr); // S_litcorr -> S_corr, by identity (symset-independent)
-        else if (isRoomFloor && glyph.color === CLR_BLACK)
-            glyph = { ...glyph, color: NO_COLOR, ...(glyph.cmap != null && { cmap: S_room }) };
-        else if (glyph.ch === '#' && !glyph.decgfx && glyph.color === CLR_WHITE)
-            glyph = { ...glyph, color: NO_COLOR, ...(glyph.cmap != null && { cmap: S_corr }) };
+        /* C compares glyph identities, not their rendered characters or
+         * colors.  A retained diamond can also be a white '#' when the gem
+         * symbol is customized; it must keep its object glyph and color. */
     }
     return glyph;
 }
@@ -784,13 +772,8 @@ export async function reveal_terrain(which_subset) {
      * unconstrain_map(), and detect.c:2375 then does `if (unconstrain_map())
      * docrt();` (detect.c:70-82). */
     const swallowed = !!game.u?.uswallow;
-    const _uc = { uinwater: game.u?.uinwater, uburied: game.u?.uburied,
-                  uswallow: game.u?.uswallow };
-    const unconstrained = !!(_uc.uinwater || _uc.uburied || _uc.uswallow);
+    const unconstrained = unconstrain_map();
     if (unconstrained) {
-        game.u.uinwater = 0;
-        game.u.uburied = 0;
-        game.u.uswallow = 0;
         await docrt();
     }
     for (let x = 1; x < COLNO; x++) {
@@ -863,7 +846,7 @@ export async function reveal_terrain(which_subset) {
      * (see its handle_tip block), so nothing extra is needed here. */
     which_subset |= TER_MAP;
     await browse_map(which_subset, 'anything of interest');
-    Object.assign(game.u, _uc);
+    reconstrain_map_rd();
     if (g._pending_message)
         await force_more(g._pending_message);
     /* C detect.c:94-102 map_redisplay() — reconstrain_map() (detect.c:85-90)
@@ -975,8 +958,7 @@ async function openone(zx, zy, numRef) {
 /* C detect.c:1090-1134 furniture_detect(): disp_cmap carries glyph_to_cmap. */
 async function furniture_detect() {
     const g = game, u = g.u;
-    const saved = { uinwater: u.uinwater, uburied: u.uburied, uswallow: u.uswallow };
-    u.uinwater = u.uburied = u.uswallow = 0;
+    unconstrain_map();
     let found = 0, revealed = 0;
     for (let y = 0; y < ROWNO; ++y)
         for (let x = 1; x < COLNO; ++x) {
@@ -1005,7 +987,7 @@ async function furniture_detect() {
     if (revealed)
         await browse_map(_CB_TER_DETECT | TER_MAP | TER_TRP | TER_OBJ | TER_MON, 'location');
     if (!revealed) await force_more(g._pending_message);
-    Object.assign(u, saved);
+    reconstrain_map_rd();
     if (g._pending_message)
         await force_more(g._pending_message);
     g._topl_sticky = null;
@@ -1447,18 +1429,12 @@ export async function dosearch() {
         ref
     );
     g.ga.already_found_flag = ref.value;
-    g.context = g.context || {};
     if (aborted) {
-        g.context.move = 0;
         return ECMD_OK;
     }
-    const r = await dosearch0(0);
-    if (r) {
-        g.context.move = 1;
-    } else {
-        g.context.move = 0;
-    }
-    return r ? ECMD_TIME : ECMD_OK;
+    /* C detect.c:2097-2105: rhack owns context.move.  cmd.js maps this
+     * handler's ECMD return through _rhack_cmd_move(). */
+    return (await dosearch0(0)) ? ECMD_TIME : ECMD_OK;
 }
 
 // Stub: mfind0 (unported helper for warnreveal)

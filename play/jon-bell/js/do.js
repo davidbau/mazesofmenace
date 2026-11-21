@@ -121,7 +121,7 @@ import { next_level, prev_level, print_level_annotation, recbranch_mapseen } fro
 import { G_GENOD, NON_PM, OBJ_FLOOR, REVIVE_MON, ROT_CORPSE, TIMER_OBJECT } from './const.js'; // relocate-fns
 import { rot_corpse } from './dig.js'; // relocate-fns
 import { canseemon } from './display.js'; // relocate-fns
-import { dist2 } from './hacklib.js'; // relocate-fns
+import { dist2, upstart } from './hacklib.js'; // relocate-fns
 import { is_rider_pm } from './mklev.js';
 import { rider_revival_time, set_corpsenm } from './mkobj.js'; // relocate-fns
 import { zombie_form } from './mon.js'; // relocate-fns
@@ -4460,7 +4460,7 @@ export async function revive_corpse(otmp, do_msgs = true) {
             && !IS_POOL(game.level.locations[x][y].typ))) {
         if (cansee(x, y)) {
             const nm = corpse_xname_rc(otmp, null, 4 /* CXN_PFX_THE */);
-            await pline(`${nm.charAt(0).toUpperCase()}${nm.slice(1)} twitches feebly.`);
+            await pline(`${upstart(nm)} twitches feebly.`);
         }
         return false;
     }

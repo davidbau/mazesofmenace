@@ -59,7 +59,9 @@ import { M_AP_NOTHING, M_AP_MONSTER, HALLUC, TELEPAT,
 import { dist2 } from './hacklib.js';
 import { an, vtense } from './objnam.js';
 import { newsym, pline, canseemon } from './display.js';
-import { does_block, block_point, cansee } from './vision.js';
+import { does_block, block_point, cansee, couldsee } from './vision.js';
+import { Resists_Elem } from './mondata.js';
+import { PIT, SPIKED_PIT, STONE_RES } from './const.js';
 import { set_apparxy, dochugw } from './monmove.js';
 import { noteleport_level } from './teleport.js';
 import { newcham } from './mon.js';
@@ -2246,10 +2248,107 @@ export function set_mimic_sym(mtmp) {
     if (does_block(mx, my, game.level.at(mx, my)))
         block_point(mx, my);
 }
-// C ref: mon.c hideunder() -- concealment state only (no rolls); floor
-// objects aren't kept in a list yet, so there is nothing to hide under
+// C ref: monmove.c can_hide_under_obj()
+function can_hide_under_obj(obj) {
+    let t;
+
+    if (!obj || obj.where !== 'OBJ_FLOOR')
+        return false;
+    /* can't hide in/on/under traps (except pits) even when there is an
+       object here; since obj is on floor, its <ox,oy> are up to date */
+    if ((t = t_at(obj.ox, obj.oy)) !== null && !(t.ttyp === PIT || t.ttyp === SPIKED_PIT))
+        return false;
+    /* can't hide under small amount of coins unless non-coins are also
+       present; we expect coins to be a single stack but don't assume that */
+    if (obj.oclass === O.COIN_CLASS) {
+        const pile = floor_pile(obj.ox, obj.oy);
+        let i = pile.indexOf(obj);
+        let coinquan = 0;
+
+        do {
+            /* 10 coins is arbitrary amount considered enough to hide under */
+            if ((coinquan += obj.quan) >= 10)
+                break; /* fall through to other checks */
+            obj = pile[++i]; /* obj->nexthere */
+            if (!obj)
+                return false; /* whole pile was less than 10 coins */
+        } while (obj.oclass === O.COIN_CLASS);
+    }
+    /* NO_HIDING_UNDER_STATUES is not defined */
+    return true;
+}
+
+// the objects at <x,y>, top of the pile first (C's level.objects[x][y]
+// chain); game.level.objects is fobj, newest first, in pile order
+function floor_pile(x, y) {
+    return (game.level.objects || []).filter(o => o.ox === x && o.oy === y);
+}
+
+// C ref: mon.c hideunder()
+/* monster/hero tries to hide under something at the current location;
+   if used by monster creation, should only happen during level
+   creation, otherwise there will be message sequencing issues */
 export function hideunder(mtmp) {
-    return false;
+    let t, otmp;
+    let seenobj = null;
+    const seeit = game.in_mklev ? false : canseemon(mtmp);
+    let oldundetctd, undetected = false;
+    const is_u = (mtmp === game.youmonst);
+
+    if (is_u)
+        throw new Error('hideunder(): the hero hiding is not ported yet');
+    const x = mtmp.mx, y = mtmp.my;
+
+    if (mtmp === game.u.ustuck) {
+        ; /* undetected==FALSE; can't hide if holding you or held by you */
+    } else if (mtmp.mtrapped
+               || ((t = t_at(x, y)) !== null && !(t.ttyp === PIT || t.ttyp === SPIKED_PIT))) {
+        ; /* undetected==FALSE; can't hide while trapped or on/in/under
+             any non-pit trap when not trapped */
+    } else if (mtmp.data.mlet === M.S_EEL) {
+        /* aquatic creatures only hide under water, not under objects;
+           they don't do so on the Plane of Water or when hero is also
+           under water unless some obstacle blocks line-of-sight */
+        undetected = (is_pool(x, y) && !Is_waterlevel(game.u.uz)
+                      && (!game.u.uinwater || !couldsee(x, y)));
+        if (seeit)
+            seenobj = 'the water';
+    } else if ((mtmp.data.mflags1 & M.M1_CONCEAL) /* hides_under() */
+               /* hider-underers only hide under objects */
+               && (otmp = floor_pile(x, y)[0] || null) !== null
+               /* most things can be hidden under, but not all */
+               && can_hide_under_obj(otmp)
+               /* pets won't hide under a cursed item or an item of any BUC
+                  state that shares a pile with one or more cursed items */
+               && (!mtmp.mtame || !floor_pile(x, y).some(o => o.cursed))
+               /* aquatic creatures don't reach here; other swimmers
+                  shouldn't hide beneath underwater objects */
+               && !(is_pool(x, y) || is_lava(x, y))) {
+        if (seeit)
+            seenobj = otmp;
+        /* most monsters won't hide under a cockatrice corpse but they
+           can hide under a pile containing more than just such corpses */
+        if (!Resists_Elem(mtmp, STONE_RES)) {
+            const pile = floor_pile(x, y);
+            let i = 0;
+            while (otmp && otmp.otyp === O.CORPSE
+                   && (otmp.corpsenm === M.PM_COCKATRICE
+                       || otmp.corpsenm === M.PM_CHICKATRICE)) /* touch_petrifies() */
+                otmp = pile[++i] || null;
+        }
+        if (otmp)
+            undetected = true;
+    }
+
+    oldundetctd = mtmp.mundetected !== 0;
+    mtmp.mundetected = undetected ? 1 : 0;
+    /* the "you see" message won't be shown for monster hiding during
+       level creation because 'seeit' will be 0 */
+    if (undetected && seeit && seenobj)
+        throw new Error('hideunder(): "You see <mon> hide under <obj>" not ported yet');
+    if (undetected !== oldundetctd)
+        newsym(x, y);
+    return undetected;
 }
 // C ref: worm.c get_wormno()
 function get_wormno() {

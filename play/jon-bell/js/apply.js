@@ -829,7 +829,7 @@ async function _steth_its_dead(rx, ry, resBox) {
             const traits = get_mtraits(corpse, false);
             const gndr = traits ? pronoun_gender(traits, 1) : (mf2 & _STETH_M2_FEMALE) ? 1 : (mf2 & _STETH_M2_MALE) ? 0 : 2;
             const he = ['he', 'she', 'it'][gndr];
-            buf = he.charAt(0).toUpperCase() + he.slice(1) + "'s dead";
+            buf = upstart(he) + "'s dead";
         } else {
             buf = "They're dead";
         }

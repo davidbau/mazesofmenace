@@ -22,6 +22,7 @@ import {
     D_BROKEN, D_NODOOR, NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, COLNO,
     ROWNO, xdir, ydir, DO_MOVE, TEST_MOVE, WT_TOOMUCH_DIAGONAL, IS_DOOR,
     IS_FURNITURE, SCORR, SDOOR, TREE, OROOM, P_AXE, ACCESSIBLE, IS_STWALL,
+    TEMPLE,
 } from './const.js';
 import { S_NYMPH, M2_STRONG, M2_ROCKTHROW, MZ_HUMAN, AT_BOOM, M1_HIDE,
          PM_GRID_BUG, mons, M1_TUNNEL, M1_NEEDPICK, M1_AMORPHOUS, MZ_SMALL,
@@ -68,7 +69,7 @@ import { CORPSE } from './objects.js';
 import { is_flyer, is_floater } from './mondata.js';
 import { float_vs_flight } from './polyself.js';
 import { pickup } from './pickup.js';
-import { shop_keeper } from './insight.js';
+import { shop_keeper, u_left_shop, u_entered_shop } from './shk.js';
 import { IS_THRONE, IS_GRAVE, IS_FOUNTAIN, IS_ALTAR, D_ISOPEN, STAIRS,
          ECMD_TIME, ECMD_OK } from './const.js';
 import { dotrap } from './trap.js';
@@ -873,16 +874,16 @@ export function move_update(newlev) {
 }
 
 // C ref: hack.c check_special_room()
-/* possibly deliver a one-time room entry message; the shop and special
-   room messages aren't ported yet */
-export function check_special_room(newlev) {
+/* possibly deliver a one-time room entry message; the special room
+   messages other than shops aren't ported yet */
+export async function check_special_room(newlev) {
     const u = game.u;
     const rooms = game.level.rooms;
 
     move_update(newlev);
 
     if (u.ushops0)
-        throw new Error('check_special_room(): u_left_shop() not ported yet');
+        await u_left_shop(u.ushops_left, newlev);
 
     /* the 'entered Mine Town' achievement */
     if (game.level.flags?.has_town && !game.context?.achieveo?.minetn_reached
@@ -894,16 +895,25 @@ export function check_special_room(newlev) {
 
     /* Did we just enter a shop? */
     if (u.ushops_entered)
-        throw new Error('check_special_room(): u_entered_shop() not ported yet');
+        await u_entered_shop(u.ushops_entered);
 
     for (const c of u.uentered) {
-        const roomno = c.charCodeAt(0) - ROOMOFFSET, rt = rooms[roomno].rtype;
+        const roomno = c.charCodeAt(0) - ROOMOFFSET;
+        let rt = rooms[roomno].rtype;
+        let msg_given = true;
 
         /* Did we just enter some other special room? */
-        if (rt !== OROOM)
+        if (rt !== OROOM && rt !== TEMPLE && rt < SHOPBASE)
             throw new Error('check_special_room(): special room entry not ported yet');
-        /* default: msg_given = (rt == TEMPLE || rt >= SHOPBASE), so FALSE;
-           rt = 0: nothing else changes */
+        if (rt === TEMPLE)
+            throw new Error('check_special_room(): intemple() not ported yet');
+        /* default: */
+        msg_given = (rt === TEMPLE || rt >= SHOPBASE);
+        rt = 0;
+        if (msg_given) {
+            /* room_discovered(roomno): the dungeon overview (mapseen)
+               isn't ported */
+        }
     }
 }
 
@@ -1046,7 +1056,7 @@ export async function spoteffects(pick) {
 
     /* if (pooleffects(TRUE)) goto spotdone; */
     if (!await pooleffects(true)) {
-        check_special_room(false);
+        await check_special_room(false);
         if (IS_SINK(game.level.at(u.ux, u.uy).typ) && sp_Levitation())
             throw new Error('spoteffects(): dosinkfall() not ported yet');
         if (!game.in_steed_dismounting) { /* if dismounting, check again later */

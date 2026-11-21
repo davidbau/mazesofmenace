@@ -82,7 +82,7 @@ import { game, wizard } from './gstate.js';
 import { Mgender as Mgender_dm, pmname as pmname_dm } from './do_name.js';
 import { place_monster } from './steed.js';
 import { pre_mm_attack } from './mhitm.js';
-import { dist2, s_suffix } from './hacklib.js';
+import { dist2, s_suffix, upstart } from './hacklib.js';
 import { couldsee as couldsee_vision, clear_path, do_clear_area, cansee, recalc_block_point } from './vision.js';
 import { gettrack, hastrack } from './track.js';
 import { t_at } from './trap.js';
@@ -841,7 +841,7 @@ function noit_Monnam_dm(mtmp) {
     }
     if (s.startsWith('the '))
         return 'The ' + s.slice(4);
-    return s.charAt(0).toUpperCase() + s.slice(1);
+    return upstart(s);
 }
 
 async function dog_obj_name(obj) {

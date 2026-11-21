@@ -27,6 +27,7 @@ import {
     NON_PM, MALE, FEMALE, NEUTRAL, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG,
     BLINDED, HALLUC, Has_contents, has_oname, ONAME,
     W_ARMOR, W_AMUL, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, ONAME_WISH, GLIB,
+    COST_CONTENTS,
 } from './const.js';
 import * as M from './monsters.js';
 import { observe_object } from './o_init.js';
@@ -49,6 +50,9 @@ import {
 import { tin_details } from './eat.js';
 import { donning, doffing } from './do_wear.js';
 import { the as the_article } from './iactions.js';
+import { is_unpaid, unpaid_cost, get_cost_of_shop_item,
+         record_price_quote, append_price_quote } from './shk.js';
+import { currency } from './insight.js';
 import {
     mksobj, mkobj, curse, weight, erosion_matters, is_flammable,
     is_rustprone, is_crackable, is_corrodeable, is_rottable, is_damageable,
@@ -3557,9 +3561,16 @@ function doname_base(obj, doname_flags) {
             const cxarg = (((obj.quan !== 1) ? 0 : CXN_ARTICLE)
                            | CXN_NOCORPSE);
             prefix = `${corpse_xname(obj, prefix, cxarg)} `;
-        } else if (obj.otyp === O.EGG && omndx_ok(obj.corpsenm))
-            xn_not_ported('egg monster names');
-        else if (obj.otyp === O.MEAT_RING)
+        } else if (obj.otyp === O.EGG) {
+            const omndx = obj.corpsenm;
+            if (omndx_ok(omndx)
+                && (known || (game.mvitals[omndx].mvflags & M.MV_KNOWS_EGG))) {
+                prefix += mons[omndx].pmnames[NEUTRAL];
+                prefix += " ";
+                if (obj.spe === 1)
+                    bp += " (laid by you)";
+            }
+        } else if (obj.otyp === O.MEAT_RING)
             xn_not_ported('meat ring');
         break;
     case O.BALL_CLASS:
@@ -3630,19 +3641,35 @@ function doname_base(obj, doname_flags) {
         || ((obj.owornmask & (W_RINGL | W_RINGR)) && obj.oclass !== O.RING_CLASS))
         xn_not_ported('meat ring/tool/leash worn suffixes');
 
-    if (with_price && obj.unpaid) {
-        xn_not_ported('unpaid prices (unpaid_cost)');
+    /* treat 'restoring' like suppress_price because shopkeeper and
+       bill might not be available yet while restore is in progress */
+    if (game.iflags?.suppress_price || game.program_state?.restoring) {
+        ; /* don't attempt to obtain any shop pricing, even if 'with_price' */
+    } else if (is_unpaid(obj)) { /* in inventory or in container in invent */
+        const quotedprice = unpaid_cost(obj, COST_CONTENTS);
+
+        /* separately formatted suffix avoids need for ConcatF3() */
+        const pricebuf = `${quotedprice} ${currency(quotedprice)}`;
+        bp += ` (${obj.unpaid ? "unpaid" : "contents"}, ${pricebuf})`;
+
+        record_price_quote(obj.otyp, Math.trunc(quotedprice / obj.quan), true);
     } else if (with_price) { /* on floor or in container on floor */
-        /* get_cost_of_shop_item() is 0 unless the object is in a shop */
-        if (game.level.flags?.has_shop)
-            xn_not_ported('shop prices (get_cost_of_shop_item)');
-        /* iflags.pricequotes: append_price_quote() adds nothing until a
-           price has been seen in a shop */
-        const ocl = objects[obj.otyp];
-        if (!ocl.oc_name_known
-            && (ocl.oc_sell_minseen <= ocl.oc_sell_maxseen
-                || ocl.oc_buy_minseen <= ocl.oc_buy_maxseen))
-            xn_not_ported('price quotes (append_price_quote)');
+        const nochrg = { v: 0 };
+        const price = get_cost_of_shop_item(obj, nochrg);
+
+        if (price > 0) {
+            const pricebuf = `${price} ${currency(price)}`;
+            bp += ` (${nochrg.v ? "contents" : "for sale"}, ${pricebuf})`;
+        } else if (nochrg.v > 0) {
+            bp += " (no charge)";
+        } else if (game.iflags?.pricequotes && !objects[obj.otyp].oc_name_known) {
+            bp = append_price_quote(bp, obj.otyp);
+        }
+
+        if (price > 0)
+            record_price_quote(obj.otyp, Math.trunc(price / obj.quan), true);
+    } else if (game.iflags?.pricequotes && !objects[obj.otyp].oc_name_known) {
+        bp = append_price_quote(bp, obj.otyp);
     }
 
     if (prefix.startsWith("a ")) {

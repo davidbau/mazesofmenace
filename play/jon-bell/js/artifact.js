@@ -44,7 +44,7 @@ import { bane_applies_hero, touch_artifact_youmonst } from './wizcmds.js';
 import { BlindedTimeout, flashburn, lightdamage, make_blinded } from './zap.js';
 import { ONAME_BONES, ONAME_GIFT, ONAME_LEVEL_DEF, ONAME_RANDOM, ONAME_VIA_DIP, ONAME_VIA_NAMING, ONAME_WISH } from './const.js'; // relocate-fns
 import { ARTILIST, _arti_exists_bit, _artiexist, _artifact_origin, _startsWithThe } from './objnam.js';
-import { fuzzymatch } from './hacklib.js'; // relocate-fns
+import { fuzzymatch, lcase } from './hacklib.js'; // relocate-fns
 import { OC_COST } from './oc_cost_data.js'; // relocate-fns
 import { MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js'; // relocate-fns
 import { ARTILIST_MTYPE } from './attrib.js'; // relocate-fns
@@ -904,7 +904,7 @@ export function artifact_name(name, fuzzy) {
         if (_startsWithThe(aname))
             aname = aname.slice(4);
         const matched = !fuzzy
-            ? (name.toLowerCase() === aname.toLowerCase())
+            ? (lcase(name) === lcase(aname))
             : fuzzymatch(name, aname, " -", true);
         if (matched)
             return { name: a.name, otyp: a.otyp, arti: m + 1 };

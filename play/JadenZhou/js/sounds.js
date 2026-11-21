@@ -10,6 +10,7 @@ import { rn2, ROLL_FROM } from './rng.js';
 import { canseemon } from './display.js';
 import { vtense } from './objnam.js';
 import { wake_nearto } from './mon.js';
+import { tended_shop, noisy_shop } from './shk.js';
 import { nomul } from './hack.js';
 import { pline } from './display.js';
 import {
@@ -236,15 +237,7 @@ function g_at(x, y) {
     return null;
 }
 
-// C ref: shk.c tended_shop()
-function tended_shop(sroom) {
-    const mtmp = sroom.resident;
-
-    /* inhishop(): shopkeepers aren't created by the JS port yet */
-    if (mtmp)
-        throw new Error('tended_shop(): inhishop() not ported yet');
-    return false;
-}
+/* C ref: shk.c tended_shop(), noisy_shop() -- in shk.js */
 
 // C ref: sounds.c dosounds()
 export async function dosounds() {
@@ -365,7 +358,7 @@ export async function dosounds() {
                 "the chime of a cash register.", "Neiman and Marcus arguing!",
             ];
             await You_hear(shop_msg[rn2(2) + hallu]);
-            /* noisy_shop(sroom): wake_nearto() not ported yet */
+            await noisy_shop(sroom);
         }
         return;
     }

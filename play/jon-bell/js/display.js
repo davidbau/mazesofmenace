@@ -86,7 +86,7 @@ import { invocation_pos } from './hack.js';
 import { set_msg_xy } from './pline.js';
 import { waterbody_name } from './pager.js';
 import { On_stairs } from './stairs.js';
-import { nh_snprintf, strNsubst, fuzzymatch } from './hacklib.js';
+import { nh_snprintf, strNsubst, fuzzymatch, upstart, highc } from './hacklib.js';
 import { Inhell } from './makemon.js';
 import { glyph_to_cmap, glyphmap } from './glyphs.js';
 import { symbol_name, primary_showsym, primary_unicode_symbol, rogue_showsyms, symset_cell, defsym_char, SYM_OFFSETS } from './symbols.js';
@@ -2546,7 +2546,10 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
         loc[_CAPTURE_CELL_CACHE] = null;
     if (utf8)
         loc.disp_capture_cell = loc.disp_flushed_cell;
-    else if (!sameUnexplored)
+    /* C display.c:2031-2052: an unchanged gbuf entry is not printed.
+     * A fuzzer more() returns before docorner (topl.c:209-210), so
+     * wrapped topline text still covers that unchanged glyph. */
+    else if (!sameUnexplored && !(loc.disp_capture_cell?.toplSpill && !_glyphChanged))
         loc.disp_capture_cell = null;
     /* C display.c:2033-2052 compares glyph identity AND buffered paint.
      * An unexplored symbol override differs from nul_gbuf's literal blank
@@ -5626,6 +5629,9 @@ export function docorner_blank_utf8_captures(xmin, ymax) {
             invalidate_map_row(y);
             /* C display.c:2182-2185 row_refresh skips GLYPH_UNEXPLORED.
              * The erased terminal stays blank even with S_unexplored set. */
+            /* row_refresh really reprints this part of gbuf (display.c:2182),
+             * replacing any wrapped message text which covered it. */
+            if (loc?.disp_capture_cell?.toplSpill) loc.disp_capture_cell = null;
             if (loc?.disp_capture_cell || loc?.disp_cls === GLYPHCLS_UNEXPLORED)
                 loc.disp_capture_cell = { ch: ' ', color: NO_COLOR, dec: false, attr: 0 };
             game._epyxPhys?.delete(y * COLNO + x);
@@ -5995,7 +6001,7 @@ function _pmname(mndx, mgender) {
 function _upstart_words(s) {
     let out = '';
     for (let i = 0; i < s.length; i++)
-        out += (i === 0 || s[i - 1] === ' ') ? s[i].toUpperCase() : s[i];
+        out += (i === 0 || s[i - 1] === ' ') ? String.fromCharCode(highc(s.charCodeAt(i))) : s[i]; /* ASCII-only highc */
     return out;
 }
 export function botl_pmname(mndx, mgender) { return _pmname(mndx, mgender); }
@@ -6271,7 +6277,7 @@ function _statusLine1Raw() {
     // C ref: botl.c:58-60 — capitalize first letter of plname
     const rawName = game.plname || 'Hero';
     const name = (rawName.length > 0 && rawName[0] >= 'a' && rawName[0] <= 'z')
-        ? rawName[0].toUpperCase() + rawName.slice(1)
+        ? upstart(rawName)
         : rawName;
     // C ref: botl.c:rank() → rank_of(u.ulevel, Role_switch, flags.female)
     // Use role name to index into _ROLE_RANKS (game.urole has no mnum field).
@@ -8829,6 +8835,141 @@ export async function tty_getlin_recall(text) {
     }
 }
 
+export function _topl_recall_lines(text) {
+    const plain = String(text ?? '');
+    const saved = game._topl_recall_hardwrap;
+    game._topl_recall_hardwrap = !(_topl_visualLen(plain) > TOPL_CO - 1
+        && !plain.includes('\n') && !game._getlin_hist?.has(plain));
+    try {
+        return _topl_wordwrap(plain, TOPL_CO - 1);
+    } finally {
+        game._topl_recall_hardwrap = saved;
+    }
+}
+
+/* C ref: win/tty/getline.c:106-119 ^P inside a getlin (msg_window:single, or
+ * combination while it still behaves like single) + win/tty/topl.c:102-117
+ * (the single-mode ring walk), :121-141 (redotoplin) and :204-248 (more()).
+ *
+ *   The FIRST ^P runs TWO tty_doprev_message() calls (getline.c:114-116 "need
+ *   two initially"): call 1 redotoplin()s gt.toplines — the live "query buf"
+ *   line rebuilt before every read (getline.c:81) — and call 2 the newest
+ *   history-ring entry; every later ^P runs ONE.  A recall whose line reaches
+ *   row 1 (cury != 0, topl.c:139-140) raises more() with
+ *   ttyDisplay->dismiss_more = C('p') armed for the whole walk (topl.c:103),
+ *   so a ^P pressed at that --More-- acknowledges the page AND continues the
+ *   walk inside the SAME tty_doprev_message call (topl.c:115); any other key
+ *   acks the page (xwaitforspace) and ENDS that call — getline.c still runs
+ *   its second initial call afterwards.  more()'s tail restores the covered
+ *   rows with docorner(1, cury + 1, 0) and homes the cursor (topl.c:237-240),
+ *   so a walk that ends on a torn-down page leaves the topline blank with map
+ *   rows underneath (`torn` is that row count, including row 0).
+ *
+ * This is the walker for the hand-rendered MENU_SEARCH getlin
+ * (js/com_pager.js menu_search_getlin), which paints over a live menu and so
+ * cannot go through force_more/flush_screen.  The caller supplies `frameRows`
+ * (its current window frame), `prompt` (its tty_getlin_prompt painter),
+ * `gnewCells`, `restore(rows, n)` (its docorner twin for rows 1..n-1), and
+ * its walk state: `first` = !doprev, `histShown`, `prevIdx`, `torn`.
+ * Returns the updated { prevIdx, histShown, recall, torn }; `recall` is the
+ * line left standing on the topline ('' right after a torn-down page), which
+ * the caller keeps rendering until the next key (getline.c:133-141 redraws
+ * the prompt over it on the first non-^P key). */
+export async function menu_search_prevmsg_walk(opts) {
+    const g = game;
+    const hist = opts.hist, queryLine = opts.queryLine;
+    const frameRows = opts.frameRows, prompt = opts.prompt;
+    const gnewCells = opts.gnewCells, restore = opts.restore;
+    const disp = g?.nhDisplay;
+    let shown = !!opts.histShown, idx = opts.prevIdx | 0;
+    let recall = null, torn = opts.torn | 0;
+    let lastRows = null, lastCur = null;
+    const emit = (rows, cur) => {
+        lastRows = rows;
+        lastCur = cur;
+        g._screen_output = rows.join('\n');
+        if (disp)
+            [disp.cursorCol, disp.cursorRow] = cur;
+    };
+    const bgRows = async () => {
+        const rows = overlay_flushed_cells((await frameRows()).slice(), gnewCells);
+        /* more()'s docorner left map rows under a torn-down page; the paint
+         * then overlays rows 0..k on top of that same derivation. */
+        if (torn > 1 && restore)
+            restore(rows, torn);
+        return rows;
+    };
+    const paint = async (mode, a, b) => {
+        if (mode === 'more') {
+            const rows = (lastRows || await bgRows()).slice();
+            while (rows.length <= b)
+                rows.push('');
+            rows[b] = (rows[b] || '') + TOPL_MORE;
+            emit(rows, [a + TOPL_MORE.length, b]);
+            return;
+        }
+        const rows = await bgRows();
+        if (mode === 'query') {
+            const frame = prompt.render(rows, null);
+            emit(String(frame.screen).split('\n'),
+                 [frame.cursor[0], frame.cursor[1]]);
+        } else if (mode === 'blank') {
+            if (restore)
+                restore(rows, b);
+            rows[0] = '';
+            torn = b;
+            emit(rows, [0, 0]);
+        } else {
+            const lines = a;
+            for (let i = 0; i < lines.length && i < rows.length; i++)
+                rows[i] = lines[i];
+            emit(rows, [lines[lines.length - 1].length,
+                        Math.min(lines.length - 1, rows.length - 1)]);
+        }
+    };
+    g._ttyDismissMore = 16; /* topl.c:103 — ^P ok at --More-- for the walk */
+    let steps = opts.first ? 2 : 1;
+    try {
+        while (steps-- > 0) {
+            let cur;
+            if (opts.first && steps === 1) {
+                /* getline.c:114-115, call 1: redotoplin(gt.toplines). */
+                await paint('query');
+                cur = lastCur;
+                recall = queryLine;
+            } else {
+                if (!hist || !hist.length)
+                    break;
+                idx = shown ? (idx - 1 + hist.length) % hist.length
+                            : hist.length - 1;
+                shown = true;
+                recall = hist[idx];
+                await paint('lines', _topl_recall_lines(recall));
+                cur = lastCur;
+            }
+            if (cur && cur[1] > 0) {
+                /* topl.c:139-140 — cury != 0: the recall pages. */
+                if (cur[0] >= TOPL_CO - 8) /* topl.c:220-221: own row */
+                    await paint('more', 0, cur[1] + 1);
+                else
+                    await paint('more', cur[0], cur[1]);
+                const k = await await_more_dismiss(null, true);
+                /* topl.c:237-240 more() tail: docorner(1, cury + 1, 0) +
+                 * home(); the topline is blank with map rows underneath. */
+                await paint('blank', cur[1] + 1);
+                recall = '';
+                if (k === 16)
+                    steps = 1; /* topl.c:115 — ^P continues the walk */
+                /* either way the call sequence continues (or ends) torn down */
+            }
+            /* a fitting recall leaves this call's do-while (morc = 0) */
+        }
+    } finally {
+        g._ttyDismissMore = 0; /* topl.c:116 */
+    }
+    return { prevIdx: idx, histShown: shown, recall, torn };
+}
+
 // Before newgame(), messages share the copyright/name base window rather
 // than the map.  Keep their topline and pager on that same window.  C refs:
 // topl.c:251-301 update_topl(), :209-247 more(); wintty.c:1920-1921 pages
@@ -9184,7 +9325,7 @@ function _toplStr(msg, row = 0) {
             }
         }
         const original = s;
-        s = s.replace(CTRL_BYTE, (_, offset) => game._topl_show_only === original
+        s = s.replace(CTRL_BYTE, (c, offset) => (game._topl_show_only === original || c.charCodeAt(0) >= 0x80)
             ? ' ' : cells[_topl_visualLen(original.slice(0, offset))] || ' ');
     }
     return s.replace(/ +$/, '').replace(/ {5,}/g, (m) => `\x1b[${m.length}C`);
@@ -11820,8 +11961,11 @@ export async function force_more_pages(full, retainFinalFrame = true, textWindow
         /* An ESC at the prefix's more() set WIN_STOP, so those
          * later plines skip redotoplin (topl.c:232-234,257,300): the
          * suppression path below owns them, and nothing stands. */
+        /* With no message at cls(), there is no prefix separator either.
+         * A single post-cls notice must stand just like the last of several
+         * notices (display.c:1748-1757; topl.c:300). */
         if (acknowledgedPrefix !== null && i === pages.length - 1
-            && consumed >= acknowledgedPrefix.length + 2 && pages[i]
+            && consumed >= acknowledgedPrefix.length + (acknowledgedPrefix ? 2 : 0) && pages[i]
             && !game._topl_win_stop && !game._topl_win_stop_armed) {
             game._pending_message = pages[i];
             return true;
@@ -12403,6 +12547,25 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
                 g._topl_win_stop_armed = false;
                 g._topl_win_stop = false;
                 if (urgentOffset > 0) {
+                    /* topl.c:266-280: suppressed messages still join or
+                     * replace gt.toplines. The urgent putstr clears WIN_STOP
+                     * (wintty.c:2277-2283), then update_topl remembers that
+                     * buffer before displaying the urgent message. Keep the
+                     * skipped history even though none of it was painted. */
+                    let historyBuffer = null, historyOffset = 0;
+                    for (const message of _messages) {
+                        if (historyOffset >= urgentOffset) break;
+                        if (historyBuffer === null) historyBuffer = message;
+                        else if (historyBuffer.length + 2 + message.length < TOPL_LIMIT
+                                 && !message.startsWith('You die'))
+                            historyBuffer += '  ' + message;
+                        else {
+                            _msg_history_arr().push(historyBuffer);
+                            historyBuffer = message;
+                        }
+                        historyOffset += message.length + 2;
+                    }
+                    if (historyBuffer) _msg_history_arr().push(historyBuffer);
                     _consumed += urgentOffset;
                     _prevEnd = _consumed - 2;
                     _pages.splice(i + 1, _pages.length,
@@ -14136,6 +14299,7 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
         game._pending_message = _txt;
         game._topl_joins = [];
         game._topl_joins_src = game._pending_message;
+        if (!game._topl_suppress_history)
         game._toplEmptyAfterSuppress = false; /* topl.c:280 strncpy(gt.toplines,bp) */
         _maybe_snapshot_painted_screen();
         if (msgtyp === 'stop') {
@@ -14265,7 +14429,7 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
                     const loc = game.level.at(x, r - 1);
                     loc.disp_capture_cell = {
                         ch: rows[r][x - 1] || ' ', color: NO_COLOR,
-                        dec: false, attr: 0,
+                        dec: false, attr: 0, toplSpill: true,
                     };
                 }
                 invalidate_map_row(r - 1);
@@ -14369,7 +14533,9 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
                                      statusSeq: game._statusPaintSeq | 0 };
         game._pending_message = msg;
     }
-    game._toplEmptyAfterSuppress = false;
+    if (!(game._topl_suppress_history || game._topl_suppress_once))
+    if (!game._topl_suppress_history)
+        game._toplEmptyAfterSuppress = false;
     if (tabBackground)
         game._topl_tab_background = { ...tabBackground, text: game._pending_message };
     if (game._lonePlineFrame && game._lonePlineFrame !== previousLoneFrame)

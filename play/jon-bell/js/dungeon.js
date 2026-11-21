@@ -3,7 +3,7 @@
 import { game } from './gstate.js';
 import { In_quest, In_endgame, In_V_tower, Is_knox_level, SHOPBASE, VISITED } from './const.js';
 import './hacklib.js';
-import { strsubst, trimspaces } from './hacklib.js';
+import { strsubst, trimspaces, upstart } from './hacklib.js';
 import { rnd } from './rnd.js';
 import { goto_level } from './do.js';
 import { _earth_sense } from './cmd.js';
@@ -1306,7 +1306,7 @@ export async function show_overview(why, reason) {
             /* C dungeon.c:3627-3631 — capitalize the first character after
              * PREFIX, then terminate the sentence with '.'. */
             fbuf = fbuf.slice(0, PREFIX.length)
-                 + fbuf.charAt(PREFIX.length).toUpperCase()
+                 + upstart(fbuf.charAt(PREFIX.length)) /* highc */
                  + fbuf.slice(PREFIX.length + 1) + '.';
             lines.push(fbuf);
         }

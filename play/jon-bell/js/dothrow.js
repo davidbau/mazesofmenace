@@ -32,7 +32,7 @@ import { is_waterwall } from './dbridge.js';
 import { FF_FAITHFUL } from './fastforward.js';
 import { newobj } from './game.js';
 import { game } from './gstate.js';
-import { dist2, distmin, ordin } from './hacklib.js';
+import { dist2, distmin, ordin, upstart } from './hacklib.js';
 import { addinv, addinv_before } from './invent.js';
 import { nhgetch } from './input.js';
 import { reassign } from './invent.js';
@@ -3309,7 +3309,7 @@ const EGG = 266, CORPSE = 265, CREAM_PIE = 287, BLINDING_VENOM = 479;
 
 const HALF_PHDAM = 56;
 
-const doname2 = async obj => { const s = await doname(obj); return s[0].toUpperCase() + s.slice(1); };
+const doname2 = async obj => { const s = await doname(obj); return upstart(s); };
 
 const stoneResistance = () => !!(game.u.uprops?.[STONE_RES]?.intrinsic
     || game.u.uprops?.[STONE_RES]?.extrinsic);

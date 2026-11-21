@@ -5,6 +5,7 @@
 //        oinit(369-372), init_objects preamble.
 //
 // Object type ordinals: from nethack-c/include/objects.h enum (post-SCR_MAIL fix).
+import { strncmpi } from './hacklib.js';
 import { game, wizard } from './gstate.js';
 import { yn_function } from './cmd.js';
 import { maxledgerno } from './dungeon.js';
@@ -632,9 +633,9 @@ export async function prepare_discoveries(mode) {
 // C o_init.c:552: ignore the encounter marker, compare case-insensitively,
 // with no locale collation or tie-breaker.
 function discovered_cmp(a, b) {
-    const fold = s => s.slice(2).replace(/[A-Z]/g, c => c.toLowerCase());
-    const s1 = fold(a), s2 = fold(b);
-    return s1 < s2 ? -1 : s1 > s2 ? 1 : 0;
+    /* strcmpi(s1 + 2, s2 + 2) is strncmpi(.., -1): ASCII-only folding, SIGNED char
+     * compare, so a byte >= 0x80 sorts before every ASCII character. */
+    return strncmpi(a.slice(2), b.slice(2), -1);
 }
 
 // C o_init.c:566.  Reuse invent.c's existing classifier rather than making

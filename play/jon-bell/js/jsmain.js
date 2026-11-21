@@ -593,7 +593,7 @@ export class NethackGame {
             } else if (!/[^\n]/.test(game._screen_output || '')) {
                 blankFrame = true;
             } else {
-                nhGame._screens.push(game._screen_output || '');
+                nhGame._screens.push(game._rawCursorFrozen ? (game._screen_output || '') : (game._screen_output || '').replace(/[\x80-\xff]/g, ' ')); /* raw_print frames use the unsigned nomux_raw_putch and DO paint */
                 nhGame._cursors.push(game._rawCursorFrozen ? game._rawCursorFrozen.slice()
                     : disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null);
             }

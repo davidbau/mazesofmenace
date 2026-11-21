@@ -41,6 +41,10 @@ import { themerms_lua } from './themerms_lua.js';
 import { tty_create_nhwindow, tty_start_menu, add_menu_str, tty_end_menu,
          tty_select_menu, tty_destroy_nhwindow } from './wintty.js';
 import { quest_lua } from './quest_lua.js';
+import { oracle_lua } from './oracle_lua.js';
+import { bigrm_lua_files } from './bigrm_lua.js';
+import { quest_level_lua_files } from './questlev_lua.js';
+import { soko_lua_files } from './soko_lua.js';
 import { l_register_des, get_coord, cvt_to_abscoord } from './sp_lev.js';
 import { l_selection_register } from './selvar.js';
 import { l_obj_register, nhl_get_timertype } from './nhlobj.js';
@@ -111,6 +115,19 @@ function lua_typename(v) {
     return ['nil', 'boolean', 'userdata', 'number', 'string', 'table',
             'function', 'userdata'][lua_type(v)];
 }
+
+// Lua's binary | and & operators on userdata (lvm.c luaT_trybinTM()):
+// call the __bor / __band metamethod of the first operand that has one.
+function lua_arith_tm(a, b, event) {
+    const tm = (a instanceof LuaUserdata && a.metatable?.[event])
+        || (b instanceof LuaUserdata && b.metatable?.[event]);
+    if (typeof tm !== 'function')
+        lua_error('attempt to perform bitwise operation on a '
+                  + `${lua_typename(a)} value`);
+    return tm(a, b);
+}
+export function lua_bor(a, b) { return lua_arith_tm(a, b, '__bor'); }
+export function lua_band(a, b) { return lua_arith_tm(a, b, '__band'); }
 
 // lua.h lua_istable()
 export function lua_istable(v) {
@@ -451,7 +468,22 @@ const nhl_lua_files = {
     'nhcore.lua': nhcore_lua,
     'themerms.lua': themerms_lua,
     'quest.lua': quest_lua,
+    'oracle.lua': oracle_lua,
 };
+
+// the file's chunk, if it's one of the hand-ported scripts (the level
+// script tables are read at call time: their modules import this one)
+function nhl_lua_file(fname) {
+    if (Object.hasOwn(nhl_lua_files, fname))
+        return nhl_lua_files[fname];
+    if (Object.hasOwn(bigrm_lua_files, fname))
+        return bigrm_lua_files[fname];
+    if (Object.hasOwn(quest_level_lua_files, fname))
+        return quest_level_lua_files[fname];
+    if (Object.hasOwn(soko_lua_files, fname))
+        return soko_lua_files[fname];
+    return null;
+}
 
 // C ref: nhlua.c nhlL_newstate()
 // The sandbox memory and instruction limits (nhl_user_data) are not
@@ -470,13 +502,11 @@ function nhlL_newstate(sbi, name) {
    into a string buffer and feed that to lua */
 export function nhl_loadlua(L, fname) {
     let ret = TRUE;
-    const altfname = `(${fname})`;
-    const chunk = Object.hasOwn(nhl_lua_files, fname) ? nhl_lua_files[fname] : null;
+    const chunk = nhl_lua_file(fname);
 
     if (!chunk) {
-        impossible(`nhl_loadlua: Error opening ${altfname}`);
-        ret = FALSE;
-        return ret;
+        /* C opens every dat/ file; only the hand-ported ones exist here */
+        throw new Error(`nhl_loadlua(): ${fname} not ported yet`);
     }
     /* luaL_loadbuffer() + nhl_pcall_handle(L, 0, LUA_MULTRET, fname,
        NHLpa_impossible) */
@@ -519,6 +549,28 @@ export function nhl_init(sbi) {
     }
 
     return L;
+}
+
+// C ref: nhlua.c load_lua()
+export function load_lua(name, sbi) {
+    let ret = TRUE;
+    const L = nhl_init(sbi);
+
+    give_up: {
+        if (!L) {
+            ret = FALSE;
+            break give_up;
+        }
+
+        if (!nhl_loadlua(L, name)) {
+            ret = FALSE;
+            break give_up;
+        }
+    }
+    /* give_up: */
+    nhl_done(L);
+
+    return ret;
 }
 
 // nhlua.h NHL_pcall_action

@@ -259,6 +259,24 @@ export async function getlin(prompt) {
     /* C hooked_tty_getlin displays the query through custompline(), whose
      * vpline() tail updates gp.prevmsg even though SUPPRESS_HISTORY keeps the
      * query out of message history.  Keep Norep's comparison state in sync. */
+    /* C getline.c:66-67 -> pline.c putmesg() -> wintty.c:2290-2299
+     * tty_putstr(WIN_MESSAGE, ATR_NOHISTORY): before show_topl() paints the
+     * query, `remember_topl()` files whatever still stands on the topline
+     * into the ^P ring (topl.c:170-191: one entry, exact repeats kept, an
+     * empty gt.toplines returns early) and clears gt.toplines — so the
+     * standing line's ring entry exists even though the prompt is never
+     * remembered itself.  Skipping the filing lost the line C leaves in
+     * gt.toplines after an ESC-dismissed page (df-xa5b54ebb2e: hooked_tty_
+     * getlin skips its own more() under WIN_STOP — getline.c:53 — so the
+     * "'autounlock' is still 'apply-key'." that update_topl:300 redotoplin'd
+     * after the ESC was overwritten by the prompt unfiled, and a ^P inside
+     * "Set crash_email to what?" recalled one entry too far back).
+     * topl.c:189's maxcol=maxrow reset is the ^P walk anchor reset
+     * (js/input.js): the walk restarts at the live query line. */
+    if (g._pending_message && g._pending_message !== g._topl_history_recall) {
+        (g._msg_history ||= []).push(String(g._pending_message));
+        g._prevmsg_next = null;
+    }
     g._prevmsg = prompt;
     const _saved_prompt_echo = g._topl_prompt_echo;
     const savedWritten = g._topl_prompt_written;

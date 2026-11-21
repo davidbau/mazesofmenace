@@ -624,6 +624,12 @@ function optfn_autounlock(flags, op, negated) {
     flags.autounlock = newflags;
 }
 
+/* The rc arrives as a JS string but C reads the FILE's bytes (UTF-8): a pattern or text taken
+ * from an rc line must be matched against message text as those bytes, one char per byte. */
+function rc_bytes(s) {
+    return /[^\x00-\x7f]/.test(s) ? String.fromCharCode(...new TextEncoder().encode(s)) : s;
+}
+
 // C options.c:847 petname_optfn(do_set), nmcpy(:6861), bones.c:198.
 function petname_optfn(flags, name, op, negated, eightBitInput) {
     if (!op && !negated) return;
@@ -644,7 +650,9 @@ function set_boulder_symbol(target, opts, op, negated, report) {
         return false;
     }
     const sym = escapes(op)[0] ?? '\0';
-    if (sym < ' ') {
+    /* options.c:1199 `opts[0] < ' '` tests a plain (signed) char, so every byte
+     * >= 0x80 (e.g. the lead byte of a UTF-8 sequence) is a "control character". */
+    if (sym < ' ' || sym.charCodeAt(0) >= 0x80) {
         report('boulder symbol cannot be a control character');
         return false;
     }
@@ -961,7 +969,7 @@ export function parseNethackrc(rc) {
          * prepend each rule; msgtype_type uses the first matching pattern. */
         const msgtypeMatch = line.match(/^MSGTYPE=([\s\S]*)$/i);
         if (msgtypeMatch) {
-            const rule = parse_msgtype(msgtypeMatch[1]);
+            const rule = parse_msgtype(rc_bytes(msgtypeMatch[1]));
             if (rule) {
                 try {
                     (result.msgtypes ||= []).unshift({ type: rule.type, regex: regcomp(rule.pattern), pattern: rule.pattern });
@@ -973,9 +981,9 @@ export function parseNethackrc(rc) {
         /* C cfgfiles.c cnf_line_MENUCOLOR -> coloratt.c add_menu_coloring() */
         const mcMatch = line.match(/^MENUCOLOR=(.*)$/i);
         if (mcMatch) {
-            (result.menucolors ||= []).push(mcMatch[1]);
+            (result.menucolors ||= []).push(rc_bytes(mcMatch[1]));
             // C coloratt.c:611: a valid rule enables coloring at this RC line.
-            if (add_menu_coloring(mcMatch[1])) result.iflags.use_menu_color = true;
+            if (add_menu_coloring(rc_bytes(mcMatch[1]))) result.iflags.use_menu_color = true;
             continue;
         }
 
@@ -1001,7 +1009,7 @@ export function parseNethackrc(rc) {
          * cnf_line_AUTOPICKUP_EXCEPTION: "<pat" (grab) or ">pat" / "pat". */
         const apeMatch = line.match(/^AUTOPICKUP_EXCEPTION=\s*(.*)$/i);
         if (apeMatch) {
-            add_autopickup_exception(apeMatch[1], result);
+            add_autopickup_exception(rc_bytes(apeMatch[1]), result);
             continue;
         }
 
@@ -3614,15 +3622,13 @@ export async function doset_simple() {
                     g.go.opt_need_redraw = g.go.opt_need_glyph_reset = true;
                     await reset_needed_visuals();
                 }
-                /* C options.c:5376-5385 optfn_boolean: these request a glyph reset and
-                 * redraw, which doset_simple()'s reset_needed_visuals() performs
-                 * (options.c:8727) before the menu is offered again. */
-                if (['wizmgender', 'showrace', 'use_inverse', 'hilite_pile',
-                     'ascii_map', 'tiled_map'].includes(entry.name)) {
-                    g.go ||= {};
-                    g.go.opt_need_redraw = g.go.opt_need_glyph_reset = true;
-                    await reset_needed_visuals();
-                }
+                /* C options.c:5376-5385 optfn_boolean: wizmgender/showrace/use_inverse/
+                 * hilite_pile/perm_invent/ascii_map/tiled_map request a glyph reset
+                 * and redraw; doset_simple()'s loop (options.c:8725-8730) performs
+                 * reset_needed_visuals() exactly ONCE per pick.  The twin block below
+                 * is that loop; do not add a second reset here — an extra docrt()
+                 * burns six display-rng draws (hallucinated glyph stream shifts:
+                 * df-x7b50143ca5 step 203). */
                 if (entry.name === 'hilite_pet') {
                     /* C options.c:3109 (optfn_boolean/hilite_pet): petattr
                      * defaults to ATR_INVERSE and opt_need_redraw is set, so

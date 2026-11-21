@@ -26,6 +26,7 @@
 // command-read boundary (cmd.js rhack).  This preserves both the RNG order (the
 // prompt draws nothing) and the message order (the fatal hit is the last message-
 // keystrokes be consumed by the prompt instead of leaking to rhack.
+import { upstart } from './hacklib.js';
 import { game, wizard, discover } from './gstate.js';
 import { clong, nowrap_add } from './integer.js';
 import { savebones, no_bones_level } from './bones.js';
@@ -594,7 +595,7 @@ export async function savelife(how, inPlace, countdown = false) {
             await pline(`You release ${mon_nam(stuck)}.`);
         } else {
             const name = mon_nam(stuck);
-            const subject = name ? name[0].toUpperCase() + name.slice(1) : 'The monster';
+            const subject = name ? upstart(name) : 'The monster';
             await pline(`${subject} releases you.`);
         }
         await unstuck(stuck);
@@ -1473,9 +1474,12 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
             g._topl_sticky = null;
             g._topl_empty_sticky = null;
         } else if (g._pending_message === qbuf) {
+            /* Queue-answered prompt (no nhgetch ran, so _pending_message
+             * survived): same clean_up state — TOPLINE_NON_EMPTY — so the
+             * standing text keeps the one-read lifetime, not the
+             * empty-window one.  See y_n/ynq below. */
             g._pending_message = '';
             g._topl_sticky = qbuf;
-            g._topl_empty_sticky = qbuf;
         }
     }
 }
@@ -1499,20 +1503,17 @@ function sound_exit_nhsound(why) {
 /* C hack.h:1329 #define y_n(query) yn_function(query, ynchars, 'n', TRUE) */
 async function y_n(query) {
     const ans = await yn_function(query, 'yn', 'n', true);
-    if (!game.gi?.in_doagain) {
+    if (!game.gi?.in_doagain)
         game._topl_sticky = `${query} [yn] (n)`;
-        game._topl_empty_sticky = game._topl_sticky;
-    }
     return ans;
 }
 
 /* C hack.h:1330 #define ynq(query) yn_function(query, ynqchars, 'q', TRUE) */
 async function ynq(query) {
     const ans = await yn_function(query, 'ynq', 'q', true);
-    if (!game.gi?.in_doagain) {
+    /* Same clean_up as y_n above: TOPLINE_NON_EMPTY, one-read lifetime. */
+    if (!game.gi?.in_doagain)
         game._topl_sticky = `${query} [ynq] (q)`;
-        game._topl_empty_sticky = game._topl_sticky;
-    }
     return ans;
 }
 

@@ -121,7 +121,22 @@ async function drainTopline() {
      * 'idlecheckpoint', options.c:5313-5319) are not yet painted. */
     if (game._pending_message)
         await force_more_lone_frame(game._pending_message);
-    game._pending_message = '';
+    /* C topl.c:205-248,274-300 — when the page this drain raised was
+     * ESC-dismissed, the pline whose overflow raised it had already sampled
+     * `skip` FALSE, so update_topl:289-291 remember_topl()s the paged prefix,
+     * replaces gt.toplines with that pline and :300 redotoplin() DRAWS it
+     * (NEED_MORE).  more() itself never touches gt.toplines, so the drain
+     * leaves it standing — js/display.js force_more's paintOwner arm models
+     * exactly that state as `_pending_message === _topl_win_stop_buf` with
+     * WIN_STOP set.  Wiping it dropped the owner from gt.toplines, so the
+     * window that opened next could not remember_topl() it into the ^P ring
+     * (df-xa5b54ebb2e: ESC at the doset mention-join's page leaves
+     * "'autounlock' is still 'apply-key'." standing; the "Set crash_email to
+     * what?" getlin then filed nothing, and a ^P inside it recalled one
+     * entry too far back). */
+    if (!(game._topl_win_stop && game._topl_win_stop_buf != null
+          && game._pending_message === game._topl_win_stop_buf))
+        game._pending_message = '';
 }
 
 

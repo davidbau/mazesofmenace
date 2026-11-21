@@ -1,9 +1,19 @@
 // gstate.js — Global game state reference.
 // All game modules import `game` from here.
 
-export let game = {};
+// C ref: decl.c g_init_x / g_init_y — the globals with nonzero initial
+// values: x_maze_max = (COLNO - 1) & ~1, y_maze_max = (ROWNO - 1) & ~1
+// (COLNO 80, ROWNO 21; const.js imports this module, so they're spelled out)
+function initial_globals() {
+    return {
+        x_maze_max: (80 - 1) & ~1,
+        y_maze_max: (21 - 1) & ~1,
+    };
+}
+
+export let game = initial_globals();
 
 export function resetGame() {
-    game = {};
+    game = initial_globals();
     return game;
 }

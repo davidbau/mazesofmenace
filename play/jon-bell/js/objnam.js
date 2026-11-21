@@ -34,7 +34,7 @@ import { def_char_to_objclass } from './drawing.js';
 import { OC_USES_KNOWN, PM_HUMAN } from './mklev.js';
 import { mksobj, mkobj, place_object, set_corpsenm } from './mkobj.js';
 import { Can_fall_thru } from './dungeon.js';
-import { eos, lowc, highc, letter, mungspaces, digit, ordin } from './hacklib.js';
+import { eos, lowc, highc, letter, mungspaces, digit, ordin, upstart, lcase } from './hacklib.js';
 import { can_be_hatched, zombie_form } from './mon.js';
 import { PM_LONG_WORM, PM_LONG_WORM_TAIL, PM_GRAY_OOZE, PM_BLACK_PUDDING, PM_GRAY_DRAGON, PM_YELLOW_DRAGON, PM_STUDENT, PM_CHIEFTAIN, PM_NEANDERTHAL, PM_ATTENDANT, PM_PAGE, PM_ABBOT, PM_ACOLYTE, PM_HUNTER, PM_THUG, PM_ROSHI, PM_GUIDE, PM_APPRENTICE, PM_WARRIOR, PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVEMAN, PM_HEALER, PM_KNIGHT, PM_MONK, PM_CLERIC, PM_RANGER, PM_ROGUE, PM_SAMURAI, PM_TOURIST, PM_WIZARD, PM_VALKYRIE, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC, PM_MAIL_DAEMON } from './pm.generated.js';
 import { MKOBJ_OC_PROB, MKOBJ_SVB_BASES, MKOBJ_OC_CLASS } from './mkobj_data.js';
@@ -1022,12 +1022,12 @@ export function doname_potion(obj) {
  * first occurrence of s2 in s1, or -1 (C returns a pointer or NULL). */
 function _strstri(s1, s2) {
     if (s1 == null || s2 == null) return -1;
-    return s1.toLowerCase().indexOf(s2.toLowerCase());
+    return lcase(s1).indexOf(lcase(s2)); /* lowc: ASCII-only fold (hacklib.c:83) */
 }
 /* C strncmpi(s1, s2, n): true when the first n chars match case-blind. */
 function _strncmpi0(s1, s2, n) {
     return s1.length >= n && s2.length >= n
-        && s1.slice(0, n).toLowerCase() === s2.slice(0, n).toLowerCase();
+        && lcase(s1.slice(0, n)) === lcase(s2.slice(0, n));
 }
 /* C strsubst(buf, orig, replacement): replace the FIRST occurrence of orig in
  * buf with replacement.  Returns the modified string. */
@@ -5690,7 +5690,7 @@ async function wizterrainwish(bp, d) {
             start_melt_ice_timeout(x, y, 0);
         if (!is_dbridge) {
             const s = ice_descr(x, y);
-            await pline(`${s.charAt(0).toUpperCase()}${s.slice(1)}.`);
+            await pline(`${upstart(s)}.`);
         } else {
             await dbterrainmesg('Ice', x, y);
         }
@@ -5779,7 +5779,7 @@ async function wizterrainwish(bp, d) {
             madeterrain = true;
         } else {
             const dbuf = secret ? 'secret door' : 'door';
-            await pline(`${dbuf.charAt(0).toUpperCase()}${dbuf.slice(1)} requires door or wall location.`);
+            await pline(`${upstart(dbuf)} requires door or wall location.`);
             badterrain = true;
         }
     } else if (ends('wall') && (lc.length === 4 || lc[lc.length - 5] === ' ')) {
@@ -5861,7 +5861,7 @@ async function wizterrainwish(bp, d) {
 export function Yname2(obj) {
     const s = yname(obj);
     /* C highc(*s) — upper-case the FIRST character only. */
-    return s ? (s.charAt(0).toUpperCase() + s.slice(1)) : s;
+    return s ? (upstart(s)) : s;
 }
 
 /* yname — C objnam.c:2359-2374.

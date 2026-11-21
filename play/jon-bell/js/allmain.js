@@ -842,7 +842,7 @@ export async function newgame() {
      * line, but pickup(1)'s describe_decor pline is still flushed by the
      * tutorial menu's display_nhwindow(WIN_MESSAGE, TRUE) (wintty.c NHW_MENU
      * arm), i.e. paged with --More-- before the menu is drawn. */
-    const tutorialFlushesDecor = deferredLastStartupMsg === null && !chargenIncomplete
+    const tutorialFlushesDecor = deferredLastStartupMsg === null && !startupEscStop && !chargenIncomplete
         && !g.tutorial_set_in_config;
     /* C allmain.c:846-847 notice_all_mons() ran before this point: each "You see
      * ..." pline went through update_topl against the standing startup line
@@ -873,8 +873,12 @@ export async function newgame() {
      * welcome line stays alone on the topline. */
     const _stoppedTopl = startupEscStop ? (g._pending_message || '') : null;
     await pickup(1);
-    if (_stoppedTopl !== null && !tutorialFlushesDecor && deferredLastStartupMsg === null)
+    if (_stoppedTopl !== null && !tutorialFlushesDecor && deferredLastStartupMsg === null) {
+        if (!g.tutorial_set_in_config && !chargenIncomplete && _stoppedTopl
+            && g._topl_win_stop_buf === _stoppedTopl && g._msg_history?.at(-1) !== _stoppedTopl)
+            (g._msg_history ||= []).push(_stoppedTopl);
         g._pending_message = _stoppedTopl;
+    }
     if (tutorialFlushesDecor) {
         const decorOnly = g._pending_message || '';
         g._pending_message = '';
@@ -4861,6 +4865,7 @@ async function moveloop_core_faithful() {
      * autodig, whose nomul(0) ends the count) is followed by the NEXT
      * moveloop_core pass, which runs the occupation before rhack() reads a key. */
     let occContinue = false;
+    let _resumeIterTailOwed = _countRepeatInsteadOfRhack;
     while ((g.multi | 0) > 0 || occContinue) {
         if (g.occupation === eatfood && !(g.context && g.context.mv)) {
             g._eatCountRepeat = true;
@@ -4896,7 +4901,10 @@ async function moveloop_core_faithful() {
          * see_monsters/see_objects/see_traps, which under Hallucination draws
          * on the DISPLAY rng for every monster) runs after EVERY world block,
          * not only after the run's last iteration. */
-        if ((g.multi | 0) !== 0) await faithful_input_redraw();
+        const _skipThisIterTail = _resumeIterTailOwed;
+        _resumeIterTailOwed = false;
+        if ((g.multi | 0) !== 0 && !_skipThisIterTail)
+            await faithful_input_redraw();
         // When the world block stopped the repeat, its input redraw is
         // deferred to the next invocation above. Defer this recalc with it:
         // C allmain.c:454-471 redraws hallucinations BEFORE updating vision.

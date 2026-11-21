@@ -8,6 +8,7 @@
 // Verified exports: game(gstate.js), nhgetch(input.js), COLNO/ROWNO(const.js),
 //                   NO_COLOR(terminal.js).
 // Does NOT import from display.js — render_map_row is inlined below.
+import { upstart } from './hacklib.js';
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { pgetchar } from './cmd.js';
@@ -24,7 +25,7 @@ import { menu_heading_text } from './tty_menu.js'; /* C strutil.c:151 — MENU_S
 import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_pages, await_more_dismiss, docorner_blank_utf8_captures, unflushed_forced_cell, levelgen_frozen_cell,
          await_topl_more_dismiss, pline_flush_point, docorner_status_row,
          botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title, botl_status1_tail, botl_frozen_status_line,
-         gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, docrt, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail, flush_gnew_cells_over_window, overlay_flushed_cells } from './display.js';
+         gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, docrt, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail, flush_gnew_cells_over_window, overlay_flushed_cells, menu_search_prevmsg_walk } from './display.js';
 import { money_cnt } from './hack.js'; // relocate-fns
 export { ask_do_tutorial } from './options.js'; // relocate-fns
 export { money_cnt } from './hack.js'; // relocate-fns
@@ -1016,7 +1017,7 @@ function _statusLine1Raw() {
     // C ref: botl.c:58-60 — capitalize first letter of plname
     const rawName = g.plname || 'Hero';
     const name = (rawName.length > 0 && rawName[0] >= 'a' && rawName[0] <= 'z')
-        ? rawName[0].toUpperCase() + rawName.slice(1)
+        ? upstart(rawName)
         : rawName;
     // C ref: botl.c:rank() → rank_of(u.ulevel, Role_switch, flags.female)
     const female = !!(g.flags?.female);
@@ -1406,7 +1407,7 @@ export async function com_pager_legacy(pauper = false, preInitAc = 0, preInitPw 
             const isGoddess = godEntry.startsWith('_');
             const godName = godEntry.replace(/^_/, '');
             // C ref: convert_arg('d')+'C' capitalizes the deity name's first letter.
-            const godC = godName.charAt(0).toUpperCase() + godName.slice(1);
+            const godC = upstart(godName);
             // C ref: qtext_pronoun('d','I') → genders[godgend].him, capitalized.
             const godI = isGoddess ? 'Her' : 'Him';
             const synopsis = `[${godC} has chosen you to recover the Amulet of Yendor for ${godI}.]`;
@@ -1437,9 +1438,16 @@ export async function menu_search_getlin(frameRows) {
     const gnewCells = flush_gnew_cells_over_window();
     g._menuSearchGnew = gnewCells;
     /* C ref: getline.c:50,106-137 — ^P recall state: `doprev` and the text the
-     * recalled message left on the topline (null when the prompt is showing). */
-    let doprev = false, recall = null, prevIdx = 0;
+     * recalled message left on the topline (null when the prompt is showing).
+     * `tornRows` is the more()-teardown residue: rows 1..tornRows-1 hold map
+     * rows after a paged recall was dismissed (topl.c:237-240 docorner). */
+    let doprev = false, recall = null, prevIdx = 0, tornRows = 0;
     const hist = () => (g._msg_history ||= []);
+    const restoreTorn = (rows, n) => {
+        /* topl.c:237-240 / wintty.c:1047-1056 docorner(1, n, 0) twin. */
+        for (let r = 1; r < n && r < rows.length; r++)
+            rows[r] = render_map_row_clipped(r - 1, COLNO - 1).str;
+    };
     const remember = (text) => {
         /* tty_getlin is not SUPPRESS_HISTORY: gt.toplines ("Search for: " + what
          * was typed) is pushed to the history ring by the next message. */
@@ -1454,6 +1462,11 @@ export async function menu_search_getlin(frameRows) {
             /* topl.c:170-190 remember_topl() stores query+answer once, then
              * clears gt.toplines; a menu search is one history entry. */
             hist().push(text);
+            /* The stored line never went through update_topl's word wrap
+             * (getline.c:81 is a plain strcat), so a ^P recall must
+             * hard-wrap it (topl.c:121-142) — register it the way the
+             * js/windows.js getlin twin registers its "query answer" line. */
+            (g._getlin_hist ||= new Set()).add(text);
             /* getline.c:81,213-220 leaves query+answer in gt.toplines unless
              * suppress_history is set; topl.c:106-107 recalls that line first. */
             g._toplEmptyAfterSuppress = false;
@@ -1464,6 +1477,8 @@ export async function menu_search_getlin(frameRows) {
      * part of the prompt, and the cursor sits just past what has been typed. */
     const render = async () => {
         const rows = overlay_flushed_cells((await frameRows()).slice(), gnewCells);
+        if (tornRows > 1)
+            restoreTorn(rows, tornRows);
         /* C ref: getline.c:63,174 — paint the prompt once, then echo edits
          * through putsyms().  The painter retains rows erased by wrapping;
          * trailing blanks are trimmed only when encoding the screen. */
@@ -1482,14 +1497,21 @@ export async function menu_search_getlin(frameRows) {
             /* C ref: getline.c:106-119 msg_window:single (or combination acting
              * like single): "need two initially" tty_doprev_message() calls — the
              * first re-shows gt.toplines, the second recalls the newest history
-             * entry — then keep reading. */
+             * entry — then keep reading.  A recall that wraps to row 1 pages
+             * (topl.c:121-142 redotoplin + more()) and a ^P at that --More--
+             * continues the walk in place (topl.c:115); the walker lives in
+             * js/display.js menu_search_prevmsg_walk (df-xfcc716c3b6: C row 0
+             * "Added hilite" + row 1 "...&inverse--More--", cursor [76,1]). */
             const pw = (g.iflags?.prevmsg_window || 's')[0];
             if (pw === 's' || (pw === 'c' && !doprev)) {
-                const h = hist();
-                if (h.length) {
-                    prevIdx = doprev ? (prevIdx - 1 + h.length) % h.length : h.length - 1;
-                    recall = h[prevIdx];
-                }
+                const st = await menu_search_prevmsg_walk({
+                    hist: hist(), first: !doprev, histShown: doprev,
+                    prevIdx, torn: tornRows, queryLine: query + ' ' + buf,
+                    frameRows, prompt, gnewCells, restore: restoreTorn,
+                });
+                prevIdx = st.prevIdx;
+                tornRows = st.torn;
+                recall = st.recall;
                 doprev = true;
                 continue;
             }
@@ -1517,7 +1539,7 @@ export async function menu_search_getlin(frameRows) {
         }
         /* C ref: getline.c:165-172 — ' ' <= c && c != '\177' && the line still
          * fits (bufp - obufp < BUFSZ - 1 && bufp - obufp < COLNO). */
-        if (keyCode >= 32 && keyCode < 127 && buf.length < COLNO) {
+        if (keyCode >= 32 && keyCode !== 127 && buf.length < COLNO) { /* getline.c:165 */
             buf += String.fromCharCode(keyCode);
             prompt.append(String.fromCharCode(keyCode));
         }

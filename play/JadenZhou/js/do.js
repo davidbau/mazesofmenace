@@ -441,7 +441,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (falling) /* assuming this is only trap door or hole */
         throw new Error('goto_level(): impact_drop() not ported yet');
 
-    check_special_room(true); /* probably was a trap door */
+    await check_special_room(true); /* probably was a trap door */
     /* if (Punished) unplacebc(): punishment not ported */
     /* reset_utrap(FALSE) */
     u.utrap = 0;
@@ -690,7 +690,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     /* print_level_annotation(): a new level has no annotation */
     /* give room entrance message, if any */
-    check_special_room(false);
+    await check_special_room(false);
     /* deliver objects traveling with player */
     /* obj_delivery(TRUE) */
     if (g.migrating_objs)
