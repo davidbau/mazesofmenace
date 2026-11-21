@@ -11,7 +11,8 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { SIZE, TRUE, FALSE } from './const.js';
+import { SIZE, TRUE, FALSE, A_WIS } from './const.js';
+import { exercise } from './attrib.js';
 import { ledger_no, maxledgerno } from './dungeon.js';
 import {
     objects, OBJ_NAME, OBJ_DESCR, NUM_OBJECTS, MAXOCLASSES, NODIR, IMMEDIATE,
@@ -227,6 +228,8 @@ export function init_oclass_probs() {
     let i;
     let sum;
     let oclass;
+    /* go.oclass_prob_totals[MAXOCLASSES] (zeroed at program start) */
+    if (!game.oclass_prob_totals) game.oclass_prob_totals = new Array(MAXOCLASSES).fill(0);
     for (oclass = 0; oclass < MAXOCLASSES; ++oclass) {
         sum = 0;
         /* note: for ILLOBJ_CLASS, bases[oclass+1]-1 isn't the last item
@@ -399,12 +402,27 @@ export function discover_object(oindx, mark_as_known, mark_as_encountered,
         if (!objects[oindx].oc_name_known && mark_as_known) {
             objects[oindx].oc_name_known = 1;
             if (credit_hero)
-                throw new Error('discover_object(): exercise(A_WIS) credit not ported yet');
+                exercise(A_WIS, true);
 
             /* !in_moveloop => initial inventory,
-               gameover => final disclosure; gem_learned() (shop bills) and
-               update_inventory() (perm_invent) have nothing to update */
+               gameover => final disclosure */
+            if (game.program_state?.in_moveloop && !game.program_state?.gameover) {
+                if (objects[oindx].oc_class === GEM_CLASS)
+                    gem_learned(oindx); /* could affect price of unpaid gems */
+                /* update_inventory(): no perm_invent */
+            }
         }
+    }
+}
+
+// C ref: shk.c gem_learned() -- re-price unpaid gems on shop bills; the
+// bill repricing (get_cost()) isn't ported, so stop if any bill is open
+function gem_learned(oindx) {
+    void oindx;
+    for (const shkp of game.level?.monsters || []) {
+        if (shkp.isshk && !(shkp.dead || shkp.mhp <= 0)
+            && shkp.mextra?.eshk?.billct)
+            throw new Error('gem_learned(): repricing shop bills not ported yet');
     }
 }
 

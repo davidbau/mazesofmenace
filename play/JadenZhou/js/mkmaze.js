@@ -10,6 +10,13 @@ import {
     STONE, MAX_TYPE, SDOOR, AIR, LADDER, STAIRS, ICE, isok, IS_LAVA,
 } from './const.js';
 
+// C ref: mkmaze.c makemaz()
+/* special levels (des-file/Lua protofiles), dungeon fill levels (e.g. the
+   Gnomish Mines' minefill) and random mazes */
+export function makemaz(s) {
+    throw new Error(`makemaz("${s}"): special level and maze creation not ported yet`);
+}
+
 // rm.h SET_LIT_RANDOM, SET_LIT_NOCHANGE
 export const SET_LIT_RANDOM = -1;
 export const SET_LIT_NOCHANGE = -2;

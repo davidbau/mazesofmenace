@@ -16,6 +16,8 @@ import {
     P_AXE, P_PICK_AXE, NO_WEAPON_WANTED, NEED_WEAPON, NEED_RANGED_WEAPON,
     NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE, AKLYS_LIM,
     WT_IRON_BALL_INCR, STONE_RES, NON_PM, W_ARM, W_ARMS, W_ARMG, W_WEP,
+    W_ARMC, W_ARMU, W_RINGL, W_RINGR, P_SKILLED, P_LAST_WEAPON, P_LAST_SPELL,
+    P_TWO_WEAPON_COMBAT, A_STR, A_DEX, STR18, TIP_ENHANCE,
 } from './const.js';
 import { objects, WEAPON_CLASS, TOOL_CLASS, GEM_CLASS } from './objects.js';
 import * as O from './objects.js';
@@ -35,6 +37,18 @@ import { Monnam } from './do_name.js';
 import { doname } from './objnam.js';
 import { which_armor } from './worn.js';
 import { mon_hates_silver, mon_hates_blessings } from './mondata.js';
+import { ACURR } from './attrib.js';
+import { adj_lev } from './makemon.js';
+import { handle_tip } from './hack.js';
+import { can_advance, P_NAME, skill_level_name, slots_required } from './insight.js';
+import { NO_COLOR, ATR_NONE } from './terminal.js';
+import { tty_create_nhwindow, tty_start_menu, tty_add_menu, add_menu_str,
+         tty_end_menu, tty_select_menu, tty_destroy_nhwindow,
+         tty_yn_function } from './wintty.js';
+import { add_menu_heading } from './invent.js';
+import { P_SKILL_LIMIT, P_FIRST_SPELL, P_FIRST_H_TO_H, P_LAST_H_TO_H,
+         P_FIRST_WEAPON, NHW_MENU, MENU_BEHAVE_STANDARD, PICK_NONE, PICK_ONE,
+         MAXULEV, MENU_ITEMFLAGS_NONE, ECMD_OK } from './const.js';
 
 function impossible(msg) { console.error(`impossible: ${msg}`); }
 
@@ -465,6 +479,81 @@ export function dmgval(otmp, mon) {
     }
 
     return tmp;
+}
+
+// C ref: weapon.c special_dmgval()
+/* check whether blessed and/or silver damage applies for *non-weapon* hit;
+   return value is the amount of the extra damage; silverhit_p.val gets
+   the output flag mask for silver bonus */
+export function special_dmgval(
+    magr, /* attacker */
+    mdef, /* defender */
+    armask, /* armor mask, multiple bits accepted for
+             * W_ARMC|W_ARM|W_ARMU or
+             * W_ARMG|W_RINGL|W_RINGR only */
+    silverhit_p) /* output flag mask for silver bonus */ {
+    let obj;
+    const left_ring = (armask & W_RINGL) ? true : false,
+        right_ring = (armask & W_RINGR) ? true : false;
+    let silverhit = 0;
+    let bonus = 0;
+
+    obj = null;
+    if (armask & (W_ARMC | W_ARM | W_ARMU)) {
+        if ((armask & W_ARMC) !== 0
+            && (obj = which_armor(magr, W_ARMC)) != null)
+            armask = W_ARMC;
+        else if ((armask & W_ARM) !== 0
+                 && (obj = which_armor(magr, W_ARM)) != null)
+            armask = W_ARM;
+        else if ((armask & W_ARMU) !== 0
+                 && (obj = which_armor(magr, W_ARMU)) != null)
+            armask = W_ARMU;
+        else
+            armask = 0;
+    } else if (armask & (W_ARMG | W_RINGL | W_RINGR)) {
+        armask = ((obj = which_armor(magr, W_ARMG)) != null) ? W_ARMG : 0;
+    } else {
+        obj = which_armor(magr, armask);
+    }
+
+    if (obj) {
+        if (obj.blessed && mon_hates_blessings(mdef))
+            bonus += rnd(4);
+        /* the only silver armor is shield of reflection (silver dragon
+           scales refer to color, not material) and the only way to hit
+           with one--aside from throwing--is to wield it and perform a
+           weapon hit, but we include a general check here */
+        if (objects[obj.otyp].oc_material === O.SILVER
+            && mon_hates_silver(mdef)) {
+            bonus += rnd(20);
+            silverhit |= armask;
+        }
+
+    /* when no gloves we check for silver rings (blessed rings ignored) */
+    } else if ((left_ring || right_ring) && magr === game.youmonst) {
+        if (left_ring && game.uleft) {
+            if (objects[game.uleft.otyp].oc_material === O.SILVER
+                && mon_hates_silver(mdef)) {
+                bonus += rnd(20);
+                silverhit |= W_RINGL;
+            }
+        }
+        if (right_ring && game.uright) {
+            if (objects[game.uright.otyp].oc_material === O.SILVER
+                && mon_hates_silver(mdef)) {
+                /* two silver rings don't give double silver damage
+                   but 'silverhit' messages might be adjusted for them */
+                if (!(silverhit & W_RINGL))
+                    bonus += rnd(20);
+                silverhit |= W_RINGR;
+            }
+        }
+    }
+
+    if (silverhit_p)
+        silverhit_p.val = silverhit;
+    return bonus;
 }
 
 // C ref: mon.c can_touch_safely()
@@ -933,6 +1022,549 @@ export function mwepgone(mon) {
         setmnotwielded(mon, mwep);
         mon.weapon_check = NEED_WEAPON;
     }
+}
+
+/* C ref: youprop.h Upolyd; skills.h martial_bonus() */
+function Upolyd() { return game.u.umonnum !== game.u.umonster; }
+function Role_if(pm) { return game.urole.mnum === pm; }
+function martial_bonus() { return Role_if(M.PM_SAMURAI) || Role_if(M.PM_MONK); }
+
+// C ref: weapon.c abon()
+/* attack bonus for strength & dexterity */
+export function abon() {
+    let sbon;
+    const str = ACURR(A_STR), dex = ACURR(A_DEX);
+
+    if (Upolyd())
+        return (adj_lev(M.mons[game.u.umonnum]) - 3);
+
+    /* this used to be '<= 18/50' for bonus of 1 but got changed to '< 18/50'
+       so that '18/50' gives a bonus of 2; gnome and orc player characters
+       have max Str of 18/50 and giving an extra bonus at that break point
+       provides an incentive for them to max out that characteristic */
+    if (str < 6)
+        sbon = -2;
+    else if (str < 8)
+        sbon = -1;
+    else if (str < 17)
+        sbon = 0;
+    else if (str < STR18(50))
+        sbon = 1; /* up to 18/49 */
+    else if (str < STR18(100))
+        sbon = 2;
+    else
+        sbon = 3;
+
+    /* Game tuning kludge: make it a bit easier for a low level character to
+     * hit */
+    sbon += (game.u.ulevel < 3) ? 1 : 0;
+
+    if (dex < 4)
+        return (sbon - 3);
+    else if (dex < 6)
+        return (sbon - 2);
+    else if (dex < 8)
+        return (sbon - 1);
+    else if (dex < 14)
+        return sbon;
+    else
+        return (sbon + dex - 14);
+}
+
+// C ref: weapon.c dbon()
+/* damage bonus for strength */
+export function dbon() {
+    const str = ACURR(A_STR);
+
+    if (Upolyd())
+        return 0;
+
+    if (str < 6)
+        return -1;
+    else if (str < 16)
+        return 0;
+    else if (str < 18)
+        return 1;
+    else if (str === 18)
+        return 2; /* up to 18 */
+    else if (str <= STR18(75))
+        return 3; /* up to 18/75 */
+    else if (str <= STR18(90))
+        return 4; /* up to 18/90 */
+    else if (str < STR18(100))
+        return 5; /* up to 18/99 */
+    else
+        return 6;
+}
+
+// C ref: weapon.c give_may_advance_msg()
+async function give_may_advance_msg(skill) {
+    await pline(`You feel more confident in your ${
+        (skill === P_NONE) ? ''
+        : (skill <= P_LAST_WEAPON) ? 'weapon '
+          : (skill <= P_LAST_SPELL) ? 'spell casting '
+            : 'fighting '}skills.`);
+    await handle_tip(TIP_ENHANCE);
+}
+
+// C ref: weapon.c use_skill()
+export async function use_skill(skill, degree) {
+    let advance_before;
+
+    if (skill !== P_NONE && !P_RESTRICTED(skill)) {
+        advance_before = can_advance(skill, false);
+        set_P_ADVANCE(skill, P_ADVANCE(skill) + degree);
+        if (!advance_before && can_advance(skill, false))
+            await give_may_advance_msg(skill);
+    }
+}
+
+// C ref: weapon.c add_weapon_skill()
+export async function add_weapon_skill(n) /* number of slots to gain; normally one */ {
+    const u = game.u;
+    let i, before, after;
+
+    for (i = 0, before = 0; i < P_NUM_SKILLS; i++)
+        if (can_advance(i, false))
+            before++;
+    u.weapon_slots = (u.weapon_slots || 0) + n;
+    for (i = 0, after = 0; i < P_NUM_SKILLS; i++)
+        if (can_advance(i, false))
+            after++;
+    if (before < after)
+        await give_may_advance_msg(P_NONE);
+}
+
+// C ref: weapon.c lose_weapon_skill()
+export function lose_weapon_skill(n) /* number of slots to lose; normally one */ {
+    const u = game.u;
+    let skill;
+
+    while (--n >= 0) {
+        /* deduct first from unused slots then from last placed one, if any */
+        if (u.weapon_slots) {
+            u.weapon_slots--;
+        } else if (u.skills_advanced) {
+            skill = u.skill_record[--u.skills_advanced];
+            if (P_SKILL(skill) <= P_UNSKILLED)
+                throw new Error(`lose_weapon_skill (${skill})`); /* panic() */
+            set_P_SKILL(skill, P_SKILL(skill) - 1); /* drop skill one level */
+            /* Lost skill might have taken more than one slot; refund rest. */
+            u.weapon_slots = slots_required(skill) - 1;
+            /* It might now be possible to advance some other pending
+               skill by using the refunded slots, but giving a message
+               to that effect would seem pretty confusing.... */
+        }
+    }
+}
+
+// C ref: weapon.c could_advance()
+/* return true if this skill could be advanced if more slots were available */
+function could_advance(skill) {
+    if (P_RESTRICTED(skill)
+        || P_SKILL(skill) >= P_MAX_SKILL(skill)
+        || (game.u.skills_advanced || 0) >= P_SKILL_LIMIT)
+        return false;
+
+    return (P_ADVANCE(skill)
+            >= practice_needed_to_advance(P_SKILL(skill)));
+}
+
+// C ref: weapon.c peaked_skill()
+/* return true if this skill has reached its maximum and there's been enough
+   practice to become eligible for the next step if that had been possible */
+function peaked_skill(skill) {
+    if (P_RESTRICTED(skill))
+        return false;
+
+    return (P_SKILL(skill) >= P_MAX_SKILL(skill)
+            && (P_ADVANCE(skill)
+                >= practice_needed_to_advance(P_SKILL(skill))));
+}
+
+// C ref: weapon.c skill_advance()
+async function skill_advance(skill) {
+    const u = game.u;
+    u.weapon_slots = (u.weapon_slots || 0) - slots_required(skill);
+    set_P_SKILL(skill, P_SKILL(skill) + 1);
+    if (!u.skill_record)
+        u.skill_record = [];
+    u.skills_advanced = u.skills_advanced || 0;
+    u.skill_record[u.skills_advanced++] = skill;
+    /* subtly change the advance message to indicate no more advancement */
+    await pline(`You are now ${P_SKILL(skill) >= P_MAX_SKILL(skill) ? "most" : "more"
+                } skilled in ${P_NAME(skill)}.`);
+
+    /* wizards discover spellbook IDs depending on spell 'school' skill limits;
+       this allows them to successfully write books for unknown spells without
+       the Luck bias they used to have over other roles */
+    if (skill >= P_FIRST_SPELL && skill <= P_LAST_SPELL)
+        skill_based_spellbook_id();
+}
+
+/* C ref: weapon.c skill_ranges[] */
+const skill_ranges = [
+    { first: P_FIRST_H_TO_H, last: P_LAST_H_TO_H, name: "Fighting Skills" },
+    { first: P_FIRST_WEAPON, last: P_LAST_WEAPON, name: "Weapon Skills" },
+    { first: P_FIRST_SPELL, last: P_LAST_SPELL, name: "Spellcasting Skills" },
+];
+
+/* C ref: wizard (flags.debug) */
+function wizard() { return !!game.flags?.debug; }
+/* C ref: printf "%-*s" and "%5d" field widths */
+function padr(s, w) { return s.length >= w ? s : s + ' '.repeat(w - s.length); }
+function padl(s, w) { s = String(s); return s.length >= w ? s : ' '.repeat(w - s.length) + s; }
+
+// C ref: weapon.c add_skills_to_menu()
+/* write a list of skills onto the given menu
+
+   if selectable is set, give selection letters for skills that can be
+   advanced and leave room for them on skills that can't be advanced */
+function add_skills_to_menu(win, selectable, speedy) {
+    let i, len, longest;
+    let buf, prefix;
+    const clr = NO_COLOR;
+
+    /* Find the longest skill name. */
+    for (longest = 0, i = 0; i < P_NUM_SKILLS; i++) {
+        if (P_RESTRICTED(i))
+            continue;
+        if ((len = P_NAME(i).length) > longest)
+            longest = len;
+    }
+
+    /* List the skills, making ones that could be advanced selectable if
+       selectable is set.  List the miscellaneous skills first.  Possible
+       future enhancement: list spell skills before weapon skills for
+       spellcaster roles. */
+    for (let pass = 0; pass < skill_ranges.length; pass++)
+        for (i = skill_ranges[pass].first; i <= skill_ranges[pass].last;
+             i++) {
+            /* Print headings for skill types */
+            if (i === skill_ranges[pass].first)
+                add_menu_heading(win, skill_ranges[pass].name);
+
+            if (P_RESTRICTED(i))
+                continue;
+            /*
+             * Sigh, this assumes a monospaced font unless
+             * iflags.menu_tab_sep is set in which case it puts
+             * tabs between columns.
+             * The 12 is the longest skill level name.
+             * The "    " is room for a selection letter and dash, "a - ".
+             */
+            if (!selectable)
+                prefix = "";
+            else if (can_advance(i, speedy))
+                prefix = ""; /* will be preceded by menu choice */
+            else if (could_advance(i))
+                prefix = "  * ";
+            else if (peaked_skill(i))
+                prefix = "  # ";
+            else
+                prefix = "    ";
+            const sklnambuf = skill_level_name(i);
+            if (wizard()) {
+                if (!game.iflags.menu_tab_sep)
+                    buf = ` ${prefix}${padr(P_NAME(i), longest)} ${padr(sklnambuf, 12)} ${
+                        padl(P_ADVANCE(i), 5)}(${
+                        padl(practice_needed_to_advance(P_SKILL(i)), 4)})`;
+                else
+                    buf = ` ${prefix}${P_NAME(i)}\t${sklnambuf}\t${
+                        padl(P_ADVANCE(i), 5)}(${
+                        padl(practice_needed_to_advance(P_SKILL(i)), 4)})`;
+            } else {
+                if (!game.iflags.menu_tab_sep)
+                    buf = ` ${prefix} ${padr(P_NAME(i), longest)} [${sklnambuf}]`;
+                else
+                    buf = ` ${prefix}${P_NAME(i)}\t[${sklnambuf}]`;
+            }
+            const any = (selectable && can_advance(i, speedy)) ? i + 1 : 0;
+            tty_add_menu(win, null, any, '', '', ATR_NONE, clr, buf,
+                         MENU_ITEMFLAGS_NONE);
+        }
+}
+
+/* C ref: hack.h plur() */
+function plur(x) { return (x === 1) ? "" : "s"; }
+
+// C ref: weapon.c enhance_weapon_skill()
+/*
+ * The `#enhance' extended command.  What we _really_ would like is
+ * to keep being able to pick things to advance until we couldn't any
+ * more.  This is currently not possible -- the menu code has no way
+ * to call us back for instant action.  Even if it did, we would also need
+ * to be able to update the menu since selecting one item could make
+ * others unselectable.
+ */
+export async function enhance_weapon_skill() {
+    const u = game.u;
+    let i, n, to_advance, eventually_advance, maxxed_cnt;
+    let buf;
+    let speedy = false;
+
+    /* player knows about #enhance, don't show tip anymore */
+    game.context.tips = (game.context.tips || 0) | (1 << TIP_ENHANCE);
+
+    if (wizard() && await tty_yn_function("Advance skills without practice?",
+                                          "yn", 'n') === 'y')
+        speedy = true;
+
+    do {
+        /* count advanceable skills */
+        to_advance = eventually_advance = maxxed_cnt = 0;
+        for (i = 0; i < P_NUM_SKILLS; i++) {
+            if (P_RESTRICTED(i))
+                continue;
+            if (can_advance(i, speedy))
+                to_advance++;
+            else if (could_advance(i))
+                eventually_advance++;
+            else if (peaked_skill(i))
+                maxxed_cnt++;
+        }
+
+        const win = tty_create_nhwindow(NHW_MENU);
+        tty_start_menu(win, MENU_BEHAVE_STANDARD);
+
+        /* start with a legend if any entries will be annotated
+           with "*" or "#" below */
+        if (eventually_advance > 0 || maxxed_cnt > 0) {
+            if (eventually_advance > 0) {
+                buf = `(Skill${plur(eventually_advance)} flagged by "*" may be enhanced ${
+                    (u.ulevel < MAXULEV)
+                        ? "when you're more experienced"
+                        : "if skill slots become available"}.)`;
+                add_menu_str(win, buf);
+            }
+            if (maxxed_cnt > 0) {
+                buf = `(Skill${plur(maxxed_cnt)} flagged by "#" cannot be enhanced any further.)`;
+                add_menu_str(win, buf);
+            }
+            add_menu_str(win, "");
+        }
+
+        add_skills_to_menu(
+            win, to_advance + eventually_advance + maxxed_cnt > 0, speedy);
+
+        buf = (to_advance > 0) ? "Pick a skill to advance:"
+                               : "Current skills:";
+        if (wizard() && !speedy)
+            buf += `  (${u.weapon_slots || 0} slot${plur(u.weapon_slots || 0)} available)`;
+        tty_end_menu(win, buf);
+        const res = await tty_select_menu(win, to_advance ? PICK_ONE : PICK_NONE);
+        n = res.n;
+        await tty_destroy_nhwindow(win);
+        if (n > 0) {
+            n = res.selected[0].item - 1; /* get item selected */
+            await skill_advance(n);
+            /* check for more skills able to advance; if so, then... */
+            for (n = i = 0; i < P_NUM_SKILLS; i++) {
+                if (can_advance(i, speedy)) {
+                    if (!speedy)
+                        await pline("You feel you could be more dangerous!");
+                    n++;
+                    break;
+                }
+            }
+        }
+    } while (speedy && n > 0);
+    return ECMD_OK;
+}
+
+// C ref: weapon.c uwep_skill_type()
+export function uwep_skill_type() {
+    if (game.u.twoweap)
+        return P_TWO_WEAPON_COMBAT;
+    return weapon_type(game.uwep);
+}
+
+// C ref: weapon.c weapon_hit_bonus()
+/*
+ * Return hit bonus/penalty based on skill of weapon.
+ * weapon can be null, meaning bare-handed combat.
+ * Treat restricted weapons as unskilled.
+ */
+export function weapon_hit_bonus(weapon) {
+    let type, skill, bonus = 0;
+    const u = game.u;
+
+    const wep_type = weapon_type(weapon);
+    /* use two weapon skill only if attacking with one of the wielded weapons
+     */
+    type = (u.twoweap && (weapon === game.uwep || weapon === game.uswapwep))
+               ? P_TWO_WEAPON_COMBAT
+               : wep_type;
+    if (type === P_NONE) {
+        bonus = 0;
+    } else if (type <= P_LAST_WEAPON) {
+        switch (P_SKILL(type)) {
+        default:
+            impossible(`weapon_hit_bonus: bad skill ${P_SKILL(type)}`);
+            /* FALLTHRU */
+        case P_ISRESTRICTED:
+        case P_UNSKILLED:
+            bonus = -4;
+            break;
+        case P_BASIC:
+            bonus = 0;
+            break;
+        case P_SKILLED:
+            bonus = 2;
+            break;
+        case P_EXPERT:
+            bonus = 3;
+            break;
+        }
+    } else if (type === P_TWO_WEAPON_COMBAT) {
+        skill = P_SKILL(P_TWO_WEAPON_COMBAT);
+        if (P_SKILL(wep_type) < skill)
+            skill = P_SKILL(wep_type);
+        switch (skill) {
+        default:
+            impossible(`weapon_hit_bonus: bad skill ${skill}`);
+            /* FALLTHRU */
+        case P_ISRESTRICTED:
+        case P_UNSKILLED:
+            bonus = -9;
+            break;
+        case P_BASIC:
+            bonus = -7;
+            break;
+        case P_SKILLED:
+            bonus = -5;
+            break;
+        case P_EXPERT:
+            bonus = -3;
+            break;
+        }
+    } else if (type === P_BARE_HANDED_COMBAT) {
+        /*
+         *        b.h. m.a.
+         * unskl:  +1  n/a
+         * basic:  +1   +3
+         * skild:  +2   +4
+         * exprt:  +2   +5
+         * mastr:  +3   +6
+         * grand:  +3   +7
+         */
+        bonus = P_SKILL(type);
+        bonus = Math.max(bonus, P_UNSKILLED) - 1; /* unskilled => 0 */
+        bonus = Math.trunc(((bonus + 2) * (martial_bonus() ? 2 : 1)) / 2);
+    }
+
+    /* KMH -- It's harder to hit while you are riding */
+    if (u.usteed) {
+        switch (P_SKILL(P_RIDING)) {
+        case P_ISRESTRICTED:
+        case P_UNSKILLED:
+            bonus -= 2;
+            break;
+        case P_BASIC:
+            bonus -= 1;
+            break;
+        case P_SKILLED:
+            break;
+        case P_EXPERT:
+            break;
+        }
+        if (u.twoweap)
+            bonus -= 2;
+    }
+
+    return bonus;
+}
+
+// C ref: weapon.c weapon_dam_bonus()
+/*
+ * Return damage bonus/penalty based on skill of weapon.
+ * weapon can be null, meaning bare-handed combat.
+ * Treat restricted weapons as unskilled.
+ */
+export function weapon_dam_bonus(weapon) {
+    let type, skill, bonus = 0;
+    const u = game.u;
+
+    const wep_type = weapon_type(weapon);
+    /* use two weapon skill only if attacking with one of the wielded weapons
+     */
+    type = (u.twoweap && (weapon === game.uwep || weapon === game.uswapwep))
+               ? P_TWO_WEAPON_COMBAT
+               : wep_type;
+    if (type === P_NONE) {
+        bonus = 0;
+    } else if (type <= P_LAST_WEAPON) {
+        switch (P_SKILL(type)) {
+        default:
+            impossible(`weapon_dam_bonus: bad skill ${P_SKILL(type)}`);
+            /* FALLTHRU */
+        case P_ISRESTRICTED:
+        case P_UNSKILLED:
+            bonus = -2;
+            break;
+        case P_BASIC:
+            bonus = 0;
+            break;
+        case P_SKILLED:
+            bonus = 1;
+            break;
+        case P_EXPERT:
+            bonus = 2;
+            break;
+        }
+    } else if (type === P_TWO_WEAPON_COMBAT) {
+        skill = P_SKILL(P_TWO_WEAPON_COMBAT);
+        if (P_SKILL(wep_type) < skill)
+            skill = P_SKILL(wep_type);
+        switch (skill) {
+        default:
+        case P_ISRESTRICTED:
+        case P_UNSKILLED:
+            bonus = -3;
+            break;
+        case P_BASIC:
+            bonus = -1;
+            break;
+        case P_SKILLED:
+            bonus = 0;
+            break;
+        case P_EXPERT:
+            bonus = 1;
+            break;
+        }
+    } else if (type === P_BARE_HANDED_COMBAT) {
+        /*
+         *        b.h. m.a.
+         * unskl:   0  n/a
+         * basic:  +1   +3
+         * skild:  +1   +4
+         * exprt:  +2   +6
+         * mastr:  +2   +7
+         * grand:  +3   +9
+         */
+        bonus = P_SKILL(type);
+        bonus = Math.max(bonus, P_UNSKILLED) - 1; /* unskilled => 0 */
+        bonus = Math.trunc(((bonus + 1) * (martial_bonus() ? 3 : 1)) / 2);
+    }
+
+    /* KMH -- Riding gives some thrusting damage */
+    if (u.usteed && type !== P_TWO_WEAPON_COMBAT) {
+        switch (P_SKILL(P_RIDING)) {
+        case P_ISRESTRICTED:
+        case P_UNSKILLED:
+            break;
+        case P_BASIC:
+            break;
+        case P_SKILLED:
+            bonus += 1;
+            break;
+        case P_EXPERT:
+            bonus += 2;
+            break;
+        }
+    }
+
+    return bonus;
 }
 
 // C ref: weapon.c setmnotwielded()

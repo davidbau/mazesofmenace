@@ -1045,7 +1045,7 @@ import { cmd_from_func as _binding_cmd_from_func } from './cmd.js'; // relocate-
 import { build_window_screen, menu_search_case, menu_search_docorner } from './com_pager.js'; // relocate-fns
 import { overlay_flushed_cells } from './display.js';
 import { BLINDED, CONFUSION, DEAF, FIRE_RES, FLYING, GLIB, HALLUC, HALLUC_RES, In_endgame, In_sokoban, Is_earthlevel, Is_firelevel as Is_firelevel_cmd, Is_knox_level, LEVITATION, PICK_NONE, PROT_FROM_SHAPE_CHANGERS, SICK, SICK_NONVOMITABLE, SICK_VOMITABLE, SLIMED, STONE, STONED, STUNNED, TIMEOUT, VOMITING, WARN_OF_MON, WWALKING, gs } from './const.js'; // relocate-fns
-import { capture_painted_frame_with_status, docorner_blank_utf8_captures, force_more_pages, map_engraving, map_trap, menu_entry_page } from './display.js';
+import { docorner_blank_utf8_captures, force_more_pages, map_engraving, map_trap, menu_entry_page } from './display.js';
 import { glyph_to_cmap, wizcustom_glyphids, glyphid_cache_status, fill_glyphid_cache, free_glyphid_cache } from './glyphs.js'; // relocate-fns
 import { def_oc_syms_chars } from './drawing.js'; // relocate-fns
 import { Invocation_lev as Invocation_lev_dgn, at_dgn_entrance, on_level, print_branch } from './dungeon.js'; // relocate-fns
@@ -1664,7 +1664,7 @@ export async function wiz_identify() {
                 const savedBotDisabled = g._bot_disabled;
                 g._bot_disabled = true;
                 try {
-                    await docrt();
+                    await docrt(false, g._screen_output);
                     await flush_screen(1);
                 } finally { g._bot_disabled = savedBotDisabled; }
                 g._status1WholeNext = true;
@@ -1688,7 +1688,8 @@ export async function wiz_identify() {
                 }
             }
             g._pending_message = g._pending_message || '';
-            await flush_screen(1);
+            /* C invent.c:3417 returns after selection/identification; the
+             * full-screen dismissal already performed its tty flush. */
             return ECMD_OK;
         }
         windowLines.push('(end)');
@@ -1890,7 +1891,8 @@ export async function wiz_identify() {
         }
         /* After dismiss: erase the window back to the map-only view (docorner). */
         g._pending_message = g._pending_message || '';
-        await flush_screen(1);
+        /* C wintty.c:982,3650-3721: corner dismissal uses row_refresh,
+         * without a separate flush_screen before the handler returns. */
         return ECMD_OK;
     }
     /* C invent.c:3227-3236 — Sprintf(prompt, "Debug Identify") with no
@@ -1944,10 +1946,21 @@ export async function wiz_identify() {
         }
         repaint();
     }
-    /* After dismiss: erase the window back to the map-only view (docorner). */
-    docorner_blank_utf8_captures(WIN_COL - 1, windowLines.length + 1);
     g._pending_message = '';
-    await flush_screen(1);
+    /* wintty.c:971-982: a full-screen menu uses docrt(), while an overlay
+     * restores only its corner. select_menu keeps bot disabled for both. */
+    if (WIN_COL === 1) {
+        const savedBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        try {
+            await docrt(false, g._screen_output);
+            await flush_screen(1);
+        } finally { g._bot_disabled = savedBotDisabled; }
+        g._status1WholeNext = true;
+        g._r1botAfterMap = g.level;
+    } else {
+        docorner_blank_utf8_captures(WIN_COL - 1, windowLines.length + 1);
+    }
     } finally {
         /* C ref: wizcmds.c:54 `iflags.override_ID = 0;` — restored on every
          * exit from the command, including the ones this port takes by throw. */
@@ -2325,10 +2338,10 @@ export async function wiz_intrinsic() {
             continue;                               /* wizcmds.c:975 */
         if (p === FIRE_RES)
             mlist.push({ str: '--', selectable: false }); /* wizcmds.c:981 */
-        /* HDeaf lives in the flat u.HDeaf slot on the live path (music.js drum,
-         * allmain.js nh_timeout_deaf), not in uprops[DEAF].intrinsic. */
-        const oldtimeout = (((u.uprops[p]?.intrinsic | 0)
-                             | (p === DEAF ? (u.HDeaf | 0) : 0)) & TIMEOUT);
+        /* C has one HDeaf. Rotten food can extend the live flat timer without
+         * updating its legacy mirror; combining those numbers invents bits. */
+        const oldtimeout = ((p === DEAF ? (u.HDeaf ?? u.uprops[p]?.intrinsic)
+                                        : u.uprops[p]?.intrinsic) | 0) & TIMEOUT;
         /* C: Sprintf(buf, "%-27s [%li]", propname, oldtimeout) */
         const buf = oldtimeout
             ? `${propname.padEnd(27)} [${oldtimeout}]`
@@ -2347,20 +2360,17 @@ export async function wiz_intrinsic() {
      * blank status rows (same latch as tty_menu.js's dismissal). */
     g._statusBlankAfterDocrt = true;
     try {
-        await docrt();
+        /* wintty.c:978 redraws while the dismissed menu is still physical.
+         * vision_recalc(2)'s diagnostics precede cls() and flush only dirty
+         * glyphs over those rows (display.c:1740-1748). */
+        await docrt(false, g._screen_output);
         await flush_screen(1);
     } finally { g._bot_disabled = savedBotDisabled; }
     g._status1WholeNext = true;
     g._r1botAfterMap = g.level; /* same ordering as _dismissMenu: bot() rewrites row 1 after the map */
-    /* The physical frame the closing docrt()'s --More-- will page over.
-     * C wizcmds.c:1098 docrt() -> display.c:1748 cls() -> display.c:2196
-     *     display_nhwindow(WIN_MESSAGE, FALSE);   <- wintty.c:1874-1875 more()
-     *     disp.botlx = TRUE;                      <- only AFTER that more()
-     * so nothing repaints between the last pline and that page: the physical
-     * screen still holds whatever the last flush_screen()/bot() put there.
-     * Which arm that was is decided per iteration, below; null means "the arm
-     * repainted", i.e. render live. */
-    let frozenPaint = null;
+    /* C wizcmds.c:1007-1098 applies the properties, then docrt(). The shared
+     * pline/cls pager retains the physical frames at C's flush points,
+     * including status changes which have not yet reached the terminal. */
     for (const pick of (picks || [])) {
         const p = pick.item.prop;
         const propname = property_by_index(pick.item.propIdx)[1];
@@ -2368,8 +2378,8 @@ export async function wiz_intrinsic() {
         /* stands in for C's `goto def_feedback` (wizcmds.c:1065, 1073, 1076) —
          * WARN_OF_MON jumps into the default arm and GLIB falls through to it. */
         let def_feedback = false;
-        /* C has ONE HDeaf; here it can live in the flat u.HDeaf (menu builder above). */
-        const oldtimeout = ((prop.intrinsic | 0) | (p === DEAF ? (u.HDeaf | 0) : 0)) & TIMEOUT;
+        /* wizcmds.c:1001 reads the same single timer used to build the menu. */
+        const oldtimeout = ((p === DEAF ? (u.HDeaf ?? prop.intrinsic) : prop.intrinsic) | 0) & TIMEOUT;
         /* C: amt = (count == -1L) ? DEFAULT_TIMEOUT_INCR : count; if (amt <= 0) continue */
         const amt = (pick.count === -1) ? DEFAULT_TIMEOUT_INCR
             : typeof pick.count === 'bigint' ? Number(BigInt.asIntN(32, pick.count))
@@ -2387,18 +2397,6 @@ export async function wiz_intrinsic() {
          * of those arms has its own message (and SICK has its own rn2(2)), so a
          * silent fallthrough to the `default` arm would print the wrong topline
          * AND, for SICK, drop an RNG call. */
-        /* make_sick (potion.c:150-163) plines "You feel deathly sick." BEFORE
-         * set_itimeout(&Sick)/u.usick_type/disp.botl, so SICK is STALE too. */
-        const armLeavesStatusStale = (p === BLINDED || p === STUNNED
-                                      || p === SICK);
-        let postArmPaint = null;
-        /* An earlier arm's frozen frame is still what the terminal holds: no
-         * flush_screen() runs between arms (make_stunned's SET_BOTL waits for
-         * the next pline), so re-capturing here would act as a flush and
-         * latch the earlier arm's Stun into _lastPaintedBotl, which the
-         * closing page then shows. */
-        const preArmPaint = armLeavesStatusStale
-            ? (frozenPaint || capture_painted_frame_with_status()) : null;
         switch (p) {
         case BLINDED:
             await make_blinded(newtimeout, true);
@@ -2492,28 +2490,7 @@ export async function wiz_intrinsic() {
             g.disp.botl = 1;
             await pline(`Timeout for ${propname} `
                 + `${oldtimeout ? 'increased by' : 'set to'} ${amt}.`);
-            /* float_vs_flight() runs only after this pline (wizcmds.c:1086-1088),
-             * so the bot() above painted Flying not yet blocked by Levitation:
-             * C's page reads "Fly Lev", the post-fixup state reads "Lev". */
-            /* rescham() likewise queues revealed mimic glyphs after the pline
-             * (wizcmds.c:1083-1084; mon.c:4409-4426).  cls() pages the message
-             * before flushing those glyphs, retaining the disguised map. */
-            if (p === LEVITATION || p === FLYING || p === PROT_FROM_SHAPE_CHANGERS)
-                postArmPaint = capture_painted_frame_with_status();
         }
-        /* The LAST arm decides: a later repainting arm discharges an earlier
-         * arm's freeze, exactly as its bot() would in C. */
-        /* A BLINDED arm that merely extends a running blindness (potion.c:
-         * xtime && old) neither plines nor flags botl, so it discharges
-         * nothing: the physical frame an earlier stale arm froze stays. */
-        /* make_deaf (potion.c:450-456) flags botl and speaks only when
-         * (xtime != 0) ^ (old != 0); extending a running deafness is silent. */
-        if (((p === BLINDED && (oldtimeout | 0) !== 0)
-             || (p === DEAF && (oldtimeout | 0) !== 0 && (newtimeout | 0) !== 0))
-            && frozenPaint) {
-            /* keep the earlier arm's frozen frame */
-        } else
-            frozenPaint = armLeavesStatusStale ? preArmPaint : postArmPaint;
         /* C wizcmds.c:1086-1094 — the post-arm fixups.  Note C's `else if`: a
          * property is never both LEVITATION/FLYING and
          * PROT_FROM_SHAPE_CHANGERS, but the shape is preserved. */
@@ -2537,14 +2514,8 @@ export async function wiz_intrinsic() {
         && String(g._pending_message).startsWith(pendingAtCls + '  ');
     let standing = false;
     if (g._pending_message) {
-        /* Page the topline over the frame C's physical terminal still holds --
-         * see frozenPaint above.  Null on every arm that repainted, so those
-         * pages stay byte-identical. */
-        const savedSnap = g._paintedSnapshot;
-        if (frozenPaint) g._paintedSnapshot = frozenPaint;
         standing = !!await force_more_pages(g._pending_message, true, false,
                                             postCls ? pendingAtCls : null);
-        if (frozenPaint) g._paintedSnapshot = savedSnap || null;
     }
     if (!standing) g._pending_message = '';
     /* C wizcmds.c:1092-1095: docrt() then return ECMD_OK — no flush_screen here;

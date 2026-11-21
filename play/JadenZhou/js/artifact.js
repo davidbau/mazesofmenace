@@ -3,10 +3,9 @@
 //
 // Ported so far: the artilist[] table, init_artifacts()/hack_artifacts(),
 // artifact_name(), exist_artifact(), artifact_exists(), artifact_origin(),
-// found_artifact(), nartifact_exist(), artiname(), what_gives().
-// Artifact powers (spec_abon,
-// spec_dbon, touch_artifact, invoke, ...), mk_artifact() and artidisco[]
-// are not ported yet.
+// found_artifact(), nartifact_exist(), artiname(), what_gives(),
+// mk_artifact(). Artifact powers (spec_abon, spec_dbon, touch_artifact,
+// invoke, ...) and artidisco[] are not ported yet.
 
 import { game } from './gstate.js';
 import { strncmpi, strcmpi, fuzzymatch } from './hacklib.js';
@@ -27,6 +26,10 @@ import { aligns } from './role.js';
 import { NROFARTIFACTS, ART_EXCALIBUR, ART_NONARTIFACT,
          AFTER_LAST_ARTIFACT } from './artilist.js';
 import { rn2 } from './rng.js';
+import { P_MAX_SKILL } from './weapon.js';
+import { P_SKILLED, P_BASIC, ONAME_NO_FLAGS } from './const.js';
+import { mksobj, permapoisoned } from './mkobj.js';
+import { oname } from './do_name.js';
 
 // C ref: artifact.h SPFX_*
 export const SPFX_NONE = 0x00000000;
@@ -308,6 +311,169 @@ export function init_artifacts() {
     hack_artifacts();
 }
 
+// C ref: artifact.c dispose_of_orig_obj()
+/* discard an object passed to mk_artifact() along with an alignment */
+function dispose_of_orig_obj(obj) {
+    if (!obj)
+        return;
+
+    /* obj_extract_self(obj); obfree(obj, (struct obj *) 0); */
+    throw new Error('dispose_of_orig_obj(): obj_extract_self()/obfree() not ported yet');
+}
+
+// C ref: artifact.c mk_artifact()
+/*
+ * Make an artifact.  If a specific alignment is specified, then an object of
+ * the appropriate alignment is created from scratch, or 0 is returned if
+ * none is available.  (If at least one aligned artifact has already been
+ * given, then unaligned ones also become eligible for this.)
+ * If no alignment is given, then 'otmp' is converted
+ * into an artifact of matching type, or returned as-is if that's not
+ * possible.
+ * For the 2nd case, caller should use ``obj = mk_artifact(obj, A_NONE);''
+ * for the 1st, ``obj = mk_artifact((struct obj *)0, some_alignment);''.
+ * max_giftvalue is the maximum gift_value of an artifact that is allowed
+ * to be generated. Normally set to 6 for a sacrifice gift, or 99 otherwise.
+ */
+export function mk_artifact(
+    otmp,          /* existing object; ignored and disposed of
+                    * if alignment specified */
+    alignment,     /* target alignment, or A_NONE */
+    max_giftvalue, /* cap on generated giftvalue */
+    adjust_spe)    /* whether to add spe to situational artifacts */
+{
+    const arts = artilist();
+    const arex = artiexist();
+    let a;
+    let m, n, altn;
+    const by_align = (alignment !== A_NONE);
+    const o_typ = (by_align || !otmp) ? 0 : otmp.otyp;
+    const unique = !by_align && otmp && O.objects[o_typ].oc_unique;
+    const eligible = new Array(NROFARTIFACTS).fill(0);
+    let skill_compatibility;
+
+    n = altn = 0;    /* no candidates found yet */
+    eligible[0] = 0; /* lint suppression */
+    /* gather eligible artifacts */
+    for (m = 1, a = arts[m]; a.otyp; a = arts[++m]) {
+        if (arex[m].exists)
+            continue;
+        if ((a.spfx & SPFX_NOGEN) || unique)
+            continue;
+        if (a.gift_value > max_giftvalue && !(game.urole.mnum === a.role))
+            continue;
+
+        if (!by_align) {
+            /* looking for a particular type of item; not producing a
+               divine gift so we don't care about role's first choice */
+            if (a.otyp === o_typ)
+                eligible[n++] = m;
+            continue; /* move on to next possibility */
+        }
+
+        /* we're looking for an alignment-specific item
+           suitable for hero's role+race */
+        if ((a.alignment === alignment || a.alignment === A_NONE)
+            /* avoid enemies' equipment */
+            && (a.race === NON_PM
+                || !((M.mons[a.race].mflags2 & game.urace.hatemask) !== 0))) {
+            /* when a role-specific first choice is available, use it */
+            if (game.urole.mnum === a.role) {
+                /* make this be the only possibility in the list */
+                eligible[0] = m;
+                n = 1;
+                break; /* skip all other candidates */
+            }
+
+            /* check if this is skill-compatible */
+            skill_compatibility = P_SKILLED;
+            if (O.objects[a.otyp].oc_class === O.WEAPON_CLASS) {
+                const skill = O.objects[a.otyp].oc_skill;
+                if (skill < 0)
+                    skill_compatibility = P_MAX_SKILL(-skill);
+                else
+                    skill_compatibility = P_MAX_SKILL(skill);
+            }
+
+            /* found something to consider for random selection */
+            if ((a.alignment !== A_NONE || game.u.ugifts > 0 || !rn2(3))
+                && (!rn2(4) || skill_compatibility >= P_SKILLED
+                    || (skill_compatibility >= P_BASIC && rn2(2)))) {
+                /* right alignment, or non-aligned with at least 1
+                   previous gift bestowed, makes this one viable;
+                   unaligned artifacts are possible even as the first
+                   gift, but less likely; if it's a bad weapon type
+                   for the role that also makes it less likely */
+                eligible[n++] = m;
+            } else {
+                /* if no candidates have been found yet, record
+                   this one as a[nother] fallback possibility in
+                   case all aligned candidates have been used up
+                   (via wishing, naming, bones, random generation)
+                   or failed the randomized compatibility checks */
+                if (!n)
+                    eligible[altn++] = m;
+                /* [once a regular candidate is found, the list
+                   is overwritten and `altn' becomes irrelevant] */
+            }
+        }
+    }
+
+    /* resort to fallback list if main list was empty */
+    if (!n)
+        n = altn;
+
+    if (n) {
+        /* found at least one candidate; pick one at random */
+        m = eligible[rn2(n)]; /* [0..n-1] */
+        a = arts[m];
+
+        /* make an appropriate object if necessary, then christen it */
+        if (by_align) {
+            /* 'by_align' indicates that an alignment was passed as
+             * an argument, but also that the 'otmp' argument is not
+             * relevant */
+            const artiobj = mksobj(a.otyp, true, false);
+
+            /* nonnull value of 'otmp' is unexpected. Cope. */
+            if (otmp) /* just in case; avoid orphaning */
+                dispose_of_orig_obj(otmp);
+            otmp = artiobj;
+        }
+        /*
+         * otmp should be nonnull at this point:
+         * either the passed argument (if !by_align == A_NONE), or
+         * the result of mksobj() just above if by_align is an alignment. */
+        /* prevent erosion from generating */
+        otmp.oeroded = otmp.oeroded2 = 0;
+        otmp = oname(otmp, a.name, ONAME_NO_FLAGS);
+        otmp.oartifact = m;  /* probably already set by this point, but */
+        /* set existence and reason for creation bits */
+        artifact_origin(otmp, ONAME_RANDOM); /* 'random' is default */
+        if (adjust_spe) {
+            /* Adjust artiobj->spe by a->gen_spe. (This is a no-op for
+               non-weapons, which always have a gen_spe of 0, and for many
+               weapons, too.) The result is clamped into the "normal" range to
+               prevent an outside chance of +12 artifacts generating. */
+            const new_spe = otmp.spe + a.gen_spe;
+            if (new_spe >= -10 && new_spe < 10)
+                otmp.spe = new_spe;
+        }
+    } else {
+        /* nothing appropriate could be found; return original object */
+        if (by_align && otmp) {
+            /* (there shouldn't have been an original object). Deal with it.
+             * The callers that passed an alignment and a NULL otmp are
+             * prepared to get a potential NULL return value, so this is okay */
+            dispose_of_orig_obj(otmp);
+            otmp = null;
+        } /* otherwise, otmp has not changed; just fallthrough to return it */
+    }
+    if (otmp && permapoisoned(otmp))
+        otmp.opoisoned = 1;
+    return otmp;
+}
+
 // C ref: artifact.c artiname()
 export function artiname(artinum) {
     if (artinum <= 0 || artinum > NROFARTIFACTS)
@@ -504,6 +670,13 @@ export function get_artifact(obj) {
             return arts[artidx];
     }
     return arts[ART_NONARTIFACT];
+}
+
+// C ref: artifact.c spec_ability()
+export function spec_ability(otmp, abil) {
+    const arti = get_artifact(otmp);
+
+    return (arti !== artilist()[ART_NONARTIFACT] && (arti.spfx & abil) !== 0);
 }
 
 // C ref: artifact.c spec_applies() -- the SPFX_DBONUS cases (all that

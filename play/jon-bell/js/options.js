@@ -676,7 +676,12 @@ export async function optfn_boulder_set(op) {
         await pline('%s%s%s', game.iflags.window_inited ? '' : 'config_error_add: ',
             message, '.!?'.includes(last) ? '' : '.');
     }
-    if (changed) (game.go ||= {}).opt_need_redraw = true;
+    if (changed) {
+        const idx = SYM_OFFSETS.X + SYM_BOULDER;
+        const sym = game.go?.ov_primary_syms?.[idx];
+        if (sym && gs.showsyms) gs.showsyms[idx] = sym;
+        (game.go ||= {}).opt_need_redraw = true;
+    }
     return changed;
 }
 
@@ -692,7 +697,11 @@ export function compound_option_value(name) {
         const value = game.flags?.end_disclose || END_DISCLOSE_DEFAULT;
         return [...DISCLOSURE_OPTIONS].map((c, i) => value[i] + c).join(' ');
     }
-    if (name === 'boulder') return game.symbolOverrides?.S_boulder || '`';
+    if (name === 'boulder') {
+        const b = game.go?.ov_primary_syms?.[SYM_OFFSETS.X + SYM_BOULDER]
+            || gs.showsyms?.[SYM_OFFSETS.O + 14 /* ROCK_CLASS */];
+        return b ? String.fromCharCode(b) : (game.symbolOverrides?.S_boulder || '`');
+    }
     /* C options.c:3025-3040 optfn_paranoid_confirmation get_val: paranoia[]
      * table order; bones hidden during play except wizard mode; "none" if
      * no bits are set. */
@@ -1987,7 +1996,7 @@ export function parseNethackrc(rc) {
     const primaryOverrides = game.go?.ov_primary_syms || [];
     for (const sp of LOADSYMS) {
         const value = primaryOverrides[sp.idx];
-        if (sp.range !== 1 && value && gs.showsyms?.[sp.idx] === value)
+        if (sp.range !== 1 && value && (gs.showsyms?.[sp.idx] === value || sp.idx === SYM_OFFSETS.X + SYM_BOULDER))
             byteOverrides['S_' + sp.name.slice(2).toLowerCase()] = String.fromCharCode(value);
     }
     const rogueBoulder = game.go?.ov_rogue_syms?.[SYM_OFFSETS.X + 2];
@@ -3333,6 +3342,23 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false, prompted = fal
             // typed the class symbol directly
             if (cur.has(ch)) cur.delete(ch); else cur.add(ch);
             marks.set(ch, cur.has(ch) ? (counting && count > 0 ? '\x01#' : '\x01+') : '\x01-');
+            continue;
+        }
+        /* C ref: wintty.c:1519-1535,1553 + getline.c:230-257 xwaitforspace(resp)
+         * -- a key outside resp (this page's a..o/A selectors, the class-symbol
+         * group accelerators, ' ', digits, ESC, \n, \r, mapped_menu_cmds and
+         * the default menu cmds ^|><.-@,~:) rings the bell and is re-read
+         * INSIDE the wait, so process_menu_window's loop never turns over for
+         * it and a live count survives ("20" then a bogus letter then ESC only
+         * stops the count, wintty.c:1602-1613; the SECOND ESC cancels —
+         * df-xc668a1dfb8 steps 12-18).  A key inside resp that does nothing
+         * here (the ^|>< page commands on this one-page menu) still turns the
+         * loop over and drops the count. */
+        if (ch !== ' ' && ch !== 'A' && !(ch >= '0' && ch <= '9')
+            && !symByAcc.has(ch) && !symSet.has(ch)
+            && '^|><.-@,\\~:'.indexOf(ch) < 0
+            && (g.mapped_menu_cmds || '').indexOf(ch) < 0) {
+            reset_count = false; /* the loop never turned over: keep the count */
             continue;
         }
         // ignore any other key (menu stays displayed)

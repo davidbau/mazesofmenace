@@ -18,8 +18,11 @@ import { parseNethackrc, set_playmode, parsebindings,
 import { reset_commands } from './cmd.js';
 import { wd_message } from './sys.js';
 import { plnamesuffix } from './role.js';
-import { tty_init_nhwindows, tty_player_selection } from './wintty.js';
-import { flush_screen } from './display.js';
+import { tty_init_nhwindows, tty_player_selection, tty_yn_function } from './wintty.js';
+import { flush_screen, pline } from './display.js';
+import { init_vision_globals } from './vision.js';
+import { getlock, restore_saved_game, delete_savefile } from './files.js';
+import { dorecover } from './restore.js';
 import { GameDisplay } from './game_display.js';
 import { fruitadd } from './objnam.js';
 import { objects, OBJ_NAME, SLIME_MOLD } from './objects.js';
@@ -94,6 +97,11 @@ export class NethackGame {
 
         // C ref: unixmain.c main() calls early_init() first
         early_init();
+        /* the playground: save files (and the bones and record files) are
+           kept in the storage the judge shares between a session's
+           segments (storage.js reads game.mockStorage) */
+        if (this._storage)
+            g.mockStorage = this._storage;
 
         // Parse nethackrc (sets flags.initrole, initrace, initgend,
         // initalign and female as options.c does)
@@ -130,9 +138,11 @@ export class NethackGame {
         g.configfile = '.nethackrc';
 
         // Initialize hero struct (zeroed again by u_init_misc())
-        g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0,
+        g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0, uz: { dnum: 0, dlevel: 0 },
                 uroleplay: { ...dflt.uroleplay, ...opts.uroleplay } };
         g.context = { move: 0 };
+        /* C ref: decl.c -- hero_seq starts at 1L << 3 (moves*8 + n, moves 1) */
+        g.hero_seq = 1 << 3;
         g.program_state = {};
         /* C ref: options.c initoptions_init() -- default fruit name;
            initoptions_finish() -- fruitadd(pl_fruit) */
@@ -167,16 +177,55 @@ export class NethackGame {
            or holds a generic user name like "player" or "games" */
         await plnamesuffix();
 
-        /* new game:  start by choosing role, race, etc */
-        await tty_player_selection();
+        /*
+         * Initialize the vision system.  This must be before mklev() on a
+         * new game or before a level restore on a saved game.
+         */
+        init_vision_globals();
 
-        // Run game startup
-        await newgame();
-        await wd_message();
-        /* C ref: unixmain.c main() -> moveloop(0) -> moveloop_preamble();
-           the caller drives moveloop_core() itself */
-        await moveloop_preamble(false);
-        await maybe_do_tutorial();
+        /*
+         * First, try to find and restore a save file for specified character.
+         */
+        let resuming = false; /* assume new game */
+        /* attempt_restore: */
+        if (g.plname)
+            getlock();
+        let nhfp;
+        if (g.plname && (nhfp = restore_saved_game()) !== null) {
+            /* chmod(fq_save, 0): disallow parallel restores -- n/a */
+            /* if there are early trouble-messages issued, let's
+             * not go overtop of them with a pline just yet
+             * (ge.early_raw_messages: none in the JS port) */
+            await pline("Restoring save file...");
+            /* mark_synch(): flush output */
+            if (await dorecover(nhfp)) {
+                resuming = true; /* not starting new game */
+                await wd_message();
+                if (g.flags.explore || g.flags.debug) {
+                    /* this seems like a candidate for paranoid_confirmation... */
+                    if ((await tty_yn_function("Do you want to keep the save file?", "yn", 'n')) === 'n')
+                        delete_savefile();
+                    /* else chmod(fq_save, FCMASK); nh_compress(fq_save) */
+                }
+            }
+        }
+
+        if (!resuming) {
+            /* new game:  start by choosing role, race, etc */
+            await tty_player_selection();
+            /* a hero named only now (askname()) gets the save file lookup
+               above in C (goto attempt_restore); not modelled yet */
+
+            // Run game startup
+            /* no save file; start a new game */
+            await newgame();
+            await wd_message();
+        }
+        /* C ref: unixmain.c main() -> moveloop(resuming) ->
+           moveloop_preamble(); the caller drives moveloop_core() itself */
+        await moveloop_preamble(resuming);
+        if (!resuming)
+            await maybe_do_tutorial();
     }
 
     _installCaptureHook() {
@@ -268,6 +317,11 @@ export async function runSegment(input) {
     const stop = (e) => {
         const msg = String(e?.message || e);
         if (msg.includes('Input queue empty')) return;
+        /* the game ended the program (save, quit, death): nh_terminate() */
+        if (e?.nhexit) {
+            nhGame.exited = true;
+            return;
+        }
         if (msg.includes('not ported yet')) nhGame.notPortedError = e;
         nhGame.stopError = e;
     };

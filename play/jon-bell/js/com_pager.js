@@ -157,7 +157,7 @@ function render_map_row_clipped(y, clipX) {
      * (blank after a cls) -- the same rule as js/display.js _snapCellAt. */
     const cellAt = (x) => {
         const loc = game.level.at(x, y);
-        const held = unflushed_forced_cell(x, y) ?? levelgen_frozen_cell(x, y);
+        const held = levelgen_frozen_cell(x, y) ?? unflushed_forced_cell(x, y);
         if (held) return { disp_ch: held.ch, disp_color: held.color,
                            disp_decgfx: held.dec, disp_attr: held.attr };
         if (loc?.disp_capture_cell) {

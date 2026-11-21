@@ -12,7 +12,7 @@ import { game } from './gstate.js';
 import { pline, newsym, flush_screen } from './display.js';
 import { tty_putstr, tty_clear_nhwindow } from './wintty.js';
 import { nhgetch } from './input.js';
-import { handle_tip } from './hack.js';
+import { handle_tip, is_valid_travelpt } from './hack.js';
 import { movecmd_mode, MV_WALK, MV_RUSH, MV_RUN, cmd_from_func } from './cmd.js';
 import { do_screen_description } from './pager.js';
 import { COLNO, ROWNO, TIP_GETPOS, TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY } from './const.js';
@@ -25,6 +25,30 @@ const HiliteNormalMap = 0, HiliteGoodposSymbol = 1, HiliteBackground = 2;
 const LOOK_TRADITIONAL = 0, LOOK_QUICK = 1, LOOK_ONCE = 2, LOOK_VERBOSE = 3;
 
 function sgn(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
+
+/* C ref: defsym.h PCHAR()/PCHAR2() -- defsyms[].sym, S_stone .. S_expl_br */
+const DEFSYM_CHARS = [
+    ' ', '|', '-', '-', '-', '-', '-', '-', '-', '-', '|', '|', /* S_stone..S_trwall */
+    '.', '-', '|', '+', '+', '#', '#', '.', '.', '`', '#', '#', '#', /* ..S_engrcorr */
+    '<', '>', '<', '>', '<', '>', '<', '>',                       /* stairs, ladders */
+    '_', '|', '\\', '{', '{', '}', '.', '}', '}', '.', '.', '#', '#', ' ', '#', '}',
+    '^', '^', '^', '^', '^', '^', '^', '^', '^', '^', '^', '^', '^', '^', '^',
+    '^', '^', '"', '^', '^', '^', '^', '~', '^', '^',             /* traps */
+    '|', '-', '\\', '/', '*', '!', ')', '(', '0', '#', '@', '*', '#', '$',
+    '/', '-', '\\', '|', '|', '\\', '-', '/',                      /* swallow */
+    '/', '-', '\\', '|', ' ', '|', '\\', '-', '/',                 /* explosion */
+];
+const S_trwall = 11, S_ndoor = 12, S_vodoor = 13, S_hcdoor = 16,
+    S_room = 19, S_darkroom = 20, S_engroom = 21, S_corr = 22, S_litcorr = 23,
+    S_engrcorr = 24, S_arrow_trap = 49, S_trapped_chest = 73, S_vbeam = 74,
+    S_poisoncloud = 86;
+
+/* C ref: hacklib.c visctrl() */
+function visctrl(c) {
+    if (c < 0x20) return `^${String.fromCharCode(c + 0x40)}`;
+    if (c === 0x7f) return "^?";
+    return String.fromCharCode(c);
+}
 
 function gp() {
     if (!game.getpos_state)
@@ -114,9 +138,9 @@ export async function auto_describe(cx, cy) {
         const autodescribe = game.iflags?.autodescribe !== false;
         const msg = `${firstmatch}${tmpbuf ? " " : ""}${tmpbuf}`
             + `${(autodescribe && st.getvalid && !(await st.getvalid(cx, cy)))
-                 ? " (invalid target)" : ""}`;
-        /* iflags.getloc_travelmode: " (no travel path)" -- travel isn't
-           ported */
+                 ? " (invalid target)" : ""}`
+            + `${(game.iflags?.getloc_travelmode && !(await is_valid_travelpt(cx, cy)))
+                 ? " (no travel path)" : ""}`;
         /* custompline(SUPPRESS_HISTORY | OVERRIDE_MSGTYPE | NO_CURS_ON_U) */
         await flush_screen(0);
         await tty_putstr(game.WIN_MESSAGE, 0, msg);
@@ -238,12 +262,91 @@ export async function getpos(ccp, force, goal) {
             [cx, cy] = truncate_to_map(cx, cy, dx, dy);
         } else if (" \r\n".includes(ch) && c !== 0) { /* quitchars */
             if (!force) {
-                /* pline("Done.") ... */
-                throw new Error('getpos(): non-forced quit not ported yet');
+                await pline("Done.");
+                msg_given = false; /* suppress clear */
+                cx = -1;
+                cy = 0;
+                result = 0; /* not -1 */
+                break;
             }
             /* force: goto nxtc */
-        } else {
+        } else if (c === 0x40) { /* gc.Cmd.spkeys[NHKF_GETPOS_SELF] '@' */
+            /* reset 'm&M', 'o&O', &c: the gathering isn't ported */
+            cx = u.ux;
+            cy = u.uy;
+        } else if ("?\x12$#\"!*mMoOdDxXaAzZ".includes(ch)) {
             throw new Error(`getpos(): key '${ch}' not ported yet`);
+        } else {
+            /* !strchr(quitchars, c): the quitchars were handled above */
+            let k = 0;
+            const matching = new Array(DEFSYM_CHARS.length).fill(0);
+
+            for (let sidx = 0; sidx < DEFSYM_CHARS.length; sidx++) {
+                /* don't even try to match some terrain: walls, room... */
+                if (sidx <= S_trwall /* is_cmap_wall() */
+                    || (sidx >= S_room && sidx <= S_darkroom) /* is_cmap_room() */
+                    || (sidx >= S_corr && sidx <= S_litcorr) /* is_cmap_corr() */
+                    || (sidx >= S_vodoor && sidx <= S_hcdoor) /* is_cmap_door() */
+                    || sidx === S_ndoor)
+                    continue;
+                /* c == gs.showsyms[sidx]: the DECgraphics symbols all have
+                   the high bit set, so only the defaults can match a key */
+                if (ch === DEFSYM_CHARS[sidx]
+                    /* have '^' match webs and vibrating square or any
+                       other trap that uses something other than '^' */
+                    || (ch === '^' && sidx >= S_arrow_trap
+                        && sidx <= S_trapped_chest) /* is_cmap_trap() */
+                    /* have room engraving character (default '`')
+                       match corridor engravings (default '#') too */
+                    || (ch === DEFSYM_CHARS[S_engroom]
+                        && (sidx === S_engroom || sidx === S_engrcorr)))
+                    matching[sidx] = ++k;
+            }
+            if (k) {
+                /* pass 0: just past current pos to lower right;
+                   pass 1: upper left corner to current pos; at each spot
+                   C checks glyph_at(), the remembered levl[][].glyph and
+                   back_to_glyph() for a matching cmap symbol.  The JS map
+                   keeps those glyphs without their cmap index, so only a
+                   search for symbols none of them can hold is ported: the
+                   transient zap/shield/explosion/swallow and getpos
+                   symbols (S_vbeam .. S_expl_br except S_poisoncloud) are
+                   only ever drawn with tmp_at() and never left in gbuf or
+                   remembered, so such a search always fails */
+                for (let sidx = 0; sidx < DEFSYM_CHARS.length; sidx++)
+                    if (matching[sidx] && (sidx < S_vbeam || sidx === S_poisoncloud))
+                        throw new Error(`getpos(): dungeon feature search for '${ch}' not ported yet`);
+                await pline(`Can't find dungeon feature '${ch}'.`);
+                msg_given = true;
+                /* goto nxtc */
+                game.getposx = cx;
+                game.getposy = cy;
+                curs_map(cx, cy);
+                await flush_screen(0);
+                continue;
+            } else {
+                let note;
+
+                if (!force)
+                    note = "aborted";
+                else /* hjkl */
+                    note = `use '${visctrl(cmd_from_func("do_move_west"))}', `
+                           + `'${visctrl(cmd_from_func("do_move_south"))}', `
+                           + `'${visctrl(cmd_from_func("do_move_north"))}', `
+                           + `'${visctrl(cmd_from_func("do_move_east"))}' or `
+                           + `'${pick_chars[0]}'`; /* NHKF_GETPOS_PICK */
+                await pline(`Unknown direction: '${visctrl(c)}' (${note}).`);
+                msg_given = true;
+            } /* k => matching */
+            if (!force) {
+                await pline("Done.");
+                msg_given = false; /* suppress clear */
+                cx = -1;
+                cy = 0;
+                result = 0; /* not -1 */
+                break;
+            }
+            /* force: goto nxtc */
         }
         /* nxtc: */
         game.getposx = cx;

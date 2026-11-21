@@ -907,6 +907,9 @@ export async function do_death_sequence(opts) {
             await bot();
         }
         if (g.iflags?.debug_fuzzer) {
+            // C end.c:1053-1059 clamps the sequence before fuzzer_savelife.
+            if ((g.done_seq | 0) < (g.hero_seq | 0))
+                g.done_seq = g.hero_seq;
             if (await fuzzer_savelife(pd.how))
                 return true;
         }
@@ -2643,7 +2646,20 @@ async function _container_contents_one(box, identified, all_containers, reportem
         const savedBotDisabled = g._bot_disabled;
         g._bot_disabled = true;
         try { await flush_screen(1); } finally { g._bot_disabled = savedBotDisabled; }
-        if (underWindow && !fullScreen) g._topl_sticky = underWindow;
+        /* C wintty.c:966-984 tty_dismiss_nhwindow -> erase_menu_or_text ->
+         * docorner(cw->offx, cw->maxrow + 1): rows 0..maxrow are erased from
+         * screen column offx-1, so the physical topline keeps only its first
+         * offx-1 = WIN_COL-2 cells.  Restoring the FULL underWindow here
+         * resurrected cells docorner had already erased, and the next window
+         * (or plain frame) painted them again — df-xb69892f522 step 130: C
+         * keeps "Beware, there will be no ret" (28 chars) after the large-box
+         * window at WIN_COL 30 is dismissed, we painted all 32. */
+        if (underWindow && !fullScreen) {
+            g._topl_sticky = underWindow.slice(0, Math.max(0, WIN_COL - 2))
+                                       .replace(/\s+$/, '') || null;
+            if (g._topl_empty_sticky === underWindow)
+                g._topl_empty_sticky = g._topl_sticky;
+        }
         /* C:1658-1660 — `if (all_containers) container_contents(box->cobj,
          * identified, TRUE, reportempty);` — recurse into nested boxes. */
         if (all_containers)

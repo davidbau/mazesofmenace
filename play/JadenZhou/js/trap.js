@@ -1,8 +1,9 @@
 // trap.js — trap creation.
 // C ref: trap.c maketrap(), t_at() (in trap.c as of 3.7), choose_trapnote(),
-// dng_bottom(), hole_destination().
+// dng_bottom(), hole_destination(), mkroll_launch(), find_random_launch_coord(),
+// isclearpath().
 //
-// Not ported yet: mkroll_launch() (ROLLING_BOULDER_TRAP, difficulty >= 2), shop damage,
+// Not ported yet: shop damage,
 // set_levltyp()'s object/timer side effects, unearth_objs(),
 // recalc_block_point(), Sokoban bookkeeping.
 
@@ -51,7 +52,9 @@ import { bimanual } from './wield.js';
 /* C ref: mondata.h resists_ston() */
 function resists_ston(mon) { return Resists_Elem(mon, STONE_RES); }
 import { rndmonnum_adj, mkcorpstat, add_to_container, weight } from './mkobj.js';
-import { makemon, sobj_at } from './makemon.js';
+import { makemon, sobj_at, is_pool, is_lava, closed_door } from './makemon.js';
+import { linedup } from './monmove.js';
+import { xdir, ydir, N_DIRS, ZAP_POS, is_xport } from './const.js';
 import { mongone, wake_nearto } from './mon.js';
 import { newsym, pline } from './display.js';
 import { cansee, couldsee } from './vision.js';
@@ -2413,6 +2416,122 @@ function hole_destination(dst) {
     }
 }
 
+// C ref: trap.c find_random_launch_coord()
+/* try to find a random coordinate where launching a rolling boulder
+   could work. return TRUE if found, with coordinate in cc. */
+function find_random_launch_coord(ttmp, cc) {
+    let tmp;
+    let success = false;
+    const bcc = { x: 0, y: 0 };
+    let distance;
+    let mindist = 4;
+    let trycount = 0;
+    let dx, dy;
+    let x, y;
+
+    if (!ttmp || !cc || game.level.flags.sokoban_rules) /* Sokoban */
+        return false;
+
+    x = ttmp.tx;
+    y = ttmp.ty;
+
+    const launchplace = game.launchplace || { x: 0, y: 0 };
+    bcc.x = ttmp.tx + launchplace.x;
+    bcc.y = ttmp.ty + launchplace.y;
+    if (isok(bcc.x, bcc.y) && linedup(ttmp.tx, ttmp.ty, bcc.x, bcc.y, 1)) {
+        cc.x = bcc.x;
+        cc.y = bcc.y;
+        return true;
+    }
+
+    if (ttmp.ttyp === ROLLING_BOULDER_TRAP)
+        mindist = 2;
+    distance = rn1(5, 4); /* 4..8 away */
+    tmp = rn2(N_DIRS); /* randomly pick a direction to try first */
+    while (distance >= mindist) {
+        dx = xdir[tmp];
+        dy = ydir[tmp];
+        cc.x = x;
+        cc.y = y;
+        /* Prevent boulder from being placed on water */
+        if (ttmp.ttyp === ROLLING_BOULDER_TRAP
+            && (is_pool(x + distance * dx, y + distance * dy)
+                || is_lava(x + distance * dx, y + distance * dy))) /* is_pool_or_lava() */
+            success = false;
+        else
+            success = isclearpath(cc, distance, dx, dy);
+        if (ttmp.ttyp === ROLLING_BOULDER_TRAP) {
+            let success_otherway;
+
+            bcc.x = x;
+            bcc.y = y;
+            success_otherway = isclearpath(bcc, distance, -(dx), -(dy));
+            if (!success_otherway)
+                success = false;
+        }
+        if (success)
+            break;
+        if (++tmp > 7)
+            tmp = 0;
+        if ((++trycount % 8) === 0)
+            --distance;
+    }
+    return success;
+}
+
+// C ref: trap.c mkroll_launch()
+function mkroll_launch(ttmp, x, y, otyp, ocount) {
+    let otmp;
+    const cc = { x: 0, y: 0 };
+    let success = false;
+
+    success = find_random_launch_coord(ttmp, cc);
+
+    if (!success) {
+        /* create the trap without any ammo, launch pt at trap location */
+        cc.x = x;
+        cc.y = y;
+    } else {
+        otmp = mksobj(otyp, true, false);
+        otmp.quan = ocount;
+        otmp.owt = weight(otmp);
+        place_object(otmp, cc.x, cc.y);
+        stackobj(otmp);
+    }
+    ttmp.launch = { x: cc.x, y: cc.y };
+    if (ttmp.ttyp === ROLLING_BOULDER_TRAP) {
+        ttmp.launch2 = { x: x - (cc.x - x), y: y - (cc.y - y) };
+    } else
+        ttmp.launch_otyp = otyp;
+    newsym(ttmp.launch.x, ttmp.launch.y);
+    return 1;
+}
+
+// C ref: trap.c isclearpath()
+function isclearpath(cc, distance, dx, dy) {
+    let t;
+    let typ;
+    let x, y;
+
+    x = cc.x;
+    y = cc.y;
+    while (distance-- > 0) {
+        x += dx;
+        y += dy;
+        if (!isok(x, y))
+            return false;
+        typ = game.level.at(x, y).typ;
+        if (!ZAP_POS(typ) || closed_door(x, y))
+            return false;
+        if ((t = t_at(x, y)) != null
+            && (is_pit(t.ttyp) || is_hole(t.ttyp) || is_xport(t.ttyp)))
+            return false;
+    }
+    cc.x = x;
+    cc.y = y;
+    return true;
+}
+
 // C ref: trap.c maketrap()
 export function maketrap(x, y, typ) {
     let oldplace;
@@ -2454,7 +2573,7 @@ export function maketrap(x, y, typ) {
         mk_trap_statue(x, y);
         break;
     case ROLLING_BOULDER_TRAP: /* boulder will roll towards trigger */
-        /* mkroll_launch(ttmp, x, y, BOULDER, 1L): not ported yet */
+        mkroll_launch(ttmp, x, y, BOULDER, 1);
         break;
     case PIT:
     case SPIKED_PIT:

@@ -21,7 +21,9 @@ import { mnexto, rloc_to } from './teleport.js';
 import { on_level } from './dungeon.js';
 import { mintrap } from './trap.js';
 import { NO_TRAP_FLAGS } from './const.js';
-import { pline, canseemon } from './display.js';
+import { pline, canseemon, newsym } from './display.js';
+import { yelp, growl } from './sounds.js';
+import { AGGRAVATE_MONSTER, CONFLICT } from './const.js';
 import { Monnam } from './do_name.js';
 
 import { ACURR } from './attrib.js';
@@ -172,6 +174,41 @@ export function makedog() {
 
 // C ref: monst.h helpless()
 function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
+
+// C ref: dog.c abuse_dog()
+/* hero has abused pet */
+export async function abuse_dog(mtmp) {
+    if (!mtmp.mtame)
+        return;
+
+    const p = (i) => game.u.uprops[i];
+    if (!!(p(AGGRAVATE_MONSTER).intrinsic || p(AGGRAVATE_MONSTER).extrinsic)
+        || !!(p(CONFLICT).intrinsic || p(CONFLICT).extrinsic)) /* Aggravate_monster || Conflict */
+        mtmp.mtame = Math.trunc(mtmp.mtame / 2);
+    else
+        mtmp.mtame--;
+
+    if (mtmp.mtame && !mtmp.isminion)
+        mtmp.edog.abuse++;
+
+    if (!mtmp.mtame && mtmp.mleashed)
+        throw new Error('abuse_dog(): m_unleash() not ported yet');
+
+    /* don't make a sound if pet is in the middle of leaving the level */
+    /* newsym isn't necessary in this case either */
+    if (mtmp.mx !== 0) {
+        if (mtmp.mtame && rn2(mtmp.mtame))
+            await yelp(mtmp);
+        else
+            await growl(mtmp); /* give them a moment's worry */
+
+        if (!mtmp.mtame) {
+            newsym(mtmp.mx, mtmp.my);
+            if (mtmp.wormno)
+                throw new Error('abuse_dog(): redraw_worm() not ported yet');
+        }
+    }
+}
 
 // C ref: mondata.c levl_follower()
 function levl_follower(mtmp) {

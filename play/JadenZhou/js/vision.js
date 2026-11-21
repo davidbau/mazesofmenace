@@ -86,7 +86,7 @@ const S_ndoor = 12, S_vcdoor = 15, S_hcdoor = 16, S_tree = 18;
 
 // C ref: monst.h is_lightblocker_mappear() -- mimic appearances that
 // block vision/light
-function is_lightblocker_mappear(mon) {
+export function is_lightblocker_mappear(mon) {
     const ap_type = (mon.m_ap_type || 0) & M_AP_TYPMASK; /* M_AP_TYPE() */
     return ((ap_type === M_AP_OBJECT && mon.mappearance === BOULDER)
             || (ap_type === M_AP_FURNITURE

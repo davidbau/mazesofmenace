@@ -6,14 +6,18 @@
 // and oracle_sound() are only partly ported (see their comments).
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, ROLL_FROM } from './rng.js';
+import { canseemon } from './display.js';
+import { vtense } from './objnam.js';
+import { wake_nearto } from './mon.js';
+import { nomul } from './hack.js';
 import { pline } from './display.js';
 import {
     DEAF, HALLUC, HALLUC_RES, ROOMOFFSET, VAULT, ANY_SHOP, ANY_TYPE, OROOM,
     SHOPBASE, COURT, BEEHIVE, MORGUE, ZOO, BARRACKS,
     Is_astralevel, Is_oracle_level, Is_sanctum, STRANGLED, BLINDED, FULL_MOON, IS_WALL,
     SDOOR, M_AP_FURNITURE, M_AP_OBJECT, STRAT_WAITMASK, isok, ECMD_OK,
-    ECMD_TIME, ECMD_CANCEL,
+    ECMD_TIME, ECMD_CANCEL, PLNMSG_GROWL,
 } from './const.js';
 import { M1_ANIMAL, M2_LORD, M2_PRINCE, M2_MERC, S_ANT, PM_ORACLE,
          mons, M1_HUMANOID, PM_GECKO, PM_DINGO, PM_RAVEN, PM_DEATH,
@@ -389,6 +393,131 @@ function uprop(prop) {
     return !!(p && (p.intrinsic || p.extrinsic));
 }
 function Deaf() { return uprop(DEAF); }
+
+/* C ref: sounds.c h_sounds[] */
+const h_sounds = [
+    "beep",   "boing",   "sing",   "belche", "creak",   "cough",
+    "rattle", "ululate", "pop",    "jingle", "sniffle", "tinkle",
+    "eep",    "clatter", "hum",    "sizzle", "twitter", "wheeze",
+    "rustle", "honk",    "lisp",   "yodel",  "coo",     "burp",
+    "moo",    "boom",    "murmur", "oink",   "quack",   "rumble",
+    "twang",  "toot",    "gargle", "hoot",    "warble"
+];
+
+// C ref: sounds.c growl_sound()
+function growl_sound(mtmp) {
+    let ret;
+
+    switch (mtmp.data.msound) {
+    case MS_MEW:
+    case MS_HISS:
+        ret = "hiss";
+        break;
+    case MS_BARK:
+    case MS_GROWL:
+        ret = "growl";
+        break;
+    case MS_ROAR:
+        ret = "roar";
+        break;
+    case MS_BELLOW:
+        ret = "bellow";
+        break;
+    case MS_BUZZ:
+        ret = "buzz";
+        break;
+    case MS_SQEEK:
+        ret = "squeal";
+        break;
+    case MS_SQAWK:
+        ret = "screech";
+        break;
+    case MS_NEIGH:
+        ret = "neigh";
+        break;
+    case MS_WAIL:
+        ret = "wail";
+        break;
+    case MS_GROAN:
+        ret = "groan";
+        break;
+    case MS_MOO:
+        ret = "low";
+        break;
+    case MS_SILENT:
+        ret = "commotion";
+        break;
+    default:
+        ret = "scream";
+    }
+    return ret;
+}
+
+// C ref: sounds.c growl()
+/* the sounds of a seriously abused pet, including player attacking it */
+export async function growl(mtmp) {
+    let growl_verb = null;
+
+    if (helpless(mtmp) || mtmp.data.msound === MS_SILENT)
+        return;
+
+    /* presumably nearness and soundok checks have already been made */
+    if (Hallucination())
+        growl_verb = ROLL_FROM(h_sounds);
+    else
+        growl_verb = growl_sound(mtmp);
+    if (growl_verb) {
+        if (canseemon(mtmp) || !Deaf()) {
+            await pline(`${Monnam(mtmp)} ${vtense(null, growl_verb)}!`);
+            game.iflags.last_msg = PLNMSG_GROWL;
+            if (game.context.run)
+                nomul(0);
+        }
+        await wake_nearto(mtmp.mx, mtmp.my, mtmp.data.mlevel * 18);
+    }
+}
+
+// C ref: sounds.c yelp()
+/* the sounds of mistreated pets */
+export async function yelp(mtmp) {
+    let yelp_verb = null;
+
+    if (helpless(mtmp) || !mtmp.data.msound)
+        return;
+
+    /* presumably nearness and soundok checks have already been made */
+    if (Hallucination())
+        yelp_verb = ROLL_FROM(h_sounds);
+    else
+        switch (mtmp.data.msound) {
+        case MS_MEW:
+            yelp_verb = (!Deaf()) ? "yowl" : "arch";
+            break;
+        case MS_BARK:
+        case MS_GROWL:
+            yelp_verb = (!Deaf()) ? "yelp" : "recoil";
+            break;
+        case MS_ROAR:
+            yelp_verb = (!Deaf()) ? "snarl" : "bluff";
+            break;
+        case MS_SQEEK:
+            yelp_verb = (!Deaf()) ? "squeal" : "quiver";
+            break;
+        case MS_SQAWK:
+            yelp_verb = (!Deaf()) ? "screak" : "thrash";
+            break;
+        case MS_WAIL:
+            yelp_verb = (!Deaf()) ? "wail" : "cringe";
+            break;
+        }
+    if (yelp_verb) {
+        /* Soundeffect(se, 70): no sound interface */
+        await pline(`${Monnam(mtmp)} ${vtense(null, yelp_verb)}!`);
+        if (game.context.run)
+            nomul(0);
+        await wake_nearto(mtmp.mx, mtmp.my, mtmp.data.mlevel * 12);
+    }
+}
 
 // C ref: sounds.c domonnoise()
 async function domonnoise(mtmp) {

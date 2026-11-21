@@ -1,6 +1,6 @@
 // rumors.js — random text lines from the rumors/engrave/epitaph files.
-// C ref: rumors.c getrumor(), init_rumors(), get_rnd_line(), get_rnd_text(),
-// unpadline().
+// C ref: rumors.c getrumor(), outrumor(), init_rumors(), get_rnd_line(),
+// get_rnd_text(), unpadline().
 //
 // C reads files that util/makedefs.c builds from dat/rumors.tru,
 // dat/rumors.fal, dat/engrave.txt and dat/epitaph.txt. js/ may not read
@@ -13,6 +13,9 @@ import { game } from './gstate.js';
 import { rn2, rn2_fnptr } from './rng.js';
 import { RUMORS_TRU, RUMORS_FAL, ENGRAVE_TXT, EPITAPH_TXT,
          BOGUSMON_TXT } from './rumors_data.js';
+import { A_WIS, BY_ORACLE, BY_COOKIE, BY_PAPER, BLINDED, FAINTED } from './const.js';
+import { exercise } from './attrib.js';
+import { pline } from './display.js';
 
 const BUFSZ = 256;
 export const MD_PAD_RUMORS = 60; /* global.h */
@@ -275,9 +278,8 @@ export function getrumor(truth, rumor_buf, exclude_cookie) {
                  && rumor_buf.s.startsWith(cookie_marker));
         if (count >= 50) {
             /* impossible("Can't find non-cookie rumor?") */
-        } else if (!g.in_mklev) {
-            /* exercise(A_WIS, (adjtruth > 0)): attrib exercise is not
-               reached during level creation */
+        } else if (!g.in_mklev) { /* avoid exercising wisdom for graffiti */
+            exercise(A_WIS, (adjtruth > 0));
         }
     }
     if (!exclude_cookie && rumor_buf.s.startsWith(cookie_marker)) {
@@ -285,6 +287,44 @@ export function getrumor(truth, rumor_buf, exclude_cookie) {
         rumor_buf.s = rumor_buf.s.slice(marklen);
     }
     return rumor_buf.s;
+}
+
+// C ref: rumors.c outrumor()
+export async function outrumor(truth, /* 1=true, -1=false, 0=either */
+                               mechanism) {
+    const fortune_msg = "This cookie has a scrap of paper inside.";
+    let line;
+    const buf = { s: '' };
+    const reading = (mechanism === BY_COOKIE || mechanism === BY_PAPER);
+
+    if (reading) {
+        /* deal with various things that prevent reading */
+        const p = game.u.uprops[BLINDED];
+        const Blind = (p.intrinsic || p.extrinsic) && !p.blocked;
+        if (game.u.uhs === FAINTED /* is_fainted() */ && mechanism === BY_COOKIE) {
+            return;
+        } else if (Blind) {
+            if (mechanism === BY_COOKIE)
+                await pline(fortune_msg);
+            await pline("What a pity that you cannot read it!");
+            return;
+        }
+    }
+
+    line = getrumor(truth, buf, reading ? false : true);
+    if (!line)
+        line = "NetHack rumors file closed for renovation.";
+    switch (mechanism) {
+    case BY_ORACLE:
+        throw new Error('outrumor(): the Oracle delivering a rumor not ported yet');
+    case BY_COOKIE:
+        await pline(fortune_msg);
+        /* FALLTHRU */
+    case BY_PAPER:
+        await pline("It reads:");
+        break;
+    }
+    await pline(line);
 }
 
 // C ref: rumors.c get_rnd_text()

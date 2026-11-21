@@ -1242,11 +1242,9 @@ export async function bill_dummy_object(obj) {
 
     let cost = 0;
     if (obj.unpaid) {
-        const shkp = shk_shop_keeper(game.u?.ushops?.charCodeAt?.(0) || 0);
-        if (shkp) {
-            cost = await shk_unpaid_cost(obj, 2 /* COST_SINGLEOBJ */);
-            await shk_subfrombill(obj, shkp);
-        }
+        cost = await shk_unpaid_cost(obj, 2 /* COST_SINGLEOBJ */);
+        await shk_subfrombill(obj,
+                              shk_shop_keeper(game.u?.ushops?.charCodeAt?.(0) || 0));
     }
 
     const dummy = newobj(obj);

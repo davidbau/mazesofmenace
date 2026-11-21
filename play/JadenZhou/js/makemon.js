@@ -3,11 +3,12 @@
 // rndmonst_adj, mk_gen_ok, cmp_init_mongen_order, init_mongen_order,
 // mkclass, mkclass_aligned, adj_lev, makemon, newmonhp, m_initweap,
 // m_initinv, m_initthrow, mongets, mkmonmoney, golemhp, propagate,
-// peace_minded, set_malign; muse.c rnd_{defensive,offensive,misc}_item;
-// teleport.c goodpos.
+// peace_minded, set_malign, m_initgrp, wrong_elem_type; muse.c
+// rnd_{defensive,offensive,misc}_item; teleport.c goodpos; questpgr.c
+// qt_montype; minion.c ndemon.
 //
-// Not ported yet: m_initgrp (groups), newcham (shapechangers),
-// set_mimic_sym, rndghostname, worm segments, qt_montype() for the quest.
+// Not ported yet: newcham (shapechangers),
+// set_mimic_sym, rndghostname, worm tail segments.
 
 import { christen_monst, rndghostname, Amonnam } from './do_name.js';
 import { game } from './gstate.js';
@@ -51,20 +52,24 @@ import {
     is_bat, little_to_big, pm_invisible,
 } from './mondata.js';
 import { engr_at } from './engrave.js';
-import { enexto_core } from './teleport.js';
+import { enexto_core, enexto_gpflags } from './teleport.js';
 import { newedog } from './dog.js';
 import { M_AP_NOTHING, M_AP_MONSTER, HALLUC, TELEPAT,
          DETECT_MONSTERS } from './const.js';
 import { dist2 } from './hacklib.js';
 import { an, vtense } from './objnam.js';
 import { newsym, pline, canseemon } from './display.js';
-import { does_block, block_point } from './vision.js';
-import { set_apparxy } from './monmove.js';
+import { does_block, block_point, cansee } from './vision.js';
+import { set_apparxy, dochugw } from './monmove.js';
 import { noteleport_level } from './teleport.js';
 import { newcham } from './mon.js';
 import { mpickobj } from './steal.js';
 import { add_to_minv } from './mkobj.js';
-import { m_dowear, which_armor } from './worn.js';
+import { m_dowear, which_armor, mon_adjust_speed_sync } from './worn.js';
+import { def_monsyms } from './drawing.js';
+import { Is_waterlevel, Is_firelevel, Is_airlevel, G_GENOD,
+         G_EXTINCT } from './const.js';
+import { is_flyer } from './mondata.js';
 
 function impossible(msg) { console.error(`impossible: ${msg}`); }
 
@@ -147,6 +152,74 @@ function temperature_shift(ptr) {
     return 0;
 }
 
+// C ref: display.h monsym() -- gs.showsyms[mlet + SYM_OFF_M]; no
+// symset in the port changes monster symbols, so they are def_monsyms[]
+function monsym(ptr) {
+    return def_monsyms[ptr.mlet];
+}
+
+// C ref: <ctype.h> isupper()
+function isupper(ch) {
+    return typeof ch === 'string' && ch >= 'A' && ch <= 'Z';
+}
+
+// C ref: makemon.c wrong_elem_type()
+/*
+ * Return true if the given monster cannot exist on this elemental level.
+ */
+function wrong_elem_type(ptr) {
+    if (ptr.mlet === M.S_ELEMENTAL) {
+        return !is_home_elemental(ptr);
+    } else if (Is_earthlevel(game.u.uz)) {
+        /* no restrictions? */
+    } else if (Is_waterlevel(game.u.uz)) {
+        /* just monsters that can swim */
+        if (!is_swimmer(ptr))
+            return true;
+    } else if (Is_firelevel(game.u.uz)) {
+        if (!pm_resistance(ptr, MR_FIRE))
+            return true;
+    } else if (Is_airlevel(game.u.uz)) {
+        if (!(is_flyer(ptr) && ptr.mlet !== M.S_TRAPPER) && !is_floater(ptr)
+            && !amorphous(ptr) && !noncorporeal(ptr) && !is_whirly(ptr))
+            return true;
+    }
+    return false;
+}
+
+// C ref: questpgr.c qt_montype()
+export function qt_montype() {
+    let qpm;
+
+    if (rn2(5)) {
+        qpm = game.urole.enemy1num;
+        if (qpm !== NON_PM && rn2(5) && !(game.mvitals[qpm].mvflags & G_GENOD))
+            return mons[qpm];
+        return mkclass(game.urole.enemy1sym, 0);
+    }
+    qpm = game.urole.enemy2num;
+    if (qpm !== NON_PM && rn2(5) && !(game.mvitals[qpm].mvflags & G_GENOD))
+        return mons[qpm];
+    return mkclass(game.urole.enemy2sym, 0);
+}
+
+// C ref: minion.c ndemon()
+export function ndemon(atyp) /* A_NONE is used for 'any alignment' */
+{
+    /*
+     * 3.6.2:  [fixed #H2204, 22-Dec-2010, eight years later...]
+     * pick a correctly aligned demon in one try.  This used to
+     * use mkclass() to choose a random demon type and keep trying
+     * (up to 20 times) until it got one with the desired alignment.
+     * mkclass_aligned() skips wrongly aligned potential candidates.
+     * [The only neutral demons are djinni and mail daemon and
+     * mkclass() won't pick them, but call it anyway in case either
+     * aspect of that changes someday.]
+     */
+    const ptr = mkclass_aligned(M.S_DEMON, 0, atyp);
+    return (ptr && is_ndemon(ptr)) ? monsndx(ptr) : NON_PM;
+}
+
 // C ref: makemon.c rndmonst()
 /* select a random monster type */
 export function rndmonst() {
@@ -160,10 +233,9 @@ export function rndmonst_adj(minadj, maxadj) {
     let mndx;
     let weight, totalweight, selected_mndx;
 
-    if (game.u.uz.dnum === game.dungeon_topology.d_quest_dnum && rn2(7)) {
-        /* qt_montype() is not ported yet */
-        impossible('rndmonst_adj: qt_montype() is not ported yet');
-    }
+    if (game.u.uz.dnum === game.dungeon_topology.d_quest_dnum && rn2(7)
+        && (ptr = qt_montype()) !== null)
+        return ptr;
 
     const zlevel = level_difficulty();
     const minmlev = monmin_difficulty(zlevel) + minadj;
@@ -182,14 +254,10 @@ export function rndmonst_adj(minadj, maxadj) {
 
         if (montooweak(mndx, minmlev) || montoostrong(mndx, maxmlev))
             continue;
-        if (upper) {
-            /* !isupper(monsym(ptr)): monster symbols are not ported yet */
-            impossible('rndmonst_adj: rogue level monster symbols are not ported yet');
-        }
-        if (elemlevel) {
-            /* wrong_elem_type() is not ported yet */
-            impossible('rndmonst_adj: wrong_elem_type() is not ported yet');
-        }
+        if (upper && !isupper(monsym(ptr)))
+            continue;
+        if (elemlevel && wrong_elem_type(ptr))
+            continue;
         if (uncommon(mndx))
             continue;
         if (In_hell(game.u.uz) && (ptr.geno & G_NOHELL))
@@ -410,8 +478,7 @@ export const MM_EMIN = 0x00000400;
 export const MM_NOTAIL = 0x00004000;
 export const MM_MINVIS = 0x00100000;
 
-const G_GENOD = 0x01;   /* C ref: monst.h -- mvitals[].mvflags */
-const G_EXTINCT = 0x02;
+/* G_GENOD, G_EXTINCT (monflag.h mvitals[].mvflags): const.js */
 const W_ARMH = 0x00000004;
 const W_SADDLE = 0x00100000;
 
@@ -1498,10 +1565,6 @@ export function newmonhp(mon, mndx) {
     }
 }
 
-// C ref: display.h cansee() -- vision is not ported; nothing is seen
-// during level creation
-function cansee(x, y) { return false; }
-
 // C ref: makemon.c makemon_rnd_goodpos()
 function makemon_rnd_goodpos(mon, gpflags, cc) {
     let tryct = 0;
@@ -1762,12 +1825,13 @@ export function makemon(ptr, x, y, mmflags) {
             mtmp.mpeaceful = true;
         break;
     case M.S_BAT:
-        if (In_hell(game.u.uz) && is_bat(ptr)) {
-            /* mon_adjust_speed(mtmp, 2, NULL): speed not ported yet */
-        }
+        if (In_hell(game.u.uz) && is_bat(ptr))
+            mon_adjust_speed_sync(mtmp, 2, null);
         break;
     }
-    /* emits_light() -> new_light_source(): light sources not ported yet */
+    /* if ((ct = emits_light(mtmp->data)) > 0) new_light_source(...):
+       light.c isn't ported and vision.js has no light sources (no dice
+       are rolled; only what the hero can see is affected) */
     mitem = O.STRANGE_OBJECT; /* extra inventory item for this monster */
 
     if (mndx === M.PM_VLAD_THE_IMPALER)
@@ -1820,8 +1884,8 @@ export function makemon(ptr, x, y, mmflags) {
         mtmp.mpeaceful = true;
     if (mndx === M.PM_LONG_WORM && (mtmp.wormno = get_wormno()) !== 0) {
         initworm(mtmp, allowtail ? rn2(5) : 0);
-        /* count_wsegs()/place_worm_tail_randomly(): worm segments are not
-           ported yet (initworm() makes none) */
+        if (count_wsegs(mtmp))
+            throw new Error('makemon(): place_worm_tail_randomly() not ported yet');
     }
     /* it's possible to create an ordinary monster of some special
        types; make sure their extended data is initialized to
@@ -1878,7 +1942,8 @@ export function makemon(ptr, x, y, mmflags) {
             mtmp.mstrategy |= STRAT_APPEARMSG;
     }
 
-    /* deliver_obj_to_mon(): migrating objects not ported yet */
+    if (allow_minvent && game.migrating_objs) /* in case of waiting items */
+        throw new Error('makemon(): deliver_obj_to_mon() not ported yet');
 
     if (!game.in_mklev) {
         newsym(mtmp.mx, mtmp.my); /* make sure the mon shows up */
@@ -1918,8 +1983,15 @@ export function makemon(ptr, x, y, mmflags) {
             }
         }
         /* if discernable and a threat, stop fiddling while Rome burns */
-        if (game.occupation)
-            throw new Error('makemon(): dochugw() for an occupied hero not ported yet');
+        if (game.occupation) {
+            /* (void) dochugw(mtmp, FALSE): async (stop_occupation() prints),
+               so like the message above it is handed to the caller, which
+               runs it right after the message in makemon_flush_msg() */
+            if (game.makemon_want_msg)
+                game.makemon_dochugw = mtmp;
+            else
+                throw new Error('makemon(): dochugw() for an occupied hero not ported yet');
+        }
 
         /* TODO: unify with teleport appears msg */
     }
@@ -1937,6 +2009,11 @@ export async function makemon_flush_msg() {
     game.makemon_msg = null;
     if (msg)
         await pline(msg);
+    /* and makemon()'s dochugw(mtmp, FALSE) for an occupied hero */
+    const mtmp = game.makemon_dochugw;
+    game.makemon_dochugw = null;
+    if (mtmp)
+        await dochugw(mtmp, false);
 }
 
 /* C ref: display.h sensemon() -- telepathy, extended detection and
@@ -1955,11 +2032,44 @@ const STRAT_APPEARMSG = 0x80000000;
 const STRAT_WAITFORU = 0x20000000;
 const STRAT_CLOSE = 0x10000000;
 
-// C ref: makemon.c m_initgrp(), m_initsgrp(), m_initlgrp() -- not ported
-// yet: makemon()'s only caller so far (fill_ordinary_room) passes MM_NOGRP
+// C ref: makemon.c m_initgrp()
+/* make a group just like mtmp */
 function m_initgrp(mtmp, x, y, n, mmflags) {
-    impossible('m_initgrp not ported');
+    const u = game.u;
+    const mm = { x: 0, y: 0 };
+    let cnt = rnd(n);
+    let mon;
+
+    /* Tuning: cut down on swarming at low character levels [mrs] */
+    cnt = Math.trunc(cnt / ((u.ulevel < 3) ? 4 : (u.ulevel < 5) ? 2 : 1));
+    if (!cnt)
+        cnt++;
+
+    mm.x = x;
+    mm.y = y;
+    while (cnt--) {
+        if (peace_minded(mtmp.data))
+            continue;
+        /* Don't create groups of peaceful monsters since they'll get
+         * in our way.  If the monster has a percentage chance so some
+         * are peaceful and some are not, the result will just be a
+         * smaller group.
+         */
+        if (enexto_gpflags(mm, mm.x, mm.y, mtmp.data, mmflags)) {
+            mon = makemon(mtmp.data, mm.x, mm.y, (mmflags | MM_NOGRP));
+            if (mon) {
+                mon.mpeaceful = false;
+                mon.mavenge = 0;
+                set_malign(mon);
+                /* Undo the second peace_minded() check in makemon(); if the
+                 * monster turned out to be peaceful the first time we
+                 * didn't create it at all; we don't want a second check.
+                 */
+            }
+        }
+    }
 }
+// C ref: makemon.c m_initsgrp(), m_initlgrp() (macros)
 function m_initsgrp(mtmp, x, y, mmflags) { m_initgrp(mtmp, x, y, 3, mmflags); }
 function m_initlgrp(mtmp, x, y, mmflags) { m_initgrp(mtmp, x, y, 10, mmflags); }
 
@@ -2152,9 +2262,19 @@ function get_wormno() {
     }
     return 0; /* level infested with worms */
 }
-// C ref: worm.c initworm() -- segments are not ported yet
+// C ref: worm.c initworm()
+/* the port keeps only the head (game.wheads[]) of a worm with no tail;
+   tail segments (create_worm_tail()) are not ported yet */
 function initworm(worm, wseg_count) {
+    if (wseg_count)
+        throw new Error('initworm(): create_worm_tail() not ported yet');
     game.wheads[worm.wormno] = worm;
+}
+// C ref: worm.c count_wsegs()
+/* count the number of segments this worm has; the port's worms have
+   none (see initworm()) */
+function count_wsegs(mtmp) {
+    return 0;
 }
 // C ref: steed.c put_saddle_on_mon()
 export function put_saddle_on_mon(saddle, mtmp) {

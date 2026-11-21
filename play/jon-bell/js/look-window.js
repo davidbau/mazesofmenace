@@ -152,5 +152,14 @@ export async function displayLookWindow(putstrLines) {
     docorner_blank_utf8_captures(col - 1, lines.length + 1);
     g._pending_message = '';
     // tty_dismiss_nhwindow repaints the map; row zero left of the window stays.
-    if (underWindow && !offx0) g._topl_sticky = underWindow;
+    /* Same docorner erosion as js/end.js container_contents: dismissing the
+     * corner window erases rows 0..maxrow from screen column offx-1
+     * (wintty.c:966-984), so the topline carried forward keeps only its
+     * first col-2 cells — never the full underWindow. */
+    if (underWindow && !offx0) {
+        g._topl_sticky = underWindow.slice(0, Math.max(0, col - 2))
+                                   .replace(/\s+$/, '') || null;
+        if (g._topl_empty_sticky === underWindow)
+            g._topl_empty_sticky = g._topl_sticky;
+    }
 }

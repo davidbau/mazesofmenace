@@ -404,6 +404,11 @@ export async function getpos(ccp, force, goal) {
         const _p = String(g._pending_message);
         const _pages = _topl_more_pages(_p, _topl_joins_snapshot(_p));
         g._getpos_last_autodescribe = _pages[_pages.length - 1];
+    } else if (g._topl_sticky) {
+        /* A caller that loops on getpos (wiz_telekinesis, wizcmds.c:503) re-enters
+         * while the previous exit's line is still physically on row 0; this
+         * port carries that line as _topl_sticky until the next key. */
+        g._getpos_last_autodescribe = String(g._topl_sticky);
     }
     let cx = ccp.x | 0, cy = ccp.y | 0; /* getpos.c:848-849 */
     /* C ref: getpos.c:853-854 curs(WIN_MAP, cx, cy); flush_screen(0) — in that

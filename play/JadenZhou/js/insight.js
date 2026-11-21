@@ -83,6 +83,11 @@ import { stone_luck } from './attrib.js';
 import { carrying } from './invent.js';
 import { u_adtyp_resistance_obj, item_what } from './zap.js';
 import { shield_simple_name } from './iactions.js';
+import { pline } from './display.js';
+import { visible_region_at } from './region.js';
+import { find_mac } from './worn.js';
+import { x_monnam, ARTICLE_YOUR, SUPPRESS_IT, SUPPRESS_INVISIBLE } from './do_name.js';
+import { STRAT_WAITMASK, MFAST, MSLOW } from './const.js';
 
 // C ref: insight.c align_str()
 export function align_str(alignment) {
@@ -399,7 +404,7 @@ function contained_gold(obj, even_if_unknown) {
 }
 
 // C ref: invent.c hidden_gold()
-function hidden_gold(even_if_unknown) {
+export function hidden_gold(even_if_unknown) {
     let value = 0;
 
     for (let obj = game.invent; obj; obj = obj.nobj)
@@ -409,7 +414,7 @@ function hidden_gold(even_if_unknown) {
 }
 
 // C ref: invent.c currency()
-function currency(amount) {
+export function currency(amount) {
     let res;
 
     if (Hallucination())
@@ -473,7 +478,7 @@ export function inside_shop(x, y) {
 
 // C ref: wield.c empty_handed()
 /* description of hands when not wielding anything */
-function empty_handed() {
+export function empty_handed() {
     return game.uarmg ? "empty handed" /* gloves imply hands */
            : humanoid(game.youmonst.data)
              /* hands but no weapon and no gloves */
@@ -512,7 +517,7 @@ const barehands_or_martial = [
 ];
 /* C ref: skills.h martial_bonus() */
 function martial_bonus() { return Role_if(M.PM_SAMURAI) || Role_if(M.PM_MONK); }
-function P_NAME(type) {
+export function P_NAME(type) {
     return (skill_names_indices[type] > 0)
            ? OBJ_NAME(objects[skill_names_indices[type]])
            : (type === P_BARE_HANDED_COMBAT)
@@ -582,7 +587,7 @@ export function weapon_descr(obj) {
 
 // C ref: weapon.c skill_level_name()
 /* the skill level name */
-function skill_level_name(skill) {
+export function skill_level_name(skill) {
     let ptr;
 
     switch (P_SKILL(skill)) {
@@ -619,7 +624,7 @@ export function skill_name(skill) {
 
 // C ref: weapon.c slots_required()
 /* return the # of slots required to advance the skill */
-function slots_required(skill) {
+export function slots_required(skill) {
     const tmp = P_SKILL(skill);
 
     /* The more difficult the training, the more slots it takes. */
@@ -632,7 +637,7 @@ function slots_required(skill) {
 
 // C ref: weapon.c can_advance()
 /* return true if this skill can be advanced */
-function can_advance(skill, speedy) {
+export function can_advance(skill, speedy) {
     const u = U();
     if (P_RESTRICTED(skill)
         || P_SKILL(skill) >= P_MAX_SKILL(skill)
@@ -2132,4 +2137,160 @@ export function piousness(showneg, suffix) {
         buf += suffix;
     }
     return buf;
+}
+
+// C ref: insight.c size_str()
+export function size_str(msize) {
+    switch (msize) {
+    case M.MZ_TINY:
+        return "tiny";
+    case M.MZ_SMALL:
+        return "small";
+    case M.MZ_MEDIUM:
+        return "medium";
+    case M.MZ_LARGE:
+        return "large";
+    case M.MZ_HUGE:
+        return "huge";
+    case M.MZ_GIGANTIC:
+        return "gigantic";
+    default:
+        return `unknown size (${msize})`;
+    }
+}
+
+/* C ref: priest.c mon_aligntyp() */
+function mon_aligntyp_s(mon) {
+    const algn = mon.ispriest ? mon.mextra?.epri?.shralign
+                 : mon.isminion ? mon.mextra?.emin?.min_align
+                   : mon.data.maligntyp;
+
+    if (algn === A_NONE)
+        return A_NONE; /* negative but differs from chaotic */
+    return (algn > 0) ? A_LAWFUL : (algn < 0) ? A_CHAOTIC : A_NEUTRAL;
+}
+
+// C ref: insight.c mstatusline() -- stethoscope or probing applied to
+// monster -- one-line feedback
+export async function mstatusline(mtmp) {
+    const u = game.u;
+    const alignment = mon_aligntyp_s(mtmp);
+    let info = "";
+
+    if (mtmp.mtame) {
+        info += ", tame";
+        if (game.flags.debug)
+            throw new Error('mstatusline(): wizard-mode tameness details not ported yet');
+    } else if (mtmp.mpeaceful)
+        info += ", peaceful";
+
+    if (mtmp.data === M.mons[M.PM_LONG_WORM])
+        throw new Error('mstatusline(): long worm segments not ported yet');
+    if (mtmp.cham != null && mtmp.cham >= 0 /* ismnum() */
+        && mtmp.data !== M.mons[mtmp.cham])
+        /* don't reveal the innate form (chameleon, vampire, &c),
+           just expose the fact that this current form isn't it */
+        info += ", shapechanger";
+    /* pets eating mimic corpses mimic while eating, so this comes first */
+    if (mtmp.meating)
+        info += ", eating";
+    /* a stethoscope exposes mimic before getting here so this
+       won't be relevant for it, but wand of probing doesn't */
+    if (mtmp.mundetected || mtmp.m_ap_type
+        || visible_region_at(game.bhitpos?.x, game.bhitpos?.y))
+        throw new Error('mstatusline(): mhidden_description() not ported yet');
+    if (mtmp.mcan)
+        info += ", cancelled";
+    if (mtmp.mconf)
+        info += ", confused";
+    if (mtmp.mblinded || !mtmp.mcansee)
+        info += ", blind";
+    if (mtmp.mstun)
+        info += ", stunned";
+    if (mtmp.msleeping)
+        info += ", asleep";
+    else if (mtmp.mfrozen || !mtmp.mcanmove)
+        info += ", can't move";
+    /* [arbitrary reason why it isn't moving] */
+    else if (((mtmp.mstrategy || 0) & STRAT_WAITMASK) !== 0)
+        info += ", meditating";
+    if (mtmp.mflee)
+        info += ", scared";
+    if (mtmp.mtrapped)
+        info += ", trapped";
+    if (mtmp.mspeed)
+        info += (mtmp.mspeed === MFAST) ? ", fast"
+                : (mtmp.mspeed === MSLOW) ? ", slow"
+                  : ", [? speed]";
+    if (mtmp.minvis)
+        info += ", invisible";
+    if (mtmp === u.ustuck)
+        throw new Error('mstatusline(): u.ustuck holding/engulfing text not ported yet');
+    if (mtmp === u.usteed)
+        throw new Error('mstatusline(): steed text not ported yet');
+    if (mtmp.mleashed)
+        info += ", leashed";
+
+    /* avoid "Status of the invisible newt ..., invisible" */
+    /* and unlike a normal mon_nam, use "saddled" even if it has a name */
+    const monnambuf = x_monnam(mtmp, ARTICLE_YOUR, null,
+                               (SUPPRESS_IT | SUPPRESS_INVISIBLE), false);
+
+    await pline(`Status of ${monnambuf} (${align_str(alignment)}, `
+                + `${size_str(mtmp.data.msize)}):  Level ${mtmp.m_lev}  `
+                + `HP ${mtmp.mhp}(${mtmp.mhpmax})  AC ${find_mac(mtmp)}${info}.`);
+}
+
+// C ref: insight.c ustatusline() -- stethoscope or probing applied to
+// hero -- one-line feedback
+export async function ustatusline() {
+    const u = game.u;
+    const has = (p) => !!(u.uprops[p]?.intrinsic || u.uprops[p]?.extrinsic);
+    let info = "";
+
+    if (has(SICK))
+        throw new Error('ustatusline(): Sick not ported yet');
+    if (has(STONED))
+        info += ", solidifying";
+    if (has(SLIMED))
+        info += ", becoming slimy";
+    if (has(STRANGLED))
+        info += ", being strangled";
+    if (has(VOMITING))
+        info += ", nauseated"; /* !"nauseous" */
+    if (has(CONFUSION))
+        info += ", confused";
+    if (has(BLINDED) && !u.uprops[BLINDED]?.blocked) { /* Blind */
+        info += ", blind";
+        if (u.ucreamed)
+            throw new Error('ustatusline(): sticky goop not ported yet');
+    }
+    if (has(STUNNED))
+        info += ", stunned";
+    if (has(WOUNDED_LEGS) && !u.usteed)
+        throw new Error('ustatusline(): Wounded_legs not ported yet');
+    if (has(GLIB))
+        throw new Error('ustatusline(): Glib not ported yet');
+    if (u.utrap)
+        info += ", trapped";
+    if (has(FAST)) /* Fast */
+        /* Very_fast: (HFast & ~INTRINSIC) || EFast */
+        info += (((u.uprops[FAST].intrinsic || 0) & ~INTRINSIC)
+                 || u.uprops[FAST].extrinsic) ? ", very fast" : ", fast";
+    if (u.uundetected)
+        info += ", concealed";
+    else if ((game.youmonst.m_ap_type || 0) !== 0) /* U_AP_TYPE != M_AP_NOTHING */
+        info += ", disguised";
+    if (has(INVIS))
+        info += ", invisible";
+    if (u.ustuck)
+        throw new Error('ustatusline(): u.ustuck text not ported yet');
+    if (!u.uswallow && visible_region_at(u.ux, u.uy))
+        throw new Error('ustatusline(): region text (reg_damg()) not ported yet');
+
+    const Upolyd = (u.umonnum !== u.umonster);
+    await pline(`Status of ${game.plname} (${piousness(false, align_str(u.ualign.type))}):  `
+                + `Level ${Upolyd ? M.mons[u.umonnum].mlevel : u.ulevel}  `
+                + `HP ${Upolyd ? u.mh : u.uhp}(${Upolyd ? u.mhmax : u.uhpmax})  `
+                + `AC ${u.uac}${info}.`);
 }

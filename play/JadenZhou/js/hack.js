@@ -33,9 +33,15 @@ import { dig_typ } from './dig.js';
 import { pline, canspotmon, mon_visible, newsym, sensemon, You, Your,
          You_cant, pline_The, There, unmap_invisible, unmap_object,
          glyph_is_invisible } from './display.js';
-import { vision_recalc } from './vision.js';
+import { vision_recalc, couldsee } from './vision.js';
+import { glyph_at, Norep } from './display.js';
+import { carrying } from './invent.js';
+import { WAN_DIGGING } from './objects.js';
+import { u_at } from './const.js';
 import { t_at, VIBRATING_SQUARE, is_pit, WEB } from './trap.js';
-import { dist2 } from './hacklib.js';
+import { dist2, distmin } from './hacklib.js';
+import { selection_new, selection_free, selection_getpoint,
+         selection_setpoint } from './selvar.js';
 import { onscary } from './monmove.js';
 import { COIN_CLASS, BOULDER, PICK_AXE, DWARVISH_MATTOCK, STATUE, WEAPON_CLASS,
          TOOL_CLASS, objects } from './objects.js';
@@ -53,7 +59,8 @@ import { the } from './iactions.js';
 import { obj_extract_self, place_object } from './mkobj.js';
 import { a_monnam, y_monnam } from './do_name.js';
 import { set_ustuck } from './uhitm.js';
-import { CONFLICT } from './const.js';
+import { CONFLICT, HVY_ENCUMBER } from './const.js';
+import { gethungry } from './eat.js';
 import { AT_ENGL, AT_HUGS, AD_STCK } from './monsters.js';
 import { WT_SQUEEZABLE_INV, A_STR, LANDMINE, SPIKED_PIT, PIT, HOLE, TRAPDOOR,
          LEVEL_TELEP, TELEP_TRAP, ROLLING_BOULDER_TRAP } from './const.js';
@@ -286,8 +293,22 @@ export async function check_capacity(str) {
     return 0;
 }
 
+// C ref: hack.c overexertion()
+/* used to be called in attack() after hitum();
+   now also called after an action that took a lot of effort */
+export async function overexertion() {
+    /* this used to be part of domove() when moving to a monster's
+       position, but is now called by do_attack() so that it doesn't
+       execute if you decline to attack a peaceful monster */
+    await gethungry();
+    if ((game.moves % 3) !== 0 && near_capacity() >= HVY_ENCUMBER) {
+        throw new Error('overexertion(): overexert_hp() not ported yet');
+    }
+    return (game.multi < 0); /* might have fainted (forced to sleep) */
+}
+
 // C ref: mondata.c noattacks()
-function noattacks(ptr) {
+export function noattacks(ptr) {
     for (const mattk of ptr.mattk || []) {
         /* AT_BOOM "passive attack" (gas spore's explosion upon death)
            isn't an attack as far as our callers are concerned */
@@ -347,10 +368,10 @@ export async function cmd_safety_prevention(ucverb, cmddesc, act, flagcounter) {
         if (assist) /* visctrl(cmd_from_func(do_reqmenu)): the default 'm' */
             buf = `  Use 'm' prefix to force ${cmddesc}.`;
         if (monster_nearby()) {
-            await pline(`${act}${buf}`); /* Norep() */
+            await Norep(`${act}${buf}`);
             return true;
         } else if (danger_uprops()) {
-            await pline(`${ucverb} doesn't feel like a good idea right now.`);
+            await Norep(`${ucverb} doesn't feel like a good idea right now.`);
             return true;
         }
     }
@@ -617,7 +638,10 @@ export function end_running(and_travel) {
        all clear it too */
     if (and_travel)
         g.context.travel = g.context.travel1 = g.context.mv = 0;
-    /* gt.travelmap: travel isn't ported yet */
+    if (g.travelmap) {
+        selection_free(g.travelmap, true);
+        g.travelmap = null;
+    }
     /* cancel multi */
     if (g.multi > 0)
         g.multi = 0;
@@ -1156,8 +1180,289 @@ function cant_squeeze_thru_u() {
     return 0;
 }
 
-// C ref: hack.c test_move() -- DO_MOVE and TEST_MOVE; the travel modes
-// (TEST_TRAV, TEST_TRAP) aren't ported yet
+/* C ref: hack.c findtravelpath() mode values */
+const TRAVP_TRAVEL = 0;
+const TRAVP_GUESS = 1;
+const TRAVP_VALID = 2;
+
+/* C ref: monmove.c can_ooze() for the hero -- amorphous and carrying
+   nothing (stuff_prevents_passage(), as test_move() approximates it) */
+function can_ooze_u() {
+    return amorphous(game.youmonst.data) && !game.invent;
+}
+
+// C ref: hack.c crawl_destination() -- used by findtravelpath() when the
+// destination is one step away
+function crawl_destination(x, y) {
+    const u = game.u;
+    /* is location ok in general? */
+    if (!goodpos(x, y, game.youmonst, 0))
+        return false;
+
+    /* orthogonal movement is unrestricted when destination is ok */
+    if (x === u.ux || y === u.uy)
+        return true;
+
+    /* diagonal movement has some restrictions */
+    if (NODIAG(u.umonnum))
+        return false; /* poly'd into a grid bug... */
+    if (Passes_walls())
+        return true; /* or a xorn... */
+    /* pool could be next to a door, conceivably even inside a shop */
+    if (IS_DOOR(game.level.at(x, y).typ)
+        && (!doorless_door(x, y) || block_door(x, y)))
+        return false;
+    /* finally, are we trying to squeeze through a too-narrow gap? */
+    return !(bad_rock(game.youmonst.data, u.ux, y)
+             && bad_rock(game.youmonst.data, x, u.uy)
+             && cant_squeeze_thru_u());
+}
+
+// C ref: hack.c findtravelpath()
+/*
+ * Find a path from the destination (u.tx,u.ty) back to (u.ux,u.uy).
+ * A shortest path is returned.  If guess is TRUE, consider various
+ * inaccessible locations as valid intermediate path points.
+ * Returns TRUE if a path was found.
+ * gt.travelmap keeps track of map locations we've moved through
+ * this travel session. It will be cleared once the travel stops.
+ */
+async function findtravelpath(mode) {
+    const u = game.u;
+    const ctx = game.context;
+
+    if (!game.travelmap)
+        game.travelmap = selection_new();
+    /* if travel to adjacent, reachable location, use normal movement rules */
+    if ((mode === TRAVP_TRAVEL || mode === TRAVP_VALID) && ctx.travel1
+        /* was '&& distmin(u.ux, u.uy, u.tx, u.ty) == 1' */
+        && distmin(u.ux, u.uy, u.tx, u.ty) === 1 /* next2u(): one step away */
+        /* handle restricted diagonals */
+        && crawl_destination(u.tx, u.ty)) {
+        end_running(false);
+        if (await test_move(u.ux, u.uy, u.tx - u.ux, u.ty - u.uy, TEST_MOVE)) {
+            if (mode === TRAVP_TRAVEL) {
+                u.dx = u.tx - u.ux;
+                u.dy = u.ty - u.uy;
+                nomul(0);
+                game.iflags.travelcc = { x: 0, y: 0 };
+            }
+            return true;
+        }
+        if (mode === TRAVP_TRAVEL)
+            ctx.run = 8;
+    }
+    if (u.tx !== u.ux || u.ty !== u.uy) {
+        let travel;
+        const travelstepx = [[], []];
+        const travelstepy = [[], []];
+        let tx, ty, ux, uy;
+        let n = 1;      /* max offset in travelsteps */
+        let set = 0;    /* two sets current and previous */
+        let radius = 1; /* search radius */
+
+        /* If guessing, first find an "obvious" goal location.  The obvious
+         * goal is the position the player knows of, or might figure out
+         * (couldsee) that is closest to the target on a straight path.
+         */
+        if (mode === TRAVP_GUESS || mode === TRAVP_VALID) {
+            tx = u.ux;
+            ty = u.uy;
+            ux = u.tx;
+            uy = u.ty;
+        } else {
+            tx = u.tx;
+            ty = u.ty;
+            ux = u.ux;
+            uy = u.uy;
+        }
+
+        for (;;) { /* noguess: */
+            travel = [];
+            for (let i = 0; i < COLNO; i++)
+                travel.push(new Array(ROWNO).fill(0));
+            travelstepx[0][0] = tx;
+            travelstepy[0][0] = ty;
+
+            while (n !== 0) {
+                let nn = 0;
+
+                for (let i = 0; i < n; i++) {
+                    const x = travelstepx[set][i];
+                    const y = travelstepy[set][i];
+                    /* no diagonal movement for grid bugs */
+                    const dirmax = NODIAG(u.umonnum) ? 4 : 8; /* N_DIRS */
+                    let alreadyrepeated = false;
+
+                    for (let dir = 0; dir < dirmax; ++dir) {
+                        const nx = x + xdir[dirs_ord[dir]];
+                        const ny = y + ydir[dirs_ord[dir]];
+
+                        /*
+                         * When guessing and trying to travel as close as
+                         * possible to an unreachable target space, don't
+                         * include spaces that would never be picked as a
+                         * guessed target in the travel matrix describing
+                         * hero-reachable spaces.  This stops travel from
+                         * getting confused and moving the hero back and
+                         * forth in certain degenerate configurations of
+                         * sight-blocking obstacles.
+                         */
+                        if (!isok(nx, ny)
+                            || ((mode === TRAVP_GUESS) && !couldsee(nx, ny)))
+                            continue;
+                        if ((!Passes_walls() && !can_ooze_u()
+                             && closed_door(x, y))
+                            || (sobj_at(BOULDER, x, y)
+                                && !could_move_onto_boulder(x, y))
+                            || await test_move(x, y, nx - x, ny - y, TEST_TRAP)) {
+                            /* closed doors and boulders usually cause a
+                               delay, so prefer another path; however, giants
+                               and tiny creatures can use m<dir> to move onto
+                               a boulder's spot without pushing, so allow
+                               boulders for them */
+                            if (travel[x][y] > radius - 3) {
+                                if (!alreadyrepeated) {
+                                    travelstepx[1 - set][nn] = x;
+                                    travelstepy[1 - set][nn] = y;
+                                    /* don't change travel matrix! */
+                                    nn++;
+                                    alreadyrepeated = true;
+                                }
+                                continue;
+                            }
+                        }
+                        if (await test_move(x, y, nx - x, ny - y, TEST_TRAV)
+                            && (game.level.at(nx, ny).seenv
+                                || (!Blind() && couldsee(nx, ny)))) {
+                            if (nx === ux && ny === uy) {
+                                if (mode === TRAVP_TRAVEL || mode === TRAVP_VALID) {
+                                    const visited
+                                        = !!selection_getpoint(x, y, game.travelmap);
+                                    u.dx = x - ux;
+                                    u.dy = y - uy;
+                                    if (mode === TRAVP_TRAVEL
+                                        && ((x === u.tx && y === u.ty)
+                                            || visited)) {
+                                        nomul(0);
+                                        /* reset run so domove run checks work */
+                                        ctx.run = 8;
+                                        if (visited)
+                                            await You("stop, unsure which way to go.");
+                                        else
+                                            game.iflags.travelcc = { x: 0, y: 0 };
+                                    }
+                                    selection_setpoint(u.ux, u.uy,
+                                                       game.travelmap, 1);
+                                    return true;
+                                }
+                            } else if (!travel[nx][ny]) {
+                                travelstepx[1 - set][nn] = nx;
+                                travelstepy[1 - set][nn] = ny;
+                                travel[nx][ny] = radius;
+                                nn++;
+                            }
+                        }
+                    }
+                }
+
+                /* iflags.trav_debug: DEBUG only */
+
+                n = nn;
+                set = 1 - set;
+                radius++;
+            }
+
+            /* if guessing, find best location in travel matrix and go there */
+            if (mode === TRAVP_GUESS) {
+                let px = tx, py = ty; /* pick location */
+                let dist, nxtdist, d2, nd2;
+                let ctrav, ptrav = COLNO * ROWNO;
+
+                dist = distmin(ux, uy, tx, ty);
+                d2 = dist2(ux, uy, tx, ty);
+                for (tx = 1; tx < COLNO; ++tx)
+                    for (ty = 0; ty < ROWNO; ++ty)
+                        if (couldsee(tx, ty) && (ctrav = travel[tx][ty]) > 0) {
+                            nxtdist = distmin(ux, uy, tx, ty);
+                            if (nxtdist === dist && ctrav < ptrav) {
+                                nd2 = dist2(ux, uy, tx, ty);
+                                if (nd2 < d2) {
+                                    /* prefer non-zigzag path */
+                                    px = tx;
+                                    py = ty;
+                                    d2 = nd2;
+                                    ptrav = ctrav;
+                                }
+                            } else if (nxtdist < dist) {
+                                px = tx;
+                                py = ty;
+                                dist = nxtdist;
+                                d2 = dist2(ux, uy, tx, ty);
+                                ptrav = ctrav;
+                            }
+                        }
+
+                if (u_at(px, py)) {
+                    /* no guesses, just go in the general direction */
+                    u.dx = Math.sign(u.tx - u.ux);
+                    u.dy = Math.sign(u.ty - u.uy);
+                    if (await test_move(u.ux, u.uy, u.dx, u.dy, TEST_MOVE)) {
+                        selection_setpoint(u.ux, u.uy, game.travelmap, 1);
+                        return true;
+                    }
+                    break; /* goto found */
+                }
+                /* iflags.trav_debug: DEBUG only */
+                tx = px;
+                ty = py;
+                ux = u.ux;
+                uy = u.uy;
+                set = 0;
+                n = radius = 1;
+                mode = TRAVP_TRAVEL;
+                continue; /* goto noguess */
+            }
+            return false;
+        }
+    }
+
+    /* found: */
+    u.dx = 0;
+    u.dy = 0;
+    nomul(0);
+    return false;
+}
+
+// C ref: hack.c is_valid_travelpt()
+export async function is_valid_travelpt(x, y) {
+    const u = game.u;
+    const tx = u.tx;
+    const ty = u.ty;
+    const glyph = glyph_at(x, y);
+
+    if (u_at(x, y))
+        return true;
+    /* glyph_is_cmap(glyph) && S_stone == glyph_to_cmap(glyph): the shown
+       glyph is a background one that is blank and remembered as S_stone
+       (a never-seen spot shows GLYPH_UNEXPLORED, which isn't cmap) */
+    if (isok(x, y) && glyph.kind === 'cmap' && glyph.ch === ' '
+        && game.level.at(x, y).remembered_glyph?.cmap === 'S_stone'
+        && !game.level.at(x, y).seenv)
+        return false;
+    u.tx = x;
+    u.ty = y;
+    const ret = await findtravelpath(TRAVP_VALID);
+    u.tx = tx;
+    u.ty = ty;
+    return ret;
+}
+
+/* C ref: hack.h test_move() modes */
+const TEST_TRAV = 2; /* test a future travel location */
+const TEST_TRAP = 3; /* check if a future travel loc is a trap */
+
+// C ref: hack.c test_move()
 export async function test_move(ux, uy, dx, dy, mode) {
     const u = game.u;
     const x = ux + dx;
@@ -1167,8 +1472,6 @@ export async function test_move(ux, uy, dx, dy, mode) {
 
     if (!isok(x, y))
         return false;
-    if (mode !== DO_MOVE && mode !== TEST_MOVE)
-        throw new Error('test_move(): travel modes not ported yet');
 
     const tmpr = game.level.at(x, y);
 
@@ -1280,6 +1583,11 @@ export async function test_move(ux, uy, dx, dy, mode) {
                         } else
                             await pline("That door is closed.");
                     }
+                } else if (mode === TEST_TRAV || mode === TEST_TRAP) {
+                    /* goto testdiag */
+                    return !(dx && dy && !Passes_walls()
+                             && (!doorless_door(x, y) || block_door(x, y)))
+                           && await test_move_rest(ux, uy, dx, dy, mode, x, y);
                 }
                 return false;
             }
@@ -1298,6 +1606,14 @@ export async function test_move(ux, uy, dx, dy, mode) {
             }
         }
     }
+    return await test_move_rest(ux, uy, dx, dy, mode, x, y);
+}
+
+/* the rest of test_move(), from the diagonal squeeze check on; split out
+   so that the closed-door 'goto testdiag' of the travel modes can rejoin
+   it */
+async function test_move_rest(ux, uy, dx, dy, mode, x, y) {
+    const u = game.u;
     if (dx && dy && bad_rock(game.youmonst.data, ux, y)
         && bad_rock(game.youmonst.data, x, uy)) {
         /* Move at a diagonal. */
@@ -1321,6 +1637,39 @@ export async function test_move(ux, uy, dx, dy, mode) {
     /* worm_cross(): long worm segments aren't ported (m_move() throws
        for long worms) */
 
+    /* Pick travel path that does not require crossing a trap.
+     * Avoid water and lava using the usual running rules.
+     * (but not u.ux/u.uy because findtravelpath walks toward u.ux/u.uy) */
+    if (game.context.run === 8 && (mode !== DO_MOVE) && !u_at(x, y)) {
+        const t = t_at(x, y);
+
+        if (t && t.tseen && t.ttyp !== VIBRATING_SQUARE)
+            return (mode === TEST_TRAP);
+
+        /* FIXME: should be using lastseentyp[x][y] rather than seen vector
+         */
+        const lev = game.level.at(x, y);
+        /* Known_wwalking/Known_lwalking: whether worn water/lava walking
+           boots are identified isn't tracked yet; only intrinsic water
+           walking (as in avoid_moving_on_liquid()) */
+        const Known_wwalking = uhave(WWALKING);
+        const Known_lwalking = false;
+        if ((lev.seenv && is_pool_or_lava(x, y)) /* known pool/lava */
+            && ((IS_WATERWALL(lev.typ) /* never enter wall of liquid */
+                 || lev.typ === LAVAWALL)
+                /* don't enter pool or lava (must be one of the two to
+                   get here) unless flying or levitating or have known
+                   water-walking for pool or known lava-walking and
+                   already be on/over lava for lava */
+                || !(Levitation() || Flying()
+                     || (is_pool(x, y) ? Known_wwalking
+                         : (Known_lwalking && is_lava(u.ux, u.uy))))))
+            return (mode === TEST_TRAP);
+    }
+
+    if (mode === TEST_TRAP)
+        return false; /* do not move through traps */
+
     const ust = game.level.at(ux, uy);
 
     /* Now see if other things block our way . . */
@@ -1333,9 +1682,13 @@ export async function test_move(ux, uy, dx, dy, mode) {
     }
 
     if (sobj_at(BOULDER, x, y) && (Sokoban() || !Passes_walls())) {
-        if (game.context.run >= 2
-            && !(Blind() || uhave(HALLUC)) /* && !could_move_onto_boulder() */)
-            throw new Error('test_move(): could_move_onto_boulder() not ported yet');
+        if (mode !== TEST_TRAV && game.context.run >= 2
+            && !(Blind() || uhave(HALLUC)) && !could_move_onto_boulder(x, y)) {
+            if (mode === DO_MOVE && game.flags.mention_walls)
+                /* pline_dir(xytodir(dx,dy), ...) */
+                await pline("A boulder blocks your path.");
+            return false;
+        }
         if (mode === DO_MOVE) {
             /* tunneling monsters will chew before pushing */
             if (tunnels(game.youmonst.data) && !needspick(game.youmonst.data)
@@ -1343,7 +1696,26 @@ export async function test_move(ux, uy, dx, dy, mode) {
                 throw new Error('test_move(): still_chewing() not ported yet');
             } else if ((await moverock()) < 0)
                 return false;
+        } else if (mode === TEST_TRAV) {
+            let obj;
+
+            /* never travel through boulders in Sokoban */
+            if (Sokoban())
+                return false;
+
+            /* don't pick two boulders in a row, unless there's a way thru */
+            if (sobj_at(BOULDER, ux, uy) && !Sokoban()) {
+                if (!Passes_walls()
+                    && !could_move_onto_boulder(ux, uy)
+                    && !(tunnels(game.youmonst.data)
+                         && !needspick(game.youmonst.data))
+                    && !carrying(PICK_AXE) && !carrying(DWARVISH_MATTOCK)
+                    && !((obj = carrying(WAN_DIGGING))
+                         && !objects[obj.otyp].oc_name_known))
+                    return false;
+            }
         }
+        /* assume you'll be able to push it when you get there... */
     }
 
     /* OK, it is a legal place to move. */
@@ -2063,8 +2435,11 @@ async function domove_core() {
     let x, y;
     const displaceu = { val: false }; /* involuntary swap */
 
-    if (ctx.travel)
-        throw new Error('domove_core(): findtravelpath() not ported yet');
+    if (ctx.travel) {
+        if (!(await findtravelpath(TRAVP_TRAVEL)))
+            await findtravelpath(TRAVP_GUESS);
+        ctx.travel1 = 0;
+    }
 
     if (await carrying_too_much())
         return;

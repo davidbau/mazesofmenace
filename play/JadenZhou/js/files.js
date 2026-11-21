@@ -6,9 +6,12 @@
 // directory; fqname() prefixes are not modelled.
 
 import { game } from './gstate.js';
-import { In_quest } from './const.js';
+import { In_quest, LFILE_EXISTS, NHF_LEVELFILE, NHF_SAVEFILE, READING, WRITING,
+         FREEING } from './const.js';
 import { Is_special } from './dungeon.js';
-import { vfsReadFile } from './storage.js';
+import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
+import { new_nhfile, close_nhfile, nhfile_contents, nhfile_from_contents,
+         Sfo, Sfi } from './sfbase.js';
 
 // C ref: files.c set_bonesfile_name()
 /* set up "file" to be file name for retrieving bones, and return a
@@ -60,4 +63,202 @@ export function open_bonesfile(lev) {
     if (data === null)
         return null;
     return { ftype: 'bones', mode: 'reading', name: fq_bones, data };
+}
+
+// ---------------------------------------------------------------------
+// level files and the save file
+//
+// Level files ("<lock>.<n>") hold levels the hero isn't on; C keeps them
+// in the playground until the game ends or is saved, so here they live
+// for the run of the program (game.levelfiles).  The save file goes into
+// the contest's cross-segment storage (storage.js), where the next
+// segment's startup looks for it, as unixmain.c does on disk.
+
+/* getuid(): the JS port has no user id; any fixed value works since the
+   saving and the restoring program agree on it */
+export const HACK_UID = 0;
+
+// C ref: unixunix.c regularize()
+export function regularize(s) {
+    return s.replace(/[./ ]/g, '_');
+}
+
+// C ref: unixunix.c getlock() -- the name part: gl.locknum is 0 (no
+// MAXPLAYERS limit), so the lock is <uid><charname>; the lock file
+// itself ("<lock>.0") and the "game in progress" check aren't modelled
+export function getlock() {
+    const g = game;
+    g.lock = regularize(`${HACK_UID}${g.plname}`);
+    g.lock = set_levelfile_name(g.lock, 0);
+}
+
+// C ref: files.c set_levelfile_name()
+export function set_levelfile_name(file, lev) {
+    const dot = file.lastIndexOf('.');
+    return `${dot >= 0 ? file.slice(0, dot) : file}.${lev}`;
+}
+
+/* svl.level_info[lev] (dungeon.h struct linfo) */
+export function level_info(lev) {
+    const g = game;
+    if (!g.level_info)
+        g.level_info = [];
+    if (!g.level_info[lev])
+        g.level_info[lev] = { flags: 0 };
+    return g.level_info[lev];
+}
+
+function levelfiles() {
+    if (!game.levelfiles)
+        game.levelfiles = new Map();
+    return game.levelfiles;
+}
+
+// C ref: files.c create_levelfile()
+export function create_levelfile(lev, errbuf) {
+    const g = game;
+    if (errbuf) errbuf.v = '';
+    g.lock = set_levelfile_name(g.lock || '1lock', lev);
+    const fq_lock = g.lock; /* fqname(gl.lock, LEVELPREFIX, 0) */
+
+    const nhfp = new_nhfile();
+    nhfp.ftype = NHF_LEVELFILE;
+    nhfp.mode = WRITING;
+    nhfp.structlevel = true; /* do set this TRUE for levelfiles */
+    nhfp.fieldlevel = false; /* don't set this TRUE for levelfiles */
+    nhfp.name = fq_lock;
+    nhfp.fd = 1;
+    nhfp.onclose = (f) => { levelfiles().set(f.name, f.recs); };
+    level_info(lev).flags |= LFILE_EXISTS;
+    return nhfp;
+}
+
+// C ref: files.c open_levelfile()
+export function open_levelfile(lev, errbuf) {
+    const g = game;
+    if (errbuf) errbuf.v = '';
+    g.lock = set_levelfile_name(g.lock || '1lock', lev);
+    const fq_lock = g.lock;
+    const recs = levelfiles().get(fq_lock);
+    if (!recs) {
+        /* for failure, return an explanation that our caller can use */
+        if (errbuf)
+            errbuf.v = `Cannot open file "${g.lock}" for level ${lev} (errno 2).`;
+        return null;
+    }
+    const nhfp = new_nhfile();
+    nhfp.mode = READING;
+    nhfp.structlevel = true;
+    nhfp.fieldlevel = false;
+    nhfp.ftype = NHF_LEVELFILE;
+    nhfp.name = fq_lock;
+    nhfp.fd = 1;
+    nhfp.recs = recs;
+    return nhfp;
+}
+
+// C ref: files.c delete_levelfile()
+export function delete_levelfile(lev) {
+    const g = game;
+    /*
+     * Level 0 might be created by port specific code that doesn't
+     * call create_levfile(), so always assume that it exists.
+     */
+    if (lev === 0 || (level_info(lev).flags & LFILE_EXISTS)) {
+        g.lock = set_levelfile_name(g.lock || '1lock', lev);
+        levelfiles().delete(g.lock); /* unlink(fqname(gl.lock, LEVELPREFIX, 0)) */
+        level_info(lev).flags &= ~LFILE_EXISTS;
+    }
+}
+
+// C ref: files.c set_savefile_name() -- the UNIX branch
+export function set_savefile_name(regularize_it) {
+    const g = game;
+    const regoffset = 5;
+    g.SAVEF = `save/${HACK_UID}${g.plname}`;
+    if (regularize_it)
+        g.SAVEF = g.SAVEF.slice(0, regoffset) + regularize(g.SAVEF.slice(regoffset));
+    /* no SAVE_EXTENSION; no compression indicator (nh_compress() isn't
+       modelled) */
+}
+
+// C ref: files.c create_savefile()
+export function create_savefile() {
+    const fq_save = game.SAVEF; /* fqname(gs.SAVEF, SAVEPREFIX, 0) */
+    const nhfp = new_nhfile();
+    nhfp.ftype = NHF_SAVEFILE;
+    nhfp.mode = WRITING;
+    nhfp.structlevel = true;
+    nhfp.fieldlevel = false;
+    nhfp.name = fq_save;
+    nhfp.fd = 1;
+    nhfp.onclose = (f) => {
+        if (!vfsWriteFile(f.name, nhfile_contents(f)))
+            throw new Error('create_savefile(): no storage for the save file not ported yet');
+    };
+    return nhfp;
+}
+
+// C ref: files.c open_savefile()
+export function open_savefile() {
+    const fq_save = game.SAVEF;
+    const data = vfsReadFile(fq_save);
+    if (data === null)
+        return null;
+    const nhfp = new_nhfile();
+    nhfp.ftype = NHF_SAVEFILE;
+    nhfp.mode = READING;
+    nhfp.structlevel = true;
+    nhfp.fieldlevel = false;
+    nhfp.name = fq_save;
+    nhfp.fd = 1;
+    nhfile_from_contents(nhfp, data);
+    return nhfp;
+}
+
+// C ref: files.c delete_savefile()
+export function delete_savefile() {
+    vfsDeleteFile(game.SAVEF); /* unlink(fqname(gs.SAVEF, SAVEPREFIX, 0)) */
+    return 0; /* for restore_saved_game() (ex-xxxmain.c) test */
+}
+
+// C ref: files.c restore_saved_game()
+/* try to open up a save file and prepare to restore it */
+export function restore_saved_game() {
+    set_savefile_name(true);
+    /* nh_uncompress(fq_save): no compression */
+    let nhfp = open_savefile();
+    if (nhfp) {
+        if (validate(nhfp) !== SF_UPTODATE) {
+            close_nhfile(nhfp);
+            nhfp = null; /* problematic_savefile() */
+        }
+    }
+    return nhfp;
+}
+
+// C ref: files.c get_freeing_nhfile()
+export function get_freeing_nhfile() {
+    const nhfp = new_nhfile(); /* also sets fd to -1 */
+    nhfp.mode = FREEING;
+    return nhfp;
+}
+
+// ---------------------------------------------------------------------
+// version.c: the version record at the start of save and level files
+
+/* JS writes and reads its own save format; this names it */
+const SAVE_FORMAT_VERSION = 'teleport-js-1';
+const SF_UPTODATE = 0;
+const SF_OUTDATED = 1;
+
+// C ref: version.c store_version()
+export function store_version(nhfp) {
+    Sfo(nhfp, SAVE_FORMAT_VERSION, "version_info");
+}
+
+// C ref: version.c validate()
+export function validate(nhfp) {
+    const v = Sfi(nhfp, "version_info");
+    return (v === SAVE_FORMAT_VERSION) ? SF_UPTODATE : SF_OUTDATED;
 }

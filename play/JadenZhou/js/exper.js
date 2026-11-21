@@ -1,16 +1,22 @@
 // exper.js — experience levels, and energy gained per level.
 // C ref: exper.c
 //
-// Only what hero initialization needs so far: newuexp(), enermod(), newpw();
-// and more_experienced(), newexplevel() (pluslvl() is not ported yet).
+// Ported so far: newuexp(), enermod(), newpw(), experience(),
+// more_experienced(), newexplevel(), pluslvl() (not for a polymorphed
+// hero) and losexp().
 
 import { game } from './gstate.js';
 import { rnd, rn1 } from './rng.js';
-import { A_WIS, MAXULEV } from './const.js';
+import { A_WIS, MAXULEV, NORMAL_SPEED, NATTK, MAGICAL_BREATHING } from './const.js';
+import { AT_BUTT, AT_WEAP, AT_MAGC, AD_PHYS, AD_BLND, AD_DRLI, AD_STON,
+         AD_SLIM, AD_WRAP, S_EEL, M2_NASTY, M1_AMPHIBIOUS } from './monsters.js';
+import { find_mac } from './worn.js';
 import {
     PM_CLERIC, PM_WIZARD, PM_HEALER, PM_KNIGHT, PM_BARBARIAN, PM_VALKYRIE,
 } from './monsters.js';
-import { ACURR, adjabil } from './attrib.js';
+import { ACURR, adjabil, newhp } from './attrib.js';
+import { xlev_to_rank } from './botl.js';
+import { record_achievement } from './do.js';
 import { pline } from './display.js';
 import { Goodbye } from './role.js';
 import { resists_drli } from './mondata.js';
@@ -84,6 +90,93 @@ export function newpw() {
     return en;
 }
 
+/* C ref: mondata.h extra_nasty(); youprop.h Amphibious */
+function extra_nasty(ptr) { return (ptr.mflags2 & M2_NASTY) !== 0; }
+function Amphibious() {
+    const p = game.u.uprops[MAGICAL_BREATHING];
+    return !!(p.intrinsic || p.extrinsic)
+           || (game.youmonst.data.mflags1 & M1_AMPHIBIOUS) !== 0;
+}
+
+// C ref: exper.c experience()
+export function experience(mtmp, nk) {
+    const ptr = mtmp.data;
+    let i, tmp, tmp2;
+
+    tmp = 1 + mtmp.m_lev * mtmp.m_lev;
+
+    /*  For higher ac values, give extra experience */
+    if ((i = find_mac(mtmp)) < 3)
+        tmp += (7 - i) * ((i < 0) ? 2 : 1);
+
+    /*  For very fast monsters, give extra experience */
+    if (ptr.mmove > NORMAL_SPEED)
+        tmp += (ptr.mmove > Math.trunc(3 * NORMAL_SPEED / 2)) ? 5 : 3;
+
+    /*  For each "special" attack type give extra experience */
+    for (i = 0; i < NATTK; i++) {
+        tmp2 = ptr.mattk[i].aatyp;
+        if (tmp2 > AT_BUTT) {
+            if (tmp2 === AT_WEAP)
+                tmp += 5;
+            else if (tmp2 === AT_MAGC)
+                tmp += 10;
+            else
+                tmp += 3;
+        }
+    }
+
+    /*  For each "special" damage type give extra experience */
+    for (i = 0; i < NATTK; i++) {
+        tmp2 = ptr.mattk[i].adtyp;
+        if (tmp2 > AD_PHYS && tmp2 < AD_BLND)
+            tmp += 2 * mtmp.m_lev;
+        else if ((tmp2 === AD_DRLI) || (tmp2 === AD_STON) || (tmp2 === AD_SLIM))
+            tmp += 50;
+        else if (tmp2 !== AD_PHYS)
+            tmp += mtmp.m_lev;
+        /* extra heavy damage bonus */
+        if ((ptr.mattk[i].damd * ptr.mattk[i].damn) > 23)
+            tmp += mtmp.m_lev;
+        if (tmp2 === AD_WRAP && ptr.mlet === S_EEL && !Amphibious())
+            tmp += 1000;
+    }
+
+    /*  For certain "extra nasty" monsters, give even more */
+    if (extra_nasty(ptr))
+        tmp += (7 * mtmp.m_lev);
+
+    /*  For higher level monsters, an additional bonus is given */
+    if (mtmp.m_lev > 8)
+        tmp += 50;
+
+    /* MAIL_STRUCTURES: no mail daemon in this build */
+
+    if (mtmp.mrevived || mtmp.mcloned) {
+        /*
+         *      Reduce experience awarded for repeated killings of
+         *      "the same monster".  Kill count includes all of this
+         *      monster's type which have been killed--including the
+         *      current monster--regardless of how they were created.
+         *        1.. 20        full experience
+         *       21.. 40        xp / 2
+         *       41.. 80        xp / 4
+         *       81..120        xp / 8
+         *      121..180        xp / 16
+         *      181..240        xp / 32
+         *      241..255+       xp / 64
+         */
+        for (i = 0, tmp2 = 20; nk > tmp2 && tmp > 1; ++i) {
+            tmp = Math.trunc((tmp + 1) / 2);
+            nk -= tmp2;
+            if (i & 1)
+                tmp2 += 20;
+        }
+    }
+
+    return tmp;
+}
+
 // C ref: exper.c more_experienced()
 export function more_experienced(exper, rexp) {
     const u = game.u;
@@ -115,10 +208,74 @@ export function more_experienced(exper, rexp) {
 }
 
 // C ref: exper.c newexplevel()
-export function newexplevel() {
+/*
+ * Make experience gaining similar to AD&D(tm), whereby you can at most go
+ * up by one level at a time, extra expr possibly helping you along.
+ * After all, how much real experience does one get shooting a wand of death
+ * at a dragon created with a wand of polymorph??
+ */
+export async function newexplevel() {
     const u = game.u;
     if (u.ulevel < MAXULEV && u.uexp >= newuexp(u.ulevel))
-        throw new Error('newexplevel(): pluslvl() not ported yet');
+        await pluslvl(true);
+}
+
+// C ref: exper.c pluslvl()
+export async function pluslvl(
+    incr) /* True: incremental experience growth;
+           * False: potion of gain level or wraith corpse
+           *        or wizard mode #levelchange */ {
+    const u = game.u;
+    let hpinc, eninc;
+
+    if (!incr)
+        await pline("You feel more experienced.");
+
+    /* increase hit points (when polymorphed, do monster form first
+       in order to retain normal human/whatever increase for later) */
+    if (u.umonnum !== u.umonster) /* Upolyd */
+        throw new Error('pluslvl(): monhp_per_lvl() for a polymorphed hero not ported yet');
+    hpinc = newhp();
+    u.uhp += hpinc;
+    setuhpmax(u.uhpmax + hpinc, true); /* will lower u.uhp if it exceeds
+                                        * u.uhpmax */
+
+    /* increase spell power/energy points */
+    eninc = newpw();
+    u.uenmax += eninc;
+    if (u.uenmax > u.uenpeak)
+        u.uenpeak = u.uenmax;
+    u.uen += eninc;
+
+    /* increase level (unless already maxxed) */
+    if (u.ulevel < MAXULEV) {
+        const oldrank = xlev_to_rank(u.ulevel);
+
+        /* increase experience points to reflect new level */
+        if (incr) {
+            const tmp = newuexp(u.ulevel + 1);
+
+            if (u.uexp >= tmp)
+                u.uexp = tmp - 1;
+        } else {
+            u.uexp = newuexp(u.ulevel);
+        }
+        ++u.ulevel;
+        await pline(`Welcome ${(u.ulevelmax < u.ulevel) ? "" : "back "
+                    }to experience level ${u.ulevel}.`);
+        if (u.ulevelmax < u.ulevel)
+            u.ulevelmax = u.ulevel;
+        await adjabil(u.ulevel - 1, u.ulevel); /* give new intrinsics */
+        /* SoundAchievement(0, sa2_xplevelup, 0): no sound interface */
+        const newrank = xlev_to_rank(u.ulevel);
+        if (newrank > oldrank)
+            record_achievement(`ACH_RNK${newrank}`); /* achieve_rank(newrank) */
+        /* livelog_printf(LL_MINORAC, "...gained experience level %d"): the
+           livelog isn't shown on the tty */
+        if (u.ulevel > (u.ulevelpeak || 0))
+            u.ulevelpeak = u.ulevel;
+    }
+    game.disp_botl = true;
 }
 
 // C ref: attrib.c minuhpmax()

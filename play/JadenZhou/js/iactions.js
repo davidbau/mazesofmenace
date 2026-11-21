@@ -135,7 +135,7 @@ export function is_edible(obj) {
 }
 
 /* C ref: dungeon.c surface() -- the hero's spot on ordinary terrain */
-function surface(x, y) {
+export function surface(x, y) {
     const lev = game.level.at(x, y);
     const levtyp = lev.typ;
 
@@ -294,6 +294,12 @@ export function simpleonames(obj) {
     if (obj.quan !== 1)
         simpleoname = makeplural(simpleoname);
     return simpleoname;
+}
+
+/* C ref: objnam.c thesimpleoname() */
+/* "the scroll" or "the scrolls" */
+export function thesimpleoname(obj) {
+    return the(simpleonames(obj));
 }
 
 /* C ref: objnam.c suit_simple_name() */

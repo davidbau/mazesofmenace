@@ -1192,9 +1192,15 @@ export async function panic(_msg) {
     /* C end.c:445-447 set_error_savefile() + dosave0(): the panic save is
      * "<savefile>.e"; the next process's check_panic_save() (files.c:1312)
      * finds it.  Marker only: the error save is never restored. */
-    if (game.program_state.something_worth_saving)
+    if (game.program_state.something_worth_saving && !game.iflags.debug_fuzzer)
         vfsWriteFile(savefile_name(String(game.plname || '').split('-')[0].replace(/,/g, ' ')) + '.e', '1');
     game._preNhgetchHook = null;
+    if (game.iflags.debug_fuzzer) {
+        // C end.c:467-473 exits after getret(). Fuzzer nhgetch() supplies
+        // random keys without draining terminal input (wintty.c:4067-4068).
+        const { nh_terminate } = await import('./end.js');
+        await nh_terminate(1, 'panic');
+    }
     for (;;)
         await nhgetch();   /* ends when the replay's key queue empties (throws) */
     /* The process is gone (end.c:467 NH_abort / really_done). */

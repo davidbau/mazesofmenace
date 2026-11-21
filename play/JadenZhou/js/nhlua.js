@@ -48,6 +48,7 @@ import { level_difficulty } from './dungeon.js';
 
 // C's impossible() (pline.c) is not ported yet.
 function impossible(msg) { console.error(`impossible: ${msg}`); }
+function panic(msg) { throw new Error(`panic: ${msg}`); }
 
 // Lua basic types (lua.h), as lua_type() returns them.
 export const LUA_TNIL = 0;
@@ -483,6 +484,8 @@ export function nhl_loadlua(L, fname) {
         chunk(L);
     } catch (e) {
         if (!(e instanceof LuaError)) throw e;
+        if (/not ported yet/.test(e.message))
+            throw new Error(e.message);
         impossible(`Lua error: ${L.sid}:${L.name || '(unknown)'} ${e.message}`);
         ret = FALSE;
     }
@@ -531,10 +534,20 @@ export function nhl_pcall_handle(L, fn, args, name, npa) {
         fn(...args);
     } catch (e) {
         if (!(e instanceof LuaError)) throw e;
-        if (npa === NHLpa_panic)
-            impossible(`(panic) Lua error ${L.sid}:${L.name || '(unknown)'} ${e.message}`);
-        else
+        /* a des.* or nh.* function the port lacks raised the Lua error;
+           C would have run it, so stop instead of dropping the error */
+        if (/not ported yet/.test(e.message))
+            throw new Error(e.message);
+        /* XXX can we get a lua stack trace as well? */
+        switch (npa) {
+        case NHLpa_panic:
+            panic(`Lua error ${L.sid}:${L.name || '(unknown)'} ${e.message}`);
+            /*NOTREACHED*/
+            break;
+        case NHLpa_impossible:
             impossible(`Lua error: ${L.sid}:${L.name || '(unknown)'} ${e.message}`);
+            /* Drop the error.  If the caller cares, use nhl_pcall(). */
+        }
         return 1;
     }
     return 0;

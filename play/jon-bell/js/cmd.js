@@ -4059,6 +4059,14 @@ async function doextlist(restoreExtPrompt = false) {
                 continue;
             }
             if (ch === '<') { if (page > 0) page--; continue; }
+            /* C ref: wintty.c:1638-1649 — MENU_FIRST_PAGE '^' and MENU_LAST_PAGE
+             * '|' jump to the first/last page; like '<' and '>' they never
+             * finish the menu, and are no-ops when already there. */
+            if (ch === '^') { if (page !== 0) page = 0; continue; }
+            if (ch === '|') {
+                if (page !== pages.length - 1) page = pages.length - 1;
+                continue;
+            }
             /* wintty.c:1348-1380,1522: selectors are valid only for the
              * current page, but group accelerators are collected over the
              * whole item list. */

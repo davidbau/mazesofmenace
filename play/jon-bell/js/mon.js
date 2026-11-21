@@ -1,4 +1,4 @@
-import { obj_nexto } from './mkobj.js';
+import { discard_minvent, obj_nexto } from './mkobj.js';
 // mon.js — C ref: mon.c.
 import { obj_resists } from './zap.js';
 import { adjalign } from './attrib.js';
@@ -21,7 +21,6 @@ import { dismount_steed as dismount_steed_mk, newedog, sticks, wary_dog } from '
 import { m_unleash as m_unleash_mk } from './apply.js';
 import { dmgtype, finish_meating as finish_meating_mk, quickmimic as quickmimic_mk } from './dogmove.js';
 import { fill_pit, m_harmless_trap } from './trap.js';
-import { obfree } from './dokick.js';
 import { delobj as delobj_real } from './invent.js';
 import './eat.js';
 import { more_experienced } from './exper.js';
@@ -432,27 +431,15 @@ export async function mongone(mdef) {
      * steal.c:851-871 mdrop_special_objs(), ported in js/steal.js (it was
      * inlined here, which left the steal.js port with no caller). */
     await mdrop_special_objs(mdef);
-    while (mdef.minvent) {
-        const otmp = mdef.minvent;
-        /* C mkobj.c obj_extract_self(), OBJ_MINVENT arm:
-         *     extract_nobj(obj, &obj->ocarry->minvent);
-         * every object taken here is the head, so the unlink is that
-         * function's head step — the same one mk_trap_statue below performs.
-         * nobj must be read BEFORE dealloc_obj, which re-uses it as the
-         * objs_deleted queue link. */
-        await extract_from_minvent(mdef, otmp, true, true);
-        const previouslyDeleted = game.objs_deleted;
-        await obfree(otmp, null);
-        /* C shk.c:1199-1200 recursively deletes container contents; count
-         * every object queued by mkobj.c:2802-2806, including those contents.
-         * Billed or Lua-held objects are not queued and must not count. */
-        const _bstore = game.__bridge__ || (game.__bridge__ = {});
-        const _bkey = 'objs_deleted.count';
-        const _bcur = _bstore[_bkey] !== undefined ? Number(_bstore[_bkey]) : 0;
-        let deletedCount = 0;
-        for (let obj = game.objs_deleted; obj && obj !== previouslyDeleted; obj = obj.nobj)
-            deletedCount++;
-        if (deletedCount) _bstore[_bkey] = String(_bcur + deletedCount);
+    /* C mon.c:3281 calls the shared mkobj.c:2525-2537 disposal path. */
+    const previouslyDeleted = game.objs_deleted;
+    await discard_minvent(mdef, false);
+    let deletedCount = 0;
+    for (let obj = game.objs_deleted; obj && obj !== previouslyDeleted; obj = obj.nobj)
+        deletedCount++;
+    if (deletedCount) {
+        const bridge = game.__bridge__ || (game.__bridge__ = {});
+        bridge['objs_deleted.count'] = String(Number(bridge['objs_deleted.count'] || 0) + deletedCount);
     }
     /* C mon.c:2733 m_detach -> mon_leaving_level: vacate the map and newsym
      * (potion.c:2803 mongrantswish relies on it to clear the djinni). */

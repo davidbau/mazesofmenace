@@ -16,12 +16,12 @@ import { rn2, rnd } from './rnd.js';
 import { FILL_NORMAL, MELT_ICE_AWAY, GRAVE } from './const.js';
 import { stripdigits, str_lines_maxlen } from './hacklib.js';
 import { mineralize } from './mklev.js';
-import { remove_object } from './mkobj.js';
+import { remove_object, discard_minvent } from './mkobj.js';
 import { make_grave } from './engrave.js';
 import { add_to_container, mkgold, blessorcurse } from './mkobj.js';
 import { ALTAR, DOOR, SDOOR, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, D_SECRET, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, IS_OBSTRUCTED, isok, IS_WALL, IS_DOOR, STONE, MAX_TYPE, INVALID_TYPE, MATCH_WALL, IS_STWALL, IS_ROOM, CROSSWALL, HWALL, VWALL, COLNO, ROWNO, W_NONDIGGABLE, W_NONPASSWALL, ROOM, MOAT, TLCORNER, TRCORNER, BLCORNER, BRCORNER, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, AIR, CLOUD, FOUNTAIN, THRONE, SINK, POOL, WATER, TREE, IRONBARS, IS_DRAWBRIDGE, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, NO_TRAP, CORR, ICE, ICED_POOL, ICED_MOAT, SCORR, LAVAPOOL, LAVAWALL, OROOM, THEMEROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE, BARRACKS, ZOO, DELPHI, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL, SHOPBASE, ARMORSHOP, SCROLLSHOP, POTIONSHOP, WEAPONSHOP, FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP, STAIRS, LADDER, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_SEEN, MKTRAP_NOVICTIM, SP_COORD_IS_RANDOM, OBJ_CONTAINED, OBJ_MINVENT, NON_PM, NEUTRAL, MALE, FEMALE, In_mines, AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM, A_NONE, A_LAWFUL, A_ORIGINAL, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, PROT_FROM_SHAPE_CHANGERS, WET, HOT, SOLID, DEFAULT_INVENT, CUSTOM_INVENT, NO_INVENT, STRAT_WAITFORU, MM_NOTAIL, MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG, NO_MM_FLAGS, G_EXTINCT, G_GONE, LOW_PM, TUTORIAL, QUEST, DUNGEON_ALIGN_BY_DNUM, M_AP_MONSTER, DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, ROOMOFFSET, AM_SHRINE, AM_SANCTUM, Is_waterlevel, Is_airlevel, Is_stronghold, In_quest, LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN, GP_CHECKSCARY, IS_LAVA, IS_POOL, OBJ_FREE, LA_UP, LA_DOWN, MAX_NESTED_ROOMS, MAXNROFROOMS, IS_FURNITURE, F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM, SET_LIT_NOCHANGE, IS_TREE, is_pit, is_hole, TRAPNUM, Is_botlevel, In_endgame, EPRI, ESHK, ONAME_LEVEL_DEF, RLOC_ERR, RLOC_NOMSG, P_SPEAR, Amask2align, SVALL, EGD, } from './const.js';
 import { oinit } from './o_init.js';
-import { level_finalize_topology, clear_level_structures, find_branch_room, OC_MERGE, add_door, themeroom_lspo_map_redo_maploc_rng, mdrop_obj_md } from './mklev.js';
+import { level_finalize_topology, clear_level_structures, find_branch_room, OC_MERGE, add_door, themeroom_lspo_map_redo_maploc_rng } from './mklev.js';
 import { makeroguerooms } from './extralev.js';
 import { set_wall_state } from './display.js';
 import { u_on_newpos } from './dungeon.js';
@@ -31,7 +31,7 @@ import { mktrap, resists_ston, refile_engr_at, count_level_features, makecorrido
 import { mksobj_at, mkobj_at, mksobj, mk_tt_object, mkcorpstat, set_corpsenm } from './mkobj.js';
 import { makemon, BOULDER } from './makemon.js';
 import { del_engr_at, engr_at, make_engr_at } from './engrave.js';
-import { mpickobj } from './steal.js';
+import { mpickobj, mdrop_special_objs } from './steal.js';
 import { sobj_at } from './invent.js';
 import { wallification, get_level_extends, fix_wall_spines } from './mkmaze.js';
 import { In_hell, Can_fall_thru, level_difficulty } from './dungeon.js';
@@ -57,7 +57,6 @@ import { bless, unbless, curse, uncurse as uncurse_obj, bless as bless_obj, uncu
 import { set_malign, mkclass, mkMplayer, rndOffensiveItem, rndDefensiveItem, rndMiscItem, propagate, permonstTemplate, emits_light } from './makemon.js';
 import { name_to_mon, set_mon_data } from './mondata.js';
 import { rndmonnum } from './mkobj.js';
-import { check_gear_next_turn } from './mon.js';
 import { can_saddle } from './steed.js';
 import { del_light_source } from './light.js';
 import { monst_to_any } from './hack.js';
@@ -66,7 +65,7 @@ import { mongets } from './makemon.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { t_at, deltrap, maketrap } from './trap.js';
 import { goodpos } from './teleport.js';
-import { update_mon_extrinsics, m_dowear } from './worn.js';
+import { m_dowear } from './worn.js';
 /* C keeps pick_vibrasquare_location in mkmaze.c; create_trap's VIBRATING_SQUARE
  * arm (sp_lev.c:1819) is its only caller outside makemaz. */
 import { pick_vibrasquare_location, place_lregion } from './mkmaze.js';
@@ -94,7 +93,6 @@ import { put_saddle_on_mon } from './steed.js';
 import { m_into_limbo } from './mon.js';
 import { placebc, unplacebc } from './ball.js';
 import { obj_resists } from './zap.js';
-import { rloco as steal_rloco } from './teleport.js';
 import { ENV } from './hostenv.js';
 import { delete_contents } from './shk.js';
 const MONS_PMNAMES = monPmnamesPack.pmnames;
@@ -3532,29 +3530,10 @@ async function create_monster(m, croom) {
                 mtmp.m_lev += m.m_lev_adj;
         }
         if (!(m.has_invent & DEFAULT_INVENT)) {
-            for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
-                const unwornmask = otmp.owornmask | 0;
-                if (unwornmask) {
-                    otmp.owornmask = 0;
-                    /* C worn.c:1405 — do_extrinsics is TRUE at this call site
-                     * (mkobj.c:2531 passes TRUE, TRUE) and the monster is alive. */
-                    await update_mon_extrinsics(mtmp, otmp, false, true);
-                    mtmp.misc_worn_check = (mtmp.misc_worn_check | 0) & ~unwornmask;
-                    check_gear_next_turn(mtmp);
-                }
-                if (obj_resists(otmp, 0, 0)) {
-                    if ((mtmp.mx | 0) || (mtmp.my | 0))
-                        await mdrop_obj_md(mtmp, otmp, false);
-                    else {
-                        /* A monster without a map square is the migrating
-                         * arm of C's mdrop_special_objs; unlink it and let
-                         * the canonical rloco implementation choose a valid
-                         * destination. */
-                        await steal_rloco(otmp);
-                    }
-                }
-            }
-            mtmp.minvent = null;
+            // C sp_lev.c:2176-2181: rescue special objects before unwearing
+            // and freeing the remaining default gear, including its timers.
+            await mdrop_special_objs(mtmp);
+            await discard_minvent(mtmp, true);
         }
         if (m.has_invent & CUSTOM_INVENT) {
             invent_carrying_monster = mtmp;

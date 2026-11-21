@@ -1945,10 +1945,11 @@ export const YLIM = 3;
 // Runtime fields:
 // - inventory BUC classification and filters
 // - getobj callback return categories and option flags
-export const BUC_BLESSED = 1;
-export const BUC_UNCURSED = 2;
-export const BUC_CURSED = 3;
-export const BUC_UNKNOWN = 4;
+/* hack.h: query_category() flags, also count_buc() types */
+export const BUC_BLESSED = 0x0100;
+export const BUC_CURSED = 0x0200;
+export const BUC_UNCURSED = 0x0400;
+export const BUC_UNKNOWN = 0x0800;
 export const GETOBJ_EXCLUDE = -3;
 export const GETOBJ_DOWNPLAY = 1;
 export const GETOBJ_SUGGEST = 2;

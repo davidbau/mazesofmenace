@@ -452,14 +452,13 @@ import { bhp_is_lava as bhp_is_lava_mu, thit_is_unicorn as is_unicorn, mbodypart
 import { rounddiv } from './hack.js';
 import { snuff_candle as snuff_candle_mu } from './apply.js'; // relocate-fns
 import { ARM, A_DEX, BACKTRACK as BACKTRACK_MU, CONFUSION, EYE as EYE_MU, FACE as FACE_MU, FOOT as FOOT_MU, FUMBLING, HAND as HAND_MU, M_SEEN_REFL, SINK as SINK_MU, SLEEP_RES as SLEEP_RES_MU, STUNNED, W_WEP as W_WEP_MU, isok as isok_mu, u_at as u_at_mu } from './const.js'; // relocate-fns
-import { DISP_END, DISP_FLASH, DISP_FREEMEM, DISP_TETHER, canseemon as canseemon_mu, canspotmon as canspotmon_disp, newsym, obj_to_glyph, tmp_at } from './display.js'; // relocate-fns
+import { DISP_END, DISP_FLASH, DISP_TETHER, canseemon as canseemon_mu, canspotmon as canspotmon_disp, newsym, obj_to_glyph, tmp_at } from './display.js'; // relocate-fns
 import { dropy, flooreffects as flooreffects_real_mu } from './do.js'; // relocate-fns
 import { Monnam, hliquid as hliquid_mu, some_mon_nam } from './do_name.js'; // relocate-fns
 import { xname } from './do_wear.js'; // relocate-fns
 import { extract_from_minvent_dm, mondied_dm } from './dogmove.js'; // relocate-fns
 import { add_to_minv, down_gate, ship_object } from './dokick.js'; // relocate-fns
 import { omon_adj as omon_adj_mu } from './dothrow.js'; // relocate-fns
-import { pending_death_is_final } from './end.js'; // relocate-fns
 import { freehand } from './engrave.js'; // relocate-fns
 import { calc_capacity } from './hack.js'; // relocate-fns
 import { s_suffix } from './hacklib.js'; // relocate-fns
@@ -1559,14 +1558,6 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                         await pline(`Your ${eyes} ${vtense(eyes, 'sting')}.`);
                 }
             }
-            /* C mthrowu.c:779 onward is NOT REACHED when the missile killed the
-             * hero: thitu -> losehp -> done() does not return in C, so the whole
-             * tail below — stop_occupation, drop_throw and drop_throw's
-             * breaktest -> obj_resists / should_mulch_missile — is code C never
-             * runs.  Breaking out runs the display-only, RNG-free tail so
-             * tmp_at(DISP_FREEMEM, 0) unwinds the effect stack cleanly. */
-            if (game._pendingDeath)
-                break;
             /* C mthrowu.c:779-785 — any egg that hits starts delayed stoning. */
             if (hitu && (singleobj.otyp | 0) === EGG_M_THROW_MU) {
                 const pst = game.u?.uprops?.[18];
@@ -1616,23 +1607,15 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         tmp_at(bx, by);
         nh_delay_output_mu();
     }
-    if (pending_death_is_final()) {
-        tmp_at(DISP_FREEMEM, 0);
-    } else {
-        tmp_at(bx, by);
-        nh_delay_output_mu();
-        /* C mthrowu.c:829-833
-         *     if (arw && return_flightpath)
-         *         return_from_mtoss(mon, singleobj, tethered_weapon);
-         *     else
-         *         tmp_at(DISP_END, 0);
-         * return_from_mtoss closes the effect stack itself (DISP_END/BACKTRACK
-         * on the tethered arm, plain DISP_END on the others). */
-        if (arw && return_flightpath)
-            await return_from_mtoss(mon, singleobj, tethered_weapon);
-        else
-            tmp_at(DISP_END, 0);
-    }
+    /* C mthrowu.c:827-833.  Damage and poison await done() in their
+     * callees: a terminal death terminates there; a surviving hero resumes
+     * this ordinary flight cleanup, as in C. */
+    tmp_at(bx, by);
+    nh_delay_output_mu();
+    if (arw && return_flightpath)
+        await return_from_mtoss(mon, singleobj, tethered_weapon);
+    else
+        tmp_at(DISP_END, 0);
     gm.mesg_given = 0; /* C:835 reset */
     /* C mthrowu.c:836-839 — apply the deferred hero blindness after the
      * missile flight has ended.  ucreamed is separate from HBlinded because
@@ -1644,10 +1627,9 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         if (!Blind(game))
             await pline('Your vision quickly clears.');
     }
-    if (!game._pendingDeath) {
-        game.thrownobj = null;
-        if (game.gt) game.gt.thrownobj = null;
-    }
+    /* C mthrowu.c:843: all returning paths clear the missile pointer. */
+    game.thrownobj = null;
+    if (game.gt) game.gt.thrownobj = null;
 }
 
 /* C hacklib.c sgn(). */

@@ -111,7 +111,7 @@ import { do_vicinity_map } from './detect.js';
 import { You_feel, You_hear } from './pline.js';
 import { SPINE, DISP_BEAM, DISP_END } from './const.js';
 import { tmp_at, docorner_blank_utf8_captures } from './display.js';
-import { msgtype_suppressed } from './display.js'; // relocate-fns
+import { msgtype_suppressed, putmsghistory } from './display.js'; // relocate-fns
 import { _Confusion, _bump_literate, _makeknown, set_cursor, topline_more_loop } from './read.js'; // relocate-fns
 import { rnl } from './rnd.js'; // relocate-fns
 import { more_experienced } from './uhitm.js'; // relocate-fns
@@ -2552,13 +2552,33 @@ async function study_book_already_known(spellName, booktype) {
         let key;
         try { key = await nhgetch(); } finally { g._topl_suppress_history = savedSuppress; }
         const c = String.fromCharCode(key);
+        /* C topl.c:537-539 clean_up rewrites gt.toplines as prompt + key2txt(q),
+         * and remember_topl() files THAT — the answered prompt, never the bare
+         * question — when the next line publishes: wintty.c:2290-2299 has even a
+         * SUPPRESS_HISTORY prompt remember_topl() the standing topline before
+         * show_topl() replaces it.  File the answered prompt eagerly here and
+         * mark the bare prompt filed, exactly like the end.js _yn_prompt and
+         * cmd.js paranoid twins.  The deferred _topl_answered rewrite used to
+         * land only at the next UNSUPPRESSED nhgetch, so when the answer was
+         * 'y' and spell.c:595's "difficult to comprehend" prompt — itself a
+         * SUPPRESS_HISTORY publication that overwrites _pending_message — came
+         * next, the answered refresh prompt never reached the ^P ring and a
+         * second ^P recalled "You know ..." where C walks
+         * "Refresh your memory anyway? [yn] (n) y" (df-xad6d836b9b frame 31). */
+        const answered = (a) => {
+            g._toplEmptyAfterSuppress = false; /* gt.toplines is now prompt + answer */
+            putmsghistory(`${ynPrompt} ${a}`, false);
+            /* the bare prompt still painted on the topline is already filed */
+            g._topl_prompt_filed = ynPrompt;
+            return a;
+        };
         if (c === '\x1b' || c === '\r' || c === '\n' || c === ' ') {
-            g._topl_answered = `${ynPrompt} n`;           /* ESC/activator → default 'n' */
+            answered('n');                                /* ESC/activator → default 'n' */
             break;
         }
         const lc = c.toLowerCase();
         if (lc === 'y' || lc === 'n') {                   /* valid yn answer */
-            g._topl_answered = `${ynPrompt} ${lc}`;
+            answered(lc);
             refresh = (lc === 'y');                       /* spell.c:571 only 'n' returns 0 */
             break;
         }

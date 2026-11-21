@@ -23,6 +23,7 @@ export function makeLocation() {
         disp_color: NO_COLOR,
         disp_decgfx: false,
         disp_attr: 0,
+        disp_objpile: false, // the shown glyph is a pile-top one (MG_OBJPILE)
         gnew: 0,           // dirty flag for flush_glyph_buf
         glyph_symidx: -1,  // S_* symbol index
         remembered_glyph: undefined,  // { ch, color, decgfx, symidx }

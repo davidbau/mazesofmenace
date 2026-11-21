@@ -561,8 +561,12 @@ function _wall_impossible(fmt, ...args) {
     state.in_impossible = 1;
     const text = nh_snprintf(null, BUFSZ, fmt, ...args);
     paniclog('impossible', text);
-    if (game.iflags?.debug_fuzzer === 1)
-        throw new Error('panic: ' + text);
+    if (game.iflags?.debug_fuzzer === 1) {
+        // C pline.c:600-601 enters panic(), including its tty wait.
+        const error = new Error(text);
+        error.nhPanic = true;
+        throw error;
+    }
     urgent_pline('%s', text);
     if (!state.in_sanity_check) {
         pline('%s', 'Program in disorder!' + (state.something_worth_saving
@@ -4478,7 +4482,7 @@ async function _docrt_body(pageTopl, physicalScreen) {
      * until cls has acknowledged the notices. */
     const backdrop = physicalScreen === null ? null : {
         rows: physicalScreen.split('\n'), cells: _capture_painted_cells(), dirty: new Set(),
-        botSeq: game._botlPaintSeq | 0,
+        botSeq: game._botlPaintSeq | 0, frames: new WeakMap(),
     };
     if (backdrop) game._docrtTextBackdrop = backdrop;
     try {
@@ -4670,10 +4674,19 @@ function _levelgen_paint_frame() {
 }
 // the C tty physical terminal's last flush.  DISPLAY-ONLY: reads disp_* only,
 // consumes no RNG, mutates no game state.  Returns a Map keyed y*COLNO+x.
+function _capture_cell_rogue_color(cell, x, y, hero, clear) {
+    if (!clear)
+        return hero ? { ...cell, hero: true } : { ...cell };
+    const keep = hero && rogue_hero_showrace_cell(x, y, null);
+    const out = { ...cell, color: keep ? CLR_WHITE : NO_COLOR };
+    if (hero) out.hero = true;
+    return out;
+}
 function _capture_painted_cells() {
     if (game?._physBlankToDocrt) return new Map();
     const frz = _levelgen_paint_frame();
     if (frz && frz.cells) return new Map(frz.cells);
+    const rogueClear = rogue_graphics() && !rogue_ibm_color();
     const lvl = game?.level;
     const cells = new Map();
     if (!lvl) return cells;
@@ -4699,7 +4712,8 @@ function _capture_painted_cells() {
                 if (cell.ch && (cell.ch !== ' ' || (cell.attr & 1)))
                     cells.set(y * COLNO + x, x === ux && y === uy
                         && lvl.at(x, y)?.disp_cls === GLYPHCLS_MON
-                        ? { ...cell, hero: true } : { ...cell });
+                        ? _capture_cell_rogue_color(cell, x, y, true, rogueClear)
+                        : _capture_cell_rogue_color(cell, x, y, false, rogueClear));
             }
         }
         return cells;
@@ -4720,7 +4734,8 @@ function _capture_painted_cells() {
             if (cell.ch && (cell.ch !== ' ' || (cell.attr & 1)))
                 cells.set(y * COLNO + x, (x === (game.u?.ux | 0) && y === (game.u?.uy | 0)
                     && loc?.disp_cls === GLYPHCLS_MON)
-                    ? { ...cell, hero: true } : { ...cell });
+                    ? _capture_cell_rogue_color(cell, x, y, true, rogueClear)
+                    : _capture_cell_rogue_color(cell, x, y, false, rogueClear));
         }
     }
     return cells;
@@ -5749,8 +5764,23 @@ function render_map_row(y, xlo = 1, xhi = COLNO - 1, noGap = false) {
         const ch = cell.ch ?? ' ';
         /* C display.c:3077-3081 — on a Rogue level without PC graphics every
          * glyphmap colour is forced to NO_COLOR (see rogue_graphics() above). */
-        const color = (rogueMap && !rogueColor)
-            ? (rogue_hero_showrace_cell(x, y, cell.held ? cell : null) ? CLR_WHITE : NO_COLOR) : (cell.color ?? NO_COLOR);
+        /* That forcing lives in reset_glyphmap/map_glyphinfo, i.e. it resolves a
+         * colour at GLYPH PAINT time under the level whose GMAP_ROGUELEVEL flag
+         * was current then. A `held` cell is a byte C already wrote to the
+         * physical terminal (a --More-- frame frozen over an earlier flush, see
+         * _snapCellAt) — nothing repaints it when the hero later arrives on a
+         * Rogue level, so its painted colour must be re-emitted verbatim and NOT
+         * re-derived under the new level's rules. goto_level's impossible() from
+         * place_monster (steed.c:909) pages exactly such a frame: the terminal
+         * still holds the departure level's coloured flush (do.c:1851-1860,
+         * docrt has not run) while u.uz is already the Rogue level. Live cells
+         * (no snapshot) are painted under the live rules, so they keep the mask.
+         * A held cell painted ON a Rogue level already carries the baked
+         * NO_COLOR — or CLR_WHITE for the showrace hero tweak map_glyphinfo
+         * applies after the clearing (display.c:2620-2635) — so trusting
+         * cell.color is the same paint either way. */
+        const color = (rogueMap && !rogueColor && !cell.held)
+            ? (rogue_hero_showrace_cell(x, y, null) ? CLR_WHITE : NO_COLOR) : (cell.color ?? NO_COLOR);
         /* rogue_syms is defsyms[] — plain ASCII, so nothing on a Rogue level's
          * map is ever in DEC line-drawing mode (C symbols.c:186-207). */
         /* C g_putch: SO shift follows the live symset handling; rows untouched since
@@ -9320,12 +9350,19 @@ function _docrt_text_frame(output, messageRows = 1) {
         bg.botSeq = game._botlPaintSeq | 0;
     }
     const physical = bg.rows.map(_tty_row_cells);
-    const current = _capture_painted_cells();
-    for (const key of new Set([...bg.cells.keys(), ...current.keys(), ...bg.dirty])) {
+    /* pline.c:273-276 flushes before update_topl can block. A deferred
+     * diagnostic page must use that flush's dirty cells: later newsym()
+     * calls can change and restore a glyph before we actually read its key.
+     * In particular, feel_location()/display_self() during vision shutdown
+     * must not repaint the hero over a text window on an earlier page. */
+    const frozen = bg.frames.get(game._paintedSnapshot?.cells);
+    const current = frozen ? game._paintedSnapshot.cells : _capture_painted_cells();
+    const dirty = frozen || bg.dirty;
+    for (const key of new Set([...bg.cells.keys(), ...current.keys(), ...dirty])) {
         const a = bg.cells.get(key), b = current.get(key);
         if (a?.ch === b?.ch && a?.color === b?.color
             && !!a?.dec === !!b?.dec && (a?.attr | 0) === (b?.attr | 0)
-            && !bg.dirty.has(key)) continue;
+            && !dirty.has(key)) continue;
         const y = Math.trunc(key / COLNO), x = key % COLNO;
         const row = y + 1;
         if (row < messageRows) continue;
@@ -10396,6 +10433,8 @@ export function _pline_flush_frame_record(off, msg) {
         r1physical: _threeStatusLines() && !_map_row20_clipped()
             ? String(g._screen_output || '').split('\n')[21] : undefined,
     });
+    const bg = g._docrtTextBackdrop;
+    if (bg) bg.frames.set(g._plineFlushFrames.at(-1).cells, new Set(bg.dirty));
 }
 /* C youprop.h:125  Deaf = (HDeaf || EDeaf || u.uroleplay.deaf).  HDeaf is the
  * flat u.HDeaf slot in this port (js/allmain.js:1591 nh_timeout_deaf counts it
@@ -11959,6 +11998,9 @@ export async function display_message_window() {
         g._pending_message = '';
         g._topl_empty_sticky = g._topl_sticky;
     }
+    // wintty.c:1873-1883 leaves WIN_MESSAGE EMPTY, including after an
+    // answered prompt; a following corner window retains that physical text.
+    g._topl_sticky_prompt = null;
     g._topl_unacknowledged = false;
 }
 
@@ -13888,6 +13930,7 @@ export async function debugpline(filename, fmt, ...args) {
 
 
 async function _pline_body(msg, alreadyFlushed, putmesg = null, ...args) {
+    if (game._blockingPline) await game._blockingPline;
     if (game._mentionMapPending) {
         /* pline.c:315-322: URGENT_MESSAGE belongs to THIS vpline; the queued
          * mention_map announcements drained here are earlier, ordinary plines
@@ -14093,6 +14136,7 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
         game._pending_message = _txt;
         game._topl_joins = [];
         game._topl_joins_src = game._pending_message;
+        game._toplEmptyAfterSuppress = false; /* topl.c:280 strncpy(gt.toplines,bp) */
         _maybe_snapshot_painted_screen();
         if (msgtyp === 'stop') {
             await _pline_stop();
@@ -14204,6 +14248,29 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
         // win/tty/topl.c — each pline()→update_topl() makes an independent
         // fit/more() decision per message, not per "  " in the rendered text.
         _topl_record_join(prev, joined);
+        /* SUPPRESS_HISTORY's show_topl() leaves gt.toplines empty but keeps
+         * cw->curx at the end of the automatic description (getpos.c:652;
+         * wintty.c:2294-2298). update_topl's fit test therefore counts only
+         * this message, while addtopl writes after the physical description.
+         * That write can hard-wrap even though the logical message fits.
+         * Fuzzer more() returns before docorner (topl.c:209-210,237-239),
+         * leaving those overwritten map cells until an actual repaint. */
+        if (game.iflags?.debug_fuzzer && game._topl_show_only === prev
+            && _topl_visualLen(prev) < TOPL_CO - 1
+            && String(msg).length + 3 < TOPL_CO - 8
+            && !String(msg).startsWith('You die')) {
+            const rows = _topl_hardwrap(joined);
+            for (let r = 1; r < rows.length && r <= ROWNO; r++) {
+                for (let x = 1; x < COLNO; x++) {
+                    const loc = game.level.at(x, r - 1);
+                    loc.disp_capture_cell = {
+                        ch: rows[r][x - 1] || ' ', color: NO_COLOR,
+                        dec: false, attr: 0,
+                    };
+                }
+                invalidate_map_row(r - 1);
+            }
+        }
         /* pline.c:274 flush_screen() precedes update_topl(), so a more() raised
          * by THIS join freezes the map as of here (drown: "You sink like a
          * rock." pages before the crawl-out teleds moves the hero). */
@@ -14302,6 +14369,7 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
                                      statusSeq: game._statusPaintSeq | 0 };
         game._pending_message = msg;
     }
+    game._toplEmptyAfterSuppress = false;
     if (tabBackground)
         game._topl_tab_background = { ...tabBackground, text: game._pending_message };
     if (game._lonePlineFrame && game._lonePlineFrame !== previousLoneFrame)

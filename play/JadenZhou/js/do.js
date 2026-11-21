@@ -29,6 +29,14 @@ import { mklev, place_lregion } from './mklev.js';
 import { vision_reset } from './vision.js';
 import { LR_UPTELE, LR_DOWNTELE } from './const.js';
 import { getobj, any_obj_ok, freeinv, stackobj } from './invent.js';
+import { query_category, query_objlist, add_valid_menu_class, allow_all,
+         allow_category, count_justpicked, find_justpicked } from './pickup.js';
+import { bypass_objlist, nxt_unbypassed_obj } from './worn.js';
+import { splitobj } from './mkobj.js';
+import { MENU_FULL, MENU_TRADITIONAL, MENU_COMBINATION, UNPAID_TYPES,
+         ALL_TYPES, CHOOSE_ALL, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED,
+         BUC_UNKNOWN, JUSTPICKED, INCLUDE_VENOM, PICK_ANY, ALL_TYPES_SELECTED,
+         USE_INVLET, INVORDER_SORT } from './const.js';
 import { GETOBJ_PROMPT, GETOBJ_ALLOWCNT, ECMD_FAIL, ECMD_TIME, W_ARMOR,
          W_ACCESSORY, W_SADDLE, IS_SINK, LOST_DROPPED } from './const.js';
 import { welded, setuwep, setuqwep, setuswapwep } from './wield.js';
@@ -672,7 +680,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         /* describe_level(dloc, 2); livelog_printf(...): no livelog */
         if (g.urole.mnum === PM_TOURIST) {
             more_experienced(level_difficulty(), 0);
-            newexplevel();
+            await newexplevel();
         }
     }
 
@@ -728,7 +736,7 @@ function temperature_change_msg(prev_temperature) {
 // C ref: insight.c record_achievement() -- the achievement list is only
 // shown by #achievements and the dumplog, neither ported; C's livelog
 // message isn't shown on the tty
-function record_achievement(achidx) {
+export function record_achievement(achidx) {
     const u = game.u;
     if (!u.uachieved) u.uachieved = [];
     if (u.uachieved.includes(achidx))
@@ -800,6 +808,148 @@ export async function dodrop() {
         reset_occupations();
 
     return result;
+}
+
+// C ref: do.c doddrop() -- the #droptype command: drop several things
+export async function doddrop() {
+    let result = ECMD_OK;
+
+    if (!game.invent) {
+        await You("have nothing to drop.");
+        return ECMD_OK;
+    }
+    add_valid_menu_class(0); /* clear any classes already there */
+    if (game.u.ushops)
+        throw new Error('doddrop(): sellobj_state() not ported yet');
+    if ((game.flags.menu_style ?? MENU_FULL) !== MENU_TRADITIONAL)
+        result = await menu_drop(result);
+    else
+        throw new Error('doddrop(): ggetobj() (menustyle:traditional) not ported yet');
+    if (result)
+        reset_occupations();
+
+    return result;
+}
+
+// C ref: do.c menudrop_split()
+async function menudrop_split(otmp, cnt) {
+    if (cnt && cnt < otmp.quan) {
+        if (welded(otmp)) {
+            ; /* don't split */
+        } else if (otmp.otyp === O.LOADSTONE && otmp.cursed) {
+            /* same kludge as getobj(), for canletgo()'s use */
+            otmp.corpsenm = cnt; /* don't split */
+        } else {
+            otmp = splitobj(otmp, cnt);
+        }
+    }
+    return await drop(otmp);
+}
+
+// C ref: do.c menu_drop() -- drop things from the hero's inventory, using
+// a menu
+async function menu_drop(retry) {
+    let n, n_dropped = 0;
+    let otmp, otmp2;
+    const pick_list = [];
+    let all_categories = true, drop_everything = false, autopick = false;
+    let drop_justpicked = false;
+    let justpicked_quan = 0;
+    const menu_style = game.flags.menu_style ?? MENU_FULL;
+
+    drop_done: {
+        if (retry) {
+            all_categories = (retry === -2);
+        } else if (menu_style === MENU_FULL) {
+            all_categories = false;
+            n = await query_category("Drop what type of items?", game.invent,
+                                     (UNPAID_TYPES | ALL_TYPES | CHOOSE_ALL
+                                      | BUC_BLESSED | BUC_CURSED | BUC_UNCURSED
+                                      | BUC_UNKNOWN | JUSTPICKED | INCLUDE_VENOM),
+                                     pick_list, PICK_ANY);
+            /* when paranoid_confirm:A is set, 'A' by itself implies
+               'A'+'a' which will be followed by a confirmation prompt;
+               when that option isn't set, 'A' by itself is rejected
+               by query_categorry() and result here will be n==0 */
+            if (!n)
+                break drop_done; /* no non-autopick category filters specified */
+
+            for (let i = 0; i < n; i++) {
+                if (pick_list[i].item === ALL_TYPES_SELECTED) {
+                    all_categories = true;
+                } else if (pick_list[i].item === 0x41 /* 'A' */) {
+                    drop_everything = autopick = true;
+                } else if (pick_list[i].item === 0x50 /* 'P' */) {
+                    justpicked_quan = Math.max(0, pick_list[i].count);
+                    drop_justpicked = true;
+                    drop_everything = false;
+                    add_valid_menu_class(pick_list[i].item);
+                } else {
+                    add_valid_menu_class(pick_list[i].item);
+                    drop_everything = false;
+                }
+            }
+        } else if (menu_style === MENU_COMBINATION) {
+            throw new Error('menu_drop(): ggetobj() (menustyle:combination) not ported yet');
+        }
+
+        if (autopick) {
+            /*
+             * Use the bypass bit to mark items already processed (hence
+             * not droppable) and rescan inventory until no unbypassed
+             * items remain.
+             */
+            bypass_objlist(game.invent, false); /* clear bypass bit for invent */
+            while ((otmp = nxt_unbypassed_obj(game.invent)) !== null) {
+                if (drop_everything || all_categories || allow_category(otmp))
+                    n_dropped += (((await drop(otmp)) & ECMD_TIME) !== 0) ? 1 : 0;
+            }
+            /* we might not have dropped everything (worn armor, welded weapon,
+               cursed loadstones), so reset any remaining inventory to normal */
+            bypass_objlist(game.invent, false);
+        } else if (drop_justpicked && count_justpicked(game.invent) === 1) {
+            /* drop the just picked item automatically, if only one stack */
+            otmp = find_justpicked(game.invent);
+            if (otmp)
+                n_dropped += (((await menudrop_split(otmp, justpicked_quan))
+                               & ECMD_TIME) !== 0) ? 1 : 0;
+        } else {
+            /* should coordinate with perm invent, maybe not show worn items */
+            const invlist = [];
+            for (let o = game.invent; o; o = o.nobj)
+                invlist.push(o);
+            n = await query_objlist("What would you like to drop?", invlist,
+                                    (USE_INVLET | INVORDER_SORT | INCLUDE_VENOM),
+                                    pick_list, PICK_ANY,
+                                    all_categories ? allow_all : allow_category);
+            if (n > 0) {
+                /*
+                 * picklist[] contains a set of pointers into inventory, but
+                 * as soon as something gets dropped, they might become stale
+                 * (see the autopick code above for an explanation).
+                 * So we start by setting bypass on all of gi.invent, then
+                 * check each pointer to verify that it is in gi.invent and
+                 * has that bit set.
+                 */
+                bypass_objlist(game.invent, true);
+                for (let i = 0; i < n; i++) {
+                    otmp = pick_list[i].obj;
+                    for (otmp2 = game.invent; otmp2; otmp2 = otmp2.nobj)
+                        if (otmp2 === otmp)
+                            break;
+                    if (!otmp2 || !otmp2.bypass)
+                        continue;
+                    /* found next selected invent item */
+                    n_dropped += (((await menudrop_split(otmp, pick_list[i].count))
+                                   & ECMD_TIME) !== 0) ? 1 : 0;
+                }
+                bypass_objlist(game.invent, false); /* reset gi.invent to normal */
+            }
+        }
+    }
+
+    /* drop_done: */
+    return (n_dropped ? ECMD_TIME : ECMD_OK);
 }
 
 /* C ref: cmd.c reset_occupations() -- reset_remarm(), reset_pick(),

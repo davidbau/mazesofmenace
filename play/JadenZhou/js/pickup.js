@@ -22,7 +22,15 @@ import { m_at } from './makemon.js';
 import { mon_nam } from './do_name.js';
 import { M1_NOHANDS, M1_NOLIMBS } from './monsters.js';
 import { BLINDED, HAND } from './const.js';
-import { CORPSE, BAG_OF_TRICKS } from './objects.js';
+import { CORPSE, BAG_OF_TRICKS, HORN_OF_PLENTY, WOODEN_FLUTE, MAGIC_FLUTE,
+         TOOLED_HORN, FROST_HORN, FIRE_HORN, WOODEN_HARP, MAGIC_HARP, BUGLE,
+         LEATHER_DRUM, DRUM_OF_EARTHQUAKE, SLIME_MOLD, TIN, EGG, ROCK,
+         POT_WATER, TOWEL, GEMSTONE, GLASS, OBJ_DESCR, ARM_HELM, ARM_GLOVES,
+         ARM_BOOTS, ARM_SHIELD, ARM_CLOAK, ARM_SHIRT, ARM_SUIT } from './objects.js';
+import { is_pole, is_wet_towel } from './wield.js';
+import { cxname_singular } from './objnam.js';
+import { strcmpi } from './hacklib.js';
+import { P_BOW, P_CROSSBOW, P_SPEAR, P_DAGGER, P_KNIFE } from './const.js';
 import { t_at, is_pit } from './trap.js';
 import { can_reach_floor } from './engrave.js';
 import { freehand } from './wield.js';
@@ -55,6 +63,13 @@ import { BY_NEXTHERE, AUTOSELECT_SINGLE, INVORDER_SORT, FEEL_COCKATRICE,
          SORTLOOT_INVLET, SORTLOOT_LOOT, SORTLOOT_INUSE,
          SORTLOOT_PETRIFY } from './const.js';
 import { NO_COLOR, ATR_NONE } from './terminal.js';
+import { UNPAID_TYPES, BILLED_TYPES, WORN_TYPES, ALL_TYPES, CHOOSE_ALL,
+         BUC_BLESSED, BUC_CURSED, BUC_UNCURSED, BUC_UNKNOWN, JUSTPICKED,
+         ALL_TYPES_SELECTED, MENU_ITEMFLAGS_SKIPINVERT, W_ARMOR, W_ACCESSORY,
+         W_WEAPONS, Has_contents } from './const.js';
+import { is_worn, count_unpaid, count_buc } from './invent.js';
+import { add_menu_str } from './wintty.js';
+import { PM_CLERIC } from './monsters.js';
 import { observe_object } from './o_init.js';
 import { touch_artifact } from './artifact.js';
 import { tty_yn_function, tty_clear_nhwindow } from './wintty.js';
@@ -65,6 +80,8 @@ import { mons, M2_ROCKTHROW, PM_COCKATRICE, PM_CHICKATRICE, PM_DEATH,
 import { LOST_THROWN, LOST_DROPPED, LOST_STOLEN, LOST_EXPLODING, QBUFSZ,
          SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, HALLUC,
          STONE_RES } from './const.js';
+
+function impossible(msg) { console.error(`impossible: ${msg}`); }
 
 /* C ref: invent.c invlet_basic */
 const invlet_basic = 52;
@@ -306,14 +323,17 @@ function all_but_uchain(obj) {
     return (obj !== game.uchain);
 }
 
-// C ref: invent.c sortloot() with sortloot_cmp()/loot_classify() -- the
-// class ordering; ordering objects within one class (subclass, discovery
-// state, loot_xname(), BUCX, ...) is not ported yet
+// C ref: invent.c sortloot()
+/* the sortloot_item array ('Loot'): each entry has obj, indx (original
+   position, the stable-sort tiebreak), orderclass/subclass/disco/inuse
+   (set by loot_classify(), 0 = not yet classified) and str (loot_xname(),
+   formatted at most once per sort) */
 function sortloot(olist, mode, by_nexthere, filterfunc) {
-    void by_nexthere; /* olist is already the pile (nexthere) or minvent */
+    void by_nexthere; /* olist is already the pile (nexthere) or the chain */
     /* the 'keep cockatrice corpses' flag is overloaded with sort mode */
     const augment_filter = (mode & SORTLOOT_PETRIFY) !== 0;
     mode &= ~SORTLOOT_PETRIFY; /* remove flag, leaving mode */
+    /* populate aliarray[0..n-1] */
     const sliarray = [];
     for (const o of olist) {
         if (filterfunc && !filterfunc(o)
@@ -323,35 +343,148 @@ function sortloot(olist, mode, by_nexthere, filterfunc) {
             && (!augment_filter || o.otyp !== CORPSE
                 || !touch_petrifies(mons[o.corpsenm])))
             continue;
-        sliarray.push({ obj: o, indx: sliarray.length, orderclass: 0 });
+        sliarray.push({ obj: o, indx: sliarray.length, orderclass: 0,
+                        subclass: 0, disco: 0, inuse: 0, str: null });
     }
 
     /* do the sort; if no sorting is requested, we'll just return
        a sortloot_item array reflecting the current ordering */
     if (mode && sliarray.length > 1) {
-        if ((mode & SORTLOOT_INUSE) !== 0
-            || (mode & (SORTLOOT_PACK | SORTLOOT_INVLET)) === SORTLOOT_INVLET)
-            throw new Error('sortloot(): in-use/invlet-only ordering not ported yet');
-        const seen = new Set();
-        for (const sli of sliarray) {
-            if (seen.has(sli.obj.oclass))
-                throw new Error('sortloot(): ordering objects of one class (loot_classify subclass, loot_xname) not ported yet');
-            seen.add(sli.obj.oclass);
-        }
-        /* loot_classify(): every item takes part in some comparison */
-        const classorder = (game.flags.sortpack ?? true) ? def_inv_order
-                                                         : def_srt_order;
-        for (const sli of sliarray) {
-            if (!pk_Blind())
-                observe_object(sli.obj, u_prop(HALLUC)); /* xname(obj) does this; we want it sooner */
-            const k = classorder.indexOf(sli.obj.oclass);
-            sli.orderclass = (k >= 0) ? 1 + k
-                : 1 + classorder.length + (sli.obj.oclass !== VENOM_CLASS ? 1 : 0);
-        }
-        /* distinct classes: orderclass decides, indx is the tiebreak */
-        sliarray.sort((a, b) => (a.orderclass - b.orderclass) || (a.indx - b.indx));
+        game.sortlootmode = mode; /* extra input for sortloot_cmp() */
+        sliarray.sort(sortloot_cmp);
+        game.sortlootmode = 0; /* reset static mode flags */
+        /* if sortloot_cmp formatted any objects, discard their strings now */
+        for (const sli of sliarray)
+            sli.str = null;
     }
     return sliarray;
+}
+
+// C ref: invent.c loot_classify()
+/* sortloot() classification; called at most once [per sort] for each object */
+function loot_classify(sort_item, obj) {
+    const otyp = obj.otyp, oclass = obj.oclass;
+    const discovered = !!objects[otyp].oc_name_known;
+    let k;
+
+    /*
+     * For the value types assigned by this classification, sortloot()
+     * will put lower valued ones before higher valued ones.
+     */
+    if (!pk_Blind())
+        observe_object(obj, u_prop(HALLUC)); /* xname(obj) does this; we want it sooner */
+    const seen = !!obj.dknown;
+    /* class order */
+    const classorder = (game.flags.sortpack ?? true) ? def_inv_order
+                                                     : def_srt_order;
+    const p = classorder.indexOf(oclass);
+    if (p >= 0)
+        k = 1 + p;
+    else
+        k = 1 + classorder.length + ((oclass !== VENOM_CLASS) ? 1 : 0);
+    sort_item.orderclass = k;
+    /* subclass designation; only a few classes have subclasses
+       and the non-armor ones we use are fairly arbitrary */
+    switch (oclass) {
+    case ARMOR_CLASS:
+        k = objects[otyp].oc_armcat;
+        /* oc_armcat overloads oc_subtyp which is an 'schar' so guard
+           against somebody assigning something unexpected to it */
+        if (k < 0 || k >= 7)
+            k = 7;
+        k = armcat[k];
+        break;
+    case WEAPON_CLASS:
+        /* for weapons, group by ammo (arrows, bolts), launcher (bows),
+           missile (darts, boomerangs), stackable (daggers, knives, spears),
+           'other' (swords, axes, &c), polearms */
+        k = objects[otyp].oc_skill;
+        k = (k < 0) ? ((k >= -P_CROSSBOW && k <= -P_BOW) ? 1 : 3)
+                    : ((k >= P_BOW && k <= P_CROSSBOW) ? 2
+                       : (k === P_SPEAR || k === P_DAGGER || k === P_KNIFE) ? 4
+                          : !is_pole(obj) ? 5 : 6);
+        break;
+    case TOOL_CLASS:
+        if (seen && discovered
+            && (otyp === BAG_OF_TRICKS || otyp === HORN_OF_PLENTY))
+            k = 2; /* known pseudo-container */
+        else if (Is_container(obj))
+            k = 1; /* regular container or unknown bag of tricks */
+        else
+            switch (otyp) {
+            case WOODEN_FLUTE:
+            case MAGIC_FLUTE:
+            case TOOLED_HORN:
+            case FROST_HORN:
+            case FIRE_HORN:
+            case WOODEN_HARP:
+            case MAGIC_HARP:
+            case BUGLE:
+            case LEATHER_DRUM:
+            case DRUM_OF_EARTHQUAKE:
+            case HORN_OF_PLENTY: /* not a musical instrument */
+                k = 3; /* instrument or unknown horn of plenty */
+                break;
+            default:
+                k = 4; /* 'other' tool */
+                break;
+            }
+        break;
+    case FOOD_CLASS:
+        /* [what about separating "partly eaten" within each group?] */
+        switch (otyp) {
+        case SLIME_MOLD:
+            k = 1;
+            break;
+        default:
+            /* [maybe separate one-bite foods from rations and such?] */
+            k = obj.globby ? 6 : 2;
+            break;
+        case TIN:
+            k = 3;
+            break;
+        case EGG:
+            k = 4;
+            break;
+        case CORPSE:
+            k = 5;
+            break;
+        }
+        break;
+    case GEM_CLASS:
+        /*
+         * Normally subclass takes priority over discovery status, but
+         * that would give away information for gems (assuming we'll
+         * group them as valuable gems, next glass, then gray stones,
+         * and finally rocks once they're all fully identified).
+         */
+        switch (objects[obj.otyp].oc_material) {
+        case GEMSTONE:
+            k = !seen ? 1 : !discovered ? 2 : 3;
+            break;
+        case GLASS:
+            k = !seen ? 1 : !discovered ? 2 : 4;
+            break;
+        default: /* MINERAL */
+            k = !seen ? 5 : (obj.otyp !== ROCK) ? (!discovered ? 6 : 7) : 8;
+            break;
+        }
+        break;
+    default:
+        /* other classes don't have subclasses; we assign a nonzero
+           value because sortloot() uses 0 to mean 'not yet classified' */
+        k = 1; /* any non-zero would do */
+        break;
+    }
+    sort_item.subclass = k;
+    /* discovery status */
+    k = !seen ? 1 /* unseen */
+        : (discovered || !OBJ_DESCR(objects[otyp])) ? 4
+          : (objects[otyp].oc_uname) ? 3 /* named (partially discovered) */
+            : 2; /* undiscovered */
+    sort_item.disco = k;
+    /* not applicable */
+    sort_item.inuse = 0;
 }
 /* C ref: invent.c loot_classify() def_srt_order[] */
 const def_srt_order = [
@@ -359,6 +492,576 @@ const def_srt_order = [
     SCROLL_CLASS, SPBOOK_CLASS, GEM_CLASS, FOOD_CLASS, TOOL_CLASS,
     WEAPON_CLASS, ARMOR_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
 ];
+/* C ref: invent.c loot_classify() armcat[] -- a different order than the
+   subclass values defined by objclass.h */
+const armcat = [];
+armcat[ARM_HELM]   = 1; /* [2] */
+armcat[ARM_GLOVES] = 2; /* [3] */
+armcat[ARM_BOOTS]  = 3; /* [4] */
+armcat[ARM_SHIELD] = 4; /* [1] */
+armcat[ARM_CLOAK]  = 5; /* [5] */
+armcat[ARM_SHIRT]  = 6; /* [6] */
+armcat[ARM_SUIT]   = 7; /* [0] */
+armcat[7]          = 8; /* sanity protection */
+
+// C ref: invent.c loot_xname()
+/* sortloot() formatting routine; for alphabetizing, not shown to user */
+function loot_xname(obj) {
+    /*
+     * Deal with things that xname() includes as a prefix.  We don't
+     * want such because they change alphabetical ordering.  First,
+     * remember 'obj's current settings.
+     */
+    const saveo = { odiluted: obj.odiluted, blessed: obj.blessed,
+                    cursed: obj.cursed, spe: obj.spe, owt: obj.owt };
+    const save_oname = obj.oname || null;
+    const save_debug = game.flags.debug;
+    /* suppress "diluted" for potions and "holy/unholy" for water;
+       sortloot() will deal with them using other criteria than name */
+    if (obj.oclass === POTION_CLASS) {
+        obj.odiluted = 0;
+        if (obj.otyp === POT_WATER)
+            obj.blessed = 0, obj.cursed = 0;
+    }
+    /* make "wet towel" and "moist towel" format as "towel" so that all
+       three group together */
+    if (obj.otyp === TOWEL)
+        obj.spe = 0;
+    /* group globs by monster type rather than by size:  force all to
+       have the same size adjective hence same "small glob of " prefix */
+    if (obj.globby)
+        obj.owt = 20; /* weight of a fresh glob (one pudding's worth) */
+    /* suppress user-assigned name */
+    if (save_oname && !obj.oartifact)
+        obj.oname = null;
+    /* avoid wizard mode formatting variations */
+    if (save_debug) /* flags.debug */
+        game.flags.debug = false;
+
+    let res = cxname_singular(obj);
+
+    if (save_debug)
+        game.flags.debug = true;
+    /* restore the object */
+    if (obj.oclass === POTION_CLASS) {
+        obj.odiluted = saveo.odiluted;
+        if (obj.otyp === POT_WATER)
+            obj.blessed = saveo.blessed, obj.cursed = saveo.cursed;
+    }
+    if (obj.otyp === TOWEL) {
+        obj.spe = saveo.spe;
+        /* give "towel" a suffix that will force wet ones to come first,
+           moist ones next, and dry ones last regardless of whether
+           they've been flagged as having spe known */
+        res += is_wet_towel(obj) ? ((obj.spe >= 3) ? "x" : "y") : "z";
+    }
+    if (obj.globby) {
+        obj.owt = saveo.owt;
+        /* add a suffix to get such sorted by size (small first) */
+        res += (obj.owt <= 100) ? "a"
+               : (obj.owt <= 300) ? "b"
+                 : (obj.owt <= 500) ? "c"
+                   : "d";
+    }
+    if (save_oname && !obj.oartifact)
+        obj.oname = save_oname;
+
+    return res;
+}
+
+// C ref: invent.c invletter_value()
+/* '$'==1, 'a'-'z'==2..27, 'A'-'Z'==28..53, '#'==54, catchall 55 */
+function invletter_value(c) {
+    return ('a' <= c && c <= 'z') ? (c.charCodeAt(0) - 97 + 2)
+           : ('A' <= c && c <= 'Z') ? (c.charCodeAt(0) - 65 + 2 + 26)
+             : (c === '$') ? 1
+               : (c === '#') ? 1 + invlet_basic + 1
+                 : 1 + invlet_basic + 1 + 1; /* none of the above
+                                              * (shouldn't happen) */
+}
+
+/* C ref: obj.h greatest_erosion() */
+function greatest_erosion(otmp) {
+    return Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
+}
+
+// C ref: invent.c sortloot_cmp()
+/* qsort comparison routine for sortloot() */
+function sortloot_cmp(sli1, sli2) {
+    const obj1 = sli1.obj, obj2 = sli2.obj;
+    const mode = game.sortlootmode;
+    let val1, val2, namcmp;
+
+    /* in-use takes precedence over all others */
+    if ((mode & SORTLOOT_INUSE) !== 0)
+        throw new Error('sortloot_cmp(): in-use ordering (inuse_classify()) not ported yet');
+
+    /* order by object class unless we're doing by-invlet without sortpack */
+    if ((mode & (SORTLOOT_PACK | SORTLOOT_INVLET)) !== SORTLOOT_INVLET) {
+        /* Classify each object at most once no matter how many
+           comparisons it is involved in. */
+        if (!sli1.orderclass)
+            loot_classify(sli1, obj1);
+        if (!sli2.orderclass)
+            loot_classify(sli2, obj2);
+
+        /* Sort by class. */
+        val1 = sli1.orderclass;
+        val2 = sli2.orderclass;
+        if (val1 !== val2)
+            return val1 - val2;
+
+        /* skip sub-classes when ordering by sortpack+invlet */
+        if ((mode & SORTLOOT_INVLET) === 0) {
+            /* Class matches; sort by subclass. */
+            val1 = sli1.subclass;
+            val2 = sli2.subclass;
+            if (val1 !== val2)
+                return val1 - val2;
+
+            /* Class and subclass match; sort by discovery status:
+             * first unseen, then seen but not named or discovered,
+             * then named, lastly discovered. */
+            val1 = sli1.disco;
+            val2 = sli2.disco;
+            if (val1 !== val2)
+                return val1 - val2;
+        }
+    }
+
+    /* order by assigned inventory letter */
+    if ((mode & SORTLOOT_INVLET) !== 0) {
+        val1 = invletter_value(obj1.invlet);
+        val2 = invletter_value(obj2.invlet);
+        if (val1 !== val2)
+            return val1 - val2;
+    }
+
+    if ((mode & SORTLOOT_LOOT) === 0)
+        return sli1.indx - sli2.indx; /* goto tiebreak */
+
+    /*
+     * Sort object names in lexicographical order, ignoring quantity.
+     *
+     * Each obj gets formatted at most once (per sort) no matter how many
+     * comparisons it gets subjected to.
+     */
+    if (sli1.str === null)
+        sli1.str = loot_xname(obj1);
+    if (sli2.str === null)
+        sli2.str = loot_xname(obj2);
+    if ((namcmp = strcmpi(sli1.str, sli2.str)) !== 0)
+        return namcmp;
+
+    /* Sort by BUCX. */
+    val1 = obj1.bknown ? (obj1.blessed ? 3 : !obj1.cursed ? 2 : 1) : 0;
+    val2 = obj2.bknown ? (obj2.blessed ? 3 : !obj2.cursed ? 2 : 1) : 0;
+    if (val1 !== val2)
+        return val2 - val1; /* bigger is better */
+
+    /* Sort by greasing.  This will put the objects in degreasing order. */
+    val1 = obj1.greased ? 1 : 0;
+    val2 = obj2.greased ? 1 : 0;
+    if (val1 !== val2)
+        return val2 - val1; /* bigger is better */
+
+    /* Sort by erosion.  The effective amount is what matters. */
+    val1 = greatest_erosion(obj1);
+    val2 = greatest_erosion(obj2);
+    if (val1 !== val2)
+        return val1 - val2; /* bigger is WORSE */
+
+    /* Sort by erodeproofing. */
+    val1 = (obj1.rknown && obj1.oerodeproof) ? 1 : 0;
+    val2 = (obj2.rknown && obj2.oerodeproof) ? 1 : 0;
+    if (val1 !== val2)
+        return val2 - val1; /* bigger is better */
+
+    /* Sort by enchantment.  Map unknown to -1000, which is comfortably
+       below the range of obj->spe. */
+    if (objects[obj1.otyp].oc_uses_known
+        /* exclude eggs (laid by you) and tins (homemade, pureed, &c) */
+        && obj1.oclass !== FOOD_CLASS) {
+        val1 = obj1.known ? obj1.spe : -1000;
+        val2 = obj2.known ? obj2.spe : -1000;
+        if (val1 !== val2)
+            return val2 - val1; /* bigger is better */
+    }
+
+    /* tiebreak: They're identical, as far as we're concerned.  We want
+       to force a deterministic order, and do so by producing a
+       stable sort: maintain the original order of equal items. */
+    return sli1.indx - sli2.indx;
+}
+
+// C ref: pickup.c menu_class_present()
+/* gv.valid_menu_classes holds object classes (numbers) and the letters
+   'B' 'U' 'C' 'X' 'P' 'u' (as char codes) */
+function menu_class_present(c) {
+    return !!c && (game.valid_menu_classes || []).includes(c);
+}
+
+// C ref: pickup.c add_valid_menu_class()
+export function add_valid_menu_class(c) {
+    if (!game.valid_menu_classes)
+        game.valid_menu_classes = [];
+    if (c === 0) { /* reset */
+        game.valid_menu_classes.length = 0; /* vmc_count = 0 */
+        game.class_filter = game.bucx_filter = game.shop_filter = false;
+        game.picked_filter = false;
+    } else if (!menu_class_present(c)) {
+        game.valid_menu_classes.push(c);
+        /* categorize the new class */
+        switch (c) {
+        case 0x42: /* 'B' */
+        case 0x55: /* 'U' */
+        case 0x43: /* 'C' */ /*FALLTHRU*/
+        case 0x58: /* 'X' */
+            game.bucx_filter = true;
+            break;
+        case 0x50: /* 'P' */
+            game.picked_filter = true;
+            break;
+        case 0x75: /* 'u' */
+            game.shop_filter = true;
+            break;
+        default:
+            game.class_filter = true;
+            break;
+        }
+    }
+}
+
+// C ref: pickup.c allow_all()
+/* query_objlist callback: return TRUE */
+export function allow_all(obj) {
+    void obj;
+    return true;
+}
+
+/* C ref: flag.h ParanoidAutoAll -- flags.paranoia_bits does not include
+   PARANOID_AUTOALL by default (options.c initoptions_init()); parsing the
+   paranoid_confirmation option isn't ported */
+function ParanoidAutoAll() {
+    if (game.flags.paranoid_confirmation !== undefined
+        || game.flags.paranoid_confirm !== undefined)
+        throw new Error('paranoia_bits: the paranoid_confirmation option is not ported yet');
+    return false;
+}
+
+// C ref: pickup.c allow_category()
+export function allow_category(obj) {
+    /* If no filters are active, nothing will match unless
+       paranoid_confirm:A is set. */
+    if (!game.class_filter && !game.shop_filter && !game.bucx_filter
+        && !game.picked_filter && !ParanoidAutoAll())
+        return false;
+
+    /* For coins, if any class filter is specified, accept if coins
+     * are included regardless of whether either unpaid or BUC-status
+     * is also specified since player has explicitly requested coins.
+     */
+    if (obj.oclass === COIN_CLASS && game.class_filter)
+        return menu_class_present(COIN_CLASS);
+
+    if (game.urole.mnum === PM_CLERIC && !obj.bknown)
+        obj.bknown = 1; /* set_bknown(obj, 1); perm_invent isn't kept */
+
+    /* if class is expected but obj's class is not in the list, reject */
+    if (game.class_filter && !menu_class_present(obj.oclass))
+        return false;
+    /* if unpaid is expected and obj isn't unpaid, reject (treat a container
+       holding any unpaid object as unpaid even if isn't unpaid itself) */
+    if (game.shop_filter && !obj.unpaid
+        && !(Has_contents(obj) && count_unpaid(obj.cobj) > 0))
+        return false;
+    /* check for particular bless/curse state */
+    if (game.bucx_filter) {
+        /* first categorize this object's bless/curse state */
+        let bucx;
+        if (obj.oclass === COIN_CLASS) {
+            /* If no class filtering is specified but bless/curse state is,
+               coins are treated as either unknown or uncursed based on an
+               option setting. */
+            bucx = game.flags.goldX ? 'X' : 'U';
+        } else {
+            bucx = !obj.bknown ? 'X'
+                     : obj.blessed ? 'B'
+                        : obj.cursed ? 'C'
+                           : 'U';
+        }
+
+        /* if its category is not in the list, reject */
+        if (!menu_class_present(bucx.charCodeAt(0)))
+            return false;
+    }
+    if (game.picked_filter && !obj.pickup_prev)
+        return false;
+    /* obj didn't fail any of the filter checks, so accept */
+    return true;
+}
+
+// C ref: pickup.c count_justpicked()
+export function count_justpicked(olist) {
+    let cnt = 0;
+
+    for (let otmp = olist; otmp; otmp = otmp.nobj)
+        if (otmp.pickup_prev)
+            cnt++;
+
+    return cnt;
+}
+
+// C ref: pickup.c find_justpicked()
+export function find_justpicked(olist) {
+    for (let otmp = olist; otmp; otmp = otmp.nobj)
+        if (otmp.pickup_prev)
+            return otmp;
+
+    return null;
+}
+
+// C ref: pickup.c query_category()
+/*
+ * For menustyle:Full.
+ *
+ * allow menu-based category (class) selection (for Drop,take off etc.)
+ *
+ * If ParanoidAutoAll, requires confirmation when 'A' has been picked.
+ *
+ * olist is the hero's invent chain (FOLLOW() by nobj); BY_NEXTHERE piles
+ * are not ported here. pick_list is filled with { item: a_int, count }.
+ */
+export async function query_category(qstr, /* query string */
+                                     olist, /* the list to pick from */
+                                     qflags, /* behavior modification flags */
+                                     pick_list, /* return list of items picked */
+                                     how) { /* type of query */
+    let n;
+    let ofilter = null;
+    let do_unpaid = false, do_usedup = false,
+        do_blessed = false, do_cursed = false,
+        do_uncursed = false, do_buc_unknown = false,
+        do_worn = false, verify_All = false;
+    let num_buc_types = 0, num_justpicked = 0;
+    const clr = NO_COLOR;
+
+    pick_list.length = 0;
+    if (!olist)
+        return 0;
+    if ((qflags & BY_NEXTHERE) !== 0)
+        throw new Error('query_category(): a floor pile (BY_NEXTHERE) not ported yet');
+    if ((qflags & UNPAID_TYPES) !== 0 && count_unpaid(olist))
+        do_unpaid = true;
+    /* caller only passes BILLED_TYPES when there are some used up items
+       on shop's bill */
+    if ((qflags & BILLED_TYPES) !== 0)
+        do_usedup = true;
+    /* for the 'A' command to remove worn/wielded */
+    if ((qflags & WORN_TYPES) !== 0) {
+        do_worn = true;
+        ofilter = is_worn;
+    }
+    if ((qflags & BUC_BLESSED) !== 0
+        && count_buc(olist, BUC_BLESSED, ofilter)) {
+        do_blessed = true;
+        num_buc_types++;
+    }
+    if ((qflags & BUC_CURSED) !== 0
+        && count_buc(olist, BUC_CURSED, ofilter)) {
+        do_cursed = true;
+        num_buc_types++;
+    }
+    if ((qflags & BUC_UNCURSED) !== 0
+        && count_buc(olist, BUC_UNCURSED, ofilter)) {
+        do_uncursed = true;
+        num_buc_types++;
+    }
+    if ((qflags & BUC_UNKNOWN) !== 0
+        && count_buc(olist, BUC_UNKNOWN, ofilter)) {
+        do_buc_unknown = true;
+        num_buc_types++;
+    }
+    if ((qflags & JUSTPICKED) !== 0) {
+        num_justpicked = count_justpicked(olist);
+    }
+
+    const ccount = count_categories(olist, qflags);
+    /* no point in actually showing a menu for a single category */
+    if (ccount === 1 && !do_unpaid && !do_usedup && num_buc_types <= 1) {
+        let curr;
+        for (curr = olist; curr; curr = curr.nobj) {
+            if (ofilter && !ofilter(curr))
+                continue;
+            break;
+        }
+        if (curr) {
+            pick_list.push({ item: curr.oclass, count: -1 });
+            n = 1;
+        } else {
+            n = 0;
+        }
+        /* early return is ok; there's no temp window yet */
+        return n;
+    }
+
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+
+    const pack = def_inv_order.slice(); /* flags.inv_order */
+    if ((qflags & INCLUDE_VENOM) !== 0)
+        pack.push(VENOM_CLASS); /* venom is not in inv_order */
+
+    const show_a = ((qflags & ALL_TYPES) !== 0 && ccount > 1);
+
+    if ((qflags & CHOOSE_ALL) !== 0) {
+        tty_add_menu(win, null, 0x41 /* 'A' */, 'A', 0, ATR_NONE, clr,
+                     /* note: menu_remarm() doesn't pass the CHOOSE_ALL flag,
+                        so do_worn handling here is moot */
+                     do_worn ? "Auto-select every item being worn or wielded"
+                             : "Auto-select every relevant item",
+                     MENU_ITEMFLAGS_SKIPINVERT);
+        verify_All = (how === PICK_ANY) && ParanoidAutoAll();
+        if (!verify_All) {
+            const hint = game.A_first_hint || 0;
+            game.A_first_hint = hint + 1;
+            if (!hint || (game.iflags?.cmdassist ?? true))
+                add_menu_str(win,
+                   "    (ignored unless some other choices are also picked)");
+        } else if (show_a) {
+            const hint = game.A_second_hint || 0;
+            game.A_second_hint = hint + 1;
+            if (!hint || (game.iflags?.cmdassist ?? true))
+                add_menu_str(win,
+                      "    (if no other choices are picked, 'a' is implied)");
+        }
+        /* blank separator */
+        add_menu_str(win, "");
+    }
+
+    let invlet = 'a'.charCodeAt(0);
+    if (show_a) {
+        tty_add_menu(win, null, ALL_TYPES_SELECTED, String.fromCharCode(invlet),
+                     0, ATR_NONE, clr,
+                     do_worn ? "All worn and wielded types" : "All types",
+                     MENU_ITEMFLAGS_SKIPINVERT);
+        ++invlet; /* invlet = 'b'; */
+    }
+
+    let pi = 0;
+    do {
+        let collected_type_name = false;
+        for (let curr = olist; curr; curr = curr.nobj) {
+            if (curr.oclass === pack[pi]) {
+                if (ofilter && !ofilter(curr))
+                    continue;
+                if (!collected_type_name) {
+                    const oclass = curr.oclass;
+
+                    tty_add_menu(win, null, oclass, String.fromCharCode(invlet++),
+                                 def_oc_syms[oclass], ATR_NONE, clr,
+                                 let_to_name(pack[pi], false,
+                                             (how !== PICK_NONE
+                                              && !!game.iflags?.menu_head_objsym)),
+                                 MENU_ITEMFLAGS_NONE);
+                    collected_type_name = true;
+                }
+            }
+        }
+        pi++;
+        if (invlet >= 'u'.charCodeAt(0)) {
+            impossible("query_category: too many categories");
+            tty_destroy_nhwindow(win); /* goto query_done */
+            return 0;
+        }
+    } while (pi < pack.length);
+
+    if (do_unpaid || do_usedup
+        || do_blessed || do_cursed || do_uncursed || do_buc_unknown
+        || num_justpicked) {
+        add_menu_str(win, "");
+    }
+
+    /* unpaid items if there are any */
+    if (do_unpaid)
+        tty_add_menu(win, null, 0x75 /* 'u' */, 'u', 0, ATR_NONE, clr,
+                     "Unpaid items", MENU_ITEMFLAGS_SKIPINVERT);
+    /* billed items: checked by caller, so always include if BILLED_TYPES */
+    if (do_usedup)
+        tty_add_menu(win, null, 0x78 /* 'x' */, 'x', 0, ATR_NONE, clr,
+                     "Unpaid items already used up", MENU_ITEMFLAGS_SKIPINVERT);
+
+    /* items with b/u/c/unknown if there are any;
+       this cluster of menu entries is in alphabetical order,
+       reversing the usual sequence of 'U' and 'C' in BUCX */
+    if (do_blessed)
+        tty_add_menu(win, null, 0x42 /* 'B' */, 'B', 0, ATR_NONE, clr,
+                     "Items known to be Blessed", MENU_ITEMFLAGS_SKIPINVERT);
+    if (do_cursed)
+        tty_add_menu(win, null, 0x43 /* 'C' */, 'C', 0, ATR_NONE, clr,
+                     "Items known to be Cursed", MENU_ITEMFLAGS_SKIPINVERT);
+    if (do_uncursed)
+        tty_add_menu(win, null, 0x55 /* 'U' */, 'U', 0, ATR_NONE, clr,
+                     "Items known to be Uncursed", MENU_ITEMFLAGS_SKIPINVERT);
+    if (do_buc_unknown)
+        tty_add_menu(win, null, 0x58 /* 'X' */, 'X', 0, ATR_NONE, clr,
+                     "Items of unknown Bless/Curse status",
+                     MENU_ITEMFLAGS_SKIPINVERT);
+    if (num_justpicked) {
+        let tmpbuf;
+
+        if (num_justpicked === 1)
+            tmpbuf = `Just picked up: ${doname(find_justpicked(olist))}`;
+        else
+            tmpbuf = "Items you just picked up";
+        tty_add_menu(win, null, 0x50 /* 'P' */, 'P', 0, ATR_NONE, clr,
+                     tmpbuf, MENU_ITEMFLAGS_SKIPINVERT);
+    }
+    tty_end_menu(win, qstr);
+    const res = await tty_select_menu(win, how);
+    n = res.n;
+    for (const mi of res.selected)
+        pick_list.push({ item: mi.item, count: mi.count });
+
+    /* handle ParanoidAutoAll by confirming 'A' choice if present */
+    if (n > 0 && verify_All) {
+        throw new Error('query_category(): "Really autoselect All?" (ParanoidAutoAll) not ported yet');
+    } else if (n === 1 && !verify_All && pick_list[0].item === 0x41 /* 'A' */) {
+        /* without paranoid_confirm:A, choosing 'A' by itself is rejected */
+        n = 0;
+        pick_list.length = 0;
+        /* the menu entry description is "Auto-select every relevant item"
+           [not sure whether issuing a message here is a good idea...] */
+        await pline("No relevant items selected.");
+    }
+    /* query_done: */
+    tty_destroy_nhwindow(win);
+    if (n < 0) /* closed menu with ESC */
+        n = 0; /* callers don't expect -1 */
+    return n;
+}
+
+// C ref: pickup.c count_categories()
+function count_categories(olist, qflags) {
+    let ccount = 0;
+    const do_worn = (qflags & WORN_TYPES) !== 0;
+
+    for (const pack of def_inv_order) { /* flags.inv_order */
+        let counted_category = false;
+        for (let curr = olist; curr; curr = curr.nobj) {
+            if (curr.oclass === pack) {
+                if (do_worn && !(curr.owornmask
+                                 & (W_ARMOR | W_ACCESSORY | W_WEAPONS)))
+                    continue;
+                if (!counted_category) {
+                    ccount++;
+                    counted_category = true;
+                }
+            }
+        }
+    }
+    return ccount;
+}
 
 // C ref: pickup.c query_objlist()
 /*
@@ -651,7 +1354,7 @@ async function carry_count(obj, /* object to pick up... */
 
 // C ref: objnam.c safe_qbuf() -- the case where the formatted object name
 // fits (short_oname()'s first step); shortening a long name isn't ported
-function safe_qbuf(qprefix, qsuffix, obj, func, lastR) {
+export function safe_qbuf(qprefix, qsuffix, obj, func, lastR) {
     const lenlimit = QBUFSZ - 1;
     let qbuf = (qprefix || '').slice(0, lenlimit);
     let len = qbuf.length;

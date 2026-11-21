@@ -7,6 +7,8 @@
 // JS port does yet starts them (see the comments below).
 
 import { game } from './gstate.js';
+import { rnd } from './rng.js';
+import { MAX_EGG_HATCH_TIME } from './const.js';
 import { pline } from './display.js';
 import {
     FULL_MOON, TIMEOUT, LAST_PROP, STONED, SLIMED, VOMITING, STRANGLED, SICK,
@@ -17,6 +19,7 @@ import { PM_ARCHEOLOGIST } from './monsters.js';
 import { FEDORA, LUCKSTONE } from './objects.js';
 import { stone_luck } from './attrib.js';
 import { carrying } from './invent.js';
+import { spec_ability, SPFX_LUCK } from './artifact.js';
 
 /* C ref: role.h Role_if() */
 function Role_if(pm) { return game.urole.mnum === pm; }
@@ -26,9 +29,7 @@ export function confers_luck(obj) {
     /* might as well check for this too */
     if (obj.otyp === LUCKSTONE)
         return true;
-    /* obj->oartifact && spec_ability(obj, SPFX_LUCK): artifacts aren't
-       ported yet */
-    return false;
+    return !!(obj.oartifact && spec_ability(obj, SPFX_LUCK));
 }
 
 // C ref: timeout.c nh_timeout()
@@ -135,6 +136,37 @@ export async function nh_timeout() {
     /* run_timers(): the timer queue isn't ported yet; no timer set by
        level creation (corpse rot, revival, melting ice) comes due within
        the turns the sessions reach so far */
+}
+
+// C ref: timeout.c attach_egg_hatch_timeout()
+// The timer queue isn't ported yet: as with start_corpse_timeout(), the
+// pending timer is kept in obj.timer = { when, action }.
+export function attach_egg_hatch_timeout(egg, when) {
+    let i;
+
+    /* stop previous timer, if any */
+    /* (void) stop_timer(HATCH_EGG, obj_to_any(egg)) */
+    if (egg.timer && egg.timer.action === 'HATCH_EGG')
+        egg.timer = null;
+
+    /*
+     * Decide if and when to hatch the egg.  The old hatch_it() code tried
+     * once a turn from age 151 to 200 (inclusive), hatching if it rolled
+     * a number x, 1<=x<=age, where x>150.  This yields a chance of
+     * hatching > 99.9993%.  Mimic that here.
+     */
+    if (!when) {
+        for (i = (MAX_EGG_HATCH_TIME - 50) + 1; i <= MAX_EGG_HATCH_TIME; i++)
+            if (rnd(i) > 150) {
+                /* egg will hatch */
+                when = i;
+                break;
+            }
+    }
+    if (when) {
+        /* (void) start_timer(when, TIMER_OBJECT, HATCH_EGG, obj_to_any(egg)) */
+        egg.timer = { when, action: 'HATCH_EGG' };
+    }
 }
 
 // C ref: timeout.c kill_egg()

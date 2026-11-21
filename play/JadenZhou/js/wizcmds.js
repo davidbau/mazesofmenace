@@ -1,10 +1,10 @@
 // wizcmds.js — wizard-mode commands.
 // C ref: wizcmds.c
 //
-// Ported so far: the #levelchange prompt (wiz_level_change()) and the ^W
-// wish (wiz_wish(), zap.c makewish()); the level changes
-// themselves (losexp(), pluslvl()) and most of hold_another_object()
-// (merging, inventory letters, prinv()) are not ported yet.
+// Ported so far: #levelchange (wiz_level_change(), with exper.c losexp()
+// and pluslvl()) and the ^W wish (wiz_wish(), zap.c makewish()); most of
+// hold_another_object() (merging, inventory letters, prinv()) is not
+// ported yet.
 
 import { game } from './gstate.js';
 import { pline } from './display.js';
@@ -19,6 +19,7 @@ import { addinv } from './u_init.js';
 import { prinv } from './invent.js';
 import * as O from './objects.js';
 import { create_particular } from './read.js';
+import { losexp, pluslvl } from './exper.js';
 
 // C ref: wizcmds.c wiz_level_change() -- #levelchange
 export async function wiz_level_change() {
@@ -48,16 +49,19 @@ export async function wiz_level_change() {
             await pline("You are already as inexperienced as you can get.");
             return 0;
         }
-        /* while (u.ulevel > newlevel) losexp("#levelchange");
-           -- not ported yet */
-        return 0;
+        if (newlevel < 1)
+            newlevel = 1;
+        while (u.ulevel > newlevel)
+            await losexp("#levelchange");
     } else {
         if (u.ulevel >= MAXULEV) {
             await pline("You are already as experienced as you can get.");
             return 0;
         }
-        /* while (u.ulevel < newlevel) pluslvl(FALSE); -- not ported yet */
-        return 0;
+        if (newlevel > MAXULEV)
+            newlevel = MAXULEV;
+        while (u.ulevel < newlevel)
+            await pluslvl(false);
     }
     /* blessed full healing or restore ability won't fix any lost levels */
     u.ulevelmax = u.ulevel;

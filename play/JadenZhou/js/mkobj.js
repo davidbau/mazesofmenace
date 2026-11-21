@@ -38,6 +38,15 @@ import { merged } from './invent.js';
 import { obj_no_longer_held } from './do.js';
 import { block_point, recalc_block_point } from './vision.js';
 import { vobj_at } from './display.js';
+import { attach_egg_hatch_timeout } from './timeout.js';
+import { tt_oname } from './topten.js';
+import { zombie_form } from './mon.js';
+import { forget_temple_entry } from './priest.js';
+import { MON_DETACH } from './const.js';
+import { confers_luck } from './timeout.js';
+import { set_moreluck } from './attrib.js';
+import { eaten_stat } from './eat.js';
+import { costly_spot } from './insight.js';
 
 function impossible(msg) { console.error(`impossible: ${msg}`); }
 
@@ -172,9 +181,10 @@ export function start_corpse_timeout(body) {
                 when = age;
                 break;
             }
-    } else if (game.zombify) {
-        /* zombie_form() and ZOMBIFY_MON are not ported yet */
-        impossible('start_corpse_timeout: zombify is not ported yet');
+    } else if (game.zombify && zombie_form(mons[body.corpsenm]) !== NON_PM
+               && !body.norevive) {
+        action = 'ZOMBIFY_MON';
+        when = rn1(15, 5); /* 5..19 */
     }
 
     /* (void) start_timer(when, TIMER_OBJECT, action, obj_to_any(body)):
@@ -184,23 +194,105 @@ export function start_corpse_timeout(body) {
 
 // C ref: mkobj.c set_corpsenm()
 export function set_corpsenm(obj, id) {
-    /* obj->timed: timers are not ported yet */
+    const old_id = obj.corpsenm;
+    let when = 0;
+
+    if (obj.timer) { /* obj->timed */
+        if (obj.otyp === O.EGG) {
+            /* when = stop_timer(HATCH_EGG, obj_to_any(obj)): the time left
+               needs the timer queue */
+            throw new Error('set_corpsenm(): stop_timer() of an egg hatch timer not ported yet');
+        } else {
+            when = 0;
+            obj.timer = null; /* obj_stop_timers(obj): corpse or figurine */
+        }
+    }
+    /* oeaten is used to determine how much nutrition is left in
+       multiple-bite food and also used to derive how many hit points
+       a creature resurrected from a partly eaten corpse gets; latter
+       is of interest when a <foo> corpse revives as a <foo> zombie
+       in case they are defined with different mons[].cnutrit values */
+    if (obj.otyp === O.CORPSE && obj.oeaten
+        /* when oeaten is non-zero, index old_id can't be NON_PM
+           and divisor mons[old_id].cnutrit can't be zero */
+        && mons[old_id].cnutrit !== mons[id].cnutrit) {
+        obj.oeaten = Math.trunc(obj.oeaten * mons[id].cnutrit
+                                / mons[old_id].cnutrit);
+    }
+
     obj.corpsenm = id;
     switch (obj.otyp) {
     case O.CORPSE:
         start_corpse_timeout(obj);
-        obj.owt = objects[obj.otyp].oc_weight; /* weight(obj) */
+        obj.owt = weight(obj);
         break;
     case O.FIGURINE:
-        /* attach_fig_transform_timeout() only for carried figurines */
+        if (obj.corpsenm !== NON_PM && !dead_species(obj.corpsenm, true)
+            && (obj.where === 'OBJ_INVENT' || obj.where === 'OBJ_MINVENT')) /* carried() || mcarried() */
+            throw new Error('set_corpsenm(): attach_fig_transform_timeout() not ported yet');
+        obj.owt = weight(obj);
         break;
     case O.EGG:
-        if (obj.corpsenm !== NON_PM)
-            impossible('set_corpsenm: egg hatch timers are not ported yet');
+        if (obj.corpsenm !== NON_PM && !dead_species(obj.corpsenm, true))
+            attach_egg_hatch_timeout(obj, when);
         break;
     default: /* tin, etc. */
+        obj.owt = weight(obj);
         break;
     }
+}
+
+// C ref: mkobj.c save_mtraits()
+/* stash a copy of a monster's traits in an object's oextra (corpse or
+   statue), for revival */
+export function save_mtraits(obj, mtmp) {
+    if (mtmp.ispriest)
+        forget_temple_entry(mtmp); /* EPRI() */
+    if (!obj.oextra || !obj.oextra.omonst) { /* !has_omonst(obj) */
+        if (!obj.oextra)
+            obj.oextra = {};
+        obj.oextra.omonst = {}; /* newomonst(obj) */
+    }
+    if (obj.oextra.omonst) { /* has_omonst(obj) */
+        const baselevel = mtmp.data.mlevel; /* mtmp->data is valid ptr */
+        const mtmp2 = { ...mtmp }; /* *mtmp2 = *mtmp */
+
+        obj.oextra.omonst = mtmp2;
+        mtmp2.mnum = monsndx(mtmp.data);
+        /* invalidate pointers */
+        /* m_id is needed to know if this is a revived quest leader */
+        /* but m_id must be cleared when loading bones */
+        mtmp2.nmon = null;
+        mtmp2.data = null;
+        mtmp2.minvent = null;
+        mtmp2.mw = null; /* MON_NOWEP(mtmp2) */
+        /* mtmp2->mextra = 0; if (mtmp->mextra) copy_mextra(mtmp2, mtmp):
+           the port keeps the extension structs on the monster (or in
+           mtmp.mextra); give the copy its own */
+        if (mtmp.mextra) {
+            mtmp2.mextra = {};
+            for (const [k, v] of Object.entries(mtmp.mextra))
+                mtmp2.mextra[k] = (v && typeof v === 'object') ? { ...v } : v;
+        }
+        for (const k of ['edog', 'epri', 'emin', 'eshk', 'egd'])
+            if (mtmp[k])
+                mtmp2[k] = { ...mtmp[k] };
+        /* if mtmp is a long worm with segments, its saved traits will
+           be one without any segments */
+        mtmp2.wormno = 0;
+        /* mtmp might have been killed by repeated life draining; make sure
+           mtmp2 can survive if revived ('baselevel' will be 0 for 1d4 mon) */
+        if (mtmp2.mhpmax <= baselevel)
+            mtmp2.mhpmax = baselevel + 1;
+        /* mtmp is assumed to be dead but we don't kill it or its saved
+           traits, just force those to have a sane value for current HP */
+        if (mtmp2.mhp > mtmp2.mhpmax)
+            mtmp2.mhp = mtmp2.mhpmax;
+        if (mtmp2.mhp < 1)
+            mtmp2.mhp = 0;
+        mtmp2.mstate = (mtmp2.mstate || 0) & ~MON_DETACH;
+    }
+    return obj;
 }
 
 // C ref: mkobj.c mkcorpstat()
@@ -214,8 +306,10 @@ export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
     if (objtype !== O.CORPSE && objtype !== O.STATUE)
         impossible(`making corpstat type ${objtype}`);
     if (x === 0 && y === 0) { /* special case - random placement */
-        impossible('mkcorpstat: rloco() is not ported yet');
         otmp = mksobj(objtype, init, false);
+        /* (void) rloco(otmp): teleport.js rloco() is async and this
+           caller isn't */
+        throw new Error('mkcorpstat(): rloco() for random placement not ported yet');
     } else {
         otmp = mksobj_at(objtype, x, y, init, false);
     }
@@ -223,11 +317,18 @@ export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
     otmp.spe = (corpstatflags & CORPSTAT_SPE_VAL);
     otmp.norevive = game.mkcorpstat_norevive ? 1 : 0;
 
+    /* when 'mtmp' is non-null save the monster's details with the
+       corpse or statue; it will also force the 'ptr' override below */
     if (mtmp) {
-        /* save_mtraits() is not ported yet */
-        impossible('mkcorpstat: save_mtraits() is not ported yet');
+        /* save_mtraits updates otmp->oextra->omonst in place */
+        save_mtraits(otmp, mtmp);
+
         if (!ptr)
             ptr = mtmp.data;
+
+        /* don't give a revive timer to a cancelled troll's corpse */
+        if (mtmp.mcan && !is_rider(ptr))
+            otmp.norevive = 1;
     }
 
     /* when 'ptr' is non-null it comes from our caller or from 'mtmp';
@@ -236,7 +337,7 @@ export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
         const old_corpsenm = otmp.corpsenm;
 
         otmp.corpsenm = monsndx(ptr);
-        otmp.owt = objects[otmp.otyp].oc_weight; /* weight(otmp) */
+        otmp.owt = weight(otmp);
         if (otmp.otyp === O.CORPSE
             && (game.zombify || special_corpse(old_corpsenm)
                 || special_corpse(otmp.corpsenm))) {
@@ -745,6 +846,20 @@ export function curse(otmp) {
     otmp.cursed = 1;
 }
 
+// C ref: mkobj.c uncurse()
+export function uncurse(otmp) {
+    if (otmp.lamplit)
+        throw new Error('uncurse(): arti_light_radius() of a lit object not ported yet');
+    otmp.cursed = 0;
+    if (otmp.where === 'OBJ_INVENT' /* carried(otmp) */ && confers_luck(otmp))
+        set_moreluck();
+    else if (otmp.otyp === O.BAG_OF_HOLDING)
+        otmp.owt = weight(otmp);
+    else if (otmp.otyp === O.FIGURINE && otmp.timed)
+        throw new Error('uncurse(): stop_timer(FIG_TRANSFORM) not ported yet');
+    return;
+}
+
 // C ref: mkobj.c blessorcurse()
 export function blessorcurse(otmp, chance) {
     if (otmp.blessed || otmp.cursed)
@@ -765,10 +880,11 @@ export function bcsign(otmp) {
 }
 
 // nartifact_exist(): C ref artifact.c, ported in artifact.js
-import { nartifact_exist } from './artifact.js';
+import { nartifact_exist, mk_artifact } from './artifact.js';
+import { A_NONE } from './const.js';
 
 function not_ported(what) {
-    impossible(`mksobj_init: ${what} is not ported yet`);
+    throw new Error(`mkobj: ${what} not ported yet`);
 }
 
 // C ref: mkobj.c boxiprobs[]
@@ -847,11 +963,10 @@ export function weight(obj) {
     if (obj.otyp === O.CORPSE && obj.corpsenm >= LOW_PM) {
         wt = obj.quan * mons[obj.corpsenm].cwt;
         if (obj.oeaten)
-            not_ported('eaten_stat()');
+            wt = eaten_stat(wt, obj);
         return wt;
     } else if (obj.oclass === O.FOOD_CLASS && obj.oeaten) {
-        not_ported('eaten_stat()');
-        return obj.quan * wt;
+        return eaten_stat(obj.quan * wt, obj);
     } else if (obj.oclass === O.COIN_CLASS) {
         /* 5.0: always weigh at least 1 unit; used to yield 0 for 1..49 */
         wt = Math.trunc((obj.quan + 50) / 100);
@@ -862,6 +977,34 @@ export function weight(obj) {
         return wt + obj.spe * objects[O.TALLOW_CANDLE].oc_weight;
     }
     return (wt ? wt * obj.quan : (obj.quan + 1) >> 1);
+}
+
+// C ref: mkobj.c costly_alteration()
+/* possibly bill for an object which the player has just modified;
+   only the "nobody is charging for it" cases are ported */
+export function costly_alteration(obj, alter_type) {
+    void alter_type;
+    let ox, oy;
+
+    if (obj.where === 'OBJ_INVENT' || obj.where === 'OBJ_FREE') {
+        /* OBJ_FREE catches obj_no_longer_held()'s transformation
+           of crysknife back into worm tooth; the object has been
+           removed from inventory but not necessarily placed at
+           its new location yet--the unpaid flag will still be set
+           if this item is owned by a shop */
+        if (!obj.unpaid)
+            return;
+    } else {
+        /* this get_obj_location shouldn't fail, but if it does,
+           use hero's location */
+        if (obj.where === 'OBJ_FLOOR')
+            ox = obj.ox, oy = obj.oy;
+        else
+            throw new Error('costly_alteration(): get_obj_location() of a contained/carried object not ported yet');
+        if (!costly_spot(ox, oy))
+            return;
+    }
+    throw new Error('costly_alteration(): billing for an altered shop object not ported yet');
 }
 
 // C ref: mkobj.c mkbox_cnts()
@@ -1028,7 +1171,7 @@ function mksobj_init(otmp, artif) {
 
         if (artif && !rn2(20 + (10 * nartifact_exist()))) {
             /* mk_artifact() with otmp and A_NONE will never return NULL */
-            not_ported('mk_artifact()');
+            otmp = mk_artifact(otmp, A_NONE, 99, true);
         }
         break;
     case FOOD_CLASS:
@@ -1225,7 +1368,7 @@ function mksobj_init(otmp, artif) {
             blessorcurse(otmp, 10);
         if (artif && !rn2(40 + (10 * nartifact_exist()))) {
             /* mk_artifact() with otmp and A_NONE will never return NULL */
-            not_ported('mk_artifact()');
+            otmp = mk_artifact(otmp, A_NONE, 99, true);
         }
         /* simulate lacquered armor for samurai */
         if (game.urole.mnum === M.PM_SAMURAI /* Role_if(PM_SAMURAI) */
@@ -1299,7 +1442,7 @@ function mksobj_init(otmp, artif) {
 /* mksobj(): create a specific type of object; result is always non-Null */
 export function mksobj(otyp, init, artif) {
     const let_ = objects[otyp].oc_class;
-    const otmp = {
+    let otmp = {
         age: Math.max(game.moves || 0, 1),
         o_id: next_ident(),
         quan: 1,
@@ -1369,9 +1512,33 @@ export function mksobj(otyp, init, artif) {
 
     /* unique objects may have an associated artifact entry */
     if (objects[otyp].oc_unique && !otmp.oartifact) {
-        not_ported('mk_artifact() for unique objects');
+        /* mk_artifact() with otmp and A_NONE will never return NULL */
+        otmp = mk_artifact(otmp, A_NONE, 99, false);
     }
     otmp.owt = weight(otmp);
+    return otmp;
+}
+
+// C ref: mkobj.c mk_tt_object()
+/* make an object named after someone listed in the scoreboard file;
+   never returns Null */
+export function mk_tt_object(
+    objtype, /* CORPSE or STATUE */
+    x, y)
+{
+    /* player statues never contain books */
+    const initialize_it = (objtype !== O.STATUE);
+    const otmp = mksobj_at(objtype, x, y, initialize_it, false);
+
+    /* tt_oname() will return null if the scoreboard is empty, which in
+       turn leaves the random corpsenm value; force it to match a player */
+    if (!tt_oname(otmp)) {
+        const pm = rn1(M.PM_WIZARD - M.PM_ARCHEOLOGIST + 1, M.PM_ARCHEOLOGIST);
+
+        /* update weight for either, force timer sanity for corpses */
+        set_corpsenm(otmp, pm);
+    }
+
     return otmp;
 }
 

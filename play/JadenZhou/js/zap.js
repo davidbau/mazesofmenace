@@ -137,3 +137,11 @@ export function item_what(dmgtyp) {
     }
     return whatbuf;
 }
+
+// C ref: zap.c exclam()
+export function exclam(force) {
+    /* force == 0 occurs e.g. with sleep ray */
+    /* note that large force is usual with wands so that !! would
+            require information about hand/weapon/wand */
+    return (force < 0) ? "?" : (force <= 4) ? "." : "!";
+}

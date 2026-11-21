@@ -5,8 +5,14 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, You_cant } from './display.js';
+import { newsym, flush_screen, pline, You_cant, You } from './display.js';
+import { getpos } from './getpos.js';
 import { vision_recalc } from './vision.js';
+import { tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu } from './wintty.js';
+import { reveal_terrain } from './detect.js';
+import { NO_COLOR, ATR_NONE } from './terminal.js';
+import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
+         PICK_ONE, TER_MAP, TER_TRP, TER_OBJ, TER_FULL } from './const.js';
 import { tty_clear_nhwindow, tty_get_ext_cmd, tty_yn_function, tty_create_nhwindow,
          tty_putstr, tty_display_nhwindow, tty_destroy_nhwindow } from './wintty.js';
 import { doride } from './steed.js';
@@ -17,9 +23,10 @@ import { extcmdlist, CMD_NOT_AVAILABLE, INTERNALCMD, WIZMODECMD, AUTOCOMPLETE,
          MOVEMENTCMD, CMD_PARAM, CMD_M_PREFIX, CMD_gGF_PREFIX } from './func_tab.js';
 import { strcmpi, strncmpi, highc } from './hacklib.js';
 import { dosearch } from './detect.js';
-import { level_tele } from './teleport.js';
+import { level_tele, dotelecmd } from './teleport.js';
 import { wiz_level_change, wiz_wish } from './wizcmds.js';
-import { ddoinv, dolook } from './invent.js';
+import { ddoinv, dolook, doprgold, doprwep, doprarm, doprring, dopramulet,
+         doprtool } from './invent.js';
 import { cmd_safety_prevention, nomul, domove, DOMOVE_WALK,
          DOMOVE_RUSH, confdir } from './hack.js';
 export { domove };
@@ -29,7 +36,7 @@ import { dovspell, docast } from './spell.js';
 import { dodiscovered } from './o_init.js';
 import { doattributes } from './insight.js';
 import { wiz_genesis } from './wizcmds.js';
-import { dodrop, dodown, doup } from './do.js';
+import { dodrop, doddrop, dodown, doup } from './do.js';
 import { dozap } from './zap.js';
 import { docallcmd } from './do_name.js';
 import { doloot } from './pickup.js';
@@ -38,14 +45,16 @@ import { Never_mind, isok } from './const.js';
 import { dofire, dothrow } from './dothrow.js';
 import { dokick } from './dokick.js';
 import { doswapweapon, dowieldquiver, dowield, dotwoweapon } from './wield.js';
+import { enhance_weapon_skill } from './weapon.js';
 import { doapply, dorub, dojump } from './apply.js';
 import { doeat } from './eat.js';
 import { dowear, doputon, dotakeoff, ia_dotakeoff } from './do_wear.js';
 import { dodrink } from './potion.js';
 import { dotogglepickup, doset_simple, doset } from './options.js';
 import { doread } from './read.js';
-import { dohelp } from './pager.js';
+import { dohelp, dowhatis } from './pager.js';
 import { doopen } from './lock.js';
+import { dosave } from './save.js';
 
 // C ref: cmd.c extcmds_match() -- the indices of the extcmdlist[]
 // entries matching findstr
@@ -92,6 +101,7 @@ const cmd_funcs = {
     wiz_level_change: () => wiz_level_change(),
     wiz_wish: () => wiz_wish(),
     wiz_level_tele: () => wiz_level_tele(),
+    dotelecmd: () => dotelecmd(),
     doride: () => doride(),
     dovspell: () => dovspell(),
     dodiscovered: () => dodiscovered(),
@@ -99,6 +109,9 @@ const cmd_funcs = {
     docast: () => docast(),
     wiz_genesis: () => wiz_genesis(),
     dodrop: () => dodrop(),
+    doddrop: () => doddrop(),
+    dotravel: () => dotravel(),
+    dotravel_target: () => dotravel_target(),
     dodown: () => dodown(),
     doup: () => doup(),
     dozap: () => dozap(),
@@ -121,6 +134,7 @@ const cmd_funcs = {
     doread: () => doread(),
     dowield: () => dowield(),
     dotwoweapon: () => dotwoweapon(),
+    enhance_weapon_skill: () => enhance_weapon_skill(),
     dohelp: () => dohelp(),
     doopen: () => doopen(),
     dojump: () => dojump(),
@@ -132,6 +146,15 @@ const cmd_funcs = {
     doset_simple: () => doset_simple(),
     doset: () => doset(),
     dopickup: () => dopickup(),
+    dosave: () => dosave(),
+    doprgold: () => doprgold(),
+    doprwep: () => doprwep(),
+    doprarm: () => doprarm(),
+    doprring: () => doprring(),
+    dopramulet: () => dopramulet(),
+    doprtool: () => doprtool(),
+    doterrain: () => doterrain(),
+    dowhatis: () => dowhatis(),
 };
 /* C ref: cmd.c do_move_<dir>(), do_run_<dir>(), do_rush_<dir>() */
 ["west", "northwest", "north", "northeast", "east", "southeast", "south",
@@ -178,6 +201,89 @@ async function doextcmd() {
     } while (func === "doextlist");
 
     return retval;
+}
+
+// C ref: cmd.c doterrain() -- the #terrain command: show map without
+// obstructions
+async function doterrain() {
+    let n;
+    let which;
+    const clr = NO_COLOR;
+
+    /* this used to be done each time vision was recalculated, so would
+       always be up to date (hopefully); now we do it on demand instead:
+       recalc_mapseen() -- the dungeon overview isn't ported */
+
+    /*
+     * normal play: choose between known map without mons, obj, and traps
+     *  (to see underlying terrain only), or
+     *  known map without mons and objs (to see traps under mons and objs), or
+     *  known map without mons (to see objects under monsters);
+     * explore mode: normal choices plus full map (w/o mons, objs, traps);
+     * wizard mode: normal and explore choices plus
+     *  a dump of the internal levl[][].typ codes w/ level flags, or
+     *  a legend for the levl[][].typ codes dump
+     */
+    const men = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(men, MENU_BEHAVE_STANDARD);
+    tty_add_menu(men, null, 1, 0, 0, ATR_NONE, clr,
+                 "known map without monsters, objects, and traps",
+                 MENU_ITEMFLAGS_SELECTED);
+    tty_add_menu(men, null, 2, 0, 0, ATR_NONE, clr,
+                 "known map without monsters and objects",
+                 MENU_ITEMFLAGS_NONE);
+    tty_add_menu(men, null, 3, 0, 0, ATR_NONE, clr,
+                 "known map without monsters",
+                 MENU_ITEMFLAGS_NONE);
+    if (game.flags.explore || game.flags.debug) {
+        tty_add_menu(men, null, 4, 0, 0, ATR_NONE, clr,
+                     "full map without monsters, objects, and traps",
+                     MENU_ITEMFLAGS_NONE);
+        if (game.flags.debug) {
+            tty_add_menu(men, null, 5, 0, 0, ATR_NONE, clr,
+                         "internal levl[][].typ codes in base-36",
+                         MENU_ITEMFLAGS_NONE);
+            tty_add_menu(men, null, 6, 0, 0, ATR_NONE, clr,
+                         "legend of base-36 levl[][].typ codes",
+                         MENU_ITEMFLAGS_NONE);
+        }
+    }
+    tty_end_menu(men, "View which?");
+
+    const res = await tty_select_menu(men, PICK_ONE);
+    n = res.n;
+    await tty_destroy_nhwindow(men);
+    /*
+     * n <  0: player used ESC to cancel;
+     * n == 0: preselected entry was explicitly chosen and got toggled off;
+     * n == 1: preselected entry was implicitly chosen via <space>|<enter>;
+     * n == 2: another entry was explicitly chosen, so skip preselected one.
+     */
+    which = (n < 0) ? -1 : (n === 0) ? 1 : res.selected[0].item;
+    if (n > 1 && which === 1)
+        which = res.selected[1].item;
+
+    switch (which) {
+    case 1: /* known map */
+        await reveal_terrain(TER_MAP);
+        break;
+    case 2: /* known map with known traps */
+        await reveal_terrain(TER_MAP | TER_TRP);
+        break;
+    case 3: /* known map with known traps and objects */
+        await reveal_terrain(TER_MAP | TER_TRP | TER_OBJ);
+        break;
+    case 4: /* full map */
+        await reveal_terrain(TER_MAP | TER_FULL);
+        break;
+    case 5: /* map internals */
+        throw new Error('doterrain(): wiz_map_levltyp() not ported yet');
+    case 6: /* internal details */
+        throw new Error('doterrain(): wiz_levltyp_legend() not ported yet');
+    default:
+        break;
+    }
+    return ECMD_OK; /* no time elapses */
 }
 
 // C ref: cmd.c accept_menu_prefix()
@@ -1004,6 +1110,88 @@ export async function get_adjacent_loc(prompt, emsg, x, y, cc) {
         return 0;
     }
     return 1;
+}
+
+// C ref: cmd.c dotravel() -- '_' command, #travel, via keyboard rather
+// than mouse click
+async function dotravel() {
+    const u = game.u;
+    const iflags = game.iflags;
+    const cc = { x: 0, y: 0 };
+
+    /*
+     * Traveling used to be a no-op if user toggled 'travel' option
+     * Off.  However, travel was initially implemented as a mouse-only
+     * command and the original purpose of the option was to be able
+     * to prevent clicks on the map from initiating travel.
+     *
+     * Travel via '_' came later.  Since it requires a destination--
+     * which offers the user a chance to cancel if it was accidental--
+     * there's no reason for the option to disable travel-by-keys.
+     */
+
+    if (!iflags.travelcc)
+        iflags.travelcc = { x: 0, y: 0 };
+    cc.x = iflags.travelcc.x;
+    cc.y = iflags.travelcc.y;
+    if (cc.x === 0 && cc.y === 0) {
+        /* No cached destination, start attempt from current position */
+        cc.x = u.ux;
+        cc.y = u.uy;
+    }
+    iflags.getloc_travelmode = true;
+    if (iflags.menu_requested) {
+        throw new Error('dotravel(): getpos_menu() (m_ travel) not ported yet');
+    } else {
+        await pline("Where do you want to travel to?");
+        if ((await getpos(cc, true, "the desired destination")) < 0) {
+            /* user pressed ESC */
+            iflags.getloc_travelmode = false;
+            return ECMD_CANCEL;
+        }
+    }
+    iflags.travelcc.x = u.tx = cc.x;
+    iflags.travelcc.y = u.ty = cc.y;
+
+    return await dotravel_target();
+}
+
+// C ref: cmd.c dotravel_target() -- #retravel, travel to iflags.travelcc,
+// which must be set
+async function dotravel_target() {
+    const u = game.u;
+    const iflags = game.iflags;
+    const ctx = game.context;
+
+    if (!iflags.travelcc)
+        iflags.travelcc = { x: 0, y: 0 };
+    if (!isok(iflags.travelcc.x, iflags.travelcc.y)) {
+        /* assume <0,0>, the value assigned when travel reaches destination */
+        await pline("No travel destination set.");
+        return ECMD_OK;
+    } else if (u.ux === iflags.travelcc.x && u.uy === iflags.travelcc.y) {
+        /* maybe interrupted while traveling then just walked rest of way
+           so destination hasn't been reset yet */
+        await You("are already here.");
+        iflags.travelcc.x = iflags.travelcc.y = 0;
+        return ECMD_OK;
+    }
+
+    iflags.getloc_travelmode = false;
+
+    ctx.travel = 1;
+    ctx.travel1 = 1;
+    ctx.run = 8;
+    ctx.nopick = 1;
+    game.domove_attempting |= DOMOVE_RUSH;
+
+    if (!game.multi)
+        game.multi = Math.max(COLNO, ROWNO);
+    u.last_str_turn = 0;
+    ctx.mv = true;
+
+    await domove();
+    return ECMD_TIME;
 }
 
 // C ref: cmd.c paranoid_ynq() -- the !be_paranoid cases (plain y/n or

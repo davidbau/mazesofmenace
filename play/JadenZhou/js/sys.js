@@ -16,6 +16,7 @@ export function sys_early_init() {
         explorers: '*',
         genericusers: 'play player game games nethack nethacker ec2-user',
         bones_pools: 0, /* sys.c default; BONES_POOLS is commented out */
+        tt_oname_maxrank: 10, /* sys.c default; TT_ONAME_MAXRANK isn't set */
     };
 }
 

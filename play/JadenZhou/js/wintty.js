@@ -327,6 +327,66 @@ async function tty_dismiss_nhwindow(window) {
     cw.flags = 0;
 }
 
+// C ref: wintty.c tty_raw_print() -- puts(str): the text at the cursor,
+// then a newline
+export function tty_raw_print(str) {
+    const t = tty();
+    if (t)
+        t.rawprint = (t.rawprint || 0) + 1;
+    for (const ch of str) {
+        if (t.curx >= t.cols) {
+            t.curx = 0;
+            t.cury++;
+        }
+        xputc(ch);
+        t.curx++;
+    }
+    /* newline: column 0 of the next row */
+    cmov(0, Math.min(t.cury + 1, t.rows - 1));
+}
+
+// C ref: termcap.c term_end_screen()
+function term_end_screen() {
+    term_clear_screen();
+    /* xputs(VE); xputs(TE): cursor visibility and terminal mode */
+}
+
+// C ref: unixtty.c settty() -- reset terminal to original state
+function settty(s) {
+    term_end_screen(); /* WINDOWPORT(tty) */
+    if (s)
+        tty_raw_print(s);
+    /* STTY(&inittyb): terminal modes aren't modelled */
+}
+
+// C ref: wintty.c tty_suspend_nhwindows()
+function tty_suspend_nhwindows(str) {
+    /* term_curs_set(1) */
+    settty(str); /* calls end_screen, perhaps raw_print */
+    if (!str)
+        tty_raw_print(""); /* calls fflush(stdout) */
+}
+
+// C ref: wintty.c tty_exit_nhwindows()
+export function tty_exit_nhwindows(str) {
+    const g = game;
+
+    tty_suspend_nhwindows(str);
+    /*
+     * Disable windows to avoid calls to window routines.
+     */
+    const w = wins();
+    for (let i = 0; i < w.length; i++) {
+        if (i === g.BASE_WINDOW)
+            continue; /* handle wins[BASE_WINDOW] last */
+        w[i] = null;
+    }
+    g.WIN_MESSAGE = WIN_ERR; /* these are all gone now */
+    /* term_shutdown(): cleanup termcap/terminfo/whatever */
+    if (g.iflags)
+        g.iflags.window_inited = false;
+}
+
 // C ref: wintty.c tty_destroy_nhwindow()
 export async function tty_destroy_nhwindow(window) {
     const cw = wins()[window];
@@ -454,6 +514,104 @@ function remember_topl() {
     game.toplines = '';
 }
 
+/* C ref: topl.c static snapshot_mesgs -- shared by tty_getmsghistory()
+   and tty_putmsghistory() */
+let snapshot_mesgs = null;
+let getmsg_nxtidx = 0;
+let putmsg_initd = false;
+
+// C ref: topl.c msghistory_snapshot()
+/* collect currently available message history data into a sequential
+   array; optionally, purge that data from the history as we go */
+function msghistory_snapshot(purge) {
+    /* paranoia (too early or too late panic save attempt?) */
+    if (game.WIN_MESSAGE === WIN_ERR || !wins()?.[game.WIN_MESSAGE])
+        return;
+    const cw = wins()[game.WIN_MESSAGE];
+
+    /* flush gt.toplines[], moving most recent message to history */
+    remember_topl();
+
+    /* for a passive snapshot, we just copy pointers, so can't allow further
+       history updating to take place because that could clobber them */
+    if (!purge)
+        cw.flags |= WIN_LOCKHISTORY;
+
+    /* the history keeps the last iflags.msg_history messages (cw->rows) */
+    const rows = game.iflags?.msg_history || 20;
+    snapshot_mesgs = (cw.data || []).slice(-rows).filter(m => m);
+
+    /* for a destructive snapshot, history is now completely empty */
+    if (purge)
+        cw.data = [];
+}
+
+// C ref: topl.c free_msghistory_snapshot()
+function free_msghistory_snapshot(purged) {
+    if (snapshot_mesgs) {
+        snapshot_mesgs = null;
+        /* history can resume being updated at will now... */
+        if (!purged)
+            wins()[game.WIN_MESSAGE].flags &= ~WIN_LOCKHISTORY;
+    }
+}
+
+// C ref: topl.c tty_getmsghistory()
+/* called by the core save routines: one message per call, oldest first,
+   then null */
+export function tty_getmsghistory(init) {
+    let result = null;
+
+    if (init) {
+        msghistory_snapshot(false);
+        getmsg_nxtidx = 0;
+    }
+
+    if (snapshot_mesgs) {
+        const nextmesg = snapshot_mesgs[getmsg_nxtidx++];
+        if (nextmesg)
+            result = nextmesg;
+        else
+            free_msghistory_snapshot(false);
+    }
+    return result;
+}
+
+// C ref: topl.c tty_putmsghistory()
+/* called by the core savefile restore routines; each message goes into
+   the history behind any issued since this program started ("Restoring
+   save file..."); called with null to finish up restoration */
+export function tty_putmsghistory(msg, restoring_msghist) {
+    if (restoring_msghist && !putmsg_initd) {
+        /* we're restoring history from the previous session, but new
+           messages have already been issued this session; collect current
+           history (ie, those new messages), and also clear it out so that
+           nothing will be present when the restored ones are being put
+           into place */
+        msghistory_snapshot(true);
+        putmsg_initd = true;
+    }
+
+    if (msg) {
+        /* Caller is asking us to remember a top line that needed more. */
+        if (tty() && tty().toplin === TOPLINE_NEED_MORE)
+            tty().toplin = TOPLINE_NON_EMPTY;
+
+        /* move most recent message to history, make this become most recent */
+        remember_topl();
+        game.toplines = msg;
+    } else if (snapshot_mesgs) {
+        /* done putting arbitrary messages in; put the snapshot ones back */
+        for (const m of snapshot_mesgs) {
+            remember_topl();
+            game.toplines = m;
+        }
+        /* now release the snapshot */
+        free_msghistory_snapshot(true);
+        putmsg_initd = false; /* reset */
+    }
+}
+
 // C ref: topl.c addtopl()
 function addtopl(s) {
     const cw = wins()[game.WIN_MESSAGE];
@@ -508,6 +666,9 @@ export async function more() {
 async function update_topl(bp) {
     const t = tty();
     const cw = wins()[game.WIN_MESSAGE];
+    /* pline.c vpline(): gp.prevmsg is the last line put to the message
+       window (every message line reaches update_topl() via vpline()) */
+    game.prevmsg = bp;
     const CO = t.cols;
     let skip = (cw.flags & (WIN_STOP | WIN_NOSTOP)) === WIN_STOP;
     let notdied = true;
@@ -1246,6 +1407,39 @@ function menuitem_invert_test(mode, itemflags, is_selected) {
     return true;
 }
 
+// C ref: wintty.c set_all_on_page() -- select all on the current page
+function set_all_on_page(window, page_start, page_end) {
+    const cw = wins()[window];
+    let n;
+
+    for (n = 0; page_start + n < page_end; n++) {
+        const curr = cw.mlist[page_start + n];
+        if (!curr.identifier /* not selectable */
+            || curr.selected /* already selected */
+            || !menuitem_invert_test(1, curr.itemflags, false))
+            continue;
+        curr.selected = true;
+        set_item_state(window, n, curr);
+    }
+}
+
+// C ref: wintty.c unset_all_on_page() -- unselect all on the current page
+function unset_all_on_page(window, page_start, page_end) {
+    const cw = wins()[window];
+    let n;
+
+    for (n = 0; page_start + n < page_end; n++) {
+        const curr = cw.mlist[page_start + n];
+        if (!curr.identifier /* skip if not selectable */
+            || !curr.selected /* skip if already de-selected */
+            || !menuitem_invert_test(2, curr.itemflags, true))
+            continue;
+        curr.selected = false;
+        curr.count = -1;
+        set_item_state(window, n, curr);
+    }
+}
+
 // C ref: wintty.c invert_all_on_page()
 function invert_all_on_page(window, page_start, page_end, acc, count) {
     const cw = wins()[window];
@@ -1623,13 +1817,58 @@ async function process_menu_window(window, cw) {
                 }
                 continue;
             }
-            /* MENU_SELECT_PAGE, MENU_INVERT_PAGE, MENU_SELECT_ALL,
-               MENU_INVERT_ALL only act on a PICK_ANY menu; MENU_SEARCH
-               just beeps for PICK_NONE */
-            if (cw.how !== PICK_ANY
-                && (morc === MENU_SELECT_PAGE || morc === MENU_INVERT_PAGE
-                    || morc === MENU_SELECT_ALL || morc === MENU_INVERT_ALL))
+            if (morc === MENU_SELECT_PAGE) {
+                if (cw.how === PICK_ANY)
+                    set_all_on_page(window, page_start, page_end);
                 continue;
+            }
+            if (morc === MENU_UNSELECT_PAGE) {
+                unset_all_on_page(window, page_start, page_end);
+                continue;
+            }
+            if (morc === MENU_INVERT_PAGE) {
+                if (cw.how === PICK_ANY)
+                    invert_all_on_page(window, page_start, page_end, 0, -1);
+                continue;
+            }
+            if (morc === MENU_SELECT_ALL) {
+                if (cw.how === PICK_ANY) {
+                    /* entries on the current page need screen updating */
+                    set_all_on_page(window, page_start, page_end);
+                    /* set the rest; entries on current page will be skipped
+                       because all of those will be 'already selected' now */
+                    for (const curr of cw.mlist) {
+                        if (!curr.identifier /* not selectable */
+                            || curr.selected /* already selected */
+                            /* FALSE: not currently selected */
+                            || !menuitem_invert_test(1, curr.itemflags, false))
+                            continue;
+                        curr.selected = true;
+                    }
+                } /* if PICK_ANY */
+                continue;
+            }
+            if (morc === MENU_UNSELECT_ALL) {
+                /* entries on the current page need screen updating */
+                unset_all_on_page(window, page_start, page_end);
+                /* unset the rest; entries on current page will be skipped
+                   because none of those will still be in 'selected' state */
+                for (const curr of cw.mlist) {
+                    if (!curr.identifier /* not selectable */
+                        || !curr.selected /* already de-selected */
+                        /* TRUE: currently selected */
+                        || !menuitem_invert_test(2, curr.itemflags, true))
+                        continue;
+                    curr.selected = false;
+                    curr.count = -1;
+                }
+                continue;
+            }
+            if (morc === MENU_INVERT_ALL) {
+                if (cw.how === PICK_ANY)
+                    invert_all(window, page_start, page_end, 0, -1);
+                continue;
+            }
             if (cw.how === PICK_NONE && morc === MENU_SEARCH)
                 continue; /* tty_nhbell() */
             if (default_menu_cmds.includes(morc))

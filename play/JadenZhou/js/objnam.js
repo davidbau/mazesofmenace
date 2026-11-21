@@ -26,7 +26,7 @@ import { objects, OBJ_NAME, OBJ_DESCR } from './objects.js';
 import {
     NON_PM, MALE, FEMALE, NEUTRAL, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG,
     BLINDED, HALLUC, Has_contents, has_oname, ONAME,
-    W_ARMOR, W_AMUL, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, ONAME_WISH,
+    W_ARMOR, W_AMUL, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, ONAME_WISH, GLIB,
 } from './const.js';
 import * as M from './monsters.js';
 import { observe_object } from './o_init.js';
@@ -47,6 +47,7 @@ import {
     artifact_exists, nartifact_exist,
 } from './artifact.js';
 import { tin_details } from './eat.js';
+import { donning, doffing } from './do_wear.js';
 import { the as the_article } from './iactions.js';
 import {
     mksobj, mkobj, curse, weight, erosion_matters, is_flammable,
@@ -2944,6 +2945,14 @@ export function xname(obj) {
     return xname_flags(obj, 0);
 }
 
+// C ref: objnam.c cxname_singular()
+/* like cxname, but ignores quantity */
+export function cxname_singular(obj) {
+    if (obj.otyp === O.CORPSE)
+        return corpse_xname(obj, null, CXN_SINGULAR);
+    return xname_flags(obj, CXN_SINGULAR);
+}
+
 // C ref: objnam.c singular()
 export function singular(otmp, func) {
     /* using xname for corpses does not give the monster type */
@@ -3477,11 +3486,23 @@ function doname_base(obj, doname_flags) {
         break;
     case O.ARMOR_CLASS:
         if (obj.owornmask & W_ARMOR) {
-            /* uskin, doffing()/donning() and slippery gloves are not
-               ported yet */
-            if (obj === game.uskin || game.afternmv)
-                xn_not_ported('uskin/doffing/donning suffixes');
-            bp += " (being worn)";
+            if (obj === game.uskin)
+                xn_not_ported('uskin suffix');
+            bp += /* in case of perm_invent update while Wear/Takeoff
+                     is in progress; check doffing() before donning()
+                     because donning() returns True for both cases */
+                  doffing(obj) ? " (being doffed)"
+                  : donning(obj) ? " (being donned)"
+                    : " (being worn)";
+            /* slippery fingers is an intrinsic condition of the hero
+               rather than extrinsic condition of objects, but gloves
+               are described as slippery when hero has slippery fingers */
+            if (obj === game.uarmg && game.u.uprops[GLIB]?.intrinsic)
+                bp = bp.slice(0, -1) + "; slippery)";
+            /* !Blind && obj->lamplit && artifact_light(obj): lit gold
+               dragon armor */
+            if (obj.lamplit)
+                xn_not_ported('lit armor suffix');
         }
         /* FALLTHROUGH */
     case O.WEAPON_CLASS:

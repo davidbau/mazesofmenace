@@ -5,6 +5,7 @@
 // monnear(), mon_allowflags().
 
 import { game } from './gstate.js';
+import { clear_bypasses, bypass_obj } from './worn.js';
 import { rn2, rn1 } from './rng.js';
 import * as MM from './monsters.js';
 import { SPECIAL_PM, NUMMONS } from './monsters.js';
@@ -77,6 +78,27 @@ import { mksobj_at, mkcorpstat, undead_to_corpse,
          clear_dknown } from './mkobj.js';
 import { stackobj } from './invent.js';
 import { oname } from './do_name.js';
+import { rnd } from './rng.js';
+import { XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
+         engulfing_u, is_pit, A_CHAOTIC, TELEPAT, INTRINSIC, M_AP_NOTHING,
+         TEMPLE } from './const.js';
+import { Hallucination, canspotmon, see_monsters } from './display.js';
+import { mon_nam, x_monnam, ARTICLE_NONE, ARTICLE_THE,
+         SUPPRESS_SADDLE } from './do_name.js';
+import { mkobj, place_object } from './mkobj.js';
+import { RANDOM_CLASS, FOOD_CLASS, FIGURINE } from './objects.js';
+import { flooreffects } from './do.js';
+import { s_suffix } from './hacklib.js';
+import { change_luck, adjalign } from './attrib.js';
+import { experience, more_experienced, newexplevel } from './exper.js';
+import { You_hear, growl } from './sounds.js';
+import { is_lightblocker_mappear, does_block, unblock_point,
+         couldsee } from './vision.js';
+import { M1_HUMANOID } from './monsters.js';
+import { sengr_at } from './makemon.js';
+import { del_engr_at } from './engrave.js';
+import { m_canseeu } from './monmove.js';
+import { in_rooms } from './hack.js';
 
 /* monster inventory: makemon.js keeps mon->minvent as an array in pickup
    order; C prepends, so walk it newest first */
@@ -515,7 +537,7 @@ function make_corpse(mtmp, corpseflags) {
     /* if polymorph or undead turning has killed this monster,
        prevent the same attack beam from hitting its corpse */
     if (game.context?.bypasses)
-        throw new Error('make_corpse(): bypass_obj() not ported yet');
+        bypass_obj(obj);
 
     if (mtmp.mgivenname) /* has_mgivenname() */
         obj = oname(obj, mtmp.mgivenname, ONAME_NO_FLAGS);
@@ -593,6 +615,377 @@ export async function monkilled(mdef, fltxt, how) {
             await pline(`May ${noit_mon_nam(mdef)} ${rxt} in peace.`);
     }
 }
+
+/* C ref: mondata.h always_hostile(), is_unicorn(); hack.h sgn() */
+function always_hostile(ptr) { return (ptr.mflags2 & MM.M2_HOSTILE) !== 0; }
+function is_unicorn(ptr) {
+    return ptr.mlet === S_UNICORN && (ptr.mflags2 & M2_JEWELS) !== 0;
+}
+function sgn(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
+/* C ref: align.h ALIGNLIM */
+function ALIGNLIM() { return 10 + Math.trunc(game.moves / 200); }
+
+// C ref: mon.c killed()
+export async function killed(mtmp) {
+    await xkilled(mtmp, XKILL_GIVEMSG);
+}
+
+// C ref: mon.c xkilled()
+/* the player has killed the monster mtmp */
+export async function xkilled(
+    mtmp,
+    xkill_flags) /* 1: suppress mesg, 2: suppress corpse, 4: pacifist */ {
+    const u = game.u;
+    let tmp, mndx;
+    const x = mtmp.mx, y = mtmp.my;
+    let mdat;
+    let otmp;
+    let t;
+    const wasinside = engulfing_u(mtmp);
+    let burycorpse = false;
+    const nomsg = (xkill_flags & XKILL_NOMSG) !== 0;
+    let nocorpse = (xkill_flags & XKILL_NOCORPSE) !== 0;
+    const noconduct = (xkill_flags & XKILL_NOCONDUCT) !== 0;
+
+    /* potential pet message; always clear global flag */
+    const be_sad = !!game.sad_feeling;
+    game.sad_feeling = false;
+
+    mtmp.mhp = 0; /* caller will usually have already done this */
+    if (!noconduct) { /* KMH, conduct */
+        /* livelog_printf(LL_CONDUCT, "killed for the first time") has no
+           game effect */
+        u.uconduct.killer = (u.uconduct.killer || 0) + 1;
+    }
+    if (!nomsg) {
+        const namedpet = !!mtmp.mgivenname && !Hallucination();
+
+        await pline(`You ${nonliving(mtmp.data) ? 'destroy' : 'kill'} ${
+            !(wasinside || canspotmon(mtmp)) ? 'it'
+            : !mtmp.mtame ? mon_nam(mtmp)
+              : x_monnam(mtmp, namedpet ? ARTICLE_NONE : ARTICLE_THE,
+                         'poor', namedpet ? SUPPRESS_SADDLE : 0, false)}!`);
+    }
+
+    if (mtmp.mtrapped && (t = t_at(x, y)) != null && is_pit(t.ttyp)) {
+        if (sobj_at(BOULDER, x, y))
+            nocorpse = true; /* Prevent corpses/treasure being created
+                              * "on top" of boulder that is about to fall in.
+                              * This is out of order, but cannot be helped
+                              * unless this whole routine is rearranged. */
+        if (m_carrying(mtmp, BOULDER))
+            burycorpse = true;
+    }
+
+    /* your pet knows who just killed it...watch out */
+    if (mtmp.mtame && !mtmp.isminion)
+        mtmp.edog.killed_by_u = 1;
+
+    if (wasinside && game.thrownobj)
+        throw new Error('xkilled(): thrown object killing engulfer not ported yet');
+
+    game.vamp_rise_msg = false; /* might get set in mondead(); checked below */
+    game.disintegested = nocorpse; /* alternate vamp_rise mesg needed if true */
+    /* dispose of monster and make cadaver */
+    if (game.stoned)
+        throw new Error('xkilled(): monstone() not ported yet');
+    else
+        await mondead(mtmp);
+    game.disintegested = false; /* reset */
+
+    if (!DEADMONSTER(mtmp)) { /* monster lifesaved */
+        /* Cannot put the non-visible lifesaving message in
+         * lifesaved_monster() since the message appears only when _you_
+         * kill it (as opposed to visible lifesaving which always appears).
+         */
+        game.stoned = false;
+        if (!cansee(x, y) && !game.vamp_rise_msg)
+            await pline('Maybe not...');
+        return;
+    }
+
+    if (be_sad)
+        await pline('You have a sad feeling for a moment, then it passes.');
+
+    mdat = mtmp.data; /* note: mondead can change mtmp->data */
+    mndx = monsndx(mdat);
+
+    let do_cleanup = false;
+    if (game.stoned) {
+        game.stoned = false;
+        do_cleanup = true; /* goto cleanup */
+    }
+
+    /* LEVEL_SPECIFIC_NOCORPSE(mdat) */
+    if (!do_cleanup
+        && (nocorpse
+            || (Is_rogue_level(u.uz)
+                || !game.level.flags.deathdrops
+                || (game.level.flags.graveyard && is_undead(mdat) && rn2(3)))))
+        do_cleanup = true; /* goto cleanup */
+
+    if (!do_cleanup) {
+        /* MAIL_STRUCTURES: no mail daemon in this build */
+        if (accessible(x, y) || is_pool(x, y)) {
+            let cadaver;
+            let otyp;
+
+            /* illogical but traditional "treasure drop" */
+            if (!rn2(6) && !(game.mvitals[mndx].mvflags & MM.G_NOCORPSE)
+                /* no extra item from swallower or steed */
+                && (x !== u.ux || y !== u.uy)
+                /* no extra item from kops--too easy to abuse */
+                && mdat.mlet !== S_KOP
+                /* no items from cloned monsters */
+                && !mtmp.mcloned) {
+                otmp = mkobj(RANDOM_CLASS, true);
+                /* don't create large objects from small monsters */
+                otyp = otmp.otyp;
+                if (otmp.oclass === FOOD_CLASS && !(mdat.mflags2 & MM.M2_COLLECT)
+                    && !otmp.oartifact) {
+                    /* don't drop newly created permafood from kills, unless
+                       the monster collects food; it creates too much nutrition
+                       in the late game and encourages grinding in the early
+                       game; oartifact check is paranoia and will be redundant
+                       until an artifact comestible is added */
+                    delobj(otmp);
+                } else if (mdat.msize < MM.MZ_HUMAN && otyp !== FIGURINE
+                    /* oc_big is also oc_bimanual and oc_bulky */
+                    && (otmp.owt > 30 || objects[otyp].oc_big)) {
+                    if (otmp.oartifact) /* un-create */
+                        throw new Error('xkilled(): artifact_exists() not ported yet');
+                    delobj(otmp);
+                } else if (!await flooreffects(otmp, x, y, nomsg ? '' : 'fall')) {
+                    place_object(otmp, x, y);
+                    stackobj(otmp);
+                }
+            }
+            /* corpse--none if hero was inside the monster */
+            if (!wasinside && corpse_chance(mtmp, null, false)) {
+                game.zombify = (!game.thrownobj && !game.stoned && !game.uwep
+                                && zombie_maker(game.youmonst)
+                                && zombie_form(mtmp.data) !== NON_PM);
+                cadaver = make_corpse(mtmp, burycorpse ? CORPSTAT_BURIED
+                                                       : CORPSTAT_NONE);
+                game.zombify = false; /* reset */
+                if (burycorpse && cadaver && cansee(x, y) && !mtmp.minvis
+                    && cadaver.where === 'OBJ_BURIED' && !nomsg) {
+                    await pline(`${s_suffix(Monnam(mtmp))} corpse ends up buried.`);
+                }
+            }
+        }
+
+        if (wasinside)
+            throw new Error('xkilled(): killing an engulfer from inside (spoteffects()) not ported yet');
+        /* monster is gone, corpse or other object might now be visible */
+        newsym(x, y);
+    }
+
+    /* cleanup: */
+    /*
+     * Punish bad behavior.
+     */
+    if (is_human(mdat)
+        && (!always_hostile(mdat) && mtmp.malign <= 0)
+        /* exclude role monsters */
+        && (mndx < MM.PM_ARCHEOLOGIST || mndx > MM.PM_WIZARD)
+        /* exclude plain "human", which isn't flagged as always hostile;
+           it is rare and most likely to occur as the result of resurrecting
+           a corpse or animating a statue and usually will be hostile */
+        && mndx !== MM.PM_HUMAN
+        /* only applicable if hero is lawful or neutral */
+        && u.ualign.type !== A_CHAOTIC) {
+        u.uprops[TELEPAT].intrinsic &= ~INTRINSIC; /* HTelepat &= ~INTRINSIC */
+        change_luck(-2);
+        await pline('You murderer!');
+        if (mon_Blind() && !u.uprops[TELEPAT].intrinsic
+            && !u.uprops[TELEPAT].extrinsic) /* Blind && !Blind_telepat */
+            see_monsters(); /* Can't sense monsters any more. */
+    }
+    if ((mtmp.mpeaceful && !rn2(2)) || mtmp.mtame)
+        change_luck(-1);
+    if (is_unicorn(mdat) && sgn(u.ualign.type) === sgn(mdat.maligntyp)) {
+        change_luck(-5);
+        await pline('You feel guilty...');
+    }
+
+    /* give experience points */
+    tmp = experience(mtmp, game.mvitals[mndx].died);
+    more_experienced(tmp, 0);
+    await newexplevel(); /* will decide if you go up */
+
+    /* adjust alignment points */
+    if (game.quest_status?.leader_m_id
+        && mtmp.m_id === game.quest_status.leader_m_id) { /* REAL BAD! */
+        throw new Error('xkilled(): killing the quest leader not ported yet');
+    } else if (mdat.msound === MS_NEMESIS) { /* Real good! */
+        if (!game.quest_status?.killed_leader)
+            adjalign(Math.trunc(ALIGNLIM() / 4));
+    } else if (mdat.msound === MM.MS_GUARDIAN) { /* Bad */
+        adjalign(-Math.trunc(ALIGNLIM() / 8));
+        u.ugangr = (u.ugangr || 0) + 1;
+        change_luck(-4);
+        if (!Hallucination())
+            await pline('That was probably a bad idea...');
+        else
+            await pline('Whoopsie-daisy!');
+    } else if (mtmp.ispriest) {
+        throw new Error('xkilled(): killing a priest (p_coaligned()) not ported yet');
+    } else if (mtmp.mtame) {
+        adjalign(-15); /* bad!! */
+        /* your god is mighty displeased... */
+        if (!Hallucination()) {
+            await You_hear('the rumble of distant thunder...');
+        } else {
+            await You_hear('the studio audience applaud!');
+        }
+        /* livelog_printf(LL_KILLEDPET, ...) has no game effect */
+    } else if (mtmp.mpeaceful)
+        adjalign(-5);
+
+    /* malign was already adjusted for u.ualign.type and randomization */
+    adjalign(mtmp.malign);
+}
+
+// C ref: mon.c seemimic()
+/* force all chameleons and mimics to become themselves */
+export function seemimic(mtmp) {
+    const is_blocker_appear = is_lightblocker_mappear(mtmp);
+
+    if (mtmp.mextra?.mcorpsenm !== undefined) /* has_mcorpsenm() */
+        delete mtmp.mextra.mcorpsenm; /* freemcorpsenm(mtmp) */
+
+    mtmp.m_ap_type = M_AP_NOTHING;
+    mtmp.mappearance = 0;
+
+    /*
+     *  Discovered mimics don't block light.
+     */
+    if (is_blocker_appear
+        && !does_block(mtmp.mx, mtmp.my, game.level.at(mtmp.mx, mtmp.my)))
+        unblock_point(mtmp.mx, mtmp.my);
+
+    newsym(mtmp.mx, mtmp.my);
+}
+
+// C ref: dogmove.c finish_meating()
+function finish_meating(mtmp) {
+    mtmp.meating = 0;
+    if ((mtmp.m_ap_type || 0) !== M_AP_NOTHING && mtmp.data.mlet !== MM.S_MIMIC) {
+        /* was eating a mimic and now appearance needs resetting */
+        mtmp.m_ap_type = M_AP_NOTHING;
+        mtmp.mappearance = 0;
+        newsym(mtmp.mx, mtmp.my);
+    }
+}
+
+// C ref: mon.c peacefuls_respond()
+/* make other peaceful monsters react */
+async function peacefuls_respond(mtmp) {
+    for (let mon = game.fmon; mon; mon = mon.nmon) {
+        if (DEADMONSTER(mon))
+            continue;
+        if (mon === mtmp) /* the mpeaceful test catches this since mtmp */
+            continue;    /* is no longer peaceful, but be explicit...  */
+
+        if (!(mon.data.mflags1 & M1_MINDLESS) && mon.mpeaceful
+            && couldsee(mon.mx, mon.my) && !mon.msleeping
+            && mon.mcansee && m_canseeu(mon))
+            throw new Error('peacefuls_respond(): peaceful monster reactions not ported yet');
+    }
+}
+
+// C ref: mon.c setmangry()
+/* Called whenever the player attacks mtmp; also called in other situations
+   where mtmp gets annoyed at the player. Handles mtmp getting annoyed at the
+   attack and any ramifications that might have. Useful also in situations
+   where mtmp was already hostile; it checks for situations where the player
+   shouldn't be attacking and any ramifications /that/ might have. */
+export async function setmangry(mtmp, via_attack) {
+    const u = game.u;
+    if (via_attack && sengr_at('Elbereth', u.ux, u.uy, true)
+        /* only hypocritical if monster is vulnerable to Elbereth (or
+           peaceful--not vulnerable but attacking it is hypocritical) */
+        && (onscary(u.ux, u.uy, mtmp) || mtmp.mpeaceful)) {
+        await pline('You feel like a hypocrite.');
+        /* AIS: Yes, I know alignment penalties and bonuses aren't balanced
+           at the moment. This is about correct relative to other "small"
+           penalties; it should be fairly large, as attacking while standing
+           on an Elbereth means that you're requesting peace and then
+           violating your own request. I know 5 isn't actually large, but
+           it's intentionally larger than the 1s and 2s that are normally
+           given for this sort of thing. */
+        /* reduce to 3 (average) when alignment is already very low */
+        adjalign((u.ualign.record > 5) ? -5 : -rnd(5));
+
+        if (!mon_Blind())
+            await pline('The engraving beneath you fades.');
+        del_engr_at(u.ux, u.uy);
+    }
+
+    /* AIS: Should this be in both places, or just in wakeup()? */
+    mtmp.mstrategy &= ~STRAT_WAITMASK;
+    if (!mtmp.mpeaceful)
+        return;
+    /* [FIXME: this logic seems wrong; peaceful humanoids gasp or exclaim
+       when they see you attack a peaceful monster but they just casually
+       look the other way when you attack a pet?] */
+    if (mtmp.mtame)
+        return;
+    mtmp.mpeaceful = 0;
+    if (mtmp.ispriest) {
+        throw new Error('setmangry(): angering a priest (p_coaligned()) not ported yet');
+    } else
+        adjalign(-1); /* attacking peaceful monsters is bad */
+    if ((mtmp.data.mflags1 & M1_HUMANOID) || mtmp.isshk || mtmp.isgd) {
+        if (couldsee(mtmp.mx, mtmp.my))
+            await pline(`${Monnam(mtmp)} gets angry!`);
+    } else {
+        await growl(mtmp);
+    }
+
+    /* attacking your own quest leader will anger his or her guardians */
+    if (mtmp.data === mons[game.urole.ldrnum]) /* quest_info(MS_LEADER) */
+        throw new Error('setmangry(): qst_guardians_respond() not ported yet');
+
+    /* make other peaceful monsters react */
+    if (!game.context.mon_moving)
+        await peacefuls_respond(mtmp);
+}
+
+// C ref: mon.c wakeup()
+/* wake up a monster, possibly making it angry in the process */
+export async function wakeup(mtmp, via_attack) {
+    const was_sleeping = mtmp.msleeping;
+
+    await wake_msg(mtmp, via_attack);
+    mtmp.msleeping = 0;
+    if ((mtmp.m_ap_type || 0) !== M_AP_NOTHING) {
+        /* mimics come out of hiding, but disguised Wizard doesn't
+           have to lose his disguise */
+        if (mtmp.m_ap_type !== M_AP_MONSTER)
+            seemimic(mtmp);
+    } else if (game.context.forcefight && !game.context.mon_moving
+               && mtmp.mundetected) {
+        mtmp.mundetected = 0;
+        newsym(mtmp.mx, mtmp.my);
+    }
+    finish_meating(mtmp);
+    if (via_attack) {
+        const was_peaceful = mtmp.mpeaceful;
+
+        if (was_sleeping)
+            await growl(mtmp);
+        await setmangry(mtmp, true);
+        if (was_peaceful) {
+            if (mtmp.ispriest && in_rooms(mtmp.mx, mtmp.my, TEMPLE).length)
+                throw new Error('wakeup(): ghod_hitsu() not ported yet');
+            if (mtmp.isshk && !(game.u.ushops && game.u.ushops.length))
+                throw new Error('wakeup(): hot_pursuit() not ported yet');
+        }
+    }
+}
+
 /* C ref: mondata.h completelyburns(), completelyrusts(), completelyrots() */
 function completelyburns(ptr) {
     return ptr === mons[PM_PAPER_GOLEM] || ptr === mons[PM_STRAW_GOLEM];
@@ -650,8 +1043,10 @@ async function movemon_singlemon(mtmp) {
     if (game.vision_full_recalc)
         vision_recalc(0); /* vision! */
 
-    /* reset obj bypasses before next monster moves: clear_bypasses() and
-       clear_splitobjs() -- object bypass bits aren't ported yet */
+    /* reset obj bypasses before next monster moves */
+    if (game.context.bypasses)
+        clear_bypasses();
+    /* clear_splitobjs(): not ported yet */
     if (minliquid(mtmp))
         return false;
 
@@ -699,7 +1094,10 @@ export async function movemon() {
 
     /* if (any_light_source()) vision_full_recalc = 1: light sources
        aren't ported yet */
-    /* clear_bypasses(), clear_splitobjs(): not ported yet */
+    /* reset obj bypasses after last monster has moved */
+    if (game.context.bypasses)
+        clear_bypasses();
+    /* clear_splitobjs(): not ported yet */
     /* remove dead monsters */
     dmonsfree();
 

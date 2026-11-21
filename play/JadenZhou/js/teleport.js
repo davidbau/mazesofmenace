@@ -48,6 +48,17 @@ import { STRAT_APPEARMSG, RLOC_MSG, RLOC_NONE, NO_TRAP_FLAGS, BLINDED,
          BOLT_LIM } from './const.js';
 import { ROOMOFFSET, VAULT, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          TT_BURIEDBALL, LEVITATION, FLYING, TELEDS_TELEPORT } from './const.js';
+import { ECMD_OK, ECMD_TIME, TELEPORT, A_STR } from './const.js';
+import { You } from './display.js';
+import { getpos } from './getpos.js';
+import { u_locomotion } from './trap.js';
+import { can_teleport } from './mondata.js';
+import { known_spell, spe_Fresh, spe_Unknown } from './spell.js';
+import { objects, SPE_TELEPORT_AWAY } from './objects.js';
+import { PM_WIZARD } from './monsters.js';
+import { ACURR } from './attrib.js';
+import { check_capacity } from './hack.js';
+import { morehungry } from './eat.js';
 
 /* C ref: mondata.h is_rider() */
 function is_rider(ptr) {
@@ -477,8 +488,39 @@ export async function scrolltele(scroll) {
     if (((tp_prop(TELEPORT_CONTROL).intrinsic || tp_prop(TELEPORT_CONTROL).extrinsic
           || (scroll && scroll.blessed)) && !tp_prop(STUNNED).intrinsic
          && !tp_prop(STUNNED).extrinsic)
-        || game.flags?.debug)
-        throw new Error('scrolltele(): controlled teleport (getpos) not ported yet');
+        || game.flags?.debug) {
+        if (unconscious()) {
+            await pline("Being unconscious, you cannot control your teleport.");
+        } else {
+            let whobuf = "you";
+            if (u.usteed)
+                whobuf += ` and ${mon_nam(u.usteed)}`;
+            await pline(`Where do ${whobuf} want to be teleported?`);
+            if (scroll)
+                throw new Error('scrolltele(): learnscroll() not ported yet');
+            let cc = { x: u.ux, y: u.uy };
+            const iflags = game.iflags;
+            if (!iflags.travelcc)
+                iflags.travelcc = { x: 0, y: 0 };
+            if (isok(iflags.travelcc.x, iflags.travelcc.y)) {
+                /* The player showed some interest in traveling here;
+                 * pre-suggest this coordinate. */
+                cc = { x: iflags.travelcc.x, y: iflags.travelcc.y };
+            }
+            if ((await getpos(cc, true, "the desired position")) < 0)
+                return; /* abort */
+            /* possible extensions: introduce a small error if
+               magic power is low; allow transfer to solid rock */
+            if (teleok(cc.x, cc.y, false)) {
+                /* for scroll, discover it regardless of destination */
+                await teleds(cc.x, cc.y, TELEDS_TELEPORT);
+                if (u.ux === iflags.travelcc.x && u.uy === iflags.travelcc.y)
+                    iflags.travelcc.x = iflags.travelcc.y = 0;
+                return;
+            }
+            await pline("Sorry...");
+        }
+    }
 
     /* we used to suppress discovery if hero teleported to a nearby
        spot which was already within view, but now there is always a
@@ -488,6 +530,146 @@ export async function scrolltele(scroll) {
         throw new Error('scrolltele(): learnscroll() not ported yet');
 
     await safe_teleds(TELEDS_TELEPORT);
+}
+
+// C ref: hack.c unconscious()
+function unconscious() {
+    const g = game;
+    if (g.multi >= 0)
+        return false;
+
+    return !!(g.u.usleep
+              || (g.nomovemsg
+                  && (g.nomovemsg.startsWith("You awake")
+                      || g.nomovemsg.startsWith("You regain con")
+                      || g.nomovemsg.startsWith("You are consci"))));
+}
+
+// C ref: teleport.c dotelecmd() -- the #teleport command; 'm ^T' ==
+// choose among several teleport modes
+export async function dotelecmd() {
+    const u = game.u;
+    let ignore_restrictions = false;
+
+    /* normal mode; ignore 'm' prefix if it was given */
+    if (!game.flags?.debug)
+        return (await dotele(false)) ? ECMD_TIME : ECMD_OK;
+
+    const tele = tp_prop(TELEPORT);
+    const save_HTele = tele.intrinsic, save_ETele = tele.extrinsic;
+    if (!game.iflags.menu_requested) {
+        ignore_restrictions = true;
+    } else {
+        /* the 'm ^T' teleport-mode menu and tport_spell() aren't ported */
+        throw new Error('dotelecmd(): the m ^T teleport mode menu not ported yet');
+    }
+
+    /* if dotele() can be fatal, final disclosure might lie about
+       intrinsic teleportation; we should be able to live with that
+       since the menu finagling is only applicable in wizard mode */
+    const res = await dotele(ignore_restrictions);
+
+    if (u.uprops[TELEPORT]) {
+        u.uprops[TELEPORT].intrinsic = save_HTele;
+        u.uprops[TELEPORT].extrinsic = save_ETele;
+    }
+    /* added != NOOP_SPELL || hidden != NOOP_SPELL: only via the menu */
+
+    return res ? ECMD_TIME : ECMD_OK;
+}
+
+// C ref: teleport.c dotele()
+async function dotele(break_the_rules) { /* True: wizard mode ^T */
+    const u = game.u;
+    let trap;
+    let trap_once = false;
+
+    trap = t_at(u.ux, u.uy);
+    if (trap && !trap.tseen)
+        trap = null;
+
+    if (trap) {
+        if (trap.ttyp === LEVEL_TELEP && trap.tseen) {
+            throw new Error('dotele(): triggering a level teleporter not ported yet');
+        } else if (trap.ttyp === TELEP_TRAP) {
+            trap_once = !!trap.once; /* trap may get deleted, save this */
+            if (trap.once)
+                throw new Error('dotele(): vault teleporter not ported yet');
+            if (trap)
+                await You(`${u_locomotion("jump")} onto the teleportation trap.`);
+        } else
+            trap = null;
+    }
+    if (!trap && !break_the_rules) {
+        let castit = false;
+        let energy = 0;
+        let cantdoit = null;
+        const p = tp_prop(TELEPORT);
+        const Teleportation = !!(p.intrinsic || p.extrinsic);
+
+        if (!Teleportation || (u.ulevel < (game.urole.mnum === PM_WIZARD ? 8 : 12)
+                               && !can_teleport(game.youmonst.data))) {
+            /* Try to use teleport away spell. */
+            const knownsp = known_spell(SPE_TELEPORT_AWAY);
+
+            /* casting isn't inhibited by being Stunned (...it ought to be) */
+            castit = (knownsp >= spe_Fresh
+                      && !(tp_prop(CONFUSION).intrinsic || tp_prop(CONFUSION).extrinsic));
+            if (!castit && !break_the_rules) {
+                await You(`${(!Teleportation ? ((knownsp !== spe_Unknown)
+                                                ? "can't cast that spell"
+                                                : "don't know that spell")
+                              : "are not able to teleport at will")}.`);
+                return 0;
+            }
+        }
+
+        /* 3.6.2: the magic numbers for hunger, strength, and energy
+           have been changed to match the ones used in spelleffects(). */
+        energy = 5 * objects[SPE_TELEPORT_AWAY].oc_level; /* spellev() */
+        if (u.uhunger <= 10) {
+            cantdoit = "are too weak from hunger";
+        } else if (ACURR(A_STR) < 4) {
+            cantdoit = "lack the strength";
+        } else if (energy > u.uen) {
+            cantdoit = "lack the energy";
+        }
+        if (cantdoit) {
+            await You(`${cantdoit} ${castit ? "for a teleport spell" : "to teleport"}.`);
+            return 0;
+        } else if (await check_capacity(
+                       "Your concentration falters from carrying so much.")) {
+            return 1; /* this failure in spelleffects() also uses the move */
+        }
+
+        if (castit) {
+            throw new Error('dotele(): casting teleport away (spelleffects()) not ported yet');
+        } else {
+            /* bypassing spelleffects(); apply energy cost directly */
+            u.uen -= energy;
+            game.disp_botl = true;
+        }
+    }
+
+    if (await next_to_u()) {
+        if (trap && trap_once) {
+            await vault_tele();
+        } else if (trap && isok(trap.launch?.x, trap.launch?.y)) { /* teledest */
+            await teleds(trap.launch.x, trap.launch.y, TELEDS_TELEPORT);
+        } else {
+            if (!game.iflags.travelcc)
+                game.iflags.travelcc = { x: 0, y: 0 };
+            game.iflags.travelcc.x = game.iflags.travelcc.y = 0;
+            await tele();
+        }
+        await next_to_u();
+    } else {
+        await You(shudder_for_moment);
+        return 0;
+    }
+    if (!trap)
+        await morehungry(100);
+    return 1;
 }
 
 /* C ref: dungeon.h On_W_tower_level() -- Vlad's Tower isn't reachable

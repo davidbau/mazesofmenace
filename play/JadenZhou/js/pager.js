@@ -19,13 +19,14 @@
 
 import { game } from './gstate.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
-         tty_select_menu, tty_destroy_nhwindow } from './wintty.js';
+         tty_select_menu, tty_destroy_nhwindow, add_menu_str } from './wintty.js';
+import { getpos } from './getpos.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ONE,
          ECMD_OK } from './const.js';
 import { NO_COLOR, ATR_NONE } from './terminal.js';
 import { extcmdlist } from './func_tab.js';
 import { cmd_from_func } from './cmd.js';
-import { canspotmon, vobj_at } from './display.js';
+import { canspotmon, vobj_at, pline, Hallucination } from './display.js';
 import { cansee } from './vision.js';
 import { m_at, closed_door, is_pool, is_lava } from './makemon.js';
 import { t_at } from './trap.js';
@@ -469,7 +470,171 @@ export async function dohelp() {
     await tty_destroy_nhwindow(tmpwin);
     if (res.n > 0) {
         const sel = res.selected[0].item - 1;
-        hmenu_not_ported(help_menu_items[sel].f)();
+        const f = help_menu_items[sel].f;
+        if (f === 'hmenu_dowhatis')
+            await hmenu_dowhatis();
+        else
+            hmenu_not_ported(f)();
     }
     return ECMD_OK;
+}
+
+/* C ref: lookat.h LOOK_* -- getpos() results for the [.,;:] picks */
+const LOOK_ONCE = 2;
+
+/* C ref: pager.c what_is_a_location[] */
+const what_is_a_location = "a monster, object or location";
+
+// C ref: pager.c do_look()
+export async function do_look(mode, click_cc) {
+    const quick = (mode === 1); /* use cursor; don't search for "more info" */
+    const clicklook = (mode === 2); /* right mouse-click method */
+    const flags = game.flags;
+    let i = '\0', ans = 0;
+    let found;            /* count of matching syms found */
+    const cc = { x: 0, y: 0 }; /* screen pos of unknown glyph */
+    let from_screen;      /* question from the screen */
+    const clr = NO_COLOR;
+
+    /* cmdq_pop(): the command queue isn't ported */
+
+    if (!clicklook) {
+        if (quick) {
+            i = 'y';
+        } else {
+            const win = tty_create_nhwindow(NHW_MENU);
+            tty_start_menu(win, MENU_BEHAVE_STANDARD);
+
+            /*
+             * Originally this was just a y|n question about whether to
+             * use the cursor or to type a word.  When other choices were
+             * added, it was changed to be a menu.  Using 'y' and 'n' as
+             * unshown accelerators keeps backwards compatibility with
+             * the old y|n behavior.
+             *
+             * When lootabc is set, abandon the 'y'|'n' compatibility in
+             * favor of newer '/' and '?' compatibility instead.
+             */
+            const lootabc = !!flags.lootabc;
+            tty_add_menu(win, null, '/', lootabc ? 0 : '/', lootabc ? '/' : 'y',
+                         ATR_NONE, clr, "something on the map", MENU_ITEMFLAGS_NONE);
+            /* [don't use 'i' as lootabc group accelerator because
+               it will make the regular 'i' choice inaccessible] */
+            tty_add_menu(win, null, 'i', lootabc ? 0 : 'i', 0, ATR_NONE,
+                         clr, "something you're carrying", MENU_ITEMFLAGS_NONE);
+            tty_add_menu(win, null, '?', lootabc ? 0 : '?', lootabc ? '?' : 'n',
+                         ATR_NONE, clr, "something else (by symbol or name)",
+                         MENU_ITEMFLAGS_NONE);
+            if (!game.u.uswallow && !Hallucination()) {
+                add_menu_str(win, "");
+                /* these options work sensibly for swallowed case, but
+                   there's no reason for player to use them then because
+                   the swallowed display hides all applicable targets;
+                   objects work fine when hallucinating, but screen
+                   symbol/monster class letter doesn't match up with
+                   bogus monster type, so suppress when hallucinating */
+                /* [a_char, group accelerator without/with lootabc] */
+                const more = [
+                    ['m', 0, 'm', "nearby monsters"],
+                    ['M', 0, 'M', "all monsters shown on map"],
+                    ['o', 0, 'o', "nearby objects"],
+                    ['O', 0, 'O', "all objects shown on map"],
+                    ['t', '^', 't', "nearby traps"],
+                    ['T', '"', 'T', "all seen or remembered traps"],
+                    /* [don't use 'e' as lootabc group accelerator] */
+                    ['e', '`', 0, "nearby engravings"],
+                    ['E', '|', 'E', "all seen or remembered engravings"],
+                ];
+                for (const [a_char, gacc, gacc_abc, txt] of more)
+                    tty_add_menu(win, null, a_char, lootabc ? 0 : a_char,
+                                 lootabc ? gacc_abc : gacc, ATR_NONE, clr, txt,
+                                 MENU_ITEMFLAGS_NONE);
+            }
+            tty_end_menu(win, "What do you want to look at:");
+            const res = await tty_select_menu(win, PICK_ONE);
+            if (res.n > 0)
+                i = res.selected[0].item;
+            await tty_destroy_nhwindow(win);
+        }
+
+        /* dowhatiscmd: */
+        switch (i) {
+        default:
+        case 'q':
+            return ECMD_OK;
+        case 'y':
+        case '/':
+            from_screen = true;
+            cc.x = game.u.ux;
+            cc.y = game.u.uy;
+            break;
+        case 'i':
+            throw new Error("do_look(): something you're carrying (checkfile()) not ported yet");
+        case '?':
+            throw new Error('do_look(): something else by symbol or name not ported yet');
+        case 'm':
+        case 'M':
+        case 'o':
+        case 'O':
+            throw new Error('do_look(): look_all() not ported yet');
+        case 't':
+        case 'T':
+            throw new Error('do_look(): look_traps() not ported yet');
+        case 'e':
+        case 'E':
+            throw new Error('do_look(): look_engrs() not ported yet');
+        }
+    } else { /* clicklook */
+        cc.x = click_cc.x;
+        cc.y = click_cc.y;
+        from_screen = false;
+    }
+
+    /* Save the verbose flag, we change it later. */
+    const save_verbose = flags.verbose;
+    flags.verbose = flags.verbose && !quick;
+    /*
+     * The user typed one letter, or we're identifying from the screen.
+     */
+    try {
+        do {
+            if (from_screen || clicklook) {
+                if (from_screen) {
+                    if (flags.verbose)
+                        await pline(`Please move the cursor to ${what_is_a_location}.`);
+                    else
+                        await pline(`Pick ${what_is_a_location}.`);
+
+                    ans = await getpos(cc, quick, what_is_a_location);
+                    if (ans < 0 || cc.x < 0)
+                        break; /* done */
+                    flags.verbose = false; /* only print long question once */
+                }
+            }
+
+            ({ found } = do_screen_description(cc));
+
+            /* Finally, print out our explanation. */
+            if (found) {
+                /* use putmixed() because there may be an encoded glyph
+                   present; then maybe checkfile() for more info */
+                throw new Error('do_look(): describing a picked spot (putmixed(), checkfile()) not ported yet');
+            } else {
+                await pline("I've never heard of such things.");
+            }
+        } while (from_screen && !quick && ans !== LOOK_ONCE && !clicklook);
+    } finally {
+        flags.verbose = save_verbose;
+    }
+    return ECMD_OK;
+}
+
+// C ref: pager.c dowhatis() -- the #whatis command
+export async function dowhatis() {
+    return await do_look(0, null);
+}
+
+// C ref: pager.c hmenu_dowhatis()
+async function hmenu_dowhatis() {
+    await dowhatis();
 }

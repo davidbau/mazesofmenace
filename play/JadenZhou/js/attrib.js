@@ -11,7 +11,7 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { near_capacity } from './hack.js';
 import { strstri } from './hacklib.js';
-import { pline } from './display.js';
+import { pline, see_monsters } from './display.js';
 import {
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, MAXULEV, STR19, FROMEXPER,
     FROMRACE, FROMOUTSIDE, INTRINSIC, SEARCHING, STEALTH, FAST,
@@ -38,6 +38,8 @@ import { LUCKADD } from './const.js';
 import { confers_luck } from './timeout.js';
 import { carrying } from './invent.js';
 import { aligns } from './role.js';
+import { add_weapon_skill, lose_weapon_skill } from './weapon.js';
+import { losehp } from './trap.js';
 
 // C ref: attrib.h ABASE(), ABON(), AMAX(), ATEMP()
 export function ABASE(x) { return game.u.acurr.a[x]; }
@@ -137,7 +139,7 @@ function postadjabil(ability) {
     if (!game.u.ulevel) /* initializing hero; don't attempt screen update yet */
         return;
     if (ability === WARNING || ability === SEE_INVIS)
-        throw new Error('postadjabil(): see_monsters() not ported yet');
+        see_monsters();
 }
 
 // C ref: attrib.c role_abil()
@@ -355,7 +357,10 @@ export function from_what(propidx) /* special cases can have negative values */ 
 }
 
 // C ref: attrib.c adjabil()
-export function adjabil(oldlevel, newlevel) {
+// async for its "You feel ..." messages and add_weapon_skill(); hero
+// initialization's adjabil(0, 1) reaches neither, so it completes before
+// returning there
+export async function adjabil(oldlevel, newlevel) {
     const u = game.u;
     let abil, rabil;
     let ai = 0; /* index into abil[], standing in for the C pointer */
@@ -405,13 +410,15 @@ export function adjabil(oldlevel, newlevel) {
                 prop.intrinsic |= mask;
             if (!(prop.intrinsic & INTRINSIC & ~mask)) {
                 if (a.gainstr)
-                    throw new Error('adjabil(): You_feel() not ported yet');
+                    await pline(`You feel ${a.gainstr}!`);
             }
         } else if (oldlevel >= a.ulevel && newlevel < a.ulevel) {
             prop.intrinsic &= ~mask;
             if (!(prop.intrinsic & INTRINSIC)) {
-                if (a.losestr || a.gainstr)
-                    throw new Error('adjabil(): You_feel() not ported yet');
+                if (a.losestr)
+                    await pline(`You feel ${a.losestr}!`);
+                else if (a.gainstr)
+                    await pline(`You feel less ${a.gainstr}!`);
             }
         }
         if (prevabil !== prop.intrinsic) /* it changed */
@@ -420,7 +427,10 @@ export function adjabil(oldlevel, newlevel) {
     }
 
     if (oldlevel > 0) {
-        throw new Error('adjabil(): add_weapon_skill()/lose_weapon_skill() not ported yet');
+        if (newlevel > oldlevel)
+            await add_weapon_skill(newlevel - oldlevel);
+        else
+            lose_weapon_skill(oldlevel - newlevel);
     }
 }
 
@@ -547,6 +557,41 @@ function strongmonst(ptr) { return (ptr.mflags2 & M2_STRONG) !== 0; }
 function Fixed_abil() {
     const p = game.u.uprops[FIXED_ABIL];
     return !!(p && (p.intrinsic || p.extrinsic));
+}
+
+// C ref: attrib.c losestr()
+/* strength loss, possibly with damage when going below minimum */
+export async function losestr(num, knam, k_format) {
+    const u = game.u;
+    let ustr = ABASE(A_STR) - num, amt, dmg;
+    const waspolyd = (u.umonnum !== u.umonster);
+
+    if (num <= 0 || ABASE(A_STR) < ATTRMIN(A_STR)) {
+        /* impossible("losestr: %d - %d", ABASE(A_STR), num) */
+        return;
+    }
+    dmg = 0;
+    while (ustr < ATTRMIN(A_STR)) {
+        ++ustr;
+        --num;
+        amt = rn1(4, 3); /* (0..(4-1))+3 => 3..6; used to use flat 6 here */
+        dmg += amt;
+    }
+    if (dmg) {
+        void knam; void k_format;
+        throw new Error('losestr(): damage from strength below minimum (losehp()/setuhpmax()) not ported yet');
+    }
+    /* 'num' could have been reduced to 0 in the minimum strength loop;
+       '(Upolyd || !waspolyd)' is True unless damage caused rehumanization */
+    if (num > 0 && ((u.umonnum !== u.umonster) || !waspolyd))
+        await adjattrib(A_STR, -num, 1);
+}
+
+// C ref: attrib.c poison_strdmg()
+/* combined strength loss and damage from some poisons */
+export async function poison_strdmg(strloss, dmg, knam, k_format) {
+    await losestr(strloss, knam, k_format);
+    await losehp(dmg, knam, k_format);
 }
 
 // C ref: attrib.c plusattr[], minusattr[], attrname[]
@@ -993,7 +1038,7 @@ export function adjalign(n) {
 }
 
 // C ref: mon.c adj_erinys() -- only the first steps are ported
-function adj_erinys(abuse) {
+export function adj_erinys(abuse) {
     if (abuse > 5)
         throw new Error('adj_erinys(): Erinyes strengthening not ported yet');
 }

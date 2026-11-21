@@ -21,14 +21,18 @@ import { check_gear_next_turn } from './mon.js';
 import { W_ARMOR, W_AMUL, W_RING, W_TOOL, W_WEAPONS, W_BALL,
          W_CHAIN } from './const.js';
 import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
+import { donning, cancel_don, Armor_off, Cloak_off, Boots_off, Gloves_off,
+         Helmet_off, Shield_off, Shirt_off, Amulet_off,
+         Blindf_off } from './do_wear.js';
+import { setworn } from './worn.js';
 
-// C ref: steal.c remove_worn_item() -- wielded and quivered items; armor,
-// accessories, the ball and chain and setnotworn() aren't ported yet
+// C ref: steal.c remove_worn_item() -- rings (Ring_gone()), the ball and
+// chain and setnotworn() aren't ported yet
 export async function remove_worn_item(obj,
                                        unchain_ball) /* whether to unpunish or just unwield */ {
     const g = game;
-    /* if (donning(obj)) cancel_don(): no delayed X_on() routine is ported,
-       so nothing is being donned */
+    if (donning(obj))
+        cancel_don();
     if (!obj.owornmask)
         return;
 
@@ -42,13 +46,31 @@ export async function remove_worn_item(obj,
     obj.in_use = 1;
 
     if (obj.owornmask & W_ARMOR) {
-        throw new Error('remove_worn_item(): worn armor not ported yet');
+        if (obj === g.uskin)
+            throw new Error('remove_worn_item(): skinback() not ported yet');
+        if (obj === g.uarm)
+            await Armor_off();
+        else if (obj === g.uarmc)
+            await Cloak_off();
+        else if (obj === g.uarmf)
+            await Boots_off();
+        else if (obj === g.uarmg)
+            await Gloves_off();
+        else if (obj === g.uarmh)
+            await Helmet_off();
+        else if (obj === g.uarms)
+            await Shield_off();
+        else if (obj === g.uarmu)
+            await Shirt_off();
+        /* catchall -- should never happen */
+        else
+            setworn(null, obj.owornmask & W_ARMOR);
     } else if (obj.owornmask & W_AMUL) {
-        throw new Error('remove_worn_item(): Amulet_off() not ported yet');
+        await Amulet_off();
     } else if (obj.owornmask & W_RING) {
         throw new Error('remove_worn_item(): Ring_gone() not ported yet');
     } else if (obj.owornmask & W_TOOL) {
-        throw new Error('remove_worn_item(): Blindf_off() not ported yet');
+        await Blindf_off(obj);
     } else if (obj.owornmask & W_WEAPONS) {
         if (obj === g.uwep)
             uwepgone();

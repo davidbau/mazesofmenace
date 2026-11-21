@@ -13,7 +13,30 @@ import { check_capacity } from './hack.js';
 import { is_pole, retouch_object } from './wield.js';
 import { pick_lock } from './lock.js';
 import * as O from './objects.js';
-import { is_graystone } from './iactions.js';
+import { is_graystone, thesimpleoname } from './iactions.js';
+import { Blind } from './display.js';
+import { discover_object } from './o_init.js';
+import { MAX_SPELL_STUDY, DEAF, HAND, SDOOR, SCORR, CORR, ARTICLE_A,
+         SUPPRESS_IT, SUPPRESS_INVISIBLE, Is_stronghold } from './const.js';
+import { surface } from './iactions.js';
+import { can_reach_floor } from './engrave.js';
+import { You_hear } from './sounds.js';
+import { getdir } from './cmd.js';
+import { confdir } from './hack.js';
+import { freehand } from './wield.js';
+import { body_part, mstatusline, ustatusline } from './insight.js';
+import { rn2 } from './rng.js';
+import { m_at } from './makemon.js';
+import { x_monnam } from './do_name.js';
+import { canspotmon, newsym, map_invisible, unmap_invisible,
+         pline_The } from './display.js';
+import { cvt_sdoor_to_door } from './detect.js';
+import { recalc_block_point, unblock_point } from './vision.js';
+import { mons, PM_HEALER, PM_AIR_ELEMENTAL, S_VORTEX } from './monsters.js';
+/* C ref: mondata.h is_whirly() */
+function is_whirly(ptr) {
+    return ptr.mlet === S_VORTEX || ptr === mons[PM_AIR_ELEMENTAL];
+}
 import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE,
          GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_NOFLAGS, ECMD_OK, ECMD_CANCEL,
          HALLUC, P_AXE } from './const.js';
@@ -55,6 +78,185 @@ function is_axe(otmp) {
 function Hallucination() {
     const p = game.u?.uprops?.[HALLUC];
     return !!(p?.intrinsic || p?.extrinsic);
+}
+
+/* C ref: display.c feel_newsym() -- feel_location() for a blind hero
+   isn't ported */
+function feel_newsym(x, y) {
+    if (Blind())
+        throw new Error('feel_newsym(): feel_location() not ported yet');
+    newsym(x, y);
+}
+
+// C ref: apply.c its_dead() -- the stethoscope applied to a corpse or
+// statue at <rx,ry>; returns TRUE if it gave a message
+async function its_dead(rx, ry, resp) {
+    void resp;
+    const corpse = sobj_at(O.CORPSE, rx, ry),
+          statue = sobj_at(O.STATUE, rx, ry);
+
+    if (!corpse && !statue) {
+        ; /* nothing to do */
+    } else {
+        throw new Error('its_dead(): a corpse or statue under the stethoscope not ported yet');
+    }
+    return false; /* no corpse or statue */
+}
+
+/* C ref: apply.c hollow_str[] */
+const hollow_str = (what) => `a hollow sound.  This must be a secret ${what}!`;
+
+// C ref: apply.c use_stethoscope()
+/* Strictly speaking it makes no sense for usage of a stethoscope to
+   not take any time; however, unless it did, the stethoscope would be
+   almost useless.  As a compromise, one use per turn is free, another
+   uses up the turn; this makes curse status have a tangible effect. */
+async function use_stethoscope(obj) {
+    const u = game.u;
+    let mtmp;
+    let res;
+    const interference = (u.uswallow && is_whirly(u.ustuck.data)
+                          && !rn2((game.urole.mnum === PM_HEALER) ? 10 : 3));
+
+    if (nohands(game.youmonst.data)) {
+        await You("have no hands!"); /* not `body_part(HAND)' */
+        return ECMD_OK;
+    } else if (uhave(DEAF) || u.uroleplay?.deaf) { /* Deaf */
+        await You_cant("hear anything!");
+        return ECMD_OK;
+    } else if (!freehand()) {
+        await You(`have no free ${body_part(HAND)}.`);
+        return ECMD_OK;
+    }
+    if (!(await getdir(null)))
+        return ECMD_CANCEL;
+
+    res = (game.hero_seq === game.context.stethoscope_seq) ? ECMD_TIME : ECMD_OK;
+    game.context.stethoscope_seq = game.hero_seq;
+
+    game.bhitpos = { x: u.ux, y: u.uy }; /* tentative, reset below */
+    game.notonhead = !!u.uswallow;
+    if (u.usteed && u.dz > 0) {
+        throw new Error('use_stethoscope(): applying to the steed not ported yet');
+    } else if (u.uswallow && (u.dx || u.dy || u.dz)) {
+        await mstatusline(u.ustuck);
+        return res;
+    } else if (u.uswallow && interference) {
+        throw new Error('use_stethoscope(): engulfer interference not ported yet');
+    } else if (u.dz) {
+        if (u.uinwater) { /* Underwater */
+            await You_hear("faint splashing.");
+        } else if (u.dz < 0 || !can_reach_floor(true)) {
+            throw new Error('use_stethoscope(): cant_reach_floor() not ported yet');
+        } else if (await its_dead(u.ux, u.uy, res)) {
+            ; /* message already given */
+        } else if (Is_stronghold(u.uz)) {
+            await You_hear("the crackling of hellfire.");
+        } else {
+            await pline_The(`${surface(u.ux, u.uy)} seems healthy enough.`);
+        }
+        return res;
+    } else if (obj.cursed && !rn2(2)) {
+        await You_hear("your heart beat.");
+        return res;
+    }
+    confdir(false);
+    if (!u.dx && !u.dy) {
+        await ustatusline();
+        return res;
+    }
+    const rx = u.ux + u.dx;
+    const ry = u.uy + u.dy;
+    if (!isok(rx, ry)) {
+        await You_hear("a faint typing noise.");
+        return ECMD_OK;
+    }
+    if ((mtmp = m_at(rx, ry)) !== null) {
+        const mnm = x_monnam(mtmp, ARTICLE_A, null,
+                             SUPPRESS_IT | SUPPRESS_INVISIBLE, false);
+
+        /* gb.bhitpos needed by mstatusline() iff mtmp is a long worm */
+        game.bhitpos = { x: rx, y: ry };
+        game.notonhead = (mtmp.mx !== rx || mtmp.my !== ry);
+
+        if (mtmp.mundetected) {
+            if (!canspotmon(mtmp))
+                await There(`is ${mnm} hidden there.`);
+            mtmp.mundetected = 0;
+            newsym(mtmp.mx, mtmp.my);
+        } else if (mtmp.mappearance) {
+            throw new Error('use_stethoscope(): exposing a mimic (seemimic()) not ported yet');
+        } else if ((game.flags.verbose ?? true) && !canspotmon(mtmp)) {
+            await There(`is ${mnm} there.`);
+        }
+
+        await mstatusline(mtmp);
+        if (!canspotmon(mtmp))
+            map_invisible(rx, ry);
+        return res;
+    }
+    if (unmap_invisible(rx, ry))
+        await pline_The("invisible monster must have moved.");
+
+    const lev = game.level.at(rx, ry);
+    switch (lev.typ) {
+    case SDOOR:
+        await You_hear(hollow_str("door"));
+        cvt_sdoor_to_door(lev); /* ->typ = DOOR */
+        recalc_block_point(rx, ry);
+        feel_newsym(rx, ry);
+        return res;
+    case SCORR:
+        await You_hear(hollow_str("passage"));
+        lev.typ = CORR, lev.flags = 0;
+        unblock_point(rx, ry);
+        feel_newsym(rx, ry);
+        return res;
+    }
+
+    if (!(await its_dead(rx, ry, res)))
+        await You("hear nothing special."); /* not You_hear()  */
+    return res;
+}
+
+// C ref: apply.c flip_through_book()
+async function flip_through_book(obj) {
+    if (game.u.uinwater) { /* Underwater */
+        await You("don't want to get the pages even more soggy, do you?");
+        return ECMD_OK;
+    }
+
+    await You(`flip through the pages of ${thesimpleoname(obj)}.`);
+
+    if (obj.otyp === O.SPE_BOOK_OF_THE_DEAD) {
+        throw new Error('flip_through_book(): the Book of the Dead not ported yet');
+    } else if (Blind()) {
+        await pline(`The pages feel ${Hallucination() ? "freshly picked"
+                                                      : "rough and dry"}.`);
+    } else if (obj.otyp === O.SPE_BLANK_PAPER) {
+        await pline(`This spellbook ${Hallucination()
+                                       ? "doesn't have much of a plot"
+                                       : "has nothing written in it"}.`);
+        discover_object(obj.otyp, true, true, true); /* makeknown() */
+    } else if (Hallucination()) {
+        await You("enjoy the animated initials.");
+    } else if (obj.otyp === O.SPE_NOVEL) {
+        await pline("This looks like it might be interesting to read.");
+    } else {
+        const fadeness = [
+            "fresh",
+            "slightly faded",
+            "very faded",
+            "extremely faded",
+            "barely visible"
+        ];
+        const findx = Math.min(obj.spestudied || 0, MAX_SPELL_STUDY);
+
+        await pline(`The${objects[obj.otyp].oc_magic ? " magical" : ""}`
+                    + ` ink in this spellbook is ${fadeness[findx]}.`);
+    }
+
+    return ECMD_TIME;
 }
 
 // C ref: apply.c rub_ok() -- getobj callback for object to rub
@@ -165,7 +367,7 @@ export async function doapply() {
         throw new Error('doapply(): do_break_wand() not ported yet');
 
     if (obj.oclass === SPBOOK_CLASS)
-        throw new Error('doapply(): flip_through_book() not ported yet');
+        return await flip_through_book(obj);
 
     if (obj.oclass === COIN_CLASS)
         throw new Error('doapply(): flip_coin() not ported yet');
@@ -214,7 +416,8 @@ export async function doapply() {
     case EUCALYPTUS_LEAF:
         throw new Error('doapply(): eucalyptus leaf whistle not ported yet');
     case O.STETHOSCOPE:
-        throw new Error('doapply(): use_stethoscope() not ported yet');
+        res = await use_stethoscope(obj);
+        break;
     case O.MIRROR:
         throw new Error('doapply(): use_mirror() not ported yet');
     case O.BELL:

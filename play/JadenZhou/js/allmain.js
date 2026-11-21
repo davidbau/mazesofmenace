@@ -6,11 +6,15 @@
 // once-per-hero-took-time blocks are real.
 
 import { game } from './gstate.js';
+import { clear_bypasses } from './worn.js';
 import { rn2, rnd } from './rng.js';
 import { mklev, u_on_upstairs } from './mklev.js';
 import { l_nhcore_init } from './nhlua.js';
 import { rhack, domove } from './cmd.js';
-import { docrt, cls, bot, flush_screen, pline } from './display.js';
+import { docrt, cls, bot, flush_screen, pline, see_monsters } from './display.js';
+import { read_engr_at } from './engrave.js';
+import { encumber_msg, pickup } from './pickup.js';
+import { reset_justpicked } from './invent.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { mcalcmove, mcalcdistress, movemon } from './mon.js';
 import { initrack, settrack } from './track.js';
@@ -21,10 +25,11 @@ import { deferred_goto } from './do.js';
 import { com_pager } from './questpgr.js';
 import { objects_globals_init } from './objects.js';
 import { init_objects } from './o_init.js';
-import { init_dungeons, depth, find_level } from './dungeon.js';
+import { init_dungeons, depth, find_level, In_hell } from './dungeon.js';
 import { ask_do_tutorial } from './options.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
 import { change_luck } from './attrib.js';
+import { set_wear } from './do_wear.js';
 import { FULL_MOON, NEW_MOON, COLNO } from './const.js';
 import { mons, monst_globals_init, LOW_PM, NUMMONS, G_NOCORPSE } from './monsters.js';
 import { decl_globals_init } from './decl.js';
@@ -46,10 +51,10 @@ import { ACURR, exerchk } from './attrib.js';
 import { near_capacity, lookaround, end_running, nomul, monster_nearby } from './hack.js';
 import { nh_timeout } from './timeout.js';
 import { dosounds } from './sounds.js';
-import { gethungry } from './eat.js';
+import { gethungry, reset_eat, maybe_finished_meal } from './eat.js';
 import { age_spells } from './spell.js';
 import { u_wipe_engr } from './engrave.js';
-import { dosearch0 } from './detect.js';
+import { dosearch0, warnreveal } from './detect.js';
 import { set_uasmon } from './polyself.js';
 import { init_artifacts } from './artifact.js';
 
@@ -69,6 +74,7 @@ export async function newgame() {
     const g = game;
     let i;
 
+    g.context.warnlevel = 1;
     g.context.next_attrib_check = 600; /* arbitrary first setting */
     g.context.tribute = { enabled: true, bookstock: false }; /* turn on 3.6 tributes */
 
@@ -96,7 +102,6 @@ export async function newgame() {
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
     await mklev();
     u_on_upstairs();
-    init_vision_globals();   /* C: vision_init() at program startup */
     vision_reset();          /* set up internals for level (after mklev) */
     /* check_special_room(FALSE): no special room is entered on arrival
        at level 1 yet -- not ported yet (hack.c) */
@@ -120,6 +125,13 @@ export async function newgame() {
     if (g.flags.legacy) {
         await com_pager(g.u.uroleplay.pauper ? "pauper_legacy" : "legacy");
     }
+
+    /* urealtime.realtime = 0L; urealtime.start_timing = getnow(): the
+       fixed game clock */
+    g.urealtime = { realtime: 0, start_timing: 0, finish_time: 0 };
+    /* INSURANCE save_currentstate(): the level 0 lock file isn't modelled */
+    g.program_state.something_worth_saving =
+        (g.program_state.something_worth_saving || 0) + 1; /* useful data now exists */
 
     /* Success! */
     await welcome(true);
@@ -165,7 +177,27 @@ export async function welcome(new_game) /* false => restoring an old game */ {
     await pline(new_game ? `${Hello(null)} ${g.plname}, welcome to NetHack!  You are a${buf}.`
                          : `${Hello(null)} ${g.plname}, the${buf}, welcome back to NetHack!`);
 
-    /* livelog_printf() and the restore-only messages: not ported yet */
+    if (new_game) {
+        /* guarantee that 'major' event category is never empty:
+           livelog_printf() -- the live log isn't kept */
+    } else {
+        /* if restoring in Gehennom, give same hot/smoky message as when
+           first entering it */
+        await hellish_smoke_mesg();
+        /* remind player of the level annotation, like in goto_level():
+           print_level_annotation() -- level annotations (#annotate,
+           mapseen) aren't ported, so there is none to print */
+    }
+}
+
+// C ref: do.c hellish_smoke_mesg()
+async function hellish_smoke_mesg() {
+    const temperature = game.level.flags.temperature;
+    if (temperature)
+        await pline(`It is ${temperature > 0 ? "hot" : "cold"} here.`);
+
+    if (In_hell(game.u.uz) && temperature > 0)
+        throw new Error('hellish_smoke_mesg(): olfaction() not ported yet');
 }
 
 // C ref: allmain.c maybe_generate_rnd_mon()
@@ -284,9 +316,8 @@ export function set_occupation(fn, txt, xtime) {
 export async function stop_occupation() {
     const g = game;
     if (g.occupation) {
-        /* maybe_finished_meal(TRUE): only for the eatfood occupation,
-           which isn't ported */
-        await pline(`You stop ${g.occtxt}.`); /* You() */
+        if (!await maybe_finished_meal(true))
+            await pline(`You stop ${g.occtxt}.`); /* You() */
         g.occupation = null;
         g.disp_botl = true; /* in case u.uhs changed */
         nomul(0);
@@ -296,20 +327,12 @@ export async function stop_occupation() {
     g.cmdq = []; /* cmdq_clear(CQ_CANNED) */
 }
 
-// C ref: eat.c reset_eat() -- we only set a flag here - the actual reset
-// process is done after the round is spent eating
-function reset_eat() {
-    const v = game.context.victual;
-    if (v && v.eating && !v.doreset)
-        v.doreset = true;
-}
-
 // C ref: hack.c unmul()
-async function unmul(msg_override) {
+export async function unmul(msg_override) {
     const g = game;
     g.disp_botl = true;
     g.multi = 0; /* caller will usually have done this already */
-    if (msg_override)
+    if (msg_override != null) /* C: non-Null pointer, "" included */
         g.nomovemsg = msg_override;
     else if (g.nomovemsg == null) /* a Null pointer; "" means no message */
         g.nomovemsg = "You can move again."; /* You_can_move_again */
@@ -423,8 +446,13 @@ export async function moveloop_core() {
     const P = u.uprops;
     let monscanmove = false;
 
-    /* get_nh_event(), maybe_shuffle_customizations(), dobjsfree(),
-       clear_bypasses(), sanity_check(), makewish(): not ported yet */
+    /* get_nh_event(), maybe_shuffle_customizations(), dobjsfree():
+       not ported yet */
+
+    if (g.context.bypasses)
+        clear_bypasses();
+
+    /* sanity_check(), makewish(): not ported yet */
 
     if (g.context.move) {
         /* actual time passed */
@@ -549,8 +577,7 @@ export async function moveloop_core() {
                     && g.multi >= 0)
                     await dosearch0(1);
                 if (P[WARNING].intrinsic || P[WARNING].extrinsic) /* Warning */
-                    /* warnreveal(): needs warning_of() and mfind0() */
-                    throw new Error('moveloop_core(): warnreveal() not ported yet');
+                    await warnreveal();
                 if (g.were_changes) {
                     /* update innate intrinsics (mainly Drain_resistance) */
                     set_uasmon();
@@ -690,8 +717,11 @@ export async function moveloop_preamble(resuming) {
     const g = game;
     const u = g.u;
 
-    /* if (resuming && iflags.deferred_X) enter_explore_mode(): restore
-       isn't ported yet */
+    /* if a save file created in normal mode is now being restored in
+       explore mode, treat it as normal restore followed by 'X' command
+       to use up the save file and require confirmation for explore mode */
+    if (resuming && g.iflags.deferred_X)
+        throw new Error('moveloop_preamble(): enter_explore_mode() not ported yet');
 
     /* side-effects from the real world */
     g.flags.moonphase = phase_of_the_moon();
@@ -710,9 +740,9 @@ export async function moveloop_preamble(resuming) {
     if (!resuming) { /* new game */
         g.program_state.beyond_savefile_load = 1; /* for TTY_PERM_INVENT */
         g.context.rndencode = rnd(9000);
-        /* set_wear((struct obj *) 0): side-effects of starting gear;
-           reset_justpicked(gi.invent); (void) pickup(1): autopickup at
-           initial location -- not ported yet */
+        await set_wear(null); /* for side-effects of starting gear */
+        reset_justpicked(g.invent);
+        await pickup(1); /* autopickup at initial location */
         /* only matters if someday a character is able to start with
            clairvoyance (wizard with cornuthaum perhaps?); without this,
            first "random" occurrence would always kick in on turn 1 */
@@ -724,8 +754,18 @@ export async function moveloop_preamble(resuming) {
         /* initrack(): not ported yet */
     }
     g.disp_botlx = true; /* for STATUS_HILITES */
-    /* resuming: read_engr_at(), fix_shop_damage(); encumber_msg();
-       deferred see_monsters() -- not ported yet */
+    if (resuming) { /* restoring old game */
+        await read_engr_at(u.ux, u.uy); /* subset of pickup() */
+        /* fix_shop_damage(): shop repair isn't ported */
+        if (g.level.damagelist)
+            throw new Error('moveloop_preamble(): fix_shop_damage() not ported yet');
+    }
+
+    await encumber_msg(); /* in case they auto-picked up something */
+    if (g.defer_see_monsters) {
+        g.defer_see_monsters = false;
+        see_monsters();
+    }
 
     u.uz0.dlevel = u.uz.dlevel;
     g.context.move = 0;

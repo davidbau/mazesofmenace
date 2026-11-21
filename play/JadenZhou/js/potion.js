@@ -2,8 +2,10 @@
 // C ref: potion.c
 //
 // Ported so far: the #quaff command up to choosing the potion
-// (drink_ok() and dodrink()'s getobj()); drinking from fountains and
-// sinks and the potion effects are not ported yet.
+// (drink_ok() and dodrink()'s getobj()); the intrinsic timeout setters
+// (set_itimeout(), incr_itimeout(), make_confused(), make_stunned(),
+// make_vomiting(), make_blinded(), make_deaf()); drinking from fountains
+// and sinks and the potion effects are not ported yet.
 
 import { game } from './gstate.js';
 import { pline } from './display.js';
@@ -13,6 +15,198 @@ import { GETOBJ_SUGGEST, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_NONINVENT,
          GETOBJ_NOFLAGS, ECMD_OK, ECMD_CANCEL, STRANGLED, IS_FOUNTAIN,
          IS_SINK } from './const.js';
 import { POTION_CLASS } from './objects.js';
+import { TIMEOUT, CONFUSION, STUNNED, VOMITING, BLINDED, DEAF, HALLUC,
+         HALLUC_RES, FROMOUTSIDE, FAINTED } from './const.js';
+import { toggle_blindness } from './do_wear.js';
+import { haseyes } from './mondata.js';
+
+/* C ref: youprop.h -- the property macros used here */
+function uprop(p) { return game.u.uprops[p]; }
+function Hallucination() {
+    return !!(uprop(HALLUC).intrinsic
+              && !(uprop(HALLUC_RES).intrinsic || uprop(HALLUC_RES).extrinsic));
+}
+function Blindfolded() { return uprop(BLINDED).extrinsic; }
+function Blind() {
+    return !!((uprop(BLINDED).intrinsic || Blindfolded())
+              && !uprop(BLINDED).blocked);
+}
+function PermaBlind() { return (uprop(BLINDED).intrinsic & FROMOUTSIDE) !== 0; }
+function Deaf() {
+    return !!(uprop(DEAF).intrinsic || uprop(DEAF).extrinsic
+              || game.u.uroleplay?.deaf);
+}
+/* C ref: hack.c unconscious() */
+function unconscious() {
+    const g = game;
+    if (g.multi >= 0)
+        return false;
+    return !!(g.u.usleep
+              || (g.nomovemsg
+                  && (g.nomovemsg.startsWith("You awake")
+                      || g.nomovemsg.startsWith("You regain con")
+                      || g.nomovemsg.startsWith("You are consci"))));
+}
+/* C ref: youprop.h Unaware -- (multi < 0 && (unconscious() || is_fainted())) */
+function Unaware() {
+    return game.multi < 0 && (unconscious() || game.u.uhs === FAINTED /* is_fainted() */);
+}
+
+// C ref: potion.c itimeout()
+/* force `val' to be within valid range for intrinsic timeout value */
+function itimeout(val) {
+    if (val >= TIMEOUT)
+        val = TIMEOUT;
+    else if (val < 1)
+        val = 0;
+    return val;
+}
+
+// C ref: potion.c itimeout_incr()
+/* increment `old' by `incr' and force result to be valid intrinsic timeout */
+function itimeout_incr(old, incr) {
+    return itimeout((old & TIMEOUT) + incr);
+}
+
+// C ref: potion.c set_itimeout() -- set the timeout field of intrinsic
+// `which' (C passes &u.uprops[p].intrinsic; JS passes the property index)
+export function set_itimeout(which, val) {
+    const p = uprop(which);
+    p.intrinsic &= ~TIMEOUT;
+    p.intrinsic |= itimeout(val);
+}
+
+// C ref: potion.c incr_itimeout() -- increment the timeout field of
+// intrinsic `which' (a property index)
+export function incr_itimeout(which, incr) {
+    set_itimeout(which, itimeout_incr(uprop(which).intrinsic, incr));
+}
+
+// C ref: potion.c make_confused()
+export async function make_confused(xtime, talk) {
+    const old = uprop(CONFUSION).intrinsic;
+
+    if (Unaware())
+        talk = false;
+
+    if (!xtime && old) {
+        if (talk)
+            await pline(`You feel less ${Hallucination() ? "trippy" : "confused"} now.`);
+    }
+    if ((xtime && !old) || (!xtime && old))
+        game.disp_botl = true;
+
+    set_itimeout(CONFUSION, xtime);
+}
+
+// C ref: potion.c make_stunned()
+export async function make_stunned(xtime, talk) {
+    const old = uprop(STUNNED).intrinsic;
+
+    if (Unaware())
+        talk = false;
+
+    if (!xtime && old) {
+        if (talk)
+            await pline(`You feel ${Hallucination() ? "less wobbly" : "a bit steadier"} now.`);
+    }
+    if (xtime && !old) {
+        if (talk)
+            throw new Error('make_stunned(): stagger message not ported yet');
+    }
+    if ((!xtime && old) || (xtime && !old))
+        game.disp_botl = true;
+
+    set_itimeout(STUNNED, xtime);
+}
+
+// C ref: potion.c make_vomiting()
+export async function make_vomiting(xtime, talk) {
+    const old = uprop(VOMITING).intrinsic;
+
+    if (Unaware())
+        talk = false;
+
+    set_itimeout(VOMITING, xtime);
+    game.disp_botl = true;
+    if (!xtime && old)
+        if (talk)
+            await pline("You feel much less nauseated now.");
+}
+
+// C ref: potion.c make_blinded()
+export async function make_blinded(xtime, talk) {
+    const old = uprop(BLINDED).intrinsic & TIMEOUT; /* BlindedTimeout */
+
+    /* we probe ahead in case the Eyes of the Overworld
+       are or will be overriding blindness */
+    const u_could_see = !Blind();
+    set_itimeout(BLINDED, xtime ? 1 : 0);
+    const can_see_now = !Blind();
+    set_itimeout(BLINDED, old);
+
+    if (Unaware())
+        talk = false;
+
+    if (can_see_now && !u_could_see) { /* regaining sight */
+        if (talk) {
+            if (Hallucination())
+                await pline("Far out!  Everything is all cosmic again!");
+            else
+                await pline("You can see again.");
+        }
+    } else if (old && !xtime) {
+        /* clearing temporary blindness without toggling blindness */
+        if (talk) {
+            if (!haseyes(game.youmonst.data) || PermaBlind())
+                throw new Error('make_blinded(): strange_feeling() not ported yet');
+            else
+                throw new Error('make_blinded(): blindfolded/Eyes of the Overworld message not ported yet');
+        }
+    }
+
+    if (u_could_see && !can_see_now) { /* losing sight */
+        if (talk) {
+            if (Hallucination())
+                await pline("Oh, bummer!  Everything is dark!  Help!");
+            else
+                await pline("A cloud of darkness falls upon you.");
+        }
+        /* Before the hero goes blind, set the ball&chain variables. */
+        if (game.uball)
+            throw new Error('make_blinded(): set_bc() not ported yet');
+    } else if (!old && xtime) {
+        /* setting temporary blindness without toggling blindness */
+        if (talk) {
+            if (!haseyes(game.youmonst.data) || PermaBlind())
+                throw new Error('make_blinded(): strange_feeling() not ported yet');
+            else
+                throw new Error('make_blinded(): blindfolded/Eyes of the Overworld message not ported yet');
+        }
+    }
+
+    set_itimeout(BLINDED, xtime);
+
+    if (u_could_see !== can_see_now) { /* one or the other but not both */
+        toggle_blindness();
+    }
+}
+
+// C ref: potion.c make_deaf()
+export async function make_deaf(xtime, talk) {
+    const old = uprop(DEAF).intrinsic;
+
+    if (Unaware())
+        talk = false;
+
+    set_itimeout(DEAF, xtime);
+    if ((xtime !== 0) !== (old !== 0)) {
+        game.disp_botl = true;
+        if (talk)
+            await pline(old && !Deaf() ? "You can hear again."
+                                       : "You are unable to hear anything.");
+    }
+}
 
 let drink_ok_extra = 0;
 

@@ -20,8 +20,8 @@ import { vision_recalc } from './vision.js';
 import { u_on_newpos } from './mklev.js';
 import { check_special_room } from './hack.js';
 import { m_at, may_passwall, closed_door, sobj_at, is_pool, is_lava } from './makemon.js';
-import { bad_rock, wake_nearto } from './mon.js';
-import { t_at, VIBRATING_SQUARE } from './trap.js';
+import { bad_rock, wake_nearto, wakeup, setmangry } from './mon.js';
+import { t_at, VIBRATING_SQUARE, WEB } from './trap.js';
 import { x_monnam, ARTICLE_A, SUPPRESS_SADDLE, AUGMENT_IT } from './do_name.js';
 import { BOULDER } from './objects.js';
 import { isok, IS_DOOR, IS_OBSTRUCTED, D_ISOPEN, IRONBARS, PASSES_WALLS,
@@ -1113,39 +1113,6 @@ export async function hurtle_jump(arg, x, y) {
     }
 }
 
-// C ref: mon.c wake_msg()
-async function wake_msg(mtmp, interesting) {
-    if (mtmp.msleeping && canseemon(mtmp))
-        throw new Error('wake_msg(): "<mon> wakes up" not ported yet');
-}
-
-// C ref: mon.c wakeup() -- wake up a monster, possibly making it angry
-async function wakeup(mtmp, via_attack) {
-    await wake_msg(mtmp, via_attack);
-    mtmp.msleeping = 0;
-    if (mtmp.m_ap_type) /* M_AP_TYPE(mtmp) != M_AP_NOTHING */
-        throw new Error('wakeup(): seemimic() not ported yet');
-    else if (game.context.forcefight && !game.context.mon_moving
-             && mtmp.mundetected) {
-        mtmp.mundetected = 0;
-        newsym(mtmp.mx, mtmp.my);
-    }
-    /* finish_meating(mtmp) */
-    mtmp.meating = 0;
-    if (via_attack)
-        throw new Error('wakeup(): via_attack not ported yet');
-}
-
-// C ref: mon.c setmangry() -- the via_attack FALSE start
-function setmangry(mtmp, via_attack) {
-    mtmp.mstrategy &= ~STRAT_WAITMASK;
-    if (!mtmp.mpeaceful)
-        return;
-    if (mtmp.mtame)
-        return;
-    throw new Error('setmangry(): angering a peaceful monster not ported yet');
-}
-
 // C ref: dothrow.c hurtle_step()
 /*
  * Single step for the hero flying through the air from jumping, flying,
@@ -1215,7 +1182,7 @@ export async function hurtle_step(arg, x, y) {
         await You(`bump into ${mnam}.`);
         await wakeup(mon, false);
         /* if (!canspotmon(mon)) map_invisible(mon->mx, mon->my): seen */
-        setmangry(mon, false);
+        await setmangry(mon, false);
         if (touch_petrifies(mon.data) && !game.uarmu && !game.uarm && !game.uarmc)
             throw new Error('hurtle_step(): instapetrify() not ported yet');
         if (touch_petrifies(game.youmonst.data))

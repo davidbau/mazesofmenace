@@ -11,7 +11,7 @@ import { pline, bot, mon_visible } from './display.js';
 import { nomul } from './hack.js';
 import { Monnam, pronoun_gender, PRONOUN_HALLU } from './do_name.js';
 import { monnear } from './mon.js';
-import { canseemon, map_invisible } from './display.js';
+import { canseemon, canspotmon, map_invisible } from './display.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { mhitm_adtyping, mhitm_knockback } from './uhitm.js';
 import { is_undead, is_vampshifter, is_demon, is_were, is_swimmer,
@@ -82,12 +82,6 @@ function mdistu(mon) {
 /* C ref: hack.h m_next2u() */
 function m_next2u(mon) {
     return Math.abs(mon.mx - game.u.ux) <= 1 && Math.abs(mon.my - game.u.uy) <= 1;
-}
-/* C ref: display.h canspotmon() -- telepathy/warning not ported yet */
-function canspotmon(mon) {
-    if (canseemon(mon))
-        return true;
-    throw new Error('canspotmon(): see_with_infrared()/sensemon() not ported yet');
 }
 /* C ref: mondata.h gender() / pronoun_gender() subset */
 function gender(mon) { return mon.female ? 1 : 0; }
@@ -648,7 +642,7 @@ async function hitmu(mtmp, mattk) {
 
     await mhitm_adtyping(mtmp, mattk, game.youmonst, mhm);
 
-    mhitm_knockback(mtmp, game.youmonst, mattk, mhm, !!mtmp.mw);
+    await mhitm_knockback(mtmp, game.youmonst, mattk, mhm, !!mtmp.mw);
 
     if (mhm.done)
         return mhm.hitflags;

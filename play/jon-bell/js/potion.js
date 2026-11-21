@@ -372,7 +372,17 @@ async function y_n(question) {
     await paintPrompt();
     let key, answer;
     do {
-        key = await nhgetch();
+        /* C topl.c:420-425: the prompt is custompline(OVERRIDE_MSGTYPE |
+         * SUPPRESS_HISTORY), so wintty.c:2290-2299 remember_topl()'s it OUT of
+         * gt.toplines — the read's tty_nhgetch commits nothing to the ring
+         * while the prompt is up.  Suppress the nhgetch commit the same way,
+         * or it files the pending BARE prompt into _msg_history on every
+         * re-read and a later ^P recalls the bare question instead of the
+         * answered one (df-x260f939647 step 21). */
+        const _savedHist = game._topl_suppress_history;
+        game._topl_suppress_history = true;
+        try { key = await nhgetch(); }
+        finally { game._topl_suppress_history = _savedHist; }
         answer = String.fromCharCode(key).toLowerCase();
         if (answer === '\u001b' || answer === ' ' || answer === '\n' || answer === '\r')
             answer = 'n';
@@ -383,6 +393,19 @@ async function y_n(question) {
          * terminal in this port, but the repeated input boundary is observable. */
         await paintPrompt();
     } while (true);
+    /* C topl.c:533-539 clean_up: `Sprintf(gt.toplines, "%s%s", prompt, rtmp)`
+     * rewrites the topline text to the ANSWERED prompt (prompt carries the
+     * trailing space, rtmp is key2txt(q)) — "addtopl(rtmp); -- rewrite
+     * gt.toplines instead" — and THAT text is what the next remember_topl()
+     * files, so a later ^P recalls "Dip <obj> into the fountain? [yn] (n) y",
+     * never the bare question.  Same shape as y_n_default's _answered
+     * (js/cmd.js:4267), eat.js's read_yn and the shared _yn_prompt's
+     * answered() (js/cmd.js:24320). */
+    game._toplEmptyAfterSuppress = false; /* gt.toplines is now prompt + answer */
+    putmsghistory(`${prompt} ${answer}`);
+    /* The bare prompt that may still ride _pending_message is already filed as
+     * prompt + answer; js/input.js:134 skips re-filing it. */
+    game._topl_prompt_filed = prompt;
     // C topl.c:547-548 clears the message window when the prompt wrapped.
     game._topl_sticky = wraps ? null : prompt;
     if (wraps) {
@@ -2852,7 +2875,9 @@ async function peffect_hallucination(otmp) {
                              true, 0);
     if ((otmp.blessed && !rn2(3)) || (!otmp.cursed && !rn2(6))) {
         await You('perceive yourself...');
-        await force_more(g._pending_message || 'You perceive yourself...');
+        // C potion.c:707: acknowledge only a message still needing input.
+        // MSGTYPE hide/stop can leave this line hidden or already acknowledged.
+        await display_message_window();
         await enlightenment_menu(MAGICENLIGHTENMENT);
         await Your('awareness re-normalizes.');
         await exercise(A_WIS, true);

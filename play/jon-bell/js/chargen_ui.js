@@ -2339,7 +2339,15 @@ export async function playChargen(ctx) {
         // then discards because MENU_SELECT_ALL is PICK_ANY-only.
         yesMark = '*';
         let row0Blank = false;
+        // C wintty.c:1336-1345 count locals + :1398-1401 loop top (`if
+        // (reset_count) { counting = FALSE; count = 0L; } else reset_count =
+        // TRUE;`): only a digit with a non-zero accumulated count disarms the
+        // reset (:1595-1600), so `counting` is live for exactly the one key
+        // that follows the digits.
+        let counting = false, resetCount = true, count = 0;
         for (;;) {
+            if (resetCount) counting = false;
+            else resetCount = true;
             await topline.flush();
             const f = confirmFrame();
             if (row0Blank) f.screen = '\n' + f.screen.split('\n').slice(1).join('\n');
@@ -2361,9 +2369,21 @@ export async function playChargen(ctx) {
             // has cleared it, role.c:2677 maps the resulting n == 0 back to
             // choice 1 anyway, so either way a commit means "yes".
             if (key === K_CR || key === K_LF) break confirm;
-            // wintty.c:1603 — ESC cancels the whole menu; select_menu() returns
-            // -1 and role.c:2681's default arm quits.
-            if (key === K_ESC) { game._ttyDismissMore = 1; /* getline.c:245-247 */ return quit(); }
+            // Digits only accumulate a count; nothing is drawn (wintty.c:1564-
+            // 1600).  A count makes the NEXT ESC merely stop it (:1607 "else
+            // only stop count") — the menu repaints unchanged and reads again.
+            if (ch >= '0' && ch <= '9') {
+                count = count * 10 + (key - 48);
+                if (count !== 0) { counting = true; resetCount = false; }
+                continue;
+            }
+            // wintty.c:1603 — ESC with no live count cancels the whole menu;
+            // select_menu() returns -1 and role.c:2681's default arm quits.
+            if (key === K_ESC) {
+                game._ttyDismissMore = 1; /* getline.c:245-247 */
+                if (counting) continue;
+                return quit();
+            }
 
             // Page selectors.  role.c:2657-2672; 'a' exists only when
             // iflags.renameallowed, so otherwise it is not in resp at all.
@@ -2430,8 +2450,6 @@ export async function playChargen(ctx) {
 
             // ' ' on a single-page menu finishes it (wintty.c:1621-1631).
             if (ch === ' ') break confirm;
-            // Digits only accumulate a count; nothing is drawn (wintty.c:1564).
-            if (ch >= '0' && ch <= '9') continue;
             if (DEFAULT_MENU_CMDS.includes(ch)) {
                 // MENU_UNSELECT_ALL / MENU_UNSELECT_PAGE are the only two that
                 // and repaint its indicator (wintty.c:1653/1651).

@@ -111,7 +111,7 @@ function obj_extract_self(obj) {
 }
 
 // C ref: dig.c add_to_buried()
-function add_to_buried(obj) {
+export function add_to_buried(obj) {
     if (obj.where !== 'OBJ_FREE')
         throw new Error('add_to_buried: obj not free');
     obj.where = 'OBJ_BURIED';
