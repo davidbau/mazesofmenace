@@ -13,17 +13,24 @@ import { ECMD_OK, ECMD_TIME, ECMD_FAIL, W_ARMOR, W_ACCESSORY,
          W_SADDLE, W_RINGL, W_RINGR, W_TOOL } from './const.js';
 import { M1_NOHANDS, M2_DEMON, M2_WERE, S_IMP, S_VAMPIRE, MZ_SMALL, mons,
          PM_SHADE, PM_TENGU } from './monsters.js';
-import { pline, You } from './display.js';
+import { pline, You, You_cant } from './display.js';
+import { rnd } from './rng.js';
+import { AT_WEAP } from './monsters.js';
+import { HAND, GLIB, A_DEX } from './const.js';
+import { makeplural } from './objnam.js';
+import { body_part } from './insight.js';
+import { ACURR } from './attrib.js';
 import { prinv, getobj, hands_obj, splittable, freeinv } from './invent.js';
 import { addinv } from './u_init.js';
 import { splitobj } from './mkobj.js';
 import { simpleonames } from './iactions.js';
-import { vtense } from './objnam.js';
+import { vtense, otense } from './objnam.js';
+import { inv_cnt } from './hack.js';
 import { highc } from './hacklib.js';
 import { tty_yn_function } from './wintty.js';
 import { LENSES, ARMOR_CLASS, ARM_GLOVES, ARM_BOOTS } from './objects.js';
 import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT, GETOBJ_ALLOWCNT,
-         ECMD_CANCEL } from './const.js';
+         ECMD_CANCEL, GETOBJ_EXCLUDE } from './const.js';
 import { COIN_CLASS } from './objects.js';
 
 // C ref: obj.h is_weptool()
@@ -67,58 +74,9 @@ export function is_pole(otmp) {
 }
 export function is_wet_towel(o) { return o.otyp === TOWEL && o.spe > 0; }
 
-// C ref: worn.c setworn() -- the weapon slots (W_WEP, W_SWAPWEP,
-// W_QUIVER); armor and accessories aren't handled here yet
-const weapon_slots = [
-    { w_mask: W_WEP, w_obj: 'uwep' },
-    { w_mask: W_SWAPWEP, w_obj: 'uswapwep' },
-    { w_mask: W_QUIVER, w_obj: 'uquiver' },
-    { w_mask: W_RINGL, w_obj: 'uleft' },
-    { w_mask: W_RINGR, w_obj: 'uright' },
-    { w_mask: W_TOOL, w_obj: 'ublindf' },
-];
-export function setworn(obj, mask) {
-    if (mask & ~(W_WEP | W_SWAPWEP | W_QUIVER | W_RINGL | W_RINGR | W_TOOL))
-        throw new Error('setworn(): armor/amulet/eyewear slots not ported yet');
-    for (const wp of weapon_slots) {
-        if (wp.w_mask & mask) {
-            const oobj = game[wp.w_obj];
-            if (oobj) {
-                if (game.u.twoweap && (oobj.owornmask & (W_WEP | W_SWAPWEP)))
-                    game.u.twoweap = false; /* set_twoweap(FALSE) */
-                oobj.owornmask &= ~wp.w_mask;
-                if (wp.w_mask & ~(W_SWAPWEP | W_QUIVER)) {
-                    const p = objects[oobj.otyp].oc_oprop;
-                    if (p)
-                        throw new Error('setworn(): extrinsic-granting weapon not ported yet');
-                    if (oobj.oartifact)
-                        throw new Error('setworn(): set_artifact_intrinsic() not ported yet');
-                }
-                /* cancel_doff(): no armor removal in progress for weapons */
-            }
-            game[wp.w_obj] = obj;
-            if (obj) {
-                obj.owornmask = (obj.owornmask || 0) | wp.w_mask;
-                if (wp.w_mask & ~(W_SWAPWEP | W_QUIVER)) {
-                    if (obj.oclass === WEAPON_CLASS || is_weptool(obj)
-                        || mask !== W_WEP) {
-                        const p = objects[obj.otyp].oc_oprop;
-                        if (p && (wp.w_mask & (W_RINGL | W_RINGR | W_TOOL))) {
-                            /* u.uprops[p].extrinsic |= wp->w_mask */
-                            const up = game.u.uprops[p];
-                            up.extrinsic = (up.extrinsic || 0) | wp.w_mask;
-                            /* w_blocks(): rings don't block properties */
-                        } else if (p)
-                            throw new Error('setworn(): extrinsic-granting weapon not ported yet');
-                    }
-                    if (obj.oartifact)
-                        throw new Error('setworn(): set_artifact_intrinsic() not ported yet');
-                }
-            }
-        }
-    }
-    /* update_inventory(): no perm_invent */
-}
+// C ref: worn.c setworn() -- in worn.js
+import { setworn } from './worn.js';
+export { setworn };
 
 // C ref: wield.c setuwep()
 export function setuwep(obj) {
@@ -146,6 +104,121 @@ export function setuqwep(obj) {
 // C ref: wield.c setuswapwep()
 export function setuswapwep(obj) {
     setworn(obj, W_SWAPWEP);
+}
+
+/* C ref: mondata.h could_twoweap() */
+function could_twoweap(ptr) {
+    let n = 0;
+    for (let i = 0; i < 3; i++)
+        if (ptr.mattk[i] && ptr.mattk[i].aatyp === AT_WEAP)
+            n++;
+    return n > 1;
+}
+/* C ref: wield.c TWOWEAPOK() */
+function TWOWEAPOK(obj) {
+    return (obj.oclass === WEAPON_CLASS)
+        ? !(is_launcher(obj) || is_ammo(obj) || is_missile(obj))
+        : is_weptool(obj);
+}
+
+// C ref: wield.c can_twoweapon()
+async function can_twoweapon() {
+    const g = game;
+    let otmp;
+
+    if (!could_twoweap(g.youmonst.data)) {
+        if (g.u.umonnum !== g.u.umonster) /* Upolyd */
+            await You_cant("use two weapons in your current form.");
+        else
+            await pline(`${makeplural((g.flags.female && g.urole.name.f)
+                                      ? g.urole.name.f : g.urole.name.m)
+                          } aren't able to use two weapons at once.`);
+    } else if (!g.uwep || !g.uswapwep) {
+        let hand_s = body_part(HAND);
+
+        if (!g.uwep && !g.uswapwep)
+            hand_s = makeplural(hand_s);
+        /* "your hands are empty" or "your {left|right} hand is empty" */
+        await pline(`Your ${g.uwep ? "left " : g.uswapwep ? "right " : ""}${
+            hand_s} ${vtense(hand_s, "are")} empty.`);
+    } else if (!TWOWEAPOK(g.uwep) || !TWOWEAPOK(g.uswapwep)) {
+        otmp = !TWOWEAPOK(g.uwep) ? g.uwep : g.uswapwep;
+        throw new Error('can_twoweapon(): unsuitable weapon (Yname2()) message not ported yet');
+    } else if (bimanual(g.uwep) || bimanual(g.uswapwep)) {
+        otmp = bimanual(g.uwep) ? g.uwep : g.uswapwep;
+        throw new Error('can_twoweapon(): two-handed weapon (Yname2()) message not ported yet');
+    } else if (g.uarms) {
+        await You_cant("use two weapons while wearing a shield.");
+    } else if (g.uswapwep.oartifact) {
+        throw new Error('can_twoweapon(): artifact resists (Yobjnam2()) message not ported yet');
+    } else if (g.uswapwep.otyp === CORPSE /* && cant_wield_corpse(uswapwep) */) {
+        throw new Error('can_twoweapon(): cant_wield_corpse() not ported yet');
+    } else if (game.u.uprops[GLIB]?.intrinsic || game.u.uprops[GLIB]?.extrinsic
+               || g.uswapwep.cursed) {
+        throw new Error('can_twoweapon(): drop_uswapwep() not ported yet');
+    } else
+        return true;
+    void otmp;
+    return false;
+}
+
+// C ref: wield.c set_twoweap()
+export function set_twoweap(on_off) {
+    if (on_off !== !!game.u.twoweap) {
+        game.u.twoweap = on_off;
+        if (game.flags.weaponstatus)
+            game.disp_botl = true;
+    }
+}
+
+// C ref: wield.c dotwoweapon()
+/* the #twoweapon command */
+export async function dotwoweapon() {
+    /* You can always toggle it off */
+    if (game.u.twoweap) {
+        await You("switch to your primary weapon.");
+        set_twoweap(false); /* u.twoweap = FALSE */
+        /* update_inventory(): no perm_invent */
+        return ECMD_OK;
+    }
+
+    /* May we use two weapons? */
+    if (await can_twoweapon()) {
+        /* Success! */
+        await You("begin two-weapon combat.");
+        set_twoweap(true); /* u.twoweap = TRUE */
+        /* update_inventory(): no perm_invent */
+        return (rnd(20) > ACURR(A_DEX)) ? ECMD_TIME : ECMD_OK;
+    }
+    return ECMD_OK;
+}
+
+// C ref: wield.c uwepgone()
+export function uwepgone() {
+    const uwep = game.uwep;
+    if (uwep) {
+        if (uwep.lamplit) /* artifact_light(uwep) && uwep->lamplit */
+            throw new Error('uwepgone(): end_burn() of a shining weapon not ported yet');
+        setworn(null, W_WEP);
+        game.unweapon = true;
+        /* update_inventory(): no perm_invent */
+    }
+}
+
+// C ref: wield.c uswapwepgone()
+export function uswapwepgone() {
+    if (game.uswapwep) {
+        setworn(null, W_SWAPWEP);
+        /* update_inventory(): no perm_invent */
+    }
+}
+
+// C ref: wield.c uqwepgone()
+export function uqwepgone() {
+    if (game.uquiver) {
+        setworn(null, W_QUIVER);
+        /* update_inventory(): no perm_invent */
+    }
 }
 
 /* C ref: mondata.h cantwield() */
@@ -262,19 +335,133 @@ export async function doswapweapon() {
 
 const invlet_basic = 52;
 
+// C ref: wield.c wield_ok() -- getobj callback for weapons and weapon-tools
+function wield_ok(obj) {
+    if (!obj)
+        return GETOBJ_SUGGEST;
+
+    if (obj.oclass === COIN_CLASS)
+        return GETOBJ_EXCLUDE;
+
+    if (obj.oclass === WEAPON_CLASS || is_weptool(obj))
+        return GETOBJ_SUGGEST;
+
+    return GETOBJ_DOWNPLAY;
+}
+
+// C ref: wield.c dowield() -- the #wield command
+export async function dowield() {
+    let qbuf;
+    let wep;
+
+    /* May we attempt this? */
+    game.multi = 0;
+    if (cantwield(game.youmonst.data)) {
+        await pline("Don't be ridiculous!");
+        return ECMD_FAIL;
+    }
+    /* Keep going even if inventory is completely empty, since wielding '-'
+       to wield nothing can be construed as a positive act even when done
+       so redundantly. */
+
+    /* Prompt for a new weapon */
+    if (game.context?.objsplit) { /* clear_splitobjs() */
+        game.context.objsplit.parent_oid = 0;
+        game.context.objsplit.child_oid = 0;
+    }
+    if (!(wep = await getobj("wield", wield_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT))) {
+        /* Cancelled */
+        return ECMD_CANCEL;
+    } else if (wep === game.uwep) {
+        return await already_wielded(wep);
+    } else if (welded(game.uwep)) {
+        throw new Error('dowield(): weldmsg() not ported yet');
+    } else if (wep.o_id && wep.o_id === game.context?.objsplit?.child_oid) {
+        /* if wep is the result of supplying a count to getobj()
+           we don't want to split something already wielded; for
+           any other item, we need to give it its own inventory slot */
+        if (game.uwep && game.uwep.o_id === game.context.objsplit.parent_oid)
+            throw new Error('dowield(): unsplitobj() not ported yet');
+        await finish_splitting(wep);
+        return await wielding(wep);
+    }
+
+    /* Handle no object, or object in other slot */
+    if (wep === hands_obj) {
+        wep = null;
+    } else if (wep === game.uswapwep) {
+        return await doswapweapon();
+    } else if (wep === game.uquiver) {
+        const uquiver = game.uquiver;
+        /* offer to split stack if multiple are quivered */
+        if (uquiver.quan > 1 && inv_cnt(false) < invlet_basic
+            && splittable(uquiver)) {
+            qbuf = `You have ${uquiver.quan} ${simpleonames(uquiver)} readied.  Wield one?`;
+            switch (await ynq(qbuf)) {
+            case 'q':
+                return ECMD_OK;
+            case 'y':
+                /* leave N-1 quivered, split off 1 to wield */
+                wep = splitobj(uquiver, 1);
+                await finish_splitting(wep);
+                return await wielding(wep);
+            default:
+                break;
+            }
+            qbuf = "Wield all of them instead?";
+        } else {
+            const use_plural = (is_plural(uquiver) || pair_of(uquiver));
+
+            qbuf = `You have ${!use_plural ? "that" : "those"} readied.  Wield ${
+                !use_plural ? "it" : "them"} instead?`;
+        }
+        /* require confirmation to wield the quivered weapon */
+        if ((await ynq(qbuf)) !== 'y') {
+            qbuf = Shk_Your(uquiver); /* replace qbuf[] contents */
+            await pline(`${qbuf}${simpleonames(uquiver)} ${otense(uquiver, "remain")} readied.`);
+            return ECMD_OK;
+        }
+        /* wielding whole readied stack, so no longer quivered */
+        setuqwep(null);
+    } else if (wep.owornmask & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
+        await You("cannot wield that!");
+        return ECMD_FAIL;
+    }
+
+    return await wielding(wep);
+}
+
+/* C ref: wield.c dowield() -- its already_wielded: label */
+async function already_wielded(wep) {
+    await You("are already wielding that!");
+    if (is_weptool(wep) || is_wet_towel(wep))
+        game.unweapon = false; /* [see setuwep()] */
+    return ECMD_FAIL;
+}
+
+/* C ref: wield.c dowield() -- its wielding: label */
+async function wielding(wep) {
+    /* Set your new primary weapon */
+    const oldwep = game.uwep;
+    const result = await ready_weapon(wep);
+    if (game.flags.pushweapon && oldwep && game.uwep !== oldwep)
+        setuswapwep(oldwep);
+    await untwoweapon();
+
+    return result;
+}
+
+// C ref: wield.c untwoweapon()
+async function untwoweapon() {
+    if (game.u.twoweap)
+        throw new Error('untwoweapon(): set_twoweap() not ported yet');
+}
+
 /* C ref: hack.h ynq() */
 async function ynq(query) {
     return await tty_yn_function(query, "ynq", 'q');
 }
 
-// C ref: hack.c inv_cnt()
-function inv_cnt(incl_gold) {
-    let ct = 0;
-    for (let otmp = game.invent; otmp; otmp = otmp.nobj)
-        if (incl_gold || otmp.invlet !== '$')
-            ct++;
-    return ct;
-}
 
 /* C ref: obj.h is_plural() (undiscovered_artifact() isn't ported),
    pair_of() */
@@ -290,14 +477,6 @@ function pair_of(o) {
                     || objects[o.otyp].oc_armcat === ARM_BOOTS)));
 }
 
-// C ref: objnam.c otense()
-function otense(otmp, verb) {
-    /* verb is given in plural (without trailing s).  Return as input
-       if the result of xname(otmp) would be plural. */
-    if (!is_plural(otmp))
-        return vtense(null, verb);
-    return verb;
-}
 
 // C ref: shk.c Shk_Your()/shk_your() -- the hero's own (unpaid-free,
 // carried) objects
@@ -315,13 +494,13 @@ function Shk_Your(obj) {
 }
 
 // C ref: wield.c finish_splitting()
-function finish_splitting(obj) {
+async function finish_splitting(obj) {
     /* obj was split off from something; give it its own invlet */
     freeinv(obj);
     /* addinv_nomerge(obj) */
     const save_nomerge = obj.nomerge;
     obj.nomerge = 1;
-    addinv(obj);
+    await addinv(obj);
     obj.nomerge = save_nomerge;
 }
 
@@ -415,7 +594,7 @@ export async function doquiver_core(verb) { /* "ready" or "fire" */
             case 'y':
                 /* leave 1 alt-wielded, split rest off and put into quiver */
                 newquiver = splitobj(uswapwep, uswapwep.quan - 1);
-                finish_splitting(newquiver);
+                await finish_splitting(newquiver);
                 return await quivering(verb, newquiver);
             default:
                 break;

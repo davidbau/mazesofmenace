@@ -11,7 +11,7 @@ import { pline, bot, mon_visible } from './display.js';
 import { nomul } from './hack.js';
 import { Monnam, pronoun_gender, PRONOUN_HALLU } from './do_name.js';
 import { monnear } from './mon.js';
-import { canseemon } from './display.js';
+import { canseemon, map_invisible } from './display.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { mhitm_adtyping, mhitm_knockback } from './uhitm.js';
 import { is_undead, is_vampshifter, is_demon, is_were, is_swimmer,
@@ -88,11 +88,6 @@ function canspotmon(mon) {
     if (canseemon(mon))
         return true;
     throw new Error('canspotmon(): see_with_infrared()/sensemon() not ported yet');
-}
-/* C ref: display.c map_invisible() */
-function map_invisible(x, y) {
-    void x; void y;
-    throw new Error('map_invisible() not ported yet');
 }
 /* C ref: mondata.h gender() / pronoun_gender() subset */
 function gender(mon) { return mon.female ? 1 : 0; }

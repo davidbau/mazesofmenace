@@ -3,7 +3,8 @@
 //
 // Ported so far: the artilist[] table, init_artifacts()/hack_artifacts(),
 // artifact_name(), exist_artifact(), artifact_exists(), artifact_origin(),
-// found_artifact(), nartifact_exist().  Artifact powers (spec_abon,
+// found_artifact(), nartifact_exist(), artiname(), what_gives().
+// Artifact powers (spec_abon,
 // spec_dbon, touch_artifact, invoke, ...), mk_artifact() and artidisco[]
 // are not ported yet.
 
@@ -13,7 +14,12 @@ import * as O from './objects.js';
 import * as M from './monsters.js';
 import {
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, NON_PM,
-    INVIS, LEVITATION, CONFLICT, LAST_PROP,
+    INVIS, LEVITATION, CONFLICT, LAST_PROP, FIRE_RES, COLD_RES, SHOCK_RES,
+    ANTIMAGIC, DISINT_RES, POISON_RES, DRAIN_RES, SEARCHING, HALLUC_RES,
+    TELEPAT, STEALTH, REGENERATION, TELEPORT_CONTROL, WARN_OF_MON, WARNING,
+    ENERGY_REGENERATION, HALF_SPDAM, HALF_PHDAM, REFLECTING, BLND_RES,
+    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_RINGL,
+    W_RINGR, W_TOOL, W_ART, W_ARTI, W_SWAPWEP, W_WEP,
     ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT, ONAME_VIA_DIP,
     ONAME_LEVEL_DEF, ONAME_BONES, ONAME_RANDOM, ONAME_KNOW_ARTI,
 } from './const.js';
@@ -302,6 +308,13 @@ export function init_artifacts() {
     hack_artifacts();
 }
 
+// C ref: artifact.c artiname()
+export function artiname(artinum) {
+    if (artinum <= 0 || artinum > NROFARTIFACTS)
+        return "";
+    return artilist()[artinum].name;
+}
+
 // C ref: artifact.c artifact_name()
 /*
  * Returns the full name (with articles and correct capitalization) of an
@@ -584,4 +597,102 @@ export function touch_artifact(obj, mon) {
     }
 
     return 1;
+}
+
+// C ref: artifact.c abil_to_adtyp() -- 'abil' is the property index
+// standing in for C's &u.uprops[propidx].extrinsic
+function abil_to_adtyp(abil) {
+    const abil2adtyp = [
+        { abil: FIRE_RES, adtyp: M.AD_FIRE },      /* &EFire_resistance */
+        { abil: COLD_RES, adtyp: M.AD_COLD },      /* &ECold_resistance */
+        { abil: SHOCK_RES, adtyp: M.AD_ELEC },     /* &EShock_resistance */
+        { abil: ANTIMAGIC, adtyp: M.AD_MAGM },     /* &EAntimagic */
+        { abil: DISINT_RES, adtyp: M.AD_DISN },    /* &EDisint_resistance */
+        { abil: POISON_RES, adtyp: M.AD_DRST },    /* &EPoison_resistance */
+        { abil: DRAIN_RES, adtyp: M.AD_DRLI },     /* &EDrain_resistance */
+    ];
+
+    for (let k = 0; k < abil2adtyp.length; k++) {
+        if (abil2adtyp[k].abil === abil)
+            return abil2adtyp[k].adtyp;
+    }
+    return 0;
+}
+
+// C ref: artifact.c abil_to_spfx() -- 'abil' is the property index
+function abil_to_spfx(abil) {
+    const abil2spfx = [
+        { abil: SEARCHING, spfx: SPFX_SEARCH },
+        { abil: HALLUC_RES, spfx: SPFX_HALRES },
+        { abil: TELEPAT, spfx: SPFX_ESP },
+        { abil: STEALTH, spfx: SPFX_STLTH },
+        { abil: REGENERATION, spfx: SPFX_REGEN },
+        { abil: TELEPORT_CONTROL, spfx: SPFX_TCTRL },
+        { abil: WARN_OF_MON, spfx: SPFX_WARN },
+        { abil: WARNING, spfx: SPFX_WARN },
+        { abil: ENERGY_REGENERATION, spfx: SPFX_EREGEN },
+        { abil: HALF_SPDAM, spfx: SPFX_HSPDAM },
+        { abil: HALF_PHDAM, spfx: SPFX_HPHDAM },
+        { abil: REFLECTING, spfx: SPFX_REFLECT },
+    ];
+
+    for (let k = 0; k < abil2spfx.length; k++) {
+        if (abil2spfx[k].abil === abil)
+            return abil2spfx[k].spfx;
+    }
+    return 0;
+}
+
+// C ref: artifact.c what_gives() -- 'abil' is the property index
+// standing in for C's &u.uprops[propidx].extrinsic
+/*
+ * Return the first item that is conveying a particular intrinsic.
+ */
+export function what_gives(abil) {
+    const u = game.u;
+    let dtyp;
+    let spfx;
+    let wornbits;
+    let wornmask = (W_ARM | W_ARMC | W_ARMH | W_ARMS
+                    | W_ARMG | W_ARMF | W_ARMU
+                    | W_AMUL | W_RINGL | W_RINGR | W_TOOL
+                    | W_ART | W_ARTI);
+
+    if (u.twoweap)
+        wornmask |= W_SWAPWEP;
+    dtyp = abil_to_adtyp(abil);
+    spfx = abil_to_spfx(abil);
+    wornbits = (wornmask & u.uprops[abil].extrinsic);
+
+    for (let obj = game.invent; obj; obj = obj.nobj) {
+        if (obj.oartifact
+            && (abil !== WARN_OF_MON || game.context.warntype?.obj)) {
+            const art = get_artifact(obj);
+
+            if (art !== artilist()[ART_NONARTIFACT]) {
+                if (dtyp) {
+                    if (art.cary.adtyp === dtyp /* carried */
+                        || (art.defn.adtyp === dtyp /* defends while worn */
+                            && (obj.owornmask & ~(W_ART | W_ARTI))))
+                        return obj;
+                }
+                if (spfx) {
+                    /* property conferred when carried */
+                    if ((art.cspfx & spfx) === spfx)
+                        return obj;
+                    /* property conferred when wielded or worn */
+                    if ((art.spfx & spfx) === spfx && obj.owornmask)
+                        return obj;
+                }
+                if (obj === game.uwep && abil === BLND_RES
+                    && (u.uprops[abil].extrinsic & W_WEP) !== 0) {
+                    return obj; /* Sunsword */
+                }
+            }
+        } else {
+            if (wornbits && wornbits === (wornmask & obj.owornmask))
+                return obj;
+        }
+    }
+    return null;
 }

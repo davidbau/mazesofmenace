@@ -1331,7 +1331,7 @@ export async function region_safety() {
         await pline('The gas cloud has dissipated.');
     }
     if (BlindedTimeout() === 1)
-        make_blinded(0, true);
+        await make_blinded(0, true);
 }
 
 export function show_region(reg, x, y) {

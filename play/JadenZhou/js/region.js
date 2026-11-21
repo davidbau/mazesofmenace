@@ -10,13 +10,14 @@
 // Ported so far: creating gas clouds during level creation (themed "Cloud
 // room" via des.gas_cloud). Not ported yet: run_regions() and the region
 // callbacks (inside_gas_cloud, expire_gas_cloud), in_out_region(),
-// m_in_out_region(), visible_region_at() and the vision/display side of
-// add_region() (block_point/newsym; JS vision has no block_point()), and
+// m_in_out_region(), showing regions on the map (show_region()), and
 // create_gas_cloud() (the breadth-first cloud that rolls dice).
 
 import { game } from './gstate.js';
 import { COLNO, ROWNO, isok, REG_HERO_INSIDE, REG_NOT_HEROS, MONST_INC } from './const.js';
 import { m_at } from './makemon.js';
+import { block_point, cansee } from './vision.js';
+import { newsym } from './display.js';
 import { selection_getbounds, selection_getpoint } from './selvar.js';
 
 const NO_CALLBACK = -1;
@@ -170,19 +171,24 @@ export function add_region(reg) {
     for (let i = reg.bounding_box.lx; i <= reg.bounding_box.hx; i++)
         for (let j = reg.bounding_box.ly; j <= reg.bounding_box.hy; j++) {
             let mtmp;
+            let is_inside = false;
 
             /* Some regions can cross the level boundaries */
             if (!isok(i, j))
                 continue;
             if (inside_region(reg, i, j)) {
+                is_inside = true;
                 /* if there's a monster here, add it to the region */
                 if ((mtmp = m_at(i, j)) != null) {
                     add_mon_to_reg(reg, mtmp);
                 }
             }
-            /* if (reg->visible) { block_point(); newsym(); }: the JS
-               vision has no block_point() and nothing is displayed during
-               level creation; not ported yet */
+            if (reg.visible) {
+                if (is_inside)
+                    block_point(i, j);
+                if (cansee(i, j))
+                    newsym(i, j);
+            }
         }
     /* Check for player now... */
     if (inside_region(reg, game.u.ux, game.u.uy))

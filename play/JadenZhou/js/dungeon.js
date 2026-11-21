@@ -31,7 +31,15 @@ import {
     BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL,
     TOWN, HELLISH, MAZELIKE, ROGUELIKE, UNCONNECTED, D_ALIGN_MASK,
     D_ALIGN_NONE, D_ALIGN_CHAOTIC, D_ALIGN_NEUTRAL, D_ALIGN_LAWFUL, Align2amask,
+    In_endgame, NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ONE,
 } from './const.js';
+import { NO_COLOR, ATR_NONE } from './terminal.js';
+import {
+    tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
+    tty_select_menu, tty_destroy_nhwindow,
+} from './wintty.js';
+import { add_menu_heading } from './invent.js';
+import { makeplural } from './objnam.js';
 import {
     nhl_init, nhl_loadlua, nhl_done, lua_type, lua_istable, lua_len,
     luaL_checkoption, get_table_int, get_table_int_opt, get_table_str,
@@ -1227,6 +1235,184 @@ export function dungeon_branch(s) {
 export function at_dgn_entrance(s) {
     const br = dungeon_branch(s);
     return on_level(game.u.uz, br.end1) ? true : false;
+}
+
+// C ref: dungeon.c unplaced_floater()
+function unplaced_floater(dptr) {
+    let br;
+    const idx = game.dungeons.indexOf(dptr);
+
+    /* if other floating branches are added, this will need to change */
+    if (idx !== game.dungeon_topology.d_knox_level.dnum)
+        return false;
+    for (br = game.branches; br; br = br.next)
+        if (br.end1.dnum === game.n_dgns && br.end2.dnum === idx)
+            return true;
+    return false;
+}
+
+// C ref: dungeon.c unreachable_level()
+function unreachable_level(lvl_p, unplaced) {
+    let dummy;
+
+    if (unplaced)
+        return true;
+    if (In_endgame(game.u.uz) && !In_endgame(lvl_p))
+        return true;
+    if ((dummy = find_level("dummy")) !== null && on_level(lvl_p, dummy.dlevel))
+        return true;
+    return false;
+}
+
+// C ref: dungeon.c tport_menu()
+function tport_menu(win, entry, lchoices, lvl_p, cannotreach) {
+    let any = 0;
+    const clr = NO_COLOR;
+
+    lchoices.lev[lchoices.idx] = lvl_p.dlevel;
+    lchoices.dgn[lchoices.idx] = lvl_p.dnum;
+    lchoices.playerlev[lchoices.idx] = depth(lvl_p);
+    if (cannotreach) {
+        /* not selectable, but still consumes next menuletter;
+           prepend padding in place of missing menu selector */
+        entry = `    ${entry}`;
+    } else {
+        any = lchoices.idx + 1;
+    }
+    tty_add_menu(win, null, any, lchoices.menuletter, 0,
+                 ATR_NONE, clr, entry, MENU_ITEMFLAGS_NONE);
+    /* this assumes there are at most 52 interesting levels */
+    if (lchoices.menuletter === 'z')
+        lchoices.menuletter = 'A';
+    else
+        lchoices.menuletter = String.fromCharCode(lchoices.menuletter.charCodeAt(0) + 1);
+    lchoices.idx++;
+}
+
+// C ref: dungeon.c br_string()
+/* Convert a branch type to a string usable by print_dungeon(). */
+function br_string(type) {
+    switch (type) {
+    case BR_PORTAL:
+        return "Portal";
+    case BR_NO_END1:
+        return "Connection";
+    case BR_NO_END2:
+        return "One way stair";
+    case BR_STAIR:
+        return "Stair";
+    }
+    return " (unknown)";
+}
+
+// C ref: dungeon.c chr_u_on_lvl()
+function chr_u_on_lvl(dlev) {
+    const u = game.u;
+    return u.uz.dnum === dlev.dnum && u.uz.dlevel === dlev.dlevel ? '*' : ' ';
+}
+
+// C ref: dungeon.c print_branch()
+/* Print all child branches between the lower and upper bounds. */
+function print_branch(win, dnum, lower_bound, upper_bound, bymenu, lchoices_p) {
+    let br;
+    let buf;
+
+    /* This assumes that end1 is the "parent". */
+    for (br = game.branches; br; br = br.next) {
+        if (br.end1.dnum === dnum && lower_bound < br.end1.dlevel
+            && br.end1.dlevel <= upper_bound) {
+            buf = `${bymenu ? chr_u_on_lvl(br.end1) : ' '} ${br_string(br.type)} to ${
+                    game.dungeons[br.end2.dnum].dname}: ${depth(br.end1)}`;
+            if (bymenu)
+                tport_menu(win, buf, lchoices_p, br.end1,
+                           unreachable_level(br.end1, false));
+            else
+                throw new Error('print_branch(): putstr() to a text window not ported yet');
+        }
+    }
+}
+
+// C ref: dungeon.c print_dungeon() -- the wizard mode level teleport
+// menu (bymenu); the text window listing isn't ported yet.  Returns
+// { lev, rlev, rdgn } for C's return value and *rlev, *rdgn.
+export async function print_dungeon(bymenu) {
+    let i, last_level, nlev;
+    let buf;
+    let descr;
+    let unplaced;
+    let slev;
+    let dptr;
+    const lchoices = { idx: 0, menuletter: 'a', lev: [], dgn: [], playerlev: [] };
+    const win = tty_create_nhwindow(NHW_MENU);
+
+    if (!bymenu)
+        throw new Error('print_dungeon(): the text window listing not ported yet');
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    lchoices.idx = 0;
+    lchoices.menuletter = 'a';
+
+    for (i = 0; i < game.n_dgns; i++) {
+        dptr = game.dungeons[i];
+        if (bymenu && In_endgame(game.u.uz)
+            && i !== game.dungeon_topology.d_astral_level.dnum)
+            continue;
+        unplaced = unplaced_floater(dptr);
+        descr = unplaced ? "depth" : "level";
+        nlev = dptr.num_dunlevs;
+        if (nlev > 1)
+            buf = `${dptr.dname}: ${makeplural(descr)} ${dptr.depth_start} to ${
+                    dptr.depth_start + nlev - 1}`;
+        else
+            buf = `${dptr.dname}: ${descr} ${dptr.depth_start}`;
+
+        /* Most entrances are uninteresting. */
+        if (dptr.entry_lev !== 1) {
+            if (dptr.entry_lev === nlev)
+                buf += ", entrance from below";
+            else
+                buf += `, entrance on ${dptr.depth_start + dptr.entry_lev - 1}`;
+        }
+        add_menu_heading(win, buf);
+
+        /*
+         * Circle through the special levels to find levels that are in
+         * this dungeon.
+         */
+        for (slev = game.sp_levchn, last_level = 0; slev; slev = slev.next) {
+            if (slev.dlevel.dnum !== i)
+                continue;
+
+            /* print any branches before this level */
+            print_branch(win, i, last_level, slev.dlevel.dlevel, bymenu,
+                         lchoices);
+
+            buf = `${chr_u_on_lvl(slev.dlevel)} ${slev.proto}: ${depth(slev.dlevel)}`;
+            if (on_level(slev.dlevel, game.dungeon_topology.d_stronghold_level))
+                buf += ` (tune ${game.tune})`; /* Is_stronghold() */
+            tport_menu(win, buf, lchoices, slev.dlevel,
+                       unreachable_level(slev.dlevel, unplaced));
+
+            last_level = slev.dlevel.dlevel;
+        }
+        /* print branches after the last special level */
+        print_branch(win, i, last_level, MAXLEVEL, bymenu, lchoices);
+    }
+
+    {
+        let n;
+        let idx;
+
+        tty_end_menu(win, "Level teleport to where:");
+        const res = await tty_select_menu(win, PICK_ONE);
+        n = res.n;
+        await tty_destroy_nhwindow(win);
+        if (n > 0) {
+            idx = res.selected[0].item - 1;
+            return { lev: lchoices.playerlev[idx],
+                     rlev: lchoices.lev[idx], rdgn: lchoices.dgn[idx] };
+        }
+        return { lev: 0, rlev: 0, rdgn: 0 };
+    }
 }
 
 // C ref: flag.h wizard macro

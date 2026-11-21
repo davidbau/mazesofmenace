@@ -21,6 +21,36 @@ import { tty_getlin } from './wintty.js';
 import { mungspaces, strstri, strncmpi } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { makemon, makemon_flush_msg } from './makemon.js';
+import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
+import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT,
+         ECMD_OK, ECMD_CANCEL } from './const.js';
+import { check_capacity } from './hack.js';
+import { getobj } from './invent.js';
+
+// C ref: read.c read_ok() -- getobj callback for object to read
+function read_ok(obj) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+
+    if (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS)
+        return GETOBJ_SUGGEST;
+
+    return GETOBJ_DOWNPLAY;
+}
+
+// C ref: read.c doread() -- the #read command; choosing what to read is
+// ported, reading it is not yet
+export async function doread() {
+    game.known = false;
+    if (await check_capacity(null))
+        return ECMD_OK;
+
+    const scroll = await getobj("read", read_ok, GETOBJ_PROMPT);
+    if (!scroll)
+        return ECMD_CANCEL;
+    scroll.pickup_prev = 0; /* no longer 'just picked up' */
+    throw new Error('doread(): reading an object not ported yet');
+}
 
 // C ref: read.c candy_wrappers[]
 const candy_wrappers = [

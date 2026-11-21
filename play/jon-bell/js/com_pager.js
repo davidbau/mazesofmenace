@@ -10,6 +10,7 @@
 // Does NOT import from display.js — render_map_row is inlined below.
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
+import { pgetchar } from './cmd.js';
 import { rank_of_roleidx, role_index_by_name } from './rank_data.js';
 import { COLNO, ROWNO, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, gs, PRIMARYSET, H_UTF8 } from './const.js';
 import { acurr } from './attrib.js';
@@ -421,10 +422,14 @@ export function _overlay_status_line(base, col, text) {
 }
 export function tty_text_window_utf8_line(line) {
     const row = String(line);
-    if (gs.symset?.[rogue_graphics() ? 1 : PRIMARYSET]?.handling !== H_UTF8)
-        return row;
+    const utf8 = gs.symset?.[rogue_graphics() ? 1 : PRIMARYSET]?.handling === H_UTF8;
     return row.replace(/^((?:\x1b\[[0-9;]*m)*)(.)(.*?)((?:\x1b\[[0-9;]*m)*)$/,
-        (_, start, first, rest, end) => ' ' + start + (rest || first) + end);
+        (_, start, first, rest, end) => {
+            // C wintty.c:1825-1834: only the first byte can use g_putch;
+            // later signed bytes pass to putchar and leave their cell blank.
+            const painted = rest.replace(/[\x80-\xff]/g, ' ');
+            return (utf8 ? ' ' : '') + start + (utf8 ? (painted || first) : first + painted) + end;
+        });
 }
 export function build_text_window_screen(lines) {
     const rows = new Array(24).fill('');
@@ -1165,10 +1170,13 @@ export async function topl_more_page(msg, uacAtCapture) {
      * the break space; more():220 reserves room for its marker afterward. */
     const wrapAt = (!inlineMore && msgLen > (COLNO - 1))
         ? msg.lastIndexOf(' ', COLNO - 1) : -1;
+    // C topl.c:158-161,348-350: signed high bytes advance over a blank
+    // message cell; word wrapping still uses the original byte string.
+    const ttyText = text => String(text || '').replace(/[\x80-\xff]/g, '\x1b[1C');
     let output = '';
     if (inlineMore) {
         // Row 0: message + '--More--' on the same line
-        output += (msg || '') + '--More--\n';
+        output += ttyText(msg) + '--More--\n';
         // Row 1: map game y=0 (tty map window offy=1; C paints a y=0 corridor
         // square here, which a restore's docrt() can leave remembered)
         output += render_map_row_clipped(0, COLNO - 1).str + '\n';
@@ -1177,14 +1185,14 @@ export async function topl_more_page(msg, uacAtCapture) {
             output += render_map_row_clipped(y, COLNO - 1).str + '\n';
         }
     } else if (wrapAt > 0) {
-        output += msg.slice(0, wrapAt) + '\n';
-        output += msg.slice(wrapAt + 1) + '--More--\n';
+        output += ttyText(msg.slice(0, wrapAt)) + '\n';
+        output += ttyText(msg.slice(wrapAt + 1)) + '--More--\n';
         for (let y = 1; y < ROWNO; y++) {
             output += render_map_row_clipped(y, COLNO - 1).str + '\n';
         }
     } else {
         // Row 0: message only
-        output += (msg || '') + '\n';
+        output += ttyText(msg) + '\n';
         // Row 1: '--More--'
         output += '--More--\n';
         // Rows 2..21: map game y=1..20
@@ -1467,7 +1475,9 @@ export async function menu_search_getlin(frameRows) {
     };
     for (;;) {
         await render();
-        const keyCode = await nhgetch();
+        /* C getline.c:83 uses pgetchar(), whose fuzzer arm (cmd.c:449-450)
+         * generates a key without a tty_nhgetch input boundary. */
+        const keyCode = await pgetchar();
         if (keyCode === 16 /* ^P */) {
             /* C ref: getline.c:106-119 msg_window:single (or combination acting
              * like single): "need two initially" tty_doprev_message() calls — the

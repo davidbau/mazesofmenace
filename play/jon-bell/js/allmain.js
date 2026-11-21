@@ -2387,7 +2387,7 @@ async function nh_timeout_blinded() {
         return; /* C: still counting down */
     const was_blind = !!Blind();
     set_HBlinded(1);            /* C set_itimeout(&HBlinded, 1L) */
-    make_blinded(0, true);      /* prints "You can see again." */
+    await make_blinded(0, true); /* prints "You can see again." */
     if (was_blind && !Blind())
         await stop_occupation();
 }

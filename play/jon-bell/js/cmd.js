@@ -2294,7 +2294,13 @@ export async function inventory_menu_legacy(opts) {
          * class name to invbuf_sympadding (8) columns. */
         let hdr = CLASS_HEADER[oclass];
         // C pickup.c:1131-1137 also includes symbols for selectable object lists.
-        if ((!opts?.queryObjlist || !opts?.pickNone) && g.iflags?.menu_head_objsym) {
+        // invent.c:3492 display_used_invlets passes showsym FALSE outright
+        // (let_to_name(*invlet, FALSE, FALSE)): its "Inventory letters used:"
+        // headings are the bare class name even under menu_objsyms:headers.
+        // opts.headShowsym===false forces that form for this caller.
+        if (opts?.headShowsym === false
+            ? false
+            : (!opts?.queryObjlist || !opts?.pickNone) && g.iflags?.menu_head_objsym) {
             hdr += ' '.repeat(Math.max(0, 8 - hdr.length - 1))
                 + `  ('${def_oc_syms_chars[oclass]}')`;
         }
@@ -9366,7 +9372,7 @@ async function display_nhwindow(win, _blocking) {
                 ? String(g._screen_output ?? '').split('\n')
                 : new Array(SCREEN_ROWS).fill('');
             for (let r = 0; r < pageLines.length && r < SCREEN_ROWS; r++)
-                rows[r] = pageLines[r];
+                rows[r] = tty_text_window_utf8_line(pageLines[r]);
             rows[moreRow] = ' ' + MOREPROMPT;
             const screen = rows.join('\n');
             _show = async () => {
@@ -11333,7 +11339,9 @@ async function _dolook() {
                         ? '$' : String.fromCharCode(menuAccel);
                     if (accel !== '$') menuAccel = menuAccel === 122 ? 65 : menuAccel + 1;
                     firstMenuItem = false;
-                    windowLines.push(`${accel} - ${(await doname_body(o, hand))}`);
+                    /* windows.c:1796-1809 add_menu: menucolors match the raw
+                     * doname str; tty colours it after the "x - " selector. */
+                    windowLines.push(menucolor_row(`${accel} - ${(await doname_body(o, hand))}`));
                     lineItems.push(null); /* PICK_NONE: entries are informational */
                 }
             }
@@ -11346,8 +11354,9 @@ async function _dolook() {
              * hallucination still consumes random_monster's display draw. */
             if (_cmd_Hallucination())
                 rn2_on_display_rng(monsPack.mons.length);
-            /* pickup.c query_objlist(INCLUDE_HERO): an(self_lookat(buf)). */
-            windowLines.push(`> - ${an(await self_lookat())}`);
+            /* pickup.c query_objlist(INCLUDE_HERO): an(self_lookat(buf)).
+             * windows.c:1803 add_menu menucolors this row like any item. */
+            windowLines.push(menucolor_row(`> - ${an(await self_lookat())}`));
             lineItems.push(null);
             windowLines.push('(end)');
             lineItems.push(null);
@@ -19313,6 +19322,14 @@ export async function yn_function_menu(query, resp, def, opts = {}) {
     // flush_screen first, so more() pages over the terminal as last flushed.
     if (g._pending_message)
         await force_more_lone_frame(g._pending_message);
+    else if (g._resultMessage) {
+        /* Same ttyDisplay->toplin == TOPLINE_NEED_MORE more() when the plines
+         * of this command already sit in the command-result channel (see
+         * com_pager.js display_text_window). */
+        await force_more_pages(g._resultMessage);
+        g._resultMessage = '';
+        g._resultMessageJoins = null;
+    }
     g._pending_message = '';
     g._topl_sticky = null;
     const { TtyMenu, ATR_NONE } = await import('./tty_menu.js');

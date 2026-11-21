@@ -15,6 +15,8 @@ import {
 } from './const.js';
 import { PM_ARCHEOLOGIST } from './monsters.js';
 import { FEDORA, LUCKSTONE } from './objects.js';
+import { stone_luck } from './attrib.js';
+import { carrying } from './invent.js';
 
 /* C ref: role.h Role_if() */
 function Role_if(pm) { return game.urole.mnum === pm; }
@@ -27,30 +29,6 @@ export function confers_luck(obj) {
     /* obj->oartifact && spec_ability(obj, SPFX_LUCK): artifacts aren't
        ported yet */
     return false;
-}
-
-// C ref: attrib.c stone_luck()
-/* there has just been an inventory change affecting a luck-granting item */
-function stone_luck(include_uncursed) {
-    let bonchance = 0;
-
-    for (let otmp = game.invent; otmp; otmp = otmp.nobj)
-        if (confers_luck(otmp)) {
-            if (otmp.cursed)
-                bonchance -= otmp.quan;
-            else if (otmp.blessed || include_uncursed)
-                bonchance += otmp.quan;
-        }
-
-    return Math.sign(bonchance);
-}
-
-// C ref: invent.c carrying()
-function carrying(type) {
-    for (let otmp = game.invent; otmp; otmp = otmp.nobj)
-        if (otmp.otyp === type)
-            return otmp;
-    return null;
 }
 
 // C ref: timeout.c nh_timeout()

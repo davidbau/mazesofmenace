@@ -6,7 +6,9 @@
 // to its trouble fixing and boons.
 
 import { game } from './gstate.js';
-import { rn2, rn1, rnl, rnz, ROLL_FROM } from './rng.js';
+import { rn2, rn1, rnl, rnz, ROLL_FROM, rn2_on_display_rng } from './rng.js';
+import { roles, randrole } from './role.js';
+import { HALLUC_RES } from './const.js';
 import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, IS_ALTAR, Amask2align,
          AM_MASK, AM_SHRINE, PASSES_WALLS, STONED, SLIMED, STRANGLED, SICK,
          BLINDED, DEAF, STUNNED, CONFUSION, HALLUC, WOUNDED_LEGS, UNCHANGING,
@@ -23,6 +25,7 @@ import { is_demon, is_undead } from './mondata.js';
 import { ABASE, AMAX, adjattrib, adjalign, change_luck } from './attrib.js';
 import { losexp } from './exper.js';
 import { near_capacity, nomul } from './hack.js';
+import { paranoid_query } from './cmd.js';
 import { welded, bimanual } from './wield.js';
 import { which_armor, sobj_at, is_pool, is_lava } from './makemon.js';
 import { confers_luck } from './timeout.js';
@@ -32,6 +35,12 @@ import { tty_yn_function } from './wintty.js';
 
 // C ref: pray.c Moloch
 const Moloch = "Moloch";
+
+// C ref: pray.c u_gname()
+/* returns the name of the hero's deity */
+export function u_gname() {
+    return align_gname(game.u.ualign.type);
+}
 
 // C ref: pray.c align_gname()
 export function align_gname(alignment) {
@@ -54,6 +63,83 @@ export function align_gname(alignment) {
         // impossible("unknown alignment.");
         gnam = "someone";
         break;
+    }
+    if (gnam[0] === '_')
+        gnam = gnam.slice(1);
+    return gnam;
+}
+
+// C ref: pray.c hallu_gods[]
+const hallu_gods = [
+    "the Flying Spaghetti Monster", /* Church of the FSM */
+    "Eris",                         /* Discordianism */
+    "the Martians",                 /* every science fiction ever */
+    "Xom",                          /* Crawl */
+    "AnDoR dRaKoN",                 /* ADOM */
+    "the Central Bank of Yendor",   /* economics */
+    "Tooth Fairy",                  /* real world(?) */
+    "Om",                           /* Discworld */
+    "Yawgmoth",                     /* Magic: the Gathering */
+    "Morgoth",                      /* LoTR */
+    "Cthulhu",                      /* Lovecraft */
+    "the Ori",                      /* Stargate */
+    "destiny",                      /* why not? */
+    "your Friend the Computer",     /* Paranoia */
+];
+
+/* C ref: you.h Hallucination -- HHallucination && !Halluc_resistance */
+function Hallucination() {
+    const P = game.u.uprops;
+    return !!((P[HALLUC]?.intrinsic || P[HALLUC]?.extrinsic)
+              && !(P[HALLUC_RES]?.intrinsic || P[HALLUC_RES]?.extrinsic));
+}
+
+// C ref: pray.c halu_gname()
+/* hallucination handling for priest/minion names: select a random god
+   iff character is hallucinating */
+export function halu_gname(alignment) {
+    let gnam = null;
+    let which;
+
+    if (!Hallucination())
+        return align_gname(alignment);
+
+    /* Some roles (Priest) don't have a pantheon unless we're playing as
+       that role, so keep trying until we get a role which does have one.
+       [If playing a Priest, the current pantheon will be twice as likely
+       to get picked as any of the others.  That's not significant enough
+       to bother dealing with.] */
+    do
+        which = randrole(true);
+    while (!roles[which].lgod);
+
+    switch (rn2_on_display_rng(9)) {
+    case 0:
+    case 1:
+        gnam = roles[which].lgod;
+        break;
+    case 2:
+    case 3:
+        gnam = roles[which].ngod;
+        break;
+    case 4:
+    case 5:
+        gnam = roles[which].cgod;
+        break;
+    case 6:
+    case 7:
+        gnam = hallu_gods[rn2_on_display_rng(hallu_gods.length)];
+        break;
+    case 8:
+        gnam = Moloch;
+        break;
+    default:
+        /* impossible("rn2 broken in halu_gname?!?") */
+        break;
+    }
+    if (!gnam) {
+        /* impossible("No random god name?") */
+        gnam = "your Friend the Computer"; /* Paranoia */
     }
     if (gnam[0] === '_')
         gnam = gnam.slice(1);
@@ -584,7 +670,7 @@ function water_prayer(bless_water) {
 }
 
 // C ref: pray.c can_pray()
-async function can_pray(praying) /* false means no messages should be given */ {
+export async function can_pray(praying) /* false means no messages should be given */ {
     const g = game;
     const u = g.u;
     let alignment;
@@ -717,17 +803,6 @@ async function prayer_done() {
     return 1;
 }
 
-// C ref: cmd.c paranoid_query() -> paranoid_ynq() -- the !be_paranoid
-// case: a plain y/n query
-async function paranoid_query(be_paranoid, prompt) {
-    let c;
-    if (be_paranoid)
-        throw new Error('paranoid_query(): paranoid_confirm "yes" query not ported yet');
-    c = await tty_yn_function(prompt, "yn", 'n'); /* ynchars */
-    if (c !== 'y')
-        c = 'n';
-    return c === 'y';
-}
 
 // C ref: pline.c verbalize()
 async function verbalize(line) {

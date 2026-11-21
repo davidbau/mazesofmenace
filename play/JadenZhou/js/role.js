@@ -17,7 +17,7 @@
 // The window calls go to wintty.js (C: the windowprocs of the tty port).
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rn2_on_display_rng } from './rng.js';
 import { strncmpi, strcmpi } from './hacklib.js';
 import {
     SIZE, NON_PM, STR18, A_INT, A_WIS, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, A_NONE,
@@ -618,7 +618,7 @@ export function randrole(for_display) {
     let res = SIZE(roles) - 1;
 
     if (for_display)
-        throw new Error('randrole(TRUE): rn2_on_display_rng() not ported yet');
+        res = rn2_on_display_rng(res);
     else
         res = rn2(res);
     return res;

@@ -14,7 +14,7 @@ import { docrt, cls, bot, flush_screen, pline } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { mcalcmove, mcalcdistress, movemon } from './mon.js';
 import { initrack, settrack } from './track.js';
-import { m_at, makemon } from './makemon.js';
+import { m_at, makemon, makemon_flush_msg } from './makemon.js';
 import { mnexto } from './teleport.js';
 import { makedog } from './dog.js';
 import { deferred_goto } from './do.js';
@@ -31,7 +31,7 @@ import { decl_globals_init } from './decl.js';
 import { sys_early_init } from './sys.js';
 import { role_init, genders, Hello } from './role.js';
 import { u_init_misc, u_init_inventory_attrs, u_init_skills_discoveries,
-         money_cnt } from './u_init.js';
+         money_cnt, find_ac } from './u_init.js';
 import { align_str } from './insight.js';
 import { A_CURRENT, A_ORIGINAL, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, RLOC_NOMSG, NORMAL_SPEED, NO_MM_FLAGS,
          FAST, INTRINSIC, UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER,
@@ -43,7 +43,7 @@ import { A_CURRENT, A_ORIGINAL, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, RLOC_NOMS
 import { rn1 } from './rng.js';
 import { S_EEL, PM_WIZARD } from './monsters.js';
 import { ACURR, exerchk } from './attrib.js';
-import { near_capacity, lookaround, end_running } from './hack.js';
+import { near_capacity, lookaround, end_running, nomul, monster_nearby } from './hack.js';
 import { nh_timeout } from './timeout.js';
 import { dosounds } from './sounds.js';
 import { gethungry } from './eat.js';
@@ -106,8 +106,6 @@ export async function newgame() {
     makedog();
 
     await u_init_inventory_attrs();
-    /* the status line's gold: botl.c shows money_cnt(invent) */
-    g._goldCount = money_cnt(g.invent);
     vision_recalc(0);
     await cls();
     await docrt();
@@ -172,14 +170,21 @@ export async function welcome(new_game) /* false => restoring an old game */ {
 
 // C ref: allmain.c maybe_generate_rnd_mon()
 /* small chance of generating a new random monster */
-function maybe_generate_rnd_mon() {
+async function maybe_generate_rnd_mon() {
     const g = game;
     const u = g.u;
 
     if (!rn2(u.uevent.udemigod ? 25
              : (depth(u.uz) > depth(g.dungeon_topology.d_stronghold_level)) ? 50
-             : 70))
-        makemon(null, 0, 0, NO_MM_FLAGS);
+             : 70)) {
+        g.makemon_want_msg = true; /* see makemon()'s Norep() comment */
+        try {
+            makemon(null, 0, 0, NO_MM_FLAGS);
+        } finally {
+            g.makemon_want_msg = false;
+        }
+        await makemon_flush_msg();
+    }
 }
 
 // C ref: allmain.c u_calc_moveamt()
@@ -266,6 +271,39 @@ function is_pool_or_lava_at_u() {
            || typ === LAVAWALL || typ === DRAWBRIDGE_UP;
 }
 
+// C ref: cmd.c set_occupation()
+export function set_occupation(fn, txt, xtime) {
+    if (xtime)
+        throw new Error('set_occupation(): timed_occupation() not ported yet');
+    game.occupation = fn;
+    game.occtxt = txt;
+    game.occtime = 0;
+}
+
+// C ref: allmain.c stop_occupation()
+export async function stop_occupation() {
+    const g = game;
+    if (g.occupation) {
+        /* maybe_finished_meal(TRUE): only for the eatfood occupation,
+           which isn't ported */
+        await pline(`You stop ${g.occtxt}.`); /* You() */
+        g.occupation = null;
+        g.disp_botl = true; /* in case u.uhs changed */
+        nomul(0);
+    } else if (g.multi >= 0) {
+        nomul(0);
+    }
+    g.cmdq = []; /* cmdq_clear(CQ_CANNED) */
+}
+
+// C ref: eat.c reset_eat() -- we only set a flag here - the actual reset
+// process is done after the round is spent eating
+function reset_eat() {
+    const v = game.context.victual;
+    if (v && v.eating && !v.doreset)
+        v.doreset = true;
+}
+
 // C ref: hack.c unmul()
 async function unmul(msg_override) {
     const g = game;
@@ -273,7 +311,7 @@ async function unmul(msg_override) {
     g.multi = 0; /* caller will usually have done this already */
     if (msg_override)
         g.nomovemsg = msg_override;
-    else if (!g.nomovemsg)
+    else if (g.nomovemsg == null) /* a Null pointer; "" means no message */
         g.nomovemsg = "You can move again."; /* You_can_move_again */
     if (g.nomovemsg) {
         await pline(g.nomovemsg);
@@ -422,7 +460,7 @@ export async function moveloop_core() {
                 /* occasionally add another monster; since this takes
                    place after movement has been allotted, the new
                    monster effectively loses its first turn */
-                maybe_generate_rnd_mon();
+                await maybe_generate_rnd_mon();
 
                 u_calc_moveamt(mvl_wtcap);
                 settrack();
@@ -594,6 +632,7 @@ export async function moveloop_core() {
 
     /* once-per-player-input things go here */
 
+    find_ac();
     // Vision + display
     if (g.vision_full_recalc) {
         vision_recalc(0);
@@ -604,7 +643,16 @@ export async function moveloop_core() {
 
     g.context.move = 1;
 
-    /* if (gm.multi >= 0 && go.occupation): occupations aren't ported yet */
+    if (g.multi >= 0 && g.occupation) {
+        if ((await g.occupation()) === 0)
+            g.occupation = null;
+        if (monster_nearby()) {
+            await stop_occupation();
+            reset_eat();
+        }
+        /* runmode_delay_output(): display timing only */
+        return;
+    }
 
     u.umoved = 0;
 
@@ -621,9 +669,9 @@ export async function moveloop_core() {
                 end_running(true);
             await domove();
         } else {
-            /* --gm.multi; rhack(gc.cmd_key): command counts aren't
-               ported yet */
-            throw new Error('moveloop_core(): repeat count rhack() not ported yet');
+            --g.multi;
+            /* nhassert(gc.command_count != 0) */
+            await rhack(g.cmd_key);
         }
     } else if (g.multi === 0) {
         /* ckmailstatus(): MAIL isn't ported */

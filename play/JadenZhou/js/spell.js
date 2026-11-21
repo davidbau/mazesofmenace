@@ -729,3 +729,22 @@ export function num_spells() {
             break;
     return i;
 }
+
+/* C ref: spell.h enum spellknowledge */
+export const spe_Forgotten = -1, spe_Unknown = 0, spe_Fresh = 1,
+    spe_GoingStale = 2;
+
+// C ref: spell.c known_spell()
+/* returns one of spe_Unknown, spe_Fresh, spe_GoingStale, spe_Forgotten */
+export function known_spell(otyp) {
+    let i, k;
+
+    for (i = 0; (i < MAXSPELL) && (spellid(i) !== NO_SPELL); i++)
+        if (spellid(i) === otyp) {
+            k = spellknow(i);
+            return (k > Math.trunc(KEEN / 10)) ? spe_Fresh
+                   : (k > 0) ? spe_GoingStale
+                     : spe_Forgotten;
+        }
+    return spe_Unknown;
+}

@@ -21,21 +21,25 @@ import {
     Is_waterlevel, HEADSTONE, GP_ALLOW_U, PROT_FROM_SHAPE_CHANGERS,
     D_BROKEN, D_NODOOR, NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, COLNO,
     ROWNO, xdir, ydir, DO_MOVE, TEST_MOVE, WT_TOOMUCH_DIAGONAL, IS_DOOR,
-    IS_FURNITURE, SCORR, SDOOR, TREE, OROOM,
+    IS_FURNITURE, SCORR, SDOOR, TREE, OROOM, P_AXE, ACCESSIBLE, IS_STWALL,
 } from './const.js';
 import { S_NYMPH, M2_STRONG, M2_ROCKTHROW, MZ_HUMAN, AT_BOOM, M1_HIDE,
          PM_GRID_BUG, mons, M1_TUNNEL, M1_NEEDPICK, M1_AMORPHOUS, MZ_SMALL,
          MZ_LARGE, M1_CONCEAL, S_VORTEX, PM_AIR_ELEMENTAL, M1_SLITHY, S_GHOST,
-         PM_ORACLE, S_EEL, PM_DISPLACER_BEAST, M2_PNAME } from './monsters.js';
+         PM_ORACLE, S_EEL, PM_DISPLACER_BEAST, M2_PNAME, AT_EXPL } from './monsters.js';
 import { m_at, is_pool, is_lava, closed_door, may_passwall, sobj_at, goodpos,
-         place_monster } from './makemon.js';
+         place_monster, accessible } from './makemon.js';
+import { dig_typ } from './dig.js';
 import { pline, canspotmon, mon_visible, newsym, sensemon, You, Your,
-         You_cant, pline_The, There } from './display.js';
+         You_cant, pline_The, There, unmap_invisible, unmap_object,
+         glyph_is_invisible } from './display.js';
 import { vision_recalc } from './vision.js';
-import { t_at, VIBRATING_SQUARE, is_pit } from './trap.js';
+import { t_at, VIBRATING_SQUARE, is_pit, WEB } from './trap.js';
 import { dist2 } from './hacklib.js';
 import { onscary } from './monmove.js';
-import { COIN_CLASS, BOULDER, PICK_AXE, DWARVISH_MATTOCK } from './objects.js';
+import { COIN_CLASS, BOULDER, PICK_AXE, DWARVISH_MATTOCK, STATUE, WEAPON_CLASS,
+         TOOL_CLASS, objects } from './objects.js';
+import { back_to_cmap, defsyms_explanation } from './pager.js';
 import { u_on_newpos } from './mklev.js';
 import { doopen_indir } from './lock.js';
 import { do_attack } from './uhitm.js';
@@ -54,10 +58,38 @@ import { AT_ENGL, AT_HUGS, AD_STCK } from './monsters.js';
 import { WT_SQUEEZABLE_INV, A_STR, LANDMINE, SPIKED_PIT, PIT, HOLE, TRAPDOOR,
          LEVEL_TELEP, TELEP_TRAP, ROLLING_BOULDER_TRAP } from './const.js';
 import { CORPSE } from './objects.js';
+import { is_flyer, is_floater } from './mondata.js';
+import { float_vs_flight } from './polyself.js';
+import { pickup } from './pickup.js';
+import { shop_keeper } from './insight.js';
+import { IS_THRONE, IS_GRAVE, IS_FOUNTAIN, IS_ALTAR, D_ISOPEN, STAIRS,
+         ECMD_TIME, ECMD_OK } from './const.js';
+import { dotrap } from './trap.js';
+import { immune_to_trap, into_vs_onto, u_locomotion, trapname,
+         TRAPNUM } from './trap.js';
+import { TRAP_CLEARLY_IMMUNE } from './const.js';
+import { visible_region_at } from './region.js';
+import { paranoid_query } from './cmd.js';
+import { FROMOUTSIDE, MAX_TYPE, NO_TRAP, FAILEDUNTRAP, TIMEOUT, WARNING,
+         IS_SINK } from './const.js';
+import { M1_CLING } from './monsters.js';
+/* C ref: mondata.h is_clinger() */
+function is_clinger(ptr) { return (ptr.mflags1 & M1_CLING) !== 0; }
+import { l_nhcore_call } from './nhlua.js';
+import { NUM_TIPS, TIP_ENHANCE, TIP_SWIM, TIP_UNTRAP_MON, TIP_GETPOS,
+         NHCORE_GETPOS_TIP } from './const.js';
+
+// C's impossible() (pline.c) is not ported yet.
+function impossible(msg) { console.error(`impossible: ${msg}`); }
 
 /* C ref: obj.h is_pick() */
 function is_pick(otmp) {
     return otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK;
+}
+/* C ref: obj.h is_axe() */
+function is_axe(otmp) {
+    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
+            && objects[otmp.otyp].oc_skill === P_AXE);
 }
 
 function strongmonst(ptr) { return (ptr.mflags2 & M2_STRONG) !== 0; }
@@ -148,9 +180,98 @@ export function calc_capacity(xtra_wt) {
     return Math.min(cap, OVERLOADED);
 }
 
+// C ref: hack.c u_rooted()
+export async function u_rooted() {
+    if (!game.youmonst.data.mmove) {
+        await You(`are rooted ${Levitation() || Is_airlevel(game.u.uz)
+                                || Is_waterlevel(game.u.uz)
+                                ? "in place" : "to the ground"}.`);
+        nomul(0);
+        return true;
+    }
+    return false;
+}
+
 // C ref: hack.c near_capacity()
 export function near_capacity() {
     return calc_capacity(0);
+}
+
+// C ref: hack.c pickup_checks()
+/* return 1 if a pickup was attempted (time passes), 0 if not, -1 if the
+   normal pickup can proceed, -2 to loot an engulfer's inventory */
+async function pickup_checks() {
+    const u = game.u;
+
+    /* uswallow case added by GAN 01/29/87 */
+    if (u.uswallow)
+        throw new Error('pickup_checks(): picking up while engulfed not ported yet');
+    if (is_pool(u.ux, u.uy))
+        throw new Error('pickup_checks(): picking things up in water not ported yet');
+    if (is_lava(u.ux, u.uy))
+        throw new Error('pickup_checks(): picking things up in lava not ported yet');
+    if (!(game.level.objects || []).some(o => o.ox === u.ux && o.oy === u.uy
+                                         && o.where === 'OBJ_FLOOR')) { /* !OBJ_AT() */
+        const lev = game.level.at(u.ux, u.uy);
+
+        if (IS_THRONE(lev.typ))
+            await pline(`It must weigh${lev.looted ? " almost" : ""} a ton!`);
+        else if (IS_SINK(lev.typ))
+            await pline_The("plumbing connects it to the floor.");
+        else if (IS_GRAVE(lev.typ))
+            await You("don't need a gravestone.  Yet.");
+        else if (IS_FOUNTAIN(lev.typ))
+            await You(`could drink the ${uhave(HALLUC) ? (() => { throw new Error('pickup_checks(): hliquid() while hallucinating not ported yet'); })() : "water"}...`);
+        else if (IS_DOOR(lev.typ) && (lev.doormask & D_ISOPEN))
+            await pline("It won't come off the hinges.");
+        else if (IS_ALTAR(lev.typ))
+            await pline("Moving the altar would be a very bad idea.");
+        else if (lev.typ === STAIRS)
+            await pline_The("stairs are solidly affixed.");
+        else
+            await pline("There is nothing here to pick up."); /* There() */
+        return 0;
+    }
+    const traphere = t_at(u.ux, u.uy);
+    if (!can_reach_floor(traphere && is_pit(traphere.ttyp)))
+        throw new Error('pickup_checks(): "You cannot reach the <surface>." not ported yet');
+    return -1; /* can do normal pickup */
+}
+
+// C ref: hack.c dopickup() -- the #pickup command
+export async function dopickup() {
+    const count = game.command_count || 0;
+    let ret;
+
+    game.multi = 0; /* always reset */
+
+    if ((ret = await pickup_checks()) >= 0) {
+        return ret ? ECMD_TIME : ECMD_OK;
+    } else if (ret === -2) {
+        throw new Error('dopickup(): loot_mon() not ported yet');
+    } /* else ret == -1 */
+
+    return (await pickup(-count)) ? ECMD_TIME : ECMD_OK;
+}
+
+// C ref: hack.c max_capacity()
+export function max_capacity() {
+    const wt = inv_weight();
+
+    return (wt - (2 * game.wc));
+}
+
+// C ref: hack.c inv_cnt()
+export function inv_cnt(incl_gold) {
+    let otmp = game.invent;
+    let ct = 0;
+
+    while (otmp) {
+        if (incl_gold || otmp.invlet !== '$') /* GOLD_SYM */
+            ct++;
+        otmp = otmp.nobj;
+    }
+    return ct;
 }
 
 // C ref: hack.c check_capacity()
@@ -502,6 +623,37 @@ export function end_running(and_travel) {
         g.multi = 0;
 }
 
+// C ref: hack.c handle_tip() -- maybe show a helpful gameplay tip?
+// returns True if tip gets shown
+export async function handle_tip(tip) {
+    if (game.flags.tips === false) /* flags.tips: On by default */
+        return false;
+
+    const ctx = game.context;
+    if (tip >= 0 && tip < NUM_TIPS && !((ctx.tips || 0) & (1 << tip))) {
+        ctx.tips = (ctx.tips || 0) | (1 << tip);
+        /* the "Tip:" prefix is a hint to use of OPTIONS=!tips to suppress */
+        switch (tip) {
+        case TIP_ENHANCE:
+            await pline("(Tip: use the #enhance command to advance them.)");
+            break;
+        case TIP_SWIM:
+            throw new Error('handle_tip(): TIP_SWIM not ported yet');
+        case TIP_UNTRAP_MON:
+            await pline("(Tip: perhaps #untrap would help?)");
+            break;
+        case TIP_GETPOS:
+            await l_nhcore_call(NHCORE_GETPOS_TIP);
+            break;
+        default:
+            impossible(`Unknown tip in handle_tip(${tip})`);
+            break;
+        }
+        return true;
+    }
+    return false;
+}
+
 // C ref: hack.c nomul()
 export function nomul(nval) {
     const g = game;
@@ -731,16 +883,204 @@ export function check_special_room(newlev) {
     }
 }
 
+/* C ref: youprop.h Levitation, Flying -- with the BLevitation/BFlying
+   blocks (uprops[].blocked), as switch_terrain() needs them */
+function sp_prop(p) {
+    return game.u.uprops[p] || { intrinsic: 0, extrinsic: 0, blocked: 0 };
+}
+function sp_Levitation() {
+    const p = sp_prop(LEVITATION);
+    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
+}
+function sp_Flying() {
+    const p = sp_prop(FLYING);
+    return !!((p.intrinsic || p.extrinsic
+               || (game.u.usteed && is_flyer(game.u.usteed.data)))
+              && !p.blocked);
+}
+
+// C ref: hack.c switch_terrain()
+/* moving onto different terrain might cause Lev or Fly to toggle */
+export async function switch_terrain() {
+    const u = game.u;
+    const lev = game.level.at(u.ux, u.uy);
+    const blocklev = (IS_OBSTRUCTED(lev.typ) || closed_door(u.ux, u.uy)
+                      || IS_WATERWALL(lev.typ)
+                      || lev.typ === LAVAWALL);
+    const was_levitating = sp_Levitation(), was_flying = sp_Flying();
+    const BLev = sp_prop(LEVITATION), BFly = sp_prop(FLYING);
+
+    if (blocklev) {
+        /* called from spoteffects(), stop levitating but skip float_down() */
+        if (sp_Levitation())
+            await You_cant("levitate in here.");
+        BLev.blocked |= FROMOUTSIDE;
+    } else if (BLev.blocked) {
+        BLev.blocked &= ~FROMOUTSIDE;
+        /* we're probably levitating now; if not, we must be chained
+           to a buried iron ball so get float_up() feedback for that */
+        if (sp_Levitation() || BLev.blocked)
+            throw new Error('switch_terrain(): float_up() not ported yet');
+    }
+    /* the same terrain that blocks levitation also blocks flight */
+    if (blocklev) {
+        if (sp_Flying())
+            await You_cant("fly in here.");
+        BFly.blocked |= FROMOUTSIDE;
+    } else if (BFly.blocked) {
+        BFly.blocked &= ~FROMOUTSIDE;
+        float_vs_flight(); /* maybe toggle (BFlying & I_SPECIAL) */
+        if (sp_Flying())
+            await You("start flying.");
+    }
+    if ((sp_Levitation() !== was_levitating) || (sp_Flying() !== was_flying))
+        game.disp_botl = true; /* update Lev/Fly status condition */
+
+    /* if (flags.terrainstatus) classify_terrain(): the option isn't
+       ported */
+}
+
+// C ref: hack.c pooleffects()
+/* extracted from spoteffects; called by spoteffects to check for entering or
+   leaving a pool of water/lava, and by moveloop to check for staying on one;
+   returns true to skip rest of spoteffects */
+export async function pooleffects(newspot) /* true if called by spoteffects */ {
+    const u = game.u;
+
+    /* check for leaving water */
+    if (u.uinwater)
+        throw new Error('pooleffects(): leaving water not ported yet');
+
+    /* check for entering water or lava */
+    if (!u.ustuck && !sp_Levitation() && !sp_Flying()
+        && (is_pool(u.ux, u.uy) || is_lava(u.ux, u.uy))) {
+        if (u.usteed && !(!is_flyer(u.usteed.data) && !is_floater(u.usteed.data)
+                          && !is_clinger(u.usteed.data))) { /* !grounded() */
+            /* floating or clinging steed keeps hero safe (is_flyer() test
+               is redundant; it can't be true since Flying yielded false) */
+            return false;
+        } else if (u.usteed) {
+            /* steed enters pool */
+            throw new Error('pooleffects(): dismount_steed() into a pool not ported yet');
+        }
+        /* not mounted */
+
+        /* if hiding on ceiling then don't automatically enter pool */
+        if (u.umonnum !== u.umonster && is_hider(mons[u.umonnum])
+            && u.uundetected) /* Upolyd && ceiling_hider() */
+            return false;
+
+        /* drown(),lava_effects() return true if hero changes
+           location while surviving the problem */
+        if (is_lava(u.ux, u.uy))
+            throw new Error('pooleffects(): lava_effects() not ported yet');
+        else
+            throw new Error('pooleffects(): drown() not ported yet');
+    }
+    void newspot;
+    return false;
+}
+
+/* C ref: hack.c spoteffects() static locals */
+let inspoteffects = 0;
+let spotloc = { x: 0, y: 0 };
+let spotterrain = STONE;
+let spottrap = null;
+let spottraptyp = NO_TRAP;
+
+// C ref: hack.c spoteffects()
+export async function spoteffects(pick) {
+    const u = game.u;
+    let mtmp;
+    let trap = t_at(u.ux, u.uy);
+    const trapflag = game.iflags?.failing_untrap ? FAILEDUNTRAP : 0;
+
+    /* prevent recursion from affecting the hero all over again
+       [hero poly'd to iron golem enters water here, drown() inflicts
+       damage that triggers rehumanize() which calls spoteffects()...] */
+    if (inspoteffects && u.ux === spotloc.x && u.uy === spotloc.y
+        /* except when reason is transformed terrain (ice -> water) */
+        && spotterrain === game.level.at(u.ux, u.uy).typ
+        /* or transformed trap (land mine -> pit) */
+        && (!spottrap || !trap || trap.ttyp === spottraptyp))
+        return;
+    /* when float_down() puts hero into lava and she teleports out,
+       defer spoteffects() until after "you are back on solid <surface>" */
+    if (game.iflags?.in_lava_effects)
+        return;
+
+    ++inspoteffects;
+    spotterrain = game.level.at(u.ux, u.uy).typ;
+    spotloc = { x: u.ux, y: u.uy };
+
+    /* moving onto different terrain might cause Lev or Fly to toggle;
+      level change sets <ux0,uy0> to <ux,uy>, so this spotterrain
+      check always fails then, but it also sets iflags.terrain_typ */
+    if (spotterrain !== game.level.at(u.ux0, u.uy0).typ
+        || (game.iflags?.terrain_typ ?? MAX_TYPE) === MAX_TYPE)
+        await switch_terrain();
+
+    /* if (pooleffects(TRUE)) goto spotdone; */
+    if (!await pooleffects(true)) {
+        check_special_room(false);
+        if (IS_SINK(game.level.at(u.ux, u.uy).typ) && sp_Levitation())
+            throw new Error('spoteffects(): dosinkfall() not ported yet');
+        if (!game.in_steed_dismounting) { /* if dismounting, check again later */
+            const HLev = sp_prop(LEVITATION);
+
+            /* if levitation is due to time out at the end of this
+               turn, allowing it to do so could give the perception
+               that a trap here is being triggered twice, so adjust
+               the timeout to prevent that */
+            if (trap && (HLev.intrinsic & TIMEOUT) === 1
+                && !(HLev.extrinsic || (HLev.intrinsic & ~(I_SPECIAL | TIMEOUT))))
+                throw new Error('spoteffects(): levitation timing out over a trap not ported yet');
+            /*
+             * If not a pit, pickup before triggering trap.
+             * If pit, trigger trap before pickup.
+             */
+            const pit = (trap && is_pit(trap.ttyp));
+            if (pick && !pit)
+                await pickup(1);
+
+            if (trap) {
+                /*
+                 * dotrap on a fire trap calls melt_ice() which triggers
+                 * spoteffects() (again) which can trigger the same fire
+                 * trap (again).  Use static spottrap to prevent that.
+                 * We track spottraptyp because some traps morph (landmine
+                 * to pit) and any new trap type should get triggered.
+                 */
+                if (!spottrap || spottraptyp !== trap.ttyp) {
+                    spottrap = trap;
+                    spottraptyp = trap.ttyp;
+                    await dotrap(trap, trapflag); /* fall into arrow trap, etc. */
+                    spottrap = null;
+                    spottraptyp = NO_TRAP;
+                }
+            }
+            if (pick && pit)
+                await pickup(1);
+        }
+        /* Warning alerts you to ice danger */
+        if (uhave(WARNING) && game.level.at(u.ux, u.uy).typ === ICE)
+            throw new Error('spoteffects(): ice warnings (spot_time_left()) not ported yet');
+
+        if ((mtmp = m_at(u.ux, u.uy)) != null && !u.uswallow)
+            throw new Error('spoteffects(): monster at the hero\'s spot (falling piercer/surprise) not ported yet');
+    }
+    /* spotdone: */
+    if (!--inspoteffects) {
+        spotterrain = STONE; /* 0 */
+        spotloc = { x: 0, y: 0 };
+    }
+}
+
 /* C ref: shk.c IS_SHOP() -- indexes rooms[] by its argument as given */
 function IS_SHOP(x) {
     return (game.level.rooms?.[x]?.rtype ?? 0) >= SHOPBASE;
 }
 
-/* C ref: shk.c shop_keeper() */
-function shop_keeper(rmno) {
-    return (rmno >= ROOMOFFSET)
-        ? (game.level.rooms?.[rmno - ROOMOFFSET]?.resident || null) : null;
-}
 
 /* C ref: '*in_rooms(x, y, SHOPBASE)' -- the first char of the buffer,
    '\0' when the spot is in no shop */
@@ -1094,9 +1434,8 @@ async function dopush(sx, sy, rx, ry, otmp, costly) {
     }
 
     /* Move the boulder *after* the message. */
-    /* glyph_is_invisible(levl[rx][ry].glyph): unmap_object() */
-    if (game.level.at(rx, ry).glyph_invisible)
-        throw new Error('dopush(): unmap_object() not ported yet');
+    if (glyph_is_invisible(game.level.at(rx, ry).remembered_glyph))
+        unmap_object(rx, ry);
     otmp.next_boulder = 0;
     movobj(otmp, rx, ry); /* does newsym(rx,ry) */
     if (Blind()) {
@@ -1357,7 +1696,7 @@ async function move_out_of_bounds(x, y) {
     const u = game.u;
     if (!isok(x, y)) {
         if (game.context.forcefight)
-            throw new Error('move_out_of_bounds(): domove_fight_empty() not ported yet');
+            return await domove_fight_empty(x, y);
         if (game.flags.mention_walls) {
             let dx = u.dx, dy = u.dy;
 
@@ -1393,6 +1732,70 @@ function avoid_running_into_trap_or_liquid(x, y) {
         if (would_stop)
             game.context.move = 0;
         return would_stop;
+    }
+    return false;
+}
+
+/* C ref: flag.h ParanoidTrap, ParanoidConfirm -- flags.paranoia_bits is
+   PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP by default (options.c
+   initoptions_init()); parsing the paranoid_confirmation option isn't
+   ported */
+function paranoia_default() {
+    if (game.flags.paranoid_confirmation !== undefined
+        || game.flags.paranoid_confirm !== undefined)
+        throw new Error('paranoia_bits: the paranoid_confirmation option is not ported yet');
+    return true;
+}
+function ParanoidTrap() { return paranoia_default(); }
+function ParanoidConfirm() { return !paranoia_default(); }
+
+// C ref: hack.c avoid_trap_andor_region()
+/* if paranoid_confirm:Trap is enabled, check whether the next step forward
+   needs player confirmation due to visible region or discovered trap;
+   result: True => stop moving, False => proceed */
+async function avoid_trap_andor_region(x, y) {
+    const u = game.u;
+    const ctx = game.context;
+    let trap = null;
+    const Hallucination = uhave(HALLUC);
+
+    /* treat entering a visible gas cloud region like entering a trap */
+    if (ParanoidTrap() && !Blind() && !Stunned() && !Confusion() && !Hallucination
+        /* skip if player used 'm' prefix or is moving recklessly */
+        && (!ctx.nopick || ctx.run)
+        /* check for region(s) */
+        && visible_region_at(x, y))
+        throw new Error('avoid_trap_andor_region(): entering a visible region (reg_damg) not ported yet');
+
+    /* maybe ask player for confirmation before walking into known trap */
+    if (ParanoidTrap() && !Stunned() && !Confusion()
+        /* skip if player used 'm' prefix or is moving recklessly */
+        && (!ctx.nopick || ctx.run)
+        /* check for discovered trap */
+        && (trap = t_at(x, y)) && trap.tseen
+        /* check whether attempted move will be viable */
+        && await test_move(u.ux, u.uy, u.dx, u.dy, TEST_MOVE)
+        /* override confirmation if the trap is harmless to the hero */
+        && (immune_to_trap(game.youmonst, trap.ttyp) !== TRAP_CLEARLY_IMMUNE
+            /* Hallucination: all traps still show as ^, but the
+               hero can't tell what they are, so treat as dangerous */
+            || Hallucination)) {
+        const traptype = (Hallucination ? rnd(TRAPNUM - 1) : trap.ttyp);
+        const into = into_vs_onto(traptype);
+
+        /* defsyms[trap_to_defsym(traptype)].explanation, which is what
+           trapname(traptype, TRUE) returns */
+        const qbuf = `Really ${u_locomotion("step")} ${into ? "into" : "onto"} that ${
+            trapname(traptype, true)}?`;
+        /* handled like paranoid_confirm:pray; when paranoid_confirm:trap
+           isn't set, don't ask at all but if it is set (checked above),
+           ask via y/n if parnoid_confirm:confirm isn't also set or via
+           yes/no if it is */
+        if (!await paranoid_query(ParanoidConfirm(), qbuf)) {
+            nomul(0);
+            ctx.move = 0;
+            return true;
+        }
     }
     return false;
 }
@@ -1459,12 +1862,113 @@ async function domove_attackmon_at(mtmp, x, y, displaceu) {
     return false;
 }
 
-/* C ref: hack.c domove_fight_empty() -- 'F' with no monster, or a
-   remembered 'I': neither the 'F' prefix nor remembered invisible
-   monsters are ported yet */
-function domove_fight_empty(x, y) {
-    if (game.context.forcefight)
-        throw new Error('domove_fight_empty(): forcefight not ported yet');
+// C ref: hack.c domove_fight_ironbars()
+function domove_fight_ironbars(x, y) {
+    if (game.context.forcefight && game.level.at(x, y).typ === IRONBARS
+        && game.uwep)
+        throw new Error('domove_fight_ironbars(): hit_bars() not ported yet');
+    return false;
+}
+
+// C ref: hack.c domove_fight_web()
+function domove_fight_web(x, y) {
+    const trap = t_at(x, y);
+
+    if (game.context.forcefight && trap && trap.ttyp === WEB && trap.tseen)
+        throw new Error('domove_fight_web(): cutting a web not ported yet');
+    return false;
+}
+
+// C ref: hack.c domove_fight_empty() -- 'F' with no monster, or a
+// remembered 'I' (the map's glyph at <x,y> is taken from the hero's map
+// memory, which is what the displayed glyph is for a remembered 'I')
+async function domove_fight_empty(x, y) {
+    const unknown_obstacle = "an unknown obstacle";
+    const u = game.u;
+    const off_edge = !isok(x, y);
+    const glyph_invis = !off_edge
+                        && glyph_is_invisible(game.level.at(x, y).remembered_glyph);
+
+    if (off_edge)
+        x = 0, y = 1; /* for forcefight against the edge of the map; make
+                       * sure 'bad' coordinates are within array bounds in
+                       * case a bounds check gets overlooked; avoid <0,0>
+                       * because m_at() might find a vault guard there */
+
+    /* specifying 'F' with no monster wastes a turn */
+    if (game.context.forcefight
+        /* remembered an 'I' && didn't use a move command */
+        || (glyph_invis && !m_at(x, y) && !game.context.nopick)) {
+        let boulder = null;
+        const explo = (u.umonnum !== u.umonster) /* Upolyd */
+                      && (game.youmonst.data.mattk || []).some(a => a.aatyp === AT_EXPL);
+        const solid = (off_edge || (!accessible(x, y)
+                                    || IS_FURNITURE(game.level.at(x, y).typ)));
+        let buf;
+
+        if (off_edge) {
+            /* treat as if solid rock, even on planes' levels */
+            buf = unknown_obstacle;
+        } else {
+            if (!Underwater()) {
+                boulder = sobj_at(BOULDER, x, y);
+                /* if a statue is displayed at the target location,
+                   player is attempting to attack it [and boulder
+                   handling below is suitable for handling that] */
+                const rg = game.level.at(x, y).remembered_glyph;
+                if (rg && rg.statue)
+                    throw new Error('domove_fight_empty(): attacking a displayed statue not ported yet');
+
+                /* force fight at boulder/statue or wall/door while wielding
+                   pick:  start digging to break the boulder or wall
+                   (remembered 'I' and monster glyphs at the spot aren't
+                   tracked by this port's map memory) */
+                if (game.context.forcefight
+                    /* can we dig? */
+                    && game.uwep && dig_typ(game.uwep, x, y))
+                    throw new Error('domove_fight_empty(): use_pick_axe2() not ported yet');
+            }
+
+            /* about to become known empty -- remove 'I' if present */
+            unmap_object(x, y);
+            if (boulder)
+                throw new Error('domove_fight_empty(): map_object(boulder) not ported yet');
+            newsym(x, y);
+
+            if (boulder) {
+                throw new Error('domove_fight_empty(): ansimpleoname() not ported yet');
+            } else if (Underwater() && !is_pool(x, y)) {
+                throw new Error('domove_fight_empty(): Underwater not ported yet');
+            } else if (solid) {
+                /* glyph might indicate unseen terrain if hero is blind;
+                   unlike searching, this won't reveal what that terrain is;
+                   5.0: used to say "solid rock" for STONE, but that made it be
+                   different from unmapped walls outside of rooms (and was wrong
+                   on arboreal levels) */
+                const lev = game.level.at(x, y);
+                if (lev.seenv || IS_STWALL(lev.typ)
+                    || lev.typ === SDOOR || lev.typ === SCORR) {
+                    buf = the(defsyms_explanation[back_to_cmap(x, y)]);
+                } else {
+                    buf = unknown_obstacle;
+                }
+                /* note: 'solid' is misleadingly named and catches pools
+                   of water and lava as well as rock and walls;
+                   5.0: furniture too */
+            } else {
+                buf = "thin air";
+            }
+        }
+
+        /* futile: */
+        await You(`${!(boulder || solid) ? "" : !explo ? "harmlessly " : "futilely "}`
+                  + `${explo ? "explode at" : "attack"} ${buf}.`);
+
+        nomul(0);
+        if (explo)
+            throw new Error('domove_fight_empty(): explum() not ported yet');
+        return true;
+    }
     return false;
 }
 
@@ -1634,28 +2138,30 @@ async function domove_core() {
     }
 
     if (!displaceu.val) {
-        /* domove_fight_ironbars(), domove_fight_web(): 'F' only */
-        if (ctx.forcefight)
-            throw new Error('domove_core(): forcefight not ported yet');
 
-        if (domove_fight_empty(x, y))
+        if (domove_fight_ironbars(x, y))
             return;
 
-        /* (void) unmap_invisible(x, y): remembered 'I' isn't ported */
+        if (domove_fight_web(x, y))
+            return;
+
+        if (await domove_fight_empty(x, y))
+            return;
+
+        unmap_invisible(x, y);
         /* not attacking an animal, so we try to move */
         if ((u.dx || u.dy) && u.usteed)
             throw new Error('domove_core(): stucksteed() not ported yet');
 
-        /* u_rooted() */
-        if (!game.youmonst.data.mmove) {
-            await You(`are rooted ${Levitation() || Is_airlevel(u.uz)
-                                          || Is_waterlevel(u.uz)
-                                          ? "in place" : "to the ground"}.`);
-            nomul(0);
+        if (await u_rooted())
             return;
-        }
 
-        /* ParanoidTrap (paranoid_confirm:trap): the option isn't ported */
+        /* handling for paranoid_confirm:Trap which doubles as
+           paranoid_confirm:Region */
+        if (ParanoidTrap()) {
+            if (await avoid_trap_andor_region(x, y))
+                return;
+        }
 
         if (u.utrap)
             throw new Error('domove_core(): trapmove() not ported yet');
@@ -1743,7 +2249,13 @@ async function domove_core() {
         /* invocation_message(): only on the vibrating square level */
     }
 
-    /* if (u.umoved) spoteffects(TRUE): not ported yet */
+    /* if (Punished) move_bc(...): Punished throws above */
+
+    if (u.umoved)
+        await spoteffects(true);
+
+    /* delay next move because of ball dragging: cause_delay is only set
+       by drag_ball(), which isn't ported */
 
     /* runmode_delay_output(): display timing only */
 }

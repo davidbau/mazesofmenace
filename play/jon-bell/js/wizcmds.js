@@ -1042,7 +1042,8 @@ import { fully_identify_obj, invletter_value, prinv } from './invent.js';
 import { level_tele } from './teleport.js'; // relocate-fns
 import { visctrl as _binds_visctrl } from './cmd_binds.js';
 import { cmd_from_func as _binding_cmd_from_func } from './cmd.js'; // relocate-fns
-import { build_window_screen, menu_search_case } from './com_pager.js'; // relocate-fns
+import { build_window_screen, menu_search_case, menu_search_docorner } from './com_pager.js'; // relocate-fns
+import { overlay_flushed_cells } from './display.js';
 import { BLINDED, CONFUSION, DEAF, FIRE_RES, FLYING, GLIB, HALLUC, HALLUC_RES, In_endgame, In_sokoban, Is_earthlevel, Is_firelevel as Is_firelevel_cmd, Is_knox_level, LEVITATION, PICK_NONE, PROT_FROM_SHAPE_CHANGERS, SICK, SICK_NONVOMITABLE, SICK_VOMITABLE, SLIMED, STONE, STONED, STUNNED, TIMEOUT, VOMITING, WARN_OF_MON, WWALKING, gs } from './const.js'; // relocate-fns
 import { capture_painted_frame_with_status, docorner_blank_utf8_captures, force_more_pages, map_engraving, map_trap, menu_entry_page } from './display.js';
 import { glyph_to_cmap, wizcustom_glyphids, glyphid_cache_status, fill_glyphid_cache, free_glyphid_cache } from './glyphs.js'; // relocate-fns
@@ -1317,6 +1318,18 @@ export async function wiz_migrate_mons() {
  * handling.  ECMD_OK on every path that returns: no turn, no RNG. */
 export async function wiz_panic() {
     if (game.iflags?.debug_fuzzer) {
+        /* C wizcmds.c:536-540 changes these resources without SET_BOTL.
+         * Keep the physical status fields until the next bot() paint, using
+         * the same display-only latches as healup() and spell energy costs.
+         * A polymorphed hero's displayed monster HP is not changed here. */
+        if (!Upolyd(game.u) && game._botlStaleHp === undefined) {
+            game._botlStaleHp = game.u.uhp;
+            game._botlStaleHpmax = game.u.uhpmax;
+        }
+        if (game._botlStaleUen === undefined) {
+            game._botlStaleUen = game.u.uen;
+            game._botlStaleUenmax = game.u.uenmax;
+        }
         game.u.uhp = game.u.uhpmax = 1000;
         game.u.uen = game.u.uenmax = 1000;
         return ECMD_OK;
@@ -1693,6 +1706,12 @@ export async function wiz_identify() {
         // wintty.c:1177-1193 updates only the marker cell after a selection.
         // Once touched, a deselected row keeps '-' until the page is rebuilt.
         const stateDrawn = new Set();
+        const searchPaint = menu_search_paint(WIN_COL_W + 2);
+        const drawState = (o) => {
+            stateDrawn.add(o);
+            searchPaint.marker(lineObj.indexOf(o), () => selected.has(o)
+                ? (selectedCounts.has(o) ? '#' : '+') : '-');
+        };
         let counting = false, count = 0n, resetCount = true;
         /* C ref: win/tty/getline.c:213 — tty_getlin's closing
          * clear_nhwindow(WIN_MESSAGE) blanks the WHOLE of screen row 0,
@@ -1713,7 +1732,7 @@ export async function wiz_identify() {
                 }
             }
             if (titleErased) rows[0] = '';
-            return build_window_screen(rows, WIN_COL_W, uacW).split('\n');
+            return searchPaint.apply(build_window_screen(rows, WIN_COL_W, uacW).split('\n'));
         };
         const repaint = () => {
             g._screen_output = frameRows().join('\n');
@@ -1721,8 +1740,11 @@ export async function wiz_identify() {
         };
         const accel = new Map();          /* keycode -> payload */
         accel.set(0x5f /* '_' */, WIZID_ALL);
-        accel.set(g.iflags.override_ID /* visctrl'd group accelerator */, WIZID_ALL);
         for (const o of unid) accel.set(o.invlet | 0, o);
+        const groupForKey = (key) => [
+            ...(key === g.iflags.override_ID ? [WIZID_ALL] : []),
+            ...unid.filter(o => def_oc_syms_chars[o.oclass]?.charCodeAt(0) === key),
+        ];
         /* C ref: wintty.c:2596-2600 tty_add_menu — a selectable entry's stored
          * str is "%c - %s", which is what MENU_SEARCH's pmatchi() matches
          * against (wintty.c:1714).  lineObj[] already marks which rendered rows
@@ -1740,7 +1762,7 @@ export async function wiz_identify() {
         }
         let cancelled = false;
         const toggle = (o) => {
-            stateDrawn.add(o);
+            drawState(o);
             if (selected.has(o)) {
                 if (counting && count > 0n) selectedCounts.set(o, count);
                 else { selected.delete(o); selectedCounts.delete(o); }
@@ -1758,17 +1780,16 @@ export async function wiz_identify() {
             repaint();
             const raw = await nhgetch();
             const rawk = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
-            /* C wintty.c:1556-1560: explicit item/group accelerators win;
-             * other keys go through the configured menu command aliases. */
-            const explicit = accel.has(rawk)
-                || unid.some(o => def_oc_syms_chars[o.oclass]?.charCodeAt(0) === rawk);
+            /* wintty.c:1498,1526-1530,1555-1560: in PICK_ANY only
+             * individual selectors precede menu aliases. Group accelerators
+             * are appended after resp_len and use the mapped key. */
+            const explicit = accel.has(rawk);
             const k = explicit ? rawk : map_menu_cmd(rawk);
             if (k >= 48 && k <= 57) {
                 /* wintty.c:1577-1580: a digit which is a class key (the
                  * ball class is '0') starts a group selection, unless a
                  * count is already being entered. */
-                const digitGroup = !counting && unid.filter(o =>
-                    def_oc_syms_chars[o.oclass]?.charCodeAt(0) === k);
+                const digitGroup = !counting && groupForKey(k);
                 if (digitGroup && digitGroup.length) {
                     for (const o of digitGroup) toggle(o);
                     continue;
@@ -1799,16 +1820,16 @@ export async function wiz_identify() {
                         || (mode === 1 && !selected.has(o)))) continue;
                     if (bulk === 'select') {
                         if (selected.has(o)) continue;
-                        stateDrawn.add(o);
+                        drawState(o);
                         selectedCounts.delete(o);
                         selected.add(o);
                     } else if (bulk === 'unselect' || selected.has(o)) {
                         if (!selected.has(o)) continue;
-                        stateDrawn.add(o);
+                        drawState(o);
                         selected.delete(o);
                         selectedCounts.delete(o);
                     } else {
-                        stateDrawn.add(o);
+                        drawState(o);
                         selected.add(o);
                         selectedCounts.delete(o);
                     }
@@ -1816,8 +1837,8 @@ export async function wiz_identify() {
                 continue;
             }
             // invent.c:3321-3327; wintty.c:1739-1747: class keys invert the group.
-            const group = unid.filter(o => def_oc_syms_chars[o.oclass]?.charCodeAt(0) === k);
-            if (!accel.has(k) && group.length) {
+            const group = groupForKey(k);
+            if (group.length) {
                 for (const o of group) toggle(o);
                 continue;
             }
@@ -1829,9 +1850,11 @@ export async function wiz_identify() {
             if (k === 58 /* ':' MENU_SEARCH */) {
                 /* C ref: wintty.c:1700-1730.  PICK_ANY, so every match toggles
                  * and the menu stays up. */
+                searchPaint.begin();
                 await menu_search_case('ANY', mlist, frameRows, (curr) => {
                     toggle(curr.payload);
                 });
+                searchPaint.clear(frameRows());
                 titleErased = true;
                 continue;
             }
@@ -1889,9 +1912,10 @@ export async function wiz_identify() {
      * clear_nhwindow(WIN_MESSAGE), which blanks screen row 0 for the rest of
      * this select_menu() call (the page is not repainted). */
     let titleErased = false;
+    const searchPaint = menu_search_paint(WIN_COL + 2);
     const frameRows = () =>
-        build_window_screen(titleErased ? ['', ...windowLines.slice(1)] : windowLines,
-                            WIN_COL, g.u?.uac ?? 0).split('\n');
+        searchPaint.apply(build_window_screen(titleErased ? ['', ...windowLines.slice(1)] : windowLines,
+                            WIN_COL, g.u?.uac ?? 0).split('\n'));
     const repaint = () => {
         g._screen_output = frameRows().join('\n');
         set_cursor(endCursorCol, endRow);
@@ -1913,7 +1937,9 @@ export async function wiz_identify() {
              * the tty_getlin DOES open even though this window has nothing
              * selectable for pmatchi to find.  The prompt frame is a real,
              * different screen; only the match loop is a no-op. */
+            searchPaint.begin();
             await menu_search_case('ANY', [], frameRows, () => {});
+            searchPaint.clear(frameRows());
             titleErased = true;
         }
         repaint();
@@ -1929,6 +1955,42 @@ export async function wiz_identify() {
     }
     /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
     return ECMD_OK;
+}
+
+/* getline.c:213 -> wintty.c:1047-1056,3650-3721: clearing a wrapped
+ * getlin restores map rows, without repainting the menu page. Later
+ * set_item_state() calls write only the marker cell on those rows; a page
+ * redraw replaces the whole window. Keep those physical writes separately
+ * from the menu strings which are still used for searching and selection. */
+function menu_search_paint(markerColumn) {
+    const cleared = new Map(), markers = new Map(), recent = new Map();
+    let searching = false;
+    return {
+        begin() { recent.clear(); searching = true; },
+        marker(row, read) {
+            if (searching) recent.set(row, read);
+            if (cleared.has(row)) markers.set(row, read);
+        },
+        clear(rows) {
+            const restored = menu_search_docorner(rows.slice());
+            for (let row = 1; row <= (game._menu_search_wrapped | 0) && row < rows.length; row++) {
+                cleared.set(row, restored[row]);
+                markers.delete(row);
+                if (recent.has(row)) markers.set(row, recent.get(row));
+            }
+            searching = false;
+        },
+        apply(rows) {
+            for (const [row, text] of cleared) rows[row] = text;
+            const cells = new Map();
+            for (const [row, read] of markers) {
+                const ch = read();
+                cells.set(row * COLNO + markerColumn, { ch, paint: ch });
+            }
+            return overlay_flushed_cells(rows, cells);
+        },
+        redraw() { cleared.clear(); markers.clear(); recent.clear(); },
+    };
 }
 
 async function tty_menu_pick_any(mlist, prompt, opts = {}) {
@@ -1962,6 +2024,7 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
         }
     }
     const pageOf = (p) => lines.slice(p * lmax, (p + 1) * lmax);
+    const searchPaint = menu_search_paint(3);
     /* C wintty.c set_item_state() — the INCREMENTAL one-character repaint after
      * a toggle: '+' for a plain selection, '#' when a count is attached.  The
      * full-page draw in process_menu_window uses '*' rather than '+' for a
@@ -1970,6 +2033,7 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
      * function of `selected` alone. */
     const set_item_state = (it) => {
         it.mark = !it.selected ? '-' : (it.count === -1 ? '+' : '#');
+        searchPaint.marker(pageOf(curr_page).indexOf(it), () => it.mark);
     };
     const draw_item_state = (it) => {
         it.mark = !it.selected ? (it.glyphTxt ?? '-') : (it.count === -1 ? '*' : '#');
@@ -2010,7 +2074,7 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
             ? `(${page + 1} of ${npages})` : '(end)';
         rows.push(` ${footer}`);
         if (titleErased) rows[0] = '';
-        return { rows, footer };
+        return { rows: searchPaint.apply(rows), footer };
     };
     const render = (page) => {
         const { rows, footer } = frameRows(page);
@@ -2030,6 +2094,7 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
              * (term_clear_screen for a full-screen menu), so a title row a
              * MENU_SEARCH's getlin erased comes back here and nowhere else. */
             titleErased = false;
+            searchPaint.redraw();
             for (const it of pageOf(curr_page))
                 if (it.selectable) draw_item_state(it);
             need_draw = false;
@@ -2054,21 +2119,26 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
             set_item_state(it);
         };
         if (hit) {
-            toggle_menu_curr(hit);
-            continue;
-        }
-        /* C wintty.c:1739-1747: group accelerators invert matching entries
-         * across the entire menu, including entries on other pages. */
-        const group = lines.filter(it => it.selectable && it.groupacc && it.groupacc === rawch);
-        if (group.length && (!counting || rawRead < 48 || rawRead > 57)) {
-            for (const it of group) toggle_menu_curr(it);
+            /* MENU_EXPLICIT_CHOICE still checks gacc first in the default
+             * arm (wintty.c:1733-1747), even when a selector shares its key. */
+            const group = lines.filter(it => it.selectable && it.groupacc === rawch);
+            if (group.length) {
+                for (const it of group) toggle_menu_curr(it);
+            } else toggle_menu_curr(hit);
             continue;
         }
         /* C wintty.c:1560 — non-explicit keys drive the switch through
          * map_menu_cmd() (BINDINGS alias -> its command's key). */
         const key = map_menu_cmd(rawRead);
         const ch = (key >= 0 && key < 128) ? String.fromCharCode(key) : '';
+        const group = lines.filter(it => it.selectable && it.groupacc && it.groupacc === ch);
         if (ch >= '0' && ch <= '9') {
+            /* wintty.c:1577-1580: a group digit starts a selection only
+             * when no count is in progress. */
+            if (!counting && group.length) {
+                for (const it of group) toggle_menu_curr(it);
+                continue;
+            }
             /* C wintty.c:1583-1602 uses AppendLongDigit, not floating point.
              * An overflowing long discards the count on the next iteration. */
             count = count * 10n + BigInt(key - 48);
@@ -2156,6 +2226,7 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
              * never finishes early.  What pmatchi sees is what tty_add_menu
              * STORED, "%c - %s" (wintty.c:2596-2600) — the selector and a
              * literal " - ", never the '*'/'+'/'#' the page is drawn with. */
+            searchPaint.begin();
             if (await menu_search_case(
                     'ANY',
                     lines.filter((it) => it.selectable)
@@ -2163,9 +2234,16 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
                     () => frameRows(curr_page).rows,
                     (curr) => toggle_menu_curr(curr.it)))
                 finished = true;
+            searchPaint.clear(frameRows(curr_page).rows);
             titleErased = true;
             break;
         default:
+            /* wintty.c:1739-1747: mapped group accelerators invert matching
+             * entries across the entire menu, including other pages. */
+            if (group.length) {
+                for (const it of group) toggle_menu_curr(it);
+                break;
+            }
             /* C: tty_nhbell() — unacceptable input, screen unchanged.
              * getline.c:250-254 xwaitforspace(resp) swallows a key outside resp
              * inside the wait, so a pending count survives it (reset_count
@@ -2323,7 +2401,7 @@ export async function wiz_intrinsic() {
             ? (frozenPaint || capture_painted_frame_with_status()) : null;
         switch (p) {
         case BLINDED:
-            make_blinded(newtimeout, true);
+            await make_blinded(newtimeout, true);
             break;
         /* C wizcmds.c:1030 make_confused() is #if 0'd out — CONFUSION uses the
          * `default` arm "because make_confused() only gives feedback when
@@ -2395,7 +2473,7 @@ export async function wiz_intrinsic() {
              * the shared feedback tail must NOT incr_itimeout() again; C
              * expresses that as `if (p != GLIB)` inside def_feedback.  The
              * FALLTHROUGH into `default` is why GLIB still gets the pline. */
-            make_glib(newtimeout);
+            make_glib(newtimeout | 0); // C wizcmds.c:1070: (int) newtimeout
             /* FALLTHROUGH */
         default:
             def_feedback = true;

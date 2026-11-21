@@ -33,7 +33,6 @@ import { impossible_printer, youFeel, youHear, youSee } from './pline.js';
 import { ATR_NONE, NO_COLOR } from './terminal.js';
 import { vision_recalc } from './vision.js';
 import { decode_mixed } from './windows.js';
-import { nomux_putch_byte } from './termcap.js';
 import { tty_raw_print } from './tty_rawprint.js';
 import { msgtype_type } from './options.js';
 import { sound_speak } from './sounds.js';
@@ -70,20 +69,6 @@ export const TOPLINE_NEED_MORE = 1;
 // state is not TOPLINE_EMPTY -- which is how getdir()'s clear_nhwindow() takes
 // an answered prompt off the top line.
 export const TOPLINE_NON_EMPTY = 2;
-
-function ttyByteText(value) {
-    // topl.c keeps the raw byte string for wrapping and message history.
-    // topl_putsym() moves the cursor for '\b' and '\n' and, for any other
-    // byte, advances it and putchar()s the byte, which recorder patch 006's
-    // nomux_putch() leaves out of the shadow grid when it is a control byte
-    // or, as a signed char, a high byte (nomux_putch_byte()). NUL is an
-    // internal skipped-byte marker: it occupies one logical byte cell but is
-    // not a wrapping space.
-    return textBytes(value).map((byte) => (
-        byte === 0x08 || byte === 0x0A || nomux_putch_byte(byte) !== null
-            ? String.fromCharCode(byte) : '\0'
-    )).join('');
-}
 
 // C ref: pline.c vpline()'s modest-overflow arm. The formatted byte string is
 // reduced to BUFSZ - 1 bytes once, before MSGTYPE lookup, TTY rendering, and
@@ -149,15 +134,23 @@ function writeMorePromptAtCursor(display, promptAttr) {
 // membership test, exactly as in C.
 const QUITCHARS = ' \r\n\u001B';
 
-// C ref: win/tty/getline.c xwaitforspace().  Returns morc, the key that ended
-// the wait.  ttyDisplay->dismiss_more starts at 0, which matches no key a
-// session can send, so only `s` and the unconditional CR and LF dismiss the
-// prompt.
-export async function xwaitforspace(
-    state = game,
-    s = QUITCHARS,
-    dismissMore = 0,
-) {
+// C ref: win/tty/getline.c xwaitforspace().  Returns the key that ended the
+// wait and leaves C's file-global morc in display.morc: 0 after Return or
+// Enter, Escape after Escape, otherwise the accepted key.
+//
+// The extra key it accepts is ttyDisplay->dismiss_more, read here as C reads
+// it (getline.c:232) and never passed in: tty_doprev_message() sets it to
+// Ctrl-P and tty_message_menu() to an inventory letter, and every --More--,
+// text window and menu page reached meanwhile honours it. Escape also
+// stores 1 in it (getline.c:246), which stays until one of those two
+// functions next clears it. scripts/xwaitforspace-dismiss-more.test.mjs
+// keeps callers from supplying the key themselves.
+export async function xwaitforspace(state = game, s = QUITCHARS) {
+    const display = state.nhDisplay;
+    // `x = ttyDisplay ? (int) ttyDisplay->dismiss_more : '\n'`; a display-less
+    // caller's '\n' adds nothing to the Return test below.
+    const x = display?.dismiss_more ?? 0;
+    if (display) display.morc = 0;
     for (;;) {
         const code = await nhgetch(state);
         if (code === 10 || code === 13) return code;
@@ -168,11 +161,19 @@ export async function xwaitforspace(
         if (!state.iflags?.cbreak) continue;
         // Escape has its own arm above the membership test, so it dismisses
         // the prompt whatever `s` holds.  tty_nhgetch() already substituted it
-        // for NUL.  All other keys ring the bell and leave this boundary
-        // unchanged.
-        if (code === 27 || s.includes(String.fromCharCode(code))
-            || (dismissMore !== 0 && code === dismissMore))
+        // for NUL.
+        if (code === 27) {
+            if (display) {
+                display.dismiss_more = 1;
+                display.morc = 27;
+            }
             return code;
+        }
+        // All other keys ring the bell and leave this boundary unchanged.
+        if (s.includes(String.fromCharCode(code)) || (x !== 0 && code === x)) {
+            if (display) display.morc = code;
+            return code;
+        }
     }
 }
 
@@ -206,7 +207,6 @@ export function clearTtyMessageWindow(state = game) {
 export async function dismissPendingTtyMessage(
     state = game,
     {
-        dismissMore = 0,
         preventEscapeStop = false,
         returnResponse = false,
         alwaysPrompt = false,
@@ -240,8 +240,7 @@ export async function dismissPendingTtyMessage(
 
     // wintty.c tty_nhgetch() clears WIN_STOP before every key. more() restores
     // it only when this prompt's final response is Escape without WIN_NOSTOP.
-    const response = await xwaitforspace(state, QUITCHARS, dismissMore);
-    display.morc = response;
+    const response = await xwaitforspace(state, QUITCHARS);
 
     if (multiline) {
         // more() calls docorner(1, cw->cury + 1, 0) after the key boundary.
@@ -429,8 +428,14 @@ async function ttyPlineCore(
     // for the whole process, but no reader looks past the current message.
     const fromYouBuf = printedFromYouBuf(message, state);
     if (fromYouBuf) (state.gy ??= {}).you_buf = message;
+    // topl.c keeps the message's bytes in gt.toplines and the history ring
+    // exactly as pline.c hands them over. Which of them the recorder
+    // captures is decided where each is printed (GameDisplay.putch() for
+    // topl_putsym()'s char hook, tty_menu.js writeStyledText() for
+    // process_text_window()'s g_putch() of a line's first byte), so the
+    // stored text never replaces a byte with a stand-in.
     let normalizedMessage = normalizeVplineMessage(message);
-    let next = ttyByteText(normalizedMessage);
+    let next = normalizedMessage;
     if (viaVpline && vplineRawPrint(normalizedMessage, state)) return true;
     const noRepeat = Boolean(pflags & PLINE_NOREPEAT);
     const urgentMessage = Boolean(pflags & URGENT_MESSAGE);
@@ -455,7 +460,7 @@ async function ttyPlineCore(
         // prints that format unexpanded.
         if (fromYouBuf && state.gy.you_buf !== message) {
             normalizedMessage = normalizeVplineMessage(state.gy.you_buf);
-            next = ttyByteText(normalizedMessage);
+            next = normalizedMessage;
         }
     }
     // A shown message replaces any show_topl() layout; the SUPPRESS_HISTORY

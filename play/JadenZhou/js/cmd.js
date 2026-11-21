@@ -14,7 +14,7 @@ import { dopray } from './pray.js';
 import { dotalk } from './sounds.js';
 import { extcmdlist, CMD_NOT_AVAILABLE, INTERNALCMD, WIZMODECMD, AUTOCOMPLETE,
          ECM_IGNOREAC, ECM_EXACTMATCH, ECM_NO1CHARCMD, IFBURIED, PREFIXCMD,
-         MOVEMENTCMD } from './func_tab.js';
+         MOVEMENTCMD, CMD_PARAM, CMD_M_PREFIX, CMD_gGF_PREFIX } from './func_tab.js';
 import { strcmpi, strncmpi, highc } from './hacklib.js';
 import { dosearch } from './detect.js';
 import { level_tele } from './teleport.js';
@@ -29,17 +29,23 @@ import { dovspell, docast } from './spell.js';
 import { dodiscovered } from './o_init.js';
 import { doattributes } from './insight.js';
 import { wiz_genesis } from './wizcmds.js';
-import { dodrop } from './do.js';
+import { dodrop, dodown, doup } from './do.js';
 import { dozap } from './zap.js';
 import { docallcmd } from './do_name.js';
 import { doloot } from './pickup.js';
+import { dopickup } from './hack.js';
 import { Never_mind, isok } from './const.js';
-import { dofire } from './dothrow.js';
-import { doswapweapon, dowieldquiver } from './wield.js';
-import { doapply, dorub } from './apply.js';
+import { dofire, dothrow } from './dothrow.js';
+import { dokick } from './dokick.js';
+import { doswapweapon, dowieldquiver, dowield, dotwoweapon } from './wield.js';
+import { doapply, dorub, dojump } from './apply.js';
 import { doeat } from './eat.js';
-import { dowear, doputon } from './do_wear.js';
+import { dowear, doputon, dotakeoff, ia_dotakeoff } from './do_wear.js';
 import { dodrink } from './potion.js';
+import { dotogglepickup, doset_simple, doset } from './options.js';
+import { doread } from './read.js';
+import { dohelp } from './pager.js';
+import { doopen } from './lock.js';
 
 // C ref: cmd.c extcmds_match() -- the indices of the extcmdlist[]
 // entries matching findstr
@@ -93,10 +99,14 @@ const cmd_funcs = {
     docast: () => docast(),
     wiz_genesis: () => wiz_genesis(),
     dodrop: () => dodrop(),
+    dodown: () => dodown(),
+    doup: () => doup(),
     dozap: () => dozap(),
     docallcmd: () => docallcmd(),
     doloot: () => doloot(),
     dofire: () => dofire(),
+    dothrow: () => dothrow(),
+    dokick: () => dokick(),
     doswapweapon: () => doswapweapon(),
     dowieldquiver: () => dowieldquiver(),
     doapply: () => doapply(),
@@ -104,8 +114,24 @@ const cmd_funcs = {
     doeat: () => doeat(),
     dowear: () => dowear(),
     doputon: () => doputon(),
+    dotakeoff: () => dotakeoff(),
+    ia_dotakeoff: () => ia_dotakeoff(),
     dodrink: () => dodrink(),
     dolook: () => dolook(),
+    doread: () => doread(),
+    dowield: () => dowield(),
+    dotwoweapon: () => dotwoweapon(),
+    dohelp: () => dohelp(),
+    doopen: () => doopen(),
+    dojump: () => dojump(),
+    do_reqmenu: () => do_reqmenu(),
+    do_rush: () => do_rush(),
+    do_run: () => do_run(),
+    do_fight: () => do_fight(),
+    dotogglepickup: () => dotogglepickup(),
+    doset_simple: () => doset_simple(),
+    doset: () => doset(),
+    dopickup: () => dopickup(),
 };
 /* C ref: cmd.c do_move_<dir>(), do_run_<dir>(), do_rush_<dir>() */
 ["west", "northwest", "north", "northeast", "east", "southeast", "south",
@@ -138,15 +164,25 @@ async function doextcmd() {
         func = extcmdlist[idx].ef_funct;
         if (!(await can_do_extcmd(extcmdlist[idx])))
             return ECMD_OK;
-        /* iflags.menu_requested: the m prefix isn't ported yet */
-        if (!cmd_funcs[func]) {
-            /* the command itself is not ported yet; no time passes */
-            return ECMD_OK;
+        if (game.iflags.menu_requested
+            && !accept_menu_prefix(extcmdlist[idx])) {
+            await pline(`'${visctrl(cmd_from_func("do_reqmenu"))}' prefix has no effect for the ${extcmdlist[idx].ef_txt} command.`);
+            game.iflags.menu_requested = false;
         }
+        /* tell rhack() what command is actually executing */
+        game.ext_tlist = extcmdlist[idx];
+
+        if (!cmd_funcs[func])
+            throw new Error(`doextcmd(): unported command ${func} not ported yet`);
         retval = await cmd_funcs[func]();
     } while (func === "doextlist");
 
     return retval;
+}
+
+// C ref: cmd.c accept_menu_prefix()
+function accept_menu_prefix(ec) {
+    return (ec && ((ec.flags & CMD_M_PREFIX) !== 0));
 }
 
 // C ref: do.c donull() -- '.' command: do nothing == rest
@@ -168,10 +204,10 @@ const N_DIRS = 8;
 const move_dirnames = ["west", "northwest", "north", "northeast", "east",
                        "southeast", "south", "southwest"];
 
-/* C ref: cmd.c Cmd.commands[] (struct Cmd_bind list) -- key -> extcmdlist
-   entry; built like commands_init() then reset_commands(TRUE) with
-   number_pad off; a BIND= option isn't applied yet */
-let cmd_bindings = null;
+/* C ref: cmd.c gc.Cmd.cmdbinds (struct Cmd_bind list) -- key -> extcmdlist
+   entry, kept per game as game.Cmd.cmdbinds (a Map); built by
+   reset_commands(TRUE) (commands_init(), then the !number_pad movement
+   keys), then BIND= options add to it via bind_key() */
 
 function bind_key_txt(map, key, txt) {
     const ec = extcmdlist.find(e => e.ef_txt === txt);
@@ -185,7 +221,98 @@ function bind_key_fn(map, key, fn) {
         map.set(key & 0xff, ec);
 }
 
-// C ref: cmd.c commands_init() + reset_commands(TRUE)
+// C ref: cmd.c cmdbind_add() -- bind->userbind is kept in the
+// game.Cmd.userbinds set of keys
+function cmdbind_add(key, extcmd, user) {
+    key &= 0xff;
+    if (!key)
+        return;
+    if (!extcmd) {
+        game.Cmd.cmdbinds.delete(key); /* cmdbind_remove(key) */
+        game.Cmd.userbinds.delete(key);
+        return;
+    }
+    game.Cmd.cmdbinds.set(key, extcmd);
+    if (user)
+        game.Cmd.userbinds.add(key);
+    else
+        game.Cmd.userbinds.delete(key);
+}
+
+// C ref: cmd.c count_bind_keys()
+export function count_bind_keys() {
+    const keys = new Set();
+    let nbinds = 0;
+
+    if (!game.Cmd)
+        reset_commands(true); /* initoptions_init() */
+    /* commands bound to different key */
+    for (const [key, cmd] of game.Cmd.cmdbinds) {
+        keys.add(key);
+        if (game.Cmd.userbinds.has(key) && cmd && (cmd.key & 0xff) !== key)
+            nbinds++;
+    }
+
+    /* commands which should be bound to a key, but aren't */
+    for (const ec of extcmdlist)
+        if (ec.key && !keys.has(ec.key & 0xff))
+            nbinds++;
+
+    return nbinds;
+}
+
+// C ref: cmd.c bind_key()
+export function bind_key(key, command, user) {
+    let buf, p = null, lastp;
+
+    /* special case: "nothing" is reserved for unbinding */
+    if (!strcmpi(command, "nothing")) {
+        game.Cmd.cmdbinds.delete(key & 0xff); /* cmdbind_remove(key) */
+        game.Cmd.userbinds.delete(key & 0xff);
+        return true;
+    }
+
+    /* copy command to buf for modification */
+    buf = command;
+
+    /* does buf have a parameter in parenthesis? */
+    if ((p = buf.indexOf('(')) >= 0
+        && (lastp = buf.lastIndexOf(')')) >= 0
+        && (lastp > p)) {
+        const param = buf.slice(p + 1, lastp);
+        buf = buf.slice(0, p);
+        /* p points to the parameter */
+        p = param;
+    } else {
+        p = null;
+    }
+
+    for (const extcmd of extcmdlist) {
+        if (strcmpi(buf, extcmd.ef_txt))
+            continue;
+        if ((extcmd.flags & INTERNALCMD) !== 0)
+            continue;
+        cmdbind_add(key, extcmd, user);
+
+        if ((extcmd.flags & CMD_PARAM) !== 0)
+            throw new Error('bind_key(): commands with a parameter not ported yet');
+        else if (p && p.length > 0)
+            throw new Error('bind_key(): config_error_add() not ported yet');
+        return true;
+    }
+
+    return false;
+}
+
+// C ref: cmd.c reset_commands() -- the initial call (initial == TRUE)
+// from initoptions_init(), with number_pad off
+export function reset_commands(initial) {
+    if (!initial)
+        throw new Error('reset_commands(): changing number_pad not ported yet');
+    game.Cmd = { cmdbinds: commands_init(), userbinds: new Set() };
+}
+
+// C ref: cmd.c commands_init() + the rest of reset_commands(TRUE)
 function commands_init() {
     const map = new Map();
     const C = (c) => (0x1f & c.charCodeAt(0));
@@ -231,9 +358,9 @@ function commands_init() {
 
 // C ref: cmd.c cmdbind_get()
 function cmdbind_get(key) {
-    if (!cmd_bindings)
-        cmd_bindings = commands_init();
-    return cmd_bindings.get(key & 0xff) || null;
+    if (!game.Cmd)
+        reset_commands(true); /* initoptions_init() */
+    return game.Cmd.cmdbinds.get(key & 0xff) || null;
 }
 
 // C ref: hacklib.c visctrl()
@@ -306,85 +433,149 @@ function rhack_result(res, func) {
     }
 }
 
-// C ref: cmd.c rhack — main command dispatcher
+// C ref: cmd.c rhack — main command dispatcher; a prefix command (m, F,
+// g, G) loops back to got_prefix_input for the command it modifies
 export async function rhack(key) {
     const firsttime = (key === 0);
-    let cmdq_ec = null;
+    let cmdq_ec = null, prefix_seen = null;
+    let was_m_prefix = false;
+    let func = null; /* dummyfunction */
+    const ctx = game.context;
 
-    if (key === 0 && game.cmdq?.length) {
-        /* C ref: cmd.c rhack() -- a queued (CQ_CANNED) command from
-           itemactions_pushkeys() runs before reading the keyboard */
-        const cmdq = game.cmdq.shift();
-        if (cmdq.typ === 'ec')
-            cmdq_ec = extcmdlist.find(e => e.ef_funct === cmdq.fn) || null;
-        else
-            key = cmdq.key.charCodeAt(0);
-    } else if (key === 0) {
-        key = await parse();
-    }
-
-    if (!cmdq_ec) {
-        /* if there's no command, there's nothing to do except reset */
-        if (!key || key === 0o377 || key === 0x1b) {
-            /* nhbell() for a non-ESC key: no sound */
-            reset_cmd_vars(true);
-            return;
+    game.iflags.menu_requested = false;
+    ctx.nopick = 0;
+    for (;;) { /* got_prefix_input: */
+        if (game.cmdq?.length) {
+            /* doing queued (CQ_CANNED) commands, e.g. from
+               itemactions_pushkeys() */
+            const cq = game.cmdq.shift(); /* cmdq_pop() */
+            if (cq.typ === 'ec'
+                && (cmdq_ec = extcmdlist.find(e => e.ef_funct === cq.fn) || null))
+                ; /* goto do_cmdq_extcmd */
+            else
+                key = (cq.typ === 'key') ? cq.key.charCodeAt(0) : 0;
+        } else if (firsttime) {
+            key = await parse();
+            /* parse() pushed a cmd but didn't return any key */
+            if (!key && game.cmdq?.length)
+                continue; /* goto got_prefix_input */
         }
-    }
 
-    /* handle most movement commands */
-    game.context.travel = game.context.travel1 = 0;
-    const tlist = cmdq_ec || cmdbind_get(key);
+        if (!cmdq_ec) {
+            /* if there's no command, there's nothing to do except reset */
+            if (!key || key === 0o377 || key === 0x1b) {
+                /* nhbell() for a non-ESC key: no sound */
+                reset_cmd_vars(true);
+                return;
+            }
 
-    if (tlist) {
+            /* handle most movement commands */
+            ctx.travel = ctx.travel1 = 0;
+        }
+        /* do_cmdq_extcmd: */
+        let tlist = cmdq_ec || cmdbind_get(key);
+
+        /* current - use key to directly index cmdlist array */
+        if (!tlist)
+            break; /* bad_command */
+
         let res;
-        const func = tlist.ef_funct;
         if (!(await can_do_extcmd(tlist))) {
             /* can_do_extcmd() already gave a message */
             reset_cmd_vars(true);
             res = ECMD_OK;
-        } else if (tlist.flags & PREFIXCMD) {
-            /* the F, m, g and G prefixes (and their next command) are
-               not ported yet: nothing happens */
-            game.context.move = 0;
-            return;
+        } else if (prefix_seen && !(tlist.flags & PREFIXCMD)
+                   && !(tlist.flags & (was_m_prefix ? CMD_M_PREFIX
+                                                    : CMD_gGF_PREFIX))) {
+            const pfxidx = cmd_from_func(prefix_seen.ef_funct);
+            const which = (pfxidx !== 0) ? visctrl(pfxidx)
+                          : (prefix_seen.ef_funct === "do_reqmenu")
+                            ? "move-no-pickup or request-menu"
+                            : prefix_seen.ef_txt;
+
+            /*
+             * We got a prefix previously and looped for another
+             * command instead of returning, but the command we got
+             * doesn't accept a prefix.  The feedback here supersedes
+             * the former call to help_dir() (for 'bad_command' below).
+             */
+            if (was_m_prefix) {
+                /* custompline(SUPPRESS_HISTORY, ...) */
+                await pline(`The ${tlist.ef_txt} command does not accept '${which}' prefix.`);
+            } else {
+                const ch = tlist.key;
+                const up = (ch === 0x3c || tlist.ef_funct === "doup"),
+                    down = (ch === 0x3e || tlist.ef_funct === "dodown");
+
+                await pline(`The '${which}' prefix should be followed by a movement command${(up || down) ? " other than up or down" : ""}.`);
+            }
+            res = ECMD_FAIL;
+            prefix_seen = null;
         } else {
+            func = tlist.ef_funct;
             const fn = cmd_funcs[func];
             if (!fn) {
-                /* the command itself is not ported yet: nothing happens,
-                   and any keys queued for it go with it */
-                if (cmdq_ec)
-                    game.cmdq = [];
-                game.context.move = 0;
-                return;
+                throw new Error(tlist.flags & PREFIXCMD
+                    ? `rhack(): unported command prefix ${func} not ported yet`
+                    : `rhack(): unported command ${func} not ported yet`);
             }
-            res = await fn();
-            if ((tlist.flags & MOVEMENTCMD) && game.domove_attempting) {
-                if (((game.domove_attempting & (DOMOVE_RUSH | DOMOVE_WALK)) !== 0)
-                    && !game.context.travel && !dxdy_moveok()) {
-                    /* trying to move diagonally as a grid bug */
-                    await You_cant("get there from here...");
+            /* tlist->f_text && !occupation && multi: set_occupation()
+               isn't used by any command ported so far */
+            game.ext_tlist = null;
+            /* cmdq_add_ec(CQ_REPEAT, ...): the ^A repeat isn't ported */
+
+            res = await fn(); /* perform the command */
+            /* if 'func' is doextcmd(), 'tlist' is for Cmd.commands['#']
+               rather than for the command that doextcmd() just ran;
+               doextcmd() notifies us what that was via ext_tlist;
+               other commands leave it Null */
+            if (game.ext_tlist) {
+                tlist = game.ext_tlist;
+                game.ext_tlist = null;
+            }
+
+            if ((tlist.flags & PREFIXCMD) !== 0) {
+                /* it was a prefix command, mark and get another cmd */
+                if ((res & ECMD_CANCEL) !== 0) {
+                    /* prefix commands cancel if pressed twice */
                     reset_cmd_vars(true);
                     return;
-                } else if ((game.domove_attempting & DOMOVE_WALK) !== 0) {
-                    if (game.multi)
-                        game.context.mv = 1;
-                    await domove();
-                    game.context.forcefight = 0;
-                    game.iflags.menu_requested = false;
-                    return;
-                } else if ((game.domove_attempting & DOMOVE_RUSH) !== 0) {
-                    if (firsttime) {
-                        if (!game.multi)
-                            game.multi = Math.max(COLNO, ROWNO);
-                        game.u.last_str_turn = 0;
-                    }
-                    game.context.mv = 1;
-                    await domove();
-                    game.iflags.menu_requested = false;
-                    return;
                 }
+                prefix_seen = tlist;
+                cmdq_ec = null;
+                if (func === "do_reqmenu")
+                    was_m_prefix = true;
+                continue; /* goto got_prefix_input */
+            } else if (!(tlist.flags & MOVEMENTCMD)
+                       && game.domove_attempting) {
+                /* not a movement command, but a move prefix earlier? */
+                ; /* just do nothing */
+            } else if (((game.domove_attempting
+                         & (DOMOVE_RUSH | DOMOVE_WALK)) !== 0)
+                       && !ctx.travel && !dxdy_moveok()) {
+                /* trying to move diagonally as a grid bug */
+                await You_cant("get there from here...");
+                reset_cmd_vars(true);
+                return;
+            } else if ((game.domove_attempting & DOMOVE_WALK) !== 0) {
+                if (game.multi)
+                    ctx.mv = 1;
+                await domove();
+                ctx.forcefight = 0;
+                game.iflags.menu_requested = false;
+                return;
+            } else if ((game.domove_attempting & DOMOVE_RUSH) !== 0) {
+                if (firsttime) {
+                    if (!game.multi)
+                        game.multi = Math.max(COLNO, ROWNO);
+                    game.u.last_str_turn = 0;
+                }
+                ctx.mv = 1;
+                await domove();
+                game.iflags.menu_requested = false;
+                return;
             }
+            prefix_seen = null;
         }
         rhack_result(res, func);
         return;
@@ -394,25 +585,188 @@ export async function rhack(key) {
     await pline(`Unknown command '${visctrl(key)}'.`); /* custompline(SUPPRESS_HISTORY) */
     game.cmdq = []; /* cmdq_clear(CQ_CANNED); cmdq_clear(CQ_REPEAT) */
     /* didn't move */
-    game.context.move = 0;
+    ctx.move = 0;
     game.multi = 0;
 }
 
-// C ref: cmd.c parse() -- read the command key; with number_pad off a
-// count prefix (get_count()) isn't ported yet, so digits are commands
+// C ref: cmd.c do_reqmenu() -- #reqmenu, prefix command to modify some
+// others
+async function do_reqmenu() {
+    if (game.iflags.menu_requested) {
+        /* Norep() */
+        await pline(`Double ${visctrl(cmd_from_func("do_reqmenu"))} prefix, canceled.`);
+        game.iflags.menu_requested = false;
+        return ECMD_CANCEL;
+    }
+
+    game.iflags.menu_requested = true;
+    return ECMD_OK;
+}
+
+// C ref: cmd.c do_rush() -- #rush
+async function do_rush() {
+    if ((game.domove_attempting & DOMOVE_RUSH)) {
+        await pline("Double rush prefix, canceled."); /* Norep() */
+        game.context.run = 0;
+        game.domove_attempting = 0;
+        return ECMD_CANCEL;
+    }
+
+    game.context.run = 2;
+    game.domove_attempting |= DOMOVE_RUSH;
+    return ECMD_OK;
+}
+
+// C ref: cmd.c do_run() -- #run
+async function do_run() {
+    if ((game.domove_attempting & DOMOVE_RUSH)) {
+        await pline("Double run prefix, canceled."); /* Norep() */
+        game.context.run = 0;
+        game.domove_attempting = 0;
+        return ECMD_CANCEL;
+    }
+
+    game.context.run = 3;
+    game.domove_attempting |= DOMOVE_RUSH;
+    return ECMD_OK;
+}
+
+// C ref: cmd.c do_fight() -- #fight
+async function do_fight() {
+    if (game.context.forcefight) {
+        await pline("Double fight prefix, canceled."); /* Norep() */
+        game.context.forcefight = 0;
+        game.domove_attempting = 0;
+        return ECMD_CANCEL;
+    }
+
+    game.context.forcefight = 1;
+    game.domove_attempting |= DOMOVE_WALK;
+    return ECMD_OK;
+}
+
+/* C ref: hack.h GC_* get_count() flags */
+const GC_NOFLAGS = 0, GC_SAVEHIST = 1, GC_CONDHIST = 2, GC_ECHOFIRST = 4;
+/* C ref: global.h LARGEST_INT; integer.h AppendLongDigit() overflow
+   limit -- the recorder's 64-bit LONG_MAX is beyond what a JS number
+   holds exactly, but counts are capped by maxcount (LARGEST_INT) long
+   before that matters */
+const LARGEST_INT = 32767;
+const LONG_MAX = Number.MAX_SAFE_INTEGER;
+
+// C ref: cmd.c get_count()
+/* read a count (digits) and return the next non-digit key; the count
+   goes into game[countfield] (C's 'count' output pointer) */
+export async function get_count(allowchars, /* what comes after digits; if Null, anything */
+                                inkey,      /* if caller already got first digit, this is it */
+                                maxcount,   /* if user tries to enter a bigger count, use this */
+                                countfield, /* primary output: game[countfield] */
+                                gc_flags) { /* control flags: GC_SAVEHIST, GC_ECHOFIRST */
+    let qbuf;
+    let key;
+    let cnt = 0;
+    const first = inkey ? (inkey - 0x30) : 0;
+    let backspaced = false, showzero = true;
+    /* should "Count: 123" go into message history? */
+    const historicmsg = (gc_flags & GC_SAVEHIST) !== 0,
+        /* put "Count: N" into mesg hist unless N is the same as the
+           [first digit] value passed in via 'inkey' */
+        conditionalmsg = (gc_flags & GC_CONDHIST) !== 0,
+        /* normally "Count: 12" isn't echoed until the second digit */
+        echoalways = (gc_flags & GC_ECHOFIRST) !== 0;
+    /* this should be done in port code so that we have erase_char
+       and kill_char available; we can at least fake erase_char */
+    const STANDBY_erase_char = 0o177;
+
+    game[countfield] = 0;
+    for (;;) {
+        if (inkey) {
+            key = inkey;
+            inkey = 0;
+        } else {
+            key = await nhgetch(); /* readchar() */
+        }
+
+        if (key >= 0x30 && key <= 0x39) { /* digit(key) */
+            const dgt = key - 0x30;
+
+            /* cnt = (10 * cnt) + (key - '0'); */
+            cnt = (cnt < Math.trunc(LONG_MAX / 10)
+                   || (cnt === Math.trunc(LONG_MAX / 10) && dgt <= LONG_MAX % 10))
+                  ? cnt * 10 + dgt : -1; /* AppendLongDigit() */
+            if (cnt < 0)
+                cnt = 0;
+            else if (maxcount > 0 && cnt > maxcount)
+                cnt = maxcount;
+            /* if we've backed up to nothing, then typed 0, show that 0 */
+            showzero = (key === 0x30);
+        } else if (key === 0x08 || key === STANDBY_erase_char) {
+            if (!cnt && !echoalways)
+                break;
+            showzero = false;
+            cnt = Math.trunc(cnt / 10);
+            backspaced = true;
+        } else if (key === 0x1b) { /* gc.Cmd.spkeys[NHKF_ESC] */
+            break;
+        } else if (!allowchars || allowchars.includes(String.fromCharCode(key))) {
+            game[countfield] = cnt;
+            break;
+        }
+
+        if (cnt > 9 || backspaced || echoalways) {
+            tty_clear_nhwindow(game.WIN_MESSAGE);
+            if (backspaced && !cnt && !showzero) {
+                qbuf = "Count: ";
+            } else {
+                qbuf = `Count: ${cnt}`;
+                backspaced = false;
+            }
+            await pline(qbuf); /* custompline(SUPPRESS_HISTORY, "%s", qbuf) */
+            /* mark_synch(): output flush only */
+        }
+    }
+
+    if (historicmsg || (conditionalmsg && game[countfield] !== first))
+        throw new Error('get_count(): putmsghistory() not ported yet');
+
+    return key;
+}
+
+// C ref: cmd.c parse() -- main command input routine when not repeating
+// and not executing canned commands; input comes via get_count() which
+// collects repeat count if one is present and returns next non-digit to us
 async function parse() {
+    let foo;
+    let bind;
+
     game.iflags.in_parse = true;
     game.command_count = 0;
     game.context.move = 1; /* assume next command will take game time */
     await flush_screen(1); /* Flush screen buffer. Put the cursor on the hero. */
 
-    const foo = await nhgetch();
+    /* program_state.input_state = commandInp: 'altmeta' isn't ported */
+
+    /* !gc.Cmd.num_pad: number_pad is off */
+    foo = await get_count(null, 0, LARGEST_INT, 'command_count', GC_NOFLAGS);
     game.last_command_count = game.command_count;
+
     if (foo === 0x1b) { /* esc cancels count (TH) */
         tty_clear_nhwindow(game.WIN_MESSAGE);
         game.command_count = 0;
         game.last_command_count = 0;
+    /* gi.in_doagain: the ^A do-again command isn't ported */
+    } else if (foo && (bind = cmdbind_get(foo & 0xff)) !== null
+               /* these shouldn't go into the do-again buffer */
+               && (bind.ef_funct === "do_repeat"
+                   || bind.ef_funct === "doprev_message"
+                   /* this one might get put into the do-again buffer but
+                      only if the interface code tells the core to do it */
+                   || bind.ef_funct === "doextcmd")) {
+        /* gc.command_count will be set again when we
+           re-enter with gi.in_doagain set true */
+        game.command_count = game.last_command_count;
     }
+
     game.multi = game.command_count;
     if (game.multi)
         game.multi--;
@@ -425,7 +779,7 @@ async function parse() {
 }
 
 // C ref: cmd.c set_move_cmd()
-function set_move_cmd(dir, run) {
+export function set_move_cmd(dir, run) {
     const u = game.u;
     u.dz = zdir[dir];
     u.dx = xdir[dir];
@@ -471,6 +825,43 @@ function movecmd(sym) {
     return 0;
 }
 
+/* C ref: hack.h enum movemodes */
+export const MV_ANY = -1, MV_WALK = 0, MV_RUN = 1, MV_RUSH = 2;
+
+// C ref: cmd.c movecmd() with a mode -- is sym bound to the move_funcs[][]
+// command of that mode? sets u.dx, u.dy, u.dz; returns !u.dz for a move
+export function movecmd_mode(sym, mode) {
+    const u = game.u;
+    let d = -1; /* DIR_ERR */
+    const bind = cmdbind_get(sym);
+
+    if (bind) {
+        const fnc = bind.ef_funct;
+        const modename = ["move", "run", "rush"];
+
+        for (d = N_DIRS + 2 - 1; d > -1; d--) {
+            if (d >= N_DIRS) { /* dodown, doup */
+                if (fnc === (d === N_DIRS ? "dodown" : "doup"))
+                    break;
+                continue;
+            }
+            if (mode === MV_ANY
+                ? modename.some(m => fnc === `do_${m}_${move_dirnames[d]}`)
+                : fnc === `do_${modename[mode]}_${move_dirnames[d]}`)
+                break;
+        }
+    }
+
+    if (d !== -1) {
+        u.dx = xdir[d];
+        u.dy = ydir[d];
+        u.dz = zdir[d];
+        return !u.dz;
+    }
+    u.dz = 0;
+    return 0;
+}
+
 // C ref: cmd.c dxdy_moveok()
 function dxdy_moveok() {
     const u = game.u;
@@ -479,14 +870,38 @@ function dxdy_moveok() {
     return true;
 }
 
-// C ref: cmd.c cmd_from_func() -- a key bound to the command
-function cmd_from_func(fn) {
-    if (!cmd_bindings)
-        cmd_bindings = commands_init();
-    for (const [key, ec] of cmd_bindings)
-        if (ec.ef_funct === fn)
-            return key;
-    return 0;
+// C ref: cmd.c cmd_from_func() -- a key bound to the command; C's
+// cmdbinds list has the newest binding first, which is the reverse of
+// the Map's insertion order
+export function cmd_from_func(fn) {
+    let ret = 0;
+
+    if (!game.Cmd)
+        reset_commands(true); /* initoptions_init() */
+    const binds = [...game.Cmd.cmdbinds].reverse();
+    for (const [i, cmd] of binds) {
+        /* skip space; we'll use it below as last resort if no other
+           keystroke invokes space's command */
+        if (i === 0x20)
+            continue;
+        /* skip digits if number_pad is Off; also skip '-' unless it has
+           been bound to something other than what number_pad assigns */
+        if (((i >= 0x30 && i <= 0x39) || (i === 0x2d && fn === "do_fight"))
+            /* && !gc.Cmd.num_pad */)
+            continue;
+
+        if (cmd && cmd.ef_funct === fn) {
+            if (i >= 0x20 && i <= 0x7e)
+                return i;
+            else {
+                ret = i;
+            }
+        }
+    }
+    const bind = game.Cmd.cmdbinds.get(0x20);
+    if (bind && bind.ef_funct === fn)
+        return 0x20;
+    return ret;
 }
 
 // C ref: cmd.c show_direction_keys()
@@ -589,6 +1004,31 @@ export async function get_adjacent_loc(prompt, emsg, x, y, cc) {
         return 0;
     }
     return 1;
+}
+
+// C ref: cmd.c paranoid_ynq() -- the !be_paranoid cases (plain y/n or
+// y/n/q queries); the "yes"/"no" getlin() query isn't ported
+export async function paranoid_ynq(be_paranoid, prompt, accept_q) {
+    let c = 'n'; /* default result */
+
+    if (be_paranoid)
+        throw new Error('paranoid_ynq(): paranoid_confirm "yes" query not ported yet');
+    else if (accept_q)
+        /* 'y', 'n', or 'q' */
+        c = await tty_yn_function(prompt, "ynq", 'n'); /* ynqchars */
+    else
+        /* 'y' or 'n' */
+        c = await tty_yn_function(prompt, "yn", 'n'); /* ynchars */
+    if (c !== 'y' && (c !== 'q' || !accept_q))
+        c = 'n';
+    return c;
+}
+
+// C ref: cmd.c paranoid_query()
+/* for paranoid_confirm:quit,die,attack,&c prompting; allows yes or n|no;
+   result is True for yes; n|no and ESC yield False */
+export async function paranoid_query(be_paranoid, prompt) {
+    return (await paranoid_ynq(be_paranoid, prompt, false)) === 'y';
 }
 
 export async function getdir(s) {

@@ -9,7 +9,7 @@ import { _blind_prop, _Blind, _BlindedTimeout, _set_HBlinded, _Halluc, M1_NOEYES
 import { explode, explode_oil } from './explode.js';
 import { spoteffects } from './hack.js';
 import { nothing_happens, nothing_seems_to_happen } from './const.js';
-import { getobj_cmdq_drain, cmdq_peek, cmdq_pop, cmdq_clear, SetVoice } from './cmd.js';
+import { cmdq_peek, cmdq_pop, cmdq_clear, SetVoice } from './cmd.js';
 import { check_unpaid } from './shk.js';
 import { prinv, useup } from './invent.js';
 import { fire_damage } from './trap.js';
@@ -29,9 +29,8 @@ import { PM_HEALER, PM_ROCK_MOLE, PM_WOODCHUCK, PM_PONY, PM_HORSE, PM_WARHORSE, 
 import { PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER } from './pm.generated.js';
 import { COLD_RES } from './const.js';
 import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
-import { note_lone_pline_frame, flush_screen, pline_flush_point, newsym, force_more, force_more_pages, force_more_lone_frame, canspotmon, canseemon, map_invisible, getobj_never_mind } from './display.js';
+import { note_lone_pline_frame, flush_screen, pline_flush_point, newsym, force_more, force_more_pages, force_more_lone_frame, canspotmon, canseemon, map_invisible } from './display.js';
 import { display_message_window } from './display.js';
-import { bot } from './botl.js';
 import { pline, You_see, You_hear, impossible } from './pline.js';
 import { unmap_object, glyph_is_invisible_at, tmp_at } from './display.js';
 import { DISP_ALWAYS, DISP_END } from './const.js';
@@ -42,8 +41,7 @@ import { COLNO, ROWNO, INVIS } from './const.js';
 import { _topl_joins_snapshot, _topl_merge_result } from './display.js';
 import { set_bc } from './ball.js';
 import { topl_park_cursor, _topl_stash_result, putmsghistory, restore_command_topline } from './display.js';
-import { key2txt, pair_of, readchar, yn_function } from './cmd.js';
-import { mime_action } from './invent.js';
+import { pair_of, yn_function } from './cmd.js';
 import { cls, docrt, display_self, map_object, GLYPHCLS_OBJ, pager_boulder_symbol, pager_showsyms } from './display.js';
 import { def_oc_syms_chars } from './drawing.js';
 import { SchroedingersBox } from './pickup_container.js';
@@ -63,7 +61,7 @@ import { near_capacity } from './hack.js';
 import { nhgetch } from './input.js';
 /* C ref: invent.c:2093 silly_thing(word, otmp) — shared with the 'W'/'P'
  * getobj path rather than re-derived. */
-import { silly_thing_dw, inaccessible_equipment, hard_helmet } from './do_wear.js';
+import { inaccessible_equipment, hard_helmet } from './do_wear.js';
 import { yname, Yname2 } from './objnam.js';
 import { float_up } from './trap.js';
 import { getlin } from './windows.js';
@@ -82,7 +80,6 @@ import { unfixable_trouble_count } from './apply.js';
 import { ceiling } from './dungeon.js';
 import { altar_wrath } from './pray.js';
 import { heal_legs, doup } from './do.js';
-import { reassign } from './invent.js';
 import { WOUNDED_LEGS } from './const.js';
 /* C potion.c:904,908,2062 — observed sleep resistance uses its own mask. */
 import { M_SEEN_SLEEP } from './const.js';
@@ -146,10 +143,9 @@ import { PM_SEWER_RAT, PM_WATER_ELEMENTAL, PM_LICHEN, PM_GREEN_SLIME,
 import { paralyze_monst } from './mhitm.js';
 import { polyself } from './polyself.js';
 import { create_gas_cloud, gas_cloud_at } from './region.js';
-import { getobj_redo_menu, doname_body, getObjFromGetobj, costly_alteration } from './cmd.js';
+import { doname_body, getObjFromGetobj, costly_alteration } from './cmd.js';
 import { in_town } from './hack.js';
 import { getpos } from './getpos.js';
-import { compactify } from './invent.js';
 import { cansee, couldsee } from './vision.js';
 import { water_damage, erode_obj } from './trap.js';
 import { is_pool } from './look.js';
@@ -724,6 +720,7 @@ function _surface(x, y) {
 
 
 export async function dodrink() {
+    // C cmd.c:3810-3826: rhack maps our ECMD return to context.move.
     const g = game;
     const u = g.u;
     /* C potion.c:531-535 — dodrink()'s FIRST statement, BEFORE its getobj():
@@ -742,8 +739,6 @@ export async function dodrink() {
      * and tests blocked).  prop.h:38 STRANGLED = 19.  RNG-free. */
     if ((u?.uprops?.[STRANGLED]?.intrinsic | 0) !== 0) {
         await pline("If you can't breathe air, how can you drink liquid?");
-        g.context = g.context || {};
-        g.context.move = 0; /* C ECMD_OK */
         return ECMD_OK;
     }
     /* C potion.c:537 drink_ok_extra = 0 — the "player already passed up a
@@ -759,8 +754,6 @@ export async function dodrink() {
             const answer = await y_n('Drink from the fountain?');
             if (answer === 'y') {
                 await drinkfountain();
-                g.context = g.context || {};
-                g.context.move = 1; /* ECMD_TIME */
                 if (g._pending_message) {
                     _topl_stash_result();
                 }
@@ -775,8 +768,6 @@ export async function dodrink() {
             const answer = await y_n('Drink from the sink?');
             if (answer === 'y') {
                 await drinksink();
-                g.context = g.context || {};
-                g.context.move = 1; /* ECMD_TIME */
                 if (g._pending_message) {
                     _topl_stash_result();
                 }
@@ -804,8 +795,6 @@ export async function dodrink() {
             const answer = await y_n('Drink the water around you?');
             if (answer === 'y') {
                 await pline('Do you know what lives in this water?');
-                g.context = g.context || {};
-                g.context.move = 1; /* C ECMD_TIME */
                 if (g._pending_message) {
                     _topl_stash_result();
                 }
@@ -815,223 +804,46 @@ export async function dodrink() {
             ++drink_ok_extra;
         }
     }
-    /* C invent.c:1779-1825 — getobj FIRST drains the command queue: the
-     * itemactions Quaff row (iactions.c:IA_QUAFF_OBJ) queues do_reqmenu,
-     * dodrink and the invlet, so the potion is chosen with no prompt. */
-    const _q = await getobj_cmdq_drain(drink_ok);
-    let otmp = null;
-    if (_q.drained) {
-        otmp = _q.obj;
-        if (!otmp) {
-            g.context = g.context || {};
-            g.context.move = 0; /* getobj NULL -> ECMD_CANCEL (potion.c:576) */
-            return ECMD_CANCEL;
-        }
-    }
-    if (!_q.drained && !(g.flags?.invlet_constant ?? true)) reassign();
-    let _drinkLets = '';
-    for (let o = g.invent; o; o = o.nobj) {
-        if ((o.oclass | 0) === POTION_CLASS) {
-            _drinkLets += String.fromCharCode(o.invlet || 0x3f);
-        }
-    }
-    if (!_q.drained && !_drinkLets) {
-        /* js pline() takes a pre-formatted string (js/display.js:2723). */
-        await pline("You don't have anything "
-                    + (drink_ok_extra ? 'else ' : '') + 'to drink.');
-        g.context = g.context || {};
-        g.context.move = 0; /* ECMD_CANCEL */
+    // C potion.c:573-576: use the shared getobj implementation for quaffing,
+    // including queued selections, inventory sorting, menus and cancellation.
+    let otmp = await getObjFromGetobj('drink', drink_ok, GETOBJ_NOFLAGS);
+    if (!otmp) {
         return ECMD_CANCEL;
     }
-    let _qbuf = 'What do you want to drink?';
-    _qbuf += ` [${_drinkLets.length > 5 ? compactify(_drinkLets) : _drinkLets} or ?*]`;
-    /* C invent.c:1915 — qbuf is rebuilt at the top of getobj's `for (;;)`, so a
-     * re-prompt (invent.c:1985) repaints the identical topline and re-reads. */
-    let itemKey;
-    /* Hoisted above the loop: C's getobj resolves the invlet INSIDE its for(;;)
-     * (invent.c:2002-2062) so an unmatched letter can re-prompt. */
-    /* C invent.c:1922-1930 — iflags.force_invmenu skips yn_function: the first
-     * pass feeds '?' into redo_menu (lets is non-empty here, else the "don't
-     * have anything to drink" return above fired), files the bare qbuf once,
-     * and sets oneloop so a dismissed menu returns NULL. */
-    const _force = !!(g.iflags?.force_invmenu && !g.in_doagain);
-    let _oneloop = false;
-    for (;;) {
-        if (_q.drained) break;
-        if (_force && !_oneloop) {
-            putmsghistory('What do you want to drink?', false);
-            _oneloop = true;
-            itemKey = _drinkLets ? 63 /* '?' */ : 42 /* '*' */;
+    /* Full dispatch when inventory is available. */
+    /* C potion.c:591-598: drink one unworn potion, preserving any worn
+     * remainder of the stack.  Splitting also allocates its object id. */
+    if (otmp.owornmask) {
+        if (otmp.quan > 1) {
+            otmp = await splitobj(otmp, 1);
+            otmp.owornmask = 0;
         } else {
-        /* invent.c:1935 -> topl.c:390-394: a repeated quaff must acknowledge
-         * the preceding effect before tty_yn_function paints its new prompt.
-         * That effect can still be parked in the command-result channel. */
-        restore_command_topline();
-        if (g._pending_message && g._topl_unacknowledged
-            && !g._topl_win_stop && !g._topl_win_stop_armed)
-            await force_more_lone_frame(g._pending_message);
-        g._topl_win_stop = false;
-        g._topl_win_stop_armed = false;
-        /* C topl.c:418-421 tty_yn_function -> custompline() -> pline.c:282
-         * files "prompt " (trailing space included) in gp.prevmsg, so a
-         * Norep() of the message that stood BEFORE the prompt — do.c:2354
-         * "Are you waiting to get hit?..." after a cancelled quaff — is not
-         * read as a repeat.  js/do.js's drop loop and js/read.js file theirs
-         * the same way. */
-        g._prevmsg = _qbuf + ' ';
-        g._pending_message = _qbuf;
-        await flush_screen(1);
-        /* C tty: cursor parked one past the prompt + trailing space (qbuf len+1). */
-        {
-            const disp = g.nhDisplay;
-            if (disp) topl_park_cursor(disp, _qbuf + ' ');
+            await remove_worn_item(otmp, false);
         }
-        /* nhgetch for item selection — mirrors C getobj() → nhgetch(). */
-        /* C topl.c:537-539 files prompt + key2txt(answer) in the history. */
-        const _sh = g._topl_suppress_history;
-        g._topl_suppress_history = true;
-        /* C topl.c:426 readchar(): its fuzzer arm (cmd.c:5217) skips tty_nhgetch. */
-        try { itemKey = g.iflags?.debug_fuzzer ? await readchar() : await nhgetch(); }
-        finally { g._topl_suppress_history = _sh; }
-        putmsghistory(_qbuf + ' ' + key2txt(itemKey & 0xff), false);
-        // C leaves the getobj prompt physically painted after the answer.
-        // Preserve it until the next input when a potion emits no new message.
-        g._topl_sticky = _qbuf;
-        }
-        /* C invent.c:1960-1999 `redo_menu` — '?'/'*' are handled here, BEFORE the
-         * invlet walk at invent.c:2002, by display_pickinv (restricted to `lets`
-         * for '?', the whole pack for '*').  `altlets` is empty for this command:
-         * drink_ok (potion.c:507-523) returns only GETOBJ_SUGGEST,
-         * GETOBJ_EXCLUDE or GETOBJ_EXCLUDE_NONINVENT, never GETOBJ_DOWNPLAY, so
-         * nothing is ever collected into the altlets buffer at invent.c:1884. */
-        if (itemKey === 63 /* '?' */ || itemKey === 42 /* '*' */) {
-            itemKey = await getobj_redo_menu(itemKey, _drinkLets, '', null,
-                { word: 'drink', allownone: false, buf: _drinkLets });
-            /* invent.c:1989-1993 — ESC out of the menu: "Never mind." (already
-             * plined by the helper) → getobj returns NULL → dodrink's
-             * `if (!otmp) return ECMD_CANCEL` (potion.c:576). */
-            if (itemKey === 27) {
-                g.context.move = 0;
-                return ECMD_CANCEL;
-            }
-            /* invent.c:1982-1986 — display_pickinv answered 0 (dismissed with no
-             * selection); `oneloop` is set only by iflags.force_invmenu, which is
-             * Off, so C `continue`s the prompt loop rather than cancelling. */
-            if (itemKey === 0) {
-                if (_oneloop) { g.context.move = 0; return ECMD_CANCEL; }
-                continue;
-            }
-        }
-        /* C invent.c:1937-1942 — the digit arm runs BEFORE the quitchars test;
-         * dodrink passes GETOBJ_NOFLAGS (potion.c:573), so allowcnt is false:
-         *     pline("No count allowed with this command."); continue;
-         * (cmd.js getObjFromGetobj carries the same arm). */
-        if (itemKey >= 48 /* '0' */ && itemKey <= 57 /* '9' */) {
-            await force_more('No count allowed with this command.');
-            continue;
-        }
-        if (itemKey === 27 || itemKey === 32 || itemKey === 13 || itemKey === 10) {
-            await getobj_never_mind(_qbuf);
-            g.context.move = 0;
-            return ECMD_CANCEL;
-        }
-        /* C invent.c:1955-1959: drink_ok excludes hands, so '-' mimes
-         * the action and returns NULL before the inventory lookup. */
-        if (itemKey === 45 /* HANDS_SYM '-' */) {
-            await mime_action('drink');
-            g.context.move = 0;
-            return ECMD_CANCEL;
-        }
-        /* Try to find item by invlet in game.invent if available. */
-        if (g.invent) {
-            otmp = null;
-            for (let o = g.invent; o; o = o.nobj) {
-                if (o.invlet === itemKey) {
-                    otmp = o;
-                    break;
-                }
-            }
-            // C invent.c:2006-2013: reject excluded coins before disp.botl
-            // and the generic silly_thing check.
-            if (otmp && (otmp.oclass | 0) === COIN_CLASS) {
-                await You('cannot drink gold.');
-                g.context.move = 0;
-                return ECMD_CANCEL;
-            }
-            /* C invent.c:2049: selection passed the gold/count checks. */
-            if (g.disp) g.disp.botl = 1;
-            if (otmp)
-                break;
-            await bot(); /* pline's flush_screen paints the botl set above */
-            /* C invent.c:2059 You("don't have that object.") is a real pline,
-             * so pline.c:282 files it in gp.prevmsg before more() pages it;
-             * the loop-top re-prompt above overwrites it on the next pass. */
-            g._prevmsg = "You don't have that object.";
-            await force_more("You don't have that object.");
-            continue;
-        }
-        /* No live invent chain (synthetic-slot model): an unmodelled-but-really-
-         * carried letter would re-prompt forever where C resolves it, so keep
-         * the old fall-through rather than looping. */
-        break;
     }
-    /* C invent.c:2070-2073 — getobj's final screen:
-     *     if (obj_ok(otmp) == GETOBJ_EXCLUDE) {
-     *         silly_thing(word, otmp);
-     *         return (struct obj *) 0;
-     *     }
-     * drink_ok (potion.c) is GETOBJ_SUGGEST for POTION_CLASS and GETOBJ_EXCLUDE
-     * for everything else, so naming a non-potion by its letter plines
-     * "That is a silly thing to drink." and dodrink returns ECMD_CANCEL — NO
-     * turn.  Without this screen the non-potion fell through to the peffects
-     * dispatch and came out as "Nothing happens." plus a spent turn. */
-    if (otmp && (otmp.oclass | 0) !== POTION_CLASS) {
-        await silly_thing_dw('drink', otmp);
-        g.context.move = 0;
-        return ECMD_CANCEL;
-    }
-    if (otmp) {
-        /* Full dispatch when inventory is available. */
-        /* C potion.c:591-598: drink one unworn potion, preserving any worn
-         * remainder of the stack.  Splitting also allocates its object id. */
-        if (otmp.owornmask) {
-            if (otmp.quan > 1) {
-                otmp = await splitobj(otmp, 1);
-                otmp.owornmask = 0;
-            } else {
-                await remove_worn_item(otmp, false);
-            }
-        }
-        otmp.in_use = true;
-        if (objdescr_is(otmp, 'milky')
-            && !(_mvflags(PM_GHOST) & G_GONE)
-            && !rn2(POTION_OCCUPANT_CHANCE(_mborn(PM_GHOST)))) {
-            await ghost_from_bottle();
-            await useup(otmp);
-            g.context.move = 1; /* C ECMD_TIME */
-            if (g._pending_message)
-                _topl_stash_result();
-            return ECMD_TIME;
-        } else if (objdescr_is(otmp, 'smoky')
-                   && !(_mvflags(PM_DJINNI) & G_GONE)
-                   && !rn2(POTION_OCCUPANT_CHANCE(_mborn(PM_DJINNI)))) {
-            await djinni_from_bottle(otmp);
-            await useup(otmp);
-            g.context.move = 1; /* C ECMD_TIME */
-            if (g._pending_message)
-                _topl_stash_result();
-            return ECMD_TIME;
-        }
-        const res = await dopotion(otmp);
-        if (g._pending_message) {
+    otmp.in_use = true;
+    if (objdescr_is(otmp, 'milky')
+        && !(_mvflags(PM_GHOST) & G_GONE)
+        && !rn2(POTION_OCCUPANT_CHANCE(_mborn(PM_GHOST)))) {
+        await ghost_from_bottle();
+        await useup(otmp);
+        if (g._pending_message)
             _topl_stash_result();
-        }
-        g.context.move = (res & ECMD_TIME) ? 1 : 0;
-        return res;
+        return ECMD_TIME;
+    } else if (objdescr_is(otmp, 'smoky')
+               && !(_mvflags(PM_DJINNI) & G_GONE)
+               && !rn2(POTION_OCCUPANT_CHANCE(_mborn(PM_DJINNI)))) {
+        await djinni_from_bottle(otmp);
+        await useup(otmp);
+        if (g._pending_message)
+            _topl_stash_result();
+        return ECMD_TIME;
     }
-    /* C potion.c:574-575: getobj returned NULL. */
-    g.context.move = 0;
-    return ECMD_CANCEL;
+    const res = await dopotion(otmp);
+    if (g._pending_message) {
+        _topl_stash_result();
+    }
+    return res;
 }
 
 /* potionbreathe(obj) — C ref: nethack-c/src/potion.c:1933-2120 potionbreathe().
@@ -1111,14 +923,13 @@ export async function make_confused(xtime, talk) {
     if (!p)
         p = u.uprops[CONFUSION] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
     const old = p.intrinsic | 0;
-    let msgDone;
 
     if (_Unaware())
         talk = false;
 
     if (!xtime && old) {
         if (talk)
-            msgDone = You_feel(`less ${_potion_Hallucination() ? 'trippy' : 'confused'} now.`);
+            await You_feel(`less ${_potion_Hallucination() ? 'trippy' : 'confused'} now.`);
     }
     if ((xtime && !old) || (!xtime && old)) {
         if (game.disp)
@@ -1129,11 +940,6 @@ export async function make_confused(xtime, talk) {
     const which = { value: old };
     set_itimeout(which, xtime);
     p.intrinsic = which.value;
-    /* The message may park on a MSGTYPE=stop --More-- (pline.c:283); callers
-     * that await us must not continue (e.g. stop_occupation's pline) until
-     * it is dismissed.  The store above stays synchronous for unawaited
-     * callers. */
-    await msgDone;
 }
 /* C youprop.h:399  Unaware == (gm.multi < 0 && (unconscious() || is_fainted()))
  * — the two halves are the real ported ones (js/pickup.js, js/eat.js). */
@@ -1526,7 +1332,7 @@ export async function healup(nhp, nxtra, curesick, cureblind) {
     }
     if (cureblind) {
         u.ucreamed = 0;
-        make_blinded(0, true);
+        await make_blinded(0, true);
         // C make_blinded() waits for MSGTYP_STOP before the next cure.
         if (g._blockingPline) await g._blockingPline;
         await make_deaf(0, true);
@@ -1568,13 +1374,14 @@ function _bumpObjsDeleted() {
  * linked, and dosave0()'s light-source pass then failed on the OBJ_FREE
  * object, taking dosave()'s docrt() arm instead of "Be seeing you...". */
 async function _useup(obj) {
-    if (obj && obj.quan != null && (obj.quan | 0) > 1) {
+    if (obj && obj.quan != null && obj.quan > 1) {
         /* C invent.c:1324 useup(): clear in_use on the quan>1 decrement path.
          * Not a deletion (quan>1 survives), so no objs_deleted bump here —
          * matches C: this branch never reaches freeinv()/obfree(). */
         obj.in_use = false;
-        obj.quan = (obj.quan | 0) - 1;
+        obj.quan--;
         obj.owt = weight(obj);
+        update_inventory();
         return;
     }
     await useupall(obj);
@@ -1798,7 +1605,7 @@ async function potion_dip(obj, potion) {
     const g = game;
     let mixture;
 
-    if (potion === obj && (potion.quan | 0) === 1) {
+    if (potion === obj && potion.quan === 1) {
         await pline('That is a potion bottle, not a Klein bottle!');
         return ECMD_OK;
     }
@@ -1858,7 +1665,7 @@ async function potion_dip(obj, potion) {
         potion.in_use = false; /* C potion.c:2501: didn't go poof */
         return ECMD_TIME;
     } else if ((obj.oclass | 0) === POTION_CLASS && obj.otyp !== potion.otyp) {
-        let amt = obj.quan | 0;
+        let amt = obj.quan | 0; // C potion.c:2504 explicitly narrows this one local to int.
         let magic;
 
         mixture = mixtype(obj, potion);
@@ -1871,13 +1678,13 @@ async function potion_dip(obj, potion) {
             else if (magic) amt = rnd(Math.min(amt, 8) - (3 - 1)) + (3 - 1);
             else amt = rnd(amt - (7 - 1)) + (7 - 1);
 
-            if (amt < (obj.quan | 0)) {
+            if (amt < obj.quan) {
                 obj = await splitobj(obj, amt);
-                qbuf = `${obj.quan | 0} of the`;
+                qbuf = `${obj.quan} of the`;
             }
         }
         await pline(`${qbuf} ${simpleonames(obj)} ${otense(obj, 'mix')} with `
-            + `${(potion.quan | 0) > 1 ? 'one of ' : ''}${thesimpleoname(potion)}...`);
+            + `${potion.quan > 1 ? 'one of ' : ''}${thesimpleoname(potion)}...`);
         await _useup(potion); /* now gone */
 
         if (await _dip_potion_explosion(obj, amt + rnd(9)))
@@ -1961,7 +1768,7 @@ async function potion_dip(obj, potion) {
     /* ── C potion.c:2615-2641 — poisoning / un-poisoning a missile ───────── */
     if (_is_poisonable(obj)) {
         if (potion.otyp === POT_SICKNESS && !obj.opoisoned) {
-            const buf = ((potion.quan | 0) > 1)
+            const buf = (potion.quan > 1)
                 ? `One of ${the(xname(potion))}`
                 : The(xname(potion));
             await pline(`${buf} forms a coating on ${the(xname(obj))}.`);
@@ -2091,7 +1898,7 @@ async function potion_dip(obj, potion) {
         && (mixture = mixtype(obj, potion)) !== STRANGE_OBJECT) {
         const old_otyp = potion.otyp | 0;
         let old_dknown = false;
-        const more_than_one = (potion.quan | 0) > 1;
+        const more_than_one = potion.quan > 1;
         let oldbuf = '';
         /* C potion.c:2735-2738 — "%s " of the OLD type's color, only if the
          * player already knew it. */
@@ -2101,7 +1908,7 @@ async function potion_dip(obj, potion) {
         }
         /* C potion.c:2741-2744 — split one off a merged stack to neutralize;
          * with multiple merged potions only one is affected. */
-        const singlepotion = (potion.quan | 0) > 1 ? await splitobj(potion, 1)
+        const singlepotion = potion.quan > 1 ? await splitobj(potion, 1)
                                                     : potion;
 
         /* C potion.c:2746 — COST_NUTRLZ is alteration verb 10.  The shared
@@ -2296,6 +2103,7 @@ export async function dip_into() {
 
 
 export async function dodip() {
+    // C cmd.c:3810-3826: rhack maps our ECMD return to context.move.
     const g = game;
     const u = g.u;
     const loc = g.level?.at(u.ux, u.uy);
@@ -2307,13 +2115,13 @@ export async function dodip() {
     const at_here = (!menu_requested && (at_pool || at_fountain || at_sink));
 
     const obj = await getObjFromGetobj('dip', at_here ? dip_hands_ok : dip_ok, GETOBJ_PROMPT);
-    if (!obj) { g.context.move = 0; return ECMD_CANCEL; }
+    if (!obj) return ECMD_CANCEL;
     if (await inaccessible_equipment(obj, 'dip', false)) return ECMD_OK;
     drink_ok_extra = 0;
 
     const is_hands = !!obj.hands;
     /* C potion.c:2288-2289 — the flags.verbose==FALSE fallback name. */
-    const shortestname = (is_hands || ((obj.quan ?? 1) | 0) !== 1 || pair_of(obj)) ? 'them' : 'it'; /* is_plural || pair_of */
+    const shortestname = (is_hands || (obj.quan ?? 1) !== 1 || pair_of(obj)) ? 'them' : 'it'; /* is_plural || pair_of */
     /* shortestname / verbose: flags.verbose is the default ON, so the obuf form
      * is used. obuf = doname-with-article (e.g. "a brown potion"). */
     let obuf;
@@ -2330,7 +2138,6 @@ export async function dodip() {
         if (await y_n(qbuf) === 'y') {
             if (!is_hands) obj.pickup_prev = 0;
             await dipfountain(obj);
-            g.context.move = 1;
             /* Same command-result handoff dodip's normal exit uses below: the
              * turn is spent, so the pline has to survive to the next nhgetch. */
             if (g._pending_message) {
@@ -2350,7 +2157,6 @@ export async function dodip() {
         if (await y_n(qbuf) === 'y') {
             if (!is_hands) obj.pickup_prev = 0;
             await dipsink(obj);
-            g.context.move = 1;
             if (g._pending_message) _topl_stash_result();
             return ECMD_TIME;
         }
@@ -2374,7 +2180,6 @@ export async function dodip() {
                 if (await water_damage(obj, 0, true) !== ER_DESTROYED && obj.in_use)
                     await useup(obj);
             }
-            g.context.move = 1;
             if (g._pending_message) _topl_stash_result();
             return ECMD_TIME;
         }
@@ -2389,10 +2194,9 @@ export async function dodip() {
      * is told "You don't have anything [else ]to dip <obj> into." and NO key is
      * read.  The private loop prompted "[*]" and swallowed the next keystroke. */
     const potion = await getObjFromGetobj(word2, drink_ok, GETOBJ_NOFLAGS);
-    if (!potion) { g.context.move = 0; return ECMD_CANCEL; }
+    if (!potion) return ECMD_CANCEL;
 
     const res = await potion_dip(obj, potion);
-    g.context.move = (res & ECMD_TIME) ? 1 : 0;
     /* Time-consuming: promote the trailing result pline to _resultMessage so
      * rhack restores it onto the topline for the next nhgetch (like dodrink). */
     if ((res & ECMD_TIME) && g._pending_message) {
@@ -2811,7 +2615,7 @@ export async function potionbreathe(obj) {
         if (obj.blessed)
             cureblind = true;
         if (cureblind) {
-            make_blinded(0, !u.ucreamed);
+            await make_blinded(0, !u.ucreamed);
             if (g._blockingPline) await g._blockingPline;
             await make_deaf(0, true);
         }
@@ -3419,7 +3223,7 @@ async function peffect_blindness(otmp) {
                                    && (bp.blocked | 0));
     if (blind || blocked_blind)
         game._potion_nothing = (game._potion_nothing | 0) + 1;
-    make_blinded(itimeout_incr((bp?.intrinsic | 0) & TIMEOUT,
+    await make_blinded(itimeout_incr((bp?.intrinsic | 0) & TIMEOUT,
                                rn1(200, 250 - 125 * bcsign(otmp))),
                  !blind);
 }
@@ -3828,7 +3632,7 @@ export function bottlename() {
     return names[rn2(names.length)];
 }
 
-export function make_blinded(xtime, talk) {
+export async function make_blinded(xtime, talk) {
     const old = _BlindedTimeout();
     const u_could_see = !_Blind();
     /* probe ahead exactly as C does (potion.c:267-272) */
@@ -3844,16 +3648,13 @@ export function make_blinded(xtime, talk) {
 
     if (can_see_now && !u_could_see) {  /* potion.c:277 regaining sight */
         if (talk) {
-            /* pline() has no await in its body, so an unawaited call from this
-             * synchronous function commits the message in full — the same
-             * shape js/mhitu.js:258 Your1() already relies on. When it follows
-             * a deferred command result, merge the channels below so later
-             * messages can trigger the normal tty overflow boundary. */
+            /* C potion.c:277-282: pline/You finishes every overflow and STOP
+             * prompt before the timeout and vision change at :326-329. */
             const _priorResult = game._resultMessage;
             if (_Halluc())
-                pline("Far out!  Everything is all cosmic again!");
+                await pline("Far out!  Everything is all cosmic again!");
             else
-                pline("You can see again.");
+                await pline("You can see again.");
             /* pline() now adopts an otherwise-idle result channel itself.
              * Only fold the two channels here when that result is still
              * separate; if pline() already consumed it, prepending the saved
@@ -3876,22 +3677,22 @@ export function make_blinded(xtime, talk) {
         const hasEyes = (hero.mflags1 & M1_NOEYES_ZAP) === 0;
         const permanentlyBlind = ((_blind_prop().intrinsic | 0) & 0x04000000) !== 0;
         if (!hasEyes || permanentlyBlind) {
-            pline(`You have a ${_Halluc() ? "normal" : "strange"} feeling for a moment, then it passes.`);
+            await pline(`You have a ${_Halluc() ? "normal" : "strange"} feeling for a moment, then it passes.`);
         } else if ((_blind_prop().extrinsic | 0) !== 0) { // C youprop.h:96 EBlinded
             const oneEye = [PM_CYCLOPS, PM_FLOATING_EYE].includes(hero.pmidx | 0);
             const eyes = oneEye ? body_part(EYE) : makeplural(body_part(EYE));
-            pline(`Your ${eyes} momentarily ${vtense(eyes, "itch")}.`);
+            await pline(`Your ${eyes} momentarily ${vtense(eyes, "itch")}.`);
         } else {
-            pline(`Your vision seems to brighten for a moment but is ${_Halluc() ? "sadder" : "normal"} now.`);
+            await pline(`Your vision seems to brighten for a moment but is ${_Halluc() ? "sadder" : "normal"} now.`);
         }
     }
 
     if (u_could_see && !can_see_now) {  /* potion.c:300 losing sight */
         if (talk) {
             if (_Halluc())
-                pline("Oh, bummer!  Everything is dark!  Help!");
+                await pline("Oh, bummer!  Everything is dark!  Help!");
             else
-                pline("A cloud of darkness falls upon you.");
+                await pline("A cloud of darkness falls upon you.");
         }
         if (game.u?.uball)              /* Punished — youprop.h */
             set_bc(0);
@@ -3901,13 +3702,13 @@ export function make_blinded(xtime, talk) {
         const hasEyes = (hero.mflags1 & M1_NOEYES_ZAP) === 0;
         const permanentlyBlind = ((_blind_prop().intrinsic | 0) & 0x04000000) !== 0;
         if (!hasEyes || permanentlyBlind) {
-            pline(`You have a ${_Halluc() ? "normal" : "strange"} feeling for a moment, then it passes.`);
+            await pline(`You have a ${_Halluc() ? "normal" : "strange"} feeling for a moment, then it passes.`);
         } else if ((_blind_prop().extrinsic | 0) !== 0) {
             const oneEye = [PM_CYCLOPS, PM_FLOATING_EYE].includes(hero.pmidx | 0);
             const eyes = oneEye ? body_part(EYE) : makeplural(body_part(EYE));
-            pline(`Your ${eyes} momentarily ${vtense(eyes, "twitch")}.`);
+            await pline(`Your ${eyes} momentarily ${vtense(eyes, "twitch")}.`);
         } else {
-            pline(`Your vision seems to dim for a moment but is ${_Halluc() ? "happier" : "normal"} now.`);
+            await pline(`Your vision seems to dim for a moment but is ${_Halluc() ? "happier" : "normal"} now.`);
         }
     }
 

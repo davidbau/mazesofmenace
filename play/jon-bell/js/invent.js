@@ -27,7 +27,7 @@ import { _pickup_burden_level, touch_artifact_youmonst } from './wizcmds.js';
 import { setnotworn, setworn } from './worn.js';
 import { _sortloot_within_class } from './cmd.js'; // relocate-fns
 import { build_window_screen, menu_search_case, tty_window_offx } from './com_pager.js'; // relocate-fns
-import { _topl_joins_committed, docrt, flush_screen, obj_to_glyph, status_r1_menu_docrt, use_last_flush_snapshot } from './display.js'; // relocate-fns
+import { _topl_joins_committed, docorner_blank_utf8_captures, docrt, flush_screen, obj_to_glyph, status_r1_menu_docrt, use_last_flush_snapshot } from './display.js'; // relocate-fns
 import { nhgetch } from './input.js'; // relocate-fns
 import { doname_with_price, not_fully_identified } from './objnam.js'; // relocate-fns
 import { map_menu_cmd } from './options.js'; // relocate-fns
@@ -2112,14 +2112,18 @@ export async function display_minventory(mon, title) {
             if (accel !== '$') menuAccel = menuAccel === 122 ? 65 : menuAccel + 1;
             first = false;
             // tty_end_menu (wintty.c:2729-2731) reserves both menu margins.
-            windowLines.push(`${accel} - ${(await doname_body(o, hand))}`.slice(0, 78));
+            // windows.c:1796-1809 add_menu: menucolors match the raw doname
+            // str; tty colours it after the "x - " selector.
+            windowLines.push(menucolor_row(`${accel} - ${(await doname_body(o, hand))}`.slice(0, 78)));
             lineItems.push(null);
         }
     }
     if (engulfing_u(mon)) {
         if (items.length) { windowLines.push(menu_heading_text(`${_digests(mon.data) ? 'Swallowed' : 'Engulfed'} Creatures`)); lineItems.push(null); }
         if (_cmd_Hallucination()) rn2_on_display_rng(monsPack.mons.length);
-        windowLines.push(`> - ${an(await self_lookat())}`); lineItems.push(null);
+        /* pickup.c query_objlist(INCLUDE_HERO) hero row; windows.c:1803
+         * add_menu menucolors it like any item (no SKIPMENUCOLORS). */
+        windowLines.push(menucolor_row(`> - ${an(await self_lookat())}`)); lineItems.push(null);
     }
     youmonst.data = permonstTemplate(game.u.umonnum);
     --game.iflags.suppress_price;
@@ -2138,7 +2142,7 @@ export async function display_minventory(mon, title) {
 export async function useup(obj) {
     /* Note:  This works correctly for containers because they (containers)
        don't merge. */
-    if ((obj.quan | 0) > 1) {
+    if (obj.quan > 1) { // C invent.c:1322: quan is long, not int
         obj.in_use = false; /* no longer in use */
         obj.quan--;
         obj.owt = weight(obj);
@@ -2532,6 +2536,12 @@ export async function dotypeinv() {
             if (tiFullScreen) {
                 await docrt();
                 g._statusBlankAfterDocrt = true;
+            } else {
+                /* wintty.c:980-982 erase_menu_or_text -> docorner(offx, maxrow+1):
+                 * cl_end() blanks each covered row from offx before row_refresh
+                 * reprints gbuf; a control-byte symbol (RogueEpyx S_human \x01)
+                 * paints nothing over that blank. */
+                docorner_blank_utf8_captures(WIN_COL - 1, windowLines.length + 1);
             }
             await flush_screen(1);
         } finally { g._bot_disabled = savedBotDisabled; }
@@ -3936,6 +3946,11 @@ async function _display_used_invlets(avoidlet) {
         /* display_used_invlets (invent.c:3480) walks gi.invent per class: no sortloot */
         invChainOrder: true,
         filter: (o) => (o.invlet | 0) !== (avoidlet | 0),
+        /* C invent.c:3492-3493: the class headings here are built with
+         * let_to_name(*invlet, FALSE, FALSE) — showsym is FALSE outright,
+         * NOT `want_reply && iflags.menu_head_objsym`, so menu_objsyms
+         * never decorates them with the class symbol. */
+        headShowsym: false,
     });
     /* C invent.c:3510-3513: n > 0 → the picked letter; n == 0 (menu finished
      * with nothing picked, e.g. ' ' on the last page) → '\0', which the caller

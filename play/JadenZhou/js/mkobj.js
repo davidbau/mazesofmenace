@@ -36,6 +36,8 @@ import {
 } from './monsters.js';
 import { merged } from './invent.js';
 import { obj_no_longer_held } from './do.js';
+import { block_point, recalc_block_point } from './vision.js';
+import { vobj_at } from './display.js';
 
 function impossible(msg) { console.error(`impossible: ${msg}`); }
 
@@ -559,6 +561,8 @@ export function obj_extract_self(obj) {
         if (i >= 0)
             fobj.splice(i, 1);
         obj.where = 'OBJ_FREE';
+        if (obj.otyp === O.BOULDER)
+            recalc_block_point(obj.ox, obj.oy); /* vision */
         break;
     }
     case 'OBJ_MINVENT': {
@@ -661,7 +665,13 @@ export function mksobj_at(otyp, x, y, init, artif) {
 // is game.level.objects, newest first; per-square piles are read from it
 // in the same order (boulder-first pile ordering isn't ported yet).
 export function place_object(otmp, x, y) {
+    const otmp2 = vobj_at(x, y); /* level.objects[x][y] */
+
     obj_no_longer_held(otmp);
+    if (otmp.otyp === O.BOULDER) {
+        if (!otmp2 || otmp2.otyp !== O.BOULDER)
+            block_point(x, y); /* vision */
+    }
     otmp.ox = x;
     otmp.oy = y;
     otmp.where = 'OBJ_FLOOR';

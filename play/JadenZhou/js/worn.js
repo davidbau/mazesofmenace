@@ -32,6 +32,13 @@ import { distant_name, doname } from './objnam.js';
 import { curse } from './mkobj.js';
 import { strncmpi, strcmpi } from './hacklib.js';
 import { monsndx } from './mondata.js';
+import { W_RINGL, W_RINGR, W_WEP, W_SWAPWEP, W_QUIVER, W_BALL, W_CHAIN,
+         W_ARMOR, I_SPECIAL, W_ART, BOLT_LIM, M_SEEN_NOTHING, M_SEEN_MAGR,
+         M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC,
+         M_SEEN_POISON, M_SEEN_ACID, M_SEEN_REFL } from './const.js';
+import { monstunseesu } from './uhitm.js';
+import { cancel_doff } from './do_wear.js';
+import { is_weptool } from './wield.js';
 
 function impossible(msg) { console.error(`impossible: ${msg}`); }
 
@@ -166,7 +173,7 @@ function res_to_mr(r) {
 
 /* C ref: worn.c w_blocks() -- This only allows for one blocking item per
    property */
-function w_blocks(o, m) {
+export function w_blocks(o, m) {
     return (o.otyp === O.MUMMY_WRAPPING && (m & W_ARMC) !== 0) ? INVIS
         : (o.otyp === O.CORNUTHAUM && (m & W_ARMH) !== 0
            && !Role_if(M.PM_WIZARD)) ? CLAIRVOYANT
@@ -176,6 +183,143 @@ function w_blocks(o, m) {
 }
 /* note: monsters don't have clairvoyance, so dependency on hero's role here
    has no significant effect on their use of w_blocks() */
+
+/* C ref: worn.c worn[] -- the hero's equipment slots */
+const worn = [
+    { w_mask: W_ARM, w_obj: 'uarm' },
+    { w_mask: W_ARMC, w_obj: 'uarmc' },
+    { w_mask: W_ARMH, w_obj: 'uarmh' },
+    { w_mask: W_ARMS, w_obj: 'uarms' },
+    { w_mask: W_ARMG, w_obj: 'uarmg' },
+    { w_mask: W_ARMF, w_obj: 'uarmf' },
+    { w_mask: W_ARMU, w_obj: 'uarmu' },
+    { w_mask: W_RINGL, w_obj: 'uleft' },
+    { w_mask: W_RINGR, w_obj: 'uright' },
+    { w_mask: W_WEP, w_obj: 'uwep' },
+    { w_mask: W_SWAPWEP, w_obj: 'uswapwep' },
+    { w_mask: W_QUIVER, w_obj: 'uquiver' },
+    { w_mask: W_AMUL, w_obj: 'uamul' },
+    { w_mask: W_TOOL, w_obj: 'ublindf' }, /* blindfold|towel|lenses */
+    { w_mask: W_BALL, w_obj: 'uball' },
+    { w_mask: W_CHAIN, w_obj: 'uchain' },
+];
+
+/* C ref: youprop.h u.uprops[] entry, made on demand */
+function uprop(p) {
+    const u = game.u;
+    if (!u.uprops[p]) u.uprops[p] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    return u.uprops[p];
+}
+
+// C ref: mondata.c cvt_prop_to_mseenres()
+function cvt_prop_to_mseenres(prop) {
+    switch (prop) {
+    case ANTIMAGIC: return M_SEEN_MAGR;
+    case FIRE_RES: return M_SEEN_FIRE;
+    case COLD_RES: return M_SEEN_COLD;
+    case SLEEP_RES: return M_SEEN_SLEEP;
+    case DISINT_RES: return M_SEEN_DISINT;
+    case POISON_RES: return M_SEEN_POISON;
+    case SHOCK_RES: return M_SEEN_ELEC;
+    case ACID_RES: return M_SEEN_ACID;
+    case REFLECTING: return M_SEEN_REFL;
+    default: return M_SEEN_NOTHING;
+    }
+}
+
+// C ref: worn.c setworn()
+/* Updated to use the extrinsic and blocked fields. */
+export function setworn(obj, mask) {
+    const g = game;
+    const u = g.u;
+    let oobj, p;
+
+    if ((mask & (W_ARM | I_SPECIAL)) === (W_ARM | I_SPECIAL)) {
+        /* restoring saved game; no properties are conferred via skin */
+        g.uskin = obj;
+        /* assert( !uarm ); */
+    } else {
+        for (const wp of worn) {
+            if (wp.w_mask & mask) {
+                oobj = g[wp.w_obj] || null;
+                if (oobj && !(oobj.owornmask & wp.w_mask))
+                    impossible(`Setworn: mask=0x${wp.w_mask.toString(16)}.`);
+                if (oobj) {
+                    if (u.twoweap && (oobj.owornmask & (W_WEP | W_SWAPWEP)))
+                        u.twoweap = false; /* set_twoweap(FALSE) */
+                    oobj.owornmask &= ~wp.w_mask;
+                    if (wp.w_mask & ~(W_SWAPWEP | W_QUIVER)) {
+                        p = objects[oobj.otyp].oc_oprop;
+                        uprop(p).extrinsic = uprop(p).extrinsic & ~wp.w_mask;
+                        /* if the hero removed an extrinsic-granting item,
+                           nearby monsters will notice and attempt attacks of
+                           that type again */
+                        monstunseesu(cvt_prop_to_mseenres(p)); /* monstunseesu_prop(p) */
+                        if ((p = w_blocks(oobj, mask)) !== 0)
+                            uprop(p).blocked &= ~wp.w_mask;
+                        if (oobj.oartifact)
+                            throw new Error('setworn(): set_artifact_intrinsic() not ported yet');
+                    }
+                    /* in case wearing or removal is in progress or removal
+                       is pending (via 'A' command for multiple items) */
+                    cancel_doff(oobj, wp.w_mask);
+                }
+                g[wp.w_obj] = obj;
+                if (obj) {
+                    obj.owornmask = (obj.owornmask || 0) | wp.w_mask;
+                    /* Prevent getting/blocking intrinsics from wielding
+                     * potions, through the quiver, etc.
+                     * Allow weapon-tools, too.
+                     * wp_mask should be same as mask at this point.
+                     */
+                    if (wp.w_mask & ~(W_SWAPWEP | W_QUIVER)) {
+                        if (obj.oclass === O.WEAPON_CLASS || is_weptool(obj)
+                            || mask !== W_WEP) {
+                            p = objects[obj.otyp].oc_oprop;
+                            uprop(p).extrinsic = uprop(p).extrinsic | wp.w_mask;
+                            if ((p = w_blocks(obj, mask)) !== 0)
+                                uprop(p).blocked |= wp.w_mask;
+                        }
+                        if (obj.oartifact)
+                            throw new Error('setworn(): set_artifact_intrinsic() not ported yet');
+                    }
+                }
+            }
+        }
+        if (obj && (obj.owornmask & W_ARMOR) !== 0)
+            u.uroleplay.nudist = false;
+        /* tux -> tuxedo -> "monkey suit" -> monk's suit */
+        g.iflags.tux_penalty = !!(g.uarm && Role_if(M.PM_MONK)
+                                  && g.urole.spelarmr);
+    }
+    if ((g.flags.weaponstatus && (mask & W_WEP) !== 0)
+        || (g.flags.armorstatus && (mask & W_ARMOR) !== 0))
+        g.disp_botl = true;
+    /* update_inventory(): no perm_invent */
+    recalc_telepat_range();
+}
+
+// C ref: worn.c recalc_telepat_range()
+/* calc the range of hero's unblind telepathy */
+function recalc_telepat_range() {
+    const g = game;
+    let nobjs = 0;
+
+    for (const wp of worn) {
+        const oobj = g[wp.w_obj];
+
+        if (oobj && objects[oobj.otyp].oc_oprop === TELEPAT)
+            nobjs++;
+    }
+    /* count all artifacts with SPFX_ESP as one */
+    if (uprop(TELEPAT).extrinsic & W_ART)
+        nobjs++;
+
+    if (nobjs)
+        g.u.unblind_telepat_range = (BOLT_LIM * BOLT_LIM) * nobjs;
+    else
+        g.u.unblind_telepat_range = -1;
+}
 
 // C ref: artifact.c artifact_light()
 function artifact_light(obj) {

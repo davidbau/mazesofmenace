@@ -660,7 +660,7 @@ export async function polymon(mntmp) {
     // retaining the canonical message and vision bookkeeping.
     if (was_blind && !Blind_vis()) {
         set_HBlinded(1);
-        make_blinded(0, true);
+        await make_blinded(0, true);
     }
 
     // C polyself.c:903 newsym(u.ux, u.uy) — change symbol.
@@ -1242,7 +1242,7 @@ async function polyman(msg) {
          * (polyself.c:256, polyself.c:153) -- and that bot() paints "Blind"
          * (HBlinded=1) under the --More--.  No paint hold: C has none. */
         set_HBlinded(1);
-        make_blinded(0, true);
+        await make_blinded(0, true);
     }
     // C polyself.c:261 check_strangling(TRUE).  Reversion can expose a
     // strangulation amulet which was harmless in a breathless form.

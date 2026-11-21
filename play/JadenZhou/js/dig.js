@@ -9,6 +9,75 @@ import {
     ROCK, BOULDER, CORPSE, LEASH, POT_OIL, POTION_CLASS, is_organic,
 } from './objects.js';
 import { obj_resists } from './dogmove.js';
+import { DIGTYP_UNDIGGABLE, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_BOULDER,
+         DIGTYP_DOOR, DIGTYP_TREE, IS_OBSTRUCTED, IS_WALL, TREE, TT_PIT,
+         FLYING, P_AXE, is_pit } from './const.js';
+import { objects, STATUE, PICK_AXE, DWARVISH_MATTOCK, WEAPON_CLASS,
+         TOOL_CLASS } from './objects.js';
+import { closed_door, sobj_at } from './makemon.js';
+import { t_at } from './trap.js';
+import { bimanual } from './wield.js';
+
+/* C ref: obj.h is_pick(), is_axe() */
+function is_pick(otmp) {
+    return otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK;
+}
+function is_axe(otmp) {
+    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
+            && objects[otmp.otyp].oc_skill === P_AXE);
+}
+
+// C ref: dig.c pick_can_reach()
+function pick_can_reach(pick, x, y) {
+    const u = game.u;
+    const t = t_at(x, y);
+    /* tseen: pit only affects item positioning when it is known */
+    const target_in_pit = !!t && is_pit(t.ttyp) && !!t.tseen;
+
+    /* if hero is in a pit, pick can only reach if the statue is too and
+       the two pits are conjoined or the statue isn't and pick is two-handed;
+       this applies to hero in pit trying to reach an adjcacent boulder too */
+    if (u.utrap && u.utraptype === TT_PIT) {
+        if (target_in_pit)
+            throw new Error('pick_can_reach(): conjoined_pits() not ported yet');
+        return bimanual(pick);
+    }
+
+    /* when hero isn't in a pit, a mattock or flying hero w/ pick can reach
+       whether or not the statue is in a pit */
+    const Flying = !!(u.uprops?.[FLYING]?.intrinsic || u.uprops?.[FLYING]?.extrinsic);
+    if (bimanual(pick) || Flying)
+        return true;
+    /* one-handed pick-axe can reach if statue isn't in a pit */
+    if (!target_in_pit)
+        return true;
+
+    return false;
+}
+
+// C ref: dig.c dig_typ()
+/* When digging into location <x,y>, what are you actually digging into? */
+export function dig_typ(otmp, x, y) {
+    if (!isok(x, y) || !otmp || (!is_pick(otmp) && !is_axe(otmp)))
+        return DIGTYP_UNDIGGABLE;
+
+    const ltyp = game.level.at(x, y).typ;
+    if (is_axe(otmp))
+        return closed_door(x, y) ? DIGTYP_DOOR
+               : (ltyp === TREE) ? DIGTYP_TREE /* axe vs tree */
+                 : DIGTYP_UNDIGGABLE;
+    /*assert(is_pick(otmp));*/
+    return (sobj_at(STATUE, x, y) && pick_can_reach(otmp, x, y))
+           ? DIGTYP_STATUE
+           : (sobj_at(BOULDER, x, y) && pick_can_reach(otmp, x, y))
+             ? DIGTYP_BOULDER
+             : closed_door(x, y) ? DIGTYP_DOOR
+               : (ltyp === TREE) ? DIGTYP_UNDIGGABLE /* pick vs tree */
+                 : (IS_OBSTRUCTED(ltyp)
+                    && (!game.level.flags?.arboreal || IS_WALL(ltyp)))
+                   ? DIGTYP_ROCK
+                   : DIGTYP_UNDIGGABLE;
+}
 
 // C ref: dbridge.c is_ice()
 export function is_ice(x, y) {

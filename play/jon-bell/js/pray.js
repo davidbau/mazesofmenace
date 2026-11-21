@@ -2034,7 +2034,7 @@ async function _pleased(gAlign) {
             if (u.uhunger < 900) init_uhunger();
             if (u.uluck < 0) u.uluck = 0;
             u.ucreamed = 0;
-            make_blinded(0, true);
+            await make_blinded(0, true);
             SET_BOTL();
             break;
         case 4: {

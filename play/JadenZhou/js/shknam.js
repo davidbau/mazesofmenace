@@ -19,8 +19,10 @@ import {
 import { mons, PM_SHOPKEEPER, S_MIMIC } from './monsters.js';
 import { makemon, mkmonmoney, mongets, set_malign, m_at, mkclass } from './makemon.js';
 import { mkobj_at, mksobj_at } from './mkobj.js';
-import { distmin } from './hacklib.js';
+import { distmin, highc } from './hacklib.js';
 import { mon_learns_traps } from './mondata.js';
+import { HALLUC, HALLUC_RES } from './const.js';
+import { noit_mon_nam } from './do_name.js';
 import { ledger_no, Is_special, assign_level, on_level, depth } from './dungeon.js';
 import { newsym } from './display.js';
 import { cvt_sdoor_to_door } from './detect.js';
@@ -544,4 +546,77 @@ export function get_shop_item(type) {
         continue;
 
     return shp.iprobs[i].itype;
+}
+
+/* C ref: you.h Hallucination -- HHallucination && !Halluc_resistance */
+function Hallucination() {
+    const P = game.u.uprops;
+    return !!((P[HALLUC]?.intrinsic || P[HALLUC]?.extrinsic)
+              && !(P[HALLUC_RES]?.intrinsic || P[HALLUC_RES]?.extrinsic));
+}
+
+/* C ref: hacklib.c letter() */
+function letter(c) {
+    return ('@' <= c && c <= 'Z') || ('a' <= c && c <= 'z');
+}
+
+// C ref: shknam.c Shknam()
+export function Shknam(mtmp) {
+    const nam = shkname(mtmp);
+
+    /* 'nam[]' is almost certainly already capitalized, but be sure */
+    return highc(nam[0]) + nam.slice(1);
+}
+
+// C ref: shknam.c shkname()
+/* shopkeeper's name, without any visibility constraint; if hallucinating,
+   will yield some other shopkeeper's name (not necessarily one residing
+   in the current game's dungeon, or who keeps same type of shop) */
+export function shkname(mtmp) {
+    let nam;
+    const save_isshk = mtmp.isshk;
+
+    mtmp.isshk = 0; /* don't want mon_nam() calling shkname() */
+    /* get a modifiable name buffer along with fallback result */
+    nam = noit_mon_nam(mtmp);
+    mtmp.isshk = save_isshk;
+
+    if (!mtmp.isshk) {
+        /* impossible("shkname: \"%s\" is not a shopkeeper.", nam) */
+    } else if (!mtmp.mextra?.eshk) {
+        throw new Error(`shkname: shopkeeper "${nam}" lacks 'eshk' data.`);
+    } else {
+        let shknm = mtmp.mextra.eshk.shknam;
+
+        if (Hallucination() && !game.program_state?.gameover) {
+            let nlp;
+            let num;
+
+            /* count the number of non-unique shop types;
+               pick one randomly, ignoring shop generation probabilities;
+               pick a name at random from that shop type's list */
+            for (num = 0; num < shtypes.length; num++)
+                if (shtypes[num].prob === 0)
+                    break;
+            if (num > 0) {
+                nlp = shtypes[rn2(num)].shknms;
+                for (num = 0; nlp[num]; num++)
+                    continue;
+                if (num > 0)
+                    shknm = nlp[rn2(num)];
+            }
+        }
+        /* strip prefix if present */
+        if (!letter(shknm[0]))
+            shknm = shknm.slice(1);
+        nam = shknm;
+    }
+    return nam;
+}
+
+// C ref: shknam.c shkname_is_pname()
+export function shkname_is_pname(mtmp) {
+    const shknm = mtmp.mextra.eshk.shknam;
+
+    return (shknm[0] === '-' || shknm[0] === '+' || shknm[0] === '=');
 }

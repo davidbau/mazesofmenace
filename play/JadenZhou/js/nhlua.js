@@ -38,6 +38,8 @@ import { nhlib_lua } from './nhlib_lua.js';
 import { dungeon_lua } from './dungeon_lua.js';
 import { nhcore_lua } from './nhcore_lua.js';
 import { themerms_lua } from './themerms_lua.js';
+import { tty_create_nhwindow, tty_start_menu, add_menu_str, tty_end_menu,
+         tty_select_menu, tty_destroy_nhwindow } from './wintty.js';
 import { quest_lua } from './quest_lua.js';
 import { l_register_des, get_coord, cvt_to_abscoord } from './sp_lev.js';
 import { l_selection_register } from './selvar.js';
@@ -388,6 +390,46 @@ function nhl_timer_start_at(...args) {
     return 0;
 }
 
+// C ref: nhlua.c nhl_text()
+/* text("foo\nbar\nbaz") -- show the lines in a menu window */
+async function nhl_text(...args) {
+    const argc = args.length;
+
+    if (argc > 0) {
+        const tmpwin = tty_create_nhwindow(C.NHW_MENU);
+        tty_start_menu(tmpwin, C.MENU_BEHAVE_STANDARD);
+
+        while (args.length > 0) {
+            const str = String(args.shift()); /* luaL_checkstring(L, 1) */
+            const lstr = str.length - 1;
+            let pos = 0;
+
+            do {
+                const nlp = str.indexOf('\n', pos);
+                let ptr;
+
+                if (nlp >= 0 && (nlp - pos) <= 76) {
+                    ptr = nlp;
+                } else {
+                    ptr = pos + 76;
+                    if (ptr > lstr)
+                        ptr = lstr;
+                }
+                while ((ptr > pos) && !(str[ptr] === ' ' || str[ptr] === '\n'))
+                    ptr--;
+                /* *ptr = '\0' */
+                add_menu_str(tmpwin, str.slice(pos, ptr));
+                pos = ptr + 1;
+            } while (pos < str.length && pos <= lstr);
+        }
+
+        tty_end_menu(tmpwin, null);
+        await tty_select_menu(tmpwin, C.PICK_NONE);
+        await tty_destroy_nhwindow(tmpwin);
+    }
+    return 0;
+}
+
 // C ref: nhlua.c nhl_functions[] — the "nh" table. Only some functions
 // are ported so far.
 const nhl_functions = {
@@ -397,6 +439,7 @@ const nhl_functions = {
     level_difficulty: nhl_level_difficulty,
     debug_themerm: nhl_get_debug_themerm_name,
     start_timer_at: nhl_timer_start_at,
+    text: nhl_text,
 };
 
 // The hand-ported Lua scripts by file name: the files nhl_loadlua() can
@@ -548,7 +591,7 @@ export function l_nhcore_done() {
 }
 
 // C ref: nhlua.c l_nhcore_call()
-export function l_nhcore_call(callidx) {
+export async function l_nhcore_call(callidx) {
     const L = game.luacore;
 
     if (callidx < 0 || callidx >= NUM_NHCORE_CALLS || !L
@@ -566,7 +609,7 @@ export function l_nhcore_call(callidx) {
     const fn = nhcore[nhcore_call_names[callidx]];
     if (lua_type(fn) === LUA_TFUNCTION) {
         /* nhl_pcall_handle(gl.luacore, 0, 1, "l_nhcore_call", NHLpa_panic) */
-        fn();
+        await fn();
     } else {
         /*impossible("nhcore.%s is not a lua function",
           nhcore_call_names[callidx]);*/

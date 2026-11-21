@@ -2,6 +2,7 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
+import { money_cnt } from './u_init.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
 import { tty_putstr, tty_display_nhwindow } from './wintty.js';
 import { rank } from './botl.js';
@@ -14,7 +15,8 @@ import {
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, SEE_INVIS,
-    BLINDED, INFRAVISION, TELEPAT, WARN_OF_MON, DETECT_MONSTERS,
+    BLINDED, INFRAVISION, TELEPAT, WARN_OF_MON, DETECT_MONSTERS, WARNING,
+    NO_TRAP, BEAR_TRAP, PIT, SPIKED_PIT, WEB,
 } from './const.js';
 import { HALLUC, Is_waterlevel, isok, IS_STWALL } from './const.js';
 import {
@@ -70,8 +72,9 @@ const DEF_CMAP_FOR_DEC = {
 function terrain_glyph(loc, x, y) {
     const tg = terrain_glyph_dec(loc, x, y);
     if (tg.dec && !/^decgraphics$/i.test(game.symset_name || ''))
-        return { ch: tg.asc ?? DEF_CMAP_FOR_DEC[tg.ch] ?? tg.ch, color: tg.color, dec: false };
-    return { ch: tg.ch, color: tg.color, dec: tg.dec };
+        return { ch: tg.asc ?? DEF_CMAP_FOR_DEC[tg.ch] ?? tg.ch, color: tg.color, dec: false,
+                 cmap: tg.cmap };
+    return { ch: tg.ch, color: tg.color, dec: tg.dec, cmap: tg.cmap };
 }
 
 // C ref: stairs.c stairway_at()
@@ -550,6 +553,14 @@ function wall_angle(lev) {
     return idx;
 }
 
+/* C ref: defsym.h S_corr, S_litcorr; display.c map_glyphinfo(): when
+   S_litcorr has the same symbol as S_corr (it does in the default and
+   DECgraphics symsets) it is shown in CLR_WHITE to tell them apart.
+   'cmap' lets newsym() and feel_location() recognize the remembered
+   glyph (lev->glyph == cmap_to_glyph(S_litcorr)). */
+const S_corr_g = { ch: '#', color: CLR_GRAY, dec: false, cmap: 'S_corr' };
+const S_litcorr_g = { ch: '#', color: CLR_WHITE, dec: false, cmap: 'S_litcorr' };
+
 // C ref: display.c back_to_glyph() -- the background glyph of a spot,
 // as { ch, color, dec } with the DECgraphics symset's line-drawing
 // characters (dat/symbols "DECgraphics") where it overrides defsym.h;
@@ -559,7 +570,7 @@ function terrain_glyph_dec(loc, x, y) {
     const arboreal = !!game.level?.flags?.arboreal;
     const S_stone = { ch: ' ', color: NO_COLOR, dec: false };
     const S_tree = { ch: 'g', color: CLR_GREEN, dec: true, asc: '#' };
-    const S_room = { ch: '~', color: NO_COLOR, dec: true };    /* '.' */
+    const S_room = { ch: '~', color: NO_COLOR, dec: true, cmap: 'S_room' }; /* '.' */
     const S_ndoor = { ch: '~', color: CLR_GRAY, dec: true };   /* '.' */
     const S_hwall = { ch: 'q', color: NO_COLOR, dec: true };   /* '-' */
     const S_vwall = { ch: 'x', color: NO_COLOR, dec: true };   /* '|' */
@@ -567,7 +578,9 @@ function terrain_glyph_dec(loc, x, y) {
     case SCORR:
     case STONE:     return arboreal ? S_tree : S_stone;
     case ROOM:      return S_room;
-    case CORR:      return { ch: '#', color: CLR_GRAY, dec: false }; /* S_corr/S_litcorr */
+    case CORR:
+        /* idx = (ptr->waslit || flags.lit_corridor) ? S_litcorr : S_corr */
+        return (loc.waslit || game.flags?.lit_corridor) ? S_litcorr_g : S_corr_g;
     case HWALL:
     case VWALL:
     case TLCORNER:
@@ -644,9 +657,17 @@ function terrain_glyph_dec(loc, x, y) {
 }
 
 // C ref: termcap.c init_hilite() -- hilites[CLR_GRAY] = hilites[NO_COLOR]
-// = 0, so term_start_color() emits nothing for gray: it shows as default
+// = 0, so term_start_color() emits nothing for gray: it shows as default.
+// With the use_darkgray option (iflags.wc2_darkgray, on by default)
+// hilites[CLR_BLACK] is bright black, color index 8 like NO_COLOR (the
+// recorder's nomux_set_fg() makes the same remap); without it, black is
+// shown as blue.
 function tty_color(color) {
-    return (color === undefined || color === CLR_GRAY) ? NO_COLOR : color;
+    if (color === undefined || color === CLR_GRAY)
+        return NO_COLOR;
+    if (color === CLR_BLACK)
+        return (game.iflags?.wc2_darkgray !== false) ? NO_COLOR : CLR_BLUE;
+    return color;
 }
 
 // ── show_glyph_cell ──
@@ -684,7 +705,7 @@ function uprop(p) {
     return !!(P && (P.intrinsic || P.extrinsic));
 }
 /* C ref: youprop.h Blind -- ((HBlinded || EBlinded) && !BBlinded) */
-function Blind() {
+export function Blind() {
     const P = game.u?.uprops?.[BLINDED];
     return !!(P && (P.intrinsic || P.extrinsic) && !P.blocked);
 }
@@ -741,17 +762,36 @@ export function canspotmon(mon) {
     return canseemon(mon) || sensemon(mon);
 }
 
+// C ref: display.c is_worm_tail() -- the monster found at <x,y> is
+// there only by a tail segment
+function is_worm_tail(mon, x, y) {
+    return !!mon && (x !== mon.mx || y !== mon.my);
+}
+
+// C ref: display.h _mon_warning()
+function mon_warning(mon) {
+    const u = game.u;
+    return uprop(WARNING) && !mon.mpeaceful
+           && ((mon.mx - u.ux) ** 2 + (mon.my - u.uy) ** 2) < 100 /* mdistu() */
+           && Math.trunc((mon.m_lev || 0) / 4) >= (game.context.warnlevel || 0);
+}
+
 // C ref: display.c display_monster() -- the plain case: the monster's own
 // glyph (mon_to_glyph()), in its mons[] color; mimic appearances,
-// hilite_pet/ridden-steed flags and warnings are not ported yet
+// ridden-steed flags and warnings are not ported yet
 function display_monster(x, y, mon) {
     const ptr = mon.data;
     const ch = def_monsyms[ptr.mlet] ?? '?';
-    show_glyph_cell(x, y, ch, ptr.mcolor ?? NO_COLOR, false);
+    /* a tame monster gets pet_to_glyph() (mon->mtame && !Hallucination),
+       whose glyphs have MG_PET; wintty.c tty_print_glyph() shows those
+       with iflags.wc2_petattr when hilite_pet is on */
+    const attr = (mon.mtame && !Hallucination() && game.iflags?.wc_hilite_pet)
+                 ? game.iflags.wc2_petattr : 0;
+    show_glyph_cell(x, y, ch, ptr.mcolor ?? NO_COLOR, false, attr);
 }
 
 // C ref: you.h Hallucination
-function Hallucination() {
+export function Hallucination() {
     const p = game.u?.uprops?.[HALLUC];
     return !!(p?.intrinsic || p?.extrinsic);
 }
@@ -807,9 +847,11 @@ function obj_to_glyph(obj, rng) {
     if (obj.otyp === CORPSE)
         return { ch: def_oc_syms[objects[CORPSE].oc_class],
                  color: mons[obj.corpsenm].mcolor ?? NO_COLOR, decgfx: false };
-    const offset = obj_is_generic(obj) ? obj.oclass : obj.otyp;
+    const generic = obj_is_generic(obj);
+    const offset = generic ? obj.oclass : obj.otyp;
+    /* 'generic' marks glyph_is_generic_object() */
     return { ch: def_oc_syms[objects[offset].oc_class],
-             color: objects[offset].oc_color, decgfx: false };
+             color: objects[offset].oc_color, decgfx: false, generic };
 }
 
 // C ref: display.c map_object()
@@ -842,12 +884,119 @@ function map_object(obj, show) {
         show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.decgfx);
 }
 
+// C ref: display.c see_nearby_objects()
+/* mark the top object of nearby stacks as having been seen, and if
+   that object was being displayed as generic, redisplay it as specific */
+export function see_nearby_objects() {
+    const u = game.u;
+    let obj;
+    const x = u.ux, y = u.uy;
+    /* these 'r' and 'neardist' calculations match distant_name(objnam.c) */
+    const r = (u.xray_range > 2) ? u.xray_range : 2,
+        /* neardist produces a small square with rounded corners */
+        neardist = (r * r) * 2 - r; /* same as r*r + r*(r-1) */
+
+    for (let iy = y - r; iy <= y + r; ++iy)
+        for (let ix = x - r; ix <= x + r; ++ix) {
+            if (!isok(ix, iy))
+                continue;
+            /* skip if no object or the object has already been marked as
+               having been seen up close */
+            if ((obj = vobj_at(ix, iy)) === null || obj.dknown)
+                continue;
+            /* skip if the spot can't be seen or is too far (diagonal) */
+            if (!cansee(ix, iy)
+                || (ix - u.ux) ** 2 + (iy - u.uy) ** 2 > neardist) /* distu() */
+                continue;
+
+            observe_object(obj, Hallucination());
+            /* operate on remembered glyph rather than current one */
+            if (game.level.at(ix, iy).remembered_glyph?.generic)
+                newsym_force(ix, iy);
+        }
+}
+
+// C ref: display.h glyph_is_invisible() -- for a remembered glyph
+// (lev->glyph): the "remembered, unseen monster" 'I'
+export function glyph_is_invisible(rg) {
+    return !!rg?.invisible;
+}
+
+// C ref: display.c map_invisible()
+/*
+ * Make the hero remember that a square contains an invisible monster.
+ * This is a special case in that the square will continue to be displayed
+ * this way even when the hero is close enough to see it.  To get rid of
+ * this and display the square's actual contents, use unmap_object() followed
+ * by newsym() if necessary.
+ */
+export function map_invisible(x, y) {
+    if (x !== game.u.ux || y !== game.u.uy) { /* don't display I at hero's location */
+        /* GLYPH_INVISIBLE: S_invisible 'I', invis_color() NO_COLOR */
+        const glyph = { ch: 'I', color: NO_COLOR, decgfx: false, invisible: true };
+        if (game.level.flags?.hero_memory)
+            game.level.at(x, y).remembered_glyph = glyph;
+        show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.decgfx);
+    }
+}
+
+// C ref: display.c unmap_invisible()
+export function unmap_invisible(x, y) {
+    if (isok(x, y) && glyph_is_invisible(game.level.at(x, y).remembered_glyph)) {
+        unmap_object(x, y);
+        newsym(x, y);
+        return true;
+    }
+    return false;
+}
+
+// C ref: display.c unmap_object()
+/*
+ * Remove something from the map when the hero realizes it's not there any
+ * more.  Replace it with background or known trap, but not with any other
+ * If this is used for detection, a full screen update is imminent anyway;
+ * if this is used to get rid of an invisible monster notation, we might have
+ * to call newsym().
+ */
+export function unmap_object(x, y) {
+    let trap, ep;
+
+    if (!game.level.flags?.hero_memory)
+        return;
+
+    const lev = game.level.at(x, y);
+    if ((trap = t_at(x, y)) !== null && trap && trap.tseen
+        && !covers_objects(x, y) /* covers_traps() */) {
+        map_trap(trap, false);
+    } else if (lev.seenv) {
+        if (spot_shows_engravings(x, y)
+            && (ep = engr_at(x, y)) !== null && ep
+            && !covers_objects(x, y) /* covers_traps() */) {
+            if (cansee(x, y))
+                ep.erevealed = 1;
+            map_engraving(ep, false);
+        } else {
+            map_background(x, y, false);
+        }
+
+        /* turn remembered dark room squares dark */
+        if (!lev.waslit && lev.remembered_glyph?.cmap === 'S_room'
+            && lev.typ === ROOM)
+            lev.remembered_glyph = { ch: ' ', color: NO_COLOR, decgfx: false,
+                                     cmap: 'S_stone' };
+    } else {
+        lev.remembered_glyph = { ch: ' ', color: NO_COLOR, decgfx: false,
+                                 cmap: 'S_stone' }; /* default val */
+    }
+}
+
 // C ref: display.c map_background()
 function map_background(x, y, show) {
     const loc = game.level.at(x, y);
     const tg = terrain_glyph(loc, x, y);
     if (game.level.flags?.hero_memory)
-        loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
+        loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
+                                 cmap: tg.cmap };
     if (show)
         show_glyph_cell(x, y, tg.ch, tg.color, tg.dec);
 }
@@ -944,14 +1093,31 @@ function _map_location(x, y, show) {
     }
 }
 
+// C ref: display.c newsym_force() -- newsym() plus marking the spot as
+// needing to be redrawn (gbuf[y][x].gnew)
+export function newsym_force(x, y) {
+    newsym(x, y);
+    const loc = game.level?.at(x, y);
+    if (loc)
+        loc.gnew = 1;
+}
+
 // ── newsym ──
 export function newsym(x, y) {
+    /* don't try to produce map output when level is in a state of flux
+       (C ref: display.c _suppress_map_output(); saving and restoring
+       aren't flagged in this port) */
+    if (game.in_mklev)
+        return;
     const loc = game.level?.at(x, y);
     if (!loc) return;
 
-    /* C ref: display.c newsym(): when the spot can be seen, an engraving
-       there is revealed, even when covered by objects or a monster */
+    /* C ref: display.c newsym(): when the spot can be seen, remember its
+       lit condition (not templit, so that temporarily lit spots re-darken
+       out of sight), and an engraving there is revealed, even when
+       covered by objects or a monster */
     if (cansee(x, y)) {
+        loc.waslit = (loc.lit ? 1 : 0); /* remember lit condition */
         const ep = engr_at(x, y);
         if (ep)
             ep.erevealed = 1;
@@ -963,28 +1129,85 @@ export function newsym(x, y) {
             _map_location(x, y, false);
         } else {
             const tg = terrain_glyph(loc, x, y);
-            loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
+            loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
+                                     cmap: tg.cmap };
+            /* C ref: display.c feel_location(): Corridors are never felt
+               as lit (unless remembered that way) (lit_corridor only). */
+            if (loc.typ === CORR && loc.remembered_glyph.cmap === 'S_litcorr'
+                && !loc.waslit)
+                loc.remembered_glyph = rememb_glyph(S_corr_g);
         }
         show_glyph_cell(x, y, '@', CLR_WHITE, false);
         return;
     }
 
-    // Only update display/memory if cell is IN_SIGHT (lit and visible)
+    let mon;
+    /* Can physically see the location. */
     if (cansee(x, y)) {
-        /* C ref: display.c newsym(): a monster seen at the spot is shown
-           over the mapped location (display_monster()) */
-        const mon = mon_at_loc(x, y);
-        if (mon && mon_visible(mon) && !mon.m_ap_type) {
+        mon = mon_at_loc(x, y);
+        const worm_tail = is_worm_tail(mon, x, y);
+        const see_it = !!mon && (mon_visible(mon)
+                                 || (!worm_tail && (tp_sensemon(mon)
+                                                    || MATCH_WARN_OF_MON(mon))));
+        /* mimics' disguises (display_monster()'s M_AP_FURNITURE/OBJECT/
+           MONSTER cases) aren't ported yet: the location under them is
+           shown instead */
+        if (mon && (see_it || (!worm_tail && uprop(DETECT_MONSTERS)))
+            && !mon.m_ap_type) {
+            if (mon.mtrapped) {
+                const trap = t_at(x, y);
+                const tt = trap ? trap.ttyp : NO_TRAP;
+
+                /* if monster is in a physical trap, you see trap too */
+                if (tt === BEAR_TRAP || tt === PIT || tt === SPIKED_PIT
+                    || tt === WEB)
+                    trap.tseen = 1;
+            }
             _map_location(x, y, false); /* map under the monster */
+            /* also gets rid of any invisibility glyph */
             display_monster(x, y, mon);
+        } else if (mon && mon_warning(mon) && !worm_tail) {
+            throw new Error('newsym(): display_warning() not ported yet');
+        } else if (glyph_is_invisible(loc.remembered_glyph)) {
+            map_invisible(x, y);
         } else {
-            _map_location(x, y, true);
+            _map_location(x, y, true); /* map the location */
         }
+
+    /* Can't see the location. */
+    } else if ((mon = mon_at_loc(x, y)) !== null
+               && (tp_sensemon(mon) || MATCH_WARN_OF_MON(mon)
+                   || (see_with_infrared(mon) && mon_visible(mon))
+                   || (uprop(DETECT_MONSTERS) && !is_worm_tail(mon, x, y)))) {
+        /* Seen or sensed monsters are printed every time.
+           This also gets rid of any invisibility glyph.
+           (display_monster() shows a disguised mimic only when it is
+           physically seen or sensed through its disguise) */
+        if (!mon.m_ap_type)
+            display_monster(x, y, mon);
+    } else if (mon && mon_warning(mon) && !is_worm_tail(mon, x, y)) {
+        throw new Error('newsym(): display_warning() not ported yet');
     } else if (loc.remembered_glyph) {
+        /* C ref: display.c newsym(), can't see the location: a spot
+           remembered as both dark (waslit is false) and lit (glyph is a
+           lit corridor) was seen by night vision (or lit_corridor), so
+           correct the hero's memory to match waslit */
+        if ((!loc.waslit || (game.flags.dark_room !== false
+                             && game.iflags.wc_color !== false))
+            && loc.typ === CORR && loc.remembered_glyph.cmap === 'S_litcorr')
+            loc.remembered_glyph = rememb_glyph(S_corr_g);
         // Out of sight but remembered — show remembered glyph
         show_glyph_cell(x, y, loc.remembered_glyph.ch,
             loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
+    } else {
+        /* show_mem: never seen, the unexplored glyph (blank) */
+        show_glyph_cell(x, y, ' ', NO_COLOR, false);
     }
+}
+
+/* a terrain glyph in the remembered-glyph form (lev->glyph) */
+function rememb_glyph(tg) {
+    return { ch: tg.ch, color: tg.color, decgfx: tg.dec, cmap: tg.cmap };
 }
 
 // C ref: display.h enum docrt_flags_bits
@@ -1192,7 +1415,7 @@ function _statusLine2() {
     const expr = game.flags?.showexp ? `Xp:${u.ulevel || 1}/${u.uexp || 0}`
                                      : `Xp:${u.ulevel || 1}`;
     const tmmv = game.flags?.time ? ` T:${game.moves}` : '';
-    return `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${expr}${tmmv}`;
+    return `Dlvl:${u.uz?.dlevel || 1} $:${Math.min(money_cnt(game.invent), 999999)} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${expr}${tmmv}`;
 }
 
 // ── Serialize terminal grid for screen comparison ──
@@ -1237,8 +1460,10 @@ function _buildScreenOutput(cursor_on_u) {
         output += render_map_row(y) + '\n';
     }
 
-    // Row 22-23: status
-    const [st1, st2] = game._status_lines || ['', ''];
+    // Row 22-23: status, as long as no screen clear has erased them
+    // since bot() last drew them
+    const [st1, st2] = (game.status_shown !== false && game._status_lines)
+                       || ['', ''];
     output += st1 + '\n';
     output += st2;
 
@@ -1260,14 +1485,16 @@ function _buildScreenOutput(cursor_on_u) {
                 display.setCell(x - 1, y + 1, ch, tty_color(loc.disp_color), loc.disp_attr ?? 0);
             }
         }
-        // Status lines
-        const s1 = st1.replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
-            m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
-        for (let c = 0; c < display.cols; c++)
-            display.setCell(c, 22, c < s1.length ? s1[c] : ' ', NO_COLOR, 0);
-        const s2 = st2;
-        for (let c = 0; c < display.cols; c++)
-            display.setCell(c, 23, c < s2.length ? s2[c] : ' ', NO_COLOR, 0);
+        // Status lines (left alone while erased)
+        if (game.status_shown !== false) {
+            const s1 = st1.replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
+                m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
+            for (let c = 0; c < display.cols; c++)
+                display.setCell(c, 22, c < s1.length ? s1[c] : ' ', NO_COLOR, 0);
+            const s2 = st2;
+            for (let c = 0; c < display.cols; c++)
+                display.setCell(c, 23, c < s2.length ? s2[c] : ' ', NO_COLOR, 0);
+        }
         // C ref: display.c flush_screen(): if (cursor_on_u) curs(WIN_MAP, u.ux, u.uy)
         if (cursor_on_u && game.u?.ux > 0) {
             display.setCursor(game.u.ux - 1, game.u.uy + 1);
@@ -1304,6 +1531,8 @@ export async function cls() {
         await tty_display_nhwindow(game.WIN_MESSAGE, false); /* flush messages */
     game.disp_botlx = true;                   /* force update of botl window */
     if (display?.clearScreen) display.clearScreen();  /* clear_nhwindow(WIN_MAP) */
+    if (game.status_shown !== undefined)
+        game.status_shown = false; /* erase_tty_screen() */
 }
 
 // ── bot ──
@@ -1311,10 +1540,15 @@ export async function cls() {
 // window keeps them until the next bot()); they are drawn on rows 22-23
 // and again by each flush_screen() redraw.
 export function bot() {
+    /* gb.bot_disabled: set while windows.c select_menu() and getlin()
+       have a menu or prompt up */
+    if (game.bot_disabled)
+        return;
     const display = game?.nhDisplay;
     if (game.u && game.u.uhp !== -1) {
         const st1 = _statusLine1(), st2 = _statusLine2();
         game._status_lines = [st1, st2];
+        game.status_shown = true;
         if (display?.grid) {
             const s1 = st1.replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
                 m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');

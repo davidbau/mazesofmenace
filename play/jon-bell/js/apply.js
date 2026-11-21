@@ -2189,7 +2189,7 @@ export async function use_unicorn_horn(obj) {
             break;
         }
         case 1:
-            make_blinded(BlindedTimeout() + lcount, true);
+            await make_blinded(BlindedTimeout() + lcount, true);
             break;
         case 2: {
             const halluc = _hprop(HALLUC) && !_uprop_active('HALLUC_RES');
@@ -2255,7 +2255,7 @@ export async function use_unicorn_horn(obj) {
             didProp++;
             break;
         case BLINDED:
-            make_blinded(u.ucreamed | 0, true);
+            await make_blinded(u.ucreamed | 0, true);
             didProp++;
             break;
         case HALLUC:
@@ -2317,7 +2317,7 @@ async function use_towel(obj) {
                 u.ucreamed = old + rn1(10, 3);
                 await pline(`Yecch!  Your ${body_part(FACE)} `
                             + `${old ? 'has more' : 'now has'} gunk on it!`);
-                make_blinded(BlindedTimeout() + (u.ucreamed | 0) - old, true);
+                await make_blinded(BlindedTimeout() + (u.ucreamed | 0) - old, true);
             } else {
                 const ublindf = u.ublindf;
                 const what = (ublindf.otyp | 0) === _LENSES_OTYP
@@ -2357,7 +2357,7 @@ async function use_towel(obj) {
             await pline("You've got the glop off.");
             if (!(await gulp_blnd_check())) {
                 set_HBlinded(1); /* set_itimeout(&HBlinded, 1L) */
-                make_blinded(0, true);
+                await make_blinded(0, true);
             }
         } else {
             await Your('%s feels clean now.', body_part(FACE));

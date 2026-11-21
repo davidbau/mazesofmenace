@@ -4,14 +4,19 @@
 // Contestants should port the full vision.c for complete parity.
 
 import { game } from './gstate.js';
-import { BLINDED } from './const.js';
+import { BLINDED, SEE_INVIS } from './const.js';
 import {
-    COLNO, ROWNO, DOOR, SDOOR, POOL,
+    COLNO, ROWNO, DOOR, SDOOR,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL,
+    IS_WALL, IS_OBSTRUCTED, IS_WATERWALL, TREE, CLOUD, LAVAWALL, MOAT,
+    DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, M_AP_TYPMASK, M_AP_OBJECT,
+    M_AP_FURNITURE, Is_juiblex_level, isok,
 } from './const.js';
+import { BOULDER } from './objects.js';
 import { newsym } from './display.js';
+import { m_at } from './makemon.js';
+import { visible_region_at } from './region.js';
 
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
@@ -76,17 +81,70 @@ function mark_visible_range(row, left, right) {
     if (game.cs_right[row] < right) game.cs_right[row] = right;
 }
 
-// Simplified blockage check: walls, closed doors, stone
-function _blocks(level, x, y) {
-    const loc = level.at(x, y);
-    if (!loc) return true;
-    const typ = loc.typ ?? 0;
-    if (typ < POOL) return true;  // STONE, walls, SDOOR, SCORR
-    if (typ === DOOR) {
-        const mask = loc.doormask ?? 0;
-        if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;
-    }
+// C ref: defsym.h cmap indices used by is_lightblocker_mappear()
+const S_ndoor = 12, S_vcdoor = 15, S_hcdoor = 16, S_tree = 18;
+
+// C ref: monst.h is_lightblocker_mappear() -- mimic appearances that
+// block vision/light
+function is_lightblocker_mappear(mon) {
+    const ap_type = (mon.m_ap_type || 0) & M_AP_TYPMASK; /* M_AP_TYPE() */
+    return ((ap_type === M_AP_OBJECT && mon.mappearance === BOULDER)
+            || (ap_type === M_AP_FURNITURE
+                && (mon.mappearance === S_hcdoor
+                    || mon.mappearance === S_vcdoor
+                    || mon.mappearance < S_ndoor /* = walls */
+                    || mon.mappearance === S_tree)));
+}
+
+// C ref: hack.c is_moat()
+function is_moat(x, y) {
+    if (!isok(x, y))
+        return false;
+    const lev = game.level.at(x, y);
+    const ltyp = lev.typ;
+    if (!Is_juiblex_level(game.u.uz)
+        && (ltyp === MOAT
+            || (ltyp === DRAWBRIDGE_UP
+                && ((lev.drawbridgemask || 0) & DB_UNDER) === DB_MOAT)))
+        return true;
     return false;
+}
+
+// C ref: vision.c does_block()
+/*
+ * Returns 0 if nothing at <x,y> blocks sight, 1 if something other than
+ * a cloud does, 2 if the location is inside a visible gas cloud.
+ */
+export function does_block(x, y, lev) {
+    /* Features that block . . */
+    if (IS_OBSTRUCTED(lev.typ) || lev.typ === TREE
+        || (lev.typ === DOOR /* IS_DOOR() */
+            && ((lev.doormask || 0) & (D_CLOSED | D_LOCKED | D_TRAPPED))))
+        return 1;
+
+    if (lev.typ === CLOUD || IS_WATERWALL(lev.typ) || lev.typ === LAVAWALL
+        || (game.u?.uinwater /* Underwater */ && is_moat(x, y)))
+        return 1;
+
+    /* Boulders block light. */
+    for (const obj of game.level.objects || [])
+        if (obj.ox === x && obj.oy === y && obj.where === 'OBJ_FLOOR'
+            && obj.otyp === BOULDER)
+            return 1;
+
+    /* Mimics mimicking a door or boulder or ... block light. */
+    const mon = m_at(x, y);
+    const See_invisible = !!(game.u?.uprops?.[SEE_INVIS]?.intrinsic
+                             || game.u?.uprops?.[SEE_INVIS]?.extrinsic);
+    if (mon && (!mon.minvis || See_invisible)
+        && is_lightblocker_mappear(mon))
+        return 1;
+
+    /* Clouds (poisonous or not) block light. */
+    if (visible_region_at(x, y))
+        return 2;
+
+    return 0;
 }
 
 // C ref: vision_reset() — rebuild viz_clear and left/right ptrs
@@ -99,7 +157,8 @@ export function vision_reset() {
         let dig_left = 0;
         let block = true;
         for (let x = 1; x < COLNO; x++) {
-            const cur_block = _blocks(level, x, y);
+            const lev = level.at(x, y);
+            const cur_block = !!(IS_OBSTRUCTED(lev.typ) || does_block(x, y, lev));
             if (block !== cur_block) {
                 if (block) {
                     for (let i = dig_left; i < x; i++) {
@@ -131,18 +190,230 @@ export function vision_reset() {
     game._viz_rmax = null;
 }
 
-// C ref: vision.c recalc_block_point() -- recalc if point should be
-// blocked or unblocked.  This port's viz_clear[] and row pointers come
-// from vision_reset()'s _blocks() scan, so redo that scan instead of C's
-// incremental block_point()/unblock_point() (fill_point()/dig_point());
-// the "could see it, so do a full recalc" rule is the same.
-export function recalc_block_point(x, y) {
-    const rmin = game._viz_rmin, rmax = game._viz_rmax;
-    vision_reset();
-    game._viz_rmin = rmin;
-    game._viz_rmax = rmax;
+/*
+ * Vision row pointer maintenance (C ref: vision.c, the comment above
+ * dig_point()):
+ *
+ * Left Pointers:
+ * + If you are a clear spot, your left will point to the first
+ *   stone to your left.  If there is none, then point the first
+ *   legal position in the row (0).
+ * + If you are a blocked spot, then your left will point to the
+ *   left-most blocked spot to your left that is connected to you.
+ *   This means that a left-edge (a blocked spot that has an open
+ *   spot on its left) will point to itself.
+ *
+ * Right Pointers:
+ * + If you are a clear spot, your right will point to the first
+ *   stone to your right.  If there is none, then point the last
+ *   legal position in the row (COLNO-1).
+ * + If you are a blocked spot, then your right will point to the
+ *   right-most blocked spot to your right that is connected to you.
+ *   This means that a right-edge (a blocked spot that has an open
+ *   spot on its right) will point to itself.
+ */
+// C ref: vision.c dig_point()
+function dig_point(row, col) {
+    let i;
+
+    if (viz_clear[row][col])
+        return; /* already done */
+
+    viz_clear[row][col] = 1;
+
+    /*
+     * Boundary cases first.
+     */
+    if (col === 0) { /* left edge */
+        if (viz_clear[row][1]) {
+            right_ptrs[row][0] = right_ptrs[row][1];
+        } else {
+            right_ptrs[row][0] = 1;
+            for (i = 1; i <= right_ptrs[row][1]; i++)
+                left_ptrs[row][i] = 1;
+        }
+    } else if (col === (COLNO - 1)) { /* right edge */
+
+        if (viz_clear[row][COLNO - 2]) {
+            left_ptrs[row][COLNO - 1] = left_ptrs[row][COLNO - 2];
+        } else {
+            left_ptrs[row][COLNO - 1] = COLNO - 2;
+            for (i = left_ptrs[row][COLNO - 2]; i < COLNO - 1; i++)
+                right_ptrs[row][i] = COLNO - 2;
+        }
+
+    /*
+     * At this point, we know we aren't on the boundaries.
+     */
+    } else if (viz_clear[row][col - 1] && viz_clear[row][col + 1]) {
+        /* Both sides clear */
+        for (i = left_ptrs[row][col - 1]; i <= col; i++) {
+            if (!viz_clear[row][i])
+                continue; /* catch non-end case */
+            right_ptrs[row][i] = right_ptrs[row][col + 1];
+        }
+        for (i = col; i <= right_ptrs[row][col + 1]; i++) {
+            if (!viz_clear[row][i])
+                continue; /* catch non-end case */
+            left_ptrs[row][i] = left_ptrs[row][col - 1];
+        }
+
+    } else if (viz_clear[row][col - 1]) {
+        /* Left side clear, right side blocked. */
+        for (i = col + 1; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col + 1;
+
+        for (i = left_ptrs[row][col - 1]; i <= col; i++) {
+            if (!viz_clear[row][i])
+                continue; /* catch non-end case */
+            right_ptrs[row][i] = col + 1;
+        }
+        left_ptrs[row][col] = left_ptrs[row][col - 1];
+
+    } else if (viz_clear[row][col + 1]) {
+        /* Right side clear, left side blocked. */
+        for (i = left_ptrs[row][col - 1]; i < col; i++)
+            right_ptrs[row][i] = col - 1;
+
+        for (i = col; i <= right_ptrs[row][col + 1]; i++) {
+            if (!viz_clear[row][i])
+                continue; /* catch non-end case */
+            left_ptrs[row][i] = col - 1;
+        }
+        right_ptrs[row][col] = right_ptrs[row][col + 1];
+
+    } else {
+        /* Both sides blocked */
+        for (i = left_ptrs[row][col - 1]; i < col; i++)
+            right_ptrs[row][i] = col - 1;
+
+        for (i = col + 1; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col + 1;
+
+        left_ptrs[row][col] = col - 1;
+        right_ptrs[row][col] = col + 1;
+    }
+}
+
+// C ref: vision.c fill_point()
+function fill_point(row, col) {
+    let i;
+
+    if (!viz_clear[row][col])
+        return;
+
+    viz_clear[row][col] = 0;
+
+    if (col === 0) {
+        if (viz_clear[row][1]) { /* adjacent is clear */
+            right_ptrs[row][0] = 0;
+        } else {
+            right_ptrs[row][0] = right_ptrs[row][1];
+            for (i = 1; i <= right_ptrs[row][1]; i++)
+                left_ptrs[row][i] = 0;
+        }
+    } else if (col === COLNO - 1) {
+        if (viz_clear[row][COLNO - 2]) { /* adjacent is clear */
+            left_ptrs[row][COLNO - 1] = COLNO - 1;
+        } else {
+            left_ptrs[row][COLNO - 1] = left_ptrs[row][COLNO - 2];
+            for (i = left_ptrs[row][COLNO - 2]; i < COLNO - 1; i++)
+                right_ptrs[row][i] = COLNO - 1;
+        }
+
+    /*
+     * Else we know that we are not on an edge.
+     */
+    } else if (viz_clear[row][col - 1] && viz_clear[row][col + 1]) {
+        /* Both sides clear */
+        for (i = left_ptrs[row][col - 1] + 1; i <= col; i++)
+            right_ptrs[row][i] = col;
+
+        if (!left_ptrs[row][col - 1]) /* catch the end case */
+            right_ptrs[row][0] = col;
+
+        for (i = col; i < right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col;
+
+        if (right_ptrs[row][col + 1] === COLNO - 1) /* catch the end case */
+            left_ptrs[row][COLNO - 1] = col;
+
+    } else if (viz_clear[row][col - 1]) {
+        /* Left side clear, right side blocked. */
+        for (i = col; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col;
+
+        for (i = left_ptrs[row][col - 1] + 1; i < col; i++)
+            right_ptrs[row][i] = col;
+
+        if (!left_ptrs[row][col - 1]) /* catch the end case */
+            right_ptrs[row][i] = col;
+
+        right_ptrs[row][col] = right_ptrs[row][col + 1];
+
+    } else if (viz_clear[row][col + 1]) {
+        /* Right side clear, left side blocked. */
+        for (i = left_ptrs[row][col - 1]; i <= col; i++)
+            right_ptrs[row][i] = col;
+
+        for (i = col + 1; i < right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col;
+
+        if (right_ptrs[row][col + 1] === COLNO - 1) /* catch the end case */
+            left_ptrs[row][i] = col;
+
+        left_ptrs[row][col] = left_ptrs[row][col - 1];
+
+    } else {
+        /* Both sides blocked */
+        for (i = left_ptrs[row][col - 1]; i <= col; i++)
+            right_ptrs[row][i] = right_ptrs[row][col + 1];
+
+        for (i = col; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = left_ptrs[row][col - 1];
+    }
+}
+
+// C ref: vision.c block_point()
+/*
+ * Make the location opaque to light.
+ */
+export function block_point(x, y) {
+    fill_point(y, x);
+
+    /* recalc light sources here? */
+
+    /*
+     * We have to do a full vision recalculation if we "could see" the
+     * location.  Why? Suppose some monster opened a way so that the
+     * hero could see a lit room.  However, the position of the opening
+     * was out of night-vision range of the hero.  Suddenly the hero should
+     * see the lit room.
+     */
     if (game.viz_array?.[y]?.[x])
         game.vision_full_recalc = 1;
+}
+
+// C ref: vision.c unblock_point()
+/*
+ * Make the location transparent to light.
+ */
+export function unblock_point(x, y) {
+    dig_point(y, x);
+
+    /* recalc light sources here? */
+
+    if (game.viz_array?.[y]?.[x])
+        game.vision_full_recalc = 1;
+}
+
+// C ref: vision.c recalc_block_point()
+/* recalc if point should be blocked or unblocked */
+export function recalc_block_point(x, y) {
+    if (does_block(x, y, game.level.at(x, y)))
+        block_point(x, y);
+    else
+        unblock_point(x, y);
 }
 
 // Bresenham quadrant path functions (C ref: vision.c q1-q4_path)

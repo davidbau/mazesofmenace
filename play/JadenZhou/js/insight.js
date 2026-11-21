@@ -1,18 +1,20 @@
 // insight.js — enlightenment, conduct and attribute descriptions.
 // C ref: insight.c
 //
-// Ported so far: align_str(), and the ^X command doattributes() with
-// enlightenment()'s basic sections (background, basics, characteristics,
-// status, weapon insight, miscellaneous). attributes_enlightenment() (magic
-// enlightenment: wizard and explore mode ^X, potions, end of game) and the
-// polymorph, steed, trap, engulf, punishment &c. branches are not ported
-// yet; each stops with a "not ported yet" error where C would print.
+// Ported so far: align_str(), piousness(), and the ^X command
+// doattributes() with enlightenment()'s sections (background, basics,
+// characteristics, status, weapon insight, attributes_enlightenment(),
+// miscellaneous). The end-of-game text window and the polymorph, steed,
+// trap, engulf, punishment &c. branches of the status section are not
+// ported yet; each stops with a "not ported yet" error where C would print.
 //
 // A few helpers from other C files that nothing else in js/ has yet are
 // kept here as local functions, each with its own C ref (weapon.c
 // skill_level_name()/skill_name()/can_advance()/weapon_descr(), wield.c
 // empty_handed(), invent.c hidden_gold()/currency(), polyself.c
-// body_part(), shk.c costly_spot(), options.c oc_to_str()).
+// body_part(), shk.c costly_spot(), options.c oc_to_str(), eat.c
+// temp_resist(), dungeon.c has_ceiling(), hacklib.c ordin(), and the
+// youprop.h property macros).
 
 import { game } from './gstate.js';
 import {
@@ -31,6 +33,16 @@ import {
     P_MASTER, P_GRAND_MASTER, P_BARE_HANDED_COMBAT, P_LAST_WEAPON,
     P_TWO_WEAPON_COMBAT, P_SKILL_LIMIT, P_SLING, P_BOW, P_CROSSBOW,
     P_FLAIL, P_PICK_AXE, Is_waterlevel, In_endgame, In_quest, WIN_ERR,
+    Is_earthlevel, INVULNERABLE, ANTIMAGIC, FIRE_RES, COLD_RES, SLEEP_RES,
+    DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, DRAIN_RES, SICK_RES,
+    STONE_RES, BLND_RES, SEE_INVIS, TELEPAT, WARNING, WARN_OF_MON,
+    WARN_UNDEAD, SEARCHING, CLAIRVOYANT, INFRAVISION, DETECT_MONSTERS,
+    ADORNED, INVIS, DISPLACED, STEALTH, AGGRAVATE_MONSTER, CONFLICT, JUMPING,
+    TELEPORT, TELEPORT_CONTROL, SWIMMING, MAGICAL_BREATHING, PASSES_WALLS,
+    REGENERATION, SLOW_DIGESTION, HALF_PHDAM, HALF_SPDAM, PROTECTION,
+    PROT_FROM_SHAPE_CHANGERS, POLYMORPH, POLYMORPH_CONTROL, UNCHANGING, FAST,
+    REFLECTING, FREE_ACTION, LIFESAVED, INTRINSIC, NO_SPELL, MALE, FEMALE,
+    NEUTRAL, ismnum,
 } from './const.js';
 import {
     tty_create_nhwindow, tty_start_menu, add_menu_str, tty_end_menu,
@@ -43,25 +55,34 @@ import {
     LUCKSTONE, LOADSTONE, FLINT, TOUCHSTONE, DAGGER, KNIFE, AXE, PICK_AXE,
     SHORT_SWORD, BROADSWORD, LONG_SWORD, TWO_HANDED_SWORD, CLUB, MACE,
     MORNING_STAR, FLAIL, QUARTERSTAFF, SPEAR, TRIDENT, LANCE, BOW, SLING,
-    CROSSBOW, DART, SHURIKEN, BOOMERANG, UNICORN_HORN,
+    CROSSBOW, DART, SHURIKEN, BOOMERANG, UNICORN_HORN, RIN_ADORNMENT,
+    RIN_PROTECTION, AMULET_OF_GUARDING, ROBE, is_metallic,
 } from './objects.js';
 import * as M from './monsters.js';
 import { rank_of } from './botl.js';
 import { an, makeplural, makesingular } from './objnam.js';
 import { strstri, highc, lowc, mungspaces } from './hacklib.js';
-import { align_gname } from './pray.js';
+import { align_gname, u_gname, can_pray } from './pray.js';
 import { genders } from './role.js';
 import { newuexp } from './exper.js';
 import { night, midnight } from './calendar.js';
 import { depth, dunlev, on_level } from './dungeon.js';
 import { find_ac, money_cnt } from './u_init.js';
-import { near_capacity, inv_weight } from './hack.js';
-import { ACURR, ABASE, AMAX, ATTRMAX } from './attrib.js';
+import { near_capacity, inv_weight, in_rooms } from './hack.js';
+import { SHOPBASE, NO_ROOM, ROOMOFFSET } from './const.js';
+import { ACURR, ABASE, AMAX, ATTRMAX, from_what } from './attrib.js';
 import { P_SKILL, P_MAX_SKILL, P_ADVANCE, P_RESTRICTED, weapon_type,
          practice_needed_to_advance } from './weapon.js';
-import { def_oc_syms } from './drawing.js';
+import { oc_to_str } from './options.js';
 import { is_pool, is_lava } from './makemon.js';
 import { ART_OGRESMASHER } from './artilist.js';
+import { hates_silver, defended } from './mondata.js';
+import { pmname } from './do_name.js';
+import { magic_negation } from './mhitu.js';
+import { stone_luck } from './attrib.js';
+import { carrying } from './invent.js';
+import { u_adtyp_resistance_obj, item_what } from './zap.js';
+import { shield_simple_name } from './iactions.js';
 
 // C ref: insight.c align_str()
 export function align_str(alignment) {
@@ -164,6 +185,171 @@ function is_graystone(obj) {
 }
 function u_wield_art(art) { return !!game.uwep && game.uwep.oartifact === art; }
 
+/* C ref: youprop.h -- the rest of the property macros that
+   attributes_enlightenment() checks */
+function Invulnerable() { return prop(INVULNERABLE).intrinsic; }
+function Antimagic() { return prop(ANTIMAGIC).intrinsic || prop(ANTIMAGIC).extrinsic; }
+function Fire_resistance() { return prop(FIRE_RES).intrinsic || prop(FIRE_RES).extrinsic; }
+function Cold_resistance() { return prop(COLD_RES).intrinsic || prop(COLD_RES).extrinsic; }
+function Sleep_resistance() { return prop(SLEEP_RES).intrinsic || prop(SLEEP_RES).extrinsic; }
+function Disint_resistance() {
+    return prop(DISINT_RES).intrinsic || prop(DISINT_RES).extrinsic;
+}
+function Shock_resistance() { return prop(SHOCK_RES).intrinsic || prop(SHOCK_RES).extrinsic; }
+function Poison_resistance() {
+    return prop(POISON_RES).intrinsic || prop(POISON_RES).extrinsic;
+}
+function Acid_resistance() { return prop(ACID_RES).intrinsic || prop(ACID_RES).extrinsic; }
+function Drain_resistance() { return prop(DRAIN_RES).intrinsic || prop(DRAIN_RES).extrinsic; }
+function Sick_resistance() {
+    return prop(SICK_RES).intrinsic || prop(SICK_RES).extrinsic
+           || defended(game.youmonst, M.AD_DISE);
+}
+function Stone_resistance() { return prop(STONE_RES).intrinsic || prop(STONE_RES).extrinsic; }
+function Halluc_resistance() {
+    return prop(HALLUC_RES).intrinsic || prop(HALLUC_RES).extrinsic;
+}
+function EBlinded() { return prop(BLINDED).extrinsic; }
+function BBlinded() { return prop(BLINDED).blocked; }
+function PermaBlind() { return (HBlinded() & FROMOUTSIDE) !== 0; }
+function Blnd_resist() { return prop(BLND_RES).intrinsic || prop(BLND_RES).extrinsic; }
+function See_invisible() { return prop(SEE_INVIS).intrinsic || prop(SEE_INVIS).extrinsic; }
+function Blind_telepat() { return prop(TELEPAT).intrinsic || prop(TELEPAT).extrinsic; }
+function Warning() { return prop(WARNING).intrinsic || prop(WARNING).extrinsic; }
+function Warn_of_mon() { return prop(WARN_OF_MON).intrinsic || prop(WARN_OF_MON).extrinsic; }
+function Undead_warning() { return prop(WARN_UNDEAD).intrinsic; }
+function Searching() { return prop(SEARCHING).intrinsic || prop(SEARCHING).extrinsic; }
+function HClairvoyant() { return prop(CLAIRVOYANT).intrinsic; }
+function EClairvoyant() { return prop(CLAIRVOYANT).extrinsic; }
+function BClairvoyant() { return prop(CLAIRVOYANT).blocked; }
+function Clairvoyant() { return (HClairvoyant() || EClairvoyant()) && !BClairvoyant(); }
+function Infravision() { return prop(INFRAVISION).intrinsic || prop(INFRAVISION).extrinsic; }
+function HDetect_monsters() { return prop(DETECT_MONSTERS).intrinsic; }
+function Detect_monsters() {
+    return prop(DETECT_MONSTERS).intrinsic || prop(DETECT_MONSTERS).extrinsic;
+}
+function Adornment() { return prop(ADORNED).extrinsic; }
+function HInvis() { return prop(INVIS).intrinsic; }
+function EInvis() { return prop(INVIS).extrinsic; }
+function BInvis() { return prop(INVIS).blocked; }
+function Invis() { return (HInvis() || EInvis()) && !BInvis(); }
+function Invisible() { return Invis() && !See_invisible(); }
+function Displaced() { return prop(DISPLACED).intrinsic || prop(DISPLACED).extrinsic; }
+function HStealth() { return prop(STEALTH).intrinsic; }
+function EStealth() { return prop(STEALTH).extrinsic; }
+function BStealth() { return prop(STEALTH).blocked; }
+function Stealth() { return (HStealth() || EStealth()) && !BStealth(); }
+function Aggravate_monster() {
+    return prop(AGGRAVATE_MONSTER).intrinsic || prop(AGGRAVATE_MONSTER).extrinsic;
+}
+function Conflict() { return prop(CONFLICT).intrinsic || prop(CONFLICT).extrinsic; }
+function Jumping() { return prop(JUMPING).intrinsic || prop(JUMPING).extrinsic; }
+function Teleportation() { return prop(TELEPORT).intrinsic || prop(TELEPORT).extrinsic; }
+function Teleport_control() {
+    return prop(TELEPORT_CONTROL).intrinsic || prop(TELEPORT_CONTROL).extrinsic;
+}
+function BLevitation() { return prop(LEVITATION).blocked; }
+function BFlying() { return prop(FLYING).blocked; }
+function Swimming() {
+    return prop(SWIMMING).intrinsic || prop(SWIMMING).extrinsic
+           || (U().usteed && (U().usteed.data.mflags1 & M.M1_SWIM) !== 0);
+}
+function Amphibious() {
+    return prop(MAGICAL_BREATHING).intrinsic || prop(MAGICAL_BREATHING).extrinsic
+           || (game.youmonst.data.mflags1 & M.M1_AMPHIBIOUS) !== 0;
+}
+function Breathless() {
+    return prop(MAGICAL_BREATHING).intrinsic || prop(MAGICAL_BREATHING).extrinsic
+           || (game.youmonst.data.mflags1 & M.M1_BREATHLESS) !== 0;
+}
+function Passes_walls() {
+    return prop(PASSES_WALLS).intrinsic || prop(PASSES_WALLS).extrinsic;
+}
+function Slow_digestion() {
+    return prop(SLOW_DIGESTION).intrinsic || prop(SLOW_DIGESTION).extrinsic;
+}
+function Half_spell_damage() { return prop(HALF_SPDAM).intrinsic || prop(HALF_SPDAM).extrinsic; }
+function Half_physical_damage() {
+    return prop(HALF_PHDAM).intrinsic || prop(HALF_PHDAM).extrinsic;
+}
+function Regeneration() {
+    return prop(REGENERATION).intrinsic || prop(REGENERATION).extrinsic;
+}
+function HProtection() { return prop(PROTECTION).intrinsic; }
+function Protection() { return prop(PROTECTION).intrinsic || prop(PROTECTION).extrinsic; }
+function Protection_from_shape_changers() {
+    return prop(PROT_FROM_SHAPE_CHANGERS).intrinsic
+           || prop(PROT_FROM_SHAPE_CHANGERS).extrinsic;
+}
+function Polymorph() { return prop(POLYMORPH).intrinsic || prop(POLYMORPH).extrinsic; }
+function Polymorph_control() {
+    return prop(POLYMORPH_CONTROL).intrinsic || prop(POLYMORPH_CONTROL).extrinsic;
+}
+function Unchanging() { return prop(UNCHANGING).intrinsic || prop(UNCHANGING).extrinsic; }
+function Fast() { return prop(FAST).intrinsic || prop(FAST).extrinsic; }
+function Very_fast() { return (prop(FAST).intrinsic & ~INTRINSIC) || prop(FAST).extrinsic; }
+function Reflecting() { return prop(REFLECTING).intrinsic || prop(REFLECTING).extrinsic; }
+function Free_action() { return prop(FREE_ACTION).extrinsic; }
+function Lifesaved() { return prop(LIFESAVED).extrinsic; }
+function Hate_silver() { return U().ulycn >= M.LOW_PM || hates_silver(game.youmonst.data); }
+function Half_gas_damage() {
+    return game.ublindf && game.ublindf.otyp === TOWEL && game.ublindf.spe > 0;
+}
+/* C ref: you.h Luck */
+function Luck() { return (U().uluck || 0) + (U().moreluck || 0); }
+
+/* C ref: mondata.h is_clinger(), lays_eggs(); monst.h vampshifted() */
+function is_clinger(ptr) { return (ptr.mflags1 & M.M1_CLING) !== 0; }
+function lays_eggs(ptr) { return (ptr.mflags1 & M.M1_OVIPAROUS) !== 0; }
+function vampshifted(mon) {
+    return (mon.cham === M.PM_VAMPIRE || mon.cham === M.PM_VAMPIRE_LEADER
+            || mon.cham === M.PM_VLAD_THE_IMPALER) /* is_vampshifter() */
+           && !(mon.data.mlet === M.S_VAMPIRE); /* !is_vampire() */
+}
+
+/* C ref: spell.c spellid() */
+function spellid(spell) { return game.spl_book[spell].sp_id; }
+
+/* C ref: eat.c temp_resist() */
+/* if 'prop' is only set because of a timed value (so not an intrinsic
+   attribute or because of polymorph shape or worn or carried gear), return
+   its timeout, otherwise return 0; used by enlightenment */
+function temp_resist(propidx) {
+    const p = prop(propidx);
+    const timeout = p.intrinsic & TIMEOUT;
+
+    if (timeout
+        /* and if not also protected by polymorph form */
+        && (p.intrinsic & ~TIMEOUT) === 0
+        /* and not by worn gear (dragon armor) */
+        && !p.extrinsic
+        /* and property is not blocked; we don't expect this, but if it
+           is then the timeout doesn't matter so we won't extend that */
+        && !p.blocked) {
+        return timeout;
+    }
+    return 0;
+}
+
+/* C ref: dungeon.c has_ceiling() */
+function has_ceiling(lev) {
+    /* FIXME: some (most? all?) of the quest home levels are conceptually
+       above ground and don't have ceilings outside of their buildings
+       but we don't presently check for that */
+    if (In_endgame(lev) && !Is_earthlevel(lev))
+        return false;
+    return true;
+}
+
+/* C ref: hacklib.c ordin() */
+/* return the ordinal suffix of a number */
+function ordin(n) { /* note: should be non-negative */
+    const dd = n % 10;
+
+    return (dd === 0 || dd > 3 || Math.trunc((n % 100) / 10) === 1) ? "th"
+               : (dd === 1) ? "st" : (dd === 2) ? "nd" : "rd";
+}
+
 /* C ref: hacklib.c plur(), strsubst() (first occurrence only) */
 function plur(x) { return (x === 1) ? "" : "s"; }
 function strsubst(bp, orig, replacement) {
@@ -182,15 +368,6 @@ const enc_stat = [
 ];
 const attrname = [ "strength", "intelligence", "wisdom",
                    "dexterity", "constitution", "charisma" ];
-
-// C ref: attrib.c from_what() -- the source of a property is only
-// reported in debug mode
-function from_what(propidx) {
-    if (wizard())
-        throw new Error('from_what(): debug mode property sources not ported yet');
-    void propidx;
-    return "";
-}
 
 // C ref: polyself.c body_part() -- mbodypart(&youmonst, part) for the
 // hero's own (unpolymorphed, humanoid) form
@@ -244,19 +421,54 @@ function currency(amount) {
 }
 
 // C ref: shk.c costly_spot()
-function costly_spot(x, y) {
+/* is <x,y> a spot inside a tended shop where items cost money? */
+export function costly_spot(x, y) {
     if (!game.level.flags?.has_shop)
         return false;
-    void x, y;
-    throw new Error('costly_spot(): shops not ported yet');
+    const shkrooms = in_rooms(x, y, SHOPBASE);
+    const shkp = shop_keeper(shkrooms.length ? shkrooms.charCodeAt(0) : 0);
+    if (!shkp || !inhishop(shkp))
+        return false;
+    const eshkp = shkp.mextra.eshk;
+    return (inside_shop(x, y) !== NO_ROOM
+            && !(x === eshkp.shk.x && y === eshkp.shk.y));
 }
 
-// C ref: options.c oc_to_str()
-function oc_to_str(src) {
-    let dest = '';
-    for (const c of src || '')
-        dest += def_oc_syms[c.charCodeAt(0)];
-    return dest;
+// C ref: shk.c shop_keeper()
+/* return the shopkeeper for rooms[rmno-2]; returns Null if there isn't one */
+export function shop_keeper(rmno) {
+    const shkp = (rmno >= ROOMOFFSET)
+        ? (game.level.rooms?.[rmno - ROOMOFFSET]?.resident || null) : null;
+    if (shkp) {
+        if (shkp.mextra?.eshk) {
+            /* ANGRY(shkp): !mpeaceful */
+            if (!shkp.mpeaceful && !shkp.mextra.eshk.surcharge)
+                throw new Error('shop_keeper(): rile_shk() not ported yet');
+        } else {
+            throw new Error('shop_keeper(): shop resident not shopkeeper');
+        }
+    }
+    return shkp;
+}
+
+// C ref: shk.c inhishop()
+export function inhishop(shkp) {
+    const eshkp = shkp.mextra.eshk;
+
+    if (!on_level(eshkp.shoplevel, game.u.uz))
+        return false;
+    const shkrooms = in_rooms(shkp.mx, shkp.my, SHOPBASE);
+    return shkrooms.includes(String.fromCharCode(eshkp.shoproom));
+}
+
+// C ref: shk.c inside_shop()
+export function inside_shop(x, y) {
+    const loc = game.level.at(x, y);
+    let rno = loc.roomno;
+    if ((rno < ROOMOFFSET) || loc.edge
+        || !((game.level.rooms?.[rno - ROOMOFFSET]?.rtype ?? 0) >= SHOPBASE))
+        rno = NO_ROOM;
+    return rno;
 }
 
 // C ref: wield.c empty_handed()
@@ -318,7 +530,7 @@ const def_oc_names = [
 // C ref: weapon.c weapon_descr()
 /* weapon's skill category name for use as generalized description of
    weapon */
-function weapon_descr(obj) {
+export function weapon_descr(obj) {
     const skill = weapon_type(obj);
     let descr = P_NAME(skill);
 
@@ -401,7 +613,7 @@ function skill_level_name(skill) {
 }
 
 // C ref: weapon.c skill_name()
-function skill_name(skill) {
+export function skill_name(skill) {
     return P_NAME(skill);
 }
 
@@ -449,7 +661,6 @@ function enl_msg(prefix, present, past, suffix, ps) {
 function you_are(attr, ps) { enl_msg(You_, are, were, attr, ps); }
 function you_have(attr, ps) { enl_msg(You_, have, had, attr, ps); }
 function you_can(attr, ps) { enl_msg(You_, can, could, attr, ps); }
-void you_can;
 
 // C ref: insight.c enlght_out()
 function enlght_out(buf) {
@@ -472,11 +683,70 @@ function enlght_line(start, middle, end, ps) {
     let buf;
 
     buf = ` ${start}${middle}${end}${ps}.`;
-    if (strstri(buf, " not ")) { /* TODO: switch to libc strstr() */
+    if (strstri(buf, " not ") >= 0) { /* TODO: switch to libc strstr() */
         for (let i = 0; i < contra.length; ++i)
             buf = strsubst(buf, contra[i].twowords, contra[i].contrctn);
     }
     enlght_out(buf);
+}
+
+// C ref: insight.c enlght_combatinc()
+/* format increased chance to hit or damage or defense (Protection) */
+function enlght_combatinc(inctyp, /* "to hit" or "damage" or "defense" */
+                          incamt, /* amount of increment (negative if decrement) */
+                          final)  /* ENL_{GAMEINPROGRESS,GAMEOVERALIVE,GAMEOVERDEAD} */ {
+    let modif, bonus;
+    let invrt;
+    let absamt;
+    let outbuf;
+
+    absamt = Math.abs(incamt);
+    /* Protection amount is typically larger than damage or to-hit;
+       reduce magnitude by a third in order to stretch modifier ranges
+       (small:1..5, moderate:6..10, large:11..19, huge:20+) */
+    if (inctyp === "defense")
+        absamt = Math.trunc((absamt * 2) / 3);
+
+    if (absamt <= 3)
+        modif = "small";
+    else if (absamt <= 6)
+        modif = "moderate";
+    else if (absamt <= 12)
+        modif = "large";
+    else
+        modif = "huge";
+
+    modif = !incamt ? "no" : an(modif); /* ("no" case shouldn't happen) */
+    bonus = (incamt >= 0) ? "bonus" : "penalty";
+    /* "bonus <foo>" (to hit) vs "<bar> bonus" (damage, defense) */
+    invrt = (inctyp !== "to hit") ? true : false;
+
+    outbuf = `${modif} ${invrt ? inctyp : bonus} ${invrt ? bonus : inctyp}`;
+    if (final || wizard())
+        outbuf += ` (${(incamt > 0) ? "+" : ""}${incamt})`;
+
+    return outbuf;
+}
+
+// C ref: insight.c enlght_halfdmg()
+/* report half physical or half spell damage */
+function enlght_halfdmg(category, final) {
+    let category_name;
+    let buf;
+
+    switch (category) {
+    case HALF_PHDAM:
+        category_name = "physical";
+        break;
+    case HALF_SPDAM:
+        category_name = "spell";
+        break;
+    default:
+        category_name = "unknown";
+        break;
+    }
+    buf = ` ${(final || wizard()) ? "half" : "reduced"} ${category_name} damage`;
+    enl_msg(You_, "take", "took", buf, from_what(category));
 }
 
 // C ref: insight.c walking_on_water()
@@ -571,6 +841,21 @@ function fmt_elapsed_time(final) {
     return outbuf;
 }
 
+// C ref: insight.c N_times()
+function N_times(n) {
+    switch (n) {
+    case 0:
+    default:
+        return `${n} times`;
+    case 1:
+        return "once";
+    case 2:
+        return "twice";
+    case 3:
+        return "thrice";
+    }
+}
+
 // C ref: insight.c enlightenment()
 export async function enlightenment(mode, /* BASICENLIGHTENMENT | MAGICENLIGHTENMENT (| both) */
                                     final) /* ENL_GAMEINPROGRESS:0, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD */ {
@@ -611,7 +896,7 @@ export async function enlightenment(mode, /* BASICENLIGHTENMENT | MAGICENLIGHTEN
        explore mode ^X or end of game disclosure */
     if (mode & MAGICENLIGHTENMENT) {
         /* intrinsics and other traditional enlightenment feedback */
-        throw new Error('enlightenment(): attributes_enlightenment() not ported yet');
+        await attributes_enlightenment(mode, final);
     }
 
     enlght_out(""); /* separator */
@@ -1253,7 +1538,7 @@ function weapon_insight(final) {
 
         /* [what about other silver items?] */
         if (uwep.otyp === SHIELD_OF_REFLECTION)
-            throw new Error('weapon_insight(): shield_simple_name() not ported yet');
+            what = shield_simple_name(uwep); /* silver|smooth shield */
         else if (is_wet_towel(uwep))
             what = /* (uwep->spe < 3) ? "moist towel" : */ "wet towel";
 
@@ -1297,6 +1582,506 @@ function weapon_insight(final) {
     } /* skill applies */
 }
 
+// C ref: insight.c item_resistance_message()
+function item_resistance_message(adtyp, prot_message, final) {
+    const protection = u_adtyp_resistance_obj(adtyp);
+
+    void final;
+    if (protection) {
+        const somewhat = protection < 99;
+
+        enl_msg("Your items ",
+                somewhat ? "are somewhat" : "are",
+                somewhat ? "were somewhat" : "were",
+                prot_message, item_what(adtyp));
+    }
+}
+
+// C ref: insight.c attributes_enlightenment()
+/* attributes: intrinsics and the like, other non-obvious capabilities */
+async function attributes_enlightenment(unused_mode, final) {
+    const if_surroundings_permitted = " if surroundings permitted";
+    const u = U();
+    const flags = game.flags;
+    const uleft = game.uleft, uright = game.uright, uamul = game.uamul;
+    const uarm = game.uarm, uarmc = game.uarmc;
+    const warntype = game.context.warntype || {};
+    let ltmp, armpro, warnspecies;
+    let buf;
+
+    void unused_mode;
+    /*\
+     *  Attributes
+    \*/
+    enlght_out("");
+    enlght_out(final ? "Final Attributes:" : "Attributes:");
+
+    if (u.uevent.uhand_of_elbereth) {
+        const hofe_titles = [ "the Hand of Elbereth",
+                              "the Envoy of Balance",
+                              "the Glory of Arioch" ];
+        you_are(hofe_titles[u.uevent.uhand_of_elbereth - 1], "");
+    }
+
+    buf = piousness(true, "aligned");
+    if (u.ualign.record >= 0)
+        you_are(buf, "");
+    else
+        you_have(buf, "");
+
+    if (wizard()) {
+        buf = ` ${u.ualign.record}`;
+        enl_msg("Your alignment ", "is", "was", buf, "");
+    }
+
+    /*** Resistances to troubles ***/
+    if (Invulnerable())
+        you_are("invulnerable", from_what(INVULNERABLE));
+    if (Antimagic())
+        you_are("magic-protected", from_what(ANTIMAGIC));
+    if (Fire_resistance())
+        you_are("fire resistant", from_what(FIRE_RES));
+    item_resistance_message(M.AD_FIRE, " protected from fire", final);
+    if (Cold_resistance())
+        you_are("cold resistant", from_what(COLD_RES));
+    item_resistance_message(M.AD_COLD, " protected from cold", final);
+    if (Sleep_resistance())
+        you_are("sleep resistant", from_what(SLEEP_RES));
+    if (Disint_resistance())
+        you_are("disintegration resistant", from_what(DISINT_RES));
+    item_resistance_message(M.AD_DISN, " protected from disintegration", final);
+    if (Shock_resistance())
+        you_are("shock resistant", from_what(SHOCK_RES));
+    item_resistance_message(M.AD_ELEC, " protected from electric shocks",
+                            final);
+    if (Poison_resistance())
+        you_are("poison resistant", from_what(POISON_RES));
+    if (Acid_resistance()) {
+        buf = `${temp_resist(ACID_RES) ? "temporarily " : ""}${"acid resistant"}`;
+        you_are(buf, from_what(ACID_RES));
+    }
+    item_resistance_message(M.AD_ACID, " protected from acid", final);
+    if (Drain_resistance())
+        you_are("level-drain resistant", from_what(DRAIN_RES));
+    if (Sick_resistance())
+        you_are("immune to sickness", from_what(SICK_RES));
+    if (Stone_resistance()) {
+        buf = `${temp_resist(STONE_RES) ? "temporarily " : ""}${"petrification resistant"}`;
+        you_are(buf, from_what(STONE_RES));
+    }
+    if (Halluc_resistance())
+        enl_msg(You_, "resist", "resisted", " hallucinations",
+                from_what(HALLUC_RES));
+    if (u.uedibility)
+        you_can("recognize detrimental food", "");
+
+    /*** Vision and senses ***/
+    if ((HBlinded() || EBlinded()) && BBlinded()) /* blind w/ blindness blocked */
+        you_can("see", from_what(-BLINDED)); /* Eyes of the Overworld */
+    if (Blnd_resist() && !Blind()) /* skip if no eyes or blindfolded */
+        you_are("not subject to light-induced blindness",
+                from_what(BLND_RES));
+    if (See_invisible()) {
+        if (!Blind())
+            enl_msg(You_, "see", "saw", " invisible", from_what(SEE_INVIS));
+        else if (!PermaBlind())
+            enl_msg(You_, "will see", "would have seen",
+                    " invisible when not blind", "");
+        else
+            enl_msg(You_, "would see", "would have seen",
+                    " invisible if not blind", "");
+    }
+    if (Blind_telepat())
+        you_are("telepathic", from_what(TELEPAT));
+    if (Warning())
+        you_are("warned", from_what(WARNING));
+    if (Warn_of_mon() && warntype.obj) {
+        buf = `aware of the presence of ${
+                (warntype.obj & M.M2_ORC) ? "orcs"
+                : (warntype.obj & M.M2_ELF) ? "elves"
+                  : (warntype.obj & M.M2_DEMON) ? "demons"
+                    : "something"}`;
+        you_are(buf, from_what(WARN_OF_MON));
+    }
+    if (Warn_of_mon() && warntype.polyd) {
+        buf = `aware of the presence of ${
+                ((warntype.polyd & (M.M2_HUMAN | M.M2_ELF))
+                 === (M.M2_HUMAN | M.M2_ELF)) ? "humans and elves"
+                    : (warntype.polyd & M.M2_HUMAN) ? "humans"
+                      : (warntype.polyd & M.M2_ELF) ? "elves"
+                        : (warntype.polyd & M.M2_ORC) ? "orcs"
+                          : (warntype.polyd & M.M2_DEMON) ? "demons"
+                            : "certain monsters"}`;
+        you_are(buf, "");
+    }
+    warnspecies = warntype.speciesidx;
+    if (Warn_of_mon() && ismnum(warnspecies)) {
+        buf = `aware of the presence of ${
+                makeplural(M.mons[warnspecies].pmnames[NEUTRAL])}`;
+        you_are(buf, from_what(WARN_OF_MON));
+    }
+    if (Undead_warning())
+        you_are("warned of undead", from_what(WARN_UNDEAD));
+    if (Searching())
+        you_have("automatic searching", from_what(SEARCHING));
+    if (Clairvoyant()) {
+        you_are("clairvoyant", from_what(CLAIRVOYANT));
+    } else if ((HClairvoyant() || EClairvoyant()) && BClairvoyant()) {
+        buf = from_what(-CLAIRVOYANT);
+        buf = strsubst(buf, " because of ", " if not for ");
+        enl_msg(You_, "could be", "could have been", " clairvoyant", buf);
+    }
+    if (Infravision())
+        you_have("infravision", from_what(INFRAVISION));
+    if (Detect_monsters()) {
+        buf = "sensing the presence of monsters";
+        if (wizard()) {
+            const detectmon_timeout = (HDetect_monsters() & TIMEOUT);
+
+            if (detectmon_timeout)
+                buf += ` (${detectmon_timeout})`;
+        }
+        you_are(buf, "");
+    }
+    if (u.umconf) { /* 'u.umconf' is a counter rather than a timeout */
+        buf = " monsters when hitting them";
+        if (wizard() && !final) {
+            if (u.umconf === 1)
+                buf += " (next hit only)";
+            else /* u.umconf > 1 */
+                buf += ` (next ${u.umconf} hits)`;
+        }
+        enl_msg(You_, "will confuse", "would have confused", buf, "");
+    }
+
+    /*** Appearance and behavior ***/
+    if (Adornment()) {
+        let adorn = 0;
+
+        if (uleft && uleft.otyp === RIN_ADORNMENT)
+            adorn += uleft.spe;
+        if (uright && uright.otyp === RIN_ADORNMENT)
+            adorn += uright.spe;
+        /* the sum might be 0 (+0 ring or two which negate each other);
+           that yields "you are charismatic" (which isn't pointless
+           because it potentially impacts seduction attacks) */
+        buf = `${(adorn > 0) ? "more " : (adorn < 0) ? "less " : ""}charismatic`;
+        you_are(buf, from_what(ADORNED));
+    }
+    if (Invisible())
+        you_are("invisible", from_what(INVIS));
+    else if (Invis())
+        you_are("invisible to others", from_what(INVIS));
+    /* ordinarily "visible" is redundant; this is a special case for
+       the situation when invisibility would be an expected attribute */
+    else if ((HInvis() || EInvis()) && BInvis())
+        you_are("visible", from_what(-INVIS));
+    if (Displaced())
+        you_are("displaced", from_what(DISPLACED));
+    if (Stealth()) {
+        you_are("stealthy", from_what(STEALTH));
+    } else if (BStealth() && (HStealth() || EStealth())) {
+        buf = ` stealthy${(BStealth() === FROMOUTSIDE) ? " if not mounted" : ""}`;
+        enl_msg(You_, "would be", "would have been", buf, "");
+    }
+    if (Aggravate_monster())
+        enl_msg("You aggravate", "", "d", " monsters",
+                from_what(AGGRAVATE_MONSTER));
+    if (Conflict())
+        enl_msg("You cause", "", "d", " conflict", from_what(CONFLICT));
+
+    /*** Transportation ***/
+    if (Jumping())
+        you_can("jump", from_what(JUMPING));
+    if (Teleportation())
+        you_can("teleport", from_what(TELEPORT));
+    if (Teleport_control())
+        you_have("teleport control", from_what(TELEPORT_CONTROL));
+    /* actively levitating handled earlier as a status condition */
+    if (BLevitation()) { /* levitation is blocked */
+        const save_BLev = BLevitation();
+
+        prop(LEVITATION).blocked = 0; /* BLevitation = 0L */
+        if (Levitation()) {
+            /* either trapped in the floor or inside solid rock
+               (or both if chained to buried iron ball and have
+               moved one step into solid rock somehow) */
+            const trapped = (save_BLev & I_SPECIAL) !== 0,
+                terrain = (save_BLev & FROMOUTSIDE) !== 0;
+
+            buf = `${trapped ? " if not trapped" : ""}${
+                    (trapped && terrain) ? " and" : ""}${
+                    terrain ? if_surroundings_permitted : ""}`;
+            enl_msg(You_, "would levitate", "would have levitated", buf, "");
+        }
+        prop(LEVITATION).blocked = save_BLev; /* BLevitation = save_BLev */
+    }
+    /* actively flying handled earlier as a status condition */
+    if (BFlying()) { /* flight is blocked */
+        const save_BFly = BFlying();
+
+        prop(FLYING).blocked = 0; /* BFlying = 0L */
+        if (Flying()) {
+            enl_msg(You_, "would fly", "would have flown",
+                    /* wording quibble: for past tense, "hadn't been"
+                       would sound better than "weren't" (and
+                       "had permitted" better than "permitted"), but
+                       "weren't" and "permitted" are adequate so the
+                       extra complexity to handle that isn't worth it */
+                    Levitation()
+                       ? " if you weren't levitating"
+                       : (save_BFly === I_SPECIAL)
+                          /* this is an oversimplification; being trapped
+                             might also be blocking levitation so flight
+                             would still be blocked after escaping trap */
+                          ? " if you weren't trapped"
+                          : (save_BFly === FROMOUTSIDE)
+                             ? if_surroundings_permitted
+                             /* two or more of levitation, surroundings,
+                                and being trapped in the floor */
+                             : " if circumstances permitted",
+                    "");
+        }
+        prop(FLYING).blocked = save_BFly; /* BFlying = save_BFly */
+    }
+    /* including this might bring attention to the fact that ceiling
+       clinging has inconsistencies... */
+    if (is_clinger(game.youmonst.data)) {
+        const has_lid = has_ceiling(u.uz);
+
+        if (has_lid && !u.uinwater) {
+            you_can("cling to the ceiling", "");
+        } else {
+            buf = ` to the ceiling if ${!has_lid ? "there was one" : ""}${
+                    (!has_lid && u.uinwater) ? " and " : ""}${
+                    u.uinwater ? (Underwater() ? "you weren't underwater"
+                                  : "you weren't in the water") : ""}`;
+            /* past tense is applicable for death while Unchanging */
+            enl_msg(You_, "could cling", "could have clung", buf, "");
+        }
+    }
+    /* actively walking on water handled earlier as a status condition */
+    if (Wwalking() && !walking_on_water())
+        you_can("walk on water", from_what(WWALKING));
+    /* actively swimming (in water but not under it) handled earlier */
+    if (Swimming() && (Underwater() || !u.uinwater))
+        you_can("swim", from_what(SWIMMING));
+    if (Breathless())
+        you_can("survive without air", from_what(MAGICAL_BREATHING));
+    else if (Amphibious())
+        you_can("breathe water", from_what(MAGICAL_BREATHING));
+    if (Passes_walls())
+        you_can("walk through walls", from_what(PASSES_WALLS));
+
+    /*** Physical attributes ***/
+    if (Regeneration())
+        enl_msg("You regenerate", "", "d", "", from_what(REGENERATION));
+    if (Slow_digestion())
+        you_have("slower digestion", from_what(SLOW_DIGESTION));
+    if (u.uhitinc) {
+        buf = enlght_combatinc("to hit", u.uhitinc, final);
+        if (game.iflags.tux_penalty && !Upolyd())
+            buf += ` ${(u.uhitinc < 0) ? "increasing"
+                       : (u.uhitinc < Math.trunc(4 * game.urole.spelarmr / 5))
+                         ? "partly offsetting"
+                         : (u.uhitinc < game.urole.spelarmr) ? "nearly offsetting"
+                           : "overcoming"} your suit's penalty`;
+        you_have(buf, "");
+    }
+    if (u.udaminc)
+        you_have(enlght_combatinc("damage", u.udaminc, final), "");
+    if (u.uspellprot || Protection()) {
+        let prot = 0;
+
+        if (uleft && uleft.otyp === RIN_PROTECTION)
+            prot += uleft.spe;
+        if (uright && uright.otyp === RIN_PROTECTION)
+            prot += uright.spe;
+        if (uamul && uamul.otyp === AMULET_OF_GUARDING)
+            prot += 2;
+        if (HProtection() & INTRINSIC)
+            prot += u.ublessed;
+        prot += u.uspellprot;
+        if (prot)
+            you_have(enlght_combatinc("defense", prot, final), "");
+    }
+    if ((armpro = magic_negation(game.youmonst)) > 0) {
+        /* magic cancellation factor, conferred by worn armor */
+        const mc_types = [
+            "" /*ordinary*/, "warded", "guarded", "protected",
+        ];
+        /* sanity check */
+        if (armpro >= mc_types.length)
+            armpro = mc_types.length - 1;
+        you_are(mc_types[armpro], "");
+    }
+    if (Half_physical_damage())
+        enlght_halfdmg(HALF_PHDAM, final);
+    if (Half_spell_damage())
+        enlght_halfdmg(HALF_SPDAM, final);
+    if (Half_gas_damage())
+        enl_msg(You_, "take", "took", " reduced poison gas damage", "");
+    if (spellid(0) > NO_SPELL) { /* skip if no spells are known yet */
+        /* greatly simplified edition of percent_success(spell.c)--may need
+           to be suppressed if oversimplification leads to player confusion */
+        let cast_adj;
+        const suit = uarm && is_metallic(uarm),
+            robe = uarmc && uarmc.otyp === ROBE;
+
+        cast_adj = "";
+        if (suit) /* omit "wearing" to shorten the text */
+            cast_adj = ` impaired by metallic armor${
+                        robe ? ", mitigated by your robe" : ""}`;
+        else if (robe)
+            cast_adj = " enhanced by wearing a robe";
+
+        if (cast_adj)
+            enl_msg("Your spell casting ", "is", "was", cast_adj, "");
+    }
+    /* polymorph and other shape change */
+    if (Protection_from_shape_changers())
+        you_are("protected from shape changers",
+                from_what(PROT_FROM_SHAPE_CHANGERS));
+    if (Unchanging()) {
+        let what = null;
+
+        if (!Upolyd()) /* Upolyd handled below after current form */
+            you_can("not change from your current form",
+                    from_what(UNCHANGING));
+        /* blocked shape changes */
+        if (Polymorph())
+            what = !final ? "polymorph" : "have polymorphed";
+        else if (ismnum(u.ulycn))
+            what = !final ? "change shape" : "have changed shape";
+        if (what) {
+            buf = `would ${what} periodically`;
+            /* omit from_what(UNCHANGING); too verbose */
+            enl_msg(You_, buf, buf, " if not locked into your current form",
+                    "");
+        }
+    } else if (Polymorph()) {
+        you_are("polymorphing periodically", from_what(POLYMORPH));
+    }
+    if (Polymorph_control())
+        you_have("polymorph control", from_what(POLYMORPH_CONTROL));
+    if (Upolyd() && u.umonnum !== u.ulycn
+        /* if we've died from turning into slime, we're polymorphed
+           right now but don't want to list it as a temporary attribute
+           [we need a more reliable way to detect this situation] */
+        && !(final === ENL_GAMEOVERDEAD
+             && u.umonnum === M.PM_GREEN_SLIME && !Unchanging())) {
+        /* foreign shape (except were-form which is handled below) */
+        if (!vampshifted(game.youmonst))
+            buf = `polymorphed into ${
+                    an(pmname(game.youmonst.data, flags.female ? FEMALE : MALE))}`;
+        else
+            buf = `polymorphed into ${
+                    an(pmname(M.mons[game.youmonst.cham],
+                              flags.female ? FEMALE : MALE))} in ${
+                    pmname(game.youmonst.data, flags.female ? FEMALE : MALE)} form`;
+        if (wizard())
+            buf += ` (${u.mtimedone})`;
+        you_are(buf, "");
+    }
+    if (lays_eggs(game.youmonst.data) && flags.female) /* Upolyd */
+        you_can("lay eggs", "");
+    if (ismnum(u.ulycn)) {
+        /* "you are a werecreature [in beast form]" */
+        buf = an(pmname(M.mons[u.ulycn], flags.female ? FEMALE : MALE));
+        if (u.umonnum === u.ulycn) {
+            buf += " in beast form";
+            if (wizard())
+                buf += ` (${u.mtimedone})`;
+        }
+        you_are(buf, "");
+    }
+    if (Unchanging() && Upolyd()) /* !Upolyd handled above */
+        you_can("not change from your current form", from_what(UNCHANGING));
+    if (Hate_silver())
+        you_are("harmed by silver", "");
+    /* movement and non-armor-based protection */
+    if (Fast())
+        you_are(Very_fast() ? "very fast" : "fast", from_what(FAST));
+    if (Reflecting())
+        you_have("reflection", from_what(REFLECTING));
+    if (Free_action())
+        you_have("free action", from_what(FREE_ACTION));
+    if (Fixed_abil())
+        you_have("fixed abilities", from_what(FIXED_ABIL));
+    if (Lifesaved())
+        enl_msg("Your life ", "will be", "would have been", " saved", "");
+
+    /*** Miscellany ***/
+    if (Luck()) {
+        ltmp = Math.abs(Luck());
+        buf = `${ltmp >= 10 ? "extremely " : ltmp >= 5 ? "very " : ""}${
+                Luck() < 0 ? "un" : ""}lucky`;
+        if (wizard())
+            buf += ` (${Luck()})`;
+        you_are(buf, "");
+    } else if (wizard())
+        enl_msg("Your luck ", "is", "was", " zero", "");
+    if (u.moreluck > 0)
+        you_have("extra luck", "");
+    else if (u.moreluck < 0)
+        you_have("reduced luck", "");
+    if (carrying(LUCKSTONE) || stone_luck(true)) {
+        ltmp = stone_luck(false);
+        if (ltmp <= 0)
+            enl_msg("Bad luck ", "does", "did", " not time out for you", "");
+        if (ltmp >= 0)
+            enl_msg("Good luck ", "does", "did", " not time out for you", "");
+    }
+
+    if (u.ugangr) {
+        buf = ` ${u.ugangr > 6 ? "extremely " : u.ugangr > 3 ? "very " : ""}angry with you`;
+        if (wizard())
+            buf += ` (${u.ugangr})`;
+        enl_msg(u_gname(), " is", " was", buf, "");
+    } else {
+        /*
+         * We need to suppress this when the game is over, because death
+         * can change the value calculated by can_pray(), potentially
+         * resulting in a false claim that you could have prayed safely.
+         */
+        if (!final) {
+            buf = `${(await can_pray(false)) ? "" : "not "}safely pray`;
+            if (wizard())
+                buf += ` (${u.ublesscnt})`;
+            you_can(buf, "");
+        }
+    }
+
+    /* DEBUG named fruit debugging: explicitdebug("fruit") is off */
+
+    {
+        let p;
+
+        buf = "";
+        if (final < 2) { /* still in progress, or quit/escaped/ascended */
+            p = "survived after being killed ";
+            if (!u.umortality)
+                p = !final ? null : "survived";
+            else
+                buf = N_times(u.umortality);
+        } else { /* game ended in character's death */
+            p = "are dead";
+            switch (u.umortality) {
+            case 0:
+                /* impossible("dead without dying?"); */
+                /* FALLTHRU */
+            case 1:
+                break; /* just "are dead" */
+            default:
+                buf = ` (${u.umortality}${ordin(u.umortality)} time!)`;
+                break;
+            }
+        }
+        if (p)
+            enl_msg(You_, "have been killed ", p, buf, "");
+    }
+}
+
 // C ref: insight.c doattributes() -- ^X command
 export async function doattributes() {
     let mode = BASICENLIGHTENMENT;
@@ -1307,4 +2092,44 @@ export async function doattributes() {
 
     await enlightenment(mode, ENL_GAMEINPROGRESS);
     return 0; /* ECMD_OK */
+}
+
+// C ref: insight.c piousness()
+/* used for self-probing */
+export function piousness(showneg, suffix) {
+    const u = U();
+    let buf; /* bigger than "insufficiently neutral" */
+    let pio;
+
+    /* note: piousness 20 matches MIN_QUEST_ALIGN (quest.h) */
+    if (u.ualign.record >= 20)
+        pio = "piously";
+    else if (u.ualign.record > 13)
+        pio = "devoutly";
+    else if (u.ualign.record > 8)
+        pio = "fervently";
+    else if (u.ualign.record > 3)
+        pio = "stridently";
+    else if (u.ualign.record === 3)
+        pio = "";
+    else if (u.ualign.record > 0)
+        pio = "haltingly";
+    else if (u.ualign.record === 0)
+        pio = "nominally";
+    else if (!showneg)
+        pio = "insufficiently";
+    else if (u.ualign.record >= -3)
+        pio = "strayed";
+    else if (u.ualign.record >= -8)
+        pio = "sinned";
+    else
+        pio = "transgressed";
+
+    buf = pio;
+    if (suffix && (!showneg || u.ualign.record >= 0)) {
+        if (u.ualign.record !== 3)
+            buf += " ";
+        buf += suffix;
+    }
+    return buf;
 }

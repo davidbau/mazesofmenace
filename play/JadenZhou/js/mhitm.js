@@ -10,7 +10,7 @@ import { distmin, isok } from './hacklib.js';
 import { cansee } from './vision.js';
 import { m_at, grow_up } from './makemon.js';
 import { monkilled, zombie_maker } from './mon.js';
-import { canspotmon, newsym, pline } from './display.js';
+import { canspotmon, newsym, pline, map_invisible } from './display.js';
 import { Monnam, mon_nam_too } from './do_name.js';
 import { is_elf, is_orc } from './mondata.js';
 import { M_AP_TYPE, IS_DOOR, M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED,
@@ -184,11 +184,11 @@ function pre_mm_attack(magr, mdef) {
 
     if (game.mhitm_vis) {
         if (!canspotmon(magr))
-            throw new Error('pre_mm_attack(): map_invisible() not ported yet');
+            map_invisible(magr.mx, magr.my);
         else if (showit)
             newsym(magr.mx, magr.my);
         if (!canspotmon(mdef))
-            throw new Error('pre_mm_attack(): map_invisible() not ported yet');
+            map_invisible(mdef.mx, mdef.my);
         else if (showit)
             newsym(mdef.mx, mdef.my);
     }

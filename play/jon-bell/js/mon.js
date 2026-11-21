@@ -471,14 +471,7 @@ export async function mongone(mdef) {
     if (mdef.isshk) await shkgone(mdef); // C mon.c:2784-2785
     if (mdef.wormno)
         wormgone_mk(mdef);
-    if (In_endgame(game.u.uz))
-        mdef.mstate = (mdef.mstate | 0) | MON_ENDGAME_FREE;
-    if ((mdef.mstate | 0) & MON_DETACH) {
-        await lifecycle_impossible('m_detach: %s is already detached?', minimal_monnam(mdef, false));
-    } else {
-        mdef.mstate = (mdef.mstate | 0) | MON_DETACH;
-        game.iflags.purge_monsters = (game.iflags.purge_monsters | 0) + 1;
-    }
+    await finish_mon_detach(mdef);
     /* C mon.c:2799-2801: disappearance also throws the rider off. */
     if (mdef === game.u.usteed)
         await dismount_steed_mk(DISMOUNT_GENERIC);
@@ -2124,8 +2117,6 @@ export async function mondead(mtmp) {
      * MON_AT early return).  Position is C's: before the fmon unlink. */
     if (mtmp.wormno)
         remove_worm_mk(mtmp);
-    mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
-    game.iflags.purge_monsters = (game.iflags.purge_monsters | 0) + 1; /* C mon.c:2796 m_detach */
     /* C m_detach() has now vacated the grid cell (mon_leaving_level →
      * remove_monster): the pre-detach `_dyingInGrid` window ends here. */
     const onmap = isok(mx, my) && m_at(mx, my) === mtmp;
@@ -2165,6 +2156,7 @@ export async function mondead(mtmp) {
      * repainting cells remove_worm() has already zeroed. */
     if (mtmp.wormno)
         wormgone_mk(mtmp);
+    await finish_mon_detach(mtmp);
     /* C mon.c:2799-2801 m_detach() tail: hero is thrown from his steed when it
      * dies or gets genocided. */
     if (game.u && mtmp === game.u.usteed)
@@ -5796,8 +5788,21 @@ async function unlink_mon(mtmp, onmap) {
         if (onmap)
             await fill_pit(mtmp.mx | 0, mtmp.my | 0);
     }
-    mtmp.mstate = (mtmp.mstate | 0) | 0x02; /* MON_DETACH (const.js) */
-    game.iflags.purge_monsters = (game.iflags.purge_monsters | 0) + 1; /* C mon.c:2796 m_detach */
+    /* The caller finishes m_detach after dropping inventory, as in C. */
+}
+
+/* C mon.c:2788-2796: mark a detached monster only after relobj, shkgone
+ * and wormgone. A dropped boulder can kill the hero and enter savebones
+ * before this point; dmonsfree must still see the old purge counter. */
+async function finish_mon_detach(mtmp) {
+    if (In_endgame(game.u.uz))
+        mtmp.mstate = (mtmp.mstate | 0) | MON_ENDGAME_FREE;
+    if ((mtmp.mstate | 0) & MON_DETACH) {
+        await lifecycle_impossible('m_detach: %s is already detached?', minimal_monnam(mtmp, false));
+    } else {
+        mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
+        game.iflags.purge_monsters = (game.iflags.purge_monsters | 0) + 1;
+    }
 }
 
 /* C ref: mon.c:3464 xkilled() — the shared "hero kills monster" sequence used
@@ -6124,6 +6129,7 @@ export async function xkilled(mtmp, xkflags) {
         /* C mon.c:2786-2787, end of m_detach(): `if (mtmp->wormno) wormgone(mtmp);` */
         if (mtmp.wormno)
             wormgone(mtmp);
+        await finish_mon_detach(mtmp);
     }
     /* C mon.c:2798-2800, end of m_detach(): "hero is thrown from his steed
      * when it dies or gets genocided" — before the treasure-drop rn2(6). */

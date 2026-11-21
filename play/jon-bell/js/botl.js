@@ -1323,14 +1323,16 @@ export function title_to_mon(str, rank_indx, title_length) {
     return NON_PM;
 }
 
-/* The lone T: field a timebot() painted onto cls()-blanked status rows, at the
- * column the full status line would give it; '' when nothing was painted. */
+/* The lone T: field a timebot() painted onto cls()-blanked status rows.
+ * wintty.c:4669,5014 lays it out using the cached status fields, which can
+ * predate the live hero (botl.c:259 skips bot() when uhp == -1). */
 export function status_time_only_row(fullRow) {
     if (game._statusTimeOnly == null || game._statusBlankAfterDocrt !== true) return '';
     const plain = String(fullRow || '').replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(+n))
         .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
     const m = /(^| )T:\d+/.exec(plain);
     if (!m) return '';
-    const x = m.index + m[1].length;
+    const x = !_threeStatusLines() && game._statusTimeCol != null
+        ? game._statusTimeCol : m.index + m[1].length;
     return ' '.repeat(x) + 'T:' + game._statusTimeOnly;
 }

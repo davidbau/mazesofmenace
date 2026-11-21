@@ -20,11 +20,13 @@ import {
     tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
     tty_select_menu, tty_destroy_nhwindow,
 } from './wintty.js';
-import { xname, makeplural, makesingular, fruit_from_name } from './objnam.js';
+import { xname, makeplural, makesingular, fruit_from_name, an,
+         armor_simple_name } from './objnam.js';
 import { data_base_keys } from './data_base_keys.js';
 import { is_weptool, Is_container } from './mkobj.js';
 import * as M from './monsters.js';
 import { ART_EYES_OF_THE_OVERWORLD } from './artilist.js';
+import { artiname } from './artifact.js';
 
 const IA_NONE = 0,
     IA_UNWIELD = 1, /* hack for 'w-' */
@@ -258,6 +260,33 @@ function minimal_xname(obj) {
     return bufp;
 }
 
+/* C ref: shk.c shk_your() -- "your " or "the " (note the trailing
+   space); shop and monster ownership and unique corpses aren't ported */
+function shk_your(obj) {
+    let buf;
+    const chk_pm = obj.otyp === O.CORPSE && obj.corpsenm >= M.LOW_PM;
+
+    if (chk_pm)
+        ia_not_ported('shk_your() for corpses');
+    else if (obj.unpaid
+             || (obj.where === 'OBJ_FLOOR' && !obj.no_charge
+                 && game.level.flags?.has_shop)
+             || obj.where === 'OBJ_MINVENT')
+        ia_not_ported('shk_owns()/mon_owns()');
+    else
+        buf = (obj.where === 'OBJ_INVENT') ? "your" : "the"; /* the_your[carried(obj)] */
+    return buf + " ";
+}
+
+/* C ref: objnam.c ysimple_name() */
+/* returns "your minimal_xname(obj)"
+ * or "Foobar's minimal_xname(obj)"
+ * or "the minimal_xname(obj)"
+ */
+export function ysimple_name(obj) {
+    return shk_your(obj) + minimal_xname(obj);
+}
+
 /* C ref: objnam.c simpleonames() */
 export function simpleonames(obj) {
     let simpleoname = minimal_xname(obj);
@@ -265,6 +294,134 @@ export function simpleonames(obj) {
     if (obj.quan !== 1)
         simpleoname = makeplural(simpleoname);
     return simpleoname;
+}
+
+/* C ref: objnam.c suit_simple_name() */
+export function suit_simple_name(suit) {
+    let suitnm;
+
+    if (suit) {
+        if (suit.otyp >= O.GRAY_DRAGON_SCALE_MAIL
+            && suit.otyp <= O.YELLOW_DRAGON_SCALE_MAIL) /* Is_dragon_mail() */
+            return "dragon mail"; /* <color> dragon scale mail */
+        else if (suit.otyp >= O.GRAY_DRAGON_SCALES
+                 && suit.otyp <= O.YELLOW_DRAGON_SCALES) /* Is_dragon_scales() */
+            return "dragon scales";
+        suitnm = O.OBJ_NAME(objects[suit.otyp]);
+        if (suitnm.length > 5 && suitnm.endsWith(" mail"))
+            return "mail"; /* most suits fall into this category */
+        else if (suitnm.length > 7 && suitnm.endsWith(" jacket"))
+            return "jacket"; /* leather jacket */
+    }
+    /* "suit" is lame but "armor" is ambiguous and "body armor" is absurd */
+    return "suit";
+}
+
+/* C ref: objnam.c cloak_simple_name() */
+export function cloak_simple_name(cloak) {
+    if (cloak) {
+        switch (cloak.otyp) {
+        case O.ROBE:
+            return "robe";
+        case O.MUMMY_WRAPPING:
+            return "wrapping";
+        case O.ALCHEMY_SMOCK:
+            return (objects[cloak.otyp].oc_name_known && cloak.dknown)
+                       ? "smock"
+                       : "apron";
+        default:
+            break;
+        }
+    }
+    return "cloak";
+}
+
+/* C ref: do_wear.c hard_helmet() */
+function hard_helmet(obj) {
+    if (!obj || !(obj.oclass === O.ARMOR_CLASS
+                  && objects[obj.otyp].oc_armcat === O.ARM_HELM)) /* is_helmet() */
+        return false;
+    return (O.is_metallic(obj) || O.is_crackable(obj)) ? true : false;
+}
+
+/* C ref: objnam.c helm_simple_name() */
+/* helm vs hat for messages */
+export function helm_simple_name(helmet) {
+    /*
+     *  There is some wiggle room here; the result has been chosen
+     *  for consistency with the "protected by hard helmet" messages
+     *  given for various bonks on the head:  headgear that provides
+     *  such protection is a "helm", that which doesn't is a "hat".
+     */
+    return !hard_helmet(helmet) ? "hat" : "helm";
+}
+
+/* C ref: objnam.c gloves_simple_name() */
+/* gloves vs gauntlets; depends upon discovery state */
+export function gloves_simple_name(gloves) {
+    const gauntlets = "gauntlets";
+
+    if (gloves && gloves.dknown) {
+        const otyp = gloves.otyp;
+        const ocl = objects[otyp];
+        const actualn = O.OBJ_NAME(ocl), descrpn = OBJ_DESCR(ocl);
+
+        if ((objects[otyp].oc_name_known ? actualn : descrpn)
+                .toLowerCase().includes(gauntlets)) /* strstri() */
+            return gauntlets;
+    }
+    return "gloves";
+}
+
+/* C ref: objnam.c boots_simple_name() */
+/* boots vs shoes; depends upon discovery state */
+export function boots_simple_name(boots) {
+    const shoes = "shoes";
+
+    if (boots && boots.dknown) {
+        const otyp = boots.otyp;
+        const ocl = objects[otyp];
+        const actualn = O.OBJ_NAME(ocl), descrpn = OBJ_DESCR(ocl);
+
+        if ((descrpn && descrpn.toLowerCase().includes(shoes)) /* strstri() */
+            || (objects[otyp].oc_name_known
+                && actualn.toLowerCase().includes(shoes)))
+            return shoes;
+    }
+    return "boots";
+}
+
+/* C ref: objnam.c shield_simple_name() */
+/* simplified shield for messages */
+export function shield_simple_name(shield) {
+    if (shield) {
+        /* xname() describes unknown (unseen) reflection as smooth */
+        if (shield.otyp === O.SHIELD_OF_REFLECTION)
+            return shield.dknown ? "silver shield" : "smooth shield";
+    }
+    return "shield";
+}
+
+/* C ref: objnam.c shirt_simple_name() */
+/* for completeness */
+export function shirt_simple_name(shirt) {
+    void shirt;
+    return "shirt";
+}
+
+/* C ref: objnam.c bare_artifactname() */
+/* artifact's name without any object type or known/dknown/&c feedback */
+export function bare_artifactname(obj) {
+    let outbuf;
+
+    if (obj.oartifact) {
+        outbuf = artiname(obj.oartifact);
+        if (outbuf.startsWith("The "))
+            outbuf = outbuf[0].toLowerCase() + outbuf.slice(1);
+    } else {
+        outbuf = xname(obj);
+    }
+    return outbuf;
 }
 
 /* C ref: objnam.c the() -- names that don't start with a capital letter */
@@ -953,7 +1110,7 @@ export async function itemactions(otmp) {
             if (!o)
                 buf = "Wear this armor";
             else
-                ia_not_ported('armor_simple_name()');
+                buf = `[already wearing ${an(armor_simple_name(o))}]`;
 
             ia_addmenu(win, IA_WEAR_OBJ, 'W', buf);
         }

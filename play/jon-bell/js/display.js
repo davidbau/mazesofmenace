@@ -1023,6 +1023,9 @@ function _default_cmap_at(loc, ch, color) {
         idx = _WALL_KEY_CMAP[_wall_angle(loc)] ?? -1; break;
     case SDOOR:
         idx = (loc.arboreal_sdoor || loc.candig) ? 18 : (_WALL_KEY_CMAP[_wall_angle(loc)] ?? -1); break;
+    case SCORR:
+    case STONE:
+        idx = game.level?.flags?.arboreal ? 18 : 0; break;
     case ROOM: idx = 19; break;
     case CORR: idx = color === CLR_WHITE ? 23 : 22; break;
     case DOOR:
@@ -7785,6 +7788,11 @@ function _status_sgr_open(h) {
     return `\x1b[${codes.join(';')}m`;
 }
 export function _status_sgr(raw) {
+    // ignores negative bytes while tty still advances the status cursor;
+    // retain that cell and its attributes rather than painting the byte.
+    return _status_sgr_fields(raw).replace(/[\x80-\xff]/g, '\x1b[1C');
+}
+function _status_sgr_fields(raw) {
     /* C botl.c writes the fields after a cursor-forward (\e[nC) to the next
      * column; the grid paint path reads the row with those moves as blanks, so
      * the hilite match and its columns must see the same blanks (a field whose
@@ -13392,6 +13400,22 @@ async function _flush_screen_body(mode, repaint = true) {
     if (repaint) _flush_screen_repaint(mode);
 }
 function _flush_screen_repaint(mode) {
+    /* C display.c:2220-2221 returns before bot(), the gnew walk and curs()
+     * during level creation or save/restore.  We still materialize the UI's
+     * pending topline, but keep the physical cursor and pending glyph epoch.
+     * A montelecontrol getpos() inside mklev must keep its initial curs(). */
+    if (suppress_map_output()) {
+        const display = game.nhDisplay;
+        const col = display?.cursorCol, row = display?.cursorRow;
+        _buildScreenOutput();
+        if (display) {
+            display.cursorCol = col;
+            display.cursorRow = row;
+        }
+        _last_flush_forced_cursor = false;
+        _last_flush_status_end = null;
+        return;
+    }
     _flush_ran_bot = false;
     let _mapPrinted = false;
     /* A text-window dismissal only prints docrt's map after bot() if no
@@ -13458,8 +13482,14 @@ function _flush_screen_repaint(mode) {
     // u.uy)` only overrides that for a flush_screen(1).  Ordinary changed
     // glyphs and forced glyphs participate in the same row-major traversal,
     // whether or not bot() ran (display.c:2241-2263).
-    let _forcedCurs = _take_forced_gnew_cursor();
-    const _gnewCurs = !mode ? _last_changed_gnew_cursor() : null;
+    /* display.c:2220: under _suppress_map_output() (in_mklev, saving,
+     * restoring) flush_screen returns before the gnew loop, so no printed cell
+     * moves the tty cursor and a caller's curs() stands (getpos for a
+     * montelecontrol rloc from baalz_fixup inside mklev).  The pending forced
+     * glyph is left for the first unsuppressed flush. */
+    const _mapSuppressed = !!suppress_map_output();
+    let _forcedCurs = _mapSuppressed ? null : _take_forced_gnew_cursor();
+    const _gnewCurs = !mode && !_mapSuppressed ? _last_changed_gnew_cursor() : null;
     if (_gnewCurs && (!_forcedCurs
         || _gnewCurs[1] > _forcedCurs[1]
         || (_gnewCurs[1] === _forcedCurs[1] && _gnewCurs[0] > _forcedCurs[0])))

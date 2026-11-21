@@ -13,7 +13,7 @@ import { P_NONE, P_MASTER, P_GRAND_MASTER, MAX_SPELL_STUDY } from './const.js';
 import { P_SKILL } from './skills.js';
 import { roles } from './roles.js';
 import { nhgetch } from './input.js';
-import { flush_pending_messages, shieldeff, flush_screen, newsym, show_glyph_cell, topl_force_break_now, docrt } from './display.js';
+import { force_more_pages, shieldeff, flush_screen, newsym, show_glyph_cell, topl_force_break_now, docrt } from './display.js';
 import { pline } from './pline.js';
 import { rn1 } from './rng.js';
 import { rn2, rnd } from './rnd.js';
@@ -1067,7 +1067,7 @@ async function cursed_book(bp) {
     case 2:
         /* C spell.c:126 make_blinded(BlindedTimeout + rn1(100, 250), TRUE).
          * BlindedTimeout is u.uprops[BLINDED].intrinsic & TIMEOUT. */
-        make_blinded(((g.u?.uprops?.[BLINDED]?.intrinsic | 0) & TIMEOUT)
+        await make_blinded(((g.u?.uprops?.[BLINDED]?.intrinsic | 0) & TIMEOUT)
                      + rn1(100, 250), true);
         break;
     case 3:
@@ -1468,7 +1468,7 @@ async function dospellmenu(prompt, splaction) {
      * on its --More-- (impossible()'s lines raised while the rows above were
      * formatted) is acknowledged before the menu opens. */
     if (g._pending_message)
-        await flush_pending_messages();
+        await force_more_pages(g._pending_message);
     const n = await dospellmenu_render_and_read(prompt, headingRaw, items, how);
 
     /* C ref: spell.c:2154-2168 — select_menu's return is turned into the

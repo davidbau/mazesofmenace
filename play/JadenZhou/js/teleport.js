@@ -10,7 +10,8 @@ import { rn2, rnl } from './rng.js';
 import { pline } from './display.js';
 import { tty_getlin } from './wintty.js';
 import { In_endgame, In_quest, In_mines, TELEPORT_CONTROL, STUNNED, CONFUSION } from './const.js';
-import { dunlevs_in_dungeon, In_hell, depth, get_level, on_level } from './dungeon.js';
+import { dunlevs_in_dungeon, In_hell, depth, get_level, on_level,
+         print_dungeon } from './dungeon.js';
 import { schedule_goto, UTOTYPE_NONE } from './do.js';
 import {
     COLNO, ROWNO, ZAP_POS, isok, GP_ALLOW_XY, GP_CHECKSCARY, NO_MM_FLAGS,
@@ -18,25 +19,35 @@ import {
     CC_SKIP_INACCS, RLOC_NOMSG,
 } from './const.js';
 import { mons, M2_LORD, M2_PRINCE, M2_DEMON, M3_COVETOUS, PM_DEATH,
-         PM_PESTILENCE, PM_FAMINE } from './monsters.js';
+         PM_PESTILENCE, PM_FAMINE, S_MIMIC } from './monsters.js';
 import { set_mon_data, passes_walls, control_teleport } from './mondata.js';
-import { goodpos, m_at, place_monster, is_pool, is_lava } from './makemon.js';
+import { goodpos, m_at, place_monster, is_pool, is_lava, sobj_at } from './makemon.js';
 import { rnd, rn1 } from './rng.js';
-import { newsym, canseemon, canspotmon, sensemon } from './display.js';
-import { couldsee } from './vision.js';
+import { newsym, canseemon, canspotmon, sensemon, see_monsters } from './display.js';
+import { couldsee, vision_recalc } from './vision.js';
+import { u_on_newpos } from './mklev.js';
+import { nomul, spoteffects, switch_terrain } from './hack.js';
+import { VIBRATING_SQUARE, deltrap } from './trap.js';
+import { PASSES_WALLS, ANTIMAGIC } from './const.js';
+import { M1_FLY } from './monsters.js';
+import { resists_magm } from './mondata.js';
+import { settrack } from './track.js';
+import { set_ustuck } from './uhitm.js';
 import { Monnam, mon_nam, Amonnam } from './do_name.js';
 import { maybe_unhide_at } from './mon.js';
 import { set_apparxy, mon_track_clear, dochugw, onscary } from './monmove.js';
-import { mintrap, seetrap, t_at, is_hole, HOLE, TRAPDOOR, TELEP_TRAP,
+import { mintrap, seetrap, t_at, is_hole, is_pit, HOLE, TRAPDOOR, TELEP_TRAP,
          LEVEL_TELEP, MAGIC_PORTAL, NO_TRAP, Trap_Effect_Finished,
          clamp_hole_destination } from './trap.js';
 import { within_bounded_area } from './rect.js';
 import { obj_extract_self, place_object } from './mkobj.js';
 import { flooreffects } from './do.js';
 import { dist2 } from './hacklib.js';
-import { CORPSE, AMULET_OF_YENDOR } from './objects.js';
+import { CORPSE, AMULET_OF_YENDOR, BOULDER } from './objects.js';
 import { STRAT_APPEARMSG, RLOC_MSG, RLOC_NONE, NO_TRAP_FLAGS, BLINDED,
          BOLT_LIM } from './const.js';
+import { ROOMOFFSET, VAULT, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
+         TT_BURIEDBALL, LEVITATION, FLYING, TELEDS_TELEPORT } from './const.js';
 
 /* C ref: mondata.h is_rider() */
 function is_rider(ptr) {
@@ -245,15 +256,348 @@ async function rloc_to_flag(mtmp, x, y, rlocflags) {
     await rloc_to_core(mtmp, x, y, rlocflags);
 }
 
-// C ref: teleport.c level_tele() -- the prompt for the destination; the
-// teleport itself (schedule_goto()/goto_level()), random_levtport, the
-// wizard-mode level menu and lev_by_name() are not ported yet
+// C ref: teleport.c teleds() -- put the hero at <nux,nuy> on this level
+export async function teleds(nux, nuy, teleds_flags) {
+    const u = game.u;
+    const is_teleport = (teleds_flags & TELEDS_TELEPORT) !== 0;
+
+    /* vault_occupied(u.urooms) ? findgd() : 0 */
+    if (u.urooms && in_rooms_vault(u.urooms))
+        throw new Error('teleds(): vault guard not ported yet');
+    if (u.utraptype === TT_BURIEDBALL || game.uball)
+        throw new Error('teleds(): ball and chain not ported yet');
+    /* ball_active = (Punished && uball->where != OBJ_FREE): no ball */
+    /* reset_utrap(FALSE): set_utrap(0, 0) */
+    u.utrap = 0;
+    u.utraptype = 0;
+    const was_swallowed = u.uswallow; /* set_ustuck(Null) clears uswallow */
+    set_ustuck(null);
+    u.ux0 = u.ux;
+    u.uy0 = u.uy;
+
+    /* !hideunder(&youmonst) && youmonst.data->mlet == S_MIMIC: mimics stop
+       being unnoticed */
+    if (game.youmonst.data.mlet === S_MIMIC)
+        throw new Error('teleds(): hideunder() for a mimic hero not ported yet');
+
+    if (was_swallowed)
+        throw new Error('teleds(): leaving an engulfer not ported yet');
+
+    /* must set u.ux, u.uy after drag_ball(), which may need to know
+       the old position if allow_drag is true... */
+    u_on_newpos(nux, nuy); /* set u.<x,y>, usteed-><mx,my>; cliparound() */
+    /* fill_pit(u.ux0, u.uy0): a pit/hole with a boulder at the old spot */
+    {
+        const t = t_at(u.ux0, u.uy0);
+        if (t && (is_pit(t.ttyp) || is_hole(t.ttyp)) && sobj_at(BOULDER, u.ux0, u.uy0))
+            throw new Error('teleds(): fill_pit() not ported yet');
+    }
+    /* update_player_regions(): regions aren't ported yet */
+    if (game.regions && game.regions.length)
+        throw new Error('teleds(): update_player_regions() not ported yet');
+    /*
+     *  Make sure the hero disappears from the old location.  This will
+     *  not happen if she is teleported within sight of her previous
+     *  location.  Force a full vision recalculation because the hero
+     *  is now in a new location.
+     */
+    newsym(u.ux0, u.uy0);
+    see_monsters();
+    game.vision_full_recalc = 1;
+    nomul(0);
+    /* notice_mon_off(): a11y mon_notices is off by default */
+    vision_recalc(0); /* vision before effects */
+
+    /* this used to take place sooner, but if a --More-- prompt was issued
+       then the old map display was shown instead of the new one */
+    if (is_teleport && game.flags.verbose !== false)
+        await pline(`You materialize in ${(nux === u.ux0 && nuy === u.uy0)
+                                          ? "the same" : "a different"} location!`);
+    /* if terrain type changes, levitation or flying might become blocked
+       or unblocked; might issue message, so do this after map+vision has
+       been updated for new location instead of right after u_on_newpos() */
+    if (game.level.at(u.ux, u.uy).typ !== game.level.at(u.ux0, u.uy0).typ)
+        await switch_terrain();
+    /* (vault guard: stopped above) */
+    /* possible shop entry message comes after guard's shrill whistle */
+    await spoteffects(true);
+    /* invocation_message(): only on the vibrating square level */
+    if (game.level.flags?.is_invocation_lev)
+        throw new Error('teleds(): invocation_message() not ported yet');
+    /* notice_mon_on(); notice_all_mons(TRUE): a11y mon_notices is off */
+}
+
+// C ref: teleport.c teleok()
+function teleok(x, y, trapok) {
+    if (!trapok) {
+        /* allow teleportation onto vibrating square, it's not a real trap;
+           also allow pits and holes if levitating or flying */
+        const trap = t_at(x, y);
+
+        if (!trap)
+            trapok = true;
+        else if (trap.ttyp === VIBRATING_SQUARE)
+            trapok = true;
+        else if ((is_pit(trap.ttyp) || is_hole(trap.ttyp))
+                 && (tp_Levitation() || tp_Flying()))
+            trapok = true;
+
+        if (!trapok)
+            return false;
+    }
+    if (!goodpos(x, y, game.youmonst, 0))
+        return false;
+    if (!tele_jump_ok(game.u.ux, game.u.uy, x, y))
+        return false;
+    /* in_out_region(x, y): regions aren't ported */
+    if (game.regions && game.regions.length)
+        throw new Error('teleok(): in_out_region() not ported yet');
+    return true;
+}
+
+/* C ref: youprop.h Levitation, Flying, Teleport_control, Antimagic,
+   Stunned, Blinded */
+function tp_prop(p) {
+    return game.u.uprops?.[p] || { intrinsic: 0, extrinsic: 0, blocked: 0 };
+}
+function tp_Levitation() {
+    const p = tp_prop(LEVITATION);
+    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
+}
+function tp_Flying() {
+    const p = tp_prop(FLYING);
+    return !!((p.intrinsic || p.extrinsic
+               || (game.u.usteed && (game.u.usteed.data.mflags1 & M1_FLY)))
+              && !p.blocked);
+}
+
+// C ref: teleport.c safe_teleds()
+/* [try to] teleport hero to a safe spot */
+export async function safe_teleds(teleds_flags) {
+    let nux, nuy;
+    let cc_flags;
+    const candy = [];
+    const backupspot = { x: 0, y: 0 };
+    let tcnt, candycount;
+
+    /*
+     * Now it tries completely randomly only 40 times, all disallowing
+     * traps, then resorts to checking the entire map, near hero's spot
+     * first then expanding out from there.  If no non-trap spot is found,
+     * first trap spot is used.
+     */
+    for (tcnt = 0; tcnt < 40; ++tcnt) {
+        nux = rnd(COLNO - 1);
+        nuy = rn2(ROWNO);
+        if (teleok(nux, nuy, false)) {
+            await teleds(nux, nuy, teleds_flags);
+            return true;
+        }
+    }
+
+    /* get a shuffled list of candidate locations, starting with spots
+       1 or 2 steps from hero, then 3 or 4 steps, then 5 or 6, on up */
+    cc_flags = CC_RING_PAIRS | CC_SKIP_MONS;
+    if (!tp_Passes_walls())
+        cc_flags |= CC_SKIP_INACCS;
+    candycount = collect_coords(candy, game.u.ux, game.u.uy, 0, cc_flags, null);
+    backupspot.x = backupspot.y = 0;
+    /* skip trap locations via teleok(,,FALSE) but remember first
+       encountered trap spot that is acceptable to teleok(,,TRUE) */
+    for (tcnt = 0; tcnt < candycount; ++tcnt) {
+        nux = candy[tcnt].x, nuy = candy[tcnt].y;
+        if (teleok(nux, nuy, false)) {
+            await teleds(nux, nuy, teleds_flags);
+            return true;
+        }
+        if (!backupspot.x && t_at(nux, nuy) && teleok(nux, nuy, true))
+            backupspot.x = nux, backupspot.y = nuy;
+    }
+    /* no non-trap spot found; if we skipped a viable trap spot, use it */
+    if (backupspot.x) {
+        await teleds(backupspot.x, backupspot.y, teleds_flags);
+        return true;
+    }
+    return false;
+}
+function tp_Passes_walls() {
+    const p = tp_prop(PASSES_WALLS);
+    return !!(p.intrinsic || p.extrinsic);
+}
+
+// C ref: teleport.c vault_tele()
+async function vault_tele() {
+    const croom = search_special_vault();
+    const c = { x: 0, y: 0 };
+
+    if (croom)
+        throw new Error('vault_tele(): somexyspace() into a vault not ported yet');
+    void c;
+    await tele();
+}
+
+/* C ref: mkroom.c search_special(VAULT) -- the main rooms[] list; JS
+   doesn't keep subrooms in a global list */
+function search_special_vault() {
+    const rooms = game.level.rooms || [];
+    for (let i = 0; rooms[i] && rooms[i].hx >= 0; i++)
+        if (rooms[i].rtype === VAULT)
+            return rooms[i];
+    return null;
+}
+
+// C ref: teleport.c tele()
+/* teleport the hero via some method other than scroll of teleport */
+export async function tele() {
+    await scrolltele(null);
+}
+
+// C ref: teleport.c scrolltele()
+/* teleport the hero; usually discover scroll of teleportation if via
+   scroll */
+export async function scrolltele(scroll) {
+    const u = game.u;
+
+    /* Disable teleportation in stronghold && Vlad's Tower */
+    if (noteleport_level(game.youmonst) && !game.flags?.debug) {
+        await pline("A mysterious force prevents you from teleporting!");
+        if (scroll)
+            throw new Error('scrolltele(): learnscroll() not ported yet');
+        return;
+    }
+
+    /* don't show trap if "Sorry..." */
+    /* if (!Blinded) make_blinded(0L, FALSE): with Blinded already 0 this
+       changes nothing (no timeout to clear, no blindness toggle) */
+    if (tp_prop(BLINDED).intrinsic)
+        throw new Error('scrolltele(): make_blinded() not ported yet');
+
+    if ((u.uhave?.amulet || On_W_tower_level(u.uz)) && !rn2(3))
+        throw new Error('scrolltele(): "You feel disoriented for a moment." not ported yet');
+    if (((tp_prop(TELEPORT_CONTROL).intrinsic || tp_prop(TELEPORT_CONTROL).extrinsic
+          || (scroll && scroll.blessed)) && !tp_prop(STUNNED).intrinsic
+         && !tp_prop(STUNNED).extrinsic)
+        || game.flags?.debug)
+        throw new Error('scrolltele(): controlled teleport (getpos) not ported yet');
+
+    /* we used to suppress discovery if hero teleported to a nearby
+       spot which was already within view, but now there is always a
+       "materialize" message regardless of how far you teleported so
+       discovery of scroll type is unconditional */
+    if (scroll)
+        throw new Error('scrolltele(): learnscroll() not ported yet');
+
+    await safe_teleds(TELEDS_TELEPORT);
+}
+
+/* C ref: dungeon.h On_W_tower_level() -- Vlad's Tower isn't reachable
+   in the JS port yet */
+function On_W_tower_level(lev) {
+    void lev;
+    return false;
+}
+
+/* C ref: decl.c You_feel/You1 message strings */
+const shudder_for_moment = "shudder for a moment.";
+
+// C ref: apply.c next_to_u()
+/* is hero able to teleport/level-change with all leashed pets? */
+export async function next_to_u() {
+    /* get_iter_mons(mleashed_next2u) */
+    for (const mtmp of game.level.monsters || []) {
+        if (mtmp.dead || mtmp.mhp <= 0)
+            continue;
+        if (mtmp.mleashed)
+            throw new Error('next_to_u(): mleashed_next2u() for a leashed pet not ported yet');
+    }
+
+    /* no pack mules for the Amulet */
+    if (game.u.usteed && (game.u.usteed.minvent || []).some(
+            o => o.otyp === AMULET_OF_YENDOR)) /* mon_has_amulet() */
+        return false;
+    return true;
+}
+
+/* C ref: teleport.c tele_trap() 'static boolean in_tele_trap' */
+let in_tele_trap = false;
+
+// C ref: teleport.c tele_trap()
+export async function tele_trap(trap) {
+    const u = game.u;
+
+    /* a fixed-destination teleport trap could theoretically place hero onto
+     * a second teleport trap; prevent the recursive call from spoteffects()
+     * from triggering the trap at the destination */
+    if (in_tele_trap)
+        return;
+
+    in_tele_trap = true;
+    try {
+        const Antimagic = !!(tp_prop(ANTIMAGIC).intrinsic || tp_prop(ANTIMAGIC).extrinsic
+                             || (game.u.umonnum !== game.u.umonster
+                                 && resists_magm(game.youmonst)));
+        if (In_endgame(u.uz) || Antimagic || noteleport_level(game.youmonst)) {
+            if (Antimagic)
+                throw new Error('tele_trap(): shieldeff() not ported yet');
+            await pline("You feel a wrenching sensation."); /* You_feel() */
+        } else if (!await next_to_u()) {
+            await pline(`You ${shudder_for_moment}`); /* You1() */
+        } else if (trap.once) {
+            deltrap(trap);
+            newsym(u.ux, u.uy); /* get rid of trap symbol */
+            await vault_tele();
+        } else if (isok(trap.launch?.x, trap.launch?.y)) { /* teledest */
+            const cc = { x: 0, y: 0 };
+            let mtmp = m_at(trap.launch.x, trap.launch.y);
+
+            settrack();
+            if (mtmp) {
+                if (!enexto(cc, mtmp.mx, mtmp.my, mtmp.data)) {
+                    /* could not find some other place to put mtmp; the level
+                     * must be nearly or completely full */
+                    await pline(`You ${shudder_for_moment}`); /* You1() */
+                } else {
+                    await rloc_to(mtmp, cc.x, cc.y);
+                    mtmp = null; /* no longer a monster at dest */
+                }
+            }
+            if (!mtmp)
+                await teleds(trap.launch.x, trap.launch.y, TELEDS_TELEPORT);
+        } else
+            await tele();
+    } finally {
+        in_tele_trap = false;
+    }
+}
+
+function in_rooms_vault(urooms) {
+    /* C ref: vault.c vault_occupied() */
+    for (const r of urooms) {
+        const rno = (typeof r === 'number') ? r : r.charCodeAt(0);
+        const room = game.level.rooms?.[rno - ROOMOFFSET];
+        if (room && room.rtype === VAULT)
+            return true;
+    }
+    return false;
+}
+
+function is_pool_or_lava_at(x, y) {
+    const typ = game.level.at(x, y).typ;
+    return typ === POOL || typ === MOAT || typ === WATER || typ === LAVAPOOL
+           || typ === LAVAWALL;
+}
+
+// C ref: teleport.c level_tele() -- the prompt for the destination and
+// the wizard-mode level menu; random_levtport and lev_by_name() are not
+// ported yet
 export async function level_tele() {
     const g = game;
     const u = g.u;
     const wizard = !!g.flags?.debug;
     let newlev = 0;
     let buf = '';
+    const newlevel = { dnum: 0, dlevel: 0 };
+    let force_dest = false;
 
     if ((u.uhave?.amulet || In_endgame(u.uz) /* || In_sokoban(&u.uz) */)
         && !wizard) {
@@ -286,9 +630,23 @@ export async function level_tele() {
             } else if (buf === "\x1b") { /* cancelled */
                 return;
             }
-            if (!/^-?\d+$/.test(buf))
-                return; /* '?' menu and lev_by_name() -- not ported yet */
-            newlev = parseInt(buf, 10); /* atoi() */
+            if (wizard && buf === "?") {
+                /* levTport_menu: */
+                const r = await print_dungeon(true);
+                newlev = r.lev;
+                if (!newlev)
+                    return;
+
+                newlevel.dnum = r.rdgn;
+                newlevel.dlevel = r.rlev;
+                if (In_endgame(newlevel) && !In_endgame(u.uz))
+                    throw new Error('level_tele(): "Endgame prerequisite" amulet not ported yet');
+                force_dest = true;
+            } else {
+                if (!/^-?\d+$/.test(buf))
+                    return; /* lev_by_name() -- not ported yet */
+                newlev = parseInt(buf, 10); /* atoi() */
+            }
         } while (!newlev && !digit(buf[0])
                  && (buf[0] !== '-' || !digit(buf[1])) && trycnt < 10);
 
@@ -301,7 +659,8 @@ export async function level_tele() {
          */
         /* single_level_branch(): Is_knox() */
         if (g.dungeon_topology.d_knox_level
-            && on_level(u.uz, g.dungeon_topology.d_knox_level) && newlev > 0)
+            && on_level(u.uz, g.dungeon_topology.d_knox_level) && newlev > 0
+            && !force_dest)
             throw new Error('level_tele(): single_level_branch() not ported yet');
         /* if in Quest, the player sees "Home 1", etc., on the status
          * line, instead of the logical depth of the level.  controlled
@@ -327,13 +686,15 @@ export async function level_tele() {
 
     /* svk.killer.name[0] = 0: still alive, so far... */
 
-    if (newlev < 0)
+    if (newlev < 0 && !force_dest)
         throw new Error('level_tele(): teleporting above the dungeon not ported yet');
 
-    /* escape_by_flying, force_dest (wizard menu): not reached */
-    const newlevel = { dnum: 0, dlevel: 0 };
+    /* escape_by_flying: not reached */
     const topo = g.dungeon_topology;
-    if (u.uz.dnum === topo.d_medusa_level.dnum
+    if (force_dest) {
+        /* wizard mode menu; no further validation needed */
+        ;
+    } else if (u.uz.dnum === topo.d_medusa_level.dnum
         && newlev >= g.dungeons[u.uz.dnum].depth_start
                      + dunlevs_in_dungeon(u.uz)) {
         throw new Error('level_tele(): find_hell() not ported yet');

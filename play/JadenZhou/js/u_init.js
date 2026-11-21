@@ -32,8 +32,10 @@ function SPELL_LEV_PW(lvl) { return (lvl) * 5; }
 import { init_uhunger } from './eat.js';
 import { inv_weight } from './hack.js';
 import { max_rank_sz } from './botl.js';
-import { assigninvlet, reorder_invent, merged } from './invent.js';
+import { assigninvlet, reorder_invent, merged, addinv } from './invent.js';
+export { addinv }; // C ref: invent.c addinv() (ported in invent.js)
 import { Japanese_item_name } from './objnam.js';
+import { setworn } from './worn.js';
 
 // C ref: you.h struct you -- the JS equivalent of memset(&u, 0, sizeof u).
 // Every numeric field reads as 0, nested structs are zero-filled objects.
@@ -723,42 +725,6 @@ function is_graystone(obj) {
             || obj.otyp === O.FLINT || obj.otyp === O.TOUCHSTONE);
 }
 
-// C ref: invent.c addinv(), addinv_core0() -- inventory letter and chain
-// insertion and merging with an existing stack (merged()); addinv_core1/2()
-// side effects and update_inventory() are not ported yet
-export function addinv(obj) {
-    /* merge with quiver in preference to any other inventory slot
-       in case quiver and wielded weapon are both eligible; adding
-       extra to quivered stack is more useful than to wielded one */
-    if (game.uquiver) {
-        const r = { otmp: game.uquiver, obj };
-        if (merged(r)) {
-            game.uquiver = r.otmp;
-            return r.otmp; /* goto added */
-        }
-    }
-    /* merge if possible; find end of chain in the process */
-    let prev = null;
-    for (let otmp = game.invent; otmp; prev = otmp, otmp = otmp.nobj) {
-        const r = { otmp, obj };
-        if (merged(r))
-            return r.otmp; /* goto added */
-    }
-    /* didn't merge, so insert into chain */
-    assigninvlet(obj);
-    if ((game.flags?.invlet_constant ?? true) || !prev) {
-        obj.nobj = game.invent; /* insert at beginning */
-        game.invent = obj;
-        if (game.flags?.invlet_constant ?? true)
-            reorder_invent();
-    } else {
-        prev.nobj = obj; /* insert at end */
-        obj.nobj = null;
-    }
-    obj.where = 'OBJ_INVENT';
-    return obj;
-}
-
 // C ref: invent.c useupall() -- inventory removal only
 function useupall(obj) {
     let prev = null;
@@ -832,7 +798,7 @@ function knows_class(sym) {
 
 // C ref: u_init.c u_init_role()
 /* role-specific initializations, mostly inventory */
-function u_init_role() {
+async function u_init_role() {
     const g = game;
     const u = g.u;
 
@@ -848,13 +814,13 @@ function u_init_role() {
      * skew the results if we use rn2(2)...  --KAA
      */
     case M.PM_ARCHEOLOGIST:
-        ini_inv(Archeologist);
+        await ini_inv(Archeologist);
         if (!rn2(10))
-            ini_inv(Tinopener);
+            await ini_inv(Tinopener);
         else if (!rn2(4))
-            ini_inv(Lamp);
+            await ini_inv(Lamp);
         else if (!rn2(5))
-            ini_inv(Magicmarker);
+            await ini_inv(Magicmarker);
         knows_object(O.SACK, false);
         knows_object(O.TOUCHSTONE, false); /* FALSE: don't override pauper
                                             * here, but TOUCHSTONE will be
@@ -862,27 +828,27 @@ function u_init_role() {
         break;
     case M.PM_BARBARIAN:
         if (rn2(100) >= 50) { /* see above comment */
-            ini_inv(Barbarian_0);
+            await ini_inv(Barbarian_0);
         } else {
-            ini_inv(Barbarian_1);
+            await ini_inv(Barbarian_1);
         }
         if (!rn2(6))
-            ini_inv(Lamp);
+            await ini_inv(Lamp);
         knows_class(O.WEAPON_CLASS); /* excluding polearms */
         knows_class(O.ARMOR_CLASS);
         break;
     case M.PM_CAVE_DWELLER:
-        ini_inv(Cave_man);
+        await ini_inv(Cave_man);
         break;
     case M.PM_HEALER:
         u.umoney0 = rn1(1000, 1001);
-        ini_inv(Healer);
+        await ini_inv(Healer);
         if (!rn2(25))
-            ini_inv(Lamp);
+            await ini_inv(Lamp);
         knows_object(O.POT_FULL_HEALING, false);
         break;
     case M.PM_KNIGHT:
-        ini_inv(Knight);
+        await ini_inv(Knight);
         knows_class(O.WEAPON_CLASS); /* all weapons */
         knows_class(O.ARMOR_CLASS);
         /* give knights chess-like mobility--idea from wooledge@..cwru.edu */
@@ -893,43 +859,43 @@ function u_init_role() {
             Healing_book, Protection_book, Confuse_monster_book
         ];
 
-        ini_inv(Monk);
-        ini_inv(M_spell[Math.trunc(rn2(90) / 30)]); /* [0..2] */
+        await ini_inv(Monk);
+        await ini_inv(M_spell[Math.trunc(rn2(90) / 30)]); /* [0..2] */
         if (!rn2(4))
-            ini_inv(Magicmarker);
+            await ini_inv(Magicmarker);
         else if (!rn2(10))
-            ini_inv(Lamp);
+            await ini_inv(Lamp);
         knows_class(O.ARMOR_CLASS);
         /* sufficiently martial-arts oriented item to ignore language issue */
         knows_object(O.SHURIKEN, false);
         break;
     }
     case M.PM_CLERIC: /* priest/priestess */
-        ini_inv(Priest);
+        await ini_inv(Priest);
         if (!rn2(5))
-            ini_inv(Magicmarker);
+            await ini_inv(Magicmarker);
         else if (!rn2(10))
-            ini_inv(Lamp);
+            await ini_inv(Lamp);
         knows_object(O.POT_WATER, true); /* override pauper */
         break;
     case M.PM_RANGER:
-        ini_inv(Ranger);
+        await ini_inv(Ranger);
         knows_class(O.WEAPON_CLASS); /* bows, arrows, spears only */
         break;
     case M.PM_ROGUE:
         u.umoney0 = 0;
-        ini_inv(Rogue);
+        await ini_inv(Rogue);
         if (!rn2(5))
-            ini_inv(Blindfold);
+            await ini_inv(Blindfold);
         knows_object(O.SACK, false); /* FALSE: don't override pauper here,
                                       * but sack will be made known in
                                       * pauper_reinit() */
         knows_class(O.WEAPON_CLASS); /* daggers only */
         break;
     case M.PM_SAMURAI:
-        ini_inv(Samurai);
+        await ini_inv(Samurai);
         if (!rn2(5))
-            ini_inv(Blindfold);
+            await ini_inv(Blindfold);
         knows_class(O.WEAPON_CLASS); /* all weapons */
         knows_class(O.ARMOR_CLASS);
         /* in order to assist non-Japanese speakers, pre-discover items
@@ -945,27 +911,27 @@ function u_init_role() {
         break;
     case M.PM_TOURIST:
         u.umoney0 = rnd(1000);
-        ini_inv(Tourist);
+        await ini_inv(Tourist);
         if (!rn2(25))
-            ini_inv(Tinopener);
+            await ini_inv(Tinopener);
         else if (!rn2(25))
-            ini_inv(Leash);
+            await ini_inv(Leash);
         else if (!rn2(25))
-            ini_inv(Towel);
+            await ini_inv(Towel);
         else if (!rn2(20))
-            ini_inv(Magicmarker);
+            await ini_inv(Magicmarker);
         break;
     case M.PM_VALKYRIE:
-        ini_inv(Valkyrie);
+        await ini_inv(Valkyrie);
         if (!rn2(6))
-            ini_inv(Lamp);
+            await ini_inv(Lamp);
         knows_class(O.WEAPON_CLASS); /* excludes polearms */
         knows_class(O.ARMOR_CLASS);
         break;
     case M.PM_WIZARD:
-        ini_inv(Wizard);
+        await ini_inv(Wizard);
         if (!rn2(5))
-            ini_inv(Blindfold);
+            await ini_inv(Blindfold);
         break;
 
     default: /* impossible */
@@ -980,7 +946,7 @@ function u_init_role() {
 
 // C ref: u_init.c u_init_race()
 /* race-specific initializations, same restrictions as u_init_role */
-function u_init_race() {
+async function u_init_race() {
     switch (game.urace.mnum) {
     case M.PM_HUMAN:
         /* Nothing special */
@@ -1001,7 +967,7 @@ function u_init_race() {
                 { trotyp: 0, trspe: 0, trclass: 0, trquan_min: 0,
                   trquan_max: 0, trbless: 0 },
             ];
-            ini_inv(Instrument);
+            await ini_inv(Instrument);
         }
 
         /* Elves can recognize all elvish objects */
@@ -1035,7 +1001,7 @@ function u_init_race() {
     case M.PM_ORC:
         /* compensate for generally inferior equipment */
         if (!Role_if(M.PM_WIZARD))
-            ini_inv(Xtra_food);
+            await ini_inv(Xtra_food);
         /* Orcs can recognize all orcish objects */
         knows_object(O.ORCISH_SHORT_SWORD, false);
         knows_object(O.ORCISH_ARROW, false);
@@ -1231,7 +1197,7 @@ function ini_inv_adjust_obj(trop, obj) {
 }
 
 // C ref: u_init.c ini_inv()
-function ini_inv(trops) {
+async function ini_inv(trops) {
     const g = game;
     let obj;
     let otyp;
@@ -1286,7 +1252,7 @@ function ini_inv(trops) {
 
         if (ini_inv_adjust_obj(trop, obj))
             quan = 1;
-        obj = addinv(obj);
+        obj = await addinv(obj);
 
         /* First spellbook should be level 1 - did we get it? */
         if (obj.oclass === O.SPBOOK_CLASS && objects[obj.otyp].oc_level === 1)
@@ -1335,14 +1301,14 @@ export async function u_init_inventory_attrs() {
         useupall(g.invent);
 
     u.umoney0 = 0;
-    u_init_role();
-    u_init_race();
+    await u_init_role();
+    await u_init_race();
 
     if (g.flags.explore) /* discover */
-        ini_inv(Wishing);
+        await ini_inv(Wishing);
 
     if (u.umoney0)
-        ini_inv(Money);
+        await ini_inv(Money);
     u.umoney0 += hidden_gold(true); /* in case sack has gold in it */
 
     init_attr(75);    /* init attribute values */
@@ -1384,16 +1350,6 @@ function ARM_BONUS(obj) {
             - Math.min(greatest_erosion(obj), objects[obj.otyp].a_ac));
 }
 
-// C ref: worn.c setworn() -- records the worn slot; property updates
-// from worn items are not ported yet
-function setworn(obj, mask) {
-    const slot = { [K.W_ARMS]: 'uarms', [K.W_ARMH]: 'uarmh',
-                   [K.W_ARMG]: 'uarmg', [K.W_ARMU]: 'uarmu',
-                   [K.W_ARMC]: 'uarmc', [K.W_ARMF]: 'uarmf',
-                   [K.W_ARM]: 'uarm' }[mask];
-    game[slot] = obj;
-    obj.owornmask = (obj.owornmask || 0) | mask;
-}
 // C ref: wield.c setuwep(), setuqwep(), setuswapwep() -- slot only
 function setuwep(obj) { game.uwep = obj; obj.owornmask = (obj.owornmask || 0) | K.W_WEP; }
 function setuqwep(obj) { game.uquiver = obj; obj.owornmask = (obj.owornmask || 0) | K.W_QUIVER; }

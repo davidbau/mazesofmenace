@@ -29,7 +29,7 @@ const BEARTRAP = 244;
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
 import { FOOD_PROPS } from './food_props.js';
-import { impossible_sync, debugpline } from './display.js';
+import { impossible_sync, debugpline, putmsghistory } from './display.js';
 import { is_flammable, is_rottable } from './mkobj.js';
 import { inv_cnt, rounddiv } from './hack.js';
 import { reorder_invent } from './invent.js';
@@ -2720,7 +2720,7 @@ async function _fpostfx(otmp) {
         if (!u.uswallow
             || !attacktype_fordmg(u.ustuck ? u.ustuck.data : null,
                                   AT_ENGL_FPFX, AD_BLND_FPFX))
-            make_blinded(u.ucreamed | 0, true);
+            await make_blinded(u.ucreamed | 0, true);
         break;
     case LUMP_OF_ROYAL_JELLY_OTYP:
         if ((game.youmonst?.data?.pmidx | 0) === PM_KILLER_BEE
@@ -3514,10 +3514,17 @@ async function _tin_y_n(question) {
             continue;
         }
         g._topl_sticky = prompt;
-        if (c === '\x1b') return 'n';                     /* ESC -> the default */
-        if (c === '\r' || c === '\n' || c === ' ') return 'n'; /* activator -> default */
+        /* C topl.c:537-539 rewrites gt.toplines as prompt + key2txt(q) and
+         * remember_topl() files that answered prompt in the ^P history. */
+        if (c === '\x1b' || c === '\r' || c === '\n' || c === ' ') {
+            putmsghistory(prompt + ' n');
+            return 'n'; /* ESC / activator -> the default */
+        }
         const lc = c.toLowerCase();
-        if (lc === 'y' || lc === 'n') return lc;
+        if (lc === 'y' || lc === 'n') {
+            putmsghistory(prompt + ' ' + lc);
+            return lc;
+        }
         /* any other key: tty_yn_function rings the bell and re-reads. */
     }
 }
@@ -4379,7 +4386,7 @@ export async function cpostfx(pm) {
         /* C eat.c:1154-1161 — full heal + make_blinded(0, !u.ucreamed). */
         if (Upolyd(game.u)) game.u.mh = game.u.mhmax;
         else game.u.uhp = game.u.uhpmax;
-        make_blinded(0, !game.u.ucreamed);
+        await make_blinded(0, !game.u.ucreamed);
         game.disp.botl = true;
         check_intrinsics = true; /* might also convey poison resistance */
         break;

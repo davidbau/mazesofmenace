@@ -3652,7 +3652,7 @@ export async function wipeoff() {
         u.ucreamed = 0;
         if (!(await gulp_blnd_check())) {
             set_HBlinded(1);
-            make_blinded(0, true);
+            await make_blinded(0, true);
         }
         return 0;
     } else if (!u.ucreamed) {

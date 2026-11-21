@@ -3684,11 +3684,10 @@ async function create_particular_creation(d) {
             const ans = await yn_function(buf, 'yn', 'n', true);
             /* C win/tty/topl.c:545 — tty_yn_function never erases the answered
              * prompt; it stays on the terminal row until a later pline
-             * overwrites it.  js nhgetch drops _pending_message on read, so hand
-             * the prompt to the paint-time fallback (js/display.js _topl_sticky)
-             * — "Creating doppelganger instead; force Juiblex?" with no
-             * "appears" message still shows at the next input boundary. */
-            game._topl_sticky = `${buf} [yn] (n)`;
+             * overwrites it.  Under query_menu, yn_function_menu clears
+             * WIN_MESSAGE (C cmd.c:5459-5460) and leaves no topline residue. */
+            if (!(game.iflags?.query_menu && game.iflags?.window_inited))
+                game._topl_sticky = `${buf} [yn] (n)`;
             if (ans === 'y')
                 d.which = firstchoice;
         }

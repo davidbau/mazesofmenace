@@ -99,7 +99,7 @@ async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     /* prev_encumbr = near_capacity() ...; inv_cnt()/near_capacity() drop
        check -- not ported yet */
     const oquan = obj.quan;
-    obj = addinv(obj); /* addinv_core0(obj, NULL, FALSE) */
+    obj = await addinv(obj); /* addinv_core0(obj, NULL, FALSE) */
     /* if (flags.autoquiver && !uquiver && !obj->owornmask
            && (is_missile(obj) || ammo_and_launcher(obj, uwep)
                || ammo_and_launcher(obj, uswapwep)))

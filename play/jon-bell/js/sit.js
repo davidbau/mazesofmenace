@@ -624,7 +624,7 @@ export async function throne_sit_effect() {
                 }
                 u.uhp = u.uhpmax;
                 u.ucreamed = 0;
-                make_blinded(0, true);
+                await make_blinded(0, true);
                 await make_sick(0, null, false, SICK_ALL);
                 heal_legs_real(0);
                 SET_BOTL();
@@ -677,7 +677,7 @@ export async function throne_sit_effect() {
                 const luck = (u.uluck | 0) + (u.moreluck | 0);
                 if (luck > 0) {
                     const blindTimeout = (u.uprops?.[BLINDED]?.intrinsic | 0) & TIMEOUT;
-                    make_blinded(/* BlindedTimeout */ blindTimeout + rn1(100, 250), true);
+                    await make_blinded(/* BlindedTimeout */ blindTimeout + rn1(100, 250), true);
                     const luck_delta = (luck > 1) ? -(rnd(2)) : -1;
                     change_luck(luck_delta);
                 }

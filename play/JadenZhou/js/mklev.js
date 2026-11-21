@@ -25,7 +25,8 @@ import { make_engr_at, wipe_engr_at, make_grave, random_engraving } from './engr
 import { create_des_coder, reset_xystart_size, fill_special_room, inside_room,
          SPLEV_LEFT, SPLEV_CENTER, SPLEV_RIGHT, TOP, BOTTOM } from './sp_lev.js';
 import { getbones } from './bones.js';
-import { set_wall_state } from './display.js';
+import { u_on_rndspot } from './do.js';
+import { set_wall_state, see_nearby_objects, Blind, Hallucination } from './display.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -88,15 +89,27 @@ function stairway_add(x, y, up, isladder, dest) {
 
 // ── Stairway lookup ──
 
-function stairway_find_dir(up) {
+// C ref: stairs.c stairway_find_from()
+export function stairway_find_from(fromdlev, isladder) {
     for (let s = game.stairs; s; s = s.next)
-        if (s.up === up) return s;
+        if (s.tolev.dnum === fromdlev.dnum
+            && s.tolev.dlevel === fromdlev.dlevel
+            && !!s.isladder === !!isladder)
+            return s;
     return null;
 }
 
-function stairway_find_special_dir(up) {
+// C ref: stairs.c stairway_find_dir()
+export function stairway_find_dir(up) {
     for (let s = game.stairs; s; s = s.next)
-        if (s.tolev.dnum !== (game.u?.uz?.dnum ?? 0) && s.up !== up) return s;
+        if (!!s.up === !!up) return s;
+    return null;
+}
+
+// C ref: stairs.c stairway_find_special_dir()
+export function stairway_find_special_dir(up) {
+    for (let s = game.stairs; s; s = s.next)
+        if (s.tolev.dnum !== (game.u?.uz?.dnum ?? 0) && !!s.up !== !!up) return s;
     return null;
 }
 
@@ -122,7 +135,10 @@ export function u_on_newpos(x, y) {
            docrt() redraws the map */
         if (game.iflags) game.iflags.terrain_typ = MAX_TYPE; /* "none of the above" value */
     } else {
-        /* see_nearby_objects(): display only */
+        /* still on same level; might have come close enough to
+           generic object(s) to redisplay them as specific objects */
+        if (!Blind() && !Hallucination() && !u.uswallow)
+            see_nearby_objects();
     }
     /* earth_sense(): no rolls; buried-object feedback isn't ported yet */
 }
@@ -258,15 +274,37 @@ function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
     return true;
 }
 
-// C ref: stairs.c u_on_upstairs — place hero on upstairs or fallback
+// C ref: stairs.c u_on_sstairs()
+/* place you on the special staircase */
+export function u_on_sstairs(upflag) {
+    const stway = stairway_find_special_dir(upflag);
+
+    if (stway)
+        u_on_newpos(stway.sx, stway.sy);
+    else
+        u_on_rndspot(upflag);
+}
+
+// C ref: stairs.c u_on_upstairs()
+/* place you on upstairs (or special equivalent) */
 export function u_on_upstairs() {
     const stway = stairway_find_dir(true);
-    if (stway) { u_on_newpos(stway.sx, stway.sy); return; }
-    // No upstair — try special stairs, then random
-    const special = stairway_find_special_dir(0);
-    if (special) { u_on_newpos(special.sx, special.sy); return; }
-    // Random placement via place_lregion
-    place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_UPTELE, null);
+
+    if (stway)
+        u_on_newpos(stway.sx, stway.sy);
+    else
+        u_on_sstairs(0); /* destination upstairs implies moving down */
+}
+
+// C ref: stairs.c u_on_dnstairs()
+/* place you on dnstairs (or special equivalent) */
+export function u_on_dnstairs() {
+    const stway = stairway_find_dir(false);
+
+    if (stway)
+        u_on_newpos(stway.sx, stway.sy);
+    else
+        u_on_sstairs(1); /* destination dnstairs implies moving up */
 }
 
 // oinit stub (level-dependent object probability reset)

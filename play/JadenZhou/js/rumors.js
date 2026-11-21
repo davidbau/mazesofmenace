@@ -11,13 +11,16 @@
 
 import { game } from './gstate.js';
 import { rn2, rn2_fnptr } from './rng.js';
-import { RUMORS_TRU, RUMORS_FAL, ENGRAVE_TXT, EPITAPH_TXT } from './rumors_data.js';
+import { RUMORS_TRU, RUMORS_FAL, ENGRAVE_TXT, EPITAPH_TXT,
+         BOGUSMON_TXT } from './rumors_data.js';
 
 const BUFSZ = 256;
 export const MD_PAD_RUMORS = 60; /* global.h */
 export const RUMORFILE = 'rumors';
 export const ENGRAVEFILE = 'engrave';
 export const EPITAPHFILE = 'epitaph';
+export const BOGUSMONFILE = 'bogusmon'; /* hallucinatory monsters */
+export const MD_PAD_BOGONS = 20; /* global.h, for BOGUSMONFILE */
 
 // C ref: makedefs.c Dont_Edit_Data
 const Dont_Edit_Data =
@@ -84,12 +87,12 @@ function build_rumors_file() {
 }
 
 // C ref: makedefs.c do_rnd_access_file()
-function build_rnd_access_file(lines, deflt_content) {
+function build_rnd_access_file(lines, deflt_content, padlength) {
     let s = Dont_Edit_Data;
-    s += padline(deflt_content + '\n', MD_PAD_RUMORS);
+    s += padline(deflt_content + '\n', padlength);
     for (const l of grep0(lines)) {
         if (l[0] !== '#' && l !== '')
-            s += padline(l + '\n', MD_PAD_RUMORS);
+            s += padline(l + '\n', padlength);
     }
     return s;
 }
@@ -101,10 +104,14 @@ function dlb_files() {
             [RUMORFILE]: build_rumors_file(),
             [ENGRAVEFILE]: build_rnd_access_file(ENGRAVE_TXT,
                 /* default engraving */
-                'No matter where you go, there you are.'),
+                'No matter where you go, there you are.',
+                MD_PAD_RUMORS), /* '_RUMORS' used here too */
             [EPITAPHFILE]: build_rnd_access_file(EPITAPH_TXT,
                 /* default epitaph:  parody of the default engraving */
-                'No matter where I went, here I am.'),
+                'No matter where I went, here I am.', MD_PAD_RUMORS),
+            [BOGUSMONFILE]: build_rnd_access_file(BOGUSMON_TXT,
+                /* default bogusmon:  iconic monster that isn't in nethack */
+                'grue', MD_PAD_BOGONS),
         };
     }
     return datafiles;

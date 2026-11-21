@@ -44,7 +44,7 @@ import { dmgval } from './weapon.js';
 import { doname } from './objnam.js';
 import { monkilled, maybe_unhide_at } from './mon.js';
 import { find_mac, which_armor } from './worn.js';
-import { mtele_trap, mlevel_tele_trap } from './teleport.js';
+import { mtele_trap, mlevel_tele_trap, tele_trap } from './teleport.js';
 import { Can_fall_thru } from './mklev.js';
 import { bimanual } from './wield.js';
 
@@ -61,6 +61,34 @@ import { mon_nam, Monnam } from './do_name.js';
 import { You_hear } from './sounds.js';
 import { just_an } from './objnam.js';
 import { dist2 } from './hacklib.js';
+import { rn1 } from './rng.js';
+import { nomul, end_running } from './hack.js';
+import { exercise, ATEMP } from './attrib.js';
+import { body_part } from './insight.js';
+import { encumber_msg } from './pickup.js';
+import { You, Your, pline_The } from './display.js';
+import { float_vs_flight } from './polyself.js';
+import { s_suffix } from './hacklib.js';
+import { m_at } from './makemon.js';
+import { M1_SLITHY, M1_NOLIMBS } from './monsters.js';
+import { CAN_OF_GREASE, SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS,
+         GRAY_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES,
+         YELLOW_DRAGON_SCALES, ROBE, MUMMY_WRAPPING, ALCHEMY_SMOCK,
+         is_metallic, is_rustprone, OBJ_NAME, OBJ_DESCR } from './objects.js';
+import { Is_container, erosion_matters, is_flammable } from './mkobj.js';
+import { TRAP_NOT_IMMUNE, TRAP_CLEARLY_IMMUNE, TRAP_HIDDEN_IMMUNE,
+         In_endgame, In_sokoban, Is_earthlevel, FIRE_RES } from './const.js';
+import { AMULET_OF_YENDOR, SCR_FIRE, SPE_FIREBALL } from './objects.js';
+import { vtense } from './objnam.js';
+import { on_level, at_dgn_entrance } from './dungeon.js';
+import { is_neuter } from './mondata.js';
+import { ART_MAGICBANE } from './artilist.js';
+import { LEVITATION, FLYING, FUMBLING, ANTIMAGIC, HALF_PHDAM, HALF_SPDAM,
+         PASSES_WALLS, DEAF as DEAF_PROP, WOUNDED_LEGS, TIMEOUT, FROMOUTSIDE,
+         TT_BEARTRAP, TT_PIT, TT_NONE, FOOT, SPINE, HEAD, ARM,
+         KILLED_BY_AN, KILLED_BY, A_DEX, RIGHT_SIDE, LEFT_SIDE,
+         SLEEP_RES, BLINDED, HALLUC, HALLUC_RES, NO_MM_FLAGS,
+       } from './const.js';
 
 /* C ref: hack.h mdistu() */
 function mdistu(mon) { return dist2(mon.mx, mon.my, game.u.ux, game.u.uy); }
@@ -183,11 +211,455 @@ export function check_in_air(mtmp, trflags) {
     const is_you = (mtmp === game.youmonst),
           plunged = (trflags & (TOOKPLUNGE | VIASITTING)) !== 0;
 
-    if (is_you)
-        throw new Error('check_in_air(): Levitation/Flying for hero not ported yet');
     return ((trflags & HURTLING) !== 0
-            || is_floater(mtmp.data)
-            || (is_flyer(mtmp.data) && !plunged));
+            || (is_you ? Levitation() : is_floater(mtmp.data))
+            || ((is_you ? Flying() : is_flyer(mtmp.data)) && !plunged));
+}
+
+/* C ref: youprop.h -- the hero's properties used by the trap code;
+   BLevitation/BFlying are uprops[].blocked */
+function uprop(p) {
+    return game.u.uprops[p] || { intrinsic: 0, extrinsic: 0, blocked: 0 };
+}
+function HLevitation() { return uprop(LEVITATION).intrinsic; }
+function ELevitation() { return uprop(LEVITATION).extrinsic; }
+function Levitation() {
+    return !!((HLevitation() || ELevitation()) && !uprop(LEVITATION).blocked);
+}
+function Flying() {
+    const p = uprop(FLYING);
+    return !!((p.intrinsic || p.extrinsic
+               || (game.u.usteed && is_flyer(game.u.usteed.data)))
+              && !p.blocked);
+}
+function Fumbling() { return !!(uprop(FUMBLING).intrinsic || uprop(FUMBLING).extrinsic); }
+function Upolyd() { return game.u.umonnum !== game.u.umonster; }
+function Antimagic() {
+    return !!(uprop(ANTIMAGIC).intrinsic || uprop(ANTIMAGIC).extrinsic
+              || (Upolyd() && resists_magm(game.youmonst)));
+}
+function Half_physical_damage() {
+    return !!(uprop(HALF_PHDAM).intrinsic || uprop(HALF_PHDAM).extrinsic);
+}
+function Half_spell_damage() {
+    return !!(uprop(HALF_SPDAM).intrinsic || uprop(HALF_SPDAM).extrinsic);
+}
+function Passes_walls() {
+    return !!(uprop(PASSES_WALLS).intrinsic || uprop(PASSES_WALLS).extrinsic);
+}
+function Sleep_resistance() {
+    return !!(uprop(SLEEP_RES).intrinsic || uprop(SLEEP_RES).extrinsic);
+}
+function Blind() {
+    const p = uprop(BLINDED);
+    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
+}
+function Hallucination() {
+    return !!(uprop(HALLUC).intrinsic
+              && !(uprop(HALLUC_RES).intrinsic || uprop(HALLUC_RES).extrinsic));
+}
+function Wounded_legs() {
+    return !!(uprop(WOUNDED_LEGS).intrinsic || uprop(WOUNDED_LEGS).extrinsic);
+}
+/* C ref: hack.h Maybe_Half_Phys() */
+export function Maybe_Half_Phys(dmg) {
+    return Half_physical_damage() ? Math.trunc((dmg + 1) / 2) : dmg;
+}
+
+/* C ref: pline.c You_feel() -- Unaware dreaming isn't reached here */
+async function You_feel(line) { await pline(`You feel ${line}`); }
+
+// C ref: hack.c losehp() -- the not-polymorphed, surviving case
+export async function losehp(n, knam, k_format) {
+    const u = game.u;
+    void knam; void k_format;
+    game.disp_botl = true; /* u.uhp or u.mh is changing */
+    end_running(true);
+    if (Upolyd())
+        throw new Error('losehp(): polymorphed hero not ported yet');
+
+    u.uhp -= n;
+    /* showdamage(n): the showdamage option isn't ported (default off) */
+    if (u.uhp > u.uhpmax)
+        u.uhpmax = u.uhp; /* perhaps n was negative */
+    if (u.uhp < 1)
+        throw new Error('losehp(): death (done(DIED)) not ported yet');
+    else if (n > 0 && u.uhp * 10 < u.uhpmax)
+        throw new Error('losehp(): maybe_wail() not ported yet');
+}
+
+// C ref: do.c set_wounded_legs()
+export async function set_wounded_legs(side, timex) {
+    const u = game.u;
+    const W = u.uprops[WOUNDED_LEGS];
+    /* KMH -- STEED
+     * If you are riding, your steed gets the wounded legs instead.
+     * You still call this function, but don't lose hp.
+     * Caller is also responsible for adjusting messages.
+     */
+    game.disp_botl = true;
+    if (!Wounded_legs())
+        u.atemp.a[A_DEX]--;
+
+    if (!Wounded_legs() || (W.intrinsic & TIMEOUT) < timex)
+        W.intrinsic = (W.intrinsic & ~TIMEOUT) | (timex & TIMEOUT); /* set_itimeout() */
+    /* the leg being wounded and its timeout might differ from one
+       attack to the next, but we don't track the legs separately;
+       5.0: both legs will ultimately heal together */
+    W.extrinsic |= side;
+    await encumber_msg();
+}
+
+// C ref: trap.c set_utrap()
+export function set_utrap(tim, typ) {
+    const u = game.u;
+    /* if we get here through reset_utrap(), the caller of that might
+       have already set u.utrap to 0 so this check won't be sufficient
+       in that situation; caller will need to set context.botl itself */
+    if (!u.utrap !== !tim)
+        game.disp_botl = true;
+
+    u.utrap = tim;
+    u.utraptype = tim ? typ : TT_NONE;
+
+    float_vs_flight(); /* maybe block Lev and/or Fly */
+}
+
+// C ref: trap.c reset_utrap()
+export async function reset_utrap(msg) {
+    const was_Lev = Levitation(), was_Fly = Flying();
+
+    set_utrap(0, 0);
+
+    if (msg) {
+        if (!was_Lev && Levitation())
+            throw new Error('reset_utrap(): float_up() not ported yet');
+        if (!was_Fly && Flying())
+            await You("can fly.");
+    }
+}
+
+// C ref: defsym.h trap PCHAR() explanations, indexed by
+// trap_to_defsym(ttyp) - S_arrow_trap (rm.h: S_arrow_trap + ttyp - 1)
+const trap_explanations = [
+    "arrow trap", "dart trap", "falling rock trap", "squeaky board",
+    "bear trap", "land mine", "rolling boulder trap", "sleeping gas trap",
+    "rust trap", "fire trap", "pit", "spiked pit", "hole", "trap door",
+    "teleportation trap", "level teleporter", "magic portal", "web",
+    "statue trap", "magic trap", "anti-magic field", "polymorph trap",
+    "vibrating square", "trapped door", "trapped chest",
+];
+
+// C ref: trap.c immune_to_trap()
+/*
+ * Returns:
+ *  TRAP_NOT_IMMUNE = not immune at the moment;
+ *  TRAP_CLEARLY_IMMUNE = obviously immune (if player is polymorphed, assume
+ *    they know which traps they are immune to in their current form);
+ *  TRAP_HIDDEN_IMMUNE = immune but in non-obvious way such as an unidentified
+ *    item or hidden intrinsic providing a resistance; the player should still
+ *    be warned of this trap, while monsters implicitly know they're immune.
+ */
+export function immune_to_trap(mon, ttype) {
+    if (!mon)
+        return TRAP_NOT_IMMUNE; /* impossible("immune_to_trap: null monster") */
+    const pm = mon.data;
+    const is_you = (mon === game.youmonst);
+    const u = game.u;
+    /* C ref: wizard.c mon_has_amulet() -- youmonst.minvent is empty */
+    const mon_has_amulet = (m) => !is_you
+        && (m.minvent || []).some(o => o.otyp === AMULET_OF_YENDOR);
+    /* C ref: dungeon.c has_ceiling() */
+    const has_ceiling = (lev) => !(In_endgame(lev) && !Is_earthlevel(lev));
+
+    switch (ttype) {
+    case ARROW_TRAP:
+    case DART_TRAP:
+    case ROCKTRAP:
+        /* can hit anything; even noncorporeal monsters might get a blessed
+           projectile */
+        return TRAP_NOT_IMMUNE;
+    case BEAR_TRAP:
+        if (pm.msize <= MZ_SMALL
+            || amorphous(pm) || is_whirly(pm) || unsolid(pm))
+            return TRAP_CLEARLY_IMMUNE;
+        /*FALLTHRU*/
+    case SQKY_BOARD:
+    case LANDMINE:
+    case ROLLING_BOULDER_TRAP:
+    case HOLE:
+    case TRAPDOOR:
+    case PIT:
+    case SPIKED_PIT:
+        /* ground-based traps, which can be evaded by levitation, flying, or
+           hanging to the ceiling */
+        if (game.level.flags.sokoban_rules && (is_pit(ttype) || is_hole(ttype)))
+            return TRAP_NOT_IMMUNE;
+        if (In_sokoban(u.uz) && ttype === ROLLING_BOULDER_TRAP)
+            return TRAP_CLEARLY_IMMUNE; /* not dangerous in Sokoban */
+        if (is_floater(pm) || is_flyer(pm)
+            || (is_clinger(pm) && has_ceiling(u.uz)))
+            return TRAP_CLEARLY_IMMUNE;
+        else if (is_you && (Levitation() || Flying()))
+            return TRAP_CLEARLY_IMMUNE;
+        return TRAP_NOT_IMMUNE;
+    case SLP_GAS_TRAP:
+        if (breathless(pm))
+            return TRAP_CLEARLY_IMMUNE;
+        else if (!is_you && resists_sleep(mon))
+            return TRAP_CLEARLY_IMMUNE;
+        else if (is_you && Sleep_resistance())
+            return TRAP_HIDDEN_IMMUNE;
+        return TRAP_NOT_IMMUNE;
+    case LEVEL_TELEP:
+    case TELEP_TRAP:
+        /* consider unintended teleporting to be an adverse effect; if in
+           the endgame or carrying the Amulet, the teleport trap won't work
+           anyway, so anything hitting it is immune. */
+        if (In_endgame(u.uz) || mon_has_amulet(mon))
+            return TRAP_CLEARLY_IMMUNE;
+        return TRAP_NOT_IMMUNE;
+    case POLY_TRAP:
+        if (resists_magm(mon))
+            /* covers Antimagic for player */
+            return (is_you ? TRAP_HIDDEN_IMMUNE : TRAP_CLEARLY_IMMUNE);
+        return TRAP_NOT_IMMUNE;
+    case STATUE_TRAP:
+        /* no effect on monsters, only affects players */
+        if (!is_you)
+            return TRAP_CLEARLY_IMMUNE;
+        return TRAP_NOT_IMMUNE;
+    case WEB:
+        /* most of this code is lifted from mu_maybe_destroy_web */
+        if (webmaker(pm) || amorphous(pm) || is_whirly(pm) || flaming(pm)
+            || unsolid(pm) || pm === mons[PM_GELATINOUS_CUBE])
+            return TRAP_CLEARLY_IMMUNE;
+        return TRAP_NOT_IMMUNE;
+    case ANTI_MAGIC:
+        /* doesn't hurt any non-magic-resistant monster with no magic */
+        if (is_you) {
+            if (Antimagic())
+                return TRAP_NOT_IMMUNE;
+            else if (u.uenmax === 0)
+                /* player won't lose HP and can't lose more Pw */
+                return TRAP_HIDDEN_IMMUNE;
+
+        /* following conditional lifted from mintrap ANTI_MAGIC logic */
+        } else if (!resists_magm(mon)
+                   && (mon.mcan || (!attacktype(pm, AT_MAGC)
+                                    && !attacktype(pm, AT_BREA)))) {
+            return TRAP_CLEARLY_IMMUNE;
+        }
+        return TRAP_NOT_IMMUNE;
+    case RUST_TRAP: {
+        /* harmful if wearing anything rustable or if mon is an iron golem */
+        if (pm === mons[PM_IRON_GOLEM])
+            return TRAP_NOT_IMMUNE;
+
+        const objs = [];
+        if (is_you)
+            for (let o = game.invent; o; o = o.nobj) objs.push(o);
+        else
+            objs.push(...(mon.minvent || []).slice().reverse());
+        for (const obj of objs) {
+            /* rust traps can currently hit only worn armor and weapons */
+            if (objects[obj.otyp].oc_material === IRON /* is_rustprone() */
+                && obj.owornmask) {
+                if (is_you && (obj === game.uquiver
+                               || (obj === game.uswapwep && !u.twoweap)))
+                    continue;
+                return TRAP_NOT_IMMUNE;
+            }
+        }
+        return TRAP_CLEARLY_IMMUNE;
+    }
+    case MAGIC_TRAP:
+        /* for player, any number of bad effects;
+           for monsters, only replicates fire trap, so fall through */
+        if (is_you)
+            return TRAP_NOT_IMMUNE;
+        /*FALLTHRU*/
+    case FIRE_TRAP: { /* can always destroy items being carried */
+        /* harmful if not resistant or if carrying anything that could burn */
+        if (is_you ? !(uprop(FIRE_RES).intrinsic || uprop(FIRE_RES).extrinsic)
+                   : !resists_fire(mon))
+            return TRAP_NOT_IMMUNE;
+
+        const objs = [];
+        if (is_you)
+            for (let o = game.invent; o; o = o.nobj) objs.push(o);
+        else
+            objs.push(...(mon.minvent || []).slice().reverse());
+        for (const obj of objs) {
+            if (obj.oclass === SCROLL_CLASS || obj.oclass === POTION_CLASS
+                || obj.oclass === SPBOOK_CLASS
+                || (obj.owornmask && is_flammable(obj))) {
+                if ((obj.otyp === SCR_FIRE || obj.otyp === SPE_FIREBALL)
+                    /* mon knows scroll of fire or spellbook of fireball
+                       won't be affected; hero knows iff this one has been
+                       seen and its type has been discovered */
+                    && (!is_you
+                        || (obj.dknown && objects[obj.otyp].oc_name_known)))
+                    continue;
+                return TRAP_NOT_IMMUNE;
+            }
+        }
+        return (is_you ? TRAP_HIDDEN_IMMUNE : TRAP_CLEARLY_IMMUNE);
+    }
+    case MAGIC_PORTAL:
+        /* never hurts anything, but player is considered non-immune so they
+           can be asked about entering it */
+        if (!is_you)
+            return TRAP_CLEARLY_IMMUNE;
+        return TRAP_NOT_IMMUNE;
+    case VIBRATING_SQUARE:
+        return TRAP_CLEARLY_IMMUNE;
+    default:
+        /* impossible("immune_to_trap: unknown trap type %u", ttype) */
+        return TRAP_NOT_IMMUNE;
+    }
+}
+
+// C ref: trap.c into_vs_onto()
+/* whether moving to a trap location is moving "into" the trap or "onto" it */
+export function into_vs_onto(traptype) {
+    switch (traptype) {
+    case BEAR_TRAP:
+    case PIT:
+    case SPIKED_PIT:
+    case HOLE:
+    case TELEP_TRAP:
+    case LEVEL_TELEP:
+    case MAGIC_PORTAL:
+    case WEB:
+        return true;
+    }
+    return false;
+}
+
+// C ref: trap.c trapname()
+export function trapname(ttyp, override) /* if True, ignore Hallucination */ {
+    if (Hallucination() && !override)
+        throw new Error('trapname(): hallucinatory trap names not ported yet');
+    return trap_explanations[ttyp - 1];
+}
+
+// C ref: hack.c u_locomotion()
+export function u_locomotion(def) {
+    const capitalize = (def[0] === def[0].toUpperCase());
+
+    /* regular locomotion() takes a monster type rather than a specific
+       monster, so can't tell whether it is operating on hero */
+    if (Levitation())
+        return capitalize ? "Float" : "float";
+    if (Flying())
+        return capitalize ? "Fly" : "fly";
+    return locomotion(game.youmonst.data, def);
+}
+
+// C ref: mondata.c locomotion()
+function locomotion(ptr, def) {
+    const capitalize = (def[0] === def[0].toUpperCase());
+    const levitate = ["float", "Float", "wobble", "Wobble"];
+    const flys = ["fly", "Fly", "flutter", "Flutter"];
+    const flyl = ["fly", "Fly", "stagger", "Stagger"];
+    const slither = ["slither", "Slither", "falter", "Falter"];
+    const ooze = ["ooze", "Ooze", "tremble", "Tremble"];
+    const immobile = ["wiggle", "Wiggle", "pulsate", "Pulsate"];
+    const crawl = ["crawl", "Crawl", "falter", "Falter"];
+    const idx = capitalize ? 1 : 0;
+
+    return (is_floater(ptr) ? levitate[idx]
+            : (is_flyer(ptr) && ptr.msize <= MZ_SMALL) ? flys[idx]
+              : (is_flyer(ptr) && ptr.msize > MZ_SMALL) ? flyl[idx]
+                : (ptr.mflags1 & M1_SLITHY) ? slither[idx]
+                  : amorphous(ptr) ? ooze[idx]
+                    : !ptr.mmove ? immobile[idx]
+                      : (ptr.mflags1 & M1_NOLIMBS) ? crawl[idx]
+                        : def);
+}
+
+// C ref: trap.c conjoined_pits()
+function conjoined_pits(trap2, trap1, u_entering_trap2) {
+    const u = game.u;
+
+    if (!trap1 || !trap2)
+        return false;
+    if (!isok(trap2.tx, trap2.ty) || !isok(trap1.tx, trap1.ty)
+        || !is_pit(trap2.ttyp)
+        || !is_pit(trap1.ttyp)
+        || (u_entering_trap2 && !(u.utrap && u.utraptype === TT_PIT)))
+        return false;
+    throw new Error('conjoined_pits(): conjoined pit directions not ported yet');
+}
+
+// C ref: trap.c adj_nonconjoined_pit()
+function adj_nonconjoined_pit(adjtrap) {
+    const u = game.u;
+    const trap_with_u = t_at(u.ux0, u.uy0);
+
+    if (trap_with_u && adjtrap && u.utrap && u.utraptype === TT_PIT
+        && is_pit(trap_with_u.ttyp) && is_pit(adjtrap.ttyp))
+        throw new Error('adj_nonconjoined_pit(): xytodir() not ported yet');
+    return false;
+}
+
+// C ref: trap.c dotrap()
+export async function dotrap(trap, trflags) {
+    const u = game.u;
+    const ttype = trap.ttyp;
+    const already_seen = trap.tseen;
+    let forcetrap = ((trflags & FORCETRAP) !== 0
+                     || (trflags & FAILEDUNTRAP) !== 0);
+    const forcebungle = (trflags & FORCEBUNGLE) !== 0,
+          plunged = (trflags & TOOKPLUNGE) !== 0,
+          conj_pit = conjoined_pits(trap, t_at(u.ux0, u.uy0), true),
+          adj_pit = adj_nonconjoined_pit(trap);
+    const madeby_u = trap.madeby_u ? 1 : 0;
+
+    nomul(0);
+
+    if (fixed_tele_trap(trap)) {
+        trflags |= FORCETRAP;
+        forcetrap = true;
+    }
+
+    /* KMH -- You can't escape the Sokoban level traps */
+    if (game.level.flags.sokoban_rules && (is_pit(ttype) || is_hole(ttype))) {
+        throw new Error('dotrap(): Sokoban air currents not ported yet');
+    } else if (!forcetrap) {
+        if (floor_trigger(ttype) && check_in_air(game.youmonst, trflags)) {
+            if (already_seen) {
+                await You(`${u_locomotion("step")} over ${
+                    (ttype === ARROW_TRAP && !trap.madeby_u)
+                    ? "an" : a_your[madeby_u]} ${trapname(ttype, false)}.`);
+            }
+            return;
+        }
+        if (already_seen && !Fumbling() && !undestroyable_trap(ttype)
+            && ttype !== ANTI_MAGIC && !forcebungle && !plunged
+            && !conj_pit && !adj_pit
+            && (!rn2(5) || (is_pit(ttype) && is_clinger(game.youmonst.data)))) {
+            await You(`escape ${(ttype === ARROW_TRAP && !trap.madeby_u)
+                                ? "an" : a_your[madeby_u]} ${
+                trapname(ttype, false)}.`);
+            return;
+        }
+    }
+
+    if (u.usteed)
+        mon_learns_traps(u.usteed, ttype);
+    mons_see_trap(trap);
+
+    /*
+     * Note:
+     *  Most references to trap types here don't use trapname() for
+     *  hallucination.  This could be considered to be a bug but doing
+     *  that would hide the actual trap situation from the player which
+     *  would be somewhat harsh for what's usually a minor impairment.
+     */
+
+    await trapeffect_selector(game.youmonst, trap, trflags);
 }
 
 // C ref: trap.h fixed_tele_trap()
@@ -275,8 +747,6 @@ function attacktype(ptr, atyp) { return ptr.mattk.some(a => a.aatyp === atyp); }
 
 // C ref: trap.c wearing_iron_shoes()
 function wearing_iron_shoes(mtmp) {
-    if (mtmp === game.youmonst)
-        throw new Error('wearing_iron_shoes(): hero boots (uarmf) not ported yet');
     const armf = which_armor(mtmp, W_ARMF);
     return !!armf && objects[armf.otyp].oc_material === IRON;
 }
@@ -483,7 +953,39 @@ async function trapeffect_bear_trap(mtmp, trap, trflags) {
                        || (is_you && (trflags & VIASITTING) !== 0));
 
     if (is_you) {
-        throw new Error('trapeffect_bear_trap(): hero branch not ported yet');
+        const dmg = d(2, 4);
+        const u = game.u;
+        const A_Your = ["A", "Your"];
+        const madeby_u = trap.madeby_u ? 1 : 0;
+
+        if ((Levitation() || Flying()) && !forcetrap)
+            return Trap_Effect_Finished;
+        feeltrap(trap);
+        if (amorphous(game.youmonst.data) || is_whirly(game.youmonst.data)
+            || unsolid(game.youmonst.data)) {
+            await pline(`${A_Your[madeby_u]} bear trap closes harmlessly through you.`);
+            return Trap_Effect_Finished;
+        }
+        if (!u.usteed && game.youmonst.data.msize <= MZ_SMALL) {
+            await pline(`${A_Your[madeby_u]} bear trap closes harmlessly over you.`);
+            return Trap_Effect_Finished;
+        }
+        set_utrap(rn1(4, 4), TT_BEARTRAP);
+        if (u.usteed) {
+            throw new Error('trapeffect_bear_trap(): steed caught (mbodypart()) not ported yet');
+        } else {
+            await pline(`${A_Your[madeby_u]} bear trap closes on your ${
+                body_part(FOOT)}!`);
+            if (u.umonnum === PM_OWLBEAR || u.umonnum === PM_BUGBEAR)
+                await You("howl in anger!");
+            if (wearing_iron_shoes(mtmp))
+                throw new Error('trapeffect_bear_trap(): Yname2(uarmf) not ported yet');
+            else {
+                await set_wounded_legs(rn2(2) ? RIGHT_SIDE : LEFT_SIDE, rn1(10, 10));
+                await losehp(Maybe_Half_Phys(dmg), "bear trap", KILLED_BY_AN);
+            }
+        }
+        exercise(A_DEX, false);
     } else {
         const mptr = mtmp.data;
         const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
@@ -572,16 +1074,243 @@ async function trapeffect_slp_gas_trap(mtmp, trap, trflags) {
 
 // C ref: trap.c water_damage()
 /* Get an object wet and damage it appropriately; ER_* result */
-function water_damage(obj, ostr, force) {
+async function water_damage(obj, ostr, force) {
+    const ER_NOTHING = 0;
+    const in_invent = obj && obj.where === 'OBJ_INVENT';
+
     if (!obj)
-        return 0; /* ER_NOTHING */
-    throw new Error('water_damage(): object water damage not ported yet');
+        return ER_NOTHING;
+
+    if (obj.lamplit) /* splash_lit(obj) */
+        throw new Error('water_damage(): splash_lit() not ported yet');
+
+    /* if (!ostr) ostr = cxname(obj): only erode_obj()'s messages use it */
+
+    if (obj.otyp === CAN_OF_GREASE && obj.spe > 0) {
+        return ER_NOTHING;
+    } else if (obj.otyp === TOWEL && obj.spe < 7) {
+        throw new Error('water_damage(): wet_a_towel() not ported yet');
+    } else if (obj.greased) {
+        throw new Error('water_damage(): greased object not ported yet');
+    } else if (Is_container(obj)) {
+        throw new Error('water_damage(): container contents not ported yet');
+    } else if (!force && (Luck() + 5) > rn2(20)) {
+        /*  chance per item of sustaining damage:
+            *   max luck:               10%
+            *   avg luck (Luck==0):     75%
+            *   awful luck (Luck<-4):  100%
+            */
+        return ER_NOTHING;
+    } else if (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS
+               || obj.oclass === POTION_CLASS) {
+        void in_invent;
+        throw new Error('water_damage(): scroll/spellbook/potion damage not ported yet');
+    } else {
+        return await erode_obj(obj, ostr, ERODE_RUST, EF_NONE);
+    }
+}
+
+/* C ref: you.h Luck */
+function Luck() { return (game.u.uluck || 0) + (game.u.moreluck || 0); }
+
+/* C ref: trap.h erode types, EF_* flags */
+const ERODE_BURN = 0, ERODE_RUST = 1, ERODE_ROT = 2, ERODE_CORRODE = 3,
+      ERODE_CRACK = 4;
+const EF_NONE = 0, EF_GREASE = 0x01, EF_DESTROY = 0x02, EF_VERBOSE = 0x04,
+      EF_PAY = 0x08;
+const MAX_ERODE = 3;
+
+// C ref: trap.c erode_obj() -- the rust case, as reached from water_damage()
+/* returns ER_DAMAGED, ER_GREASED, ER_NOTHING or ER_DESTROYED */
+async function erode_obj(otmp, ostr, type, ef_flags) {
+    const ER_NOTHING = 0, ER_DAMAGED = 2;
+    const action = ["smoulder", "rust", "rot", "corrode", "crack"],
+          bythe = ["heat", "oxidation", "decay", "corrosion", "impact"];
+    let vulnerable = false, is_primary = true;
+    const check_grease = (ef_flags & EF_GREASE) !== 0,
+          print = (ef_flags & EF_VERBOSE) !== 0;
+
+    if (!otmp)
+        return ER_NOTHING;
+
+    const victim = (otmp.where === 'OBJ_INVENT') ? game.youmonst
+                   : (otmp.where === 'OBJ_MINVENT') ? otmp.ocarry : null;
+    const uvictim = (victim === game.youmonst);
+    const vismon = victim && (victim !== game.youmonst) && canseemon(victim);
+    if (!victim)
+        throw new Error('erode_obj(): floor object (visobj) not ported yet');
+    const visobj = false;
+
+    switch (type) {
+    case ERODE_RUST:
+        vulnerable = is_rustprone(otmp);
+        break;
+    default:
+        throw new Error('erode_obj(): erosion types other than rust not ported yet');
+    }
+    const erosion = is_primary ? otmp.oeroded : otmp.oeroded2;
+
+    if (check_grease && otmp.greased) {
+        throw new Error('erode_obj(): grease_protect() not ported yet');
+    } else if (!erosion_matters(otmp)) {
+        return ER_NOTHING;
+    } else if (!vulnerable || (otmp.oerodeproof && otmp.rknown)) {
+        if (game.flags.verbose && print && (uvictim || vismon))
+            throw new Error('erode_obj(): "not affected" message not ported yet');
+        return ER_NOTHING;
+    } else if (otmp.oerodeproof || (otmp.blessed && !rnl(4))) {
+        if (game.flags.verbose && (print || otmp.oerodeproof)
+            && (uvictim || vismon || visobj)) {
+            if (!uvictim || !ostr)
+                throw new Error('erode_obj(): "Somehow" message not ported yet');
+            await pline(`Somehow, your ${ostr} ${vtense(ostr, "are")} not affected by the ${bythe[type]}.`);
+        }
+        /* We assume here that if the object is protected because it
+         * is blessed, it still shows some minor signs of wear, and
+         * the hero can distinguish this from an object that is
+         * actually proof against damage.
+         */
+        if (otmp.oerodeproof) {
+            otmp.rknown = 1;
+            /* update_inventory() */
+        }
+        return ER_NOTHING;
+    } else if (erosion < MAX_ERODE) {
+        const adverb = (erosion + 1 === MAX_ERODE) ? " completely"
+                       : erosion ? " further" : "";
+
+        if (uvictim || vismon || visobj) {
+            if (!uvictim || !ostr)
+                throw new Error('erode_obj(): erosion message for this object not ported yet');
+            await pline(`Your ${ostr} ${vtense(ostr, action[type])}${adverb}!`);
+        }
+
+        if (ef_flags & EF_PAY)
+            throw new Error('erode_obj(): costly_alteration() not ported yet');
+
+        if (is_primary)
+            otmp.oeroded++;
+        else
+            otmp.oeroded2++;
+
+        /* update_inventory() */
+        return ER_DAMAGED;
+    } else if (ef_flags & EF_DESTROY) {
+        throw new Error('erode_obj(): destroying an eroded object not ported yet');
+    } else {
+        if (game.flags.verbose && print)
+            throw new Error('erode_obj(): "completely rusty" message not ported yet');
+        return ER_NOTHING;
+    }
+}
+
+/* C ref: objnam.c suit_simple_name(), cloak_simple_name(),
+   helm_simple_name() */
+function suit_simple_name(suit) {
+    if (suit) {
+        if (suit.otyp >= GRAY_DRAGON_SCALE_MAIL && suit.otyp <= YELLOW_DRAGON_SCALE_MAIL)
+            return "dragon mail"; /* <color> dragon scale mail */
+        else if (suit.otyp >= GRAY_DRAGON_SCALES && suit.otyp <= YELLOW_DRAGON_SCALES)
+            return "dragon scales";
+        const suitnm = OBJ_NAME(objects[suit.otyp]);
+        if (suitnm.length > 5 && suitnm.endsWith(" mail"))
+            return "mail"; /* most suits fall into this category */
+        else if (suitnm.length > 7 && suitnm.endsWith(" jacket"))
+            return "jacket"; /* leather jacket */
+    }
+    /* "suit" is lame but "armor" is ambiguous and "body armor" is absurd */
+    return "suit";
+}
+function cloak_simple_name(cloak) {
+    if (cloak) {
+        switch (cloak.otyp) {
+        case ROBE:
+            return "robe";
+        case MUMMY_WRAPPING:
+            return "wrapping";
+        case ALCHEMY_SMOCK:
+            return (objects[cloak.otyp].oc_name_known && cloak.dknown)
+                       ? "smock" : "apron";
+        default:
+            break;
+        }
+    }
+    return "cloak";
+}
+function gloves_simple_name(gloves) {
+    const gauntlets = "gauntlets";
+
+    if (gloves && gloves.dknown) {
+        const ocl = objects[gloves.otyp];
+        const actualn = OBJ_NAME(ocl), descrpn = OBJ_DESCR(ocl);
+
+        if ((ocl.oc_name_known ? actualn : descrpn || '').toLowerCase()
+                .includes(gauntlets))
+            return gauntlets;
+    }
+    return "gloves";
+}
+function helm_simple_name(helmet) {
+    /* hard_helmet(): metallic helmets other than the elven leather helm */
+    const hard = helmet && is_metallic(helmet);
+    return !hard ? "hat" : "helm";
 }
 
 // C ref: trap.c trapeffect_rust_trap()
 async function trapeffect_rust_trap(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
-        throw new Error('trapeffect_rust_trap(): hero branch not ported yet');
+        const u = game.u;
+        seetrap(trap);
+
+        /* Unlike monsters, traps cannot aim their rust attacks at
+         * you, so instead of looping through and taking either the
+         * first rustable one or the body, we take whatever we get,
+         * even if it is not rustable.
+         */
+        switch (rn2(5)) {
+        case 0:
+            await pline(`${A_gush_of_water_hits} you on the ${body_part(HEAD)}!`);
+            await water_damage(game.uarmh, game.uarmh ? helm_simple_name(game.uarmh) : null, true);
+            break;
+        case 1:
+            await pline(`${A_gush_of_water_hits} your left ${body_part(ARM)}!`);
+            if (await water_damage(game.uarms, "shield", true) !== 0 /* ER_NOTHING */)
+                break;
+            if (u.twoweap || (game.uwep && bimanual(game.uwep)))
+                await water_damage(u.twoweap ? game.uswapwep : game.uwep, null, true);
+            /* uglovecheck: */
+            await water_damage(game.uarmg, gloves_simple_name(game.uarmg), true);
+            break;
+        case 2:
+            await pline(`${A_gush_of_water_hits} your right ${body_part(ARM)}!`);
+            await water_damage(game.uwep, null, true);
+            /* goto uglovecheck */
+            await water_damage(game.uarmg, gloves_simple_name(game.uarmg), true);
+            break;
+        default:
+            await pline(`${A_gush_of_water_hits} you!`);
+            /* note: exclude primary and secondary weapons from splashing
+               because cases 1 and 2 target them [via water_damage()] */
+            for (let otmp = game.invent, nextobj; otmp; otmp = nextobj) {
+                nextobj = otmp.nobj;
+                if (otmp.lamplit && otmp !== game.uwep
+                    && (otmp !== game.uswapwep || !u.twoweap))
+                    throw new Error('trapeffect_rust_trap(): splash_lit() not ported yet');
+            }
+            if (game.uarmc)
+                await water_damage(game.uarmc, cloak_simple_name(game.uarmc), true);
+            else if (game.uarm)
+                await water_damage(game.uarm, suit_simple_name(game.uarm), true);
+            else if (game.uarmu)
+                await water_damage(game.uarmu, "shirt", true);
+        }
+        /* update_inventory(): no perm_invent window */
+
+        if (u.umonnum === PM_IRON_GOLEM) {
+            throw new Error('trapeffect_rust_trap(): hero iron golem rusting away not ported yet');
+        } else if (u.umonnum === PM_GREMLIN && rn2(3)) {
+            throw new Error('trapeffect_rust_trap(): split_mon() for the hero not ported yet');
+        }
     } else {
         const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
         const trapkilled = false;
@@ -771,6 +1500,26 @@ async function trapeffect_fire_trap(mtmp, trap, trflags) {
     }
 }
 
+// C ref: trap.c selftouch()
+export async function selftouch(arg) {
+    const g = game;
+    const Stone_resistance = !!(uprop(STONE_RES).intrinsic
+                                || uprop(STONE_RES).extrinsic);
+    void arg;
+    if (g.uwep && g.uwep.otyp === CORPSE
+        && (g.uwep.corpsenm === PM_COCKATRICE
+            || g.uwep.corpsenm === PM_CHICKATRICE) /* touch_petrifies() */
+        && !Stone_resistance)
+        throw new Error('selftouch(): instapetrify() not ported yet');
+    /* Or your secondary weapon, if wielded [hypothetical; we don't
+       allow two-weapon combat when either weapon is a corpse] */
+    if (g.u.twoweap && g.uswapwep && g.uswapwep.otyp === CORPSE
+        && (g.uswapwep.corpsenm === PM_COCKATRICE
+            || g.uswapwep.corpsenm === PM_CHICKATRICE)
+        && !Stone_resistance)
+        throw new Error('selftouch(): instapetrify() not ported yet');
+}
+
 // C ref: trap.c mselftouch()
 async function mselftouch(mon, arg, byplayer) {
     const mwep = mon.mw; /* MON_WEP(mon) */
@@ -881,13 +1630,15 @@ async function trapeffect_hole(mtmp, trap, trflags) {
 // C ref: trap.c trapeffect_telep_trap()
 async function trapeffect_telep_trap(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
-        throw new Error('trapeffect_telep_trap(): tele_trap() for the hero not ported yet');
+        seetrap(trap);
+        await tele_trap(trap);
     } else {
         const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
 
         await mtele_trap(mtmp, trap, in_sight);
         return Trap_Moved_Mon;
     }
+    return Trap_Effect_Finished;
 }
 
 // C ref: trap.c trapeffect_level_telep()
@@ -1028,10 +1779,171 @@ async function trapeffect_statue_trap(mtmp, trap, trflags) {
     return Trap_Effect_Finished;
 }
 
+// C ref: trap.c steedintrap()
+/* 0 if trap doesn't affect steed, 1 if it does, 2 if steed dies */
+async function steedintrap(trap, otmp) {
+    const u = game.u;
+    const steed = u.usteed;
+    let trapkilled = false, steedhit = false;
+
+    void otmp;
+    if (!steed || !trap)
+        return Trap_Effect_Finished;
+    const tt = trap.ttyp;
+    steed.mx = u.ux;
+    steed.my = u.uy;
+
+    switch (tt) {
+    case SLP_GAS_TRAP:
+        if (!resists_sleep(steed) && !breathless(steed.data)
+            && !helpless(steed)) {
+            if (sleep_monst(steed, rnd(25), -1))
+                /* no in_sight check here; you can feel it even if blind */
+                await pline(`${Monnam(steed)} suddenly falls asleep!`);
+        }
+        steedhit = true;
+        break;
+    case ARROW_TRAP:
+    case DART_TRAP:
+    case LANDMINE:
+    case PIT:
+    case SPIKED_PIT:
+    case POLY_TRAP:
+        throw new Error(`steedintrap(): steed hit by trap type ${tt} not ported yet`);
+    default:
+        break;
+    }
+
+    if (trapkilled)
+        throw new Error('steedintrap(): dismount_steed() not ported yet');
+    return steedhit ? 1 : 0;
+}
+
+// C ref: trap.c domagictrap()
+async function domagictrap() {
+    const u = game.u;
+    const fate = rnd(20);
+
+    /* What happened to the poor sucker? */
+
+    if (fate < 10) {
+        /* Most of the time, it creates some monsters. */
+        throw new Error('domagictrap(): flash/roar monster creation not ported yet');
+    } else {
+        switch (fate) {
+        case 10:
+            /* sometimes nothing happens */
+            break;
+        case 11: /* toggle intrinsic invisibility */
+            throw new Error('domagictrap(): invisibility toggle not ported yet');
+        case 12: /* a flash of fire */
+            throw new Error('domagictrap(): dofiretrap() not ported yet');
+
+        /* odd feelings */
+        case 13:
+            await pline(`A shiver runs up and down your ${body_part(SPINE)}!`);
+            break;
+        case 14:
+            await You_hear(Hallucination() ? "the moon howling at you."
+                                           : "distant howling.");
+            break;
+        case 15:
+            if (on_level(u.uz, game.dungeon_topology.d_qstart_level))
+                await You_feel(`${(game.flags.female
+                                   || (Upolyd() && is_neuter(game.youmonst.data)))
+                                  ? "oddly " : ""}like the prodigal son.`);
+            else
+                await You(`suddenly yearn for ${
+                    Hallucination() ? "Cleveland"
+                    : (In_quest(u.uz) || at_dgn_entrance("The Quest"))
+                      ? "your nearby homeland"
+                      : "your distant homeland"}.`);
+            break;
+        case 16:
+            await Your("pack shakes violently!");
+            break;
+        case 17:
+            await You(Hallucination() ? "smell hamburgers." : "smell charred flesh.");
+            break;
+        case 18:
+            await You_feel("tired.");
+            break;
+
+        /* very occasionally something nice happens. */
+        case 19: /* tame nearby monsters */
+            throw new Error('domagictrap(): taming nearby monsters not ported yet');
+        case 20: /* uncurse stuff */
+            throw new Error('domagictrap(): remove curse not ported yet');
+        default:
+            break;
+        }
+    }
+}
+
+// C ref: trap.c drain_en()
+async function drain_en(n, max_already_drained) {
+    const u = game.u;
+    let mesg;
+    let punct = max_already_drained ? '!' : '.';
+
+    /*
+     * FIXME?
+     *  u.uenmax should probably have a higher minimum than 0;
+     *  perhaps u.ulevel or (u.ulevel + 1) / 2
+     */
+    if (u.uenmax < 1) {
+        /* energy is completely gone */
+        if (u.uen || u.uenmax) { /* paranoia */
+            u.uen = u.uenmax = 0;
+            game.disp_botl = true;
+        }
+        mesg = "momentarily lethargic";
+    } else {
+        /* throttle further loss a bit when there's not much left to lose */
+        if (n > Math.trunc((u.uen + u.uenmax) / 3))
+            n = rnd(n);
+
+        mesg = "your magical energy drain away";
+        if (n > u.uen)
+            punct = '!';
+
+        u.uen -= n;
+        if (u.uen < 0) {
+            u.uenmax -= rnd(-u.uen);
+            if (u.uenmax < 0)
+                u.uenmax = 0;
+            u.uen = 0;
+        } else if (u.uen > u.uenmax) {
+            /* uen might be greater than uenmax if caller reduced uenmax
+               and then we throttled the loss being applied to current */
+            u.uen = u.uenmax;
+        }
+        game.disp_botl = true;
+    }
+    /* after manipulating u.uen,uenmax and setting context.botl, so
+       that You_feel() -> pline() will update status before the message */
+    await You_feel(`${mesg}${punct}`);
+}
+
 // C ref: trap.c trapeffect_magic_trap()
 async function trapeffect_magic_trap(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
-        throw new Error('trapeffect_magic_trap(): domagictrap() not ported yet');
+        const u = game.u;
+        seetrap(trap);
+        if (!rn2(30)) {
+            deltrap(trap);
+            newsym(u.ux, u.uy); /* update position */
+            await You("are caught in a magical explosion!");
+            await losehp(rnd(10), "magical explosion", KILLED_BY_AN);
+            await Your("body absorbs some of the magical energy!");
+            u.uen = (u.uenmax += 2);
+            if (u.uenmax > u.uenpeak)
+                u.uenpeak = u.uenmax;
+            return Trap_Effect_Finished;
+        } else {
+            await domagictrap();
+        }
+        await steedintrap(trap, null);
     } else {
         /* A magic trap.  Monsters usually immune. */
         if (!rn2(21))
@@ -1051,6 +1963,8 @@ async function trapeffect_anti_magic(mtmp, /* monster, possibly youmonst */
            rather than the wearer */
         if (shoes.spe > 0) {
             /* no message if a monster does this, it isn't visible enough */
+            if (mtmp === game.youmonst)
+                throw new Error('trapeffect_anti_magic(): "lethargic aura" (yname(), costly_alteration()) not ported yet');
             shoes.spe -= 1;
             /* update_inventory() */
             return Trap_Effect_Finished;
@@ -1058,7 +1972,51 @@ async function trapeffect_anti_magic(mtmp, /* monster, possibly youmonst */
     }
 
     if (mtmp === game.youmonst) {
-        throw new Error('trapeffect_anti_magic(): hero branch not ported yet');
+        const u = game.u;
+        let drain, halfd;
+        let exclaim_it = false;
+
+        seetrap(trap);
+        if (Antimagic()) {
+            let dmgval2 = rnd(4);
+            const hp = Upolyd() ? u.mh : u.uhp;
+
+            /* Half_XXX_damage has opposite its usual effect (approx)
+               but isn't cumulative if hero has more than one */
+            if (Half_physical_damage() || Half_spell_damage())
+                dmgval2 += rnd(4);
+            /* give Magicbane wielder dose of own medicine */
+            if (game.uwep && game.uwep.oartifact === ART_MAGICBANE)
+                dmgval2 += rnd(4);
+            /* having an artifact--other than own quest one--which
+               confers magic resistance simply by being carried
+               also increases the effect */
+            for (let otmp = game.invent; otmp; otmp = otmp.nobj)
+                if (otmp.oartifact)
+                    throw new Error('trapeffect_anti_magic(): artifacts (defends_when_carried()) not ported yet');
+            if (Passes_walls())
+                dmgval2 = Math.trunc((dmgval2 + 3) / 4);
+
+            await You_feel((dmgval2 >= hp) ? "unbearably torpid!"
+                           : (dmgval2 >= Math.trunc(hp / 4)) ? "very lethargic."
+                             : "sluggish.");
+            /* opposite of magical explosion */
+            await losehp(dmgval2, "anti-magic implosion", KILLED_BY_AN);
+        }
+
+        /* if the drain amount is more than hero's maximum energy then up
+           to half of the amount comes directly out of maximum, the rest
+           comes out of current energy; drain_en() lowers the current
+           amount and when doing so it will take even more from maximum
+           if the new current value would drop below zero */
+        drain = d(2, 6); /* 2d6 => 2..12 */
+        halfd = rnd(Math.trunc(drain / 2)); /* 1..drain/2 (round down) */
+        if (u.uenmax > drain) { /* [was u.uenmax > halfd] */
+            u.uenmax -= halfd; /* drain_en() will set context.botl */
+            drain -= halfd;
+            exclaim_it = true;
+        }
+        await drain_en(drain, exclaim_it);
     } else {
         let trapkilled = false;
         const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);

@@ -5,7 +5,7 @@
 // The chunk only defines globals; it rolls no dice. Its functions are
 // ported as far as their callees exist: those needing parts of the nh
 // table that aren't ported yet (nh.dump_fmtstr, nh.dnum_name, nh.pline,
-// nh.text, io, u) raise a Lua error when called. nhlib.lua's
+// io, u) raise a Lua error when called. nhlib.lua's
 // table_stringify, tutorial_enter and tutorial_leave are not ported yet
 // either (see nhlib_lua.js), so nhcore.enter_tutorial/leave_tutorial are
 // nil for now.
@@ -75,9 +75,17 @@ export function nhcore_lua(L) {
 
     // -- Show a helpful tip when player first uses getpos()
     // function show_getpos_tip()
-    G.show_getpos_tip = function show_getpos_tip() {
-        /* nh.text([[ Tip: Farlooking or selecting a map location ... ]]) */
-        lua_error('show_getpos_tip: nh.text is not ported yet');
+    G.show_getpos_tip = async function show_getpos_tip() {
+        /* a Lua [[long string]] drops the newline right after [[ */
+        await G.nh.text(`Tip: Farlooking or selecting a map location
+
+You are now in a "farlook" mode - the movement keys move the cursor,
+not your character.  Game time does not advance.  This mode is used
+to look around the map, or to select a location on it.
+
+When in this mode, you can press ESC to return to normal game mode,
+and pressing ? will show the key help.
+`);
     };
 
     // -- Callback functions

@@ -21,7 +21,7 @@ import {
 } from './const.js';
 import { dist2 } from './hacklib.js';
 import { vision_recalc, cansee } from './vision.js';
-import { newsym, pline } from './display.js';
+import { newsym, pline, glyph_is_invisible, unmap_object } from './display.js';
 import { m_at, sobj_at, is_pool, is_lava, may_passwall, accessible,
          nonliving, is_golem, is_mplayer, closed_door, hideunder,
          In_endgame, is_placeholder, mbirth_limit, newmonhp,
@@ -69,7 +69,14 @@ import { kill_egg } from './timeout.js';
 import { relobj } from './steal.js';
 import { dochugw, onscary, mon_regen, m_everyturn_effect,
          mon_track_clear } from './monmove.js';
-import { canseemon } from './display.js';
+import { canseemon, sensemon } from './display.js';
+import { UNICORN_HORN, WORM_TOOTH } from './objects.js';
+import { CORPSTAT_NONE, CORPSTAT_BURIED, CORPSTAT_INIT, CORPSTAT_FEMALE,
+         CORPSTAT_MALE, TAINT_AGE, ONAME_NO_FLAGS, BLINDED } from './const.js';
+import { mksobj_at, mkcorpstat, undead_to_corpse,
+         clear_dknown } from './mkobj.js';
+import { stackobj } from './invent.js';
+import { oname } from './do_name.js';
 
 /* monster inventory: makemon.js keeps mon->minvent as an array in pickup
    order; C prepends, so walk it newest first */
@@ -325,8 +332,8 @@ export async function mondead(mtmp) {
 
     /* logdeadmon(mtmp, mndx): achievements/livelog have no game effect here */
 
-    /* if (glyph_is_invisible(levl[mx][my].glyph)) unmap_object(): the
-       remembered-invisible glyph is not ported */
+    if (glyph_is_invisible(game.level.at(mtmp.mx, mtmp.my).remembered_glyph))
+        unmap_object(mtmp.mx, mtmp.my);
 
     /* remove 'mtmp' from play; it will stay on the fmon list until end of
        current move, then dmonsfree() will get rid of it */
@@ -367,6 +374,178 @@ export function corpse_chance(mon, magr, was_swallowed) {
     return !rn2(tmp);
 }
 
+/* C ref: mondata.h is_reviver(), unique_corpstat() */
+function is_reviver(ptr) { return is_rider(ptr) || ptr.mlet === MM.S_TROLL; }
+function unique_corpstat(ptr) { return (ptr.geno & G_UNIQ) !== 0; }
+
+/* C ref: mon.c KEEPTRAITS() -- for deciding whether corpse will carry
+   along full monster data */
+function KEEPTRAITS(mon) {
+    return (mon.isshk || mon.mtame || unique_corpstat(mon.data)
+            || is_reviver(mon.data)
+            /* normally quest leader will be unique, */
+            /* but he or she might have been polymorphed  */
+            || mon.m_id === game.quest_status?.leader_m_id
+            /* special cancellation handling for these */
+            || (dmgtype(mon.data, MM.AD_SEDU) || dmgtype(mon.data, MM.AD_SSEX)));
+}
+
+// C ref: mon.c make_corpse()
+/* Creates a monster corpse, a "special" corpse, or nothing if it doesn't
+ * leave corpses.  Monsters which leave "special" corpses should have
+ * G_NOCORPSE set in order to prevent wishing for one, finding tins of one,
+ * etc....
+ */
+function make_corpse(mtmp, corpseflags) {
+    const mdat = mtmp.data;
+    let num;
+    let obj = null;
+    const x = mtmp.mx, y = mtmp.my;
+    const mndx = monsndx(mdat);
+    let corpstatflags = corpseflags;
+    const burythem = ((corpstatflags & CORPSTAT_BURIED) !== 0);
+    let default_1 = false;
+
+    if (mtmp.female)
+        corpstatflags |= CORPSTAT_FEMALE;
+    else if (!is_neuter(mtmp.data))
+        corpstatflags |= CORPSTAT_MALE;
+
+    switch (mndx) {
+    case MM.PM_GRAY_DRAGON:
+    case MM.PM_GOLD_DRAGON:
+    case MM.PM_SILVER_DRAGON:
+    case MM.PM_RED_DRAGON:
+    case MM.PM_ORANGE_DRAGON:
+    case MM.PM_WHITE_DRAGON:
+    case MM.PM_BLACK_DRAGON:
+    case MM.PM_BLUE_DRAGON:
+    case MM.PM_GREEN_DRAGON:
+    case MM.PM_YELLOW_DRAGON:
+        /* Make dragon scales.  This assumes that the order of the
+           dragons is the same as the order of the scales. */
+        if (!rn2(mtmp.mrevived ? 20 : 3)) {
+            num = GRAY_DRAGON_SCALES + monsndx(mdat) - MM.PM_GRAY_DRAGON;
+            obj = mksobj_at(num, x, y, false, false);
+            obj.spe = 0;
+            obj.cursed = obj.blessed = 0;
+        }
+        default_1 = true;
+        break;
+    case MM.PM_WHITE_UNICORN:
+    case MM.PM_GRAY_UNICORN:
+    case MM.PM_BLACK_UNICORN:
+        if (mtmp.mrevived && rn2(2)) {
+            throw new Error('make_corpse(): regrown horn crumbling not ported yet');
+        } else {
+            obj = mksobj_at(UNICORN_HORN, x, y, true, false);
+            if (obj && mtmp.mrevived)
+                obj.degraded_horn = 1;
+        }
+        default_1 = true;
+        break;
+    case MM.PM_LONG_WORM:
+        mksobj_at(WORM_TOOTH, x, y, true, false);
+        default_1 = true;
+        break;
+    case MM.PM_VAMPIRE:
+    case MM.PM_VAMPIRE_LEADER:
+    case MM.PM_KOBOLD_MUMMY:
+    case MM.PM_DWARF_MUMMY:
+    case MM.PM_GNOME_MUMMY:
+    case MM.PM_ORC_MUMMY:
+    case MM.PM_ELF_MUMMY:
+    case MM.PM_HUMAN_MUMMY:
+    case MM.PM_GIANT_MUMMY:
+    case MM.PM_ETTIN_MUMMY:
+    case MM.PM_KOBOLD_ZOMBIE:
+    case MM.PM_DWARF_ZOMBIE:
+    case MM.PM_GNOME_ZOMBIE:
+    case MM.PM_ORC_ZOMBIE:
+    case MM.PM_ELF_ZOMBIE:
+    case MM.PM_HUMAN_ZOMBIE:
+    case MM.PM_GIANT_ZOMBIE:
+    case MM.PM_ETTIN_ZOMBIE:
+        /* (vampires: include mtmp in the mkcorpstat() call) */
+        num = undead_to_corpse(mndx);
+        corpstatflags |= CORPSTAT_INIT;
+        obj = mkcorpstat(CORPSE, mtmp, mons[num], x, y, corpstatflags);
+        obj.age -= (TAINT_AGE + 1); /* this is an *OLD* corpse */
+        break;
+    case MM.PM_IRON_GOLEM:
+    case MM.PM_GLASS_GOLEM:
+    case MM.PM_CLAY_GOLEM:
+    case MM.PM_STONE_GOLEM:
+    case MM.PM_WOOD_GOLEM:
+    case MM.PM_ROPE_GOLEM:
+    case MM.PM_LEATHER_GOLEM:
+    case MM.PM_GOLD_GOLEM:
+    case MM.PM_PAPER_GOLEM:
+        throw new Error('make_corpse(): golem remains not ported yet');
+    /* expired puddings will congeal into a large blob;
+       like dragons, relies on the order remaining consistent */
+    case MM.PM_GRAY_OOZE:
+    case MM.PM_BROWN_PUDDING:
+    case MM.PM_GREEN_SLIME:
+    case MM.PM_BLACK_PUDDING:
+        throw new Error('make_corpse(): pudding globs (obj_nexto()) not ported yet');
+    case NON_PM: case MM.NUMMONS: /* never use as index */
+        break;
+    default:
+        default_1 = true;
+        break;
+    }
+    if (default_1) {
+        if (game.mvitals[mndx].mvflags & MM.G_NOCORPSE) {
+            return null;
+        } else {
+            corpstatflags |= CORPSTAT_INIT;
+            /* preserve the unique traits of some creatures */
+            obj = mkcorpstat(CORPSE, KEEPTRAITS(mtmp) ? mtmp : null,
+                             mdat, x, y, corpstatflags);
+            if (burythem)
+                throw new Error('make_corpse(): bury_an_obj() not ported yet');
+        }
+    }
+    /* All special cases should precede the G_NOCORPSE check */
+
+    if (!obj)
+        return null;
+
+    /* if polymorph or undead turning has killed this monster,
+       prevent the same attack beam from hitting its corpse */
+    if (game.context?.bypasses)
+        throw new Error('make_corpse(): bypass_obj() not ported yet');
+
+    if (mtmp.mgivenname) /* has_mgivenname() */
+        obj = oname(obj, mtmp.mgivenname, ONAME_NO_FLAGS);
+
+    /*  Avoid "It was hidden under a green mold corpse!"
+     *  during Blind combat. An unseen monster referred to as "it"
+     *  could be killed and leave a corpse.  If a hider then hid
+     *  underneath it, you could be told the corpse type of a
+     *  monster that you never knew was there without this.
+     *  The code in hitmu() substitutes the word "something"
+     *  if the corpse's obj->dknown is 0.
+     */
+    if (mon_Blind() && !sensemon(mtmp))
+        clear_dknown(obj); /* obj->dknown = 0; */
+
+    stackobj(obj); /* 'obj' remains valid if stacking happens */
+    newsym(x, y);
+    /* in case the corpse was placed at a different spot from where
+       the monster was (not expected to happen) */
+    if (obj.ox !== x || obj.oy !== y)
+        newsym(obj.ox, obj.oy);
+    return obj;
+}
+
+/* C ref: you.h Blind -- only the BLINDED property is checked so far */
+function mon_Blind() {
+    const p = game.u.uprops?.[BLINDED];
+    return !!(p && (p.intrinsic || p.extrinsic));
+}
+
 // C ref: mon.c mondied()
 /* drop (perhaps) a cadaver and remove monster */
 export async function mondied(mdef) {
@@ -377,7 +556,7 @@ export async function mondied(mdef) {
     /* this assumes that the dead monster's map coordinates remain accurate */
     if (corpse_chance(mdef, null, false)
         && (accessible(mdef.mx, mdef.my) || is_pool(mdef.mx, mdef.my)))
-        throw new Error('mondied(): make_corpse() not ported yet');
+        make_corpse(mdef, CORPSTAT_NONE);
 }
 
 // C ref: mon.c monkilled()
@@ -969,6 +1148,12 @@ async function wake_nearto_core(x, y, distance, petcall) {
 // C ref: mon.c wake_nearto()
 export async function wake_nearto(x, y, distance) {
     await wake_nearto_core(x, y, distance, false);
+}
+
+// C ref: mon.c wake_nearby()
+/* Wake up nearby monsters without angering them. */
+export async function wake_nearby(petcall) {
+    await wake_nearto_core(game.u.ux, game.u.uy, game.u.ulevel * 20, petcall);
 }
 
 // C ref: hack.c disturb_buried_zombies()

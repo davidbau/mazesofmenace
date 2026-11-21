@@ -13,17 +13,32 @@ import { ROLE_NONE, ROLE_RANDOM, RS_ROLE, RS_RACE, RS_GENDER, RS_ALGNMNT, PL_NSI
 
 import { strncmpi, strcmpi } from './hacklib.js';
 import { authorize_wizard_mode, authorize_explore_mode } from './sys.js';
+import { bind_key } from './cmd.js';
+import { def_char_to_objclass, def_oc_syms, def_oc_explain } from './drawing.js';
+import { pline, flush_screen, docrt, bot } from './display.js';
+import { vision_recalc } from './vision.js';
+import { condtests } from './botl.js';
+import { def_inv_order, add_menu_heading } from './invent.js';
+import { count_bind_keys } from './cmd.js';
+import { allopt, BoolOpt, CompOpt, OthrOpt, OptS_General, OptS_Advanced,
+         Term_False, num_terms, set_in_config, set_gameview, set_in_game,
+         set_wizonly, set_wiznofuz } from './optlist.js';
+import { MAXOCLASSES, ROCK_CLASS, VENOM_SYM } from './objects.js';
 import {
     str2role, str2race, str2gend, str2align, setrolefilter, clearrolefilter,
-    RS_filter,
+    RS_filter, roles, races, genders, aligns,
 } from './role.js';
 import {
-    NHW_MENU, PICK_ONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
+    NHW_MENU, PICK_ONE, PICK_ANY, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
+    MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT, ECMD_OK,
+    PARANOID_PRAY, PARANOID_SWIM, PARANOID_TRAP, RUN_LEAP, MOD_ENCUMBER,
+    DISCLOSE_PROMPT_DEFAULT_NO, MENU_FULL, MENU_TRADITIONAL, MENU_COMBINATION,
+    STONE, Is_rogue_level,
 } from './const.js';
-import { NO_COLOR, ATR_NONE } from './terminal.js';
+import { NO_COLOR, ATR_NONE, ATR_INVERSE } from './terminal.js';
 import {
     tty_create_nhwindow, tty_start_menu, tty_add_menu, add_menu_str,
-    tty_end_menu, tty_select_menu, tty_destroy_nhwindow,
+    tty_end_menu, tty_select_menu, tty_destroy_nhwindow, tty_getlin,
 } from './wintty.js';
 
 // C ref: hacklib.c mungspaces() -- collapse runs of whitespace, trim ends
@@ -173,6 +188,89 @@ function optfn_alignment(result, negated, val) {
     return true;
 }
 
+// C ref: options.c optfn_pickup_types() (req == do_set while reading the
+// config file, go.opt_initial); flags.pickup_types holds object class
+// numbers, one character each, like C
+function optfn_pickup_types(result, negated, op) {
+    let oc_sym;
+    let num;
+    let badopt = false;
+
+    /* types of objects to pick up automatically */
+    result.flags.pickup_types = ''; /* all */
+    if (op === null || op === undefined || op === '') { /* empty_optstr */
+        /* for backwards compatibility, "pickup" without a value is a
+           synonym for autopickup of all types (and during
+           initialization, we can't prompt yet) */
+        result.flags.pickup = !negated;
+        return true;
+    }
+    if (negated)
+        throw new Error('optfn_pickup_types(): bad_negation() not ported yet');
+    while (op[0] === ' ')
+        op = op.slice(1);
+    if (op[0] !== 'a' && op[0] !== 'A') {
+        num = 0;
+        for (const ch of op) {
+            oc_sym = def_char_to_objclass(ch);
+            /* make sure all are valid obj symbols occurring once */
+            if (oc_sym !== MAXOCLASSES
+                && !result.flags.pickup_types.includes(String.fromCharCode(oc_sym))) {
+                result.flags.pickup_types += String.fromCharCode(oc_sym);
+                ++num;
+            } else
+                badopt = true;
+        }
+        if (badopt)
+            throw new Error('optfn_pickup_types(): config_error_add() not ported yet');
+    }
+    return true;
+}
+
+/* C ref: options.c unlocktypes[][2] (names only) */
+const unlocktypes = ["untrap", "apply-key", "kick", "force"];
+
+// C ref: options.c optfn_autounlock() (req == do_set; do_init sets
+// AUTOUNLOCK_APPLY_KEY, which lock.js uses when the option is unset)
+function optfn_autounlock(result, negated, op) {
+    /* autounlock:none or autounlock:untrap+apply-key+kick+force;
+       autounlock without a value is same as autounlock:apply-key and
+       !autounlock is same as autounlock:none */
+    if (!op) {
+        result.flags.autounlock = negated ? 0 : 2; /* AUTOUNLOCK_APPLY_KEY */
+        return true;
+    }
+    let newflags = 0;
+    const sep = op.includes('+') ? '+' : ' ';
+    for (let part of op.split(sep)) {
+        let matched = false;
+        part = part.trim();
+        if ("none".startsWith(part.toLowerCase()) && part.length)
+            negated = true, matched = true;
+        for (let i = 0; i < unlocktypes.length && !matched; ++i) {
+            /* str_start_is() or fuzzymatch(op, unlocktypes[i], " -_") */
+            const fuzzy = (s) => s.toLowerCase().replace(/[ \-_]/g, '');
+            if ((part.length && unlocktypes[i].startsWith(part.toLowerCase()))
+                || fuzzy(part) === fuzzy(unlocktypes[i])) {
+                matched = true;
+                switch (part[0].toLowerCase()) {
+                case 'u': newflags |= 1; break; /* AUTOUNLOCK_UNTRAP */
+                case 'a': newflags |= 2; break; /* AUTOUNLOCK_APPLY_KEY */
+                case 'k': newflags |= 4; break; /* AUTOUNLOCK_KICK */
+                case 'f': newflags |= 8; break; /* AUTOUNLOCK_FORCE */
+                default: matched = false; break;
+                }
+            }
+        }
+        if (!matched)
+            return false; /* config_error_add("Invalid value ...") */
+    }
+    if (negated && newflags !== 0)
+        return false; /* 'none' with some */
+    result.flags.autounlock = negated ? 0 : newflags;
+    return true;
+}
+
 // C ref: options.c optfn_playmode() (req == do_set)
 /* play mode: normal, explore/discovery, or debug/wizard;
    'wizard' is flags.debug and 'discover' is flags.explore (flag.h) */
@@ -222,6 +320,61 @@ export function set_playmode() {
     /* don't need to do anything special for normal play */
 }
 
+// C ref: options.c optfn_suppress_alert() (do_set) and
+// feature_alert_opts() -- the version (major.minor.patch) as
+// FEATURE_NOTICE_VER(); version.c get_feature_notice_ver()
+function optfn_suppress_alert(result, negated, op) {
+    if (negated) {
+        result.flags.suppress_alert = 0;
+        return true;
+    }
+    const v = (op || '').split('.').map(x => parseInt(x, 10));
+    if (v.length !== 3 || v.some(x => Number.isNaN(x)))
+        return false; /* get_feature_notice_ver() == 0L */
+    /* fnv > get_current_feature_ver(): future versions aren't checked */
+    result.flags.suppress_alert = (v[0] * 0x1000000) + (v[1] << 16) + (v[2] << 8);
+    return true;
+}
+
+// C ref: options.c optfn_msg_window() (do_set; PREV_MSGS)
+function optfn_msg_window(result, negated, op) {
+    if (negated)
+        return false; /* bad_negation() */
+    const tmp = (op || ' ')[0].toLowerCase();
+    if (tmp === ' ') {
+        /* (default) */
+        result.iflags.prevmsg_window = 's';
+    } else if ("scfr".includes(tmp)) {
+        result.iflags.prevmsg_window = tmp;
+    } else {
+        return false; /* config_error_add("Unknown %s parameter '%s'") */
+    }
+    return true;
+}
+
+// C ref: options.c optfn_runmode() (do_set)
+function optfn_runmode(result, negated, op) {
+    const str_start_is = (full, part) =>
+        part.length > 0 && full.toLowerCase().startsWith(part.toLowerCase());
+    if (negated) {
+        result.flags.runmode = 0; /* RUN_TPORT */
+    } else if (op) {
+        if (str_start_is("teleport", op))
+            result.flags.runmode = 0; /* RUN_TPORT */
+        else if (str_start_is("run", op))
+            result.flags.runmode = 1; /* RUN_LEAP */
+        else if (str_start_is("walk", op))
+            result.flags.runmode = 2; /* RUN_STEP */
+        else if (str_start_is("crawl", op))
+            result.flags.runmode = 3; /* RUN_CRAWL */
+        else
+            return false;
+    } else {
+        return false;
+    }
+    return true;
+}
+
 export function parseNethackrc(rc) {
     const result = {
         name: '', role: -1, race: -1, gender: -1, align: -1,
@@ -238,6 +391,18 @@ export function parseNethackrc(rc) {
     for (const rawLine of rc.split('\n')) {
         const line = rawLine.trim();
         if (!line || line.startsWith('#')) continue;
+
+        /* C ref: cfgfiles.c parse_config_line() -- BIND= (match_varname()
+           of "BINDINGS", at least 4 letters) goes to cnf_line_BINDINGS(),
+           i.e. parsebindings(), which the game start-up applies after
+           reset_commands(TRUE) */
+        const stmt = mungspaces(line).match(/^([A-Za-z_]+) ?[=:] ?(.*)$/);
+        if (stmt && stmt[1].length >= 4
+            && !strncmpi(stmt[1], "BINDINGS", stmt[1].length)) {
+            result.bindings = result.bindings || [];
+            result.bindings.push(stmt[2]);
+            continue;
+        }
 
         const optMatch = line.match(/^OPTIONS=(.+)/i);
         if (!optMatch) continue;
@@ -276,8 +441,12 @@ export function parseNethackrc(rc) {
                     else if (val === 'cat' || val === 'c') result.preferred_pet = 'c';
                 }
                 else if (key === 'symset') result.symset = val;
-                else if (key === 'suppress_alert') result.flags.suppress_alert = val;
-                else if (key === 'msg_window') result.iflags.prevmsg_window = val;
+                else if (key === 'autounlock') optfn_autounlock(result, negated, val);
+                else if (key === 'pickup_types') optfn_pickup_types(result, negated, val);
+                else if (key === 'suppress_alert') optfn_suppress_alert(result, negated, val);
+                else if (key === 'msg_window') optfn_msg_window(result, negated, val);
+                else if (key === 'runmode') optfn_runmode(result, negated, val);
+                else if (key === 'horsename') result.horsename = val; /* petname_optfn() */
                 else result.flags[key] = val;
             } else {
                 // Boolean flag
@@ -285,7 +454,6 @@ export function parseNethackrc(rc) {
                 const value = !negated;
 
                 if (lname === 'autopickup') result.flags.pickup = value;
-                else if (lname === 'color') result.flags.color = value;
                 else if (lname === 'legacy') result.flags.legacy = value;
                 else if (lname === 'tutorial') { result.flags.tutorial = value; result.tutorial_set = true; }
                 else if (lname === 'splash_screen') result.iflags.wc_splash_screen = value;
@@ -297,17 +465,209 @@ export function parseNethackrc(rc) {
                 else if (lname === 'safe_pet') result.flags.safe_dog = value;
                 else if (lname === 'autoopen') result.flags.autoopen = value;
                 else if (lname === 'mention_walls') result.flags.mention_walls = value;
+                else if (lname === 'autounlock') optfn_autounlock(result, negated, '');
                 // C ref: options.c boolean option case opt_female ("female",
                 // alias "male"); go.opt_initial is TRUE while reading the rc
                 else if (lname.length >= 3 && !strncmpi(lname, "female", Math.max(lname.length, 3)))
                     result.flags.initgend = result.flags.female = negated ? 0 : 1;
                 else if (lname.length >= 3 && !strncmpi(lname, "male", Math.max(lname.length, 3)))
                     result.flags.initgend = result.flags.female = negated ? 1 : 0;
-                else result.flags[lname] = value;
+                else {
+                    /* optfn_boolean(): *allopt[optidx].addr = !negated,
+                       for the option with this name or alias */
+                    const o = allopt.find(a => a.opttyp === BoolOpt
+                                          && (!strcmpi(lname, a.name)
+                                              || (a.alias && !strcmpi(lname, a.alias))));
+                    if (o && o.addr) {
+                        if (!result[o.addr[0]])
+                            result[o.addr[0]] = {};
+                        result[o.addr[0]][o.addr[1]] = value;
+                    } else if (!o) {
+                        result.flags[lname] = value;
+                    }
+                }
             }
         }
     }
     return result;
+}
+
+// C ref: options.c txt2key()
+function txt2key(txt) {
+    let uc;
+    let makemeta = false;
+    const C = (c) => (0x1f & c);
+    const M = (c) => (0x80 | c);
+
+    txt = txt.trim(); /* trimspaces() */
+    if (!txt)
+        return 0;
+
+    /* simple character */
+    if (txt.length === 1)
+        return txt.charCodeAt(0) & 0xff;
+
+    /* a few special entries */
+    if (txt === "<enter>")
+        return 0x0a;
+    if (txt === "<space>")
+        return 0x20;
+    if (txt === "<esc>")
+        return 0x1b;
+
+    /* handle things like \b and \7 and \mX */
+    if (txt[0] === '\\')
+        throw new Error('txt2key(): escapes() not ported yet');
+
+    /* control and meta keys */
+    if (txt[0].toUpperCase() === 'M') { /* highc() */
+        /*
+         * M <nothing>             return 'M'
+         * M - <nothing>           return M-'-'
+         * M <other><nothing>      return M-<other>
+         * otherwise M is pending until after ^/C- processing.
+         * Since trailing spaces are discarded, the only way to
+         * specify M-' ' is via "160".
+         */
+        if (txt.length === 1)
+            return txt.charCodeAt(0);
+        /* skip past 'M' or 'm' and maybe '-' */
+        txt = txt.slice(1);
+        if (txt[0] === '-' && txt.length > 1)
+            txt = txt.slice(1);
+        if (txt.length === 1)
+            return M(txt.charCodeAt(0)) & 0xff;
+        makemeta = true;
+    }
+    if (txt[0] === '^' || txt[0].toUpperCase() === 'C') {
+        /*
+         * C <nothing>             return 'C' or M-'C'
+         * C - <nothing>           return '-' or M-'-'
+         * C [-] <other><nothing>  return C-<other> or M-C-<other>
+         * C [-] ?                 return <rubout>
+         * otherwise return C-<other> or M-C-<other>
+         */
+        uc = txt.charCodeAt(0) & 0xff;
+        if (txt.length === 1)
+            return makemeta ? M(uc) : uc;
+        txt = txt.slice(1);
+        /* unlike M-x, lots of values of x are invalid for C-x;
+           checking and rejecting them is not worthwhile; GIGO;
+           we do accept "^-x" as synonym for "^x" or "C-x" */
+        if (txt[0] === '-' && txt.length > 1)
+            txt = txt.slice(1);
+        /* and accept ^?, which gets used despite not being a control char */
+        if (txt[0] === '?')
+            return makemeta ? 0o377 : 0o177; /* rubout/delete */
+        uc = C(txt.charCodeAt(0) & 0xff);
+        return makemeta ? M(uc) : uc;
+    }
+    if (makemeta && txt)
+        return M(txt.charCodeAt(0)) & 0xff;
+
+    /* ascii codes: must be three-digit decimal */
+    if (txt[0] >= '0' && txt[0] <= '9') {
+        let key = 0;
+
+        for (let i = 0; i < 3; i++) {
+            if (!(txt[i] >= '0' && txt[i] <= '9'))
+                return 0;
+            key = 10 * key + txt.charCodeAt(i) - 0x30;
+        }
+        return key & 0xff;
+    }
+
+    return 0;
+}
+
+// C ref: options.c parsebindings()
+/* parse key:command[,key2:command2,...] after BINDINGS= prefix has been
+   stripped; returns False if any problem seen, True if every binding in
+   the comma-separated list is successful */
+export function parsebindings(bindings) {
+    let bind;
+    let key;
+    let ret = true; /* assume success */
+    const mousebtn_names = [ "mouse1", "mouse2" ];
+
+    /* look for first comma, then decide whether it is the key being bound
+       or a list element separator; if it's a key, find separator beyond it */
+    if ((bind = bindings.indexOf(',')) >= 0) {
+        /* at start so it represents a key */
+        if (bind === 0)
+            bind = bindings.indexOf(',', bind + 1);
+
+        /* to get here, bind is not at the start, so bind[-1] is valid;
+           check whether current comma happens to be for "\,:cmd" or
+           "',':cmd" (":cmd" part is assumed if the comma has expected
+           quoting) */
+        else if (bindings[bind - 1] === '\\'
+                 || (bindings[bind - 1] === '\'' && bindings[bind + 1] === '\''))
+            bind = bindings.indexOf(',', bind + 2);
+    }
+    /* if a comma separator has been found, break off first binding from rest;
+       parse the rest and then handle this first one when recursion returns */
+    if (bind >= 0) {
+        const rest = bindings.slice(bind + 1);
+        bindings = bindings.slice(0, bind);
+        if (!parsebindings(rest))
+            ret = false;
+    }
+
+    /* parse a single binding: first split around : */
+    if ((bind = bindings.indexOf(':')) < 0)
+        return false; /* it's not a binding */
+    const cmd = bindings.slice(bind + 1).trim(); /* trimspaces() */
+    bindings = bindings.slice(0, bind);
+
+    for (let i = 0; i < mousebtn_names.length; i++)
+        if (bindings === mousebtn_names[i])
+            throw new Error('parsebindings(): bind_mousebtn() not ported yet');
+
+    /* read the key to be bound */
+    key = txt2key(bindings);
+    if (!key)
+        throw new Error('parsebindings(): config_error_add() not ported yet');
+
+    /* is it a special key? */
+    if (bind_specialkey(key, cmd))
+        throw new Error('parsebindings(): Cmd.spkeys[] not ported yet');
+
+    /* is it a menu command? */
+    if (default_menu_cmd_names.includes(cmd))
+        throw new Error('parsebindings(): add_menu_cmd_alias() not ported yet');
+
+    /* extended command? */
+    if (!bind_key(key, cmd, true))
+        throw new Error('parsebindings(): config_error_add() not ported yet');
+    return ret;
+}
+
+/* C ref: options.c default_menu_cmd_info[].name */
+const default_menu_cmd_names = [
+    "menu_next_page", "menu_previous_page", "menu_first_page",
+    "menu_last_page", "menu_select_all", "menu_invert_all",
+    "menu_deselect_all", "menu_select_page", "menu_invert_page",
+    "menu_deselect_page", "menu_search", "menu_shift_right",
+    "menu_shift_left",
+];
+
+/* C ref: cmd.c spkeys_binds[].name, bind_specialkey() -- whether the
+   command names a special key */
+function bind_specialkey(key, command) {
+    const spkeys_names = [
+        "getdir.self", "getdir.self2", "getdir.help", "getdir.mouse",
+        "count", "getpos.self", "getpos.pick", "getpos.pick.quick",
+        "getpos.pick.once", "getpos.pick.verbose", "getpos.valid",
+        "getpos.autodescribe", "getpos.mon.next", "getpos.mon.prev",
+        "getpos.obj.next", "getpos.obj.prev", "getpos.door.next",
+        "getpos.door.prev", "getpos.unexplored.next",
+        "getpos.unexplored.prev", "getpos.valid.next", "getpos.valid.prev",
+        "getpos.all.next", "getpos.all.prev", "getpos.help",
+        "getpos.filter", "getpos.moveskip", "getpos.menu",
+    ];
+    void key;
+    return spkeys_names.includes(command);
 }
 
 // C ref: files.c nh_basename()
@@ -361,4 +721,1299 @@ export async function ask_do_tutorial() {
         }
     }
     return dotut;
+}
+
+// C ref: options.c oc_to_str() -- object class numbers to their symbols
+export function oc_to_str(src) {
+    let dest = '';
+    for (const c of src || '')
+        dest += def_oc_syms[c.charCodeAt(0)];
+    return dest;
+}
+
+// C ref: options.c count_apes() -- ga.apelist, the autopickup exceptions
+// (no option ported so far adds any)
+function count_apes() {
+    let numapes = 0;
+    for (let ape = game.apelist; ape; ape = ape.next)
+        numapes++;
+    return numapes;
+}
+
+// C ref: options.c dotogglepickup() -- the '@' command
+export async function dotogglepickup() {
+    let buf;
+    const flags = game.flags;
+
+    flags.pickup = !flags.pickup;
+    if (flags.pickup) {
+        const ocl = oc_to_str(flags.pickup_types);
+        buf = `ON, for ${ocl ? ocl : "all"} objects${(game.apelist)
+                ? ((count_apes() === 1)
+                   ? ", with one exception"
+                   : ", with some exceptions")
+                : ""}`;
+    } else {
+        buf = "OFF";
+    }
+    await pline(`Autopickup: ${buf}.`);
+    return ECMD_OK;
+}
+
+/*
+ * The options menus: doset_simple() ('O'), doset() ('m O', #optionsfull)
+ * and what they need -- the per-option get_val/do_set/do_handler requests
+ * of the options shown, optfn_boolean() and parseoptions() for setting an
+ * option from the menu.
+ */
+
+/* C ref: patchlevel.h VERSION_MAJOR.VERSION_MINOR.PATCHLEVEL, as
+   version.c version_string() shows it */
+const VERSION_NUMBER = "5.0.0";
+
+/* C ref: options.c enum optn_result, enum requests */
+const optn_silenterr = -1, optn_err = 0, optn_ok = 1;
+const do_init = 1, do_set = 2, do_handler = 3, get_val = 4, get_cnf_val = 5;
+void do_init;
+
+/* C ref: options.c none[], randomrole[], to_be_done[], defopt[],
+   n_currently_set[] */
+const none = "(none)", randomrole = "random", to_be_done = "(to be done)";
+const n_currently_set = (n) => `(${n} currently set)`;
+
+/* C ref: options.c burdentype[], runmodes[], sortltype[], menutype[][0] */
+const burdentype = [
+    "unencumbered", "burdened", "stressed",
+    "strained", "overtaxed", "overloaded",
+];
+const runmodes = ["teleport", "run", "walk", "crawl"];
+const sortltype = ["none", "loot", "full"];
+const menutype = ["traditional", "combination", "full", "partial"];
+/* C ref: options.c objsymvals[].nam */
+const objsymvals = ["none", "headers", "entries", "both", "conditional",
+                    "one-or-other"];
+/* C ref: options.c paranoia[] (flagmask, argname), the entries
+   optfn_paranoid_confirmation() lists */
+const paranoia = [
+    [0x0001, "Confirm"],     /* PARANOID_CONFIRM */
+    [0x0002, "quit"],        /* PARANOID_QUIT */
+    [0x0004, "die"],         /* PARANOID_DIE */
+    [0x0008, "bones"],       /* PARANOID_BONES */
+    [0x0010, "attack"],      /* PARANOID_HIT */
+    [0x0080, "wand-break"],  /* PARANOID_BREAKWAND */
+    [0x0200, "eat"],         /* PARANOID_EATING */
+    [0x0100, "Were-change"], /* PARANOID_WERECHANGE */
+    [0x0020, "pray"],        /* PARANOID_PRAY */
+    [0x0800, "trap"],        /* PARANOID_TRAP */
+    [0x1000, "Autoall"],     /* PARANOID_AUTOALL */
+    [0x0400, "swim"],        /* PARANOID_SWIM */
+    [0x0040, "Remove"],      /* PARANOID_REMOVE */
+];
+/* C ref: decl.c disclosure_options[] */
+const disclosure_options = "iavgco";
+/* C ref: insight.c vanqorders[][0..1] */
+const vanqorders = [
+    ["t", "traditional: by monster level"],
+    ["d", "by monster difficulty rating"],
+    ["a", "alphabetically, first unique monsters, then others"],
+    ["A", "alphabetically, unique monsters and others intermixed"],
+    ["C", "by monster class, high to low level within class"],
+    ["c", "by monster class, low to high level within class"],
+    ["n", "by count, high to low"],
+    ["z", "by count, low to high"],
+];
+/* C ref: o_init.c disco_order_let[], disco_orders_descr[] */
+const disco_order_let = "osca";
+const disco_orders_descr = [
+    "by order of discovery within each class",
+    "sortloot order (by class with some sub-class groupings)",
+    "alphabetical within each class",
+    "alphabetical across all classes",
+];
+/* C ref: symbols.c known_handling[] */
+const known_handling = ["UNKNOWN", "IBM", "DEC", "CURS", "MAC", "UTF8"];
+/* C ref: coloratt.c attrnames[] (by the attr values terminal.js uses for
+   ATR_NONE and ATR_INVERSE) */
+function attr2attrname(attr) {
+    return (attr === ATR_INVERSE) ? "inverse"
+           : (attr === ATR_NONE) ? "none" : null;
+}
+/* C ref: coloratt.c clr2colorname() -- only no color is used here */
+function clr2colorname(clr) {
+    return (clr === NO_COLOR) ? "no color" : null;
+}
+
+/* C ref: options.c wc_options[], wc2_options[], tty_procs.wincap and
+   .wincap2 (WC_COLOR | WC_HILITE_PET | WC_INVERSE | WC_EIGHT_BIT_IN;
+   WC2_HILITE_STATUS | WC2_HITPOINTBAR | WC2_DARKGRAY | WC2_STATUSLINES
+   | WC2_PETATTR | WC2_EXTRASTATUS and others without options) as the
+   options they support */
+const wc_options = {
+    ascii_map: false, color: true, eight_bit_tty: true, hilite_pet: true,
+    perm_invent: false, perminv_mode: false, popup_dialog: false,
+    player_selection: false, preload_tiles: false, tiled_map: false,
+    tile_file: false, tile_width: false, tile_height: false,
+    align_message: false, align_status: false, font_map: false,
+    font_menu: false, font_message: false, font_size_map: false,
+    font_size_menu: false, font_size_message: false,
+    font_size_status: false, font_size_text: false, font_status: false,
+    font_text: false, map_mode: false, scroll_amount: false,
+    scroll_margin: false, splash_screen: false, use_inverse: true,
+    vary_msgcount: false, windowcolors: false, mouse_support: false,
+};
+const wc2_options = {
+    armorstatus: true, fullscreen: false, guicolor: false,
+    hilite_status: true, hitpointbar: true, menu_shift: false,
+    petattr: true, softkeyboard: false, "status hilite rules": true,
+    statushilites: true, statuslines: true, term_cols: false,
+    term_rows: false, terrainstatus: true, use_darkgray: true,
+    weaponstatus: true, windowborders: false, wraptext: false,
+};
+
+// C ref: options.c is_wc_option()
+function is_wc_option(optnam) {
+    return Object.hasOwn(wc_options, optnam);
+}
+
+// C ref: options.c wc_supported()
+function wc_supported(optnam) {
+    return Object.hasOwn(wc_options, optnam) ? wc_options[optnam] : false;
+}
+
+// C ref: options.c is_wc2_option()
+function is_wc2_option(optnam) {
+    return Object.hasOwn(wc2_options, optnam);
+}
+
+// C ref: options.c wc2_supported()
+function wc2_supported(optnam) {
+    return Object.hasOwn(wc2_options, optnam) ? wc2_options[optnam] : false;
+}
+
+/* the struct a boolean option's addr points into */
+function optaddr_struct(o) {
+    const s = o.addr[0];
+    if (s === 'uroleplay')
+        return game.u.uroleplay;
+    if (!game[s])
+        game[s] = {};
+    return game[s];
+}
+
+/* *allopt[i].addr */
+function boolopt_get(o) {
+    return !!optaddr_struct(o)[o.addr[1]];
+}
+
+/* *allopt[i].addr = val */
+function boolopt_set(o, val) {
+    optaddr_struct(o)[o.addr[1]] = val;
+}
+
+// C ref: options.c initoptions_init() -- the defaults set before the
+// config file is read: every boolean option's initval, and the compound
+// option values the options menus show; returned as the flags, iflags,
+// a11y and u.uroleplay fields to start the game with
+export function initoptions_init_defaults() {
+    const d = { flags: {}, iflags: {}, a11y: {}, uroleplay: {} };
+
+    for (const o of allopt)
+        if (o.addr)
+            d[o.addr[0]][o.addr[1]] = o.initval;
+
+    d.flags.end_own = false;
+    d.flags.end_top = 3;
+    d.flags.end_around = 2;
+    d.flags.paranoia_bits = PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP;
+    d.flags.versinfo = 1; /* no git branch */
+    d.flags.pile_limit = 5; /* PILE_LIMIT_DFLT */
+    d.flags.runmode = RUN_LEAP;
+    d.iflags.msg_history = 20;
+    d.iflags.prevmsg_window = 's';
+    d.iflags.menu_headings = { attr: ATR_INVERSE, color: NO_COLOR };
+    d.flags.pickup_types = '';
+    d.flags.pickup_burden = MOD_ENCUMBER;
+    d.flags.sortloot = 'l'; /* sort only loot by default */
+    d.flags.end_disclose = disclosure_options.split('').map(
+        () => DISCLOSE_PROMPT_DEFAULT_NO);
+    d.flags.menu_style = MENU_FULL;
+    d.iflags.wc2_statuslines = 2;
+    d.iflags.wc2_petattr = ATR_INVERSE;
+    d.iflags.menuinvertmode = 1;
+    /* allopt_array_init(): the do_init requests */
+    d.flags.autounlock = 2; /* AUTOUNLOCK_APPLY_KEY */
+    d.iflags.menuobjsyms = 4; /* "conditional" */
+    d.flags.discosort = 'o';
+    d.flags.vanq_sortmode = 0; /* VANQ_MLVL_MNDX */
+    return d;
+}
+
+// C ref: options.c count_cond()
+function count_cond() {
+    let cnt = 0;
+    for (const ct of condtests)
+        if (ct.enabled)
+            cnt++;
+    return cnt;
+}
+
+// C ref: options.c optfn_*() get_val requests for the options shown in
+// the options menus; returns the value string, or null for optn_err
+function opt_get_val(o, req) {
+    const flags = game.flags, iflags = game.iflags;
+    const rolestring = (val, array, field) =>
+        ((val >= 0) ? field(array[val]) : (val === ROLE_RANDOM) ? randomrole : none);
+
+    switch (o.optfn) {
+    case "optfn_windowtype":
+        return "tty"; /* windowprocs.name */
+    case "optfn_playmode":
+        return flags.debug ? "debug" : flags.explore ? "explore" : "normal";
+    case "optfn_name":
+        return game.plname;
+    case "optfn_role":
+        return rolestring(flags.initrole, roles, r => r.name.m);
+    case "optfn_race":
+        return rolestring(flags.initrace, races, r => r.noun);
+    case "optfn_gender":
+        return rolestring(flags.initgend, genders, r => r.adj);
+    case "optfn_alignment":
+        return rolestring(flags.initalign, aligns, r => r.adj);
+    case "optfn_catname":
+    case "optfn_dogname":
+    case "optfn_horsename": { /* petname_optfn() */
+        const petname = (o.optfn === "optfn_catname") ? game.catname
+                        : (o.optfn === "optfn_dogname") ? game.dogname
+                          : game.horsename;
+        return petname ? petname : (req === get_cnf_val) ? "none" : none;
+    }
+    case "optfn_msghistory":
+        return `${iflags.msg_history}`;
+    case "optfn_pettype":
+        return (game.preferred_pet === 'c') ? "cat"
+               : (game.preferred_pet === 'd') ? "dog"
+                 : (game.preferred_pet === 'h') ? "horse"
+                   : (game.preferred_pet === 'n') ? "none"
+                     : "random";
+    case "optfn_soundlib":
+        return "nosound"; /* get_soundlib_name(): no soundlib */
+    case "optfn_autounlock": {
+        if (!flags.autounlock)
+            return "none";
+        const plus = " + ";
+        let p = "", opts = "";
+        if (flags.autounlock & 1) /* AUTOUNLOCK_UNTRAP */
+            opts += p + unlocktypes[0], p = plus;
+        if (flags.autounlock & 2) /* AUTOUNLOCK_APPLY_KEY */
+            opts += p + unlocktypes[1], p = plus;
+        if (flags.autounlock & 4) /* AUTOUNLOCK_KICK */
+            opts += p + unlocktypes[2], p = plus;
+        if (flags.autounlock & 8) /* AUTOUNLOCK_FORCE */
+            opts += p + unlocktypes[3]; /*no more p*/
+        return opts;
+    }
+    case "optfn_boulder":
+        /* go.ov_primary_syms[SYM_BOULDER]: no S_boulder override, so
+           the rock class symbol */
+        return def_oc_syms[ROCK_CLASS];
+    case "optfn_crash_email":
+        return game.crash_email || '';
+    case "optfn_crash_name":
+        return game.crash_name || '';
+    case "optfn_crash_urlmax":
+        return `${game.crash_urlmax ?? -1}`;
+    case "optfn_disclose": {
+        let opts = '';
+        for (let i = 0; i < disclosure_options.length; i++) {
+            if (i)
+                opts += ' ';
+            opts += flags.end_disclose[i];
+            opts += disclosure_options[i];
+        }
+        return opts;
+    }
+    case "optfn_fruit":
+        return game.pl_fruit;
+    case "optfn_glyph":
+        return to_be_done;
+    case "optfn_hilite_status":
+        /* count_status_hilites(): no status highlight rules */
+        return (req === get_val) ? none : '';
+    case "optfn_menu_headings": {
+        const ca_buf = `${clr2colorname(iflags.menu_headings.color)}&${attr2attrname(iflags.menu_headings.attr)}`;
+        /* change "no color" to "no-color" or "light blue" to "light-blue" */
+        return ca_buf.replace(/ /g, "-");
+    }
+    case "optfn_menu_objsyms":
+        return objsymvals[iflags.menuobjsyms];
+    case "optfn_menuinvertmode":
+        return `${iflags.menuinvertmode}`;
+    case "optfn_menustyle":
+        return menutype[flags.menu_style];
+    case "optfn_msg_window": {
+        const tmp = iflags.prevmsg_window;
+        return (tmp === 's') ? "single"
+               : (tmp === 'c') ? "combination"
+                 : (tmp === 'f') ? "full"
+                   : "reversed";
+    }
+    case "optfn_number_pad":
+        /* gc.Cmd.num_pad is off (number_pad isn't settable yet) */
+        return (req === get_val) ? "0=off" : "0";
+    case "optfn_packorder":
+        return oc_to_str(def_inv_order.map(c => String.fromCharCode(c)).join(''));
+    case "optfn_paranoid_confirmation": {
+        let tmpbuf = '';
+        for (const [flagmask, argname] of paranoia) {
+            if ((flags.paranoia_bits & flagmask) !== 0
+                /* hide paranoid_confirm:bones during play except for wizard
+                   mode; keep it for any mode if rewriting the config file */
+                && (flagmask !== 0x0008 /* PARANOID_BONES */
+                    || flags.debug || req === get_cnf_val))
+                tmpbuf += ` ${argname}`;
+        }
+        return tmpbuf ? tmpbuf.slice(1) : "none";
+    }
+    case "optfn_petattr":
+        return attr2attrname(iflags.wc2_petattr);
+    case "optfn_pickup_burden":
+        return burdentype[flags.pickup_burden];
+    case "optfn_pickup_types": {
+        const ocl = oc_to_str(flags.pickup_types);
+        return ocl ? ocl : "all";
+    }
+    case "optfn_pile_limit":
+        return `${flags.pile_limit}`;
+    case "optfn_roguesymset":
+        /* gs.symset[ROGUESET].name: no rogue symset loaded */
+        return "default";
+    case "optfn_runmode":
+        return runmodes[flags.runmode];
+    case "optfn_scores": {
+        let opts = '';
+        if (flags.end_top > 0)
+            opts += `${flags.end_top} top`;
+        if (flags.end_around > 0)
+            opts += `${(flags.end_top > 0) ? "/" : ""}${flags.end_around} around`;
+        if (flags.end_own)
+            opts += `${(flags.end_top > 0 || flags.end_around > 0) ? "/" : ""}own`;
+        return opts || "none";
+    }
+    case "optfn_sortdiscoveries": { /* get_sortdisco() */
+        let p = disco_order_let.indexOf(flags.discosort);
+        if (p < 0)
+            flags.discosort = 'o', p = 0;
+        return (req === get_cnf_val) ? flags.discosort : disco_orders_descr[p];
+    }
+    case "optfn_sortloot":
+        for (const s of sortltype)
+            if (flags.sortloot === s[0])
+                return s;
+        return '';
+    case "optfn_sortvanquished":
+        return vanqorders[flags.vanq_sortmode][0]
+               + ((req === get_val) ? `: ${vanqorders[flags.vanq_sortmode][1]}` : '');
+    case "optfn_statushilites":
+        return !iflags.hilite_delta
+               ? "0 (off: don't highlight status fields)"
+               : `${iflags.hilite_delta} (on: highlight status for ${iflags.hilite_delta} turns)`;
+    case "optfn_statuslines":
+        return wc2_supported(o.name)
+               ? ((iflags.wc2_statuslines < 3) ? "2" : "3") : "unknown";
+    case "optfn_suppress_alert": {
+        const fnv = flags.suppress_alert;
+        if (req === get_cnf_val && !fnv)
+            return '';
+        else if (!fnv)
+            return none;
+        return `${Math.floor(fnv / 0x1000000)}.${(fnv >> 16) & 0xff}.${(fnv >> 8) & 0xff}`;
+    }
+    case "optfn_symset": {
+        /* gs.symset[PRIMARYSET]: the DECgraphics symset is the only one
+           loaded so far (its name and handling from dat/symbols) */
+        const dec = /^decgraphics$/i.test(game.symset_name || '');
+        let opts = dec ? "DECgraphics" : "default";
+        if (dec) /* gc.currentgraphics == PRIMARYSET */
+            opts += ", active";
+        if (dec) /* gs.symset[PRIMARYSET].handling == H_DEC */
+            opts += `, handler=${known_handling[2]}`;
+        return opts;
+    }
+    case "optfn_versinfo": {
+        const vi = flags.versinfo;
+        const g = (vi & 2) !== 0,  /* VI_NAME */
+            b = (vi & 4) !== 0,    /* VI_BRANCH */
+            n = (vi & 1) !== 0;    /* VI_NUMBER */
+
+        /* status_version(): only the version number is ported */
+        if (g || b)
+            throw new Error('optfn_versinfo(): status_version() name/branch not ported yet');
+        return `${vi}: ${g ? "name" : ""}${(b && g) ? "+" : ""}${b ? "branch" : ""}${(n && (b || g)) ? "+" : ""}${n ? "number" : ""} (${n ? VERSION_NUMBER : ""})`;
+    }
+    case "optfn_whatis_coord":
+        return (iflags.getpos_coords === 'm') ? "map"
+               : (iflags.getpos_coords === 'c') ? "compass"
+                 : (iflags.getpos_coords === 'f') ? "full compass"
+                   : (iflags.getpos_coords === 's') ? "screen"
+                     : "none";
+    case "optfn_whatis_filter":
+        return (iflags.getloc_filter === 1) ? "view"
+               : (iflags.getloc_filter === 2) ? "area"
+                 : "none";
+    case "optfn_o_autocomplete":
+        return n_currently_set(0); /* count_autocompletions() */
+    case "optfn_o_autopickup_exceptions":
+        return n_currently_set(count_apes());
+    case "optfn_o_bind_keys":
+        return n_currently_set(count_bind_keys());
+    case "optfn_o_menu_colors":
+        return n_currently_set(0); /* count_menucolors() */
+    case "optfn_o_message_types":
+        return n_currently_set(0); /* msgtype_count() */
+    case "optfn_o_status_cond":
+        return (req === get_val) ? n_currently_set(count_cond()) : null;
+    case "optfn_o_status_hilites":
+        return n_currently_set(0); /* count_status_hilites() */
+    case "optfn_boolean":
+        return '';
+    default:
+        throw new Error(`${o.optfn}(): get_val not ported yet`);
+    }
+}
+
+// C ref: (*allopt[i].optfn)(allopt[i].idx, get_val, FALSE, buf, empty_optstr)
+// -- returns [reslt, buf]
+function optfn_get_val(o, req = get_val) {
+    const v = opt_get_val(o, req);
+    return (v === null) ? [optn_err, ''] : [optn_ok, v];
+}
+
+// C ref: options.c longest_option_name()
+function longest_option_name(startpass, endpass) {
+    /* spin through the options to find the longest name */
+    let longest_name_len = 0;
+
+    for (let pass = 0; pass < 2; pass++)
+        for (const o of allopt) {
+            const name = o.name;
+            if (pass === 0 && (o.opttyp !== BoolOpt || !o.addr))
+                continue;
+            const optflags = o.setwhere;
+            if (optflags < startpass || optflags > endpass)
+                continue;
+            if ((is_wc_option(name) && !wc_supported(name))
+                || (is_wc2_option(name) && !wc2_supported(name)))
+                continue;
+
+            if (name.length > longest_name_len)
+                longest_name_len = name.length;
+        }
+    return longest_name_len;
+}
+
+// C ref: options.c doset_simple_menu() -- guts of doset_simple(); called
+// repeatedly until no choice is made
+async function doset_simple_menu() {
+    /* unlike doset()'s fmtstr, there is no leading %s for indentation */
+    let fmtstr;
+    let buf, abuf;
+    let tmpwin;
+    let any;
+    let k, pick_cnt, reslt;
+    let toggled_help = false;
+
+    /* we do this each time we're called instead of once in doset_simple()
+       in case 'menu_tab_sep' ever gets included in the simple menu so
+       becomes subject to being changed while doset_simple() is running */
+    if (!game.iflags.menu_tab_sep) {
+        const w = longest_option_name(set_gameview, set_in_game);
+        fmtstr = (name, val) => `${name.padEnd(w)} [${val}]`;
+    } else {
+        fmtstr = (name, val) => `${name}\t[${val}]`;
+    }
+
+    for (;;) { /* redo_opt_help: */
+        tmpwin = tty_create_nhwindow(NHW_MENU);
+        tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+
+        /* when showing 'help', also describe how to run full doset() */
+        if (game.simple_options_help) {
+            /* we could look up whether #optionsfull has been bound to a key
+               and show that, or whether #reqmenu and #options are both still
+               bound to keys and show those, but if meta keys are involved
+               the player might not know how to type them; keep this simple */
+            buf = "Use command '#optionsfull' to get the complete options list.";
+            add_menu_str(tmpwin, buf);
+        }
+        any = -2 + 1;
+        tty_add_menu(tmpwin, null, any, '?', 0, ATR_NONE, NO_COLOR,
+                     game.simple_options_help ? "hide help" : "show help",
+                     MENU_ITEMFLAGS_NONE);
+
+        for (let section = OptS_General; section < OptS_Advanced; section++) {
+            add_menu_str(tmpwin, "");
+            buf = ` ${OptS_type[section].padEnd(30)} `;
+            add_menu_heading(tmpwin, buf);
+            for (let i = 0; i < allopt.length; i++) {
+                const o = allopt[i];
+                let name = o.name;
+                if (o.section !== section)
+                    continue;
+                if ((is_wc_option(name) && !wc_supported(name))
+                    || (is_wc2_option(name) && !wc2_supported(name)))
+                    continue;
+
+                any = i + 1;
+                switch (o.opttyp) {
+                case BoolOpt:
+                    if (!o.addr)
+                        continue;
+                    if (game.iflags.wc_tiled_map && o.name === "color")
+                        continue;
+                    buf = fmtstr(name, boolopt_get(o) ? "X" : " ");
+                    break;
+                case CompOpt:
+                case OthrOpt: {
+                    k = i;
+                    if (o.optfn === "optfn_symset" && Is_rogue_level(game.u.uz))
+                        throw new Error('doset_simple_menu(): roguesymset not ported yet');
+
+                    let buf2 = '';
+                    reslt = optn_err;
+                    if (allopt[k].optfn)
+                        [reslt, buf2] = optfn_get_val(allopt[k]);
+                    buf = fmtstr(name, ((reslt === optn_ok && buf2) ? buf2 : "unknown"));
+                    break;
+                }
+                default:
+                    buf = "ERROR";
+                    break;
+                }
+                /* pickup_types is separated from autopickup due to the
+                   spelling of their names; emphasize what it means */
+                if (o.name === "pickup_types" || o.name === "pickup_thrown"
+                    || o.name === "pickup_stolen" || o.name === "dropped_nopick")
+                    buf += "  (for autopickup)";
+                tty_add_menu(tmpwin, null, any, 0, 0,
+                             ATR_NONE, NO_COLOR, buf, MENU_ITEMFLAGS_NONE);
+                if (game.simple_options_help && o.descr) {
+                    buf = `    ${o.descr}`;
+                    add_menu_str(tmpwin, buf);
+                    add_menu_str(tmpwin, "");
+                }
+            }
+        }
+        tty_end_menu(tmpwin, "Options");
+
+        game.opt_need_redraw = false;
+        game.opt_need_glyph_reset = false;
+        game.opt_reset_customcolors = false;
+        game.opt_reset_customsymbols = false;
+        game.opt_update_basic_palette = false;
+        let pick_list;
+        ({ n: pick_cnt, selected: pick_list } = await tty_select_menu(tmpwin, PICK_ONE));
+        /* note:  without the complication of a preselected entry, a PICK_ONE
+           menu returning pick_cnt > 0 implies exactly 1 */
+        if (pick_cnt > 0) {
+            k = pick_list[0].item - 1;
+
+            abuf = '';
+            if (k === -2) {
+                game.simple_options_help = !game.simple_options_help;
+                toggled_help = true;
+            } else if (allopt[k].opttyp === BoolOpt) {
+                /* boolean option */
+                buf = `${boolopt_get(allopt[k]) ? "!" : ""}${allopt[k].name}`;
+                await parseoptions(buf, false, false);
+            } else {
+                /* compound option */
+                if (allopt[k].has_handler && allopt[k].optfn) {
+                    reslt = await optfn_do_handler(allopt[k]);
+                    /* if player eventually saves options, include this one */
+                } else {
+                    buf = `Set ${allopt[k].name} to what?`;
+                    abuf = await tty_getlin(buf);
+                    if (abuf[0] !== '\x1b') { /* ESC */
+                        buf = `${allopt[k].name}:${abuf}`;
+                        /* pass the buck */
+                        await parseoptions(buf, false, false);
+                    }
+                    /* Note: using ESC to not set a new value will still return
+                       'picked 1' to caller which will loop for another choice */
+                }
+            }
+            if (k >= 0 && abuf[0] !== '\x1b'
+                && (wc_supported(allopt[k].name)
+                    || wc2_supported(allopt[k].name)))
+                preference_update(allopt[k].name);
+        }
+        /* tear down this instance of the menu; if pick_cnt is 1, caller
+           will immediately call us back to put up another instance */
+        await tty_destroy_nhwindow(tmpwin);
+
+        if (toggled_help) {
+            toggled_help = false;
+            continue; /* goto redo_opt_help */
+        }
+        break;
+    }
+
+    return pick_cnt;
+}
+
+/* C ref: options.c OptS_type[] */
+const OptS_type = ["General", "Behavior", "Map", "Status", "Advanced"];
+
+// C ref: options.c doset_simple() -- #options - the user friendly
+// version:  get one option from a subset of the zillion choices, act upon
+// it, and prompt for another
+export async function doset_simple() {
+    let pickedone = 0;
+    let flush = false;
+
+    if (game.iflags.menu_requested) {
+        /* doset() checks for 'm' and calls doset_simple(); clear the
+           menu-requested flag to avoid doing that recursively */
+        game.iflags.menu_requested = false;
+        return await doset();
+    }
+
+    game.opt_phase = 'play_opt';
+    /* select and change one option at a time, then reprocess the menu
+       with updated settings to offer chance for further change */
+    game.give_opt_msg = false;
+    do {
+        pickedone = await doset_simple_menu();
+        flush = game.opt_need_redraw;
+
+        await reset_needed_visuals();
+        if (flush) {
+            await flush_screen(1);
+            flush = false;
+        }
+    } while (pickedone > 0);
+    game.give_opt_msg = true;
+    return ECMD_OK;
+}
+
+// C ref: options.c term_for_boolean()
+function term_for_boolean(o, b) {
+    const f_t = b ? 1 : 0;
+    const booleanterms = [
+        ["false", "off", "disabled", "excluded from build"],
+        ["true", "on", "enabled", "included"],
+    ];
+
+    let boolean_term = booleanterms[f_t][0];
+    const i = o.termpref;
+    if (i > Term_False && i < num_terms && i < booleanterms[0].length)
+        boolean_term = booleanterms[f_t][i];
+    return boolean_term;
+}
+
+// C ref: options.c doset() -- the #optionsfull command (changing options
+// via menu by Per Liboriussen)
+export async function doset() {
+    let buf;
+    let pick_cnt, opt_indx;
+    let tmpwin;
+    let any;
+    let fmtstr_doset;
+    let gavehelp = false, skiphelp = (game.iflags.cmdassist === false);
+    const HELP_IDX = allopt.length; /* SIZE(allopt) */
+    const clr = NO_COLOR;
+    const wizard = !!game.flags.debug;
+
+    if (game.iflags.menu_requested) {
+        /* doset_simple() checks for 'm' and calls doset(); clear the
+           menu-requested flag to avoid doing that recursively */
+        game.iflags.menu_requested = false;
+        return await doset_simple();
+    }
+
+    game.opt_phase = 'play_opt';
+    /* if we offer '?' as a choice and it is the only thing chosen,
+       we'll end up coming back here after showing the explanatory text */
+    for (;;) { /* rerun: */
+        tmpwin = tty_create_nhwindow(NHW_MENU);
+        tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+
+        /* offer novices a chance to request helpful [sic] advice */
+        if (!skiphelp) {
+            /* help text surrounding '?' choice should have exactly one NULL */
+            const helptext = [
+                "For a brief explanation of how this works, type '?' to select",
+                "the next menu choice, then press <enter> or <return>.",
+                null, /* actual '?' menu entry gets inserted here */
+                "[To suppress this menu help, toggle off the 'cmdassist' option.]",
+                "",
+            ];
+            for (const ht of helptext) {
+                if (ht !== null) {
+                    buf = `    ${ht.slice(0, 75)}`;
+                    add_menu_str(tmpwin, buf);
+                } else {
+                    any = HELP_IDX + 1; /* handling pick_list subtracts 1 */
+                    tty_add_menu(tmpwin, null, any, '?', '?', ATR_NONE,
+                                 clr, "view help for options menu",
+                                 MENU_ITEMFLAGS_SKIPINVERT);
+                }
+            }
+        }
+
+        const startpass = set_gameview;
+        const endpass = wizard ? set_wiznofuz : set_in_game;
+
+        if (!game.iflags.menu_tab_sep) {
+            /* initial "%s" is for indentation of non-selectable items */
+            const w = longest_option_name(startpass, endpass);
+            fmtstr_doset = (indent, name, val) => `${indent}${name.padEnd(w)} [${val}]`;
+        } else {
+            fmtstr_doset = (indent, name, val) => `${indent}${name}\t[${val}]`;
+        }
+
+        const indexoffset = 1;
+        add_menu_heading(tmpwin, "Booleans (selecting will toggle value):");
+        /* first list any other non-modifiable booleans, then modifiable ones */
+        for (let pass = 0; pass <= 1; pass++)
+            for (let i = 0; i < allopt.length; i++) {
+                const o = allopt[i], name = o.name;
+                if (o.opttyp === BoolOpt && o.addr
+                    && ((o.setwhere <= set_gameview && pass === 0)
+                        || (o.setwhere >= set_in_game && pass === 1))) {
+                    if (o.addr[0] === 'flags' && o.addr[1] === 'female')
+                        continue; /* obsolete */
+                    if (o.setwhere === set_wizonly && !wizard)
+                        continue;
+                    if (o.setwhere === set_wiznofuz
+                        && (!wizard || game.iflags.debug_fuzzer))
+                        continue;
+                    if ((is_wc_option(name) && !wc_supported(name))
+                        || (is_wc2_option(name) && !wc2_supported(name)))
+                        continue;
+
+                    any = (pass === 0) ? 0 : i + 1 + indexoffset;
+                    const indent = (pass === 0 && !game.iflags.menu_tab_sep) ? "    " : "";
+                    buf = fmtstr_doset(indent, name, term_for_boolean(o, boolopt_get(o)));
+                    /* if (pass == 0) enhance_menu_text(): adds nothing */
+                    tty_add_menu(tmpwin, null, any, 0, 0,
+                                 ATR_NONE, clr, buf, MENU_ITEMFLAGS_SKIPINVERT);
+                }
+            }
+
+        add_menu_str(tmpwin, "");
+        add_menu_heading(tmpwin,
+                         "Compounds (selecting will prompt for new value):");
+
+        for (let pass = startpass; pass <= endpass; pass++)
+            for (let i = 0; i < allopt.length; i++) {
+                const o = allopt[i], name = o.name;
+                if (o.opttyp !== CompOpt)
+                    continue;
+                if (o.setwhere === pass) {
+                    if ((is_wc_option(name) && !wc_supported(name))
+                        || (is_wc2_option(name) && !wc2_supported(name)))
+                        continue;
+
+                    doset_add_menu(tmpwin, name, fmtstr_doset, i,
+                                   (pass === set_gameview) ? 0 : indexoffset);
+                }
+            }
+
+        add_menu_str(tmpwin, "");
+        add_menu_heading(tmpwin, "Other settings:");
+
+        for (let pass = startpass; pass <= endpass; pass++)
+            for (let i = 0; i < allopt.length; i++) {
+                const o = allopt[i], name = o.name;
+                if (o.opttyp !== OthrOpt)
+                    continue;
+                if (o.setwhere === pass) {
+                    if ((is_wc_option(name) && !wc_supported(name))
+                        || (is_wc2_option(name) && !wc2_supported(name)))
+                        continue;
+
+                    doset_add_menu(tmpwin, name, fmtstr_doset, i,
+                                   (pass === set_gameview) ? 0 : indexoffset);
+                }
+            }
+
+        /* PREFIXES_IN_USE isn't defined: no "Variable playground locations" */
+        tty_end_menu(tmpwin, "Set what options?");
+        game.opt_need_redraw = false;
+        game.opt_need_glyph_reset = false;
+
+        let pick_list;
+        ({ n: pick_cnt, selected: pick_list } = await tty_select_menu(tmpwin, PICK_ANY));
+        if (pick_cnt > 0) {
+            /*
+             * Walk down the selection list and either invert the booleans
+             * or prompt for new values. In most cases, call parseoptions()
+             * to take care of options that require special attention, like
+             * redraws.
+             */
+            for (let pick_idx = 0; pick_idx < pick_cnt; ++pick_idx) {
+                opt_indx = pick_list[pick_idx].item - 1;
+                if (opt_indx === HELP_IDX) {
+                    throw new Error('doset(): display_file(OPTMENUHELP) not ported yet');
+                }
+                if (opt_indx < -1)
+                    opt_indx++; /* -1 offset for select_menu() */
+                opt_indx -= indexoffset;
+                const o = allopt[opt_indx];
+                if (o.opttyp === BoolOpt) {
+                    /* boolean option */
+                    buf = `${boolopt_get(o) ? "!" : ""}${o.name}`;
+                    await parseoptions(buf, false, false);
+                } else {
+                    /* compound option */
+                    if (o.has_handler && o.optfn) {
+                        await optfn_do_handler(o);
+                        /* if player eventually saves options, include this one */
+                    } else {
+                        buf = `Set ${o.name} to what?`;
+                        const abuf = await tty_getlin(buf);
+                        if (abuf[0] === '\x1b')
+                            continue;
+                        buf = `${o.name}:${abuf}`;
+                        /* pass the buck */
+                        await parseoptions(buf, false, false);
+                    }
+                }
+                if (wc_supported(o.name) || wc2_supported(o.name))
+                    preference_update(o.name);
+            }
+        }
+
+        await tty_destroy_nhwindow(tmpwin);
+
+        if (pick_cnt === 1 && gavehelp) {
+            /* when '?' is only the thing selected, go back and pick all
+               over again without it as an available choice second time */
+            skiphelp = true;
+            gavehelp = false; /* currently True; reset for second pass */
+            continue; /* goto rerun */
+        }
+        break;
+    }
+
+    await reset_needed_visuals();
+    return ECMD_OK;
+}
+
+// C ref: options.c reset_needed_visuals()
+async function reset_needed_visuals() {
+    if (game.opt_need_glyph_reset) {
+        /* reset_glyphmap(gm_optionchange): the JS map has no glyph map
+           cache; the redraw below maps the glyphs afresh */
+    }
+    if (game.opt_reset_customcolors || game.opt_update_basic_palette
+        || game.opt_reset_customsymbols || game.opt_need_redraw) {
+        if (game.opt_update_basic_palette) {
+            /* change_palette(): CHANGE_COLOR isn't defined */
+            game.opt_update_basic_palette = false;
+        }
+        /* reset_customcolors(), reset_customsymbols(): no custom colors
+           or symbols are set */
+        if (game.opt_need_redraw) {
+            /* check_gold_symbol(); reglyph_darkroom(): nothing to redo
+               with the symsets ported so far */
+        }
+        await docrt();
+    }
+    /* go.opt_need_promptstyle: adjust_menu_promptstyle() is a no-op for
+       tty */
+    if (game.disp_botl || game.disp_botlx) {
+        bot();
+    }
+    game.opt_need_redraw = false;
+    game.opt_need_glyph_reset = false;
+    game.opt_reset_customcolors = false;
+    game.opt_reset_customsymbols = false;
+    game.opt_update_basic_palette = false;
+}
+
+// C ref: options.c doset_add_menu() -- doset(#optionsfull command) menu
+// entries for compound options
+function doset_add_menu(win, option, fmtstr, idx, indexoffset) {
+    let value = "unknown"; /* current value */
+    let any;
+    let i = idx, reslt = optn_err;
+    let buf2 = ''; /* per opt functs may not guarantee this, so do it */
+    const clr = NO_COLOR;
+
+    if (i >= 0 && i < allopt.length && allopt[i].name && allopt[i].optfn) {
+        any = (indexoffset === 0) ? 0 : i + 1 + indexoffset;
+        [reslt, buf2] = optfn_get_val(allopt[i]);
+        if (reslt === optn_ok && buf2)
+            value = buf2;
+    } else {
+        /* We are trying to add an option not found in allopt[].
+           This is almost certainly bad, but we'll let it through anyway
+           (with a zero value, so it can't be selected). */
+        any = 0;
+        if (!buf2)
+            buf2 = "unknown";
+        value = buf2;
+    }
+
+    /* "    " replaces "a - " -- assumes menus follow that style */
+    const indent = !any ? "    " : "";
+    const buf = fmtstr(indent, option, value);
+    tty_add_menu(win, null, any, 0, 0,
+                 ATR_NONE, clr, buf, MENU_ITEMFLAGS_SKIPINVERT);
+}
+
+// C ref: options.c (*allopt[k].optfn)(allopt[k].idx, do_handler, ...) --
+// the handlers of the compound options ported so far
+async function optfn_do_handler(o) {
+    switch (o.optfn) {
+    case "optfn_pickup_types":
+        return await handler_pickup_types();
+    default:
+        throw new Error(`${o.optfn}(): do_handler not ported yet`);
+    }
+}
+
+// C ref: options.c handler_pickup_types()
+async function handler_pickup_types() {
+    /* parseoptions will prompt for the list of types */
+    await parseoptions("pickup_types", false, false);
+    return optn_ok;
+}
+
+// C ref: windows.c preference_update() -> tty_preference_update(): only
+// "statuslines" does anything for tty
+function preference_update(pref) {
+    if (pref === "statuslines" && game.iflags.window_inited)
+        throw new Error('tty_preference_update(): statuslines not ported yet');
+}
+
+// C ref: options.c parseoptions() -- the in-game call from the options
+// menus (tinitial and tfrom_file are FALSE): one option, by its full name
+async function parseoptions(opts, tinitial, tfrom_file) {
+    let negated = false;
+    let matchidx = -1, optresult = optn_err;
+
+    game.opt_initial = tinitial;
+    game.opt_from_file = tfrom_file;
+    if (tinitial)
+        throw new Error('parseoptions(): config file options are read by parseNethackrc()');
+
+    /* strip leading and trailing white space */
+    opts = opts.trim();
+    while (opts[0] === '!' || !strncmpi(opts, "no", 2)) {
+        opts = opts.slice((opts[0] === '!') ? 1 : (opts[2] !== '-') ? 2 : 3);
+        negated = !negated;
+    }
+    const colon = opts.search(/[:=]/);
+    const optname = (colon >= 0) ? opts.slice(0, colon) : opts;
+
+    /* match_optname() with the full option name */
+    for (let i = 0; i < allopt.length; ++i)
+        if (!allopt[i].pfx && !strcmpi(optname, allopt[i].name)) {
+            matchidx = i;
+            break;
+        }
+    if (matchidx < 0)
+        throw new Error(`parseoptions(): option '${optname}' not ported yet`);
+
+    const o = allopt[matchidx];
+    /* check for bad negation, so option functions don't have to */
+    if (negated && !o.negateok)
+        throw new Error('parseoptions(): bad_negation() not ported yet');
+
+    /*
+     * Now call the option's associated function via the function
+     * pointer for it in the allopt[] array, specifying a 'do_set' req.
+     */
+    const op = (colon >= 0) ? opts.slice(colon + 1).trim() : null; /* string_for_opt() */
+    if (o.opttyp === BoolOpt)
+        optresult = await optfn_boolean(o, do_set, negated, opts, op);
+    else if (o.optfn === "optfn_pickup_types")
+        optresult = await optfn_pickup_types_set(o, negated, opts, op);
+    else
+        throw new Error(`${o.optfn}(): do_set not ported yet`);
+
+    return optresult === optn_ok;
+}
+
+// C ref: options.c optfn_boolean() -- do_set, from the options menus
+async function optfn_boolean(o, req, negated, opts, op) {
+    if (req !== do_set)
+        return optn_ok;
+
+    if (!o.addr)
+        return optn_ok; /* silent retreat */
+
+    /* option that must come from config file? */
+    if (!game.opt_initial && (o.setwhere === set_in_config))
+        return optn_err;
+
+    if (op) {
+        throw new Error('optfn_boolean(): a value for a boolean not ported yet');
+    }
+    /* Before the change */
+    if (o.name === "female")
+        throw new Error('optfn_boolean(): female in game not ported yet');
+    if (o.name === "perm_invent" && !negated)
+        throw new Error('optfn_boolean(): can_set_perm_invent() not ported yet');
+
+    boolopt_set(o, !negated); /* <==== SET IT HERE */
+
+    /* After the change */
+    switch (o.name) {
+    case "pauper":
+        /* pauper implies nudist */
+        game.u.uroleplay.nudist = game.u.uroleplay.pauper;
+        break;
+    case "ascii_map":
+        game.iflags.wc_tiled_map = negated;
+        break;
+    case "tiled_map":
+        game.iflags.wc_ascii_map = negated;
+        break;
+    case "hilite_pet":
+        /* if we're enabling hilite_pet and petattr isn't set,
+           set it to Inverse; if we're disabling, leave petattr
+           alone so that re-enabling will get current value back */
+        if (game.iflags.wc_hilite_pet && !game.iflags.wc2_petattr)
+            game.iflags.wc2_petattr = ATR_INVERSE;
+        game.opt_need_redraw = true;
+        break;
+    case "idlecheckpoint":
+        /* IDLECHECKPOINT isn't defined */
+        await pline("There is no underlying support for 'idlecheckpoint' compiled in.");
+        game.iflags.idlecheckpoint = false;
+        game.give_opt_msg = false;
+        break;
+    default:
+        break;
+    }
+
+    /* only do processing below if setting with doset() */
+
+    if (game.opt_initial)
+        return optn_ok;
+
+    switch (o.name) {
+    case "terrainstatus":
+    case "weaponstatus":
+    case "armorstatus":
+        throw new Error('optfn_boolean(): extra status fields not ported yet');
+    case "showscore":
+    case "showvers":
+    case "showexp":
+    case "time":
+        /* status_initialize(REASSESS_ONLY): the tty status lines are
+           composed afresh by bot() */
+        game.disp_botl = true;
+        break;
+    case "fixinv":
+    case "price_quotes":
+    case "sortpack":
+    case "implicit_uncursed":
+    case "wizweight":
+        if (!game.flags.invlet_constant)
+            throw new Error('optfn_boolean(): reassign() not ported yet');
+        /* update_inventory(): no perm_invent window */
+        break;
+    case "lit_corridor":
+    case "dark_room":
+        /*
+         * All corridor squares seen via night vision or
+         * candles & lamps change.  Update them by calling
+         * newsym() on them.  Don't do this if we are
+         * initializing the options --- the vision system
+         * isn't set up yet.
+         */
+        vision_recalc(2);              /* shut down vision */
+        game.vision_full_recalc = 1;   /* delayed recalc */
+        if (game.iflags.wc_color)      /* iflags.use_color */
+            game.opt_need_redraw = true; /* darkroom refresh */
+        break;
+    case "wizmgender":
+    case "showrace":
+    case "use_inverse":
+    case "hilite_pile":
+    case "perm_invent":
+    case "ascii_map":
+    case "tiled_map":
+        game.opt_need_redraw = true;
+        game.opt_need_glyph_reset = true;
+        break;
+    case "hitpointbar":
+        /* VIA_WINDOWPORT(): status_initialize(REASSESS_ONLY) */
+        game.opt_need_redraw = true;
+        break;
+    case "color":
+        game.opt_need_redraw = true;
+        game.opt_need_glyph_reset = true;
+        break;
+    case "customcolors":
+        game.opt_reset_customcolors = true;
+        break;
+    case "customsymbols":
+        game.opt_reset_customsymbols = true;
+        break;
+    case "menucolors":
+    case "guicolor":
+        /* update_inventory(): no perm_invent window */
+        game.opt_need_promptstyle = true;
+        break;
+    case "mention_decor":
+        game.iflags.prev_decor = STONE;
+        break;
+    case "rest_on_space":
+        throw new Error('optfn_boolean(): update_rest_on_space() not ported yet');
+    case "accessiblemsg":
+        game.a11y.msg_loc = { x: 0, y: 0 };
+        break;
+    default:
+        break;
+    }
+
+    /* boolean value has been toggled but some option changes can
+       still be pending at this point (mainly for opt_need_redraw);
+       give the toggled message now regardless */
+    if (game.give_opt_msg !== false)
+        await pline(`'${o.name}' option toggled ${!negated ? "on" : "off"}.`);
+
+    return optn_ok;
+}
+
+// C ref: options.c optfn_pickup_types() -- do_set from the options menus
+async function optfn_pickup_types_set(o, negated, opts, op) {
+    const flags = game.flags;
+    const compat = (opts.length <= 6);
+    let use_menu;
+
+    /* types of objects to pick up automatically */
+    let tbuf = oc_to_str(flags.pickup_types);
+    flags.pickup_types = ''; /* all */
+    if (op === null) { /* string_for_opt(opts, (compat || !opt_initial)) */
+        if (compat || negated || game.opt_initial) {
+            /* for backwards compatibility, "pickup" without a
+               value is a synonym for autopickup of all types
+               (and during initialization, we can't prompt yet) */
+            flags.pickup = !negated;
+            return optn_ok;
+        }
+        let ocl = oc_to_str(def_inv_order.map(c => String.fromCharCode(c)).join(''));
+        use_menu = true;
+        if (flags.menu_style === MENU_TRADITIONAL
+            || flags.menu_style === MENU_COMBINATION)
+            throw new Error('optfn_pickup_types(): traditional menustyle not ported yet');
+        if (use_menu) {
+            if (game.flags.debug && !ocl.includes(VENOM_SYM))
+                ocl += VENOM_SYM;
+            const res = await choose_classes_menu("Autopickup what?",
+                                                  1, true, ocl, tbuf);
+            tbuf = res.class_select;
+            op = tbuf;
+        }
+    }
+    if (negated)
+        throw new Error('optfn_pickup_types(): bad_negation() not ported yet');
+    op = op.replace(/^ +/, '');
+    if (op[0] !== 'a' && op[0] !== 'A') {
+        let badopt = false;
+        for (const ch of op) {
+            const oc_sym = def_char_to_objclass(ch);
+            /* make sure all are valid obj symbols occurring once */
+            if (oc_sym !== MAXOCLASSES
+                && !flags.pickup_types.includes(String.fromCharCode(oc_sym))) {
+                flags.pickup_types += String.fromCharCode(oc_sym);
+            } else
+                badopt = true;
+        }
+        if (badopt)
+            throw new Error('optfn_pickup_types(): config_error_add() not ported yet');
+    }
+    return optn_ok;
+}
+
+// C ref: windows.c choose_classes_menu() -- a menu of object class
+// choices (category 1; the monster class menu, category 0, isn't used);
+// returns { ret, class_select }
+async function choose_classes_menu(prompt, category, way, class_list, class_select) {
+    let buf;
+    let text;
+    let selected;
+    let ret, n, next_accelerator, accelerator = 0;
+    const clr = NO_COLOR;
+
+    if (category !== 1)
+        throw new Error('choose_classes_menu(): monster classes not ported yet');
+    next_accelerator = 'a';
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    for (const cl of class_list) {
+        selected = false;
+        const idx = def_char_to_objclass(cl);
+        if (idx >= MAXOCLASSES)
+            throw new Error(`choose_classes_menu: invalid objclass '${cl}'`);
+        text = def_oc_explain[idx];
+        accelerator = next_accelerator;
+        buf = `${cl}  ${text}`;
+        if (way && class_select) { /* Selections there already */
+            if (class_select.includes(cl)) {
+                selected = true;
+            }
+        }
+        tty_add_menu(win, null, cl.charCodeAt(0), accelerator,
+                     category ? cl : 0, ATR_NONE, clr, buf,
+                     selected ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+        if (next_accelerator === 'Z')
+            break;
+        else if (next_accelerator === 'z')
+            next_accelerator = 'A';
+        else
+            next_accelerator = String.fromCharCode(next_accelerator.charCodeAt(0) + 1);
+    }
+    if (category === 1 && next_accelerator <= 'z') {
+        /* for objects, add "A - ' '  all classes", after a separator */
+        add_menu_str(win, "");
+        buf = `${' '}  All classes of objects`;
+        /* we won't preselect this even if the incoming list is empty;
+           having it selected means that it would have to be explicitly
+           de-selected in order to select anything else */
+        tty_add_menu(win, null, ' '.charCodeAt(0), 'A', 0,
+                     ATR_NONE, clr, buf, MENU_ITEMFLAGS_SKIPINVERT);
+        if (prompt === "Autopickup what?") {
+            add_menu_str(win,
+                   "Note: when no choices are selected, \"all\" is implied.");
+            /* for 'O', "toggle" should be intuitive; for 'm O', it would
+               probably be better to say "Set 'autopickup' to true|false" */
+            add_menu_str(win, game.flags.pickup
+                         ? "Toggle off 'autopickup' to not pick up anything."
+                         : "Toggle on 'autopickup' to automatically pick these things up.");
+        }
+    }
+    tty_end_menu(win, prompt);
+    const { n: cnt, selected: pick_list } = await tty_select_menu(win, way ? PICK_ANY : PICK_ONE);
+    n = cnt;
+    await tty_destroy_nhwindow(win);
+    if (n > 0) {
+        if (category === 1) {
+            /* for object classes, first check for 'all'; it means 'use
+               a blank list' rather than 'collect every possible choice' */
+            for (let i = 0; i < n; ++i)
+                if (pick_list[i].item === ' '.charCodeAt(0)) {
+                    pick_list[0].item = ' '.charCodeAt(0);
+                    n = 1; /* return 1; also an implicit 'break;' */
+                }
+        }
+        class_select = '';
+        for (let i = 0; i < n; ++i)
+            class_select += String.fromCharCode(pick_list[i].item);
+        ret = n;
+    } else if (n === -1) {
+        /* class_select = eos(class_select): keep it */
+        ret = -1;
+    } else {
+        class_select = '';
+        ret = 0;
+    }
+    return { ret, class_select };
 }

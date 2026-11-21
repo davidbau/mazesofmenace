@@ -11,7 +11,7 @@ import { m_at, can_saddle, which_armor } from './makemon.js';
 import { isok } from './hacklib.js';
 import { near_capacity, test_move, end_running } from './hack.js';
 import { getdir } from './cmd.js';
-import { mon_nam, Monnam, x_monnam, ARTICLE_A, SUPPRESS_IT,
+import { mon_nam, Monnam, YMonnam, x_monnam, ARTICLE_A, SUPPRESS_IT,
          SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION } from './do_name.js';
 import { SLT_ENCUMBER, M_AP_FURNITURE, M_AP_OBJECT, TEST_MOVE, W_SADDLE,
          HALLUC, WOUNDED_LEGS, BLINDED, TELEPAT, CONFUSION, FUMBLING, GLIB,
@@ -37,6 +37,27 @@ function can_ride(mtmp) {
     return (mtmp.mtame && (ydat.mflags1 & M1_HUMANOID) !== 0
             && !(ydat.msize < MZ_SMALL) && !(ydat.msize >= MZ_LARGE)
             && (!game.u.uinwater || is_swimmer(mtmp.data)));
+}
+
+// C ref: steed.c stucksteed()
+/* decide whether hero's steed is able to move;
+   doesn't check for holding traps--those affect the hero directly */
+export async function stucksteed(checkfeeding) {
+    const steed = game.u.usteed;
+
+    if (steed) {
+        /* check whether steed can move */
+        if (steed.msleeping || !steed.mcanmove) { /* helpless(steed) */
+            await pline(`${YMonnam(steed)} won't move!`);
+            return true;
+        }
+        /* optionally check whether steed is in the midst of a meal */
+        if (checkfeeding && steed.meating) {
+            await pline(`${YMonnam(steed)} is still eating.`);
+            return true;
+        }
+    }
+    return false;
 }
 
 // C ref: hack.c losehp() -- the not-polymorphed, surviving case

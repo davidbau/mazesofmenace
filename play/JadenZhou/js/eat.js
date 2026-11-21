@@ -251,6 +251,13 @@ export async function gethungry() {
 let save_hs = 0;
 let saved_hs = false;
 
+// C ref: eat.c morehungry()
+/* called when eating a corpse, jumping, casting a spell &c */
+export async function morehungry(num) {
+    game.u.uhunger -= num;
+    await newuhs(true);
+}
+
 // C ref: eat.c newuhs()
 /* compute and comment on your (new?) hunger status */
 export async function newuhs(incr) {

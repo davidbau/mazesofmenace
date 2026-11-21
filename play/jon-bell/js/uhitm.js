@@ -1379,7 +1379,14 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
     let malive = true; /* monster still alive after this attack */
     let _swingDied = false; /* a lethal passive() ended the hero in place */
 
-    const _swing = async (weapon, second, viaHmonas, cleaving, twohits = 0) => {
+    /* `uattk` is C known_hitum's attack-struct parameter (uhitm.c:587-591):
+     * hitum() passes gy.youmonst.data->mattk (uhitm.c:568/786), hmonas's
+     * use_weapon rows pass the CURRENT row's mattk (uhitm.c:5524).  It is
+     * handed straight to missum() on a miss (uhitm.c:610); Null would make
+     * could_seduce() fall back to the form's dmgtype(AD_SSEX) capability
+     * (mhitu.c:1965-1968) and print "You pretend to be friendly to X." for
+     * a polymorphed incubus/succubus hero's weapon-row miss. */
+    const _swing = async (weapon, second, viaHmonas, cleaving, twohits = 0, uattk = null) => {
     _find_roll_to_hit(); /* C hitum/hmonas recompute after every prior hit. */
     let tmp = _tmpBase;
     const uwepForHit = weapon;
@@ -1399,7 +1406,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
 
     /* C uhitm.c:610 missum(mon, uattk, (rollneeded + armorpenalty > dieroll)) */
     if (!mhit)
-        await missum(mtmp, tmp + _armorpenalty > dieroll);
+        await missum(mtmp, tmp + _armorpenalty > dieroll, uattk);
     if (mhit) {
         if (!second && !cleaving && tmp > dieroll) exercise(A_DEX, true);
 
@@ -2511,7 +2518,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                     continue;
                 weapon_used = true;
                 const _wsWeap = _useWeaponSlot();
-                const _mhitRowWeap = await _swing(_wsWeap.weapon, false, true, false, multi_weap > 1 ? ++weaponHits : 0);
+                const _mhitRowWeap = await _swing(_wsWeap.weapon, false, true, false, multi_weap > 1 ? ++weaponHits : 0, row);
                 const _sumWeap = await _weaponRowSum(row, _mhitRowWeap);
                 if (_sumWeap === null) {
                     await _cursedSwapDrop(_wsWeap.after());
@@ -2533,7 +2540,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                  * Both enter the same use_weapon body as AT_WEAP above. */
                 weapon_used = true;
                 const _wsClaw = _useWeaponSlot();
-                const _mhitRowClaw = await _swing(_wsClaw.weapon, false, true, false, multi_weap > 1 ? ++weaponHits : 0);
+                const _mhitRowClaw = await _swing(_wsClaw.weapon, false, true, false, multi_weap > 1 ? ++weaponHits : 0, row);
                 const _sumClaw = await _weaponRowSum(row, _mhitRowClaw);
                 if (_sumClaw === null) {
                     await _cursedSwapDrop(_wsClaw.after());
@@ -2771,6 +2778,11 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
         /* C hitum: `x = u.ux + u.dx, y = u.uy + u.dy` — the attacked square,
          * used to check the monster is still there before the second swing. */
         const _atkx = (u.ux | 0) + (u.dx | 0), _atky = (u.uy | 0) + (u.dy | 0);
+        /* C uhitm.c:568 `hitum(mtmp, gy.youmonst.data->mattk)` — the attack
+         * row every known_hitum() below (main swing, Cleaver's per-target
+         * swings, and the twoweap second swing at uhitm.c:808-809) receives
+         * as uattk and forwards to missum() on a miss (uhitm.c:610). */
+        const _hitumUattk = game.youmonst.data.mattk[0];
 
         /* C uhitm.c:758-760 hitum(): Cleaver attacks three spots, cannot be
          * part of dual-wielding; hitum_cleave() (uhitm.c:651-722). */
@@ -2803,7 +2815,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                      * passive() (uhitm.c:710); malive is shared, so reset it or a
                      * prior target's kill suppresses passive()'s rn2(3). */
                     malive = true;
-                    await _swing(u.uwep, false, false, true);
+                    await _swing(u.uwep, false, false, true, 0, _hitumUattk);
                     if (!u.uwep || game.multi < 0 || (u.umortality | 0) > umort)
                         break;
                 }
@@ -2818,7 +2830,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
         check_caitiff(mtmp);
         const _oldumort = u.umortality | 0; /* C hitum oldumort */
         const _secondwep = (u && u.twoweap) ? (u.uswapwep || null) : null;
-        await _swing(u && u.uwep, false, false, false, _twohits);
+        await _swing(u && u.uwep, false, false, false, _twohits, _hitumUattk);
 
         /* C uhitm.c:794-814 — the second swing.  C's full guard is
          *   !(go.override_confirmation || gm.multi < 0 || u.umortality > oldumort
@@ -2828,7 +2840,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
             /* C uhitm.c:798 re-runs find_roll_to_hit: the first hit may have
              * set mflee/mstun (abuse_dog, knockback), changing tmp. */
             _find_roll_to_hit();
-            await _swing(_secondwep, true, false, false, 2);
+            await _swing(_secondwep, true, false, false, 2, _hitumUattk);
         }
     }
     mtmp.mstrategy = (mtmp.mstrategy | 0) & ~_AC_STRAT_WAITMASK;

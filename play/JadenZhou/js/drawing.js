@@ -15,6 +15,15 @@ export const def_oc_syms = [
     O.VENOM_SYM,
 ];
 
+// C ref: drawing.c def_oc_syms[MAXOCLASSES].explain (defsym.h OBJCLASS())
+export const def_oc_explain = [
+    "", "strange object", "weapon", "suit or piece of armor", "ring",
+    "amulet", "useful item (pick-axe, key, lamp...)", "piece of food",
+    "potion", "scroll", "spellbook", "wand", "pile of coins",
+    "gem or rock", "boulder or statue", "iron ball", "iron chain",
+    "splash of venom",
+];
+
 // C ref: drawing.c def_monsyms[MAXMCLASSES] (.sym only; defsym.h order)
 export const def_monsyms = [
     '\0', M.DEF_ANT, M.DEF_BLOB, M.DEF_COCKATRICE, M.DEF_DOG, M.DEF_EYE,

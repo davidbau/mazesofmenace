@@ -99,7 +99,7 @@ function monstseesu(seenres) {
 }
 // C ref: mondata.c monstunseesu()
 /* Monsters in line of sight forget hero resistance to M_SEEN_foo */
-function monstunseesu(seenres) {
+export function monstunseesu(seenres) {
     if (!seenres || game.u.uswallow)
         return;
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon)

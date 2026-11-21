@@ -1660,8 +1660,12 @@ export function parseNethackrc(rc) {
             if (colonIdx >= 0) {
                 const key = stripped.slice(0, colonIdx).trim().toLowerCase();
                 const val = stripped.slice(colonIdx + 1).trim();
-                if (key === 'name')
-                    result.name = val;
+                if (key === 'name') {
+                    // C options.c:2561,6865-6870: nmcpy copies at most
+                    // PL_NSIZ-1 bytes from the UTF-8 rc file, without sanitizing.
+                    const bytes = new TextEncoder().encode(val.split(/[\0,]/, 1)[0]).slice(0, 31);
+                    result.name = String.fromCharCode(...bytes);
+                }
                 else if (key === 'role' || key === 'race' || key === 'gender' || key === 'align') {
                     /* C options.c optfn_role/race/gender/alignment: a name
                      * str2xxx() cannot resolve is "Unknown %s '%s'" and is
@@ -2713,18 +2717,12 @@ const PAGES = [
         { name: 'statuslines', kind: 'comp', hasHandler: false,
           value: () => ((game.iflags?.wc2_statuslines ?? 2) < 3 ? '2' : '3'),
           set: async (v) => {
-              /* options.c:529-533 parseoptions() strips trailing isspace() */
-              const text = String(v ?? '').replace(/[\t\n\v\f\r ]+$/, '');
-              /* C atoi(): leading whitespace and an optional sign are accepted;
-               * parsing stops at the first non-digit. */
-              const match = text.match(/^[\t\n\r\f\v ]*([+-]?\d+)/);
-              const n = match ? Number(match[1]) : 0;
-              if (n < 2 || n > 3)
-                  return `'statuslines:${text}' is invalid; must be 2 or 3.`;
-              game.iflags ||= {};
-              game.iflags.wc2_statuslines = n;
-              if (game.disp) game.disp.botl = 1;
-              return null;
+              const messages = optfn_statuslines_set(v);
+              if (messages && messages.length > 1) {
+                  await option_error(messages[0]);
+                  await force_more(messages[0]);
+              }
+              return messages ? messages[messages.length - 1] : null;
           } },
         { name: 'time', kind: 'bool', flag: 'time' },
     ],

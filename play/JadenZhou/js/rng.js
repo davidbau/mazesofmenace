@@ -19,6 +19,9 @@ export function initRng(seed) {
         s >>= 8n;
     }
     game.coreCtx = isaac64_init(bytes);
+    /* options.c: init_random(rn2); init_random(rn2_on_display_rng); --
+       sys_random_seed() returns the same NETHACK_SEED for both */
+    game.dispCtx = isaac64_init(bytes);
     _rngLog = [];
 }
 
@@ -123,6 +126,18 @@ export function rn2_fnptr(x) {
         _rngLog.push(`rn2(${x})=${result}` + tag);
     }
     return result;
+}
+
+// C ref: rnd.c rn2_on_display_rng() -- 0 <= x < x on the DISP sequence,
+// which doesn't affect gameplay; the recorder logs it only when
+// NETHACK_RNGLOG_DISP is set (it isn't), so it isn't logged here.
+export function rn2_on_display_rng(x) {
+    return Number(isaac64_next_uint64(game.dispCtx) % BigInt(x));
+}
+
+// C ref: rnd.c rnd_on_display_rng()
+export function rnd_on_display_rng(x) {
+    return rn2_on_display_rng(x) + 1;
 }
 
 // C ref: Luck macro (you.h) — u.uluck + u.moreluck.

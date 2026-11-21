@@ -123,3 +123,40 @@ export function max_rank_sz() {
     game.mrank_sz = maxr;
     return;
 }
+
+/* C ref: botl.c condtests[CONDITION_COUNT] -- useropt, opt_in or out,
+   enabled; the default value for enabled is !opt_in (status condition
+   option changes aren't ported, so this keeps the defaults) */
+const opt_in = 1, opt_out = 0; /* C ref: flag.h */
+export const condtests = [
+    { useropt: "barehanded",  opt: opt_in,  enabled: false },
+    { useropt: "blind",       opt: opt_out, enabled: true },
+    { useropt: "busy",        opt: opt_in,  enabled: false },
+    { useropt: "conf",        opt: opt_out, enabled: true },
+    { useropt: "deaf",        opt: opt_out, enabled: true },
+    { useropt: "iron",        opt: opt_out, enabled: true },
+    { useropt: "fly",         opt: opt_out, enabled: true },
+    { useropt: "foodPois",    opt: opt_out, enabled: true },
+    { useropt: "glowhands",   opt: opt_in,  enabled: false },
+    { useropt: "grab",        opt: opt_out, enabled: true },
+    { useropt: "hallucinat",  opt: opt_out, enabled: true },
+    { useropt: "held",        opt: opt_in,  enabled: false },
+    { useropt: "ice",         opt: opt_in,  enabled: false },
+    { useropt: "lava",        opt: opt_out, enabled: true },
+    { useropt: "levitate",    opt: opt_out, enabled: true },
+    { useropt: "paralyzed",   opt: opt_in,  enabled: false },
+    { useropt: "ride",        opt: opt_out, enabled: true },
+    { useropt: "sleep",       opt: opt_in,  enabled: false },
+    { useropt: "slime",       opt: opt_out, enabled: true },
+    { useropt: "slip",        opt: opt_in,  enabled: false },
+    { useropt: "stone",       opt: opt_out, enabled: true },
+    { useropt: "strngl",      opt: opt_out, enabled: true },
+    { useropt: "stun",        opt: opt_out, enabled: true },
+    { useropt: "submerged",   opt: opt_in,  enabled: false },
+    { useropt: "termIll",     opt: opt_out, enabled: true },
+    { useropt: "tethered",    opt: opt_in,  enabled: false },
+    { useropt: "trap",        opt: opt_in,  enabled: false },
+    { useropt: "unconscious", opt: opt_in,  enabled: false },
+    { useropt: "woundedlegs", opt: opt_in,  enabled: false },
+    { useropt: "holding",     opt: opt_in,  enabled: false },
+];

@@ -3,7 +3,7 @@
 //        xprname()
 
 import { game } from './gstate.js';
-import { pline, You, pline_The, newsym } from './display.js';
+import { pline, You, pline_The, newsym, There } from './display.js';
 import { obj_resists } from './dogmove.js';
 import { maybe_unhide_at } from './mon.js';
 import { doname, makeplural } from './objnam.js';
@@ -13,10 +13,10 @@ import { body_part } from './insight.js';
 import { welded } from './wield.js';
 import { stairway_at } from './display.js';
 import { an, vtense } from './objnam.js';
-import { t_at } from './trap.js';
+import { t_at, trapname } from './trap.js';
 import { visible_region_at } from './region.js';
 import { is_pool, is_lava } from './makemon.js';
-import { engr_at } from './engrave.js';
+import { engr_at, read_engr_at } from './engrave.js';
 import { IS_DOOR, IS_FOUNTAIN, IS_THRONE, IS_SINK, IS_ALTAR, IS_GRAVE,
          D_NODOOR, D_ISOPEN, D_BROKEN, ICE, DRAWBRIDGE_DOWN, DBWALL, TREE,
          IRONBARS, ECMD_OK } from './const.js';
@@ -34,9 +34,16 @@ import {
 } from './const.js';
 import { objects } from './objects.js';
 import * as M from './monsters.js';
-import { mons } from './monsters.js';
-import { weight, erosion_matters, Is_candle, obj_extract_self, splitobj } from './mkobj.js';
+import { mons, PM_COCKATRICE, PM_CHICKATRICE } from './monsters.js';
+import { STONE_RES } from './const.js';
+import { weight, erosion_matters, Is_candle, obj_extract_self, splitobj,
+         dead_species } from './mkobj.js';
 import { itemactions } from './iactions.js';
+import { NON_PM, P_DAGGER, P_SHORT_SWORD, P_SABER, P_SPEAR } from './const.js';
+import { ART_MJOLLNIR } from './artilist.js';
+import { is_missile, is_ammo, setuqwep } from './wield.js';
+import { confers_luck } from './timeout.js';
+import { set_moreluck } from './attrib.js';
 import {
     tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
     tty_select_menu, tty_message_menu, tty_yn_function, tty_display_nhwindow,
@@ -411,8 +418,9 @@ function freeinv_core(obj) {
 
     if (obj.otyp === O.LOADSTONE) {
         throw new Error('freeinv_core(): loadstone curse() not ported yet');
-    } else if (obj.otyp === O.LUCKSTONE /* confers_luck() */) {
-        throw new Error('freeinv_core(): set_moreluck() not ported yet');
+    } else if (confers_luck(obj)) {
+        set_moreluck();
+        game.disp_botl = true;
     } else if (obj.otyp === O.FIGURINE && obj.timed) {
         throw new Error('freeinv_core(): figurine stop_timer() not ported yet');
     }
@@ -439,6 +447,244 @@ export function freeinv(obj) {
     obj.pickup_prev = 0;
     freeinv_core(obj);
     /* update_inventory(): no perm_invent */
+}
+
+// C ref: invent.c addinv_core1()
+/*
+ * Adjust hero intrinsics as if this object was being added to the hero's
+ * inventory.  Called _before_ the object has been added to the hero's
+ * inventory.
+ */
+export function addinv_core1(obj) {
+    if (obj.oclass === O.COIN_CLASS) {
+        game.disp_botl = true;
+    } else if (obj.otyp === O.AMULET_OF_YENDOR
+               || obj.otyp === O.CANDELABRUM_OF_INVOCATION
+               || obj.otyp === O.BELL_OF_OPENING
+               || obj.otyp === O.SPE_BOOK_OF_THE_DEAD) {
+        throw new Error('addinv_core1(): invocation items (u.uhave, record_achievement) not ported yet');
+    } else if (obj.oartifact) {
+        throw new Error('addinv_core1(): artifacts (set_artifact_intrinsic) not ported yet');
+    }
+
+    /* "special achievements"; revealed in end of game disclosure and
+       dumplog, originally just recorded in XLOGFILE */
+    const achieveo = game.context?.achieveo;
+    if (achieveo && obj.o_id === achieveo.mines_prize_oid) {
+        throw new Error('addinv_core1(): mines prize record_achievement() not ported yet');
+    } else if (achieveo && obj.o_id === achieveo.soko_prize_oid) {
+        throw new Error('addinv_core1(): sokoban prize record_achievement() not ported yet');
+    }
+}
+
+// C ref: invent.c addinv_core2()
+/*
+ * Adjust hero intrinsics (and perform other side effects) as if this
+ * object was being added to the hero's inventory.  Called _after_ the
+ * object has been added to the hero's inventory.
+ */
+export function addinv_core2(obj) {
+    if (confers_luck(obj)) {
+        /* new luckstone must be in inventory by this point
+           for correct calculation */
+        set_moreluck();
+    }
+
+    /* Archeologists can decipher the writing on a scroll label to work out
+       what they are (exception: unlabeled scrolls don't have a label to
+       decipher) */
+    if (inv_Role_if(M.PM_ARCHEOLOGIST) && obj.oclass === O.SCROLL_CLASS
+        && obj.otyp !== O.SCR_BLANK_PAPER && !inv_Blind()
+        && !objects[obj.otyp].oc_name_known) {
+        throw new Error('addinv_core2(): Archeologist deciphering a scroll label not ported yet');
+    }
+}
+
+// C ref: invent.c addinv_core0()
+/*
+ * Add obj to the hero's inventory.  Make sure the object is "free".
+ * Adjust hero attributes as necessary.
+ */
+async function addinv_core0(obj, other_obj, update_perm_invent) {
+    let otmp, prev;
+
+    if (obj.where !== 'OBJ_FREE')
+        throw new Error('addinv: obj not free');
+    if (obj.how_lost === LOST_EXPLODING)
+        return null;
+
+    /* normally addtobill() clears no_charge when items in a shop are
+       picked up, but won't do so if the shop has become untended */
+    obj.no_charge = 0; /* should not be set in hero's invent */
+    if (obj.cobj && obj.cobj.length) /* Has_contents(obj) */
+        picked_container(obj); /* clear no_charge */
+    const obj_was_thrown = (obj.how_lost === LOST_THROWN);
+    obj.how_lost = LOST_NONE;
+
+    if (game.loot_reset_justpicked) {
+        game.loot_reset_justpicked = false;
+        reset_justpicked(game.invent);
+    }
+
+    addinv_core1(obj); /* handle most side effects of carrying obj */
+
+    added: {
+        /* for addinv_before(); if something has been removed and is now
+           being reinserted, try to put it in the same place instead of
+           merging or placing at end */
+        if (other_obj) {
+            for (otmp = game.invent; otmp; otmp = otmp.nobj) {
+                if (otmp.nobj === other_obj) {
+                    obj.nobj = other_obj;
+                    otmp.nobj = obj;
+                    obj.where = 'OBJ_INVENT';
+                    break added;
+                }
+            }
+        }
+
+        /* merge with quiver in preference to any other inventory slot
+           in case quiver and wielded weapon are both eligible; adding
+           extra to quivered stack is more useful than to wielded one */
+        if (game.uquiver) {
+            const r = { otmp: game.uquiver, obj };
+            if (merged(r)) {
+                if (r.learned) /* merged()'s message */
+                    await pline("You learn more about your items by comparing them.");
+                game.uquiver = r.otmp;
+                obj = game.uquiver;
+                break added;
+            }
+        }
+        /* merge if possible; find end of chain in the process */
+        for (prev = null, otmp = game.invent; otmp; prev = otmp, otmp = otmp.nobj) {
+            const r = { otmp, obj };
+            if (merged(r)) {
+                if (r.learned) /* merged()'s message */
+                    await pline("You learn more about your items by comparing them.");
+                obj = r.otmp;
+                break added;
+            }
+        }
+        /* didn't merge, so insert into chain */
+        assigninvlet(obj);
+        if (invlet_constant() || !prev) {
+            obj.nobj = game.invent; /* insert at beginning */
+            game.invent = obj;
+            if (invlet_constant())
+                reorder_invent();
+        } else {
+            prev.nobj = obj; /* insert at end */
+            obj.nobj = null;
+        }
+        obj.where = 'OBJ_INVENT';
+
+        /* fill empty quiver if obj was thrown */
+        if (obj_was_thrown && game.flags?.pickup_thrown && !game.uquiver
+            && obj.oartifact !== ART_MJOLLNIR && obj.otyp !== O.AKLYS
+            && (throwing_weapon(obj) || is_ammo(obj)))
+            setuqwep(obj);
+    }
+    /* added: */
+    obj.pickup_prev = 1;
+    addinv_core2(obj); /* handle extrinsics conferred by carrying obj */
+    carry_obj_effects(obj); /* carrying affects the obj */
+    if (update_perm_invent) {
+        /* update_inventory(): no perm_invent window */
+    }
+    return obj;
+}
+
+// C ref: invent.c addinv() -- add obj to the hero's inventory in the
+// default fashion
+export async function addinv(obj) {
+    return await addinv_core0(obj, null, true);
+}
+
+// C ref: shk.c picked_container()
+export function picked_container(obj) {
+    /* the "top" container is treated in the calling fn */
+    for (const otmp of obj.cobj || []) {
+        if (otmp.oclass === O.COIN_CLASS)
+            continue;
+
+        if (otmp.no_charge)
+            otmp.no_charge = 0;
+
+        if (otmp.cobj && otmp.cobj.length) /* Has_contents() */
+            picked_container(otmp);
+    }
+}
+
+// C ref: invent.c carry_obj_effects()
+/*
+ * Some objects are affected by being carried.
+ * Make those adjustments here. Called _after_ the object
+ * has been added to the hero's or monster's inventory,
+ * and after hero's intrinsics have been updated.
+ */
+export function carry_obj_effects(obj) {
+    /* Cursed figurines can spontaneously transform when carried. */
+    if (obj.otyp === O.FIGURINE) {
+        if (obj.cursed && obj.corpsenm !== NON_PM
+            && !dead_species(obj.corpsenm, true)) {
+            throw new Error('carry_obj_effects(): attach_fig_transform_timeout() not ported yet');
+        }
+    }
+}
+
+// C ref: invent.c carrying()
+/* return the first object of the given type in the hero's inventory */
+export function carrying(type) {
+    for (let otmp = game.invent; otmp; otmp = otmp.nobj)
+        if (otmp.otyp === type)
+            return otmp;
+    return null;
+}
+
+// C ref: invent.c merge_choice()
+/* scan a list of objects to see whether another object will merge with
+   one of them; used in pickup.c when all 52 inventory slots are in use,
+   to figure out whether another object could still be picked up */
+export function merge_choice(objlist, obj) {
+    if (!objlist) /* might be checking 'obj' against empty inventory */
+        return null;
+    if (obj.otyp === O.SCR_SCARE_MONSTER) /* punt on these */
+        return null;
+    /* if this is an item on the shop floor, the attributes it will
+       have when carried are different from what they are now; prevent
+       that from eliciting an incorrect result from mergable() */
+    const save_nocharge = obj.no_charge;
+    if (objlist === game.invent && obj.where === 'OBJ_FLOOR'
+        && game.level.flags?.has_shop)
+        throw new Error('merge_choice(): shop_keeper(inside_shop()) not ported yet');
+    do {
+        if (mergable(objlist, obj))
+            break;
+        objlist = objlist.nobj;
+    } while (objlist);
+    obj.no_charge = save_nocharge;
+    return objlist;
+}
+
+// C ref: dothrow.c throwing_weapon()
+function throwing_weapon(obj) {
+    const skill = objects[obj.otyp].oc_skill;
+    const is_weapon = obj.oclass === O.WEAPON_CLASS;
+    return (is_missile(obj)
+            || (is_weapon && skill === P_SPEAR) /* is_spear() */
+            /* daggers and knife (excludes scalpel) */
+            || (is_weapon && skill >= P_DAGGER && skill <= P_SABER /* is_blade() */
+                && !(skill >= P_SHORT_SWORD && skill <= P_SABER) /* is_sword() */
+                && (objects[obj.otyp].oc_dir & O.PIERCE))
+            /* special cases [might want to add AXE] */
+            || obj.otyp === O.WAR_HAMMER || obj.otyp === O.AKLYS);
+}
+
+// C ref: pickup.c reset_justpicked() -- reset last-picked-up flags
+export function reset_justpicked(olist) {
+    for (let otmp = olist; otmp; otmp = otmp.nobj)
+        otmp.pickup_prev = 0;
 }
 
 // C ref: invent.c compactify() -- compact a string of inventory letters
@@ -930,6 +1176,31 @@ function dfeature_at(x, y) {
     return dfeature;
 }
 
+/* C ref: mondata.h touch_petrifies() */
+function touch_petrifies(ptr) {
+    return ptr === mons[PM_COCKATRICE] || ptr === mons[PM_CHICKATRICE];
+}
+
+// C ref: invent.c will_feel_cockatrice()
+export function will_feel_cockatrice(otmp, force_touch) {
+    const bl = game.u.uprops?.[BLINDED];
+    const Blind = !!((bl?.intrinsic || bl?.extrinsic) && !bl?.blocked);
+    const sr = game.u.uprops?.[STONE_RES];
+    const Stone_resistance = !!(sr?.intrinsic || sr?.extrinsic);
+
+    if ((Blind || force_touch) && !game.uarmg && !Stone_resistance
+        && (otmp.otyp === O.CORPSE
+            && touch_petrifies(mons[otmp.corpsenm])))
+        return true;
+    return false;
+}
+
+// C ref: invent.c feel_cockatrice()
+function feel_cockatrice(otmp, force_touch) {
+    if (will_feel_cockatrice(otmp, force_touch))
+        throw new Error('feel_cockatrice(): touching a cockatrice corpse not ported yet');
+}
+
 // C ref: invent.c look_here() -- the hero's own (unswallowed, sighted)
 // look at what is here
 export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup is in progress */
@@ -953,8 +1224,10 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
         let trap = t_at(u.ux, u.uy);
         if (trap && !trap.tseen)
             trap = null;
+        if (reg)
+            throw new Error('look_here(): "There is a <region> cloud here." (reg_damg) not ported yet');
         if (reg || trap)
-            throw new Error('look_here(): "There is <region/trap> here." not ported yet');
+            await There(`is ${trap ? an(trapname(trap.ttyp, false)) : ""} here.`);
     }
 
     const here = (game.level.objects || []).filter(
@@ -982,7 +1255,7 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
         || (is_pool(u.ux, u.uy) && !u.uinwater)) {
         if (dfeature && !skip_dfeature)
             await pline(fbuf);
-        read_engr_at(u.ux, u.uy); /* Eric Backus */
+        await read_engr_at(u.ux, u.uy); /* Eric Backus */
         if (!skip_objects && (Blind || !dfeature))
             await You(`${verb} no objects here.`);
         return ECMD_OK;
@@ -990,19 +1263,31 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
     /* we know there is something here */
 
     if (skip_objects) {
-        throw new Error('look_here(): pile_limit summary not ported yet');
+        if (dfeature && !skip_dfeature)
+            await pline(fbuf);
+        await read_engr_at(u.ux, u.uy); /* Eric Backus */
+        if (obj_cnt === 1 && here[0].quan === 1)
+            await There(`is ${picked_some ? "another" : "an"} object here.`);
+        else
+            await There(`are ${(obj_cnt === 2) ? "two"
+                               : (obj_cnt < 5) ? "a few"
+                                 : (obj_cnt < 10) ? "several"
+                                   : "many"}${picked_some ? " more" : ""} objects here.`);
+        for (const otmp of here)
+            if (otmp.otyp === O.CORPSE && will_feel_cockatrice(otmp, false))
+                throw new Error('look_here(): "Including <cockatrice corpse>" (corpse_xname, feel_cockatrice) not ported yet');
     } else if (here.length === 1) {
         /* only one object */
         if (dfeature && !skip_dfeature)
             await pline(fbuf);
-        read_engr_at(u.ux, u.uy); /* Eric Backus */
+        await read_engr_at(u.ux, u.uy); /* Eric Backus */
         const otmp = here[0];
         if (otmp.unpaid || game.level.flags?.has_shop)
             throw new Error('look_here(): doname_with_price() not ported yet');
         await You(`${verb} here ${doname(otmp)}.`);
         game.iflags.last_msg = 'PLNMSG_ONE_ITEM_HERE';
         if (otmp.otyp === O.CORPSE)
-            throw new Error('look_here(): feel_cockatrice() not ported yet');
+            feel_cockatrice(otmp, false);
     } else {
         await tty_display_nhwindow(game.WIN_MESSAGE, false);
         const tmpwin = tty_create_nhwindow(NHW_MENU);
@@ -1012,15 +1297,15 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
         }
         await tty_putstr(tmpwin, 0, `${picked_some ? "Other things" : "Things"} that ${Blind ? "you feel" : "are"} here:`);
         for (const otmp of here) {
-            if (otmp.otyp === O.CORPSE)
-                throw new Error('look_here(): will_feel_cockatrice() not ported yet');
+            if (will_feel_cockatrice(otmp, false))
+                throw new Error('look_here(): felt_cockatrice not ported yet');
             if (otmp.unpaid || game.level.flags?.has_shop)
                 throw new Error('look_here(): doname_with_price() not ported yet');
             await tty_putstr(tmpwin, 0, doname(otmp));
         }
         await tty_display_nhwindow(tmpwin, true);
         await tty_destroy_nhwindow(tmpwin);
-        read_engr_at(u.ux, u.uy); /* Eric Backus */
+        await read_engr_at(u.ux, u.uy); /* Eric Backus */
     }
     return ECMD_OK;
 }
@@ -1031,13 +1316,6 @@ export async function dolook() {
     return await look_here(0, 0);
 }
 
-/* C ref: engrave.c read_engr_at() -- only the nothing-to-read case is
-   ported yet */
-function read_engr_at(x, y) {
-    const ep = engr_at(x, y);
-    if (ep && ep.engr_txt?.actual_text?.[0])
-        throw new Error('read_engr_at(): reading an engraving not ported yet');
-}
 
 // C ref: invent.c dispinv_with_action()
 async function dispinv_with_action(lets, use_inuse_ordering, alt_label) {
@@ -1274,10 +1552,17 @@ export function merged(r) {
         /* handle puddings a bit differently */
         if (obj.globby)
             throw new Error('merged(): obj_absorb() is not ported yet');
+        /* Print a message if item comparison discovers more
+           information about the items (with the exception of thrown
+           items, where this would be too spammy as such items get
+           unidentified by monsters very frequently).  pline() is async
+           in JS, so the caller (addinv_core0(), the only one merging into
+           the hero's inventory) prints it right after merged() returns;
+           nothing else in merged() or obfree() gives a message */
         if (discovered && otmp.where === 'OBJ_INVENT'
             && (obj.how_lost || 0) !== LOST_THROWN
             && (otmp.how_lost || 0) !== LOST_THROWN)
-            throw new Error('merged(): "You learn more about your items" is not ported yet');
+            r.learned = true;
         obj.where = 'OBJ_DELETED'; /* obfree(obj, otmp): free(obj), bill->otmp */
         return 1;
     }

@@ -18,6 +18,11 @@ import { makemon, is_domestic, set_malign, put_saddle_on_mon,
 import { monsndx } from './mondata.js';
 import { mon_track_clear } from './monmove.js';
 import { mnexto, rloc_to } from './teleport.js';
+import { on_level } from './dungeon.js';
+import { mintrap } from './trap.js';
+import { NO_TRAP_FLAGS } from './const.js';
+import { pline, canseemon } from './display.js';
+import { Monnam } from './do_name.js';
 
 import { ACURR } from './attrib.js';
 
@@ -189,17 +194,66 @@ function levl_follower(mtmp) {
 
 // C ref: steal.c mon_has_amulet()
 function mon_has_amulet(mtmp) {
-    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
+    for (const otmp of mtmp.minvent || [])
         if (otmp.otyp === AMULET_OF_YENDOR)
             return true;
     return false;
 }
 
+// C ref: dog.c mon_leave()
+/* bookkeeping when mtmp is about to leave the current level;
+   common to keepdogs() and migrate_to_level() */
+function mon_leave(mtmp) {
+    let num_segs = 0; /* return value */
+
+    /* set minvent's obj->no_charge to 0 */
+    for (const obj of mtmp.minvent || []) {
+        if (obj.cobj && obj.cobj.length) /* Has_contents(obj) */
+            throw new Error('mon_leave(): picked_container() not ported yet');
+        obj.no_charge = 0;
+    }
+
+    /* if this is a shopkeeper, clear the 'resident' field of her shop;
+       if/when she returns, it will be set back by mon_arrive()  */
+    if (mtmp.isshk)
+        throw new Error('mon_leave(): set_residency() not ported yet');
+
+    /* if this is a long worm, handle its tail segments before mtmp itself;
+       we pass possibly truncated segment count to caller via return value  */
+    if (mtmp.wormno)
+        throw new Error('mon_leave(): long worm wormgone() not ported yet');
+
+    return num_segs;
+}
+
+// C ref: dog.c keep_mon_accessible()
+/* when hero leaves a level, some monsters should be placed on the
+   migrating_mons list instead of being stashed inside the level's file */
+function keep_mon_accessible(mon) {
+    const u = game.u;
+    /* the Wizard is kept accessible so that his harassment can fetch
+       him instead of creating a new instance but also so that he can
+       be put back at his current location if hero returns to his level */
+    if (mon.iswiz)
+        return true;
+    /* monsters with special attachment to a particular level only need
+       to be kept accessible when on some other level */
+    const eshk = mon.mextra?.eshk, epri = mon.epri || mon.mextra?.epri,
+        egd = mon.egd || mon.mextra?.egd;
+    if ((mon.isshk && eshk && !on_level(u.uz, eshk.shoplevel))
+        || (mon.ispriest && epri && !on_level(u.uz, epri.shrlevel))
+        || (mon.isgd && egd && !on_level(u.uz, egd.gdlevel)))
+        return true;
+    /* normal monsters go into the level save file instead of being held
+       on the migrating_mons list for off-level accessibility */
+    return false;
+}
+
 // C ref: dog.c keepdogs()
-// The parts reached so far: followers that come along are moved from fmon
-// to game.mydogs.  Pets left behind (eating, trapped, carrying the
-// Amulet), keep_mon_accessible() monsters and leashes are not ported yet.
-export function keepdogs(pets_only) /* true for ascension or final escape */ {
+// Followers that come along are moved from fmon to game.mydogs.
+// Leashed pets, migrate_to_level() for keep_mon_accessible() monsters and
+// the steed are not ported yet.
+export async function keepdogs(pets_only) /* true for ascension or final escape */ {
     const g = game;
     const u = g.u;
     let mtmp, mtmp2;
@@ -222,15 +276,33 @@ export function keepdogs(pets_only) /* true for ascension or final escape */ {
                 || (mtmp === u.usteed))
             /* monster won't follow if it hasn't noticed you yet */
             && !(mtmp.mstrategy & STRAT_WAITFORU)) {
-            if (mtmp.mtrapped || mtmp === u.usteed || mtmp.meating
-                || mon_has_amulet(mtmp))
-                throw new Error('keepdogs(): trapped/steed/eating/amulet follower not ported yet');
+            let stay_behind = false;
+
+            if (mtmp.mtrapped)
+                await mintrap(mtmp, NO_TRAP_FLAGS); /* try to escape */
+            if (mtmp === u.usteed) {
+                /* make sure steed is eligible to accompany hero */
+                throw new Error('keepdogs(): steed accompanying hero not ported yet');
+            } else if (mtmp.meating || mtmp.mtrapped) {
+                if (canseemon(mtmp))
+                    await pline(`${Monnam(mtmp)} is still ${
+                        mtmp.meating ? "eating" : "trapped"}.`);
+                stay_behind = true;
+            } else if (mon_has_amulet(mtmp)) {
+                if (canseemon(mtmp))
+                    await pline(`${Monnam(mtmp)} seems very disoriented for a moment.`);
+                stay_behind = true;
+            }
+            if (stay_behind) {
+                if (mtmp.mleashed)
+                    throw new Error('keepdogs(): leash comes loose (m_unleash()) not ported yet');
+                continue;
+            }
 
             /* prepare to take mtmp off the map */
-            /* num_segs = mon_leave(mtmp) */
-            if (mtmp.wormno || mtmp.mleashed)
-                throw new Error('keepdogs(): mon_leave() for worms/leashed pets not ported yet');
-            const num_segs = 0;
+            if (mtmp.mleashed)
+                throw new Error('keepdogs(): leashed pet following not ported yet');
+            const num_segs = mon_leave(mtmp);
             /* take off map and move mtmp from fmon list to mydogs */
             /* relmon(mtmp, &gm.mydogs): remove_monster() + unlink from fmon */
             const lst = g.level.monsters || [];
@@ -251,9 +323,15 @@ export function keepdogs(pets_only) /* true for ascension or final escape */ {
             mtmp.mx = mtmp.my = 0; /* mx==0 implies migrating */
             mtmp.wormno = num_segs;
             mtmp.mlstmv = g.moves;
-        } else if (mtmp.isshk || mtmp.ispriest || mtmp.isgd || mtmp.iswiz) {
-            /* keep_mon_accessible(): migrate_to_level() not ported yet */
-            throw new Error('keepdogs(): keep_mon_accessible() not ported yet');
+        } else if (keep_mon_accessible(mtmp)) {
+            /* we want to be able to find the Wizard when his next
+               resurrection chance comes up, but have him resume his
+               present location if player returns to this level before
+               that time; also needed for monsters (shopkeeper, temple
+               priest, vault guard) who have level data in mon->mextra
+               in case #wizmakemap is used to replace their home level
+               while they're away from it */
+            throw new Error('keepdogs(): migrate_to_level() not ported yet');
         } else if (mtmp.mleashed) {
             throw new Error('keepdogs(): leash goes slack not ported yet');
         }

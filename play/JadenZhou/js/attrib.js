@@ -3,12 +3,14 @@
 //
 // Ported so far: acurrstr(), exercise(), exerper(), exerchk(),
 // the innate-ability tables, role_abil(), postadjabil(),
+// check_innate_abil(), innately(), is_innate(), from_what(),
 // adjabil(), newhp(), acurr(), adjattrib(), rnd_attr(),
 // init_attr_role_redist(), init_attr(), vary_init_attr().
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { near_capacity } from './hack.js';
+import { strstri } from './hacklib.js';
 import { pline } from './display.js';
 import {
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, MAXULEV, STR19, FROMEXPER,
@@ -18,16 +20,23 @@ import {
     SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, MOD_ENCUMBER,
     HVY_ENCUMBER, EXT_ENCUMBER, CLAIRVOYANT, REGENERATION, SICK, VOMITING,
     CONFUSION, HALLUC, HALLUC_RES, WOUNDED_LEGS, FUMBLING, STUNNED, TIMEOUT,
-    LUCKMIN, LUCKMAX,
+    LUCKMIN, LUCKMAX, FROMFORM, DRAIN_RES, JUMPING, BLINDED,
+    BLND_RES, DEAF, STRANGLED, INVIS, W_ARMF, W_ARMC, W_ARMH, FACE, ismnum,
 } from './const.js';
 import {
     PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVE_DWELLER, PM_HEALER, PM_KNIGHT,
     PM_MONK, PM_CLERIC, PM_RANGER, PM_ROGUE, PM_SAMURAI, PM_TOURIST,
     PM_VALKYRIE, PM_WIZARD, PM_ELF, PM_ORC, PM_HUMAN, PM_DWARF, PM_GNOME,
-    PM_AMOROUS_DEMON, S_NYMPH, M2_STRONG,
+    PM_AMOROUS_DEMON, S_NYMPH, M2_STRONG, M1_NOEYES,
 } from './monsters.js';
-import { GAUNTLETS_OF_POWER, DUNCE_CAP } from './objects.js';
-import { ART_OGRESMASHER } from './artilist.js';
+import { GAUNTLETS_OF_POWER, DUNCE_CAP, LUCKSTONE, objects } from './objects.js';
+import { ART_OGRESMASHER, ART_EYES_OF_THE_OVERWORLD } from './artilist.js';
+import { what_gives } from './artifact.js';
+import { ysimple_name, bare_artifactname } from './iactions.js';
+import { body_part } from './insight.js';
+import { LUCKADD } from './const.js';
+import { confers_luck } from './timeout.js';
+import { carrying } from './invent.js';
 import { aligns } from './role.js';
 
 // C ref: attrib.h ABASE(), ABON(), AMAX(), ATEMP()
@@ -154,6 +163,195 @@ function role_abil(r) {
     for (i = 0; roleabils[i].abil && roleabils[i].role !== r; i++)
         continue;
     return roleabils[i].abil;
+}
+
+// C ref: attrib.c check_innate_abil() -- 'ability' is the property
+// index standing in for C's &u.uprops[propidx].intrinsic
+function check_innate_abil(ability, frommask) {
+    let abil = null;
+
+    if (frommask === FROMEXPER)
+        abil = role_abil(game.urole.mnum); /* Role_switch */
+    else if (frommask === FROMRACE)
+        switch (game.urace.mnum) { /* Race_switch */
+        case PM_DWARF:
+            abil = dwa_abil;
+            break;
+        case PM_ELF:
+            abil = elf_abil;
+            break;
+        case PM_GNOME:
+            abil = gno_abil;
+            break;
+        case PM_ORC:
+            abil = orc_abil;
+            break;
+        case PM_HUMAN:
+            abil = hum_abil;
+            break;
+        default:
+            break;
+        }
+
+    for (let i = 0; abil && abil[i].ability; i++) {
+        if ((abil[i].ability === ability) && (game.u.ulevel >= abil[i].ulevel))
+            return abil[i];
+    }
+    return null;
+}
+
+/* reasons for innate ability */
+const FROM_NONE = 0;
+const FROM_ROLE = 1; /* from experience at level 1 */
+const FROM_RACE = 2;
+const FROM_INTR = 3; /* intrinsically (eating some corpse or prayer reward) */
+const FROM_EXP = 4;  /* from experience for some level > 1 */
+const FROM_FORM = 5;
+const FROM_LYCN = 6;
+
+// C ref: attrib.c innately() -- 'ability' is the property index
+/* check whether particular ability has been obtained via innate attribute */
+function innately(ability) {
+    let iptr;
+    const intrinsic = game.u.uprops[ability].intrinsic;
+
+    if ((iptr = check_innate_abil(ability, FROMEXPER)) !== null)
+        return (iptr.ulevel === 1) ? FROM_ROLE : FROM_EXP;
+    if ((iptr = check_innate_abil(ability, FROMRACE)) !== null)
+        return FROM_RACE;
+    if ((intrinsic & FROMOUTSIDE) !== 0)
+        return FROM_INTR;
+    if ((intrinsic & FROMFORM) !== 0)
+        return FROM_FORM;
+    return FROM_NONE;
+}
+
+// C ref: attrib.c is_innate()
+export function is_innate(propidx) {
+    const u = game.u;
+    let innateness;
+    /* youprop.h Very_fast */
+    const Very_fast = ((u.uprops[FAST].intrinsic & ~INTRINSIC)
+                       || u.uprops[FAST].extrinsic);
+
+    /* innately() would report FROM_FORM for this; caller wants specificity */
+    if (propidx === DRAIN_RES && ismnum(u.ulycn))
+        return FROM_LYCN;
+    if (propidx === FAST && Very_fast)
+        return FROM_NONE; /* can't become very fast innately */
+    if ((innateness = innately(propidx)) !== FROM_NONE)
+        return innateness;
+    if (propidx === JUMPING && game.urole.mnum === PM_KNIGHT /* Role_if() */
+        /* knight has intrinsic jumping, but extrinsic is more versatile so
+           ignore innateness if equipment is going to claim responsibility */
+        && !u.uprops[propidx].extrinsic)
+        return FROM_ROLE;
+    if ((propidx === BLINDED && (game.youmonst.data.mflags1 & M1_NOEYES))
+                                                         /* !haseyes() */
+        || (propidx === BLND_RES
+            && (u.uprops[BLND_RES].intrinsic & FROMFORM) !== 0))
+        return FROM_FORM;
+    return FROM_NONE;
+}
+
+// C ref: attrib.c from_what()
+export function from_what(propidx) /* special cases can have negative values */ {
+    const u = game.u;
+    const wizard = !!game.flags.debug;
+    let buf = "";
+
+    /*
+     * Restrict the source of the attributes just to debug mode for now
+     */
+    if (wizard) {
+        const because_of = (s) => ` because of ${s}`;
+
+        if (propidx >= 0) {
+            let p;
+            let obj = null;
+            const innateness = is_innate(propidx);
+            const HFast = u.uprops[FAST].intrinsic, EFast = u.uprops[FAST].extrinsic;
+            const Very_fast = ((HFast & ~INTRINSIC) || EFast);
+            const HBlinded = u.uprops[BLINDED].intrinsic;
+            const EBlinded = u.uprops[BLINDED].extrinsic;
+            const BBlinded = u.uprops[BLINDED].blocked;
+            const Blindfolded_only = EBlinded && !(HBlinded && !BBlinded);
+
+            /*
+             * Properties can be obtained from multiple sources and we
+             * try to pick the most significant one.  Classification
+             * priority is not set in stone; current precedence is:
+             * "from the start" (from role or race at level 1),
+             * "from outside" (eating corpse, divine reward, blessed potion),
+             * "from experience" (from role or race at level 2+),
+             * "from current form" (while polymorphed),
+             * "from timed effect" (potion or spell),
+             * "from worn/wielded equipment" (Firebrand, elven boots, &c),
+             * "from carried equipment" (mainly quest artifacts).
+             * There are exceptions.  Versatile jumping from spell or boots
+             * takes priority over knight's innate but limited jumping.
+             */
+            if ((propidx === BLINDED && u.uroleplay.blind)
+                || (propidx === DEAF && u.uroleplay.deaf))
+                buf = " from birth";
+            else if (innateness === FROM_ROLE || innateness === FROM_RACE)
+                buf = " innately";
+            else if (innateness === FROM_INTR) /* [].intrinsic & FROMOUTSIDE */
+                buf = " intrinsically";
+            else if (innateness === FROM_EXP)
+                buf = " because of your experience";
+            else if (innateness === FROM_LYCN)
+                buf = " due to your lycanthropy";
+            else if (innateness === FROM_FORM)
+                buf = " from your creature form";
+            else if (propidx === FAST && Very_fast)
+                buf = because_of(((HFast & TIMEOUT) !== 0) ? "a potion or spell"
+                          : ((EFast & W_ARMF) !== 0 && game.uarmf.dknown
+                             && objects[game.uarmf.otyp].oc_name_known)
+                              ? ysimple_name(game.uarmf) /* speed boots */
+                                : EFast ? "worn equipment"
+                                  : "something");
+            else if (wizard
+                     && (obj = what_gives(propidx /* &[].extrinsic */)) !== null)
+                buf = because_of(obj.oartifact ? bare_artifactname(obj)
+                                               : ysimple_name(obj));
+            else if (propidx === BLINDED && Blindfolded_only)
+                buf = because_of(ysimple_name(game.ublindf));
+            else if (propidx === BLINDED && u.ucreamed
+                     && (HBlinded & TIMEOUT) === u.ucreamed
+                     && !EBlinded && !(HBlinded & ~TIMEOUT))
+                buf = `due to goop covering your ${body_part(FACE)}`;
+
+            /* remove some verbosity and/or redundancy */
+            if ((p = strstri(buf, " pair of ")) >= 0)
+                buf = buf.slice(0, p + 1) + buf.slice(p + 9); /* copynchars() */
+            else if (propidx === STRANGLED
+                     && (p = strstri(buf, " of strangulation")) >= 0)
+                buf = buf.slice(0, p);
+
+        } else { /* negative property index */
+            /* if more blocking capabilities get implemented we'll need to
+               replace this with what_blocks() comparable to what_gives() */
+            switch (-propidx) {
+            case BLINDED:
+                /* wearing the Eyes of the Overworld overrides blindness */
+                if (u.uprops[BLINDED].blocked && game.ublindf
+                    && game.ublindf.oartifact === ART_EYES_OF_THE_OVERWORLD)
+                    buf = because_of(bare_artifactname(game.ublindf));
+                break;
+            case INVIS:
+                if (u.uprops[INVIS].blocked & W_ARMC)
+                    buf = because_of(ysimple_name(game.uarmc)); /* mummy wrapping */
+                break;
+            case CLAIRVOYANT:
+                if (wizard && (u.uprops[CLAIRVOYANT].blocked & W_ARMH))
+                    buf = because_of(ysimple_name(game.uarmh)); /* cornuthaum */
+                break;
+            }
+        }
+
+    } /*wizard*/
+    return buf;
 }
 
 // C ref: attrib.c adjabil()
@@ -537,6 +735,34 @@ const AVAL = 50; /* tune value for exercise gains */
 
 /* C ref: attrib.h AEXE() */
 function AEXE(x) { return game.u.aexe.a[x]; }
+
+// C ref: attrib.c stone_luck()
+/* there has just been an inventory change affecting a luck-granting item */
+export function stone_luck(include_uncursed) {
+    let bonchance = 0;
+
+    for (let otmp = game.invent; otmp; otmp = otmp.nobj)
+        if (confers_luck(otmp)) {
+            if (otmp.cursed)
+                bonchance -= otmp.quan;
+            else if (otmp.blessed || include_uncursed)
+                bonchance += otmp.quan;
+        }
+
+    return Math.sign(bonchance);
+}
+
+// C ref: attrib.c set_moreluck()
+export function set_moreluck() {
+    const luckbon = stone_luck(true);
+
+    if (!luckbon && !carrying(LUCKSTONE))
+        game.u.moreluck = 0;
+    else if (luckbon >= 0)
+        game.u.moreluck = LUCKADD;
+    else
+        game.u.moreluck = -LUCKADD;
+}
 
 // C ref: attrib.c exercise()
 export function exercise(i, inc_or_dec) {

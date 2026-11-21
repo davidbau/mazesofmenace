@@ -1,10 +1,11 @@
 // do.js — level changes.
 // C ref: do.c
 //
-// Ported so far: schedule_goto(), deferred_goto(), and goto_level() for a
-// new level reached by level teleport, through docrt() and the arrival
-// messages.  Stairs/portal/falling arrival and returning to a saved level
-// are not ported yet.
+// Ported so far: the #down/#up commands (dodown(), doup()),
+// schedule_goto(), deferred_goto(), and goto_level() for a new level
+// reached by stairs or by level teleport, through docrt() and the arrival
+// messages.  Portal/falling arrival and returning to a saved level are not
+// ported yet.
 
 import { game } from './gstate.js';
 import { pline, docrt, flush_screen } from './display.js';
@@ -36,6 +37,290 @@ import { can_reach_floor } from './engrave.js';
 import { doname } from './objnam.js';
 import { place_object } from './mkobj.js';
 import { encumber_msg } from './pickup.js';
+import { rn2, rnd } from './rng.js';
+import { You_cant } from './display.js';
+import { ECMD_OK, LADDER, UNENCUMBERED, SLT_ENCUMBER, TOOKPLUNGE, KILLED_BY,
+         TT_PIT, Is_stronghold, RLOC_NOMSG, LEVITATION, FLYING,
+         FUMBLING } from './const.js';
+import { set_move_cmd } from './cmd.js';
+import { HOLE, VIBRATING_SQUARE, dotrap, u_locomotion, losehp,
+         Maybe_Half_Phys, selftouch } from './trap.js';
+import { u_rooted, near_capacity } from './hack.js';
+import { stucksteed } from './steed.js';
+import { next_to_u, enexto, mnexto, rloc } from './teleport.js';
+import { Can_fall_thru, u_on_newpos, stairway_find_from, u_on_sstairs,
+         u_on_upstairs, u_on_dnstairs } from './mklev.js';
+import { uteetering_at_seen_pit, uescaped_shaft, sticks,
+         ceiling_hider } from './engrave.js';
+import { mon_nam } from './do_name.js';
+import { set_ustuck } from './uhitm.js';
+import { AT_ENGL, AD_DGST } from './monsters.js';
+import { STAIRS } from './const.js';
+
+/* C ref: youprop.h -- the hero's properties used by the level-change code */
+function uprop(p) {
+    return game.u.uprops[p] || { intrinsic: 0, extrinsic: 0, blocked: 0 };
+}
+function HLevitation() { return uprop(LEVITATION).intrinsic; }
+function ELevitation() { return uprop(LEVITATION).extrinsic; }
+function Levitation() {
+    return !!((HLevitation() || ELevitation()) && !uprop(LEVITATION).blocked);
+}
+function Flying() {
+    const p = uprop(FLYING);
+    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
+}
+function Fumbling() {
+    const p = uprop(FUMBLING);
+    return !!(p.intrinsic || p.extrinsic);
+}
+function Punished() { return !!game.uball; }
+function Upolyd() { return game.u.umonnum !== game.u.umonster; }
+/* C ref: obj.h is_pick() */
+function is_pick(otmp) {
+    return otmp.otyp === O.PICK_AXE || otmp.otyp === O.DWARVISH_MATTOCK;
+}
+/* C ref: mondata.h digests() */
+function digests(ptr) {
+    return (ptr.mattk || []).some(a => a.aatyp === AT_ENGL && a.adtyp === AD_DGST);
+}
+
+/* C ref: cmd.c DIR_DOWN, DIR_UP (after the 8 compass directions) */
+const DIR_DOWN = 8, DIR_UP = 9;
+
+// C ref: do.c u_stuck_cannot_go()
+async function u_stuck_cannot_go(updn) {
+    const u = game.u;
+    if (u.ustuck) {
+        if (u.uswallow || !sticks(game.youmonst.data)) {
+            await You(`are ${!u.uswallow ? "being held"
+                             : digests(u.ustuck.data) ? "swallowed"
+                               : "engulfed"}, and cannot go ${updn}.`);
+            return true;
+        } else {
+            const mtmp = u.ustuck;
+
+            set_ustuck(null);
+            await You(`release ${mon_nam(mtmp)}.`);
+        }
+    }
+    return false;
+}
+
+// C ref: do.c dodown()
+/* the #down command */
+export async function dodown() {
+    const g = game;
+    const u = g.u;
+    let trap = null;
+    let stway;
+    let stairs_down, ladder_down;
+
+    set_move_cmd(DIR_DOWN, 0);
+
+    if (await u_rooted())
+        return ECMD_TIME;
+
+    if (await stucksteed(true)) {
+        return ECMD_OK;
+    }
+
+    stairs_down = ladder_down = false;
+    if ((stway = stairway_at(u.ux, u.uy)) != null && !stway.up) {
+        stairs_down = !stway.isladder;
+        ladder_down = !stairs_down;
+    }
+
+    /* Levitation might be blocked, but player can still use '>' to
+       turn off controlled levitation */
+    if (HLevitation() || ELevitation()) {
+        /* ending controlled levitation (float_down()) and the
+           floating_above() messages */
+        throw new Error('dodown(): levitation not ported yet');
+    }
+
+    if (Upolyd() && ceiling_hider(g.youmonst.data) && u.uundetected) {
+        throw new Error('dodown(): ceiling hider coming out of hiding not ported yet');
+    }
+
+    if (await u_stuck_cannot_go("down"))
+        return ECMD_TIME;
+
+    if (!stairs_down && !ladder_down) {
+        trap = t_at(u.ux, u.uy);
+        if (trap && (uteetering_at_seen_pit(trap) || uescaped_shaft(trap))) {
+            await dotrap(trap, TOOKPLUNGE);
+            return ECMD_TIME;
+        } else if (!trap || !is_hole(trap.ttyp)
+                   || !Can_fall_thru(u.uz) || !trap.tseen) {
+            if (g.flags.autodig && !g.context.nopick
+                && g.uwep && is_pick(g.uwep)) {
+                throw new Error('dodown(): use_pick_axe2() not ported yet');
+            } else {
+                await You_cant(`go down here${
+                    (trap && trap.ttyp === VIBRATING_SQUARE) ? " yet" : ""}.`);
+                return ECMD_OK;
+            }
+        }
+    }
+    const valley = g.dungeon_topology?.d_valley_level;
+    if (valley && valley.dlevel && on_level(valley, u.uz)
+        && !u.uevent.gehennom_entered) {
+        throw new Error('dodown(): the gate to Gehennom not ported yet');
+    }
+
+    if (!await next_to_u()) {
+        await You("are held back by your pet!");
+        return ECMD_OK;
+    }
+
+    if (trap) {
+        /* "You jump down the hole." / "squeeze through the trap door" */
+        throw new Error('dodown(): jumping into a hole or trap door not ported yet');
+    }
+    if (trap && Is_stronghold(u.uz)) {
+        throw new Error('dodown(): goto_hell() not ported yet');
+    } else {
+        g.at_ladder = (g.level.at(u.ux, u.uy).typ === LADDER);
+        await next_level(!trap);
+        g.at_ladder = false;
+    }
+    return ECMD_TIME;
+}
+
+// C ref: do.c doup()
+/* the #up command - move up a staircase */
+export async function doup() {
+    const g = game;
+    const u = g.u;
+    const stway = stairway_at(u.ux, u.uy);
+
+    set_move_cmd(DIR_UP, 0);
+
+    if (await u_rooted())
+        return ECMD_TIME;
+
+    /* "up" to get out of a pit... */
+    if (u.utrap && u.utraptype === TT_PIT) {
+        throw new Error('doup(): climb_pit() not ported yet');
+    }
+
+    if (!stway || (stway && !stway.up)) {
+        await You_cant("go up here.");
+        return ECMD_OK;
+    }
+    if (await stucksteed(true)) {
+        return ECMD_OK;
+    }
+
+    if (await u_stuck_cannot_go("up"))
+        return ECMD_TIME;
+
+    if (near_capacity() > SLT_ENCUMBER) {
+        /* No levitation check; inv_weight() already allows for it */
+        await pline(`Your load is too heavy to climb the ${
+            g.level.at(u.ux, u.uy).typ === STAIRS ? "stairs" : "ladder"}.`);
+        return ECMD_TIME;
+    }
+    if (ledger_no(u.uz) === 1) {
+        /* iflags.debug_fuzzer isn't ported */
+        throw new Error('doup(): climbing out of the dungeon (y_n prompt) not ported yet');
+    }
+    if (!await next_to_u()) {
+        await You("are held back by your pet!");
+        return ECMD_OK;
+    }
+    g.at_ladder = (g.level.at(u.ux, u.uy).typ === LADDER);
+    await prev_level(true);
+    g.at_ladder = false;
+    return ECMD_TIME;
+}
+
+// C ref: dungeon.c next_level()
+/* goto the next level (or appropriate dungeon) */
+export async function next_level(at_stairs) {
+    const u = game.u;
+    const stway = stairway_at(u.ux, u.uy);
+    const newlevel = { dnum: 0, dlevel: 0 };
+
+    if (at_stairs && stway)
+        stway.u_traversed = true;
+
+    if (at_stairs && stway) {
+        newlevel.dnum = stway.tolev.dnum;
+        newlevel.dlevel = stway.tolev.dlevel;
+        await goto_level(newlevel, at_stairs, false, false);
+    } else {
+        newlevel.dnum = u.uz.dnum;
+        newlevel.dlevel = u.uz.dlevel + 1;
+        await goto_level(newlevel, at_stairs, !at_stairs, false);
+    }
+}
+
+// C ref: dungeon.c prev_level()
+/* goto the previous level (or appropriate dungeon) */
+export async function prev_level(at_stairs) {
+    const u = game.u;
+    const stway = stairway_at(u.ux, u.uy);
+    const newlevel = { dnum: 0, dlevel: 0 };
+
+    if (at_stairs && stway)
+        stway.u_traversed = true;
+
+    if (at_stairs && stway && stway.tolev.dnum !== u.uz.dnum) {
+        /* Taking an up dungeon branch. */
+        /* KMH -- Upwards branches are okay if not level 1 */
+        /* (Just make sure it doesn't go above depth 1) */
+        if (!u.uz.dnum && u.uz.dlevel === 1 && !u.uhave?.amulet)
+            throw new Error('prev_level(): done(ESCAPED) not ported yet');
+        else {
+            newlevel.dnum = stway.tolev.dnum;
+            newlevel.dlevel = stway.tolev.dlevel;
+            await goto_level(newlevel, at_stairs, false, false);
+        }
+    } else {
+        /* Going up a stairs or rising through the ceiling. */
+        newlevel.dnum = u.uz.dnum;
+        newlevel.dlevel = u.uz.dlevel - 1;
+        await goto_level(newlevel, at_stairs, false, false);
+    }
+}
+
+// C ref: do.c u_collide_m()
+/* when arriving on a level, if hero and a monster are trying to share same
+   spot, move one; extracted from goto_level(); also used by wiz_makemap() */
+export async function u_collide_m(mtmp) {
+    const g = game;
+    const u = g.u;
+    const cc = { x: 0, y: 0 };
+
+    if (!mtmp || mtmp === u.usteed || mtmp !== m_at(u.ux, u.uy)) {
+        /* impossible("level arrival collision: %s?", ...) */
+        throw new Error('u_collide_m(): impossible() level arrival collision not ported yet');
+    }
+
+    /* There's a monster at your target destination; it might be one
+       which accompanied you--see mon_arrive(dogmove.c)--or perhaps
+       it was already here.  Randomly move you to an adjacent spot
+       or else the monster to any nearby location.  Prior to 3.3.0
+       the latter was done unconditionally. */
+    if (!rn2(2) && enexto(cc, u.ux, u.uy, g.youmonst.data)
+        && Math.abs(cc.x - u.ux) <= 1 && Math.abs(cc.y - u.uy) <= 1) /* next2u() */
+        u_on_newpos(cc.x, cc.y); /*[maybe give message here?]*/
+    else
+        await mnexto(mtmp, RLOC_NOMSG);
+
+    if ((mtmp = m_at(u.ux, u.uy)) != null) {
+        /* there was an unconditional impossible("mnexto failed")
+           here, but it's not impossible and we're prepared to cope
+           with the situation, so only say something when debugging */
+        if (g.flags.debug)
+            await pline("(monster in hero's way)");
+        if (!await rloc(mtmp, RLOC_NOMSG) || (mtmp = m_at(u.ux, u.uy)) != null)
+            /* no room to move it; send it away, to return later */
+            throw new Error('u_collide_m(): m_into_limbo() not ported yet');
+    }
+}
 
 export const UTOTYPE_NONE = 0x00;
 export const UTOTYPE_ATSTAIRS = 0x01;
@@ -161,7 +446,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     u.uinwater = 0;
     u.uundetected = 0; /* not hidden, even if means are available */
     if (!g.iflags?.nofollowers)
-        keepdogs(false);
+        await keepdogs(false);
     /* recalc_mapseen(): #overview isn't ported yet */
     /* vision_recalc(2): we no longer see anything on the level; the
        vision state is rebuilt by vision_reset() on arrival */
@@ -232,7 +517,58 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         /* find the portal on the new level */
         throw new Error('goto_level(): portal arrival not ported yet');
     } else if (at_stairs && !In_endgame(u.uz)) {
-        throw new Error('goto_level(): stairs arrival not ported yet');
+        if (up) {
+            const stway = stairway_find_from(u.uz0, g.at_ladder);
+            if (stway) {
+                u_on_newpos(stway.sx, stway.sy);
+                stway.u_traversed = true;
+            } else if (newdungeon)
+                u_on_sstairs(1);
+            else
+                u_on_dnstairs();
+            /* you climb up the {stairs|ladder};
+               fly up the stairs; fly up along the ladder */
+            const great_effort = (Punished() && !Levitation());
+            if (g.flags.verbose || great_effort)
+                await pline(`${great_effort ? "With great effort, you" : "You"} ${
+                    u_locomotion("climb")} up${
+                    (Flying() && g.at_ladder) ? " along" : ""} the ${
+                    g.at_ladder ? "ladder" : "stairs"}.`);
+        } else { /* down */
+            const stway = stairway_find_from(u.uz0, g.at_ladder);
+            if (stway) {
+                u_on_newpos(stway.sx, stway.sy);
+                stway.u_traversed = true;
+            } else if (newdungeon)
+                u_on_sstairs(0);
+            else
+                u_on_upstairs();
+            if (!u.dz) {
+                ; /* stayed on same level? (no transit effects) */
+            } else if (Flying()) {
+                if (g.flags.verbose)
+                    await You(`fly down ${g.at_ladder ? "along the ladder"
+                                                      : "the stairs"}.`);
+            } else if (near_capacity() > UNENCUMBERED
+                       || Punished() || Fumbling()) {
+                await You(`fall down the ${g.at_ladder ? "ladder" : "stairs"}.`);
+                if (Punished())
+                    throw new Error('goto_level(): drag_down() not ported yet');
+                /* falling off steed has its own losehp() call */
+                if (u.usteed)
+                    throw new Error('goto_level(): dismount_steed(DISMOUNT_FELL) not ported yet');
+                else
+                    await losehp(Maybe_Half_Phys(rnd(3)),
+                                 g.at_ladder ? "falling off a ladder"
+                                             : "tumbling down a flight of stairs",
+                                 KILLED_BY);
+                await selftouch("Falling, you");
+            } else { /* ordinary descent */
+                if (g.flags.verbose)
+                    await You(`${g.at_ladder ? "climb down the ladder"
+                                             : "descend the stairs"}.`);
+            }
+        }
     } else { /* trap door or level_tele or In_endgame */
         u_on_rndspot((up ? 1 : 0) | (was_in_W_tower ? 2 : 0));
         if (falling)
@@ -254,8 +590,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     /* hero might be arriving at a spot containing a monster;
        if so, move one or the other to another location */
-    if (m_at(u.ux, u.uy))
-        throw new Error('goto_level(): u_collide_m() not ported yet');
+    let mtmp;
+    if ((mtmp = m_at(u.ux, u.uy)) != null)
+        await u_collide_m(mtmp);
 
     /* initial movement of bubbles just before vision_recalc */
     if (Is_waterlevel(u.uz) || Is_airlevel(u.uz))
@@ -585,7 +922,7 @@ export async function dropz(obj, with_impact) {
 }
 
 // C ref: hack.c impact_disturbs_zombies()
-function impact_disturbs_zombies(obj, violent) {
+export function impact_disturbs_zombies(obj, violent) {
     /* if object won't make a noticeable impact, let buried zombies rest */
     if ((obj.owt || 0) < (violent ? 10 : 100) /* || is_flimsy(obj) */)
         return;
@@ -620,7 +957,7 @@ function down_gate(x, y) {
 }
 
 // C ref: dokick.c ship_object() -- only the "doesn't fall" case so far
-async function ship_object(otmp, x, y, shop_floor_obj) {
+export async function ship_object(otmp, x, y, shop_floor_obj) {
     void shop_floor_obj;
     if (!otmp)
         return false;

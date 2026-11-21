@@ -22,19 +22,19 @@ import {
     CLOAK_OF_PROTECTION, CLOAK_OF_DISPLACEMENT, SPEED_BOOTS, LEVITATION_BOOTS,
     POT_WATER, WAN_NOTHING, FIRST_OBJECT,
     AMULET_OF_YENDOR, BELL_OF_OPENING, SPE_BOOK_OF_THE_DEAD,
-    CANDELABRUM_OF_INVOCATION,
+    CANDELABRUM_OF_INVOCATION, MAGIC_HARP, WOODEN_HARP,
 } from './objects.js';
 import { NHW_MENU, NHW_TEXT, PICK_ONE, MENU_BEHAVE_STANDARD,
          MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, ECMD_OK } from './const.js';
 import { NO_COLOR, ATR_NONE, ATR_INVERSE } from './terminal.js';
 import { PM_SAMURAI } from './monsters.js';
-import { strcmpi } from './hacklib.js';
+import { strcmpi, strstri } from './hacklib.js';
 import { pline } from './display.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, add_menu_str,
          tty_end_menu, tty_select_menu, tty_destroy_nhwindow, tty_putstr,
          tty_display_nhwindow } from './wintty.js';
 import { let_to_name, def_inv_order } from './invent.js';
-import { obj_typename } from './objnam.js';
+import { obj_typename, Japanese_item_name } from './objnam.js';
 
 const BUFSZ = 256;
 
@@ -371,16 +371,16 @@ function disco() {
     return game.disco;
 }
 
-// C ref: o_init.c discover_object() -- the Samurai Japanese_item_name()
-// case (which only adds pre-known Japanese items to disco[]) is not ported
-// yet; dodiscovered() stops for a Samurai
+// C ref: o_init.c discover_object()
 export function discover_object(oindx, mark_as_known, mark_as_encountered,
                                 credit_hero) {
     if (oindx < FIRST_OBJECT) /* don't discover generic objects */
         return;
 
     if ((!objects[oindx].oc_name_known && mark_as_known)
-        || (!objects[oindx].oc_encountered && mark_as_encountered)) {
+        || (!objects[oindx].oc_encountered && mark_as_encountered)
+        || (Role_if_samurai()
+            && Japanese_item_name(oindx, null))) {
         let dindx;
         const acls = objects[oindx].oc_class;
         const d = disco();
@@ -412,7 +412,9 @@ export function discover_object(oindx, mark_as_known, mark_as_encountered,
 function interesting_to_discover(i) {
     /* most players who don't speak Japanese manage to figure out what
        gunyoki, osaku, and so forth mean, but treat them as pre-discovered
-       to be disclosed by '\' -- Samurai: dodiscovered() stops earlier */
+       to be disclosed by '\' */
+    if (Role_if_samurai() && Japanese_item_name(i, null))
+        return true;
 
     /* Objects that were discovered without encountering them are now printed
        with a '*' */
@@ -489,9 +491,40 @@ async function choose_disco_sort(
 }
 
 // C ref: o_init.c disco_typename() -- augment obj_typename() with
-// explanation of Japanese item names (Samurai: obj_typename() stops)
+// explanation of Japanese item names
 function disco_typename(otyp) {
-    return obj_typename(otyp);
+    let result = obj_typename(otyp);
+
+    if (Role_if_samurai() && Japanese_item_name(otyp, null)) {
+        let buf;
+        const actualn = (((otyp !== MAGIC_HARP && otyp !== WOODEN_HARP)
+                          || objects[otyp].oc_name_known)
+                         ? OBJ_NAME(objects[otyp])
+                         /* undiscovered harp (since wooden harp is
+                            non-magic so pre-discovered, only applies
+                            to magic harp and will only be seen if
+                            magic harp has been 'called' something) */
+                         : "harp");
+
+        if (!actualn) { /* won't happen; used to pacify static analyzer */
+            ;
+        } else if (strstri(result, " called") >= 0) {
+            buf = ` [${actualn}] called`;
+            result = strsubst(result, " called", buf);
+        } else if (strstri(result, " (") >= 0) {
+            buf = ` [${actualn}] (`;
+            result = strsubst(result, " (", buf);
+        } else {
+            result += ` [${actualn}]`;
+        }
+    }
+    return result;
+}
+
+/* C ref: hacklib.c strsubst() -- replace the first occurrence */
+function strsubst(bp, orig, replacement) {
+    const at = bp.indexOf(orig);
+    return (at < 0) ? bp : bp.slice(0, at) + replacement + bp.slice(at + orig.length);
 }
 
 // C ref: shk.c append_price_quote() -- the price range seen in shops
@@ -606,8 +639,6 @@ export async function dodiscovered() { /* free after Robert Viduya */
     const sorted_lines = [];
     const headings_attr = game.iflags?.menu_headings?.attr ?? ATR_INVERSE;
 
-    if (Role_if_samurai())
-        throw new Error('dodiscovered(): Japanese_item_name() is not ported yet');
     if (!game.flags)
         game.flags = {};
     if (!game.flags.discosort || !disco_order_let.includes(game.flags.discosort))

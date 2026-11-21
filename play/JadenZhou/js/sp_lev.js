@@ -14,6 +14,7 @@
 // they are ported (their C counterparts are listed in sp_lev_des_names).
 
 import { game } from './gstate.js';
+import { does_block, block_point } from './vision.js';
 import { rn2, rn1, rnd, ROLL_FROM } from './rng.js';
 import { depth } from './dungeon.js';
 import {
@@ -2015,11 +2016,8 @@ function create_monster(m, croom) {
                   `create_monster: unimplemented mon appear type [${m.appear},"${m.appear_as}"]`);
                 break;
             }
-            /* if (does_block(x, y, &levl[x][y])) block_point(x, y);
-               -- the JS vision has no block_point(); a mimicked boulder
-               blocks, so recompute vision instead (as set_mimic_sym) */
-            if (mtmp.m_ap_type === M_AP_OBJECT && mtmp.mappearance === BOULDER)
-                game.vision_full_recalc = 1;
+            if (does_block(x, y, game.level.at(x, y)))
+                block_point(x, y);
         }
 
         mtmp.female = m.female;

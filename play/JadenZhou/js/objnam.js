@@ -18,7 +18,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import {
-    lowc, highc, strncmpi, strcmpi, mungspaces, strstri, fuzzymatch, dist2,
+    lowc, highc, strncmpi, strcmpi, mungspaces, strstri, fuzzymatch, dist2, s_suffix,
 } from './hacklib.js';
 import { cansee } from './vision.js';
 import * as O from './objects.js';
@@ -35,7 +35,11 @@ import { mons, LOW_PM, S_PUDDING, PM_GRAY_OOZE, PM_BLACK_PUDDING,
          PM_GRAY_DRAGON, PM_YELLOW_DRAGON } from './monsters.js';
 import {
     name_to_mon, name_to_monplus, is_male, is_female, is_neuter,
+    is_were, is_human, is_elf, is_dwarf, is_gnome, is_orc,
 } from './mondata.js';
+import { ismnum } from './const.js';
+import { dead_species, set_corpsenm, can_be_hatched } from './mkobj.js';
+import { zombie_form } from './mon.js';
 import { def_char_to_objclass } from './drawing.js';
 import { genders } from './role.js';
 import {
@@ -43,6 +47,7 @@ import {
     artifact_exists, nartifact_exist,
 } from './artifact.js';
 import { tin_details } from './eat.js';
+import { the as the_article } from './iactions.js';
 import {
     mksobj, mkobj, curse, weight, erosion_matters, is_flammable,
     is_rustprone, is_crackable, is_corrodeable, is_rottable, is_damageable,
@@ -55,6 +60,96 @@ const vowels = "aeiouAEIOU";
 
 function not_ported(what) {
     throw new Error(`readobjnam: ${what} is not ported yet`);
+}
+
+/* C ref: mondata.h verysmall() */
+function verysmall(ptr) { return ptr.msize < M.MZ_SMALL; }
+
+// C ref: were.c counter_were()
+function counter_were(pm) {
+    switch (pm) {
+    case M.PM_WEREWOLF:
+        return M.PM_HUMAN_WEREWOLF;
+    case M.PM_HUMAN_WEREWOLF:
+        return M.PM_WEREWOLF;
+    case M.PM_WEREJACKAL:
+        return M.PM_HUMAN_WEREJACKAL;
+    case M.PM_HUMAN_WEREJACKAL:
+        return M.PM_WEREJACKAL;
+    case M.PM_WERERAT:
+        return M.PM_HUMAN_WERERAT;
+    case M.PM_HUMAN_WERERAT:
+        return M.PM_WERERAT;
+    default:
+        return NON_PM;
+    }
+}
+
+// C ref: mon.c genus()
+/*
+ * Return associated character class monster, rather than species
+ * if mode is 1.
+ */
+function genus(mndx, mode) {
+    switch (mndx) {
+    /* Quest guardians */
+    case M.PM_STUDENT:
+        mndx = mode ? M.PM_ARCHEOLOGIST : M.PM_HUMAN;
+        break;
+    case M.PM_CHIEFTAIN:
+        mndx = mode ? M.PM_BARBARIAN : M.PM_HUMAN;
+        break;
+    case M.PM_NEANDERTHAL:
+        mndx = mode ? M.PM_CAVE_DWELLER : M.PM_HUMAN;
+        break;
+    case M.PM_ATTENDANT:
+        mndx = mode ? M.PM_HEALER : M.PM_HUMAN;
+        break;
+    case M.PM_PAGE:
+        mndx = mode ? M.PM_KNIGHT : M.PM_HUMAN;
+        break;
+    case M.PM_ABBOT:
+        mndx = mode ? M.PM_MONK : M.PM_HUMAN;
+        break;
+    case M.PM_ACOLYTE:
+        mndx = mode ? M.PM_CLERIC : M.PM_HUMAN;
+        break;
+    case M.PM_HUNTER:
+        mndx = mode ? M.PM_RANGER : M.PM_HUMAN;
+        break;
+    case M.PM_THUG:
+        mndx = mode ? M.PM_ROGUE : M.PM_HUMAN;
+        break;
+    case M.PM_ROSHI:
+        mndx = mode ? M.PM_SAMURAI : M.PM_HUMAN;
+        break;
+    case M.PM_GUIDE:
+        mndx = mode ? M.PM_TOURIST : M.PM_HUMAN;
+        break;
+    case M.PM_APPRENTICE:
+        mndx = mode ? M.PM_WIZARD : M.PM_HUMAN;
+        break;
+    case M.PM_WARRIOR:
+        mndx = mode ? M.PM_VALKYRIE : M.PM_HUMAN;
+        break;
+    default:
+        if (ismnum(mndx)) {
+            const ptr = mons[mndx];
+
+            if (is_human(ptr))
+                mndx = M.PM_HUMAN;
+            else if (is_elf(ptr))
+                mndx = M.PM_ELF;
+            else if (is_dwarf(ptr))
+                mndx = M.PM_DWARF;
+            else if (is_gnome(ptr))
+                mndx = M.PM_GNOME;
+            else if (is_orc(ptr))
+                mndx = M.PM_ORC;
+        }
+        break;
+    }
+    return mndx;
 }
 
 // C ref: objnam.c just_an()
@@ -434,12 +529,15 @@ export function obj_typename(otyp) {
     let buf;
     const ocl = objects[otyp];
     let actualn = OBJ_NAME(ocl);
-    const dn = OBJ_DESCR(ocl);
+    let dn = OBJ_DESCR(ocl);
     const un = ocl.oc_uname;
     let nn = ocl.oc_name_known;
 
-    if (Role_if_x(M.PM_SAMURAI))
-        throw new Error('obj_typename(): Japanese_item_name() is not ported yet');
+    if (Role_if_x(M.PM_SAMURAI)) {
+        actualn = Japanese_item_name(otyp, actualn);
+        if (otyp === O.WOODEN_HARP || otyp === O.MAGIC_HARP)
+            dn = "koto";
+    }
     /* generic items don't have an actual-name; we shouldn't ever be called
        for those; pacify static analyzer without resorting to impossible() */
     if (!actualn)
@@ -515,6 +613,22 @@ export function obj_typename(otyp) {
     if (dn)
         buf += ` (${dn})`;
     return buf;
+}
+
+// C ref: objnam.c otense()
+export function otense(otmp, verb) {
+    /*
+     * verb is given in plural (without trailing s).  Return as input
+     * if the result of xname(otmp) would be plural.  Don't bother
+     * recomputing xname(otmp) at this time.
+     */
+    /* is_plural(otmp): obj.h; ART_EYES_OF_THE_OVERWORLD is 26 */
+    if (otmp.oartifact === 26)
+        throw new Error('otense(): is_plural() for the Eyes of the Overworld (undiscovered_artifact) not ported yet');
+    if (otmp.quan === 1)
+        return vtense(null, verb);
+
+    return verb;
 }
 
 // C ref: objnam.c vtense()
@@ -2276,8 +2390,63 @@ export function readobjnam(bp, no_wish) {
     }
 
     /* set otmp->corpsenm or dragon scale [mail] */
-    if (d.mntmp >= LOW_PM)
-        not_ported('readobjnam() monster types for corpses/tins/eggs/figurines/statues');
+    if (ismnum(d.mntmp)) {
+        let humanwere;
+
+        if (d.mntmp === M.PM_LONG_WORM_TAIL)
+            d.mntmp = M.PM_LONG_WORM;
+        /* werecreatures in beast form are all flagged no-corpse so for
+           corpses and tins, switch to their corresponding human form;
+           for figurines, override the can't-be-human restriction instead */
+        if (d.typ !== O.FIGURINE && is_were(mons[d.mntmp])
+            && (game.mvitals[d.mntmp].mvflags & M.G_NOCORPSE) !== 0
+            && (humanwere = counter_were(d.mntmp)) !== NON_PM)
+            d.mntmp = humanwere;
+
+        switch (d.typ) {
+        case O.TIN:
+            if (dead_species(d.mntmp, false)) {
+                d.otmp.corpsenm = NON_PM; /* it's empty */
+            } else if ((!(mons[d.mntmp].geno & M.G_UNIQ) || wizard())
+                       && !(game.mvitals[d.mntmp].mvflags & M.G_NOCORPSE)
+                       && mons[d.mntmp].cnutrit !== 0) {
+                d.otmp.corpsenm = d.mntmp;
+            }
+            break;
+        case O.CORPSE:
+            if ((!(mons[d.mntmp].geno & M.G_UNIQ) || wizard())
+                && !(game.mvitals[d.mntmp].mvflags & M.G_NOCORPSE)) {
+                if (mons[d.mntmp].msound === M.MS_GUARDIAN)
+                    d.mntmp = genus(d.mntmp, 1);
+                set_corpsenm(d.otmp, d.mntmp);
+            }
+            if (d.zombify && zombie_form(mons[d.mntmp]))
+                not_ported('readobjnam() zombifying corpse timer (start_timer())');
+            break;
+        case O.EGG:
+            d.mntmp = can_be_hatched(d.mntmp);
+            /* this also sets hatch timer if appropriate */
+            set_corpsenm(d.otmp, d.mntmp);
+            break;
+        case O.FIGURINE:
+            if (!(mons[d.mntmp].geno & M.G_UNIQ)
+                && (!is_human(mons[d.mntmp]) || is_were(mons[d.mntmp]))
+                && d.mntmp !== M.PM_MAIL_DAEMON) /* MAIL_STRUCTURES */
+                d.otmp.corpsenm = d.mntmp;
+            break;
+        case O.STATUE:
+            d.otmp.corpsenm = d.mntmp;
+            if (Has_contents(d.otmp) && verysmall(mons[d.mntmp]))
+                not_ported('readobjnam() statue delete_contents()');
+            break;
+        case O.SCALE_MAIL:
+            /* Dragon mail - depends on the order of objects & dragons. */
+            if (d.mntmp >= PM_GRAY_DRAGON && d.mntmp <= PM_YELLOW_DRAGON)
+                d.otmp.otyp = O.GRAY_DRAGON_SCALE_MAIL
+                              + d.mntmp - PM_GRAY_DRAGON;
+            break;
+        }
+    }
 
     /* set blessed/cursed -- setting the fields directly is safe
      * since weight() is called below and addinv() will take care
@@ -2434,6 +2603,129 @@ function xn_not_ported(what) {
     throw new Error(`xname/doname: ${what} is not ported yet`);
 }
 
+/* C ref: objnam.c CXN_* flags */
+export const CXN_NORMAL = 0, CXN_SINGULAR = 1, CXN_NO_PFX = 2,
+             CXN_PFX_THE = 4, CXN_ARTICLE = 8, CXN_NOCORPSE = 16;
+
+// C ref: objnam.c the_unique_pm()
+export function the_unique_pm(ptr) {
+    /* even though monsters with personal names are unique, we want to
+       describe them as "Name" rather than "the Name" */
+    if ((ptr.mflags2 & M.M2_PNAME) !== 0)
+        return false;
+
+    let uniq = (ptr.geno & M.G_UNIQ) ? true : false;
+    /* high priest is unique if it includes "of <deity>", otherwise not
+       (caller needs to handle the 1st possibility; we assume the 2nd);
+       worm tail should be irrelevant but is included for completeness */
+    if (ptr === mons[M.PM_HIGH_CLERIC] || ptr === mons[M.PM_LONG_WORM_TAIL])
+        uniq = false;
+    /* Wizard no longer needs this; he's flagged as unique these days */
+    if (ptr === mons[M.PM_WIZARD_OF_YENDOR])
+        uniq = true;
+    return uniq;
+}
+
+// C ref: do_name.c obj_pmname()
+export function obj_pmname(obj) {
+    if ((obj.otyp === O.CORPSE || obj.otyp === O.STATUE || obj.otyp === O.FIGURINE)
+        && obj.corpsenm >= LOW_PM && obj.corpsenm < mons.length) {
+        const cgend = (obj.spe & 0x03 /* CORPSTAT_GENDER */),
+              mgend = ((cgend === CORPSTAT_MALE) ? MALE
+                       : (cgend === CORPSTAT_FEMALE) ? FEMALE
+                         : NEUTRAL);
+        let mndx = obj.corpsenm;
+
+        /* mons[].pmnames[] for monster cleric uses "priest" or "priestess"
+           or "aligned cleric"; we want to avoid "aligned cleric [corpse]"
+           unless it has been explicitly flagged as neuter */
+        if (mndx === M.PM_ALIGNED_CLERIC && cgend === 0 /* CORPSTAT_RANDOM */)
+            mndx = M.PM_CLERIC;
+
+        /* mondata.c pmname() */
+        const pm = mons[mndx];
+        if ((mgend >= MALE && mgend <= NEUTRAL) && pm.pmnames[mgend])
+            return pm.pmnames[mgend];
+        return pm.pmnames[NEUTRAL];
+    }
+    return "two-legged glorkum-seeker";
+}
+
+// C ref: objnam.c corpse_xname()
+export function corpse_xname(otmp, adjective, cxn_flags) /* bitmask of CXN_xxx values */ {
+    const omndx = otmp.corpsenm;
+    const ignore_quan = (cxn_flags & CXN_SINGULAR) !== 0,
+          omit_corpse = (cxn_flags & CXN_NOCORPSE) !== 0,
+          glob = (otmp.otyp !== O.CORPSE && otmp.globby);
+    /* suppress "the" from "the unique monster corpse" */
+    let no_prefix = (cxn_flags & CXN_NO_PFX) !== 0,
+        /* include "the" for "the woodchuck corpse */
+        the_prefix = (cxn_flags & CXN_PFX_THE) !== 0,
+        /* include "an" for "an ogre corpse */
+        any_prefix = (cxn_flags & CXN_ARTICLE) !== 0,
+        possessive = false;
+    let mnam;
+
+    if (glob) {
+        mnam = OBJ_NAME(objects[otmp.otyp]); /* "glob of <monster>" */
+    } else if (omndx === NON_PM) { /* paranoia */
+        mnam = "thing";
+    } else {
+        mnam = obj_pmname(otmp);
+        if (the_unique_pm(mons[omndx]) || (mons[omndx].mflags2 & M.M2_PNAME)) {
+            mnam = s_suffix(mnam);
+            possessive = true;
+            /* don't precede personal name like "Medusa" with an article */
+            if (mons[omndx].mflags2 & M.M2_PNAME)
+                no_prefix = true;
+            /* always precede non-personal unique monster name like
+               "Oracle" with "the" unless explicitly overridden */
+            else if (the_unique_pm(mons[omndx]) && !no_prefix)
+                the_prefix = true;
+        }
+    }
+    if (no_prefix)
+        the_prefix = any_prefix = false;
+    else if (the_prefix)
+        any_prefix = false; /* mutually exclusive */
+
+    let nambuf = '';
+    if (the_prefix)
+        nambuf += "the ";
+
+    if (!adjective) {
+        /* normal case:  newt corpse */
+        nambuf += mnam;
+    } else {
+        /* adjective positioning depends upon format of monster name */
+        if (possessive) /* Medusa's cursed partly eaten corpse */
+            nambuf += `${mnam} ${adjective}`;
+        else /* cursed partly eaten troll corpse */
+            nambuf += `${adjective} ${mnam}`;
+        /* in case adjective has a trailing space, squeeze it out */
+        nambuf = mungspaces(nambuf);
+        /* doname() might include a count in the adjective argument;
+           if so, don't prepend an article */
+        if (adjective[0] >= '0' && adjective[0] <= '9')
+            any_prefix = false;
+    }
+
+    if (glob) {
+        ; /* omit_corpse doesn't apply; quantity is always 1 */
+    } else if (!omit_corpse) {
+        nambuf += " corpse";
+        /* makeplural(nambuf) => append "s" to "corpse" */
+        if (otmp.quan > 1 && !ignore_quan) {
+            nambuf += "s";
+            any_prefix = false; /* avoid "a newt corpses" */
+        }
+    }
+
+    if (any_prefix)
+        nambuf = an(nambuf);
+    return nambuf;
+}
+
 // C ref: you.h Blind
 function xn_Blind() {
     const p = game.u?.uprops?.[BLINDED];
@@ -2448,6 +2740,148 @@ function xn_Hallucination() {
 // C ref: objnam.c xcalled()
 function xcalled(pfx, sfx) {
     return `${pfx}${pfx[0] ? " " : ""}called ${sfx}`;
+}
+
+/* C ref: do_wear.c hard_helmet(); obj.h is_helmet(); objclass.h
+   is_metallic() */
+function hard_helmet(obj) {
+    if (!obj || !(obj.oclass === O.ARMOR_CLASS
+                  && objects[obj.otyp].oc_armcat === O.ARM_HELM))
+        return false;
+    return ((objects[obj.otyp].oc_material >= O.IRON
+             && objects[obj.otyp].oc_material <= O.MITHRIL)
+            || is_crackable(obj)) ? true : false;
+}
+
+// C ref: objnam.c armor_simple_name()
+export function armor_simple_name(armor) {
+    let result = null;
+    const armcat = objects[armor.otyp].oc_armcat;
+
+    switch (armcat) {
+    case O.ARM_SUIT:
+        result = suit_simple_name(armor);
+        break;
+    case O.ARM_CLOAK:
+        result = cloak_simple_name(armor);
+        break;
+    case O.ARM_HELM:
+        result = helm_simple_name(armor);
+        break;
+    case O.ARM_GLOVES:
+        result = gloves_simple_name(armor);
+        break;
+    case O.ARM_BOOTS:
+        result = boots_simple_name(armor);
+        break;
+    case O.ARM_SHIELD:
+        result = shield_simple_name(armor);
+        break;
+    case O.ARM_SHIRT:
+        result = shirt_simple_name(armor);
+        break;
+    default:
+        throw new Error(`armor_simple_name(): unknown armor category ${armcat}`);
+    }
+    return result;
+}
+
+// C ref: objnam.c suit_simple_name()
+export function suit_simple_name(suit) {
+    let suitnm;
+
+    if (suit) {
+        if (suit.otyp >= O.GRAY_DRAGON_SCALE_MAIL
+            && suit.otyp <= O.YELLOW_DRAGON_SCALE_MAIL) /* Is_dragon_mail() */
+            return "dragon mail"; /* <color> dragon scale mail */
+        else if (suit.otyp >= O.GRAY_DRAGON_SCALES
+                 && suit.otyp <= O.YELLOW_DRAGON_SCALES) /* Is_dragon_scales() */
+            return "dragon scales";
+        suitnm = OBJ_NAME(objects[suit.otyp]);
+        if (suitnm.length > 5 && suitnm.endsWith(" mail"))
+            return "mail"; /* most suits fall into this category */
+        else if (suitnm.length > 7 && suitnm.endsWith(" jacket"))
+            return "jacket"; /* leather jacket */
+    }
+    /* "suit" is lame but "armor" is ambiguous and "body armor" is absurd */
+    return "suit";
+}
+
+// C ref: objnam.c cloak_simple_name()
+export function cloak_simple_name(cloak) {
+    if (cloak) {
+        switch (cloak.otyp) {
+        case O.ROBE:
+            return "robe";
+        case O.MUMMY_WRAPPING:
+            return "wrapping";
+        case O.ALCHEMY_SMOCK:
+            return (objects[cloak.otyp].oc_name_known && cloak.dknown)
+                       ? "smock"
+                       : "apron";
+        default:
+            break;
+        }
+    }
+    return "cloak";
+}
+
+// C ref: objnam.c helm_simple_name()
+/* helm vs hat for messages */
+export function helm_simple_name(helmet) {
+    return !hard_helmet(helmet) ? "hat" : "helm";
+}
+
+// C ref: objnam.c gloves_simple_name()
+/* gloves vs gauntlets; depends upon discovery state */
+export function gloves_simple_name(gloves) {
+    const gauntlets = "gauntlets";
+
+    if (gloves && gloves.dknown) {
+        const otyp = gloves.otyp;
+        const ocl = objects[otyp];
+        const actualn = OBJ_NAME(ocl), descrpn = OBJ_DESCR(ocl);
+
+        if (strstri(objects[otyp].oc_name_known ? actualn : descrpn,
+                    gauntlets))
+            return gauntlets;
+    }
+    return "gloves";
+}
+
+// C ref: objnam.c boots_simple_name()
+/* boots vs shoes; depends upon discovery state */
+export function boots_simple_name(boots) {
+    const shoes = "shoes";
+
+    if (boots && boots.dknown) {
+        const otyp = boots.otyp;
+        const ocl = objects[otyp];
+        const actualn = OBJ_NAME(ocl), descrpn = OBJ_DESCR(ocl);
+
+        if (strstri(descrpn, shoes)
+            || (objects[otyp].oc_name_known && strstri(actualn, shoes)))
+            return shoes;
+    }
+    return "boots";
+}
+
+// C ref: objnam.c shield_simple_name()
+/* simplified shield for messages */
+export function shield_simple_name(shield) {
+    if (shield) {
+        /* xname() describes unknown (unseen) reflection as smooth */
+        if (shield.otyp === O.SHIELD_OF_REFLECTION)
+            return shield.dknown ? "silver shield" : "smooth shield";
+    }
+    return "shield";
+}
+
+// C ref: objnam.c shirt_simple_name()
+/* for completeness */
+export function shirt_simple_name(shirt) {
+    void shirt;
+    return "shirt";
 }
 
 /* C ref: decl.c gd.distantname -- set while distant_name() formats an
@@ -2508,6 +2942,47 @@ export function distant_name(obj, func) {
 // C ref: objnam.c xname()
 export function xname(obj) {
     return xname_flags(obj, 0);
+}
+
+// C ref: objnam.c singular()
+export function singular(otmp, func) {
+    /* using xname for corpses does not give the monster type */
+    if (otmp.otyp === O.CORPSE && func === xname)
+        throw new Error('singular(): cxname() for corpses not ported yet');
+    const savequan = otmp.quan;
+    otmp.quan = 1;
+    const nam = func(otmp);
+    otmp.quan = savequan;
+    return nam;
+}
+
+// C ref: objnam.c The()
+/* capitalized variant of the() */
+export function The(str) {
+    const tmp = the_article(str);
+    return tmp.charAt(0).toUpperCase() + tmp.slice(1);
+}
+
+// C ref: objnam.c Tobjnam()
+/* return form of the verb (input plural) for present tense 3rd person
+   subj; also uses The() */
+export function Tobjnam(otmp, verb) {
+    return `${The(xname(otmp))} ${otense(otmp, verb)}`;
+}
+
+// C ref: objnam.c yname() -- xname, with "your"/"the" (shk_your())
+// prepended; shop and monster ownership, corpses and artifacts aren't
+// ported yet
+export function yname(obj) {
+    if (obj.otyp === O.CORPSE)
+        throw new Error('yname(): corpse_xname() not ported yet');
+    if (obj.oartifact)
+        throw new Error('yname(): artifacts not ported yet');
+    const s = xname(obj); /* cxname(obj) */
+    /* shk_your(): !shk_owns() && !mon_owns() */
+    if (obj.unpaid || obj.no_charge || obj.where === 'OBJ_MINVENT')
+        throw new Error('yname(): shk_owns()/mon_owns() not ported yet');
+    return `${(obj.where === 'OBJ_INVENT') ? "your" : "the"} ${s}`;
 }
 
 // C ref: objnam.c xname_flags()
@@ -2590,7 +3065,9 @@ function xname_flags(obj, cxn_flags) {
             buf += dn;
 
         if (typ === O.FIGURINE && omndx_ok(omndx)) {
-            xn_not_ported('figurine monster name (obj_pmname)');
+            const pm_name = obj_pmname(obj);
+
+            buf += ` of ${just_an(pm_name)}${pm_name}`;
         } else if (typ === O.TOWEL && obj.spe > 0) {
             if (game.flags?.debug)
                 buf += ` (${obj.spe})`;
@@ -2614,7 +3091,7 @@ function xname_flags(obj, cxn_flags) {
         if (nn)
             buf += actualn;
         else if (un)
-            xn_not_ported('armor_simple_name()');
+            buf += xcalled(armor_simple_name(obj), un);
         else
             buf += dn;
         break;
@@ -2650,9 +3127,16 @@ function xname_flags(obj, cxn_flags) {
         buf = actualn;
         break;
     case O.ROCK_CLASS:
-        if (typ === O.STATUE && omndx_ok(omndx))
-            xn_not_ported('statue monster name (obj_pmname)');
-        else if (typ === O.BOULDER && obj.next_boulder === 1) {
+        if (typ === O.STATUE && omndx_ok(omndx)) {
+            const statue_pmname = obj_pmname(obj);
+
+            buf = `${(Role_if_x(M.PM_ARCHEOLOGIST)
+                      && (obj.spe & CORPSTAT_HISTORIC) !== 0) ? "historic "
+                     : ""}${actualn} of ${
+                (mons[omndx].mflags2 & M.M2_PNAME) !== 0 /* type_is_pname() */ ? ""
+                : the_unique_pm(mons[omndx]) ? "the "
+                  : just_an(statue_pmname)}${statue_pmname}`;
+        } else if (typ === O.BOULDER && obj.next_boulder === 1) {
             buf = "next " + actualn;
             obj.next_boulder = 0;
         } else
@@ -2897,6 +3381,12 @@ export function doname(obj) {
     return doname_base(obj, 0);
 }
 
+// C ref: objnam.c doname_with_price()
+/* Name of object including price. */
+export function doname_with_price(obj) {
+    return doname_base(obj, 1 /* DONAME_WITH_PRICE */);
+}
+
 // C ref: objnam.c doname_base()
 function doname_base(obj, doname_flags) {
     let ispoisoned = false;
@@ -3039,9 +3529,14 @@ function doname_base(obj, doname_flags) {
     case O.FOOD_CLASS:
         if (obj.oeaten)
             prefix += "partly eaten ";
-        if (obj.otyp === O.CORPSE)
-            xn_not_ported('corpse_xname()');
-        else if (obj.otyp === O.EGG && omndx_ok(obj.corpsenm))
+        if (obj.otyp === O.CORPSE) {
+            /* (quan == 1) => want corpse_xname() to supply article,
+               (quan != 1) => already have count or "some" as prefix;
+               "corpse" is already in the buffer returned by xname() */
+            const cxarg = (((obj.quan !== 1) ? 0 : CXN_ARTICLE)
+                           | CXN_NOCORPSE);
+            prefix = `${corpse_xname(obj, prefix, cxarg)} `;
+        } else if (obj.otyp === O.EGG && omndx_ok(obj.corpsenm))
             xn_not_ported('egg monster names');
         else if (obj.otyp === O.MEAT_RING)
             xn_not_ported('meat ring');
@@ -3114,8 +3609,20 @@ function doname_base(obj, doname_flags) {
         || ((obj.owornmask & (W_RINGL | W_RINGR)) && obj.oclass !== O.RING_CLASS))
         xn_not_ported('meat ring/tool/leash worn suffixes');
 
-    if (with_price)
-        xn_not_ported('shop prices');
+    if (with_price && obj.unpaid) {
+        xn_not_ported('unpaid prices (unpaid_cost)');
+    } else if (with_price) { /* on floor or in container on floor */
+        /* get_cost_of_shop_item() is 0 unless the object is in a shop */
+        if (game.level.flags?.has_shop)
+            xn_not_ported('shop prices (get_cost_of_shop_item)');
+        /* iflags.pricequotes: append_price_quote() adds nothing until a
+           price has been seen in a shop */
+        const ocl = objects[obj.otyp];
+        if (!ocl.oc_name_known
+            && (ocl.oc_sell_minseen <= ocl.oc_sell_maxseen
+                || ocl.oc_buy_minseen <= ocl.oc_buy_maxseen))
+            xn_not_ported('price quotes (append_price_quote)');
+    }
 
     if (prefix.startsWith("a ")) {
         const tmpbuf = prefix.slice(2);

@@ -16,6 +16,11 @@ import { DUST, BURN, ENGR_BLOOD, HEADSTONE, N_ENGRAVE, ICE, ROOM, GRAVE } from '
 import { getrumor, get_rnd_text, ENGRAVEFILE, EPITAPHFILE, MD_PAD_RUMORS } from './rumors.js';
 import { t_at, is_pit, is_hole } from './trap.js';
 import { LEVITATION, FLYING, TT_PIT, Is_airlevel, Is_waterlevel } from './const.js';
+import { ENGRAVE, MARK, BLINDED, IS_AIR, IS_POOL, LAVAPOOL, DRAWBRIDGE_DOWN,
+         IS_ALTAR, IS_GRAVE, IS_FOUNTAIN, STAIRS, LADDER, IS_WALL, SDOOR,
+         IS_DOOR, IS_ROOM } from './const.js';
+import { pline } from './display.js';
+import { nomul } from './hack.js';
 import { AD_STCK, AD_WRAP, AT_ENGL, AT_HUGS, M1_HIDE, M1_CLING, S_MIMIC,
          MZ_HUGE } from './monsters.js';
 import { dmgtype, is_flyer } from './mondata.js';
@@ -37,6 +42,119 @@ const rubouts = [
     ['+', '-|'], ['*', '+'], ['@', '0'], ['0', 'C('], ['1', '|'],
     ['6', 'o'], ['7', '/'], ['8', '3o'],
 ];
+
+/* C ref: dungeon.c surface() -- the ordinary terrain cases; engulfers,
+   air, water, lava and drawbridges aren't reached by read_engr_at() yet */
+function engr_surface(x, y) {
+    const lev = game.level.at(x, y);
+    const levtyp = lev.typ;
+
+    if ((x === game.u.ux && y === game.u.uy && game.u.uswallow)
+        || IS_AIR(levtyp) || IS_POOL(levtyp) || levtyp === LAVAPOOL
+        || levtyp === DRAWBRIDGE_DOWN)
+        throw new Error('surface(): engulfer/air/water/lava/bridge not ported yet');
+    else if (levtyp === ICE)
+        return "ice";
+    else if (IS_ALTAR(levtyp))
+        return "altar";
+    else if (IS_GRAVE(levtyp))
+        return "headstone";
+    else if (IS_FOUNTAIN(levtyp))
+        return "fountain";
+    else if (levtyp === STAIRS || levtyp === LADDER) /* On_stairs() */
+        return "stairs";
+    else if (IS_WALL(levtyp) || levtyp === SDOOR)
+        return "wall"; /* 'surface' during Passes_walls */
+    else if (IS_DOOR(levtyp))
+        return "doorway"; /* even for closed door */
+    else if (IS_ROOM(levtyp) /* && !Is_earthlevel(&u.uz) */)
+        return "floor";
+    else
+        return "ground";
+}
+
+// C ref: engrave.c read_engr_at()
+export async function read_engr_at(x, y) {
+    const ep = engr_at(x, y);
+    let sensed = 0;
+    const bl = game.u.uprops[BLINDED];
+    const Blind = !!((bl.intrinsic || bl.extrinsic) && !bl.blocked);
+
+    /* Sensing an engraving does not require sight for some engraving types,
+     * nor does it necessarily imply comprehension (literacy).
+     */
+    if (ep && ep.engr_txt.actual_text && ep.engr_txt.actual_text[0]) {
+        const eloc = engr_surface(x, y);
+        switch (ep.engr_type) {
+        case DUST:
+            if (!Blind) {
+                sensed = 1;
+                await pline(`Something is written here in the ${
+                    game.level.at(x, y).typ === ICE ? "frost" : "dust"}.`);
+            }
+            break;
+        case ENGRAVE:
+        case HEADSTONE:
+            if (!Blind || can_reach_floor(true)) {
+                sensed = 1;
+                await pline(`Something is engraved here on the ${eloc}.`);
+            }
+            break;
+        case BURN:
+            if (!Blind || can_reach_floor(true)) {
+                sensed = 1;
+                await pline(`Some text has been ${
+                    game.level.at(x, y).typ === ICE ? "melted" : "burned"} into the ${eloc} here.`);
+            }
+            break;
+        case MARK:
+            if (!Blind) {
+                sensed = 1;
+                await pline(`There's some graffiti on the ${eloc} here.`);
+            }
+            break;
+        case ENGR_BLOOD:
+            /* "It's a message!  Scrawled in blood!"
+             * "What's it say?"
+             * "It says... `See you next Wednesday.'" -- Thriller
+             */
+            if (!Blind) {
+                sensed = 1;
+                await pline("You see a message scrawled in blood here.");
+            }
+            break;
+        default:
+            throw new Error('read_engr_at(): a very strange engraving type');
+        }
+
+        if (sensed) {
+            const maxelen = BUFSZ - "You feel the words: \"\".".length - 1;
+            let et = ep.engr_txt.actual_text;
+            let elen = et.length;
+            /* offset of actual_text within the engraving's text space is 0 */
+            const off = 0;
+
+            if (elen > maxelen) {
+                et = et.slice(0, maxelen);
+                elen = maxelen;
+            }
+            let endpunct = "";
+            const pristine = ep.engr_txt.pristine_text || '';
+            if (elen < 2
+                /* only skip if punctuation is original, not degraded char */
+                || !((pristine[off + elen - 1] === et[elen - 1])
+                     && ".!?".includes(et[elen - 1]))) {
+                endpunct = ".";
+            }
+            await pline(`You ${Blind ? "feel the words" : "read"}: "${et}"${endpunct}`);
+            ep.engr_txt.remembered_text = ep.engr_txt.actual_text;
+            ep.eread = 1;
+            ep.erevealed = 1;
+            if (game.context.run > 0)
+                nomul(0);
+        }
+    }
+}
 
 // C ref: engrave.c wipeout_text()
 /* degrade some of the characters in a string; returns the new string */
@@ -237,19 +355,19 @@ function attacktype(ptr, atyp) {
         if (ptr.mattk[i].aatyp === atyp) return true;
     return false;
 }
-function sticks(ptr) {
+export function sticks(ptr) {
     return dmgtype(ptr, AD_STCK)
            || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
            || attacktype(ptr, AT_HUGS);
 }
-function ceiling_hider(ptr) {
+export function ceiling_hider(ptr) {
     return (ptr.mflags1 & M1_HIDE) !== 0
            && ((((ptr.mflags1 & M1_CLING) !== 0) && ptr.mlet !== S_MIMIC)
                || is_flyer(ptr)); /* lurker above */
 }
 
 // C ref: trap.c uteetering_at_seen_pit()
-function uteetering_at_seen_pit(trap) {
+export function uteetering_at_seen_pit(trap) {
     const u = game.u;
     return (trap && is_pit(trap.ttyp) && trap.tseen
             && u.ux === trap.tx && u.uy === trap.ty
@@ -257,7 +375,7 @@ function uteetering_at_seen_pit(trap) {
 }
 
 // C ref: trap.c uescaped_shaft()
-function uescaped_shaft(trap) {
+export function uescaped_shaft(trap) {
     const u = game.u;
     return (trap && is_hole(trap.ttyp) && trap.tseen
             && u.ux === trap.tx && u.uy === trap.ty);

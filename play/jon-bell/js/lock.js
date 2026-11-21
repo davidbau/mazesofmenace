@@ -361,7 +361,7 @@ export async function doopen_indir(x, y) {
          * normal move path in cmd.js).  All RNG-free. */
         recalc_block_point(cx, cy);
         if (g.vision_full_recalc) {
-            vision_recalc(0);
+            await vision_recalc(0); /* vision.c:856 notice_all_mons plines complete before return */
             g.vision_full_recalc = 0;
         }
     } else {
