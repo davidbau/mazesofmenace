@@ -255,12 +255,12 @@ export async function doinvbill(mode) {
     const bill = eshkp.bill_p || eshkp.bill || [];
     const billct = eshkp.billct | 0;
     if (mode === 0) {
-        let cnt = !(eshkp.debit | 0) ? 0 : 1;
+        let cnt = !eshkp.debit ? 0 : 1;
         for (let i = 0; i < billct; i++) {
             const bp = bill[i];
             let obj;
             if (bp.useup
-                || ((obj = bp_to_obj(bp)) != null && (obj.quan | 0) < (bp.bquan | 0)))
+                || ((obj = bp_to_obj(bp)) != null && obj.quan < bp.bquan))
                 cnt++;
         }
         return cnt;
@@ -275,9 +275,9 @@ export async function doinvbill(mode) {
             return 0;
         }
         /* C ref: shk.c:4241-4253: if (bp->useup || bp->bquan > obj->quan) */
-        if (bp.useup || (bp.bquan | 0) > (obj.quan | 0)) {
-            const uquan = bp.useup ? (bp.bquan | 0) : (bp.bquan | 0) - (obj.quan | 0);
-            const thisused = (bp.price | 0) * uquan;
+        if (bp.useup || bp.bquan > obj.quan) {
+            const uquan = bp.useup ? bp.bquan : bp.bquan - obj.quan;
+            const thisused = bp.price * uquan;
             totused += thisused;
             game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
             /* Why 'x'?  To match `I x', more or less. */
@@ -285,14 +285,14 @@ export async function doinvbill(mode) {
             game.iflags.suppress_price = (game.iflags.suppress_price | 0) - 1;
         }
     }
-    if (eshkp.debit | 0) {
+    if (eshkp.debit) {
         /* additional shop debt which has no itemization available */
         if (totused)
             lines.push('');
-        totused += eshkp.debit | 0;
+        totused += eshkp.debit;
         const GOLD_SYM = '$'; /* hack.h:20 / defsym.h */
         lines.push(await xprname_cmd(null, 'usage charges and/or other fees',
-            GOLD_SYM, false, eshkp.debit | 0, 0));
+            GOLD_SYM, false, eshkp.debit, 0));
     }
     lines.push('');
     lines.push(await xprname_cmd(null, 'Total:', '*', false, totused, 0));
@@ -1622,9 +1622,14 @@ export async function sellobj(obj, x, y) {
             c = await yn_function_shk(qbuf, 'ynaq', 'y');
             /* C topl.c:536-548 — the answered prompt stays painted until the
              * next command's clear_nhwindow(WIN_MESSAGE); see the 'ynaq'
-             * reader below. */
+             * reader below.  shk.c:4058 passes ynaqchars, one of
+             * yn_menuable_resp's arrays (cmd.c:5394-5399): under query_menu
+             * the PICK_ONE menu answers, plines the answer, and
+             * clear_nhwindow(WIN_MESSAGE) (cmd.c:5459-5460) blanks row 0 —
+             * the plain "[ynaq] (y)" never existed. */
             const shown = `${qbuf} [ynaq] (y)`;
-            if (topl_park_cursor(null, shown + ' ')[1] === 0)
+            if (topl_park_cursor(null, shown + ' ')[1] === 0
+                && !(g.iflags?.query_menu && g.iflags?.window_inited))
                 g._topl_sticky = shown;
             if (c === 'a') {
                 c = 'y';
@@ -1702,9 +1707,13 @@ export async function sellobj(obj, x, y) {
              * later pline still wins).  Same mechanism as eat.js/lock.js.
              * The prompt carries a trailing space (topl.c:410); when it wraps
              * onto row 1, clean_up's tty_clear_nhwindow (topl.c:547-548)
-             * erases it, so nothing stays on the topline. */
+             * erases it, so nothing stays on the topline.  shk.c:4159's
+             * nyaq() passes ynaqchars (menuable, cmd.c:5394-5399): under
+             * query_menu the menu answers and clear_nhwindow(WIN_MESSAGE)
+             * (cmd.c:5459-5460) blanks row 0 — park nothing. */
             const shown = `${qbuf} [ynaq] (n)`;
-            if (topl_park_cursor(null, shown + ' ')[1] === 0)
+            if (topl_park_cursor(null, shown + ' ')[1] === 0
+                && !(g.iflags?.query_menu && g.iflags?.window_inited))
                 g._topl_sticky = shown;
         }
         switch (sell_ans) {
@@ -5122,11 +5131,11 @@ export async function unpaid_cost(unp_obj, cost_type) {
         if (shkp) {
             bp = (await onbill(unp_obj, shkp, true));
             if (bp) {
-                amt = bp.price | 0;
+                amt = bp.price;
                 if (cost_type !== COST_SINGLEOBJ) {
                     /* use quan rather than get_pricing_units -- glob weight
                        should already be factored into bp->price */
-                    amt *= (unp_obj.quan | 0);
+                    amt *= unp_obj.quan;
                 }
             }
             if (cost_type === COST_CONTENTS && Has_contents(unp_obj))

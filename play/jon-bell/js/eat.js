@@ -60,13 +60,14 @@ import { wield_tool } from './wield.js';
 import { sellobj_state } from './shk.js';
 import { safe_qbuf, safe_qbuf as safe_qbuf_real } from './objnam.js';
 import { g_at, will_feel_cockatrice as will_feel_cockatrice_real } from './invent.js';
-import { flush_screen, restore_occupation_topline, restore_command_topline, force_more, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed, msgtype_is_stop } from './display.js';
+import { flush_screen, restore_occupation_topline, restore_command_topline, force_more, _topl_visualLen, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed, msgtype_is_stop } from './display.js';
 import { more_experienced } from './uhitm.js';
 import { newexplevel } from './exper.js';
 import { pluslvl } from './exper.js';
 import { nhgetch } from './input.js';
 import { savelife, deadhero, pending_death_is_final, do_death_sequence, done as done_end, delayed_killer } from './end.js';
-import { yn_function } from './cmd.js';
+import { yn_function, doprev_message } from './cmd.js';
+import { set_cursor } from './read.js';
 /* C trap.c:1046 reset_utrap(msg) — real body lives in js/trap.js (which
  * already imports You from this file, so this is also a circular import,
  * same safety argument as the js/end.js edge above). Not async: it does not
@@ -2380,7 +2381,7 @@ async function eatcorpse(otmp) {
 
     /* C eat.c:1945-1947 — delay is weight dependent. */
     const v = _victual();
-    v.reqtime = 3 + ((!glob ? _cwtE(mnum) : (otmp.owt | 0)) >> 6);
+    v.reqtime = 3 + ((!glob ? _cwtE(mnum) : otmp.owt) >>> 6);
 
     if (!tp && !_nonrotting_corpse(mnum) && ((otmp.orotten ? 1 : 0) || !rn2(7))) {
         if (await rottenfood(otmp)) {
@@ -3127,7 +3128,7 @@ export async function doeat_food(otmp) {
     /* C eat.c:3050-3074 — re-calc nutrition (reqtime via rounddiv, nmod). */
     const basenutrit = _obj_nutrition(otmp) | 0;
     v.reqtime = (basenutrit === 0) ? 0
-        : _rounddiv(v.reqtime * (otmp.oeaten | 0), basenutrit);
+        : _rounddiv(BigInt(v.reqtime) * BigInt(otmp.oeaten >>> 0), basenutrit);
     if (v.reqtime === 0 || (otmp.oeaten | 0) === 0) v.nmod = 0;
     else if ((otmp.oeaten | 0) >= v.reqtime) v.nmod = -Math.trunc((otmp.oeaten | 0) / v.reqtime);
     else v.nmod = v.reqtime % (otmp.oeaten | 0);
@@ -3471,15 +3472,47 @@ async function _tin_y_n(question) {
     await flush_screen(1);
     if (g._pending_message)
         await force_more(g._pending_message);
+    let doprev = false;
+    let skipRender = false;
     for (;;) {
-        g._pending_message = prompt;
-        await flush_screen(1);
+        const wasRecall = skipRender;
+        skipRender = false;
+        if (!wasRecall) {
+            g._pending_message = prompt;
+            g._prevmsg = prompt + ' '; /* pline.c:282 */
+            await flush_screen(1);
+        }
         {
             const disp = g.nhDisplay;
-            if (disp) topl_park_cursor(disp, prompt + ' ');
+            if (disp && !wasRecall) topl_park_cursor(disp, prompt + ' ');
         }
-        const key = await nhgetch();
+        const savedHist = g._topl_suppress_history; /* custompline SUPPRESS_HISTORY (topl.c:420) */
+        g._topl_suppress_history = true;
+        let key;
+        try { key = await nhgetch(); }
+        finally { g._topl_suppress_history = savedHist; }
         const c = String.fromCharCode(typeof key === 'number' ? key : (key?.charCodeAt(0) | 0));
+        /* C topl.c:434-456 ctrl-P: window modes show history and re-prompt;
+         * single mode recalls twice initially and the next key only re-prompts. */
+        if (c === '\x10') {
+            const wasEmpty = g._toplEmptyAfterSuppress;
+            g._toplEmptyAfterSuppress = true;
+            if ((g.iflags?.prevmsg_window || 's')[0] !== 's') {
+                await doprev_message();
+            } else {
+                if (!doprev) await doprev_message();
+                await doprev_message();
+                doprev = true;
+                skipRender = true;
+                set_cursor(_topl_visualLen(g._pending_message ?? ''), 0);
+            }
+            g._toplEmptyAfterSuppress = wasEmpty;
+            continue;
+        } else if (doprev) {
+            doprev = false;
+            g._prevmsg_next = null; /* topl.c:456 */
+            continue;
+        }
         g._topl_sticky = prompt;
         if (c === '\x1b') return 'n';                     /* ESC -> the default */
         if (c === '\r' || c === '\n' || c === ' ') return 'n'; /* activator -> default */

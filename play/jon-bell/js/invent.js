@@ -839,7 +839,9 @@ async function _identify_objlist_menu_body(promptText) {
      * widest line of 77+ columns (maxcol = len + 2 >= 79) gives offx 0 and the
      * menu paints on a cleared screen (wintty.c:1407). */
     const FULL_SCREEN = (GEOM_LINES.length + 1) >= SCREEN_ROWS
-        || GEOM_LINES.some(l => l.length >= 77);
+        || GEOM_LINES.some(l => l.length >= 77)
+        || g.iflags?.menu_overlay === false
+        || g.iflags?.menu_overlay === 0;
     const WIN_COL = FULL_SCREEN
         ? 1
         : tty_window_offx([...GEOM_LINES.slice(0, PAGE_CONTENT), '(end)'], 'end');
@@ -2904,6 +2906,14 @@ export async function askchain(objchn, olets, allflag, fn, ckfn, mx, word) {
                      * ynaqchars (not ynNaqchars 'yn#aq') uses the menu, where the
                      * answer is pline'd and WIN_MESSAGE cleared. */
                     if (game.iflags?.query_menu && game.iflags?.window_inited && rs === 'ynaq')
+                    /* cmd.c:5442-5451 yn_function_menu (query_menu): the answer is
+                     * pline'd and WIN_MESSAGE cleared, so no prompt text stays —
+                     * but only for the menuable arm: invent.c:2469 passes
+                     * ynaqchars (in yn_menuable_resp's list, cmd.c:5394-5399)
+                     * or ynNaqchars, which is NOT in it — the 'yn#aq' prompt
+                     * still paints and stays, query_menu or not. */
+                    if (game.iflags?.query_menu && game.iflags?.window_inited
+                        && ['yn', 'ynq', 'ynaq', 'rl', 'hsq'].includes(rs))
                         game._topl_sticky = null;
                     if (sym === '#') yn_number = await yn_count_tail(`${q} [${rs}] (n)`);
                 } while (yn_number < 0);

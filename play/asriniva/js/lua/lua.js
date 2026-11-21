@@ -19,11 +19,37 @@ import { openMath } from './lmathlib.js';
 import { openString } from './lstrlib.js';
 import { openUtf8 } from './lutf8lib.js';
 import { openCoroutine } from './lcorolib.js';
-export { LuaTable, LuaUserdata, LuaLightUserdata, LuaThread, LuaString, isLuaString, luaStringBytes, LuaError, luaInteger, luaType, byteString } from './lobject.js';
-export { parse } from './lparser.js';
-export { LuaVM } from './lvm.js';
+export {
+    LuaTable,
+    LuaUserdata,
+    LuaLightUserdata,
+    LuaThread,
+    LuaString,
+    isLuaString,
+    luaStringBytes,
+    LuaError,
+    luaInteger,
+    luaType,
+    byteString
+}
+from './lobject.js';
+export { parse }
+from './lparser.js';
+export { LuaVM }
+from './lvm.js';
 export function createLua(options = {}) {
-  const vm=new LuaVM({...options,memoryReady:false});
-  vm.heap.with(() => { openBase(vm, options); openTable(vm); openMath(vm, options.seed ?? 0n); openString(vm); openUtf8(vm); openCoroutine(vm); });
-  vm.heap.memoryTracker.ready=options.memoryReady!==false;return vm;
+    const vm = new LuaVM({
+        ...options,
+        memoryReady: false
+    });
+    vm.heap.with(() => {
+        openBase(vm, options);
+        openTable(vm);
+        openMath(vm, options.seed ?? 0n);
+        openString(vm);
+        openUtf8(vm);
+        openCoroutine(vm);
+    });
+    vm.heap.memoryTracker.ready = options.memoryReady !== false;
+    return vm;
 }

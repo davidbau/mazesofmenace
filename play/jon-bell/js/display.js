@@ -2287,6 +2287,50 @@ export function mention_map_pline_cells(msg, cells) {
     };
 }
 export function set_mention_map_hook(fn) { _mention_map_hook = fn; }
+
+/* C's gg.gbuf is a process-global array: clear_level_structures() (mklev.c:
+ * 850-870) zeroes the levl rm structs but never touches the glyph buffer, so
+ * glyph changes made during a level rebuild (display.c:2030-2058 "glyph
+ * changes survive a level read in the process-global gbuf") are diffed
+ * against the OLD level's glyphs.  This port keeps that buffer on the level
+ * cells (loc.disp_*), so the rebuild in clear_level_structures() must carry
+ * it over — the same field list goto_level's arrival carry uses (do.js
+ * "gbufLevel"), plus the gnew epoch and the flushed-paint caches show_glyph
+ * reads mid-rebuild.  Without the carry, every cell of the fresh level reads
+ * as unexplored in show_glyph's oldglyph (mention_map announces "unexplored
+ * area." for cells the hero cannot even see, and the furniture/monster arms
+ * of display.c:2011-2027 misfire) — df-x64cf3ec485 step 67. */
+export function carry_gbuf_across_level_rebuild(oldLevel, newLevel) {
+    if (!oldLevel || !newLevel || oldLevel === newLevel || !oldLevel.at || !newLevel.at)
+        return;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const o = oldLevel.at(x, y), n = newLevel.at(x, y);
+            if (!o || !n) continue;
+            for (const k of ['disp_ch', 'disp_color', 'disp_glyph_color', 'disp_decgfx',
+                             'disp_glyph_ch', 'disp_glyph_decgfx', 'disp_glyphmap_color',
+                             'disp_attr', 'disp_cls', 'disp_cmap', 'disp_is_warning',
+                             'disp_warning_level', 'disp_mon_pm', 'disp_mon_kind',
+                             'disp_mon_female', 'disp_obj_corpsenm', 'disp_obj_otyp',
+                             'disp_obj_pile', 'disp_obj_female', 'disp_trap_type',
+                             'disp_ttychar', 'disp_framed', 'disp_nul_gbuf',
+                             'disp_gnew_epoch', 'gnew'])
+                n[k] = o[k];
+            /* The carried paint is the OLD level's: whether its S_stone
+             * stands for C's GLYPH_UNEXPLORED is the old cell's question. */
+            n.disp_unmapped = o.disp_unmapped
+                ?? (!o.remembered_glyph && !(o.seenv | 0));
+            if (o.disp_flush_epoch !== undefined) {
+                /* the flushed-paint caches are self-consistent with their
+                 * epoch stamp; C's terminal keeps the old level's paint. */
+                n.disp_flush_epoch = o.disp_flush_epoch;
+                n.disp_flushed_cell = o.disp_flushed_cell;
+                n.disp_capture_cell = o.disp_capture_cell;
+                n[_CAPTURE_CELL_CACHE] = o[_CAPTURE_CELL_CACHE];
+            }
+        }
+    }
+}
 // ── show_glyph_cell ──
 export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0,
                                 cls = GLYPHCLS_CMAP, isWarning = false,
@@ -3750,7 +3794,9 @@ function _maybe_display_usteed() {
         return {
             mndx,
             ch: monster_symbol(mlet),
-            color: (mndx >= 0 && mndx < MON_MCOLOR.length) ? MON_MCOLOR[mndx] : 7,
+            /* C display.c:2986-3003: GLYPH_RIDDEN_*_OFF has NO_COLOR under has_rogue_color */
+            color: rogue_ibm_color() ? NO_COLOR
+                : (mndx >= 0 && mndx < MON_MCOLOR.length) ? MON_MCOLOR[mndx] : 7,
         };
     }
     return _hero_glyph();
@@ -8612,8 +8658,8 @@ export async function tty_restore_base_topline(bannerShown) {
  * C refs: win/tty/topl.c:305-355; getline.c:143-207 (no completion hook). */
 export function tty_getlin_prompt(query) {
     const painted = new Map();
-    let x = 0, y = 0;
-    const append = (text) => {
+    let x = 0, y = 0, line = '';
+    const put = (text) => {
         for (const ch of text) {
             if (ch === '\b') {
                 // tty_curs(BASE_WINDOW, CO, cury - 1), then backsp().
@@ -8637,17 +8683,31 @@ export function tty_getlin_prompt(query) {
             x++;
         }
     };
+    const append = (text) => {
+        line += text;
+        put(text);
+    };
     const reset = () => {
         // clear_nhwindow(WIN_MESSAGE): home/cl_end, then docorner for the
         // current message height (wintty.c:1047-1056), restoring map rows.
         for (let r = 1; r <= y; r++) painted.set(r, render_map_row(r - 1));
         x = y = 0;
+        line = '';
         painted.set(0, '');
         append(query + ' ');
     };
     reset();
-    return { append, reset, rowsWrapped: () => y,
-        erase(count) { while (count-- > 0) append('\b \b'); },
+    return { append, reset,
+        rowsWrapped: () => {
+            /* C getline.c:81,213-226 leaves query+answer in gt.toplines without
+             * update_topl()'s word wrap, so ^P recall hard-wraps it (topl.c:121-142). */
+            if (game) (game._getlin_hist ||= new Set()).add(line);
+            return y;
+        },
+        erase(count) {
+            line = line.slice(0, Math.max(query.length + 1, line.length - count));
+            while (count-- > 0) put('\b \b');
+        },
         render(background, recall = null) {
             const rows = background.slice();
             for (const [r, text] of painted) rows[r] = _toplStr(text);
@@ -13736,6 +13796,9 @@ export function putmsghistory(msg, _restoring) {
     // C topl.c:677-715: remember_topl() stores every nonempty topline,
     // including consecutive identical messages (topl.c:170-191).
     _msg_history_arr().push(text);
+    /* C topl.c:706 Strcpy(gt.toplines, msg) skips update_topl's word-wrap
+     * loop (:284-297), so redotoplin's putsyms() hard-wraps it on ^P recall. */
+    (game._getlin_hist ||= new Set()).add(text);
 }
 
 
@@ -13795,8 +13858,15 @@ export async function debugpline(filename, fmt, ...args) {
 
 
 async function _pline_body(msg, alreadyFlushed, putmesg = null, ...args) {
-    if (game._mentionMapPending)
+    if (game._mentionMapPending) {
+        /* pline.c:315-322: URGENT_MESSAGE belongs to THIS vpline; the queued
+         * mention_map announcements drained here are earlier, ordinary plines
+         * and must not consume the flag. */
+        const urgent = !!game._topl_urgent_next;
+        game._topl_urgent_next = false;
         await game._mentionMapPending;
+        game._topl_urgent_next = urgent;
+    }
     return _pline_body_now(msg, alreadyFlushed, putmesg, ...args);
 }
 

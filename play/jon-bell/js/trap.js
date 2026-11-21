@@ -6586,7 +6586,11 @@ export async function float_down(hmask, emask) {
         // In particular, freeinv must not continue dropping the bones gear
         // while the landing's look_here messages still await acknowledgement.
         restore_command_topline();
-        if (_topline_more_pending()) await flush_screen(1);
+        // C trap.c:4173-4177 returns after pickup's blocking messages.  This
+        // drain supplies their acknowledgement; it must not add another bot()
+        // after encumber_msg's SET_BOTL.  The next real pline flush owns that
+        // update, after any subsequent inventory change by float_down's caller.
+        if (_topline_more_pending()) await flush_screen(1, false);
         _topl_stash_result();
     }
     return 1;

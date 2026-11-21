@@ -127,12 +127,29 @@ export async function displayLookWindow(putstrLines) {
     };
     paintMore();
     await await_more_dismiss(paintMore); /* getline.c:230-250 incl. dismiss_more */
+    /* C wintty.c:966-983 tty_dismiss_nhwindow -> erase_menu_or_text(clear=FALSE):
+     * `cw->offx == 0` does NOT take the docorner branch.  A putstr pile list
+     * whose longest UNWRAPPED line already exceeded CO made tty_putstr record
+     * cw->maxcol > cols (wintty.c:2406-2407 `n0 = strlen(str)+1` runs before
+     * the wrap), so tty_display_nhwindow's
+     * `offx = min(min(82, cols/2), cols - maxcol - 1)` went negative and
+     * wintty.c:1920-1921 pinned it to 0 — a full-width window.  Erasing it
+     * takes `docrt(); flush_screen(1)` (wintty.c:978-979), and docrt's
+     * vision_recalc(0) + see_monsters() redraw every visible hallucinated
+     * cell on the DISPLAY isaac64 stream (display.c newsym ->
+     * obj_to_glyph/mon_to_glyph): routing an offx-0 pile window through
+     * docorner left rows below it stale and skipped those draws, desyncing
+     * every later hallucinated glyph (df-x18a8c1c995 step 238). */
+    if (offx0) {
+        await docrt_flags(0);
+        await flush_screen(1);
+    } else
     /* C wintty.c:982,3684-3687: dismissing the corner window clears
      * offx..79 through maxrow before row_refresh redraws the glyph buffer.
      * maxrow counts the putstr'd lines (wintty.c:2408-2409), and dmore's
      * --More-- sits on row maxrow itself, so docorner(offx, maxrow + 1)
      * stops at the --More-- row: `lines`, not windowLines, is maxrow. */
-    docorner_blank_utf8_captures(offx0 ? 0 : col - 1, lines.length + 1);
+    docorner_blank_utf8_captures(col - 1, lines.length + 1);
     g._pending_message = '';
     // tty_dismiss_nhwindow repaints the map; row zero left of the window stays.
     if (underWindow && !offx0) g._topl_sticky = underWindow;

@@ -1244,7 +1244,7 @@ export async function bill_dummy_object(obj) {
     if (obj.unpaid) {
         const shkp = shk_shop_keeper(game.u?.ushops?.charCodeAt?.(0) || 0);
         if (shkp) {
-            cost = (await shk_unpaid_cost(obj, 2 /* COST_SINGLEOBJ */)) | 0;
+            cost = await shk_unpaid_cost(obj, 2 /* COST_SINGLEOBJ */);
             await shk_subfrombill(obj, shkp);
         }
     }
@@ -1253,7 +1253,7 @@ export async function bill_dummy_object(obj) {
     dummy.oextra = null;
     dummy.where = OBJ_FREE;      // OBJ_FREE until addtobill links it
     dummy.o_id = nextoid(obj, dummy);
-    dummy.nobj = null;
+    // C mkobj.c:719 copies nobj too; add_to_billobjs replaces it on insertion.
     dummy.timed = 0;
     await copy_oextra(dummy, obj);
     if (dummy.oextra?.omid) free_omid(dummy);

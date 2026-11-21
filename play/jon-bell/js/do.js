@@ -1422,6 +1422,7 @@ export async function doddrop() {
             break;
         default:
             ddropSelected.clear();
+            ddropAllTypes = false;
             break;
         }
     } else if (ddropSelected.size === 1 && !verifyAll && ddropSelected.has('A')) {

@@ -18,6 +18,7 @@ import { dist2, sgn, strsubst } from './hacklib.js';
 import { rn1 } from './rng.js';
 import { rn2, rnd, d } from './rnd.js';
 import { newsym, canspotmon, canseemon, map_invisible, shieldeff } from './display.js';
+import { msgtype_suppressed } from './display.js';
 import { pline, You, You_hear } from './pline.js';
 import { cansee, couldsee } from './vision.js';
 import { m_at } from './uhitm.js';
@@ -2075,25 +2076,16 @@ const _YELLOW_DRAGON_SCALES = 120;
  * rn2_on_display_rng is the separate DISPLAY isaac64 stream (js/rng.js:239),
  * never the scored one, so this draw cannot perturb rngCalls.
  *
- * cls()/docrt() are `async` in js/display.js; called here without `await`,
- * the same fire-and-forget pattern already used from synchronous callers
- * elsewhere in this port (js/cmd.js:24751/45158, js/display.js:2859's own
- * bare `cls()`), since this function's callers (use_misc below) are
- * themselves synchronous.
- *
- * KNOWN GAP: `display_nhwindow(WIN_MAP, TRUE)` is display-channel only (it
- * "consumes the dismiss keystroke, draws no RNG" — js/cmd.js:22154) and, per
- * win/tty/wintty.c:1884-1889, a blocking NHW_MAP display reduces to "page the
- * pending topline now via more()" when one is outstanding.  No exported hook
- * to force an immediate page exists outside this file's scope, so this port
- * leaves the pending "You feel aggravated..." message to the normal per-turn
- * flush path instead of forcing it early here.  RNG-free either way. */
+ * Both blocking displays acknowledge only a standing topline. MSGTYPE=hide
+ * can leave none, and MSGTYPE=stop can have acknowledged it inside pline(). */
 async function you_aggravate(mtmp) {
     const _agg1 = `For some reason, ${s_suffix(noit_mon_nam(mtmp))} presence is known to you.`;
     /* C topl.c update_topl:268-ish — a pending topline that cannot join the new
      * message (n0 + strlen(toplines) + 3 >= CO - 8) is paged with --More-- first. */
     const _prev = String(game._pending_message || '');
-    const _overflow = _prev && (_agg1.length + _prev.length + 3 >= 72);
+    /* C pline.c:246-262 drops hidden/repeated text before update_topl(). */
+    const _overflow = !msgtype_suppressed(_agg1)
+        && _prev && (_agg1.length + _prev.length + 3 >= 72);
     if (_overflow) {
         /* vpline's flush_screen()/bot() (pline.c:273-277) runs BEFORE update_topl's
          * more(): the overflowing last page shows the live map/status, earlier
@@ -2109,7 +2101,8 @@ async function you_aggravate(mtmp) {
     game._paintedSnapshot = null;
     /* muse.c:2635 cls() acknowledges _agg1; it must not pline it again
      * when WIN_STOP already suppressed the original update_topl(). */
-    const _agg1Morc = await force_more(String(game._pending_message || _agg1), undefined, false, false, null, true);
+    const _agg1Morc = game._pending_message && game._topl_unacknowledged
+        ? await force_more(game._pending_message, undefined, false, false, null, true) : 0;
     /* C's cls() is a separate blocking display_nhwindow after _agg1's
      * pline has completed. If its page is dismissed with ESC, WIN_STOP is
      * already live when the later You_feel(_agg2) arrives, so that message is
@@ -2126,14 +2119,14 @@ async function you_aggravate(mtmp) {
     show_monster_glyph_at(mtmp.mx | 0, mtmp.my | 0, mndx, mtmp.female);
     display_self();
     const aggravation = `aggravated at ${noit_mon_nam(mtmp)}.`;
-    const _agg2 = `${Unaware() ? 'You dream that you feel ' : 'You feel '}${aggravation}`;
     await You_feel(aggravation); /* C muse.c:2640, including Unaware wording. */
     /* wintty.c:1884-1889 display_nhwindow(WIN_MAP, TRUE) pages the pending topline */
     /* display_nhwindow(WIN_MAP, TRUE) is a separate blocking page after _agg2's
      * pline completed: an ESC there leaves WIN_STOP live (topl.c:234) until the
      * next tty_nhgetch (wintty.c:4066), so later plines this turn are swallowed. */
     /* muse.c:2642 acknowledges _agg2 without another update_topl(), too. */
-    if (await force_more(String(game._pending_message || _agg2), undefined, false, false, null, true) === 27) {
+    if (game._pending_message && game._topl_unacknowledged
+        && await force_more(game._pending_message, undefined, false, false, null, true) === 27) {
         game._topl_win_stop = true;
         game._topl_win_stop_armed = false;
     }

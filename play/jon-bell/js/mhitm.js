@@ -636,7 +636,7 @@ import { AT_BREA_UH, AT_MAGC_UH, DEADMONSTER, NON_PM_UH, RLOC_MSG } from './uhit
 import { snuff_lit } from './apply.js'; // relocate-fns
 import { is_pole as is_pole_dm } from './cmd.js'; // relocate-fns
 import { BLINDED as BLINDED_DM, ERODE_NONE, IRONBARS, IS_OBSTRUCTED, IS_TREE, M_ATTK_AGR_DIED, NO_NC_FLAGS, PASSES_WALLS, PLNMSG_HIDE_UNDER as PLNMSG_HIDE_UNDER_C, STRAT_WAITMASK, engulfing_u as engulfing_u_const } from './const.js'; // relocate-fns
-import { Unaware, _more_never_dismissed, _topline_more_pending, flush_pending_messages, flush_screen, mon_visible, newsym } from './display.js'; // relocate-fns
+import { Unaware, flush_screen, mon_visible, newsym } from './display.js'; // relocate-fns
 import { Adjmonnam as Adjmonnam_gz, a_monnam, hliquid, mon_nam_too, noit_mon_nam, noname_monnam, some_mon_nam } from './do_name.js'; // relocate-fns
 import { ARTICLE_THE_DM, DEADMONSTER_dm, M1_AMORPHOUS_DM, MONS_MSIZE, MON_WEP_dm, MZ_HUGE, M_ATTK_AGR_DONE$, Monnam_dm, NC_SHOW_MSG_DG, NEED_HTH_WEAPON$, NEED_WEAPON$, PM_FIRE_ELEMENTAL_DM, PM_GRID_BUG_DG, PM_SALAMANDER_DM, SILVER_DM, S_VORTEX, _MONS, _PM_FLOATING_EYE, _conflict_dm, _is_elf, _mf1, _mf2, _noncorporeal, distmin_dogmove, helpless_dm, is_rider_dm, ismnum_js, m_at_dm, mhis_dm, mon_nam_dm, mon_offmap_dm, mondied_dm, objects_material_dm, passes_walls, resists_ston_dm, touch_petrifies_dm, unsolid_dm } from './dogmove.js'; // relocate-fns
 import { mon_explodes as mon_explodes_dm } from './explode.js'; // relocate-fns
@@ -1755,8 +1755,6 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
     }
     else
         await noises_dm(magr, mattk); /* C mhitm.c:729 */
-    if (game.v?.vis && _topline_more_pending() && _more_never_dismissed())
-        await flush_pending_messages();
     return await mdamagem_dm(magr, mdef, mattk, mwep, dieroll);
 }
 
@@ -1767,8 +1765,6 @@ async function missmm(magr, mdef, mattk) {
               + (((magr.mcan | 0) || !could_seduce(magr, mdef, mattk))
                  ? 'misses' : 'pretends to be friendly to')
               + ' ' + mon_nam_too(mdef, magr) + '.');
-        if (_topline_more_pending() && _more_never_dismissed())
-            await flush_pending_messages();
     } else
         await noises_dm(magr, mattk); /* C mhitm.c:89 */
 }

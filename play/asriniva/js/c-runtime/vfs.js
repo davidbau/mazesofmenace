@@ -24,547 +24,861 @@
  * a millisecond clock when timestamp progression is needed.
  */
 
-export const VFS_ERRNO = Object.freeze({ EACCES: 2, EAGAIN:6, EBADF: 8, EBUSY: 10,
-  EEXIST: 20, EFBIG: 22, EILSEQ: 25, EINVAL: 28, EIO: 29, EISDIR: 31, EMFILE: 33,
-  ENAMETOOLONG: 37, ENOENT: 44, ENOMEM: 48, ENOSPC: 51, ENOTDIR: 54,
-  ENOTEMPTY: 55, ENOTSUP: 58, EPERM: 63, EROFS: 69, ESPIPE: 70 });
-export const O_RDONLY = 0, O_WRONLY = 1, O_RDWR = 2, O_CREAT = 64, O_EXCL = 128;
-export const O_TRUNC = 512, O_APPEND = 1024, O_LARGEFILE = 32768, O_DIRECTORY = 65536, O_CLOEXEC = 524288;
-export const SEEK_SET = 0, SEEK_CUR = 1, SEEK_END = 2;
+export const VFS_ERRNO = Object.freeze({
+    EACCES: 2,
+    EAGAIN: 6,
+    EBADF: 8,
+    EBUSY: 10,
+    EEXIST: 20,
+    EFBIG: 22,
+    EILSEQ: 25,
+    EINVAL: 28,
+    EIO: 29,
+    EISDIR: 31,
+    EMFILE: 33,
+    ENAMETOOLONG: 37,
+    ENOENT: 44,
+    ENOMEM: 48,
+    ENOSPC: 51,
+    ENOTDIR: 54,
+    ENOTEMPTY: 55,
+    ENOTSUP: 58,
+    EPERM: 63,
+    EROFS: 69,
+    ESPIPE: 70
+});
+export const O_RDONLY = 0,
+    O_WRONLY = 1,
+    O_RDWR = 2,
+    O_CREAT = 64,
+    O_EXCL = 128;
+export const O_TRUNC = 512,
+    O_APPEND = 1024,
+    O_LARGEFILE = 32768,
+    O_DIRECTORY = 65536,
+    O_CLOEXEC = 524288;
+export const SEEK_SET = 0,
+    SEEK_CUR = 1,
+    SEEK_END = 2;
 // Spare regular-file capacity is private; node.bytes always ends at logical EOF.
 const fileStorage = new WeakMap();
-const S_IFDIR = 0o040000, S_IFREG = 0o100000, S_IFCHR = 0o020000, S_IFMT = 0o170000;
-const flagStrings = { r: 0, 'r+': 2, w: 577, 'w+': 578, a: 1089, 'a+': 1090,
-  wx: 705, 'wx+': 706, ax: 1217, 'ax+': 1218 };
+const S_IFDIR = 0o040000,
+    S_IFREG = 0o100000,
+    S_IFCHR = 0o020000,
+    S_IFMT = 0o170000;
+const flagStrings = {
+    r: 0,
+    'r+': 2,
+    w: 577,
+    'w+': 578,
+    a: 1089,
+    'a+': 1090,
+    wx: 705,
+    'wx+': 706,
+    ax: 1217,
+    'ax+': 1218
+};
 
 export class VFSError extends Error {
-  constructor(code, path) {
-    const errno = typeof code === 'number' ? code : VFS_ERRNO[code];
-    const symbolic = typeof code === 'number' ? Object.keys(VFS_ERRNO).find(name => VFS_ERRNO[name] === code) ?? 'UNKNOWN' : code;
-    super(path === undefined ? symbolic : `${symbolic}: ${path}`);
-    this.name = 'VFSError'; this.code = symbolic; this.errno = errno;
-  }
+    constructor(code, path) {
+        const errno = typeof code === 'number' ? code : VFS_ERRNO[code];
+        const symbolic = typeof code === 'number' ? Object.keys(VFS_ERRNO).find(name => VFS_ERRNO[
+            name] === code) ?? 'UNKNOWN' : code;
+        super(path === undefined ? symbolic : `${symbolic}: ${path}`);
+        this.name = 'VFSError';
+        this.code = symbolic;
+        this.errno = errno;
+    }
 }
-const fail = (code, path) => { throw new VFSError(code, path); };
+const fail = (code, path) => {
+    throw new VFSError(code, path);
+};
 // With the Unicode flag this range matches lone surrogates, never a scalar pair.
 function validateEntryName(name) {
-  if (/[\uD800-\uDFFF]/u.test(name)) fail('EILSEQ', name);
+    if (/[\uD800-\uDFFF]/u.test(name)) fail('EILSEQ', name);
 }
 const integer = n => Number.isSafeInteger(n);
 export const isDir = mode => (mode & S_IFMT) === S_IFDIR;
 export const isFile = mode => (mode & S_IFMT) === S_IFREG;
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
 function encode(bytes) {
-  const parts = [];
-  for (let i = 0; i < bytes.length; i += 3) {
-    const value = bytes[i] * 65536 + (bytes[i + 1] || 0) * 256 + (bytes[i + 2] || 0);
-    parts.push(alphabet[value >>> 18] + alphabet[value >>> 12 & 63]
-      + (i + 1 < bytes.length ? alphabet[value >>> 6 & 63] : '=')
-      + (i + 2 < bytes.length ? alphabet[value & 63] : '='));
-  }
-  return parts.join('');
+    const parts = [];
+    for (let i = 0; i < bytes.length; i += 3) {
+        const value = bytes[i] * 65536 + (bytes[i + 1] || 0) * 256 + (bytes[i + 2] || 0);
+        parts.push(alphabet[value >>> 18] + alphabet[value >>> 12 & 63] +
+            (i + 1 < bytes.length ? alphabet[value >>> 6 & 63] : '=') +
+            (i + 2 < bytes.length ? alphabet[value & 63] : '='));
+    }
+    return parts.join('');
 }
+
 function decode(value, maximum) {
-  if (typeof value !== 'string' || value.length % 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value))
-    fail('EINVAL');
-  const length = value.length / 4 * 3 - (value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0);
-  if (length > maximum) fail('EFBIG');
-  const bytes = new Uint8Array(length);
-  for (let i = 0, at = 0; i < value.length; i += 4) {
-    const n = alphabet.indexOf(value[i]) * 262144 + alphabet.indexOf(value[i + 1]) * 4096
-      + Math.max(0, alphabet.indexOf(value[i + 2])) * 64 + Math.max(0, alphabet.indexOf(value[i + 3]));
-    if (at < length) bytes[at++] = n >>> 16;
-    if (at < length) bytes[at++] = n >>> 8;
-    if (at < length) bytes[at++] = n;
-  }
-  if (encode(bytes) !== value) fail('EINVAL'); // Reject noncanonical pad bits.
-  return bytes;
+    if (typeof value !== 'string' || value.length % 4 || !
+        /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value))
+        fail('EINVAL');
+    const length = value.length / 4 * 3 - (value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0);
+    if (length > maximum) fail('EFBIG');
+    const bytes = new Uint8Array(length);
+    for (let i = 0, at = 0; i < value.length; i += 4) {
+        const n = alphabet.indexOf(value[i]) * 262144 + alphabet.indexOf(value[i + 1]) * 4096 +
+            Math.max(0, alphabet.indexOf(value[i + 2])) * 64 + Math.max(0, alphabet.indexOf(value[i + 3]));
+        if (at < length) bytes[at++] = n >>> 16;
+        if (at < length) bytes[at++] = n >>> 8;
+        if (at < length) bytes[at++] = n;
+    }
+    if (encode(bytes) !== value) fail('EINVAL'); // Reject noncanonical pad bits.
+    return bytes;
 }
 
 // Canonical decomposition plus caseless comparison, including expanding folds
 // such as ß/SS. Fold one scalar at a time to avoid contextual final sigma.
 function foldedFileName(name) {
-  let folded = '';
-  for (const ch of name.normalize('NFD'))
-    folded += ch === 'ı' ? ch : ch.toLowerCase().toUpperCase();
-  return folded.normalize('NFD');
+    let folded = '';
+    for (const ch of name.normalize('NFD'))
+        folded += ch === 'ı' ? ch : ch.toLowerCase().toUpperCase();
+    return folded.normalize('NFD');
 }
 
 // Preserve the spelling and iteration order of each directory entry while
 // indexing alternate spellings on case-insensitive recording volumes.
 class CaseInsensitiveEntries extends Map {
-  names = new Map();
+    names = new Map();
 
-  set(name, node) {
-    this.names.set(foldedFileName(name), name);
-    return super.set(name, node);
-  }
+    set(name, node) {
+        this.names.set(foldedFileName(name), name);
+        return super.set(name, node);
+    }
 
-  delete(name) {
-    if (!super.delete(name)) return false;
-    this.names.delete(foldedFileName(name));
-    return true;
-  }
+    delete(name) {
+        if (!super.delete(name)) return false;
+        this.names.delete(foldedFileName(name));
+        return true;
+    }
 }
 
 export class CVFS {
-  constructor({ clock = () => 0, maximumFileBytes = 64 * 1024 * 1024,
-    maximumDescriptors = 4096, storage = null, persistenceKey = 'teleport-js-vfs-v1', ignorePermissions = false, caseInsensitive = false, caseInsensitiveDirectory = null } = {}) {
-    if (typeof clock !== 'function' || !integer(maximumFileBytes) || maximumFileBytes < 0
-      || !integer(maximumDescriptors) || maximumDescriptors < 1 || typeof persistenceKey !== 'string' || typeof ignorePermissions !== 'boolean')
-      throw new TypeError('Invalid VFS configuration');
-    this.caseInsensitive = caseInsensitive;
-    this.caseInsensitiveDirectory = caseInsensitiveDirectory;
-    this.clock = clock; this.maximumFileBytes = maximumFileBytes;
-    this.maximumDescriptors = maximumDescriptors; this.storage = storage;
-    this.ignorePermissions = ignorePermissions;
-    this.persistenceKey = persistenceKey; this.nextInode = 1;
-    this.descriptors = new Map(); this.currentPath = '/';
-    this.root = this._node('dir', 0o777, null, ''); this.root.parent = this.root;
-    this.FS = this.createMemfsFacade();
-  }
-  _now() {
-    const value = this.clock();
-    if (!Number.isFinite(value)) throw new TypeError('VFS clock must return milliseconds');
-    return value;
-  }
-  _node(type, mode, parent, name) {
-    validateEntryName(name);
-    if (!integer(mode) || mode < 0 || mode > 0o777) fail('ENOTSUP');
-    const time = this._now();
-    return { type, ino: this.nextInode++, mode: (type === 'dir' ? S_IFDIR : ['null','device'].includes(type) ? S_IFCHR : S_IFREG) | mode,
-      parent, name, children: type === 'dir' ? (this.caseInsensitive ? new CaseInsensitiveEntries() : new Map()) : null,
-      bytes: type === 'file' ? new Uint8Array(0) : null, atime: time, mtime: time, ctime: time };
-  }
-  _path(node) {
-    const parts = [];
-    while (node !== this.root) { parts.push(node.name); node = node.parent; }
-    return '/' + parts.reverse().join('/');
-  }
-  _parts(path) {
-    if (typeof path !== 'string') throw new TypeError('Expected VFS path string');
-    if (!path) fail('ENOENT', path);
-    if (path.includes('\0')) fail('EINVAL', path);
-    if (!path.startsWith('/')) path = this.currentPath + '/' + path;
-    const parts = path.split('/').filter(Boolean);
-    return parts;
-  }
-  _entryName(parent, requested) {
-    if (parent.children.has(requested)) return requested;
-    if (this.caseInsensitive) return parent.children.names.get(foldedFileName(requested)) ?? requested;
-    if (!this.caseInsensitiveDirectory
-        || this._path(parent) !== this.caseInsensitiveDirectory) return requested;
-    const folded = foldedFileName(requested);
-    for (const name of parent.children.keys())
-      if (foldedFileName(name) === folded) return name;
-    return requested;
-  }
-  _walk(parts, missingLast = false) {
-    let node = this.root;
-    for (let i = 0; i < parts.length; ++i) {
-      const part = parts[i];
-      if (node.type !== 'dir') fail('ENOTDIR');
-      this._permissions(node, 'x');
-      if (part === '.') continue;
-      if (part === '..') { node = node.parent; continue; }
-      const next = node.children.get(this._entryName(node, part));
-      if (!next) {
-        if (missingLast && i === parts.length - 1) return null;
-        fail('ENOENT');
-      }
-      node = next;
+    constructor({
+        clock = () => 0,
+        maximumFileBytes = 64 * 1024 * 1024,
+        maximumDescriptors = 4096,
+        storage = null,
+        persistenceKey = 'teleport-js-vfs-v1',
+        ignorePermissions = false,
+        caseInsensitive = false,
+        caseInsensitiveDirectory = null
+    } = {}) {
+        if (typeof clock !== 'function' || !integer(maximumFileBytes) || maximumFileBytes < 0 ||
+            !integer(maximumDescriptors) || maximumDescriptors < 1 || typeof persistenceKey !==
+            'string' || typeof ignorePermissions !== 'boolean')
+            throw new TypeError('Invalid VFS configuration');
+        this.caseInsensitive = caseInsensitive;
+        this.caseInsensitiveDirectory = caseInsensitiveDirectory;
+        this.clock = clock;
+        this.maximumFileBytes = maximumFileBytes;
+        this.maximumDescriptors = maximumDescriptors;
+        this.storage = storage;
+        this.ignorePermissions = ignorePermissions;
+        this.persistenceKey = persistenceKey;
+        this.nextInode = 1;
+        this.descriptors = new Map();
+        this.currentPath = '/';
+        this.root = this._node('dir', 0o777, null, '');
+        this.root.parent = this.root;
+        this.FS = this.createMemfsFacade();
     }
-    return node;
-  }
-  _lookup(path) {
-    const node = this._walk(this._parts(path));
-    if (node.type !== 'dir' && path.endsWith('/')) fail('ENOTDIR', path);
-    return node;
-  }
-  _parent(path) {
-    const parts = this._parts(path), name = parts.pop();
-    if (!name) fail('EBUSY', path);
-    const parent = this._walk(parts);
-    if (parent.type !== 'dir') fail('ENOTDIR', path);
-    return { parent, name: this._entryName(parent, name), requestedName: name };
-  }
-  _changed(node) { node.mtime = node.ctime = this._now(); }
-  _permissions(node, requested) {
-    if (this.ignorePermissions) return;
-    for (const [letter, mask] of [['r', 0o444], ['w', 0o222], ['x', 0o111]])
-      if (requested.includes(letter) && !(node.mode & mask)) fail('EACCES');
-  }
-  _descriptor(fd) {
-    const descriptor = this.descriptors.get(fd);
-    if (!descriptor) fail('EBADF');
-    return descriptor;
-  }
-  _stat(node) {
-    const size = node.type === 'dir' ? 4096 : ['null','device'].includes(node.type) ? 0 : node.bytes.length;
-    return { dev: 1, ino: node.ino, mode: node.mode, nlink: 1, uid: 0, gid: 0, rdev: node.type === 'null' ? 259 : 0,
-      size, blksize: 4096, blocks: Math.ceil(size / 4096),
-      atime: new Date(node.atime), mtime: new Date(node.mtime), ctime: new Date(node.ctime) };
-  }
-  isDir(mode) { return isDir(mode); }
-  isFile(mode) { return isFile(mode); }
-  installNullDevice(path = '/dev/null', mode = 0o666) {
-    const slash = path.lastIndexOf('/'); this.mkdirTree(path.slice(0, slash) || '/');
-    const parts = this._parts(path), existing = this._walk(parts, true);
-    if (existing) { if (existing.type !== 'null') fail('ENOTSUP', path); return; }
-    const { parent, name } = this._parent(path); this._permissions(parent, 'wx');
-    parent.children.set(name, this._node('null', mode, parent, name)); this._changed(parent);
-  }
-  createDevice(parent, name, input, output) {
-    if(input!==null&&input!==undefined&&typeof input!=='function'||output!==null&&output!==undefined&&typeof output!=='function')throw new TypeError('Device callbacks must be functions');
-    const path=parent.replace(/\/$/,'')+'/'+name,{parent:directory,name:entry}=this._parent(path);
-    if(directory.children.has(entry))fail('EEXIST',path);
-    this._permissions(directory,'wx');
-    const node=this._node('device',(input?0o444:0)|(output?0o222:0),directory,entry);
-    node.input=input;node.output=output;directory.children.set(entry,node);this._changed(directory);return node;
-  }
-  stat(path) { return this._stat(this._lookup(path)); }
-  fstat(fd) { return this._stat(this._descriptor(fd).node); }
-  cwd() { return this.currentPath; }
-  chdir(path) {
-    const node = this._lookup(path);
-    if (node.type !== 'dir') fail('ENOTDIR', path);
-    this._permissions(node, 'x');
-    this.currentPath = this._path(node);
-  }
-  mkdir(path, mode = 0o777) {
-    if (!this._parts(path).length) fail('EEXIST', path);
-    const { parent, name } = this._parent(path);
-    if (name === '.' || name === '..') fail('EEXIST', path);
-    if (parent.children.has(name)) fail('EEXIST', path);
-    this._permissions(parent, 'wx');
-    const node = this._node('dir', mode, parent, name);
-    parent.children.set(name, node); this._changed(parent);
-  }
-  mkdirTree(path, mode = 0o777) {
-    const parts = this._parts(path);
-    let node = this.root;
-    for (const part of parts) {
-      if (part === '.') continue;
-      if (part === '..') { node = node.parent; continue; }
-      if (node.type !== 'dir') fail('ENOTDIR', path);
-      this._permissions(node, 'x');
-      let next = node.children.get(this._entryName(node, part));
-      if (!next) {
-        this._permissions(node, 'w');
-        next = this._node('dir', mode, node, part); node.children.set(part, next); this._changed(node);
-      }
-      // Like FS.mkdirTree, tolerate EEXIST for a final existing file. A later
-      // ordinary component still fails ENOTDIR rather than inventing a dir.
-      node = next;
+    _now() {
+        const value = this.clock();
+        if (!Number.isFinite(value)) throw new TypeError('VFS clock must return milliseconds');
+        return value;
     }
-  }
-  readdir(path) {
-    const node = this._lookup(path);
-    if (node.type !== 'dir') fail('ENOTDIR', path);
-    // MEMFS uses Object.keys: integer-like names precede other insertion-order names.
-    return ['.', '..', ...Object.keys(Object.fromEntries([...node.children.keys()].map(name => [name, 0])))];
-  }
-  rmdir(path) {
-    if (this._parts(path).length === 0) fail('EBUSY', path);
-    const { parent, name } = this._parent(path), node = parent.children.get(name);
-    if (!node) fail('ENOENT', path);
-    this._permissions(parent, 'wx');
-    if (node.type !== 'dir') fail('ENOTDIR', path);
-    if (node === this.root || this._path(node) === this.currentPath) fail('EBUSY', path);
-    if (node.children.size) fail('ENOTEMPTY', path);
-    node.parent.children.delete(node.name); this._changed(node.parent);
-  }
-  unlink(path) {
-    const { parent, name } = this._parent(path), node = parent.children.get(name);
-    if (!node) fail('ENOENT', path);
-    this._permissions(parent, 'wx');
-    if (node.type === 'dir') fail('EISDIR', path);
-    parent.children.delete(name); this._changed(parent);
-  }
-  rename(source, destination) {
-    const from = this._parent(source), to = this._parent(destination);
-    const node = from.parent.children.get(from.name), replaced = to.parent.children.get(to.name);
-    if (!node) fail('ENOENT', source);
-    validateEntryName(to.requestedName);
-    const normalize = path => {
-      const result = [];
-      for (const part of this._parts(path)) {
-        if (part === '..') result.pop();
-        else if (part !== '.') result.push(part);
-      }
-      return '/' + result.join('/');
-    };
-    const ancestor = (parent, child) => parent === '/' || parent === child || child.startsWith(parent + '/');
-    if (ancestor(normalize(source), this._path(to.parent))) fail('EINVAL', destination);
-    if (ancestor(normalize(destination), this._path(from.parent))) fail('ENOTEMPTY', destination);
-    if (node === replaced) {
-      if (from.requestedName !== to.requestedName && to.name !== to.requestedName) {
-        this._permissions(from.parent, 'wx');
-        const oldPath = this._path(node);
-        from.parent.children.delete(from.name);
-        node.name = to.requestedName;
-        to.parent.children.set(node.name, node);
-        if (this.currentPath === oldPath || this.currentPath.startsWith(oldPath + '/'))
-          this.currentPath = this._path(node) + this.currentPath.slice(oldPath.length);
-        this._changed(to.parent);
-      }
-      return;
+    _node(type, mode, parent, name) {
+        validateEntryName(name);
+        if (!integer(mode) || mode < 0 || mode > 0o777) fail('ENOTSUP');
+        const time = this._now();
+        return {
+            type,
+            ino: this.nextInode++,
+            mode: (type === 'dir' ? S_IFDIR : ['null', 'device'].includes(type) ? S_IFCHR : S_IFREG) |
+                mode,
+            parent,
+            name,
+            children: type === 'dir' ? (this.caseInsensitive ? new CaseInsensitiveEntries() : new Map()) :
+                null,
+            bytes: type === 'file' ? new Uint8Array(0) : null,
+            atime: time,
+            mtime: time,
+            ctime: time
+        };
     }
-    this._permissions(from.parent, 'wx'); this._permissions(to.parent, 'wx');
-    if (node.type === 'dir') {
-      for (let parent = to.parent;; parent = parent.parent) {
-        if (parent === node) fail('EINVAL', destination);
-        if (parent === this.root) break;
-      }
-      if (this._path(node) === this.currentPath) fail('EBUSY', source);
+    _path(node) {
+        const parts = [];
+        while (node !== this.root) {
+            parts.push(node.name);
+            node = node.parent;
+        }
+        return '/' + parts.reverse().join('/');
     }
-    if (replaced) {
-      if (node.type === 'dir' && replaced.type !== 'dir') fail('ENOTDIR', destination);
-      if (node.type !== 'dir' && replaced.type === 'dir') fail('EISDIR', destination);
-      if (replaced.type === 'dir') {
-        if (this._path(replaced) === this.currentPath) fail('EBUSY', destination);
-        if (replaced.children.size) fail('ENOTEMPTY', destination);
-      }
+    _parts(path) {
+        if (typeof path !== 'string') throw new TypeError('Expected VFS path string');
+        if (!path) fail('ENOENT', path);
+        if (path.includes('\0')) fail('EINVAL', path);
+        if (!path.startsWith('/')) path = this.currentPath + '/' + path;
+        const parts = path.split('/').filter(Boolean);
+        return parts;
     }
-    from.parent.children.delete(from.name);
-    // Replacing a different inode retains the destination entry's spelling.
-    to.parent.children.set(to.name, node);
-    this._changed(from.parent); this._changed(to.parent);
-    node.parent = to.parent; node.name = to.name;
-  }
-  open(path, flags = O_RDONLY, mode = 0o666) {
-    if (typeof flags === 'string') {
-      if (!Object.hasOwn(flagStrings, flags)) fail('EINVAL');
-      flags = flagStrings[flags];
+    _entryName(parent, requested) {
+        if (parent.children.has(requested)) return requested;
+        if (this.caseInsensitive) return parent.children.names.get(foldedFileName(requested)) ??
+        requested;
+        if (!this.caseInsensitiveDirectory ||
+            this._path(parent) !== this.caseInsensitiveDirectory) return requested;
+        const folded = foldedFileName(requested);
+        for (const name of parent.children.keys())
+            if (foldedFileName(name) === folded) return name;
+        return requested;
     }
-    const supported = 3 | O_CREAT | O_EXCL | O_TRUNC | O_APPEND | O_LARGEFILE | O_DIRECTORY | O_CLOEXEC;
-    if (!integer(flags) || flags < 0 || flags > 0x7fffffff || flags & ~supported) fail('ENOTSUP');
-    if ((flags & 3) === 3) fail('EINVAL');
-    let node = this._walk(this._parts(path), true), created = false;
-    if (node && node.type !== 'dir' && path.endsWith('/')) fail('ENOTDIR', path);
-    if (flags & O_CREAT) {
-      if (node && flags & O_EXCL) fail('EEXIST', path);
-      if (!node) {
-        if (path.endsWith('/')) fail('EISDIR', path);
+    _walk(parts, missingLast = false) {
+        let node = this.root;
+        for (let i = 0; i < parts.length; ++i) {
+            const part = parts[i];
+            if (node.type !== 'dir') fail('ENOTDIR');
+            this._permissions(node, 'x');
+            if (part === '.') continue;
+            if (part === '..') {
+                node = node.parent;
+                continue;
+            }
+            const next = node.children.get(this._entryName(node, part));
+            if (!next) {
+                if (missingLast && i === parts.length - 1) return null;
+                fail('ENOENT');
+            }
+            node = next;
+        }
+        return node;
+    }
+    _lookup(path) {
+        const node = this._walk(this._parts(path));
+        if (node.type !== 'dir' && path.endsWith('/')) fail('ENOTDIR', path);
+        return node;
+    }
+    _parent(path) {
+        const parts = this._parts(path),
+            name = parts.pop();
+        if (!name) fail('EBUSY', path);
+        const parent = this._walk(parts);
+        if (parent.type !== 'dir') fail('ENOTDIR', path);
+        return {
+            parent,
+            name: this._entryName(parent, name),
+            requestedName: name
+        };
+    }
+    _changed(node) {
+        node.mtime = node.ctime = this._now();
+    }
+    _permissions(node, requested) {
+        if (this.ignorePermissions) return;
+        for (const [letter, mask] of [
+                ['r', 0o444],
+                ['w', 0o222],
+                ['x', 0o111]
+            ])
+            if (requested.includes(letter) && !(node.mode & mask)) fail('EACCES');
+    }
+    _descriptor(fd) {
+        const descriptor = this.descriptors.get(fd);
+        if (!descriptor) fail('EBADF');
+        return descriptor;
+    }
+    _stat(node) {
+        const size = node.type === 'dir' ? 4096 : ['null', 'device'].includes(node.type) ? 0 : node.bytes
+            .length;
+        return {
+            dev: 1,
+            ino: node.ino,
+            mode: node.mode,
+            nlink: 1,
+            uid: 0,
+            gid: 0,
+            rdev: node.type === 'null' ? 259 : 0,
+            size,
+            blksize: 4096,
+            blocks: Math.ceil(size / 4096),
+            atime: new Date(node.atime),
+            mtime: new Date(node.mtime),
+            ctime: new Date(node.ctime)
+        };
+    }
+    isDir(mode) {
+        return isDir(mode);
+    }
+    isFile(mode) {
+        return isFile(mode);
+    }
+    installNullDevice(path = '/dev/null', mode = 0o666) {
+        const slash = path.lastIndexOf('/');
+        this.mkdirTree(path.slice(0, slash) || '/');
+        const parts = this._parts(path),
+            existing = this._walk(parts, true);
+        if (existing) {
+            if (existing.type !== 'null') fail('ENOTSUP', path);
+            return;
+        }
         const { parent, name } = this._parent(path);
         this._permissions(parent, 'wx');
-        node = this._node('file', mode, parent, name); parent.children.set(name, node); this._changed(parent);
-        created = true;
-      }
+        parent.children.set(name, this._node('null', mode, parent, name));
+        this._changed(parent);
     }
-    if (!node) fail('ENOENT', path);
-    if (flags & O_DIRECTORY && node.type !== 'dir') fail('ENOTDIR', path);
-    if (node.type === 'dir' && ((flags & 3) !== O_RDONLY || flags & (O_CREAT | O_TRUNC))) fail('EISDIR', path);
-    if (!created) this._permissions(node, (flags & 3) === O_RDONLY ? flags & O_TRUNC ? 'rw' : 'r' : (flags & 3) === O_WRONLY ? 'w' : 'rw');
-    if (flags & O_TRUNC && node.type === 'file') { node.bytes = new Uint8Array(0); fileStorage.delete(node); this._changed(node); }
-    let fd = 3;
-    while (this.descriptors.has(fd)) ++fd;
-    if (this.descriptors.size >= this.maximumDescriptors) fail('EMFILE');
-    this.descriptors.set(fd, { node, flags: flags & ~(O_EXCL | O_TRUNC), position: 0 });
-    return fd;
-  }
-  close(fd) { const {node}=this._descriptor(fd);if(node.type==='device'&&node.output?.buffer?.length)node.output(10); this.descriptors.delete(fd); }
-  dup(fd, target) {
-    const descriptor = this._descriptor(fd);
-    if (target === undefined) { target = 3; while (this.descriptors.has(target)) ++target; }
-    if (!integer(target) || target < 0 || target >= 4096) fail('EBADF');
-    if (target === fd) fail('EINVAL');
-    if (!this.descriptors.has(target) && this.descriptors.size >= this.maximumDescriptors) fail('EMFILE');
-    // MEMFS dupStream shares its FSStream.shared (flags and position) and node.
-    this.descriptors.set(target, descriptor);
-    return target;
-  }
-  descriptorFlags(fd) { return this._descriptor(fd).flags; }
-  addDescriptorFlags(fd, flags) { this._descriptor(fd).flags |= flags; return 0; }
-  _range(buffer, offset, length, position) {
-    if (!(buffer instanceof Uint8Array)) throw new TypeError('Expected byte buffer');
-    if (!integer(offset) || !integer(length) || offset < 0 || length < 0 || offset + length > buffer.length
-      || position !== undefined && (!integer(position) || position < 0)) fail('EINVAL');
-  }
-  read(fd, buffer, offset = 0, length = buffer.length - offset, position) {
-    this._range(buffer, offset, length, position);
-    const stream = this._descriptor(fd);
-    if ((stream.flags & 3) === O_WRONLY) fail('EBADF');
-    if (stream.node.type === 'dir') fail('EISDIR');
-    if (stream.node.type === 'null') return 0;
-    if(stream.node.type==='device'){
-      let count=0;for(;count<length;count++){let value;try{value=stream.node.input();}catch{fail('EIO');}if(value===undefined&&!count)fail('EAGAIN');if(value===null||value===undefined)break;buffer[offset+count]=value;}
-      if(count)stream.node.atime=this._now();stream.position+=count;return count;
+    createDevice(parent, name, input, output) {
+        if (input !== null && input !== undefined && typeof input !== 'function' || output !== null &&
+            output !== undefined && typeof output !== 'function') throw new TypeError(
+            'Device callbacks must be functions');
+        const path = parent.replace(/\/$/, '') + '/' + name,
+            { parent: directory, name: entry } = this._parent(path);
+        if (directory.children.has(entry)) fail('EEXIST', path);
+        this._permissions(directory, 'wx');
+        const node = this._node('device', (input ? 0o444 : 0) | (output ? 0o222 : 0), directory, entry);
+        node.input = input;
+        node.output = output;
+        directory.children.set(entry, node);
+        this._changed(directory);
+        return node;
     }
-    const at = position === undefined ? stream.position : position;
-    const count = Math.max(0, Math.min(length, stream.node.bytes.length - at));
-    buffer.set(stream.node.bytes.subarray(at, at + count), offset);
-    if (position === undefined) stream.position += count;
-    return count;
-  }
-  write(fd, buffer, offset = 0, length = buffer.length - offset, position) {
-    this._range(buffer, offset, length, position);
-    const stream = this._descriptor(fd), node = stream.node;
-    if ((stream.flags & 3) === O_RDONLY) fail('EBADF');
-    if (node.type === 'dir') fail('EISDIR');
-    if (node.type === 'null') { if (stream.flags & O_APPEND) stream.position = 0; if (position === undefined) stream.position += length; return length; }
-    if(node.type==='device'){
-      for(let i=0;i<length;i++)try{node.output(buffer[offset+i]);}catch{fail('EIO');}
-      if(length)this._changed(node);stream.position+=length;return length;
+    stat(path) {
+        return this._stat(this._lookup(path));
     }
-    // Match FS.write: O_APPEND first updates the stream position to EOF even
-    // when an explicit positional write then overrides the actual destination.
-    if (stream.flags & O_APPEND) stream.position = node.bytes.length;
-    const at = position === undefined ? stream.position : position;
-    if (!length) return 0;
-    if (!integer(at + length) || at + length > this.maximumFileBytes) fail('EFBIG');
-    const end = at + length, previousLength = node.bytes.length;
-    let backing = fileStorage.get(node) ?? node.bytes;
-    if (end > backing.length) {
-      const capacity = Math.min(this.maximumFileBytes, Math.max(end, 64, backing.length * 2));
-      let replacement;
-      try { replacement = new Uint8Array(capacity); } catch (error) {
-        if (!(error instanceof RangeError)) throw error;
-        // Spare capacity must not reject an otherwise allocatable exact write.
-        try { replacement = new Uint8Array(end); } catch (exactError) {
-          if (exactError instanceof RangeError) fail('ENOMEM');
-          throw exactError;
+    fstat(fd) {
+        return this._stat(this._descriptor(fd).node);
+    }
+    cwd() {
+        return this.currentPath;
+    }
+    chdir(path) {
+        const node = this._lookup(path);
+        if (node.type !== 'dir') fail('ENOTDIR', path);
+        this._permissions(node, 'x');
+        this.currentPath = this._path(node);
+    }
+    mkdir(path, mode = 0o777) {
+        if (!this._parts(path).length) fail('EEXIST', path);
+        const { parent, name } = this._parent(path);
+        if (name === '.' || name === '..') fail('EEXIST', path);
+        if (parent.children.has(name)) fail('EEXIST', path);
+        this._permissions(parent, 'wx');
+        const node = this._node('dir', mode, parent, name);
+        parent.children.set(name, node);
+        this._changed(parent);
+    }
+    mkdirTree(path, mode = 0o777) {
+        const parts = this._parts(path);
+        let node = this.root;
+        for (const part of parts) {
+            if (part === '.') continue;
+            if (part === '..') {
+                node = node.parent;
+                continue;
+            }
+            if (node.type !== 'dir') fail('ENOTDIR', path);
+            this._permissions(node, 'x');
+            let next = node.children.get(this._entryName(node, part));
+            if (!next) {
+                this._permissions(node, 'w');
+                next = this._node('dir', mode, node, part);
+                node.children.set(part, next);
+                this._changed(node);
+            }
+            // Like FS.mkdirTree, tolerate EEXIST for a final existing file. A later
+            // ordinary component still fails ENOTDIR rather than inventing a dir.
+            node = next;
         }
-      }
-      replacement.set(node.bytes); backing = replacement;
     }
-    if (at > previousLength) backing.fill(0, previousLength, at);
-    backing.set(buffer.subarray(offset, offset + length), at);
-    if (end > previousLength) node.bytes = backing.subarray(0, end);
-    fileStorage.set(node, backing);
-    this._changed(node);
-    if (position === undefined) stream.position += length;
-    return length;
-  }
-  lseek(fd, offset, whence = SEEK_SET) {
-    const stream = this._descriptor(fd);
-    if (!integer(offset) || ![SEEK_SET, SEEK_CUR, SEEK_END].includes(whence)) fail('EINVAL');
-    if(stream.node.type==='device')fail('ESPIPE');
-    if (stream.node.type === 'null') { stream.position = 0; return 0; }
-    const position = offset + (whence === SEEK_CUR ? stream.position : whence === SEEK_END && stream.node.type === 'file' ? stream.node.bytes.length : 0);
-    if (!integer(position) || position < 0) fail('EINVAL');
-    stream.position = position; return position;
-  }
-  writeFile(path, data, options = {}) {
-    if (typeof data === 'string') data = new TextEncoder().encode(data);
-    if (!(data instanceof Uint8Array)) throw new TypeError('Expected file bytes or string');
-    if (options.canOwn) fail('ENOTSUP');
-    const fd = this.open(path, options.flags ?? 'w', options.mode);
-    try { this.write(fd, data); } finally { this.close(fd); }
-  }
-  readFile(path, options = {}) {
-    if (!['binary', 'utf8'].includes(options.encoding ?? 'binary')) fail('ENOTSUP');
-    const fd = this.open(path, options.flags ?? 'r');
-    try {
-      const bytes = new Uint8Array(this.fstat(fd).size);
-      this.read(fd, bytes, 0, bytes.length, 0);
-      if (options.encoding === 'utf8') {
-        const end = bytes.indexOf(0);
-        return new TextDecoder().decode(end < 0 ? bytes : bytes.subarray(0, end));
-      }
-      return bytes;
-    } finally { this.close(fd); }
-  }
-  createMemfsFacade() {
-    const fs = this, facade = {}, streams = new Map(), identities = new WeakMap();
-    for (const name of ['mkdirTree', 'mkdir', 'rmdir', 'writeFile', 'readFile', 'readdir', 'stat', 'fstat', 'isDir', 'isFile', 'chdir', 'cwd', 'unlink', 'rename'])
-      facade[name] = (...args) => fs[name](...args);
-    const descriptor = stream => {
-      if (typeof stream === 'number') return stream;
-      if (!stream || fs.descriptors.get(stream.fd) !== identities.get(stream)) fail('EBADF');
-      return stream.fd;
-    };
-    const wrap = fd => {
-      const record = fs._descriptor(fd), stream = { fd };
-      identities.set(stream, record);
-      Object.defineProperty(stream, 'position', { get: () => fs._descriptor(descriptor(stream)).position,
-        set: value => { fs.lseek(descriptor(stream), value, SEEK_SET); } });
-      streams.set(fd, stream); return stream;
-    };
-    facade.analyzePath = path => {
-      const result={isRoot:false,exists:false,error:0,name:null,path:null,object:null,parentExists:false,parentPath:null,parentObject:null};
-      try{const {parent,name}=fs._parent(path);Object.assign(result,{parentExists:true,parentPath:fs._path(parent),parentObject:parent,name});}catch(error){if(!(error instanceof VFSError))throw error;result.error=error.errno;}
-      try{const node=fs._lookup(path),canonical=fs._path(node);Object.assign(result,{isRoot:node===fs.root,exists:true,error:0,name:node.name,path:canonical,object:node});}catch(error){if(!(error instanceof VFSError))throw error;result.error=error.errno;}
-      return result;
-    };
-    facade.createDevice = (...args)=>fs.createDevice(...args);
-    facade.open = (...args) => wrap(fs.open(...args));
-    facade.close = stream => {
-      const fd = descriptor(stream); fs.close(fd); streams.delete(fd);
-      if (typeof stream === 'object') stream.fd = null;
-    };
-    facade.read = (stream, ...args) => fs.read(descriptor(stream), ...args);
-    facade.write = (stream, ...args) => fs.write(descriptor(stream), ...args);
-    facade.llseek = (stream, ...args) => fs.lseek(descriptor(stream), ...args);
-    facade.getStream = fd => {
-      if (!fs.descriptors.has(fd)) return undefined;
-      const stream = streams.get(fd);
-      return stream && identities.get(stream) === fs.descriptors.get(fd) ? stream : wrap(fd);
-    };
-    facade.ErrnoError = VFSError;
-    return facade;
-  }
-  exportSnapshot() {
-    const entries = [];
-    const visit = node => {
-      if(node.type==='device')fail('ENOTSUP',this._path(node));
-      entries.push({ path: this._path(node), type: node.type, mode: node.mode & 0o777,
-        atime: node.atime, mtime: node.mtime, ctime: node.ctime,
-        ...(node.type === 'file' ? { base64: encode(node.bytes) } : {}) });
-      if (node.type === 'dir') for (const child of node.children.values()) visit(child);
-    };
-    visit(this.root);
-    return { version: 1, cwd: this.currentPath, entries };
-  }
-  importSnapshot(snapshot) {
-    if (this.descriptors.size) fail('EBUSY');
-    if (!snapshot || snapshot.version !== 1 || !Array.isArray(snapshot.entries) || typeof snapshot.cwd !== 'string') fail('EINVAL');
-    const replacement = new CVFS({ clock: this.clock, maximumFileBytes: this.maximumFileBytes,
-      maximumDescriptors: this.maximumDescriptors, caseInsensitive: this.caseInsensitive, caseInsensitiveDirectory: this.caseInsensitiveDirectory, ignorePermissions: true });
-    const seen = new Set();
-    for (const entry of snapshot.entries) {
-      if (!entry || typeof entry.path !== 'string' || !entry.path.startsWith('/') || seen.has(entry.path)
-        || !['file', 'dir', 'null'].includes(entry.type) || !integer(entry.mode) || entry.mode < 0 || entry.mode > 0o777
-        || ![entry.atime, entry.mtime, entry.ctime].every(Number.isFinite)) fail('EINVAL');
-      if (entry.path !== '/' && ('/' + entry.path.split('/').filter(Boolean).join('/') !== entry.path
-        || entry.path.split('/').some(part => part === '.' || part === '..'))) fail('EINVAL');
-      seen.add(entry.path);
-      if (entry.path === '/') {
-        if (entry.type !== 'dir') fail('EINVAL');
-      } else if (replacement._walk(replacement._parts(entry.path), true)) fail('EINVAL');
-      else if (entry.type === 'dir') replacement.mkdir(entry.path, entry.mode);
-      else if (entry.type === 'null') replacement.installNullDevice(entry.path, entry.mode);
-      else replacement.writeFile(entry.path, decode(entry.base64, this.maximumFileBytes), { mode: entry.mode });
+    readdir(path) {
+        const node = this._lookup(path);
+        if (node.type !== 'dir') fail('ENOTDIR', path);
+        // MEMFS uses Object.keys: integer-like names precede other insertion-order names.
+        return ['.', '..', ...Object.keys(Object.fromEntries([...node.children.keys()].map(name => [name,
+            0
+        ])))];
     }
-    // Creating children changes their parents' times; apply persisted metadata
-    // only after the complete linked tree has been reconstructed.
-    for (const entry of snapshot.entries) {
-      const node = replacement._lookup(entry.path);
-      node.mode = (entry.type === 'dir' ? S_IFDIR : entry.type === 'null' ? S_IFCHR : S_IFREG) | entry.mode;
-      node.atime = entry.atime; node.mtime = entry.mtime; node.ctime = entry.ctime;
+    rmdir(path) {
+        if (this._parts(path).length === 0) fail('EBUSY', path);
+        const { parent, name } = this._parent(path), node = parent.children.get(name);
+        if (!node) fail('ENOENT', path);
+        this._permissions(parent, 'wx');
+        if (node.type !== 'dir') fail('ENOTDIR', path);
+        if (node === this.root || this._path(node) === this.currentPath) fail('EBUSY', path);
+        if (node.children.size) fail('ENOTEMPTY', path);
+        node.parent.children.delete(node.name);
+        this._changed(node.parent);
     }
-    if (!seen.has('/')) fail('EINVAL');
-    replacement.chdir(snapshot.cwd);
-    this.root = replacement.root; this.currentPath = replacement.currentPath; this.nextInode = replacement.nextInode;
-  }
-  saveToStorage(storage = this.storage, key = this.persistenceKey) {
-    if (!storage || typeof storage.setItem !== 'function') fail('ENOTSUP');
-    try { storage.setItem(key, JSON.stringify(this.exportSnapshot())); }
-    catch (error) { if (error instanceof VFSError) throw error; fail(error?.name === 'QuotaExceededError' ? 'ENOSPC' : 'EIO'); }
-  }
-  loadFromStorage(storage = this.storage, key = this.persistenceKey) {
-    if (!storage || typeof storage.getItem !== 'function') fail('ENOTSUP');
-    let value;
-    try { value = storage.getItem(key); } catch { fail('EIO'); }
-    if (value === null) return false;
-    let snapshot;
-    try { snapshot = JSON.parse(value); } catch { fail('EINVAL'); }
-    this.importSnapshot(snapshot); return true;
-  }
-  unsupported() { fail('ENOTSUP'); }
-  symlink() { this.unsupported(); }
-  link() { this.unsupported(); }
-  chmod() { this.unsupported(); }
-  chown() { this.unsupported(); }
-  mknod() { this.unsupported(); }
+    unlink(path) {
+        const { parent, name } = this._parent(path), node = parent.children.get(name);
+        if (!node) fail('ENOENT', path);
+        this._permissions(parent, 'wx');
+        if (node.type === 'dir') fail('EISDIR', path);
+        parent.children.delete(name);
+        this._changed(parent);
+    }
+    rename(source, destination) {
+        const from = this._parent(source),
+            to = this._parent(destination);
+        const node = from.parent.children.get(from.name),
+            replaced = to.parent.children.get(to.name);
+        if (!node) fail('ENOENT', source);
+        validateEntryName(to.requestedName);
+        const normalize = path => {
+            const result = [];
+            for (const part of this._parts(path)) {
+                if (part === '..') result.pop();
+                else if (part !== '.') result.push(part);
+            }
+            return '/' + result.join('/');
+        };
+        const ancestor = (parent, child) => parent === '/' || parent === child || child.startsWith(
+            parent + '/');
+        if (ancestor(normalize(source), this._path(to.parent))) fail('EINVAL', destination);
+        if (ancestor(normalize(destination), this._path(from.parent))) fail('ENOTEMPTY', destination);
+        if (node === replaced) {
+            if (from.requestedName !== to.requestedName && to.name !== to.requestedName) {
+                this._permissions(from.parent, 'wx');
+                const oldPath = this._path(node);
+                from.parent.children.delete(from.name);
+                node.name = to.requestedName;
+                to.parent.children.set(node.name, node);
+                if (this.currentPath === oldPath || this.currentPath.startsWith(oldPath + '/'))
+                    this.currentPath = this._path(node) + this.currentPath.slice(oldPath.length);
+                this._changed(to.parent);
+            }
+            return;
+        }
+        this._permissions(from.parent, 'wx');
+        this._permissions(to.parent, 'wx');
+        if (node.type === 'dir') {
+            for (let parent = to.parent;; parent = parent.parent) {
+                if (parent === node) fail('EINVAL', destination);
+                if (parent === this.root) break;
+            }
+            if (this._path(node) === this.currentPath) fail('EBUSY', source);
+        }
+        if (replaced) {
+            if (node.type === 'dir' && replaced.type !== 'dir') fail('ENOTDIR', destination);
+            if (node.type !== 'dir' && replaced.type === 'dir') fail('EISDIR', destination);
+            if (replaced.type === 'dir') {
+                if (this._path(replaced) === this.currentPath) fail('EBUSY', destination);
+                if (replaced.children.size) fail('ENOTEMPTY', destination);
+            }
+        }
+        from.parent.children.delete(from.name);
+        // Replacing a different inode retains the destination entry's spelling.
+        to.parent.children.set(to.name, node);
+        this._changed(from.parent);
+        this._changed(to.parent);
+        node.parent = to.parent;
+        node.name = to.name;
+    }
+    open(path, flags = O_RDONLY, mode = 0o666) {
+        if (typeof flags === 'string') {
+            if (!Object.hasOwn(flagStrings, flags)) fail('EINVAL');
+            flags = flagStrings[flags];
+        }
+        const supported = 3 | O_CREAT | O_EXCL | O_TRUNC | O_APPEND | O_LARGEFILE | O_DIRECTORY |
+            O_CLOEXEC;
+        if (!integer(flags) || flags < 0 || flags > 0x7fffffff || flags & ~supported) fail('ENOTSUP');
+        if ((flags & 3) === 3) fail('EINVAL');
+        let node = this._walk(this._parts(path), true),
+            created = false;
+        if (node && node.type !== 'dir' && path.endsWith('/')) fail('ENOTDIR', path);
+        if (flags & O_CREAT) {
+            if (node && flags & O_EXCL) fail('EEXIST', path);
+            if (!node) {
+                if (path.endsWith('/')) fail('EISDIR', path);
+                const { parent, name } = this._parent(path);
+                this._permissions(parent, 'wx');
+                node = this._node('file', mode, parent, name);
+                parent.children.set(name, node);
+                this._changed(parent);
+                created = true;
+            }
+        }
+        if (!node) fail('ENOENT', path);
+        if (flags & O_DIRECTORY && node.type !== 'dir') fail('ENOTDIR', path);
+        if (node.type === 'dir' && ((flags & 3) !== O_RDONLY || flags & (O_CREAT | O_TRUNC))) fail(
+            'EISDIR', path);
+        if (!created) this._permissions(node, (flags & 3) === O_RDONLY ? flags & O_TRUNC ? 'rw' : 'r' : (
+            flags & 3) === O_WRONLY ? 'w' : 'rw');
+        if (flags & O_TRUNC && node.type === 'file') {
+            node.bytes = new Uint8Array(0);
+            fileStorage.delete(node);
+            this._changed(node);
+        }
+        let fd = 3;
+        while (this.descriptors.has(fd)) ++fd;
+        if (this.descriptors.size >= this.maximumDescriptors) fail('EMFILE');
+        this.descriptors.set(fd, {
+            node,
+            flags: flags & ~(O_EXCL | O_TRUNC),
+            position: 0
+        });
+        return fd;
+    }
+    close(fd) {
+        const { node } = this._descriptor(fd);
+        if (node.type === 'device' && node.output?.buffer?.length) node.output(10);
+        this.descriptors.delete(fd);
+    }
+    dup(fd, target) {
+        const descriptor = this._descriptor(fd);
+        if (target === undefined) {
+            target = 3;
+            while (this.descriptors.has(target)) ++target;
+        }
+        if (!integer(target) || target < 0 || target >= 4096) fail('EBADF');
+        if (target === fd) fail('EINVAL');
+        if (!this.descriptors.has(target) && this.descriptors.size >= this.maximumDescriptors) fail(
+            'EMFILE');
+        // MEMFS dupStream shares its FSStream.shared (flags and position) and node.
+        this.descriptors.set(target, descriptor);
+        return target;
+    }
+    descriptorFlags(fd) {
+        return this._descriptor(fd).flags;
+    }
+    addDescriptorFlags(fd, flags) {
+        this._descriptor(fd).flags |= flags;
+        return 0;
+    }
+    _range(buffer, offset, length, position) {
+        if (!(buffer instanceof Uint8Array)) throw new TypeError('Expected byte buffer');
+        if (!integer(offset) || !integer(length) || offset < 0 || length < 0 || offset + length > buffer
+            .length ||
+            position !== undefined && (!integer(position) || position < 0)) fail('EINVAL');
+    }
+    read(fd, buffer, offset = 0, length = buffer.length - offset, position) {
+        this._range(buffer, offset, length, position);
+        const stream = this._descriptor(fd);
+        if ((stream.flags & 3) === O_WRONLY) fail('EBADF');
+        if (stream.node.type === 'dir') fail('EISDIR');
+        if (stream.node.type === 'null') return 0;
+        if (stream.node.type === 'device') {
+            let count = 0;
+            for (; count < length; count++) {
+                let value;
+                try {
+                    value = stream.node.input();
+                } catch {
+                    fail('EIO');
+                }
+                if (value === undefined && !count) fail('EAGAIN');
+                if (value === null || value === undefined) break;
+                buffer[offset + count] = value;
+            }
+            if (count) stream.node.atime = this._now();
+            stream.position += count;
+            return count;
+        }
+        const at = position === undefined ? stream.position : position;
+        const count = Math.max(0, Math.min(length, stream.node.bytes.length - at));
+        buffer.set(stream.node.bytes.subarray(at, at + count), offset);
+        if (position === undefined) stream.position += count;
+        return count;
+    }
+    write(fd, buffer, offset = 0, length = buffer.length - offset, position) {
+        this._range(buffer, offset, length, position);
+        const stream = this._descriptor(fd),
+            node = stream.node;
+        if ((stream.flags & 3) === O_RDONLY) fail('EBADF');
+        if (node.type === 'dir') fail('EISDIR');
+        if (node.type === 'null') {
+            if (stream.flags & O_APPEND) stream.position = 0;
+            if (position === undefined) stream.position += length;
+            return length;
+        }
+        if (node.type === 'device') {
+            for (let i = 0; i < length; i++) try {
+                node.output(buffer[offset + i]);
+            } catch {
+                fail('EIO');
+            }
+            if (length) this._changed(node);
+            stream.position += length;
+            return length;
+        }
+        // Match FS.write: O_APPEND first updates the stream position to EOF even
+        // when an explicit positional write then overrides the actual destination.
+        if (stream.flags & O_APPEND) stream.position = node.bytes.length;
+        const at = position === undefined ? stream.position : position;
+        if (!length) return 0;
+        if (!integer(at + length) || at + length > this.maximumFileBytes) fail('EFBIG');
+        const end = at + length,
+            previousLength = node.bytes.length;
+        let backing = fileStorage.get(node) ?? node.bytes;
+        if (end > backing.length) {
+            const capacity = Math.min(this.maximumFileBytes, Math.max(end, 64, backing.length * 2));
+            let replacement;
+            try {
+                replacement = new Uint8Array(capacity);
+            } catch (error) {
+                if (!(error instanceof RangeError)) throw error;
+                // Spare capacity must not reject an otherwise allocatable exact write.
+                try {
+                    replacement = new Uint8Array(end);
+                } catch (exactError) {
+                    if (exactError instanceof RangeError) fail('ENOMEM');
+                    throw exactError;
+                }
+            }
+            replacement.set(node.bytes);
+            backing = replacement;
+        }
+        if (at > previousLength) backing.fill(0, previousLength, at);
+        backing.set(buffer.subarray(offset, offset + length), at);
+        if (end > previousLength) node.bytes = backing.subarray(0, end);
+        fileStorage.set(node, backing);
+        this._changed(node);
+        if (position === undefined) stream.position += length;
+        return length;
+    }
+    lseek(fd, offset, whence = SEEK_SET) {
+        const stream = this._descriptor(fd);
+        if (!integer(offset) || ![SEEK_SET, SEEK_CUR, SEEK_END].includes(whence)) fail('EINVAL');
+        if (stream.node.type === 'device') fail('ESPIPE');
+        if (stream.node.type === 'null') {
+            stream.position = 0;
+            return 0;
+        }
+        const position = offset + (whence === SEEK_CUR ? stream.position : whence === SEEK_END && stream
+            .node.type === 'file' ? stream.node.bytes.length : 0);
+        if (!integer(position) || position < 0) fail('EINVAL');
+        stream.position = position;
+        return position;
+    }
+    writeFile(path, data, options = {}) {
+        if (typeof data === 'string') data = new TextEncoder().encode(data);
+        if (!(data instanceof Uint8Array)) throw new TypeError('Expected file bytes or string');
+        if (options.canOwn) fail('ENOTSUP');
+        const fd = this.open(path, options.flags ?? 'w', options.mode);
+        try {
+            this.write(fd, data);
+        } finally {
+            this.close(fd);
+        }
+    }
+    readFile(path, options = {}) {
+        if (!['binary', 'utf8'].includes(options.encoding ?? 'binary')) fail('ENOTSUP');
+        const fd = this.open(path, options.flags ?? 'r');
+        try {
+            const bytes = new Uint8Array(this.fstat(fd).size);
+            this.read(fd, bytes, 0, bytes.length, 0);
+            if (options.encoding === 'utf8') {
+                const end = bytes.indexOf(0);
+                return new TextDecoder().decode(end < 0 ? bytes : bytes.subarray(0, end));
+            }
+            return bytes;
+        } finally {
+            this.close(fd);
+        }
+    }
+    createMemfsFacade() {
+        const fs = this,
+            facade = {},
+            streams = new Map(),
+            identities = new WeakMap();
+        for (const name of ['mkdirTree', 'mkdir', 'rmdir', 'writeFile', 'readFile', 'readdir', 'stat',
+                'fstat', 'isDir', 'isFile', 'chdir', 'cwd', 'unlink', 'rename'
+            ])
+            facade[name] = (...args) => fs[name](...args);
+        const descriptor = stream => {
+            if (typeof stream === 'number') return stream;
+            if (!stream || fs.descriptors.get(stream.fd) !== identities.get(stream)) fail('EBADF');
+            return stream.fd;
+        };
+        const wrap = fd => {
+            const record = fs._descriptor(fd),
+                stream = { fd };
+            identities.set(stream, record);
+            Object.defineProperty(stream, 'position', {
+                get: () => fs._descriptor(descriptor(stream)).position,
+                set: value => {
+                    fs.lseek(descriptor(stream), value, SEEK_SET);
+                }
+            });
+            streams.set(fd, stream);
+            return stream;
+        };
+        facade.analyzePath = path => {
+            const result = {
+                isRoot: false,
+                exists: false,
+                error: 0,
+                name: null,
+                path: null,
+                object: null,
+                parentExists: false,
+                parentPath: null,
+                parentObject: null
+            };
+            try {
+                const { parent, name } = fs._parent(path);
+                Object.assign(result, {
+                    parentExists: true,
+                    parentPath: fs._path(parent),
+                    parentObject: parent,
+                    name
+                });
+            } catch (error) {
+                if (!(error instanceof VFSError)) throw error;
+                result.error = error.errno;
+            }
+            try {
+                const node = fs._lookup(path),
+                    canonical = fs._path(node);
+                Object.assign(result, {
+                    isRoot: node === fs.root,
+                    exists: true,
+                    error: 0,
+                    name: node.name,
+                    path: canonical,
+                    object: node
+                });
+            } catch (error) {
+                if (!(error instanceof VFSError)) throw error;
+                result.error = error.errno;
+            }
+            return result;
+        };
+        facade.createDevice = (...args) => fs.createDevice(...args);
+        facade.open = (...args) => wrap(fs.open(...args));
+        facade.close = stream => {
+            const fd = descriptor(stream);
+            fs.close(fd);
+            streams.delete(fd);
+            if (typeof stream === 'object') stream.fd = null;
+        };
+        facade.read = (stream, ...args) => fs.read(descriptor(stream), ...args);
+        facade.write = (stream, ...args) => fs.write(descriptor(stream), ...args);
+        facade.llseek = (stream, ...args) => fs.lseek(descriptor(stream), ...args);
+        facade.getStream = fd => {
+            if (!fs.descriptors.has(fd)) return undefined;
+            const stream = streams.get(fd);
+            return stream && identities.get(stream) === fs.descriptors.get(fd) ? stream : wrap(fd);
+        };
+        facade.ErrnoError = VFSError;
+        return facade;
+    }
+    exportSnapshot() {
+        const entries = [];
+        const visit = node => {
+            if (node.type === 'device') fail('ENOTSUP', this._path(node));
+            entries.push({
+                path: this._path(node),
+                type: node.type,
+                mode: node.mode & 0o777,
+                atime: node.atime,
+                mtime: node.mtime,
+                ctime: node.ctime,
+                ...(node.type === 'file' ? {
+                    base64: encode(node.bytes)
+                } : {})
+            });
+            if (node.type === 'dir')
+                for (const child of node.children.values()) visit(child);
+        };
+        visit(this.root);
+        return { version: 1, cwd: this.currentPath, entries };
+    }
+    importSnapshot(snapshot) {
+        if (this.descriptors.size) fail('EBUSY');
+        if (!snapshot || snapshot.version !== 1 || !Array.isArray(snapshot.entries) || typeof snapshot
+            .cwd !== 'string') fail('EINVAL');
+        const replacement = new CVFS({
+            clock: this.clock,
+            maximumFileBytes: this.maximumFileBytes,
+            maximumDescriptors: this.maximumDescriptors,
+            caseInsensitive: this.caseInsensitive,
+            caseInsensitiveDirectory: this.caseInsensitiveDirectory,
+            ignorePermissions: true
+        });
+        const seen = new Set();
+        for (const entry of snapshot.entries) {
+            if (!entry || typeof entry.path !== 'string' || !entry.path.startsWith('/') || seen.has(entry
+                    .path) ||
+                !['file', 'dir', 'null'].includes(entry.type) || !integer(entry.mode) || entry.mode < 0 ||
+                entry.mode > 0o777 ||
+                ![entry.atime, entry.mtime, entry.ctime].every(Number.isFinite)) fail('EINVAL');
+            if (entry.path !== '/' && ('/' + entry.path.split('/').filter(Boolean).join('/') !== entry
+                    .path ||
+                    entry.path.split('/').some(part => part === '.' || part === '..'))) fail('EINVAL');
+            seen.add(entry.path);
+            if (entry.path === '/') {
+                if (entry.type !== 'dir') fail('EINVAL');
+            } else if (replacement._walk(replacement._parts(entry.path), true)) fail('EINVAL');
+            else if (entry.type === 'dir') replacement.mkdir(entry.path, entry.mode);
+            else if (entry.type === 'null') replacement.installNullDevice(entry.path, entry.mode);
+            else replacement.writeFile(entry.path, decode(entry.base64, this.maximumFileBytes), {
+                mode: entry.mode
+            });
+        }
+        // Creating children changes their parents' times; apply persisted metadata
+        // only after the complete linked tree has been reconstructed.
+        for (const entry of snapshot.entries) {
+            const node = replacement._lookup(entry.path);
+            node.mode = (entry.type === 'dir' ? S_IFDIR : entry.type === 'null' ? S_IFCHR : S_IFREG) |
+                entry.mode;
+            node.atime = entry.atime;
+            node.mtime = entry.mtime;
+            node.ctime = entry.ctime;
+        }
+        if (!seen.has('/')) fail('EINVAL');
+        replacement.chdir(snapshot.cwd);
+        this.root = replacement.root;
+        this.currentPath = replacement.currentPath;
+        this.nextInode = replacement.nextInode;
+    }
+    saveToStorage(storage = this.storage, key = this.persistenceKey) {
+        if (!storage || typeof storage.setItem !== 'function') fail('ENOTSUP');
+        try {
+            storage.setItem(key, JSON.stringify(this.exportSnapshot()));
+        } catch (error) {
+            if (error instanceof VFSError) throw error;
+            fail(error?.name === 'QuotaExceededError' ? 'ENOSPC' : 'EIO');
+        }
+    }
+    loadFromStorage(storage = this.storage, key = this.persistenceKey) {
+        if (!storage || typeof storage.getItem !== 'function') fail('ENOTSUP');
+        let value;
+        try {
+            value = storage.getItem(key);
+        } catch {
+            fail('EIO');
+        }
+        if (value === null) return false;
+        let snapshot;
+        try {
+            snapshot = JSON.parse(value);
+        } catch {
+            fail('EINVAL');
+        }
+        this.importSnapshot(snapshot);
+        return true;
+    }
+    unsupported() {
+        fail('ENOTSUP');
+    }
+    symlink() {
+        this.unsupported();
+    }
+    link() {
+        this.unsupported();
+    }
+    chmod() {
+        this.unsupported();
+    }
+    chown() {
+        this.unsupported();
+    }
+    mknod() {
+        this.unsupported();
+    }
 }

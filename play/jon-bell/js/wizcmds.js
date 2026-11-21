@@ -1,3 +1,5 @@
+import { menuitem_invert_test } from './windows.js';
+import { MENU_ITEMFLAGS_SKIPINVERT } from './const.js';
 // @ts-nocheck
 // wizcmds.js — Wizard-mode extended commands.
 // C ref: nethack-c/src/wizcmds.c — wiz_level_change() and related.
@@ -1041,7 +1043,7 @@ import { level_tele } from './teleport.js'; // relocate-fns
 import { visctrl as _binds_visctrl } from './cmd_binds.js';
 import { cmd_from_func as _binding_cmd_from_func } from './cmd.js'; // relocate-fns
 import { build_window_screen, menu_search_case } from './com_pager.js'; // relocate-fns
-import { BLINDED, CONFUSION, DEAF, FIRE_RES, FLYING, GLIB, HALLUC, HALLUC_RES, In_endgame, In_sokoban, Is_earthlevel, Is_firelevel as Is_firelevel_cmd, Is_knox_level, LEVITATION, PICK_NONE, PROT_FROM_SHAPE_CHANGERS, RIGHT_HANDED, SICK, SICK_NONVOMITABLE, SICK_VOMITABLE, SLIMED, STONE, STONED, STUNNED, TIMEOUT, VOMITING, WARN_OF_MON, WWALKING, gs } from './const.js'; // relocate-fns
+import { BLINDED, CONFUSION, DEAF, FIRE_RES, FLYING, GLIB, HALLUC, HALLUC_RES, In_endgame, In_sokoban, Is_earthlevel, Is_firelevel as Is_firelevel_cmd, Is_knox_level, LEVITATION, PICK_NONE, PROT_FROM_SHAPE_CHANGERS, SICK, SICK_NONVOMITABLE, SICK_VOMITABLE, SLIMED, STONE, STONED, STUNNED, TIMEOUT, VOMITING, WARN_OF_MON, WWALKING, gs } from './const.js'; // relocate-fns
 import { capture_painted_frame_with_status, docorner_blank_utf8_captures, force_more_pages, map_engraving, map_trap, menu_entry_page } from './display.js';
 import { glyph_to_cmap, wizcustom_glyphids, glyphid_cache_status, fill_glyphid_cache, free_glyphid_cache } from './glyphs.js'; // relocate-fns
 import { def_oc_syms_chars } from './drawing.js'; // relocate-fns
@@ -1574,7 +1576,6 @@ export async function wiz_identify() {
         /* selection payload per rendered line; null for headings/title. */
         const lineObj = [null, WIZID_ALL];
         const wizGlyph = new Map();
-        const hand = (g.u?.uhandedness === RIGHT_HANDED) ? 'right' : 'left';
         /* C invent.c:3274 `if (wizid && !not_fully_identified(otmp)) continue;`
          * — only unidentified items are listed, but the class walk is the same
          * flags.inv_order one every other menu in this file uses. */
@@ -1595,15 +1596,19 @@ export async function wiz_identify() {
             lineObj.push(null);
             for (const obj of group) {
                 const og = {};
-                let txt = await _pickinv_item_text(obj, hand, false, og);
+                let txt = await _pickinv_item_text(obj, null, false, og);
                 /* C wintty.c:1383-1390,1475-1483 show_obj_syms: the object
                  * glyph replaces the "-" separator; menu_objsyms:conditional
-                 * (bit 4) suppresses it when the menu has class headings. */
+                 * (bit 4) suppresses it when any nonselectable entry is present.
+                 * This menu always has its Debug Identify title, even !sortpack
+                 * (wintty.c:1383-1390; invent.c:3221-3241). */
                 if (g.iflags?.use_menu_glyphs
-                    && (!((g.iflags.menuobjsyms | 0) & 4) || flatWiz)) {
+                    && !((g.iflags.menuobjsyms | 0) & 4)) {
                     const gc = g.iflags?.use_color === false ? 8 : og.color | 0;
                     const sym = og.ch;
-                    const symTxt = gc === 0 ? `\x1b[${(g.iflags?.wc2_darkgray ?? true) ? 90 : 34}m${sym}\x1b[39m`
+                    // NOMUX term_start_color preserves foreground zero when darkgray
+                    const symTxt = gc === 0 ? ((g.iflags?.wc2_darkgray ?? true)
+                        ? `\x1b[90m${sym}\x1b[39m` : sym)
                         : (gc >= 1 && gc <= 6) ? `\x1b[${30 + gc}m${sym}\x1b[39m`
                         : (gc >= 9 && gc <= 15) ? `\x1b[${90 + gc - 8}m${sym}\x1b[39m` : sym;
                     wizGlyph.set(obj, symTxt);
@@ -1634,7 +1639,8 @@ export async function wiz_identify() {
                 const o = lineObj[i];
                 if (!o) return { str: i > 0 ? stripSgr(ln) : ln, selectable: false, inverse: i > 0 };
                 return { str: ln.slice(4 + (wizGlyph.has(o) ? wizGlyph.get(o).length - 1 : 0)), glyphTxt: wizGlyph.get(o), selectable: true,
-                         selector: ln[0], groupacc: o === WIZID_ALL ? String.fromCharCode(g.iflags.override_ID) : def_oc_syms_chars[o.oclass], payload: o };
+                         selector: ln[0], groupacc: o === WIZID_ALL ? String.fromCharCode(g.iflags.override_ID) : def_oc_syms_chars[o.oclass],
+                         itemflags: o === WIZID_ALL ? MENU_ITEMFLAGS_SKIPINVERT : 0, payload: o };
             });
             const picked = await tty_menu_pick_any(plist, '', { noPrompt: true });
             /* windows.c:1859-1863 keeps bot disabled during select_menu's
@@ -1684,6 +1690,9 @@ export async function wiz_identify() {
          * invent.c ignores the count when it identifies the selected item. */
         const selected = new Set();
         const selectedCounts = new Map();
+        // wintty.c:1177-1193 updates only the marker cell after a selection.
+        // Once touched, a deselected row keeps '-' until the page is rebuilt.
+        const stateDrawn = new Set();
         let counting = false, count = 0n, resetCount = true;
         /* C ref: win/tty/getline.c:213 — tty_getlin's closing
          * clear_nhwindow(WIN_MESSAGE) blanks the WHOLE of screen row 0,
@@ -1695,8 +1704,9 @@ export async function wiz_identify() {
             const rows = windowLines.slice();
             for (let i = 0; i < lineObj.length; i++) {
                 const o = lineObj[i];
-                if (o && selected.has(o)) {
-                    const mark = selectedCounts.has(o) ? '#' : '+';
+                if (o && (selected.has(o) || stateDrawn.has(o))) {
+                    const mark = selected.has(o)
+                        ? (selectedCounts.has(o) ? '#' : '+') : '-';
                     rows[i] = wizGlyph.has(o)
                         ? rows[i].replace(` ${wizGlyph.get(o)} `, ` ${mark} `)
                         : rows[i].replace(' - ', ` ${mark} `);
@@ -1718,10 +1728,19 @@ export async function wiz_identify() {
          * against (wintty.c:1714).  lineObj[] already marks which rendered rows
          * are selectable, and those rows ARE that string. */
         const mlist = [];
-        for (let i = 0; i < lineObj.length; i++)
-            if (lineObj[i]) mlist.push({ str: windowLines[i], payload: lineObj[i] });
+        for (let i = 0; i < lineObj.length; i++) {
+            const o = lineObj[i];
+            if (!o) continue;
+            // wintty.c:1714 searches curr->str, whose separator stays '-';
+            // an object glyph is painted separately by process_menu_window.
+            const str = wizGlyph.has(o)
+                ? windowLines[i].replace(` ${wizGlyph.get(o)} `, ' - ')
+                : windowLines[i];
+            mlist.push({ str, payload: o });
+        }
         let cancelled = false;
         const toggle = (o) => {
+            stateDrawn.add(o);
             if (selected.has(o)) {
                 if (counting && count > 0n) selectedCounts.set(o, count);
                 else { selected.delete(o); selectedCounts.delete(o); }
@@ -1745,6 +1764,15 @@ export async function wiz_identify() {
                 || unid.some(o => def_oc_syms_chars[o.oclass]?.charCodeAt(0) === rawk);
             const k = explicit ? rawk : map_menu_cmd(rawk);
             if (k >= 48 && k <= 57) {
+                /* wintty.c:1577-1580: a digit which is a class key (the
+                 * ball class is '0') starts a group selection, unless a
+                 * count is already being entered. */
+                const digitGroup = !counting && unid.filter(o =>
+                    def_oc_syms_chars[o.oclass]?.charCodeAt(0) === k);
+                if (digitGroup && digitGroup.length) {
+                    for (const o of digitGroup) toggle(o);
+                    continue;
+                }
                 count = count * 10n + BigInt(k - 48);
                 if (count > 0x7fffffffffffffffn) { count = -1n; continue; }
                 if (count !== 0n) { counting = true; resetCount = false; }
@@ -1770,12 +1798,17 @@ export async function wiz_identify() {
                     if (o === WIZID_ALL && (mode === 2
                         || (mode === 1 && !selected.has(o)))) continue;
                     if (bulk === 'select') {
-                        if (!selected.has(o)) selectedCounts.delete(o);
+                        if (selected.has(o)) continue;
+                        stateDrawn.add(o);
+                        selectedCounts.delete(o);
                         selected.add(o);
                     } else if (bulk === 'unselect' || selected.has(o)) {
+                        if (!selected.has(o)) continue;
+                        stateDrawn.add(o);
                         selected.delete(o);
                         selectedCounts.delete(o);
                     } else {
+                        stateDrawn.add(o);
                         selected.add(o);
                         selectedCounts.delete(o);
                     }
@@ -2027,7 +2060,7 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
         /* C wintty.c:1739-1747: group accelerators invert matching entries
          * across the entire menu, including entries on other pages. */
         const group = lines.filter(it => it.selectable && it.groupacc && it.groupacc === rawch);
-        if (group.length) {
+        if (group.length && (!counting || rawRead < 48 || rawRead > 57)) {
             for (const it of group) toggle_menu_curr(it);
             continue;
         }
@@ -2074,15 +2107,15 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
             break;
         case 44: /* MENU_SELECT_PAGE ',' — set_all_on_page */
             for (const it of page)
-                if (it.selectable && !it.selected) { it.selected = true; set_item_state(it); }
+                if (it.selectable && !it.selected && menuitem_invert_test(1, it.itemflags || 0, false)) { it.selected = true; set_item_state(it); }
             break;
         case 92: /* MENU_UNSELECT_PAGE '\\' — unset_all_on_page */
             for (const it of page)
-                if (it.selectable && it.selected) { it.selected = false; it.count = -1; set_item_state(it); }
+                if (it.selectable && it.selected && menuitem_invert_test(2, it.itemflags || 0, true)) { it.selected = false; it.count = -1; set_item_state(it); }
             break;
         case 126: /* MENU_INVERT_PAGE '~' — invert_all_on_page */
             for (const it of page) {
-                if (!it.selectable) continue;
+                if (!it.selectable || !menuitem_invert_test(0, it.itemflags || 0, it.selected)) continue;
                 if (it.selected) { it.selected = false; it.count = -1; }
                 else it.selected = true;
                 set_item_state(it);
@@ -2092,25 +2125,26 @@ async function tty_menu_pick_any(mlist, prompt, opts = {}) {
             /* C: set_all_on_page() first (those need screen updating), then the
              * rest of the list with no repaint. */
             for (const it of page)
-                if (it.selectable && !it.selected) { it.selected = true; set_item_state(it); }
+                if (it.selectable && !it.selected && menuitem_invert_test(1, it.itemflags || 0, false)) { it.selected = true; set_item_state(it); }
             for (const it of lines)
-                if (it.selectable && !it.selected) it.selected = true;
+                if (it.selectable && !it.selected && menuitem_invert_test(1, it.itemflags || 0, false)) it.selected = true;
             break;
         case 45: /* MENU_UNSELECT_ALL '-' */
             for (const it of page)
-                if (it.selectable && it.selected) { it.selected = false; it.count = -1; set_item_state(it); }
+                if (it.selectable && it.selected && menuitem_invert_test(2, it.itemflags || 0, true)) { it.selected = false; it.count = -1; set_item_state(it); }
             for (const it of lines)
-                if (it.selectable && it.selected) { it.selected = false; it.count = -1; }
+                if (it.selectable && it.selected && menuitem_invert_test(2, it.itemflags || 0, true)) { it.selected = false; it.count = -1; }
             break;
         case 64: /* MENU_INVERT_ALL '@' */
             for (const it of page) {
-                if (!it.selectable) continue;
+                if (!it.selectable || !menuitem_invert_test(0, it.itemflags || 0, it.selected)) continue;
                 if (it.selected) { it.selected = false; it.count = -1; }
                 else it.selected = true;
                 set_item_state(it);
             }
             for (const it of lines) {
-                if (!it.selectable || page.includes(it)) continue;
+                if (!it.selectable || page.includes(it)
+                    || !menuitem_invert_test(0, it.itemflags || 0, it.selected)) continue;
                 if (it.selected) { it.selected = false; it.count = -1; }
                 else it.selected = true;
             }

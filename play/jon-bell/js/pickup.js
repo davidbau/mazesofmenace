@@ -2130,8 +2130,18 @@ async function _pickup_old_style(objchain, traverse_how, count) {
                     yn_number = await _yn_count_tail(`${base} [${rs}] (y)`);
             } while (yn_number < 0);
             /* topl.c:533-550 clean_up leaves the prompt on row 0 even for
-             * 'q', until parse()'s clear_nhwindow; nhgetch dropped it. */
-            if (base.length + rs.length + 8 <= 79)
+             * 'q', until parse()'s clear_nhwindow; nhgetch dropped it.
+             * Not on the query_menu menu arm: pickup.c:853 asks ynaq() for
+             * quan<2 — ynaqchars is one of yn_menuable_resp's five arrays
+             * (cmd.c:5394-5399), so yn_function_menu's PICK_ONE menu answers,
+             * plines the answer, and clear_nhwindow(WIN_MESSAGE) (cmd.c:5459-
+             * 5460) leaves row 0 blank; tty_yn_function's "[ynaq] (y)" never
+             * existed.  The quan>=2 ynNaq() arm passes ynNaqchars, which is
+             * NOT in that list: the plain "[yn#aq] (y)" prompt still paints
+             * and stays, query_menu or not. */
+            const menuAnswered = !!(g.iflags?.query_menu && g.iflags?.window_inited
+                && ['yn', 'ynq', 'ynaq', 'rl', 'hsq'].includes(rs));
+            if (!menuAnswered && base.length + rs.length + 8 <= 79)
                 g._topl_sticky = `${base} [${rs}] (y)`;
             if (sym === 'q' || sym === '\x1b') return { n_tried, n_picked };
             if (sym === 'n') continue;

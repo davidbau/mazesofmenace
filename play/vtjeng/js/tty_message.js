@@ -34,6 +34,7 @@ import { ATR_NONE, NO_COLOR } from './terminal.js';
 import { vision_recalc } from './vision.js';
 import { decode_mixed } from './windows.js';
 import { nomux_putch_byte } from './termcap.js';
+import { tty_raw_print } from './tty_rawprint.js';
 import { msgtype_type } from './options.js';
 import { sound_speak } from './sounds.js';
 import {
@@ -346,6 +347,21 @@ export async function displayPendingTtyMessageWindow(state) {
     } else if (state.nhDisplay) {
         state.nhDisplay.toplin = TOPLINE_EMPTY;
     }
+    // wintty.c:1882-1883 and 1949. The first display of WIN_MESSAGE, which
+    // allmain.c init_sound_disp_gamewindows() makes, finds it inactive and
+    // raises iflags.window_inited; every display leaves it active. Only
+    // tty_destroy_nhwindow()'s tty_dismiss_nhwindow() deactivates it, just
+    // before freeing it, and tty_exit_nhwindows() frees it outright, so no
+    // later display raises the flag again. Without the window (C's
+    // ttywindowpanic()) nothing changes.
+    const cw = state.wintty?.wins?.[state.wintty.messageWindow];
+    if (cw) {
+        if (!cw.active) {
+            state.iflags ??= {};
+            state.iflags.window_inited = true;
+        }
+        cw.active = true;
+    }
 }
 
 // pline.c You(), Your(), You_cant(), pline_The() and There() prefixes; the
@@ -392,8 +408,9 @@ export async function emitQueuedNotices(state = game) {
 // update_topl() without vpline(): no MSGTYPE lookup, no vision or map flush,
 // no gp.prevmsg or iflags.last_msg update.
 //
-// Answers whether the message reached the window port: false when vpline()
-// returned before putmesg() (an empty format, or MSGTYPE hide or norep).
+// Answers whether the message reached the window port, through putmesg() or
+// vplineRawPrint()'s raw_print(): false when vpline() returned before either
+// (an empty format, or MSGTYPE hide or norep).
 async function ttyPlineCore(
     message, state, pflags, mixedFirstCell = null, viaVpline = true,
 ) {
@@ -414,6 +431,7 @@ async function ttyPlineCore(
     if (fromYouBuf) (state.gy ??= {}).you_buf = message;
     let normalizedMessage = normalizeVplineMessage(message);
     let next = ttyByteText(normalizedMessage);
+    if (viaVpline && vplineRawPrint(normalizedMessage, state)) return true;
     const noRepeat = Boolean(pflags & PLINE_NOREPEAT);
     const urgentMessage = Boolean(pflags & URGENT_MESSAGE);
     let msgtype = MSGTYP_NORMAL;
@@ -582,6 +600,39 @@ export async function vplineVisionRecalc(pflags, state = game) {
             pline: (line, noticeState) => ttyPlineCore(line, noticeState, pflags),
         });
     }
+    return true;
+}
+
+// C ref: pline.c vpline() (pline.c:236-244). After formatting and truncating
+// the line, vpline() sends it to raw_print() instead of the message window
+// when iflags.window_inited is false. In the tty build that flag is false
+// before allmain.c init_sound_disp_gamewindows() first displays WIN_MESSAGE
+// (wintty.c:1883), after end.c really_done() destroys WIN_MESSAGE
+// (end.c:1388, wintty.c:2021-2022) or tty_exit_nhwindows() runs
+// (wintty.c:844), and once panic() has closed the windows (end.c:410). Like C,
+// it reads the flag by truth value: iflags starts with it FALSE.
+// The raw line skips the MSGTYPE lookup, the vision recalculation, the map
+// flush, putmesg() and gp.prevmsg, and resets iflags.last_msg. raw_print() is
+// the window port's tty_raw_print(), whose output recorder patch 006 mirrors.
+// Answers whether it printed the line, in which case vpline() is done.
+//
+// The same arm also catches a vpline() nested in another through C's
+// function-static in_pline (pline.c:155). This port does not keep that
+// counter: its message path is asynchronous, and calls C makes one after the
+// other can overlap here -- a level program that #wizloadlua runs drops the
+// Promise each des.monster() returns, so two monsters' appearance messages
+// are in ttyPlineCore() at once -- which a shared counter would misread as
+// nesting and raw_print() the second (scripts/vpline-raw-print.test.mjs).
+//
+// Every vpline() entry -- ttyPlineCore() and the prompts in js/getline.js and
+// js/topl.js -- calls this first; scripts/vpline-raw-print.test.mjs checks
+// that they do.
+export function vplineRawPrint(line, state = game) {
+    if (state.iflags?.window_inited) return false;
+    /* [we should probably be using raw_printf("\n%s", line) here] */
+    tty_raw_print(state, line);
+    state.iflags ??= {};
+    state.iflags.last_msg = PLNMSG_UNKNOWN;
     return true;
 }
 

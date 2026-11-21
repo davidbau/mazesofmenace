@@ -1200,8 +1200,8 @@ async function dog_invent(mtmp, edog, udist) {
                         /* C pline_xy(omx, omy, ...) = set_msg_xy + vpline (pline.c:150-157) */
                         await pline_xy(omx, omy, '%s picks up %s.',
                                       Monnam_dm(mtmp), otmpname);
-                        if (_topline_more_pending() && _more_never_dismissed())
-                            await flush_pending_messages();
+                        // C dogmove.c:457-458, topl.c:274: finish the pickup
+                        await flush_pending_messages();
                     }
                 }
                 /* C: obj_extract_self(otmp); newsym(omx,omy); mpickobj(mtmp,otmp). */

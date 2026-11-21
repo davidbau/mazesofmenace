@@ -7,7 +7,7 @@ import { CORPSE } from './const.js';
 import { POT_OIL } from './const.js';
 import { ARMOR_CLASS, FOOD_CLASS, GEM_CLASS, HEAVY_IRON_BALL, POTION_CLASS, POT_EXTRA_HEALING, POT_GAIN_ENERGY, POT_HEALING, POT_SPEED, RING_CLASS, SCROLL_CLASS, SCR_CONFUSE_MONSTER, SCR_ENCHANT_ARMOR, SCR_ENCHANT_WEAPON, SPBOOK_CLASS, SPE_HEALING, TALLOW_CANDLE, WAN_DIGGING, WEAPON_CLASS } from "./const.js"; // shared class/otyp constants
 import { pline_mon } from './pline.js';
-import { impossible_sync } from './display.js';
+import { impossible_sync, carry_gbuf_across_level_rebuild } from './display.js';
 import { ledger_no as ledger_no_real } from './dungeon.js';
 import { quest_monster_died } from './quest.js';
 import { BALL_CLASS, CHAIN_CLASS, STRANGE_OBJECT } from './objnam.js';
@@ -1025,7 +1025,14 @@ export function clear_level_structures() {
      * (no counterpart in C's clear_level_structures()), so drop it here too. */
     bubbles_clear_level();
     g.fobj = null; // C mklev.c:869 — svl.level.objlist = NULL (mirrors fobj = svl.level.objlist in rm.h:476)
+    const _oldLevelForGbuf = g.level;
     g.level = new GameMap();
+    /* C's gg.gbuf is process-global and survives clear_level_structures()
+     * (mklev.c:850-870 zeroes levl, never the glyph buffer): show_glyph calls
+     * raised mid-rebuild (#wizloaddes' fill_special_room makemon newsyms at
+     * makemon.c:1473, makemap_remove_mons' mongone newsyms) diff against the
+     * OLD level's glyphs.  Carry this port's loc.disp_* gbuf across the swap. */
+    carry_gbuf_across_level_rebuild(_oldLevelForGbuf, g.level);
     g.level.nroom = 0;
     g.level.rooms = [];
     g.made_branch = false;

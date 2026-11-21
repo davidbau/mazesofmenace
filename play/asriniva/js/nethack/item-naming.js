@@ -1,60 +1,164 @@
-import {recordNativeRngCaller} from './native/rng-output.js';
-import {nativeStateFor} from './native/state-bridge.js';
-import {createNativeRecordViews} from './native/record-views.js';
+import { recordNativeRngCaller } from './native/rng-output.js';
+import { nativeStateFor } from './native/state-bridge.js';
+import { createNativeRecordViews } from './native/record-views.js';
 // Source naming and artifact bookkeeping on the existing inventory heap.
-import languageAbi from './object-language-abi.json' with {type:'json'};
-import {callObjnam,objnamState} from './bindings/objnam.js';
+import languageAbi from './object-language-abi.json' with { type: 'json' };
+import { callObjnam, objnamState } from './bindings/objnam.js';
 import * as objnam from '../ported/objnam.js';
-import publicFunctions from './public-functions.json' with {type:'json'};
+import publicFunctions from './public-functions.json' with { type: 'json' };
 import * as artifact from '../ported/artifact.js';
-import {oname,noveltitle,sir_Terry_novels} from '../ported/do_name.js';
-export function enableItemNaming(environment,layouts,{legacy,views}) {
-    const nativeOwner=nativeStateFor(environment);createNativeRecordViews(environment);
-    const {services,transport,ctypes,memory}=environment,object=p=>views.record('struct obj',p);
-    Object.assign(legacy,{
-        advanceRecord:views.advance,shortArray:(p,n)=>views.array('short',p,n),
-        pointerDifference:(a,b,type)=>BigInt((environment.address(a)-environment.address(b))/ctypes.size(type)),
-        copyRecord:(to,from,n)=>memory.memmove(environment.address(to),environment.address(from),Number(n)),
-        Role_if:n=>Number(legacy.gu.urole.mnum===n),
-        rngCaller:(line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'artifact.c',line,caller);},
-        mksobj:(...args)=>object(environment.resolve('mksobj')(...args)),
-        oname:(...args)=>object(environment.resolve('oname')(...args)),
+import { oname, noveltitle, sir_Terry_novels } from '../ported/do_name.js';
+export function enableItemNaming(environment, layouts, { legacy, views }) {
+    const nativeOwner = nativeStateFor(environment);
+    createNativeRecordViews(environment);
+    const { services, transport, ctypes, memory } = environment, object = p => views.record('struct obj', p);
+    Object.assign(legacy, {
+        advanceRecord: views.advance,
+        shortArray: (p, n) => views.array('short', p, n),
+        pointerDifference: (a, b, type) => BigInt((environment.address(a) - environment.address(b)) /
+            ctypes.size(type)),
+        copyRecord: (to, from, n) => memory.memmove(environment.address(to), environment.address(
+            from), Number(n)),
+        Role_if: n => Number(legacy.gu.urole.mnum === n),
+        rngCaller: (line, caller) => {
+            if (services.rng_log_enabled()) recordNativeRngCaller(services, 'artifact.c', line,
+                caller);
+        },
+        mksobj: (...args) => object(environment.resolve('mksobj')(...args)),
+        oname: (...args) => object(environment.resolve('oname')(...args)),
     });
-    Object.assign(legacy.sizes,{short:ctypes.size('short'),arti_info:ctypes.size('struct arti_info')});
-    legacy.zero_artiexist=views.record('struct arti_info',environment.allocateGlobal('zero_artiexist',ctypes.size('struct arti_info')));
-    environment.extend('artifact-properties',Object.fromEntries(['mk_artifact','exist_artifact','artifact_exists','artifact_origin','artifact_light'].map(name=>[name,artifact[name]])));
-    const name=Object.create(legacy);
-    Object.assign(name,layouts.do_name,{
-        charPointer:p=>typeof p==='string'?services.literal(p):environment.address(p),
-        strlen:p=>BigInt(services.strlen(p)),Strcpy:(...args)=>services.strcpy(...args),
-        carried:o=>Number(o.where===layouts.do_name.OBJ_INVENT),
-        sir_Terry_novels:sir_Terry_novels.map(s=>services.literal(s)),
-        rn2:(n,line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'do_name.c',line,caller);return services.rn2(n);},
+    Object.assign(legacy.sizes, {
+        short: ctypes.size('short'),
+        arti_info: ctypes.size('struct arti_info')
     });
-    for(const key of ['uwep','uswapwep'])Object.defineProperty(name,key,{get:()=>object(ctypes.load('struct obj *',environment.requireGlobal(key)))});
-    environment.register('item-naming',{oname,noveltitle},name,{prepareArgs:(fn,args)=>{
-        if(fn==='oname')args[0]=object(args[0]);
-        else if(args[0]){const p=environment.address(args[0]);args[0]=Object.defineProperty({address:p},'value',{get:()=>transport.read('Int32',p),set:v=>transport.write('Int32',p,v)});}
-        return args;
-    }});
-    const forwards=new Map(),naming=new Proxy(Object.create(services),{get:(o,k,r)=>{const value=Reflect.get(o,k,r);if(Object.hasOwn(o,k)||typeof k!=='string'||(Reflect.has(o,k)&&typeof value!=='function'))return value;if(!forwards.has(k))forwards.set(k,(...args)=>(typeof services[k]==='function'?services[k]:environment.resolve(k))(...args.map(v=>v?.address??v)));return forwards.get(k);}}),buffers=environment.allocateGlobal('objnam.obufs',layouts.objnam.NUMOBUF*layouts.objnam.BUFSZ);
+    legacy.zero_artiexist = views.record('struct arti_info', environment.allocateGlobal('zero_artiexist',
+        ctypes.size('struct arti_info')));
+    environment.extend('artifact-properties', Object.fromEntries(['mk_artifact', 'exist_artifact',
+        'artifact_exists', 'artifact_origin', 'artifact_light'
+    ].map(name => [name, artifact[name]])));
+    const name = Object.create(legacy);
+    Object.assign(name, layouts.do_name, {
+        charPointer: p => typeof p === 'string' ? services.literal(p) : environment.address(p),
+        strlen: p => BigInt(services.strlen(p)),
+        Strcpy: (...args) => services.strcpy(...args),
+        carried: o => Number(o.where === layouts.do_name.OBJ_INVENT),
+        sir_Terry_novels: sir_Terry_novels.map(s => services.literal(s)),
+        rn2: (n, line, caller) => {
+            if (services.rng_log_enabled()) recordNativeRngCaller(services, 'do_name.c', line,
+                caller);
+            return services.rn2(n);
+        },
+    });
+    for (const key of ['uwep', 'uswapwep']) Object.defineProperty(name, key, {
+        get: () => object(ctypes.load('struct obj *', environment.requireGlobal(key)))
+    });
+    environment.register('item-naming', { oname, noveltitle }, name, {
+        prepareArgs: (fn, args) => {
+            if (fn === 'oname') args[0] = object(args[0]);
+            else if (args[0]) {
+                const p = environment.address(args[0]);
+                args[0] = Object.defineProperty({ address: p }, 'value', {
+                    get: () => transport.read('Int32', p),
+                    set: v => transport.write('Int32', p, v)
+                });
+            }
+            return args;
+        }
+    });
+    const forwards = new Map(),
+        naming = new Proxy(Object.create(services), {
+            get: (o, k, r) => {
+                const value = Reflect.get(o, k, r);
+                if (Object.hasOwn(o, k) || typeof k !== 'string' || (Reflect.has(o, k) &&
+                        typeof value !== 'function')) return value;
+                if (!forwards.has(k)) forwards.set(k, (...args) => (typeof services[k] ===
+                    'function' ? services[k] : environment.resolve(k))(...args.map(v => v
+                    ?.address ?? v)));
+                return forwards.get(k);
+            }
+        }),
+        buffers = environment.allocateGlobal('objnam.obufs', layouts.objnam.NUMOBUF * layouts.objnam.BUFSZ);
     // Native OBJNAM imports raw strlen as memory64 size_t, not checked Strlen_.
-    naming.strlen=value=>BigInt(services.strlen(typeof value==='string'?services.literal(value):environment.address(value)));
-    naming.verbText=value=>typeof value==='string'?value.split('\0',1)[0]:memory.readString(environment.address(value));
-    naming.writeVerb=(out,value)=>memory.writeString(environment.address(out),value);
-    naming.startsWithArticle=input=>{
-        const at=environment.address(input),bytes=memory.HEAPU8;
-        return (bytes[at]|32)===116&&(bytes[at+1]|32)===104&&(bytes[at+2]|32)===101&&bytes[at+3]===32;
+    naming.strlen = value => BigInt(services.strlen(typeof value === 'string' ? services.literal(value) :
+        environment.address(value)));
+    naming.verbText = value => typeof value === 'string' ? value.split('\0', 1)[0] : memory.readString(
+        environment.address(value));
+    naming.writeVerb = (out, value) => memory.writeString(environment.address(out), value);
+    naming.startsWithArticle = input => {
+        const at = environment.address(input),
+            bytes = memory.HEAPU8;
+        return (bytes[at] | 32) === 116 && (bytes[at + 1] | 32) === 104 && (bytes[at + 2] | 32) === 101 &&
+            bytes[at + 3] === 32;
     };
-    const statics=Object.fromEntries(Object.entries(languageAbi.staticBuffers).map(([key,n])=>[key,environment.allocateGlobal('objnam.'+key,n)]));
-    Object.assign(naming,{nativeOwner,nativeObjnamTypes:ctypes,stackAlloc:transport.stackAlloc,stackSave:transport.stackSave,stackRestore:transport.stackRestore,Strlen_:(...args)=>environment.strutil('Strlen_',...args),staticStorage:name=>{if(!Object.hasOwn(statics,name))throw new Error('Unknown OBJNAM static '+name);return statics[name];},moduleKey:environment,global:i=>environment.requireGlobal(languageAbi.globals[i]),getBit:(p,i)=>{const[t,k]=languageAbi.bits[i];return ctypes.getField(t,environment.address(p),k,'unsigned int');},setBit:(p,i,v)=>{const[t,k]=languageAbi.bits[i];return ctypes.setField(t,environment.address(p),k,'unsigned int',v);},alloc:n=>environment.alloc('alloc',n),dupstr:p=>environment.alloc('dupstr',typeof p==='string'?services.literal(p):environment.address(p)),heap:()=>memory.HEAPU8,storage:i=>{if(i!==0)throw new Error('Unknown OBJNAM storage '+i);return buffers;}});
+    const statics = Object.fromEntries(Object.entries(languageAbi.staticBuffers).map(([key, n]) => [key,
+        environment.allocateGlobal('objnam.' + key, n)
+    ]));
+    Object.assign(naming, {
+        nativeOwner,
+        nativeObjnamTypes: ctypes,
+        stackAlloc: transport.stackAlloc,
+        stackSave: transport.stackSave,
+        stackRestore: transport.stackRestore,
+        Strlen_: (...args) => environment.strutil('Strlen_', ...args),
+        staticStorage: name => {
+            if (!Object.hasOwn(statics, name)) throw new Error('Unknown OBJNAM static ' + name);
+            return statics[name];
+        },
+        moduleKey: environment,
+        global: i => environment.requireGlobal(languageAbi.globals[i]),
+        getBit: (p, i) => {
+            const [t, k] = languageAbi.bits[i];
+            return ctypes.getField(t, environment.address(p), k, 'unsigned int');
+        },
+        setBit: (p, i, v) => {
+            const [t, k] = languageAbi.bits[i];
+            return ctypes.setField(t, environment.address(p), k, 'unsigned int', v);
+        },
+        alloc: n => environment.alloc('alloc', n),
+        dupstr: p => environment.alloc('dupstr', typeof p === 'string' ? services.literal(p) :
+            environment.address(p)),
+        heap: () => memory.HEAPU8,
+        storage: i => {
+            if (i !== 0) throw new Error('Unknown OBJNAM storage ' + i);
+            return buffers;
+        }
+    });
     // Original OBJNAM formatter callbacks use the same canonical function tokens
     // as callers such as EAT's native singular/safe_qbuf helpers.
-    naming.callbackPointer=name=>{if(!['xname','cxname'].includes(name))throw new Error('Unknown OBJNAM formatter callback '+name);return environment.functionPointer(name,'pp');};
-    const formatters=new Map();
-    naming.callFormatter=(fn,obj)=>{const token=BigInt(fn);let callback=formatters.get(token);if(!callback){callback=environment.functions.typedCallback(token,'pp');formatters.set(token,callback);}const native=callback.prepareNativeEntry?.()??callback.nativeEntry??callback;if(native.nativeState===nativeOwner&&native.nativeDirect)return native(obj);return environment.functions.indirect(token,'pp',environment.address(obj));};
-    Object.defineProperty(naming,'nativeContext',{get:()=>objnamState(naming).environments.get(layouts.objnam)?.environment});
-    const namingFunctions=Object.keys(objnam).filter(name=>typeof objnam[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
-    environment.register('japanese-item-names',Object.fromEntries(namingFunctions.map(name=>{const fn=(...args)=>{const result=callObjnam(naming,layouts.objnam,name,...args);return typeof result==='string'?services.literal(result):result;};fn.nativeState=nativeOwner;fn.nativeDirect=true;fn.nativePrepared=true;nativeOwner.functions.set(name,fn);return[name,fn];})),naming);
-    return {limitation:'Construction-time naming and random artifact bookkeeping; role/race-specific gifts, wielded artifact effects and naming UI require their actual owners.'};
+    naming.callbackPointer = name => {
+        if (!['xname', 'cxname'].includes(name)) throw new Error('Unknown OBJNAM formatter callback ' +
+            name);
+        return environment.functionPointer(name, 'pp');
+    };
+    const formatters = new Map();
+    naming.callFormatter = (fn, obj) => {
+        const token = BigInt(fn);
+        let callback = formatters.get(token);
+        if (!callback) {
+            callback = environment.functions.typedCallback(token, 'pp');
+            formatters.set(token, callback);
+        }
+        const native = callback.prepareNativeEntry?.() ?? callback.nativeEntry ?? callback;
+        if (native.nativeState === nativeOwner && native.nativeDirect) return native(obj);
+        return environment.functions.indirect(token, 'pp', environment.address(obj));
+    };
+    Object.defineProperty(naming, 'nativeContext', {
+        get: () => objnamState(naming).environments.get(layouts.objnam)?.environment
+    });
+    const namingFunctions = Object.keys(objnam).filter(name => typeof objnam[name] === 'function' && Object
+        .hasOwn(publicFunctions.functions, name) && !environment.hasFunction(name));
+    environment.register('japanese-item-names', Object.fromEntries(namingFunctions.map(name => {
+        const fn = (...args) => {
+            const result = callObjnam(naming, layouts.objnam, name, ...args);
+            return typeof result === 'string' ? services.literal(result) : result;
+        };
+        fn.nativeState = nativeOwner;
+        fn.nativeDirect = true;
+        fn.nativePrepared = true;
+        nativeOwner.functions.set(name, fn);
+        return [name, fn];
+    })), naming);
+    return {
+        limitation: 'Construction-time naming and random artifact bookkeeping; role/race-specific gifts, wielded artifact effects and naming UI require their actual owners.'
+    };
 }

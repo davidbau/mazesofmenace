@@ -9,7 +9,10 @@ import { formatFloatMagnitude, floatNegative } from './float-format.js';
 // compare named errors across native platforms rather than assuming host IDs.
 export const C_ERRNO = Object.freeze({ EINVAL: 28, ERANGE: 68 });
 
-export function createCStdlib(memory, { floatPolicy, profile = floatPolicy ?? 'darwin' } = {}) {
+export function createCStdlib(memory, {
+    floatPolicy,
+    profile = floatPolicy ?? 'darwin'
+} = {}) {
     function stringByte(value, isText, offset) {
         if (!isText) return memory.HEAPU8[memory.bounds(value + offset)];
         if (offset >= value.length) return 0;
@@ -26,12 +29,17 @@ export function createCStdlib(memory, { floatPolicy, profile = floatPolicy ?? 'd
     }
     const api = {
         errno: 0,
-        malloc: n => memory.malloc(n), calloc: (n, size) => memory.calloc(n, size),
-        realloc: (p, n) => memory.realloc(p, n), free: p => memory.free(p),
-        memcpy: (...args) => memory.memcpy(...args), memmove: (...args) => memory.memmove(...args),
-        memset: (...args) => memory.memset(...args), memcmp: (...args) => memory.memcmp(...args),
+        malloc: n => memory.malloc(n),
+        calloc: (n, size) => memory.calloc(n, size),
+        realloc: (p, n) => memory.realloc(p, n),
+        free: p => memory.free(p),
+        memcpy: (...args) => memory.memcpy(...args),
+        memmove: (...args) => memory.memmove(...args),
+        memset: (...args) => memory.memset(...args),
+        memcmp: (...args) => memory.memcmp(...args),
         memchr(p, byte, n) {
-            p = Number(p); n = Number(n);
+            p = Number(p);
+            n = Number(n);
             if (n === 0) return 0;
             memory.bounds(p, n);
             const i = memory.HEAPU8.subarray(p, p + n).indexOf(Number(byte) & 255);
@@ -59,22 +67,26 @@ export function createCStdlib(memory, { floatPolicy, profile = floatPolicy ?? 'd
             return destination;
         },
         strcat(destination, source) {
-            api.strcpy(destination + memory.strlen(destination), source); return destination;
+            api.strcpy(destination + memory.strlen(destination), source);
+            return destination;
         },
         strncat(destination, source, n) {
             const end = destination + memory.strlen(destination);
             const length = api.strnlen(source, n);
             memory.bounds(end, length + 1);
-            copyStringBytes(end, source, length); memory.HEAPU8[end + length] = 0;
+            copyStringBytes(end, source, length);
+            memory.HEAPU8[end + length] = 0;
             return destination;
         },
         strcmp: (a, b) => api.strncmp(a, b, Number.MAX_SAFE_INTEGER),
         strncmp(a, b, n) {
-            const leftText = typeof a === 'string', rightText = typeof b === 'string';
+            const leftText = typeof a === 'string',
+                rightText = typeof b === 'string';
             if (typeof a === 'bigint') a = Number(a);
             if (typeof b === 'bigint') b = Number(b);
             for (let i = 0; i < n; i++) {
-                const x = stringByte(a, leftText, i), y = stringByte(b, rightText, i);
+                const x = stringByte(a, leftText, i),
+                    y = stringByte(b, rightText, i);
                 if (x !== y || !x) return x - y;
             }
             return 0;
@@ -82,12 +94,14 @@ export function createCStdlib(memory, { floatPolicy, profile = floatPolicy ?? 'd
         strchr(p, byte) {
             byte &= 255;
             const length = memory.strlen(p);
-            for (let i = 0; i <= length; i++) if (memory.HEAPU8[p + i] === byte) return p + i;
+            for (let i = 0; i <= length; i++)
+                if (memory.HEAPU8[p + i] === byte) return p + i;
             return 0;
         },
         strrchr(p, byte) {
             byte &= 255;
-            for (let i = memory.strlen(p); i >= 0; i--) if (memory.HEAPU8[p + i] === byte) return p + i;
+            for (let i = memory.strlen(p); i >= 0; i--)
+                if (memory.HEAPU8[p + i] === byte) return p + i;
             return 0;
         },
         strstr(p, needle) {
@@ -112,11 +126,12 @@ export function createCStdlib(memory, { floatPolicy, profile = floatPolicy ?? 'd
     api.lowc = api.tolower;
     api.highc = api.toupper;
     const text = value => typeof value === 'string' ? value.split('\0')[0] : memory.readString(value);
-    api.Strcpy = (destination, source) => typeof source === 'string'
-        ? memory.writeString(destination, source.split('\0')[0]) : api.strcpy(destination, source);
+    api.Strcpy = (destination, source) => typeof source === 'string' ?
+        memory.writeString(destination, source.split('\0')[0]) : api.strcpy(destination, source);
     api.Strcat = (destination, source) => {
         const end = destination + memory.strlen(destination);
-        api.Strcpy(end, source); return destination;
+        api.Strcpy(end, source);
+        return destination;
     };
 
     function integer(pointer, endPointer, base, unsigned) {
@@ -132,12 +147,13 @@ export function createCStdlib(memory, { floatPolicy, profile = floatPolicy ?? 'd
         }
         const digit = c => {
             const n = c === undefined ? -1 : c.charCodeAt(0);
-            return n >= 48 && n <= 57 ? n - 48 : n >= 65 && n <= 90 ? n - 55
-                : n >= 97 && n <= 122 ? n - 87 : -1;
+            return n >= 48 && n <= 57 ? n - 48 : n >= 65 && n <= 90 ? n - 55 :
+                n >= 97 && n <= 122 ? n - 87 : -1;
         };
-        if ((!base || base === 16) && source[at] === '0'
-            && /[xX]/.test(source[at + 1] ?? '') && digit(source[at + 2]) >= 0 && digit(source[at + 2]) < 16) {
-            base = 16; at += 2;
+        if ((!base || base === 16) && source[at] === '0' &&
+            /[xX]/.test(source[at + 1] ?? '') && digit(source[at + 2]) >= 0 && digit(source[at + 2]) < 16) {
+            base = 16;
+            at += 2;
         }
         if (!base) base = source[at] === '0' ? 8 : 10;
         const limit = unsigned ? 0xffffffffffffffffn : negative ? 0x8000000000000000n : 0x7fffffffffffffffn;
@@ -165,7 +181,9 @@ export function createCStdlib(memory, { floatPolicy, profile = floatPolicy ?? 'd
     api.strtoul = api.strtoull;
     const uncheckedDecimal = p => {
         const source = memory.readString(p);
-        let at = 0, negative = false, value = 0n;
+        let at = 0,
+            negative = false,
+            value = 0n;
         while (at < source.length && api.isspace(source.charCodeAt(at))) at++;
         if (source[at] === '+' || source[at] === '-') negative = source[at++] === '-';
         while (at < source.length && api.isdigit(source.charCodeAt(at)))
@@ -180,25 +198,40 @@ export function createCStdlib(memory, { floatPolicy, profile = floatPolicy ?? 'd
 
     api.format = (format, ...args) => {
         format = text(format);
-        let output = '', argument = 0;
+        let output = '',
+            argument = 0;
         for (let at = 0; at < format.length;) {
-            if (format[at] !== '%') { output += format[at++]; continue; }
-            if (format[at + 1] === '%') { output += '%'; at += 2; continue; }
-            const match = /^%([-+ #0]*)(\*|\d*)(?:\.(\*|\d*))?(hh|ll|[hljztL])?([diuoxXcspnaAeEfFgG])/.exec(format.slice(at));
+            if (format[at] !== '%') {
+                output += format[at++];
+                continue;
+            }
+            if (format[at + 1] === '%') {
+                output += '%';
+                at += 2;
+                continue;
+            }
+            const match = /^%([-+ #0]*)(\*|\d*)(?:\.(\*|\d*))?(hh|ll|[hljztL])?([diuoxXcspnaAeEfFgG])/
+                .exec(format.slice(at));
             if (!match) throw new RangeError('Unsupported C printf conversion');
             let [, flags, width, precision, length = '', conversion] = match;
             at += match[0].length;
             width = width === '*' ? Number(args[argument++]) : Number(width);
-            if (width < 0) { flags += '-'; width = -width; }
-            precision = precision === undefined ? undefined : precision === '*' ? Number(args[argument++]) : Number(precision);
+            if (width < 0) {
+                flags += '-';
+                width = -width;
+            }
+            precision = precision === undefined ? undefined : precision === '*' ? Number(args[
+                argument++]) : Number(precision);
             if (precision < 0) precision = undefined;
-            if (!Number.isSafeInteger(width) || width > 1048576
-                || precision !== undefined && (!Number.isSafeInteger(precision) || precision > 1048576))
+            if (!Number.isSafeInteger(width) || width > 1048576 ||
+                precision !== undefined && (!Number.isSafeInteger(precision) || precision > 1048576))
                 throw new RangeError('C printf field too large');
             if (argument >= args.length) throw new RangeError('Missing C printf argument');
             const value = args[argument++];
             const bits = length === 'hh' ? 8 : length === 'h' ? 16 : length ? 64 : 32;
-            let body, prefix = '', floating = false, finite = true;
+            let body, prefix = '',
+                floating = false,
+                finite = true;
             if (conversion === 'n') {
                 const pointer = Number(value);
                 const view = memory.view;
@@ -219,45 +252,61 @@ export function createCStdlib(memory, { floatPolicy, profile = floatPolicy ?? 'd
                 if (length) throw new RangeError('Wide characters are not supported');
                 body = String.fromCharCode(Number(value) & 255);
             } else if (/[aAeEfFgG]/.test(conversion)) {
-                if (length && length !== 'l') throw new RangeError('Long-double formatting is not supported');
+                if (length && length !== 'l') throw new RangeError(
+                    'Long-double formatting is not supported');
                 const number = Number(value);
-                floating = true; finite = Number.isFinite(number);
-                prefix = profile==='darwin'&&Number.isNaN(number)?'':floatNegative(number,profile) ? '-' : flags.includes('+') ? '+' : flags.includes(' ') ? ' ' : '';
-                body = formatFloatMagnitude(number, conversion, precision ?? null, flags.includes('#'),profile);
+                floating = true;
+                finite = Number.isFinite(number);
+                prefix = profile === 'darwin' && Number.isNaN(number) ? '' : floatNegative(number,
+                    profile) ? '-' : flags.includes('+') ? '+' : flags.includes(' ') ? ' ' : '';
+                body = formatFloatMagnitude(number, conversion, precision ?? null, flags.includes('#'),
+                    profile);
                 if (conversion.toLowerCase() === 'a' && finite) prefix += '0x';
-                if (/[AEFG]/.test(conversion)) { body = body.toUpperCase(); prefix = prefix.toUpperCase(); }
+                if (/[AEFG]/.test(conversion)) {
+                    body = body.toUpperCase();
+                    prefix = prefix.toUpperCase();
+                }
             } else {
                 const signed = conversion === 'd' || conversion === 'i';
-                const number = signed ? BigInt.asIntN(bits, BigInt(value))
-                    : BigInt.asUintN(conversion === 'p' ? 64 : bits, BigInt(value));
+                const number = signed ? BigInt.asIntN(bits, BigInt(value)) :
+                    BigInt.asUintN(conversion === 'p' ? 64 : bits, BigInt(value));
                 const magnitude = number < 0 ? -number : number;
                 const radix = conversion === 'o' ? 8 : /[xXp]/.test(conversion) ? 16 : 10;
                 if (conversion === 'p') flags += '#';
                 body = precision === 0 && magnitude === 0n ? '' : magnitude.toString(radix);
                 if (precision !== undefined) body = body.padStart(precision, '0');
                 if (conversion === 'X') body = body.toUpperCase();
-                if (signed) prefix = number < 0 ? '-' : flags.includes('+') ? '+' : flags.includes(' ') ? ' ' : '';
+                if (signed) prefix = number < 0 ? '-' : flags.includes('+') ? '+' : flags.includes(' ') ?
+                    ' ' : '';
                 if (flags.includes('#')) {
                     if (conversion === 'o' && !body.startsWith('0')) prefix += '0';
-                    if (/[xXp]/.test(conversion) && (magnitude !== 0n || conversion === 'p' && profile==='darwin')) prefix += conversion === 'X' ? '0X' : '0x';
+                    if (/[xXp]/.test(conversion) && (magnitude !== 0n || conversion === 'p' && profile ===
+                            'darwin')) prefix += conversion === 'X' ? '0X' : '0x';
                 }
             }
             const padding = Math.max(0, width - prefix.length - body.length);
-            output += flags.includes('-') ? prefix + body + ' '.repeat(padding)
-                : flags.includes('0') && (floating ? finite : precision === undefined) && !/[sc]/.test(conversion)
-                    ? prefix + '0'.repeat(padding) + body : ' '.repeat(padding) + prefix + body;
+            output += flags.includes('-') ? prefix + body + ' '.repeat(padding) :
+                flags.includes('0') && (floating ? finite : precision === undefined) && !/[sc]/.test(
+                    conversion) ?
+                prefix + '0'.repeat(padding) + body : ' '.repeat(padding) + prefix + body;
         }
         return output;
     };
     api.snprintf = (destination, size, format, ...args) => {
-        if(typeof size!=='bigint'&&(!Number.isSafeInteger(size)||size<0))throw new RangeError('Invalid snprintf capacity');
-        const capacity=BigInt(size);if(capacity<0n||capacity>0xffffffffffffffffn)throw new RangeError('Invalid snprintf capacity');
-        const output=api.format(format,...args),count=capacity>BigInt(output.length+1)?output.length+1:Number(capacity);
-        if(count)memory.writeString(destination,output.slice(0,count-1));
+        if (typeof size !== 'bigint' && (!Number.isSafeInteger(size) || size < 0)) throw new RangeError(
+            'Invalid snprintf capacity');
+        const capacity = BigInt(size);
+        if (capacity < 0n || capacity > 0xffffffffffffffffn) throw new RangeError(
+            'Invalid snprintf capacity');
+        const output = api.format(format, ...args),
+            count = capacity > BigInt(output.length + 1) ? output.length + 1 : Number(capacity);
+        if (count) memory.writeString(destination, output.slice(0, count - 1));
         return output.length;
     };
     api.sprintf = (destination, format, ...args) => {
-        const output = api.format(format, ...args); memory.writeString(destination, output); return output.length;
+        const output = api.format(format, ...args);
+        memory.writeString(destination, output);
+        return output.length;
     };
     api.Sprintf = api.sprintf;
     api.Snprintf = api.snprintf;

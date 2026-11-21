@@ -3700,7 +3700,7 @@ export async function y_n_default(query, def) {
                 await doprev_message();
                 _ynDoprev = true;
                 _ynKeep = true; /* topl.c:447-450: single mode just re-reads */
-                set_cursor(String(g._pending_message ?? '').length, 0); /* putsyms leaves it after the recalled line */
+                set_cursor(_topl_visualLen(g._pending_message ?? ''), 0); /* putsyms leaves it after the recalled line */
             }
             g._toplEmptyAfterSuppress = _wasEmpty;
             continue;
@@ -13354,7 +13354,7 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         }
         rows.forEach((r, i) => { r.ch = 'abcdefghijklmnopqrstuvwxyz'[i]; });
         const promptLines = [menu_heading_text('View discoveries for which sort of objects?'), '',
-            ...rows.map(r => `${r.ch} - ${r.label}`), '(end)'];
+            ...rows.map(r => `${r.ch} - ${menucolor_text(r.label)}`), '(end)']; /* windows.c:1803 add_menu menucolors */
         /* C wintty.c:1700-1730 — the class menu is a tty menu, so ':' opens
          * tty_getlin("Search for:") over it and a PICK_ONE hit finishes it.
          * Row 0 (the title) is erased by that getlin and stays blank after. */
@@ -15015,7 +15015,7 @@ async function _do_look_lookat(x, y) {
         /* A hallucinated statue may be painted as a monster without any
          * m_at() record; C describes that glyph with rndmonnam(). */
         const mtmp = m_at(x, y);
-        if (mtmp || _cmd_Hallucination()) {
+        {
             const classes = collectScreenDescriptionClasses({
                 ch: dglyph.ch, symbol: dglyph.symbol, dec: false, showsyms: pager_showsyms(),
                 terrainmode: g.iflags?.terrainmode, glyphKind: 'monster',
@@ -15030,7 +15030,8 @@ async function _do_look_lookat(x, y) {
             const needsLook = classes.matchCount > 1 || classes.needsLook;
             const monbuf = { value: '' };
             const firstmatch = needsLook
-                ? (mtmp ? await look_at_monster(mtmp, x, y, monbuf) : look_rndmonnam())
+                ? (mtmp ? await look_at_monster(mtmp, x, y, monbuf)
+                        : (_cmd_Hallucination() ? look_rndmonnam() : classes.firstmatch))
                 : classes.firstmatch;
             return {
                 kind: 'monster',

@@ -4709,27 +4709,30 @@ function _maybe_smudge_engr(x1, y1, x2, y2) {
     }
 }
 
-/* C hack.c:4514 - rounddiv(long x, int y): integer division with rounding */
+/* C hack.c:4551-4571 - rounddiv(long x, int y): integer division with rounding.
+ * Keep the long numerator exact, then narrow the quotient to C's int local. */
 export function rounddiv(x, y) {
     let r, m;
     let divsgn = 1;
+    x = BigInt.asIntN(64, typeof x === 'bigint' ? x : BigInt(Math.trunc(x)));
+    y |= 0;
 
     if (y === 0)
         throw new Error("division by zero in rounddiv");
     else if (y < 0) {
         divsgn = -divsgn;
-        y = -y;
+        y = (-y) | 0;
     }
-    if (x < 0) {
+    if (x < 0n) {
         divsgn = -divsgn;
-        x = -x;
+        x = BigInt.asIntN(64, -x);
     }
-    r = Math.trunc(x / y);
-    m = x % y;
-    if (2 * m >= y)
-        r++;
+    r = Number(BigInt.asIntN(32, x / BigInt(y)));
+    m = Number(BigInt.asIntN(32, x % BigInt(y)));
+    if (((2 * m) | 0) >= y)
+        r = (r + 1) | 0;
 
-    return divsgn * r;
+    return Math.imul(divsgn, r);
 }
 
 /* C hack.c:964 - invocation_pos(coordxy x, coordxy y): check if (x,y) is the invocation position */

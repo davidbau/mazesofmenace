@@ -3,4 +3,12 @@
  */
 let current = null;
 export const currentHeap = () => current;
-export function withHeap(heap, callback) { const previous = current; current = heap; try { return callback(); } finally { current = previous; } }
+export function withHeap(heap, callback) {
+    const previous = current;
+    current = heap;
+    try {
+        return callback();
+    } finally {
+        current = previous;
+    }
+}

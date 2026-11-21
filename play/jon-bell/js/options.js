@@ -3560,6 +3560,11 @@ export async function doset_simple() {
             if (entry.kind === 'bool') {
                 const { obj, fld } = simpleBox(entry);
                 obj[fld] = !flagOn(entry);
+                /* C options.c:5353-5361 optfn_boolean: re-letter inventory under !fixinv. */
+                if (['fixinv', 'price_quotes', 'sortpack', 'implicit_uncursed', 'wizweight'].includes(entry.name)) {
+                    if (!(g.flags?.invlet_constant ?? true)) reassign();
+                    update_inventory();
+                }
                 /* C options.c:5414-5416,8727: apply the pending Unicode reset
                  * before doset_simple offers the menu again. */
                 if (entry.name === 'customsymbols') {
@@ -4434,6 +4439,11 @@ export async function doset() {
                     const box = boolBox(ent.row);
                     const negated = boolValue(ent.row);
                     box[ent.row.fld] = !negated;
+                    /* C options.c:5353-5361 optfn_boolean: re-letter inventory under !fixinv. */
+                    if (['fixinv', 'price_quotes', 'sortpack', 'implicit_uncursed', 'wizweight'].includes(ent.row.name)) {
+                        if (!(g.flags?.invlet_constant ?? true)) reassign();
+                        update_inventory();
+                    }
                     /* C options.c:5300-5312: retain an existing pet attribute,
                      * default to inverse when enabling, and redraw after the walk. */
                     /* C options.c:5300-5311: hilite_pet defaults petattr to

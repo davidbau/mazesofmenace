@@ -358,8 +358,17 @@ export async function docallcmd() {
     else if (abc) { const k = shown.indexOf(String.fromCharCode(selKey)); if (k >= 0) selKey = rows[k][0].charCodeAt(0); }
     /* After selection: clear pending message, turn not consumed */
     g._pending_message = '';
-    /* tty_dismiss_nhwindow -> docorner(offx, maxrow + 1) (wintty.c:982) */
+    /* tty_dismiss_nhwindow -> erase_menu_or_text (wintty.c:966-983):
+     * offx != 0 takes docorner(offx, maxrow + 1, 0); offx == 0 (!menu_overlay)
+     * takes docrt() + flush_screen(1) while select_menu holds bot_disabled
+     * (windows.c:1859-1863). */
     if (!ncFullScreen) docorner_blank_utf8_captures(WIN_COL - 1, windowLines.length + 1);
+    else {
+        const savedBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        try { await docrt(false, g._screen_output); await flush_screen(1); }
+        finally { g._bot_disabled = savedBotDisabled; }
+    }
     }
     // C do_name.c:560-600: item/type names and level annotations share
     // the same dispatcher for queued and interactive choices.

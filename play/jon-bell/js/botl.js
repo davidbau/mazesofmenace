@@ -1,7 +1,7 @@
 // botl.js — C ref: botl.c.
 import { money_cnt } from './hack.js';
 import { CONFUSION, Is_rogue_level, OVERLOADED, P_LANCE, P_MORNING_STAR, P_POLEARMS, P_QUARTERSTAFF, P_UNICORN_HORN, SATIATED, SICK, SLIMED, SLT_ENCUMBER, STARVED, TT_LAVA, gs } from './const.js';
-import { COIN_CLASS_DISP, _ROLE_NAME_TO_IDX, _ROLE_RANKS, _capture_botl, _disp_Blind, _equipView, _hallucinating_dsp, _live_deaf, _live_flying, _live_lev, _mon_mlevel, _statusLine1, _statusLine1Raw, _statusLine2, _statusLine2Parts, _statusRows3, _status_sgr, _threeStatusLines, status_xp_bot_eval, status_hpbar_attr_eval, status_r1_hpbar_bot_note, suppress_map_output } from './display.js';
+import { _flush_screen_in_progress, COIN_CLASS_DISP, _ROLE_NAME_TO_IDX, _ROLE_RANKS, _capture_botl, _disp_Blind, _equipView, _hallucinating_dsp, _live_deaf, _live_flying, _live_lev, _mon_mlevel, _statusLine1, _statusLine1Raw, _statusLine2, _statusLine2Parts, _statusRows3, _status_sgr, _threeStatusLines, status_xp_bot_eval, status_hpbar_attr_eval, status_r1_hpbar_bot_note, suppress_map_output } from './display.js';
 import { bimanual } from './do_wear.js';
 import { game } from './gstate.js';
 import { humanoid } from './makemon.js';
@@ -345,13 +345,8 @@ export async function bot() {
          * (topl.c:390-392). Keep the physical status until bot() paints again. */
         game._botlFrozenDeath = true;
     }
-    /* C botl.c:259 bot() writes the status rows to the terminal at once, even
-     * while WIN_STOP suppresses messages after an ESC'd --More-- (topl.c:232).
-     * The physical rows must be updated now: a following getlin/yn prompt keeps
-     * them (_prompt_physical_status_rows) and showed the pre-bot() HP where C's
-     * done() -> bot() had painted the death-time one ("Die?" prompt, C HP:92
-     * against 103 painted before the suppressed attacks). */
-    if ((game._topl_win_stop || game._topl_win_stop_armed) && game._screen_output
+    if ((game._topl_win_stop || game._topl_win_stop_armed
+         || !_flush_screen_in_progress()) && game._screen_output
         && !game._status_blanked && !game._statusBlankAfterDocrt
         && (game?.u?.uhp | 0) !== -1 && !game._botlHeldEat) {
         const _rows = String(game._screen_output).split('\n');
