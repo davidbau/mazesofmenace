@@ -15,13 +15,14 @@ import {
     LR_DOWNSTAIR, LR_TELE, LR_UPTELE, LR_DOWNTELE, NO_MM_FLAGS,
     MKTRAP_MAZEFLAG, Is_waterlevel, Is_airlevel, Is_stronghold, In_quest,
     MAGIC_PORTAL, CORPSTAT_NONE, TRUE, SPACE_POS, VIBRATING_SQUARE,
+    IS_FOUNTAIN, IS_SINK,
 } from './const.js';
 import { Is_special, dunlevs_in_dungeon, dunlev, Is_branchlev, on_level,
          find_level } from './dungeon.js';
 import { load_special } from './sp_lev.js';
 import {
     place_lregion, mkstairs, wallification, mktrap, Invocation_lev, place_branch,
-    somex, somey, stairway_find_dir, occupied,
+    somex, somey, stairway_find_dir, occupied, count_level_features,
 } from './mklev.js';
 import { distmin } from './hacklib.js';
 import { maketrap } from './trap.js';
@@ -612,8 +613,9 @@ export function set_levltyp(x, y, newtyp) {
                 /* obj_ice_effects() and spot_stop_timers(): not ported
                    (no objects or timers exist during level creation yet) */
             }
-            /* count_level_features() for fountains and sinks: mklev()
-               recounts them after makelevel() (recount_level_features) */
+            if ((IS_FOUNTAIN(oldtyp) !== IS_FOUNTAIN(newtyp))
+                || (IS_SINK(oldtyp) !== IS_SINK(newtyp)))
+                count_level_features(); /* level.flags.nfountains,nsinks */
             return true;
         }
     }

@@ -1,13 +1,15 @@
 // files.js — file names and file access.
 // C ref: files.c
 //
-// Ported so far: set_bonesfile_name(), open_bonesfile(). Files live in the
+// Ported so far: the bones file functions (set_bonesfile_name(),
+// set_bonestemp_name(), create/commit/open/delete/compress_bonesfile()),
+// the level and save file functions below. Files live in the
 // contest's virtual filesystem (storage.js) instead of the playground
 // directory; fqname() prefixes are not modelled.
 
 import { game } from './gstate.js';
-import { In_quest, LFILE_EXISTS, NHF_LEVELFILE, NHF_SAVEFILE, READING, WRITING,
-         FREEING } from './const.js';
+import { In_quest, LFILE_EXISTS, NHF_LEVELFILE, NHF_SAVEFILE, NHF_BONESFILE,
+         READING, WRITING, FREEING } from './const.js';
 import { Is_special } from './dungeon.js';
 import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
 import { new_nhfile, close_nhfile, nhfile_contents, nhfile_from_contents,
@@ -51,18 +53,113 @@ export function set_bonesfile_name(lev) {
     return dptr;
 }
 
+// C ref: files.c set_bonestemp_name()
+/* set up temporary file name for writing bones, to avoid another game's
+ * trying to read from an uncompleted bones file.  we want an uncontentious
+ * name, so use one in the namespace reserved for this game's level files.
+ * (we are not reading or writing level files while writing bones files, so
+ * the same array may be used instead of copying.)
+ */
+function set_bonestemp_name() {
+    const g = game;
+    const lock = g.lock || '';
+    const dot = lock.lastIndexOf('.');
+    g.lock = `${dot >= 0 ? lock.slice(0, dot) : lock}.bn`;
+    return g.lock;
+}
+
+// C ref: files.c create_bonesfile()
+/* 'errbuf', when given, is a { v } holder for the failure explanation;
+   the bonesid comes back in game.bonesid (C's *bonesid) */
+export function create_bonesfile(lev, errbuf) {
+    const g = game;
+    let failed = false;
+
+    if (errbuf)
+        errbuf.v = '';
+    g.bonesid = set_bonesfile_name(lev);
+    const file = set_bonestemp_name(); /* fqname(file, BONESPREFIX, 0) */
+
+    const nhfp = new_nhfile();
+    nhfp.ftype = NHF_BONESFILE;
+    nhfp.mode = WRITING;
+    nhfp.structlevel = true;
+    nhfp.fieldlevel = false;
+    nhfp.addinfo = true;
+    nhfp.name = file;
+    nhfp.fd = -1;
+    /* nhfp->fd = creat(file, FCMASK): an empty file in the storage */
+    if (vfsWriteFile(file, ''))
+        nhfp.fd = 1;
+    else
+        failed = true;
+    if (failed && errbuf) /* failure explanation */
+        errbuf.v = `Cannot create bones "${g.lock}", id ${g.bonesid} (errno 2).`;
+    nhfp.onclose = (f) => {
+        if (!vfsWriteFile(f.name, nhfile_contents(f)))
+            throw new Error('create_bonesfile(): no storage for the bones file not ported yet');
+    };
+    /* viable_nhfile(nhfp) */
+    return (nhfp.fd < 0) ? null : nhfp;
+}
+
+// C ref: files.c commit_bonesfile()
+/* move completed bones file to proper name */
+export function commit_bonesfile(lev) {
+    const g = game;
+
+    set_bonesfile_name(lev);
+    const fq_bones = g.bones; /* fqname(gb.bones, BONESPREFIX, 0) */
+    const tempname = set_bonestemp_name();
+
+    /* ret = rename(tempname, fq_bones) */
+    const data = vfsReadFile(tempname);
+    let ret = -1;
+    if (data !== null && vfsWriteFile(fq_bones, data)) {
+        vfsDeleteFile(tempname);
+        ret = 0;
+    }
+    if (g.flags.debug && ret !== 0)
+        throw new Error(`commit_bonesfile(): "couldn't rename ${tempname} to ${fq_bones}." not ported yet`);
+}
+
 // C ref: files.c open_bonesfile()
+/* the bonesid comes back in game.bonesid (C's *bonesid) */
 export function open_bonesfile(lev) {
     const g = game;
 
     g.bonesid = set_bonesfile_name(lev);
     const fq_bones = g.bones; /* fqname(gb.bones, BONESPREFIX, 0) */
-    /* nh_uncompress(fq_bones); -- no compression in the VFS */
+    /* nh_uncompress(fq_bones); -- no compression in the storage */
 
     const data = vfsReadFile(fq_bones);
     if (data === null)
-        return null;
-    return { ftype: 'bones', mode: 'reading', name: fq_bones, data };
+        return null; /* viable_nhfile(): open() failed */
+    const nhfp = new_nhfile();
+    nhfp.structlevel = true;
+    nhfp.fieldlevel = false;
+    nhfp.ftype = NHF_BONESFILE;
+    nhfp.mode = READING;
+    nhfp.addinfo = true;
+    nhfp.name = fq_bones;
+    nhfp.fd = 1;
+    nhfile_from_contents(nhfp, data);
+    return nhfp;
+}
+
+// C ref: files.c delete_bonesfile()
+export function delete_bonesfile(lev) {
+    set_bonesfile_name(lev);
+    /* reslt = unlink(fqname(gb.bones, BONESPREFIX, 0)) */
+    return vfsDeleteFile(game.bones) ? 1 : 0;
+}
+
+// C ref: files.c compress_bonesfile()
+/* assume we're compressing the recently read or created bonesfile, so the
+ * file name is already set properly */
+export function compress_bonesfile() {
+    /* nh_sfconvert(), nh_compress(): no conversion or compression in the
+       storage */
 }
 
 // ---------------------------------------------------------------------

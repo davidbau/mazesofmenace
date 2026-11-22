@@ -84,6 +84,22 @@ function localtime_of(date) {
     };
 }
 
+// C ref: calendar.c yyyymmddhhmmss()
+export function yyyymmddhhmmss(date) {
+    let datenum;
+    const lt = (date === 0) ? getlt() : localtime_of(date);
+    const p2 = (n) => String(n).padStart(2, '0');
+
+    /* just in case somebody's localtime supplies (year % 100)
+       rather than the expected (year - 1900) */
+    if (lt.tm_year < 70)
+        datenum = lt.tm_year + 2000;
+    else
+        datenum = lt.tm_year + 1900;
+    return `${String(datenum).padStart(4, '0')}${p2(lt.tm_mon + 1)}${
+            p2(lt.tm_mday)}${p2(lt.tm_hour)}${p2(lt.tm_min)}${p2(lt.tm_sec)}`;
+}
+
 // C ref: calendar.c yyyymmdd()
 export function yyyymmdd(date) {
     let datenum;

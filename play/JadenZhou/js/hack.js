@@ -37,7 +37,7 @@ import { m_at, is_pool, is_lava, closed_door, may_passwall, sobj_at, goodpos,
          place_monster, accessible } from './makemon.js';
 import { dig_typ } from './dig.js';
 import { pline, canspotmon, mon_visible, newsym, sensemon, You, Your,
-         You_cant, pline_The, There, unmap_invisible, unmap_object,
+         You_cant, pline_The, There, unmap_invisible, unmap_object, map_invisible,
          glyph_is_invisible } from './display.js';
 import { vision_recalc, couldsee } from './vision.js';
 import { glyph_at, Norep } from './display.js';
@@ -53,8 +53,10 @@ import { COIN_CLASS, BOULDER, PICK_AXE, DWARVISH_MATTOCK, STATUE, WEAPON_CLASS,
          TOOL_CLASS, objects, WATER_WALKING_BOOTS } from './objects.js';
 import { back_to_cmap, defsyms_explanation } from './pager.js';
 import { u_on_newpos } from './mklev.js';
+import { room_discovered } from './dungeon.js';
 import { inside_room } from './sp_lev.js';
 import { record_achievement } from './do.js';
+import { ACH_TOWN } from './const.js';
 import { doopen_indir } from './lock.js';
 import { do_attack } from './uhitm.js';
 import { x_monnam, YMonnam, m_monnam, mon_nam, ARTICLE_NONE, ARTICLE_THE,
@@ -76,7 +78,7 @@ import { CORPSE } from './objects.js';
 import { is_flyer, is_floater, dmgtype } from './mondata.js';
 import { float_vs_flight } from './polyself.js';
 import { pickup } from './pickup.js';
-import { shop_keeper, u_left_shop, u_entered_shop } from './shk.js';
+import { shop_keeper, u_left_shop, u_entered_shop, costly_spot } from './shk.js';
 import { IS_THRONE, IS_GRAVE, IS_FOUNTAIN, IS_ALTAR, D_ISOPEN, STAIRS,
          ECMD_TIME, ECMD_OK } from './const.js';
 import { dotrap } from './trap.js';
@@ -90,8 +92,11 @@ import { FROMOUTSIDE, MAX_TYPE, NO_TRAP, FAILEDUNTRAP, TIMEOUT, WARNING,
 import { M1_CLING, PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN } from './monsters.js';
 import { midnight } from './calendar.js';
 import { Hello } from './role.js';
-import { search_special } from './sounds.js';
-import { wake_msg, seemimic } from './mon.js';
+import { search_special, You_hear } from './sounds.js';
+import { DEAF } from './const.js';
+import { wake_msg, seemimic, maybe_unhide_at } from './mon.js';
+import { drag_ball, move_bc } from './ball.js';
+import { worm_cross } from './worm.js';
 /* C ref: mondata.h is_clinger() */
 function is_clinger(ptr) { return (ptr.mflags1 & M1_CLING) !== 0; }
 import { l_nhcore_call } from './nhlua.js';
@@ -1008,7 +1013,7 @@ export async function check_special_room(newlev) {
     if (game.level.flags?.has_town && !game.context?.achieveo?.minetn_reached
         && u.uz.dnum === game.dungeon_topology.d_mines_dnum /* In_mines() */
         && in_town(u.ux, u.uy)) {
-        record_achievement('ACH_TOWN');
+        record_achievement(ACH_TOWN);
         if (!game.context.achieveo) game.context.achieveo = {};
         game.context.achieveo.minetn_reached = true;
     }
@@ -1092,10 +1097,8 @@ export async function check_special_room(newlev) {
             rt = 0;
             break;
         }
-        if (msg_given) {
-            /* room_discovered(roomno): the dungeon overview (mapseen)
-               isn't ported */
-        }
+        if (msg_given)
+            room_discovered(roomno);
 
         if (rt !== 0) {
             rooms[roomno].rtype = OROOM;
@@ -1455,7 +1458,7 @@ function can_ooze_u() {
 
 // C ref: hack.c crawl_destination() -- used by findtravelpath() when the
 // destination is one step away
-function crawl_destination(x, y) {
+export function crawl_destination(x, y) {
     const u = game.u;
     /* is location ok in general? */
     if (!goodpos(x, y, game.youmonst, 0))
@@ -1906,9 +1909,12 @@ async function test_move_rest(ux, uy, dx, dy, mode, x, y) {
         default:
             break; /* can squeeze through */
         }
+    } else if (dx && dy && worm_cross(ux, uy, x, y)) {
+        /* consecutive long worm segments are at <ux,y> and <x,uy> */
+        if (mode === DO_MOVE)
+            await pline(`${YMonnam(m_at(ux, y))} is in your way.`);
+        return false;
     }
-    /* worm_cross(): long worm segments aren't ported (m_move() throws
-       for long worms) */
 
     /* Pick travel path that does not require crossing a trap.
      * Avoid water and lava using the usual running rules.
@@ -1999,12 +2005,10 @@ async function test_move_rest(ux, uy, dx, dy, mode, x, y) {
 function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
 // C ref: hack.c movobj()
-function movobj(obj, ox, oy) {
+export function movobj(obj, ox, oy) {
     /* optimize by leaving on the fobj chain? */
     obj_extract_self(obj); /* remove_object() */
-    const mtmp = m_at(obj.ox, obj.oy);
-    if (mtmp && mtmp.mundetected)
-        throw new Error('movobj(): maybe_unhide_at() not ported yet');
+    maybe_unhide_at(obj.ox, obj.oy);
     newsym(obj.ox, obj.oy);
     place_object(obj, ox, oy);
     newsym(ox, oy);
@@ -2142,9 +2146,8 @@ async function moverock_core(sx, sy) {
                 || doorless_door(rx, ry)) && !sobj_at(BOULDER, rx, ry)) {
             ttmp = t_at(rx, ry);
             mtmp = m_at(rx, ry);
-            costly = false; /* costly_spot(sx, sy) && shop_keeper(): below */
-            if (game.level.flags?.has_shop)
-                throw new Error('moverock_core(): costly_spot() not ported yet');
+            costly = !!(costly_spot(sx, sy)
+                        && shop_keeper(first_shop_rno(sx, sy)));
 
             /* KMH -- Sokoban doesn't let you push boulders diagonally */
             if (Sokoban() && game.u.dx && game.u.dy)
@@ -2164,7 +2167,12 @@ async function moverock_core(sx, sy) {
                     await pline(`There's ${a_monnam(mtmp)} on the other side.`);
                     deliver_part1 = true;
                 } else {
-                    throw new Error('moverock_core(): You_hear() a monster behind a boulder not ported yet');
+                    /* Soundeffect(se_monster_behind_boulder, 50) */
+                    await You_hear(`a monster behind ${the(xname(otmp))}.`);
+                    const D = game.u.uprops[DEAF];
+                    if (!(D.intrinsic || D.extrinsic || game.u.uroleplay?.deaf)) /* !Deaf */
+                        deliver_part1 = true;
+                    map_invisible(rx, ry);
                 }
                 if (game.flags?.verbose ?? true) {
                     const you_or_steed = game.u.usteed ? y_monnam(game.u.usteed) : "you";
@@ -2725,6 +2733,10 @@ async function domove_core() {
     const ctx = game.context;
     let mtmp;
     let x, y;
+    /* ball&chain new positions, control for ball&chain, and
+       cause_delay: dragging ball will skip a move */
+    const bc = { chainx: 0, chainy: 0, ballx: 0, bally: 0,
+                 bc_control: 0, cause_delay: false };
     const displaceu = { val: false }; /* involuntary swap */
 
     if (ctx.travel) {
@@ -2851,7 +2863,8 @@ async function domove_core() {
 
     /* Move ball and chain.  */
     if (Punished())
-        throw new Error('domove_core(): drag_ball() not ported yet');
+        if (!await drag_ball(x, y, bc, true))
+            return;
 
     /* Check regions entering/leaving */
     if (!(await in_out_region(x, y)))
@@ -2920,13 +2933,19 @@ async function domove_core() {
         /* invocation_message(): only on the vibrating square level */
     }
 
-    /* if (Punished) move_bc(...): Punished throws above */
+    if (Punished()) /* put back ball and chain */
+        move_bc(0, bc.bc_control, bc.ballx, bc.bally, bc.chainx, bc.chainy);
 
     if (u.umoved)
         await spoteffects(true);
 
-    /* delay next move because of ball dragging: cause_delay is only set
-       by drag_ball(), which isn't ported */
+    /* delay next move because of ball dragging */
+    /* must come after we finished picking up, in spoteffects() */
+    if (bc.cause_delay) {
+        nomul(-2);
+        game.multi_reason = "dragging an iron ball";
+        game.nomovemsg = "";
+    }
 
     /* runmode_delay_output(): display timing only */
 }

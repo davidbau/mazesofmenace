@@ -18,6 +18,9 @@ export function makeLocation() {
         // C ref: rm.h #define drawbridgemask flags
         get drawbridgemask() { return this.flags; },
         set drawbridgemask(v) { this.flags = v; },
+        // C ref: rm.h #define emptygrave flags -- no corpse in grave
+        get emptygrave() { return this.flags; },
+        set emptygrave(v) { this.flags = v; },
         seenv: 0,          // which angles the hero has seen this wall from
         horizontal: false, // is this a horizontal wall?
         edge: false,       // is this at the edge of the map?

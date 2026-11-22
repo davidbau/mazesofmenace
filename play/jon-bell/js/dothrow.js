@@ -18,7 +18,7 @@ import { is_art } from './artifact.js';
 import { EXACT_NAME, FIRE_TRAP, FORCEBUNGLE, HURTLING, OBJ_FREE, OBJ_INVENT, P_DAGGER, P_DART, P_SHURIKEN, P_SLING, P_SPEAR, SUPPRESS_NAME } from './const.js';
 import { ARTICLE_A, ARTICLE_YOUR, AUGMENT_IT, A_CON, A_DEX, A_ORIGINAL, A_STR, BACKTRACK, BOLT_LIM, BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, BRK_KNOWN_OUTCOME, BURNING_OIL, CONFUSION, CQ_CANNED, CQ_REPEAT, DB_UNDER, DRAWBRIDGE_UP, D_ISOPEN, ECMD_CANCEL, ECMD_OK, ECMD_TIME, EF_DESTROY, EF_VERBOSE, ERODE_CRACK, ER_DESTROYED, ESHK, EXPL_FIERY, GETOBJ_ALLOWCNT, GETOBJ_PROMPT, HMON_APPLIED, HMON_KICKED, HMON_THROWN, HOLE, Has_contents, IRONBARS, IS_ALTAR, IS_DOOR, IS_OBSTRUCTED, IS_SINK, IS_SOFT, IS_TREE, IS_WATERWALL, Is_airlevel, Is_juiblex_level, Is_waterlevel, KILLED_BY, LARGEST_INT, LAVAWALL, LOST_EXPLODING, LOST_THROWN, MM_IGNORELAVA, MM_IGNOREWATER, MM_NOMSG, MOAT, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEUTRAL, PIT, RLOC_MSG, SHOPBASE, SLT_ENCUMBER, SPIKED_PIT, STONE, STUNNED, SUPPRESS_SADDLE, TEST_MOVE, TRAPDOOR, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_WEB, Upolyd, VIBRATING_SQUARE, WEB, WT_SPLASH_THRESHOLD, WT_TOOMUCH_DIAGONAL, W_QUIVER as W_QUIVER_TO, engulfing_u, has_mgivenname, has_oname, is_hole, is_pit, isok, u_at } from './const.js';
 import { is_pick } from './dig.js';
-import { DISP_END, DISP_FLASH, DISP_TETHER, GLYPHCLS_MON, _topl_joins_snapshot, _topl_more_pages, await_topl_more_dismiss, canseemon, canspotmon, flush_screen, force_more, getobj_never_mind, glyph_is_invisible_at, glyph_is_warning_at, map_invisible, newsym, obj_to_glyph, pline_flush_point, putmsghistory, sensemon, tmp_at, unmap_object, Unaware as wizard_Unaware } from './display.js';
+import { DISP_END, DISP_FLASH, DISP_TETHER, GLYPHCLS_MON, _topl_joins_snapshot, _topl_more_pages, await_topl_more_dismiss, canseemon, canspotmon, flush_screen, force_more, getobj_never_mind, glyph_is_invisible_at, glyph_is_warning_at, map_invisible, newsym, obj_to_glyph, pline_flush_point, putmsghistory, sensemon, tmp_at, unmap_object, Unaware as wizard_Unaware, use_last_flush_snapshot } from './display.js';
 import { You_feel, You_hear, Norep as _Norep, pline } from './pline.js';
 import { doaltarobj, dropy, dropz, flooreffects, obj_no_longer_held } from './do.js';
 import { rndmonnam as look_rndmonnam } from './do_name.js';
@@ -280,6 +280,16 @@ export async function dothrow() {
             g._topl_suppress_history = true;
             try { itemRaw = game.iflags?.debug_fuzzer ? await readchar() : await nhgetch(); }
             finally { g._topl_suppress_history = savedSuppress; }
+            /* C topl.c:537-539 clean_up rewrites gt.toplines as
+             * prompt + key2txt(answer), so it is no longer the EMPTY line the
+             * SUPPRESS_HISTORY prompt left behind (js/input.js nhgetch prologue
+             * models that emptiness while the prompt is up).  Without this
+             * reset, a later top-level ^P takes doprev_message's blank-first
+             * branch and erases row 0 where C's redotoplin(gt.toplines) repaints
+             * the ANSWERED prompt (df-x8efcaa4ca6 step 11).  The other getobj
+             * twins carry this line: cmd.js getObjFromGetobj and end.js
+             * _yn_prompt's null-responses arm. */
+            g._toplEmptyAfterSuppress = false;
             putmsghistory(throwQbuf + ' ' + key2txt((typeof itemRaw === 'number'
                 ? itemRaw : (itemRaw?.charCodeAt(0) ?? 0)) & 0xff), false);
         }
@@ -2820,15 +2830,31 @@ async function _fire_throw_obj(obj, shotlimit, showPrompt, committedFrame) {
              * guarded bot()/timebot() + curs_on_u() (allmain.c:474-480) flushed
              * the map — js/allmain.js moveloop_status_paint drops the frame when
              * it does — the physical screen is still the pre-movemon frame. */
-            const _pf = (g._dofireFromCmdq && g._fireSwapPending)
+            let _pf = (g._dofireFromCmdq && g._fireSwapPending)
                 ? g._fireSwapPreFrame : null;
+            if (_pf && g._lastFlushFrame
+                && (g._lastFlushFrame.epoch | 0) > (_pf.epoch | 0))
+                _pf = g._lastFlushFrame;
             const _sSnap = g._paintedSnapshot;
             const _sMM = g._inMovemonMore;
             if (_pf) {
                 g._paintedSnapshot = { cells: _pf.cells, moves: g.flags?.time ? (g.moves | 0) : (_pf.moves | 0) };
                 g._inMovemonMore = true;
             }
-            await force_more(String(_standing));
+            /* Same rule with no fireassist frame to supersede: a standing
+             * movemon-era _paintedSnapshot froze an earlier instant of the
+             * same world turn, and a later flush (animation included) moved
+             * C's terminal on. use_last_flush_snapshot() picks the newest of
+             * _lastFlushFrame / _movemonPlinePhys; a no-op when neither
+             * exists, leaving force_more's own ladder exactly as before. */
+            let _releaseLF = null;
+            if (!_pf)
+                _releaseLF = use_last_flush_snapshot();
+            try {
+                await force_more(String(_standing));
+            } finally {
+                if (_releaseLF) _releaseLF();
+            }
             if (_pf) {
                 g._paintedSnapshot = _sSnap || null;
                 g._inMovemonMore = _sMM || false;

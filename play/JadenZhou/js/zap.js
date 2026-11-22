@@ -82,9 +82,9 @@ import { wakeup, monkilled, killed } from './mon.js';
 import { AD_RBRE } from './monsters.js';
 import { STONE, LAVAWALL, IRONBARS, FOUNTAIN, ICE, STRAT_WAITMASK, WEB,
          IS_ROOM, IS_WALL, In_mines, Is_airlevel, ZAP_POS, SDOOR } from './const.js';
-import { engr_at } from './engrave.js';
+import { engr_at, wipe_engr_at } from './engrave.js';
 import { M1_NOHANDS, M1_CONCEAL, AD_COLD, AD_FIRE, AD_ELEC, AD_ACID,
-         AD_DISN } from './monsters.js';
+         AD_DISN, AD_MAGM } from './monsters.js';
 import {
     COLD_RES, FIRE_RES, SHOCK_RES, ACID_RES, DISINT_RES, W_ARMOR, W_ACCESSORY,
     W_WEP, W_ART, W_ARMC, W_ARM, W_ARMU, W_ARMH, W_ARMG, W_ARMF, W_ARMS,
@@ -501,7 +501,7 @@ export async function poly_obj(obj, id) {
 
     /* no box contents --KAA */
     if (Has_contents(otmp) && otmp.cobj.length)
-        throw new Error('poly_obj(): delete_contents() not ported yet');
+        delete_contents(otmp);
 
     /* 'n' merged objects may be fused into 1 object */
     if (otmp.quan > 1 && (!objects[otmp.otyp].oc_merge
@@ -763,9 +763,20 @@ export async function zapnodir(obj) {
 
     switch (obj.otyp) {
     case WAN_LIGHT:
-        throw new Error('zapnodir(): wand of light (litroom()) not ported yet');
+    case SPE_LIGHT_ZN:
+        /* FIXME? wand of light becoming discovered should be contingent upon
+           seeing at least one previously unlit spot become lit */
+        known = !!(obj.dknown && !Blind());
+        await litroom(true, obj);
+        await lightdamage(obj, true, 5);
+        break;
     case WAN_SECRET_DOOR_DETECTION:
-        throw new Error('zapnodir(): secret door detection (findit()) not ported yet');
+    case SPE_DETECT_UNSEEN_ZN:
+        /* findit() gives sufficient feedback to discover the wand even when
+           blinded or when it fails to find anything */
+        known = !!obj.dknown;
+        await findit();
+        break;
     case WAN_STASIS: {
         const tmp_until = game.moves + rn1(21, 10);
 
@@ -779,7 +790,16 @@ export async function zapnodir(obj) {
     case WAN_CREATE_MONSTER:
         throw new Error('zapnodir(): wand of create monster (create_critters()) not ported yet');
     case WAN_WISHING:
-        throw new Error('zapnodir(): wand of wishing (makewish()) not ported yet');
+        if ((game.u.uluck || 0) + (game.u.moreluck || 0) + rn2(5) < 0) { /* Luck */
+            await pline("Unfortunately, nothing happens.");
+            known = false;
+        } else {
+            known = !!obj.dknown;
+            /* wand of wishing asks player what to wish for so always becomes
+               discovered (unless it hasn't been seen) */
+            await makewish();
+        }
+        break;
     case WAN_ENLIGHTENMENT:
         known = !!obj.dknown;
         /* do_enlightenmnt_effect() always describes enlightenment */
@@ -887,9 +907,60 @@ function Sleep_resistance() {
 // C ref: zap.c zapyourself() -- the cases sessions reach so far
 export async function zapyourself(obj, ordinary) {
     let learn_it = false;
-    const damage = 0;
+    let damage = 0;
+    const u = game.u;
 
     switch (obj.otyp) {
+    case O_zy.WAN_STRIKING:
+    case O_zy.SPE_FORCE_BOLT:
+        learn_it = true;
+        if (u.uprops[ANTIMAGIC_ZY].intrinsic || u.uprops[ANTIMAGIC_ZY].extrinsic) {
+            /* shieldeff(u.ux, u.uy): transient display only */
+            await pline("Boing!");
+            monstseesu(M_SEEN_MAGR_ZY);
+        } else {
+            if (ordinary) {
+                await You("bash yourself!");
+                damage = d(2, 12);
+            } else
+                damage = d(1 + obj.spe, 6);
+            exercise(A_STR_ZY, false);
+            monstunseesu(M_SEEN_MAGR_ZY);
+        }
+        break;
+
+    case O_zy.WAN_DEATH:
+    case O_zy.SPE_FINGER_OF_DEATH: {
+        const ptr = game.youmonst.data;
+        if (nonliving_zy(ptr) || (ptr.mflags2 & M2_DEMON_ZY) /* is_demon() */) {
+            await pline((obj.otyp === O_zy.WAN_DEATH)
+                        ? "The wand shoots an apparently harmless beam at you."
+                        : "You seem no deader than before.");
+            break;
+        }
+        learn_it = true;
+        killer_zy().name = `shot ${uhim_zy()}self with a death ray`;
+        killer_zy().format = NO_KILLER_PREFIX_ZY;
+        /* probably don't need these to be urgent; player just gave input
+           without subsequent opportunity to dismiss --More-- with ESC */
+        await pline("You irradiate yourself with pure energy!"); /* urgent_pline() */
+        await pline("You die."); /* urgent_pline() */
+        /* They might survive with an amulet of life saving */
+        await done_zy(DIED_ZY);
+        break;
+    }
+    case O_zy.SPE_HEALING:
+    case O_zy.SPE_EXTRA_HEALING:
+        learn_it = true; /* (no effect for spells...) */
+        await healup_zy(d(6, obj.otyp === O_zy.SPE_EXTRA_HEALING ? 8 : 4), 0, false,
+                        !!(obj.blessed || obj.otyp === O_zy.SPE_EXTRA_HEALING));
+        await You_feel(`${obj.otyp === O_zy.SPE_EXTRA_HEALING ? "much " : ""}better.`);
+        break;
+    case O_zy.EXPENSIVE_CAMERA:
+    case O_zy.WAN_DIGGING:
+    case O_zy.SPE_DIG:
+    case O_zy.SPE_DETECT_UNSEEN:
+        break;
     case WAN_SLEEP:
     case SPE_SLEEP:
         learn_it = true;
@@ -920,6 +991,28 @@ export async function zapyourself(obj, ordinary) {
     if (learn_it)
         learnwand(obj);
     return damage;
+}
+
+import * as O_zy from './objects.js';
+import { ANTIMAGIC as ANTIMAGIC_ZY, M_SEEN_MAGR as M_SEEN_MAGR_ZY,
+         A_STR as A_STR_ZY, NO_KILLER_PREFIX as NO_KILLER_PREFIX_ZY,
+         DIED as DIED_ZY } from './const.js';
+import { M2_DEMON as M2_DEMON_ZY, M2_UNDEAD as M2_UNDEAD_ZY,
+         S_GOLEM as S_GOLEM_ZY,
+         S_VORTEX as S_VORTEX_ZY, mons as mons_zy,
+         PM_MANES as PM_MANES_ZY } from './monsters.js';
+import { killer as killer_zy } from './topten.js';
+import { done as done_zy } from './end.js';
+import { healup as healup_zy } from './potion.js';
+import { delete_contents } from './invent.js';
+/* C ref: mondata.h nonliving() */
+function nonliving_zy(ptr) {
+    return (ptr.mflags2 & M2_UNDEAD_ZY) !== 0 || ptr === mons_zy[PM_MANES_ZY]
+           || ptr.mlet === S_GOLEM_ZY || ptr.mlet === S_VORTEX_ZY;
+}
+/* C ref: you.h uhim() -- genders[flags.female ? 1 : 0].him */
+function uhim_zy() {
+    return game.flags.female ? "her" : "him";
 }
 
 // C ref: zap.c zapsetup() -- used by do_break_wand() was well as by weffects()
@@ -1498,6 +1591,41 @@ async function zap_over_floor(
     return rangemod;
 }
 
+// C ref: zap.c mon_spell_hits_spot()
+/* monster has cast flames or frost at target on <x,y>; called by mcastu() */
+export async function mon_spell_hits_spot(
+    caster, /* UNUSED */
+    adtyp, /* canonical damage type */
+    x, y) /* so far, only used for targeting <u.ux,u.uy> */
+{
+    void caster;
+    /* "shower of missiles" or [hypothetical] "acid rain" attack:
+       thoroughly clobber an engraving (unless its type makes it be
+       scuff-protected); zap_over_floor() doesn't handle this */
+    if (adtyp === AD_MAGM || adtyp === AD_ACID) {
+        const ep = engr_at(x, y);
+        const etext = ep ? ep.engr_txt.actual_text : null;
+
+        if (etext)
+            wipe_engr_at(x, y, etext.length + d(6, 6), true);
+        /* hero and player will still remember prior text until the spot
+           is re-examined (lookhere or move off and back on) */
+    }
+
+    /* hit items and/or terrain; only matters for AD_FIRE and AD_COLD but
+       accept any basic damage type that zap_over_floor() might handle */
+    if (adtyp >= AD_MAGM && adtyp <= AD_ACID) {
+        const shopdummy = { v: false }; /* zap_over_floor() requires this
+                                             * even though it's only used when
+                                             * zapdmgtyp is non-negative */
+        const zt_typ = adtyp - 1,            /* convert AD_xxxx to ZT_xxxx */
+            zapdmgtyp = -ZT_SPELL(zt_typ);   /* damage is from monster spell */
+
+        await zap_over_floor(x, y, zapdmgtyp, shopdummy, true, 0);
+    } /* else impossible("Unsupported damage type (%d) for
+         mon_spell_hits_spot.", adtyp) */
+}
+
 /* C ref: obj.h ignitable() */
 function ignitable(otmp) {
     return otmp.otyp === BRASS_LANTERN || otmp.otyp === OIL_LAMP
@@ -1552,3 +1680,9 @@ async function burn_floor_objects(
             throw new Error('burn_floor_objects(): catch_lit() not ported yet');
     return cnt;
 }
+
+import { findit } from './detect.js';
+import { makewish } from './wizcmds.js';
+import { SPE_LIGHT as SPE_LIGHT_ZN,
+         SPE_DETECT_UNSEEN as SPE_DETECT_UNSEEN_ZN } from './objects.js';
+import { litroom, lightdamage } from './read.js';

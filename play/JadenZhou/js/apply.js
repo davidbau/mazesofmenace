@@ -63,6 +63,7 @@ import { SPE_JUMPING, BOULDER } from './objects.js';
 import { ECMD_TIME, ECMD_FAIL, JUMPING, PASSES_WALLS, LEVITATION, WOUNDED_LEGS,
          INTRINSIC, UNENCUMBERED, A_STR, TT_PIT, IS_STWALL, IS_DOOR, D_ISOPEN,
          ACCESSIBLE, isok, u_at, Is_airlevel, Is_waterlevel } from './const.js';
+import { use_container } from './pickup.js';
 
 /* C ref: mondata.h nohands() */
 function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
@@ -359,7 +360,7 @@ export async function doapply() {
         return ECMD_CANCEL;
 
     let res = ECMD_TIME;
-    if (!retouch_object(obj))
+    if (!(await retouch_object(obj, false)))
         return ECMD_TIME; /* evading your grasp costs a turn; just be
                              grateful that you don't drop it as well */
 
@@ -390,7 +391,8 @@ export async function doapply() {
     case O.SACK:
     case O.BAG_OF_HOLDING:
     case O.OILSKIN_SACK:
-        throw new Error('doapply(): use_container() not ported yet');
+        res = await use_container(obj, true, false);
+        break;
     case O.BAG_OF_TRICKS:
         throw new Error('doapply(): bagotricks() not ported yet');
     case O.CAN_OF_GREASE:

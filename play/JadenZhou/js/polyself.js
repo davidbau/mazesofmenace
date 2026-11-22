@@ -10,7 +10,7 @@ import {
     ANTIMAGIC, SICK_RES, STUNNED, HALLUC_RES, SEE_INVIS, TELEPAT,
     INFRAVISION, INVIS, TELEPORT, TELEPORT_CONTROL, LEVITATION, FLYING,
     SWIMMING, PASSES_WALLS, REGENERATION, REFLECTING, BLINDED, BLND_RES,
-    PROT_FROM_SHAPE_CHANGERS, WARN_OF_MON, FROMRACE,
+    PROT_FROM_SHAPE_CHANGERS, WARN_OF_MON, FROMRACE, STEALTH, FROMOUTSIDE,
 } from './const.js';
 import {
     mons, MR_FIRE, MR_COLD, MR_SLEEP, MR_DISINT, MR_ELEC, MR_POISON, MR_ACID,
@@ -142,6 +142,34 @@ export function float_vs_flight() {
         fly.blocked |= I_SPECIAL;
     else
         fly.blocked &= ~I_SPECIAL;
+    /* being trapped on the ground (bear trap, web, molten lava survived
+       with fire resistance, former lava solidified via cold, tethered
+       to a buried iron ball) overrides floating--the floor is reachable */
+    if ((lev.intrinsic || lev.extrinsic) && stuck_in_floor)
+        lev.blocked |= I_SPECIAL;
+    else
+        lev.blocked &= ~I_SPECIAL;
+
+    /* riding blocks stealth unless hero+steed fly, so a change in flying
+       might cause a change in stealth */
+    steed_vs_stealth();
+
+    game.disp_botl = true;
+}
+
+// C ref: polyself.c steed_vs_stealth()
+/* riding blocks stealth unless hero+steed fly */
+export function steed_vs_stealth() {
+    const u = game.u;
+    const lev = u.uprops[LEVITATION], fly = u.uprops[FLYING];
+    const Flying = ((fly.intrinsic || fly.extrinsic)
+                    || (u.usteed && is_flyer(u.usteed.data))) && !fly.blocked;
+    const Levitation = (lev.intrinsic || lev.extrinsic) && !lev.blocked;
+
+    if (u.usteed && !Flying && !Levitation)
+        u.uprops[STEALTH].blocked |= FROMOUTSIDE;
+    else
+        u.uprops[STEALTH].blocked &= ~FROMOUTSIDE;
 }
 
 // C ref: polyself.c polysense()

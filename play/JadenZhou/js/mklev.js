@@ -13,7 +13,7 @@ import { depth as depth_of_level } from './hacklib.js';
 import { Is_branchlev, In_hell, level_difficulty, on_level, dungeon_branch,
          dunlev, dunlevs_in_dungeon, Is_special,
          at_dgn_entrance, insert_branch, is_wizard_mode,
-         induced_align, find_level } from './dungeon.js';
+         induced_align, find_level, init_mapseen } from './dungeon.js';
 import { makemaz, mazexy, mkportal } from './mkmaze.js';
 import { PM_LEPRECHAUN, PM_KILLER_BEE, PM_SOLDIER, PM_COCKATRICE, S_HUMAN,
          PM_ELF, PM_DWARF, PM_ORC, PM_GNOME, PM_HUMAN, PM_ARCHEOLOGIST,
@@ -388,16 +388,17 @@ export async function mklev() {
     const g = game;
     /* reseed_random(rn2); reseed_random(rn2_on_display_rng): no-ops unless
        has_strong_rngseed, which a fixed-seed game doesn't have */
-    /* init_mapseen(&u.uz); -- not ported yet */
-    if (getbones()) return;
+    init_mapseen(g.u.uz);
+    if (await getbones()) return;
     g.in_mklev = true;
     await makelevel();
-    recount_level_features();
+    count_level_features();
     level_finalize_topology();
     g.in_mklev = false;
 }
 
-function recount_level_features() {
+// C ref: mklev.c count_level_features()
+export function count_level_features() {
     const lvl = game.level;
     if (!lvl?.flags) return;
     let nfountains = 0, nsinks = 0;
@@ -1276,7 +1277,7 @@ async function mktemple() {
 }
 
 // C ref: mkroom.c nexttodoor()
-function nexttodoor(sx, sy) {
+export function nexttodoor(sx, sy) {
     let dx, dy;
     let lev;
 

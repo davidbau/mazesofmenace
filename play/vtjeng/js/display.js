@@ -59,6 +59,7 @@ import {
     TOPLINE_NEED_MORE,
     clearTtyMessageWindow,
     dismissPendingTtyMessage,
+    messageWindow,
 } from './tty_message.js';
 import {
     A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, ECMD_OK,
@@ -94,7 +95,7 @@ import {
     HI_DOMESTIC, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER,
     M_AP_TYPMASK, MON_STILL_ARRIVING,
     SYM_BOULDER, SYM_INVISIBLE, SYM_NOTHING, SYM_UNEXPLORED,
-    SYM_PET_OVERRIDE, SYM_HERO_OVERRIDE, WARNCOUNT,
+    SYM_PET_OVERRIDE, SYM_HERO_OVERRIDE, WARNCOUNT, WIN_CANCELLED,
     def_warnsyms,
 } from './const.js';
 import {
@@ -131,7 +132,7 @@ import { fuzzymatch, push_front, truncateByteString } from './hacklib.js';
 import { hu_stat } from './eat.js';
 import { observe_object } from './o_init.js';
 import { can_reach_floor, engr_at, engr_can_be_felt } from './engrave.js';
-import { status_version, VI_NUMBER } from './version.js';
+import { status_version } from './version.js';
 import { is_weptool } from './obj.js';
 import { cmap_to_type } from './mkroom.js';
 import { newuexp } from './exper.js';
@@ -2190,7 +2191,7 @@ function framed_print_attr(attr, x, y, state = game) {
  */
 function print_glyph_attr(glyphflags, state) {
     if ((glyphflags & MG_PET) && state.iflags?.wc_hilite_pet)
-        return ttyMenuColorAttribute(state.iflags.wc2_petattr ?? 7);
+        return ttyMenuColorAttribute(state.iflags.wc2_petattr);
     if (state.iflags?.wc_inverse === false) return ATR_NONE;
     if (((glyphflags & MG_OBJPILE) && state.iflags?.hilite_pile)
         || ((glyphflags & MG_FEMALE) && state.wizard
@@ -2461,25 +2462,25 @@ export function map_glyphinfo(glyph, state = game, options = undefined) {
         // display.c:2843-2862. Explosion glyphs use the same cmap symbol
         // sequence for each color family and choose color from explodecolors.
         cmap = S_expl_tl + offset;
-        color = state.iflags?.use_color === false ? NO_COLOR : CLR_WHITE;
+        color = state.iflags?.wc_color === false ? NO_COLOR : CLR_WHITE;
     } else if ((offset = glyph - GLYPH_EXPLODE_FIERY_OFF) >= 0) {
         cmap = S_expl_tl + offset;
-        color = state.iflags?.use_color === false ? NO_COLOR : CLR_ORANGE;
+        color = state.iflags?.wc_color === false ? NO_COLOR : CLR_ORANGE;
     } else if ((offset = glyph - GLYPH_EXPLODE_MAGICAL_OFF) >= 0) {
         cmap = S_expl_tl + offset;
-        color = state.iflags?.use_color === false ? NO_COLOR : CLR_MAGENTA;
+        color = state.iflags?.wc_color === false ? NO_COLOR : CLR_MAGENTA;
     } else if ((offset = glyph - GLYPH_EXPLODE_WET_OFF) >= 0) {
         cmap = S_expl_tl + offset;
-        color = state.iflags?.use_color === false ? NO_COLOR : CLR_BLUE;
+        color = state.iflags?.wc_color === false ? NO_COLOR : CLR_BLUE;
     } else if ((offset = glyph - GLYPH_EXPLODE_MUDDY_OFF) >= 0) {
         cmap = S_expl_tl + offset;
-        color = state.iflags?.use_color === false ? NO_COLOR : CLR_BROWN;
+        color = state.iflags?.wc_color === false ? NO_COLOR : CLR_BROWN;
     } else if ((offset = glyph - GLYPH_EXPLODE_NOXIOUS_OFF) >= 0) {
         cmap = S_expl_tl + offset;
-        color = state.iflags?.use_color === false ? NO_COLOR : CLR_GREEN;
+        color = state.iflags?.wc_color === false ? NO_COLOR : CLR_GREEN;
     } else if ((offset = glyph - GLYPH_EXPLODE_DARK_OFF) >= 0) {
         cmap = S_expl_tl + offset;
-        color = state.iflags?.use_color === false ? NO_COLOR : CLR_BLACK;
+        color = state.iflags?.wc_color === false ? NO_COLOR : CLR_BLACK;
     } else if ((offset = glyph - GLYPH_SWALLOW_OFF) >= 0) {
         // display.c:2864-2872. The low three bits select one of the eight
         // stomach-wall symbols; the remaining bits select the engulfer's
@@ -2504,8 +2505,9 @@ export function map_glyphinfo(glyph, state = game, options = undefined) {
         cmap = S_grave + offset;
         color = CMAP_COLORS[cmap];
         glyphflags = cmapBlackAndWhiteFlags(cmap, state);
-        // The has_rogue_color arm is the else of C's !iflags.use_color test.
-        if (rogueColor && state.iflags?.use_color !== false)
+        // The has_rogue_color arm is the else of C's !iflags.use_color test;
+        // flag.h defines use_color as wc_color.
+        if (rogueColor && state.iflags?.wc_color !== false)
             color = cmap_to_roguecolor(cmap, state);
         if (cmap === S_fountain) customizationName = 'G_fountain';
     } else if ((offset = glyph - GLYPH_ALTAR_OFF) >= 0) {
@@ -2638,7 +2640,7 @@ export function map_glyphinfo(glyph, state = game, options = undefined) {
     // source branch; no coordinate-specific hero override is requested.
     if (options?.rawGlyphmap) return {
         ttychar: symbol.ttychar ?? symbol.ch.charCodeAt(0),
-        color: state.iflags?.use_color === false ? NO_COLOR : color,
+        color: state.iflags?.wc_color === false ? NO_COLOR : color,
         unicode: symbolUnicode,
     };
 
@@ -5090,11 +5092,9 @@ export function classify_terrain(state = game) {
 // both copies were refreshed, so one cache serves here.
 function _terrainStatus(state = game) {
     state.iflags ??= {};
-    // A new game's level arrival sets MAX_TYPE and js/restore.js sets the
-    // static zero a restored process keeps; a state that reached neither has
-    // no value yet, so classify it as an arrival would.
-    if (state.iflags.terrain_typ === undefined
-        || state.iflags.terrain_typ === MAX_TYPE)
+    // botl.c:1262. A new game's level arrival sets MAX_TYPE; a restored
+    // process keeps the zero it started with (js/restore.js).
+    if (state.iflags.terrain_typ === MAX_TYPE)
         classify_terrain(state);
     const typ = state.iflags.terrain_typ;
     const cache = state.bl_terrain ??= { a_int: STONE, val: '' };
@@ -6466,12 +6466,18 @@ function _statusFieldData(field, valueSnapshot = null) {
     const title = _statusTitle();
     switch (field) {
     case 'title':
-        // botl.c get_hilite() advances through BL_TITLE by the complete
-        // svp.plname byte length even when status formatting truncated the
-        // name. The title has one internal cell per source byte, so multibyte
-        // names follow strlen(), not JavaScript code-unit indexing.
+        // text is blstats[][BL_TITLE].val (botl.c 1007), which
+        // compare_blstats() compares and eval_notify_windowport_field()
+        // tests for emptiness; the %-30s padding changes neither result.
+        // matchText is get_hilite()'s txtstr (2536-2538), which skips the
+        // complete svp.plname byte length even when bot_via_windowport()
+        // cut the name to fit 30 bytes, keeping at least BOTL_NSIZ (995-998),
+        // so a long name leaves it empty or, in C, past the title's end. The
+        // title has one internal cell per source byte, so multibyte names
+        // follow strlen(), not JavaScript code-unit indexing.
         return {
-            text: title.slice(
+            text: title,
+            matchText: title.slice(
                 textBytes(game.plname || 'Hero').length + 5,
             ),
         };
@@ -6542,7 +6548,7 @@ function _statusFieldData(field, valueSnapshot = null) {
         // text; see the BL_TERRAIN note in _collectStatusHilites().
         return {
             text: status_version(game.flags),
-            compareValue: game.flags?.versinfo ?? VI_NUMBER,
+            compareValue: game.flags.versinfo,
         };
     case 'weapon': return { text: weapon_status(game) };
     case 'armor': return { text: armor_status(game) };
@@ -7027,7 +7033,11 @@ function _collectStatusHilites(layouts, onlyField = null) {
             // percentage while the raw BL_XP direction is still downward.
             change = Math.sign(compareValue - previousCompareValue);
         if (updateAll) change = 0;
-        if (notification) {
+        // C ref: botl.c 1590. eval_notify_windowport_field() asks
+        // get_hilite() only when the field changed or its val is not empty;
+        // otherwise both banks keep the rule they had. A field without text
+        // is a number, whose val anything_to_s() never leaves empty.
+        if (notification && (change !== 0 || data.text !== '')) {
             // botl.c get_hilite() picks the rule whatever 'statushilites'
             // says; the tty applies iflags.hilite_delta when it draws the
             // field (wintty.c render_status()), in _statusFieldStyle().
@@ -7037,6 +7047,8 @@ function _collectStatusHilites(layouts, onlyField = null) {
             // both banks only when it notifies the field, including on
             // stat_update_time(). An unchanged field keeps its prior rule.
             gb.status_hilite_rule[1][fld] = selected;
+        }
+        if (notification) {
             // C ref: wintty.c tty_status_update(). tty_status[NOW][BL_TITLE]
             // .color and .attr, which render_status() draws the hitpointbar
             // with, are written by both the BL_TITLE update (the title's own
@@ -7101,11 +7113,15 @@ export function status_eval_next_unhilite(state = game) {
     }
 }
 
+// C ref: botl.c get_hilite() (2364-2589). Its caller decides whether to ask
+// (botl.c 1590; see _collectStatusHilites()). Given rules, an empty match
+// text, such as a long name's title txtstr, still matches every rule but a
+// text rule.
 function _selectStatusHilite(field, data, change = 0, state = game) {
     const rules = (state.iflags?.status_hilites ?? []).filter(
         (rule) => rule.field === field,
     );
-    if (!rules.length || (data.text === '' && data.value == null)) return null;
+    if (!rules.length) return null;
     let selected = null;
     let exact = false;
     let persistent = false;
@@ -7148,8 +7164,8 @@ function _selectStatusHilite(field, data, change = 0, state = game) {
         } else if (rule.behavior === 'text') {
             // C ref: botl.c get_hilite() (2540), which skips '"', ' ', '-'
             // and '_' and folds case.
-            if (fuzzymatch(String(rule.text ?? ''), String(data.text ?? ''),
-                '" -_', true)) {
+            if (fuzzymatch(String(rule.text ?? ''),
+                String(data.matchText ?? data.text ?? ''), '" -_', true)) {
                 selected = rule;
                 exact = true;
             } else if (!exact && field === 'title' && Upolyd(state.u)
@@ -8041,9 +8057,9 @@ export async function cls() {
         // and wintty.h gives it the same bit as the message window's
         // WIN_STOP. After an Escape at --More--, the call neither clears
         // rawprint nor waits; the screen erase below still empties the line.
-        const messageStopped = Boolean(game._ttyMessageStopped);
+        const cancelled = Boolean(messageWindow(game)?.flags & WIN_CANCELLED);
         // tty_display_nhwindow(WIN_MESSAGE, FALSE) clears rawprint first.
-        if (display?.nomuxRaw && !messageStopped)
+        if (display?.nomuxRaw && !cancelled)
             display.nomuxRaw.rawprint = 0;
         // C display.c cls() begins with display_nhwindow(WIN_MESSAGE, FALSE).
         // On the TTY this dismisses a pending --More-- before the old level is
@@ -8053,7 +8069,7 @@ export async function cls() {
         // the other display-window callers so the message state is not carried
         // into the rebuilt map.
         const waitingForMore = display?.toplin === TOPLINE_NEED_MORE;
-        if (!messageStopped && waitingForMore
+        if (!cancelled && waitingForMore
             && await dismissPendingTtyMessage(game)) {
             display.toplin = TOPLINE_NEED_MORE;
             clearTtyMessageWindow(game);

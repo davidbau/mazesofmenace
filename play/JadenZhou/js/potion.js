@@ -21,7 +21,8 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn1, rnl, d, ROLL_FROM, rn2_on_display_rng } from './rng.js';
 import { pline, You, Your, You_feel, pline_The, newsym, see_monsters,
          canseemon, canspotmon, map_invisible, flush_screen, vobj_at,
-         glyph_at, glyph_is_invisible, unmap_object } from './display.js';
+         glyph_at, glyph_is_invisible, unmap_object, tmp_at, DISP_ALWAYS,
+         DISP_END } from './display.js';
 import { getobj, useup, obfree, hands_obj } from './invent.js';
 import { ART_EYES_OF_THE_OVERWORLD } from './artilist.js';
 import { can_reach_floor } from './engrave.js';
@@ -69,7 +70,8 @@ import { Tobjnam, makeplural, makesingular, vtense, an, xname,
 import { mon_nam, Monnam, x_monnam, rndmonnam } from './do_name.js';
 import { s_suffix, dist2, mungspaces } from './hacklib.js';
 import { cansee } from './vision.js';
-import { healmon, wakeup, wake_nearto, killed, monkilled } from './mon.js';
+import { healmon, wakeup, wake_nearto, killed, monkilled, mongone } from './mon.js';
+import { makewish } from './wizcmds.js';
 import { which_armor, mon_set_minvis, mon_adjust_speed } from './worn.js';
 import { bhitm, resist, do_enlightenment_effect } from './zap.js';
 import { mcureblindness } from './muse.js';
@@ -80,6 +82,14 @@ import { safe_qbuf } from './pickup.js';
 import { surface } from './iactions.js';
 import { tty_display_nhwindow, tty_yn_function } from './wintty.js';
 import { float_vs_flight } from './polyself.js';
+import { monster_detect } from './detect.js';
+import { drinkfountain, dipfountain, drinksink, dipsink, floating_above,
+         wash_hands } from './fountain.js';
+import { water_damage } from './trap.js';
+import { waterbody_name } from './pager.js';
+import { is_swimmer } from './mondata.js';
+import { P_SKILL } from './weapon.js';
+import { P_RIDING, P_BASIC } from './const.js';
 
 /* C ref: youprop.h -- the property macros used here */
 function uprop(p) { return game.u.uprops[p]; }
@@ -681,16 +691,20 @@ export async function dodrink() {
         if (IS_FOUNTAIN(typ)
             /* not as low as floor level but similar restrictions apply */
             && can_reach_floor(false)) {
-            if ((await tty_yn_function("Drink from the fountain?", "yn", 'n')) === 'y') /* y_n() */
-                throw new Error('dodrink(): drinkfountain() not ported yet');
+            if ((await tty_yn_function("Drink from the fountain?", "yn", 'n')) === 'y') { /* y_n() */
+                await drinkfountain();
+                return ECMD_TIME;
+            }
             ++drink_ok_extra;
         }
         /* Or a kitchen sink? */
         if (IS_SINK(typ)
             /* not as low as floor level but similar restrictions apply */
             && can_reach_floor(false)) {
-            if ((await tty_yn_function("Drink from the sink?", "yn", 'n')) === 'y') /* y_n() */
-                throw new Error('dodrink(): drinksink() not ported yet');
+            if ((await tty_yn_function("Drink from the sink?", "yn", 'n')) === 'y') { /* y_n() */
+                await drinksink();
+                return ECMD_TIME;
+            }
             ++drink_ok_extra;
         }
         /* Or are you surrounded by water? */
@@ -1086,7 +1100,10 @@ async function peffect_monster_detection(otmp) {
             return 0;
         }
     }
-    throw new Error('peffect_monster_detection(): monster_detect() not ported yet');
+    if (await monster_detect(otmp, 0))
+        return 1; /* nothing detected */
+    exercise(A_WIS, true);
+    return 0;
 }
 
 // C ref: potion.c peffect_object_detection()
@@ -2026,6 +2043,25 @@ export async function potionbreathe(obj) {
     }
 }
 
+// C ref: potion.c mongrantswish() -- *monp grants a wish and then leaves
+// the game (monp is { mon }; mon is set to null)
+export async function mongrantswish(monp) {
+    const mon = monp.mon;
+    const mx = mon.mx, my = mon.my, glyph = glyph_at(mx, my);
+
+    /* remove the monster first in case wish proves to be fatal
+       (blasted by artifact), to keep it out of resulting bones file */
+    mongone(mon);
+    monp.mon = null; /* inform caller that monster is gone */
+    /* hide that removal from player--map is visible during wish prompt */
+    tmp_at(DISP_ALWAYS, glyph);
+    tmp_at(mx, my);
+    /* grant the wish */
+    await makewish();
+    /* clean up */
+    tmp_at(DISP_END, 0);
+}
+
 // C ref: potion.c djinni_from_bottle()
 export async function djinni_from_bottle(obj) {
     void obj;
@@ -2294,18 +2330,48 @@ export async function dodip() {
         } else if (at_fountain) {
             /* "Dip <the object> into the fountain?" */
             if ((await tty_yn_function(`Dip ${verbose ? obuf : shortestname
-                                       } into the fountain?`, "yn", 'n')) === 'y') /* y_n() */
-                throw new Error('dodip(): dipfountain() not ported yet');
+                                       } into the fountain?`, "yn", 'n')) === 'y') { /* y_n() */
+                if (!is_hands)
+                    obj.pickup_prev = 0;
+                await dipfountain(obj);
+                return ECMD_TIME;
+            }
             ++drink_ok_extra;
         } else if (at_sink) {
             if ((await tty_yn_function(`Dip ${verbose ? obuf : shortestname
-                                       } into the sink?`, "yn", 'n')) === 'y') /* y_n() */
-                throw new Error('dodip(): dipsink() not ported yet');
+                                       } into the sink?`, "yn", 'n')) === 'y') { /* y_n() */
+                if (!is_hands)
+                    obj.pickup_prev = 0;
+                await dipsink(obj);
+                return ECMD_TIME;
+            }
             ++drink_ok_extra;
         } else if (at_pool) {
-            /* waterbody_name(), "Dip <the object> into the {pool, moat, &c}?",
-               wash_hands(), water_damage() */
-            throw new Error('dodip(): dipping into a pool not ported yet');
+            const pooltype = waterbody_name(u.ux, u.uy);
+
+            /* "Dip <the object> into the {pool, moat, &c}?" */
+            if ((await tty_yn_function(`Dip ${verbose ? obuf : shortestname
+                                       } into the ${pooltype}?`, "yn", 'n')) === 'y') { /* y_n() */
+                if (Levitation()) {
+                    await floating_above(pooltype);
+                } else if (u.usteed && !is_swimmer(u.usteed.data)
+                           && P_SKILL(P_RIDING) < P_BASIC) {
+                    throw new Error('dodip(): rider_cant_reach() not ported yet');
+                } else if (is_hands || obj === game.uarmg) {
+                    if (!is_hands)
+                        obj.pickup_prev = 0;
+                    await wash_hands();
+                } else {
+                    obj.pickup_prev = 0;
+                    if (obj.otyp === O.POT_ACID)
+                        obj.in_use = 1;
+                    if ((await water_damage(obj, null, true)) !== 3 /* ER_DESTROYED */
+                        && obj.in_use)
+                        useup(obj);
+                }
+                return ECMD_TIME;
+            }
+            ++drink_ok_extra;
         }
     }
 

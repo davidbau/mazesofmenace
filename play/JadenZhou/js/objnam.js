@@ -27,6 +27,7 @@ import {
     NON_PM, MALE, FEMALE, NEUTRAL, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG,
     BLINDED, HALLUC, Has_contents, has_oname, ONAME,
     W_ARMOR, W_AMUL, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, ONAME_WISH, GLIB,
+    W_BALL, W_CHAIN,
     COST_CONTENTS,
 } from './const.js';
 import * as M from './monsters.js';
@@ -53,12 +54,14 @@ import { the as the_article } from './iactions.js';
 import { is_unpaid, unpaid_cost, get_cost_of_shop_item,
          record_price_quote, append_price_quote } from './shk.js';
 import { currency } from './insight.js';
+import { candy_wrapper_text } from './read.js';
 import {
     mksobj, mkobj, curse, weight, erosion_matters, is_flammable,
     is_rustprone, is_crackable, is_corrodeable, is_rottable, is_damageable,
     is_poisonable, permapoisoned, Is_candle, is_weptool, rnd_class,
     Is_container,
 } from './mkobj.js';
+import { delete_contents } from './invent.js';
 
 // C ref: decl.c vowels[]
 const vowels = "aeiouAEIOU";
@@ -2440,7 +2443,7 @@ export function readobjnam(bp, no_wish) {
         case O.STATUE:
             d.otmp.corpsenm = d.mntmp;
             if (Has_contents(d.otmp) && verysmall(mons[d.mntmp]))
-                not_ported('readobjnam() statue delete_contents()');
+                delete_contents(d.otmp); /* no spellbook */
             break;
         case O.SCALE_MAIL:
             /* Dragon mail - depends on the order of objects & dragons. */
@@ -2507,7 +2510,7 @@ export function readobjnam(bp, no_wish) {
             if (d.otmp.spe > 0)
                 d.otmp.spe = 0;
         } else if (d.otmp.cobj && d.otmp.cobj.length) { /* Has_contents() */
-            not_ported('delete_contents()');
+            delete_contents(d.otmp);
         }
     }
     /* set locked/unlocked/broken */
@@ -2747,7 +2750,7 @@ function xcalled(pfx, sfx) {
 
 /* C ref: do_wear.c hard_helmet(); obj.h is_helmet(); objclass.h
    is_metallic() */
-function hard_helmet(obj) {
+export function hard_helmet(obj) {
     if (!obj || !(obj.oclass === O.ARMOR_CLASS
                   && objects[obj.otyp].oc_armcat === O.ARM_HELM))
         return false;
@@ -2947,6 +2950,14 @@ export function xname(obj) {
     return xname_flags(obj, 0);
 }
 
+// C ref: objnam.c cxname()
+/* xname doesn't include monster type for "corpse"; cxname does */
+export function cxname(obj) {
+    if (obj.otyp === O.CORPSE)
+        return corpse_xname(obj, null, CXN_NORMAL);
+    return xname(obj);
+}
+
 // C ref: objnam.c cxname_singular()
 /* like cxname, but ignores quantity */
 export function cxname_singular(obj) {
@@ -2996,11 +3007,56 @@ export function yname(obj) {
     return `${(obj.where === 'OBJ_INVENT') ? "your" : "the"} ${s}`;
 }
 
+// C ref: objnam.c Yname2()
+/* capitalized variant of yname() */
+export function Yname2(obj) {
+    const s = yname(obj);
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// C ref: objnam.c aobjnam()
+/* format the object name with a count (for plural) and a verb */
+export function aobjnam(otmp, verb) {
+    let bp = (otmp.otyp === O.CORPSE) ? corpse_xname(otmp, null, CXN_NORMAL)
+                                      : xname(otmp); /* cxname() */
+    if (otmp.quan !== 1)
+        bp = `${otmp.quan} ${bp}`;
+    if (verb)
+        bp += ` ${otense(otmp, verb)}`;
+    return bp;
+}
+
+// C ref: objnam.c yobjnam() -- shk_your() for shop and monster ownership
+// isn't ported yet (see yname())
+export function yobjnam(obj, verb) {
+    let s = aobjnam(obj, verb);
+
+    /* leave off "your" for most of your artifacts, but prepend
+     * "your" for unique objects and "foo of bar" quest artifacts */
+    if (obj.where !== 'OBJ_INVENT' || !obj_is_pname(obj)
+        || obj.oartifact >= ART_ORB_OF_DETECTION_ID) {
+        if (obj.unpaid || obj.no_charge || obj.where === 'OBJ_MINVENT')
+            throw new Error('yobjnam(): shk_owns()/mon_owns() not ported yet');
+        s = `${(obj.where === 'OBJ_INVENT') ? "your" : "the"} ${s}`;
+    }
+    return s;
+}
+
+// C ref: objnam.c Yobjnam2()
+/* capitalized variant of yobjnam() */
+export function Yobjnam2(obj, verb) {
+    const s = yobjnam(obj, verb);
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/* C ref: artilist.h ART_ORB_OF_DETECTION (first quest artifact) */
+const ART_ORB_OF_DETECTION_ID = 21;
+
 // C ref: objnam.c xname_flags()
 function xname_flags(obj, cxn_flags) {
     const typ = obj.otyp;
     const ocl = objects[typ];
-    const nn = ocl.oc_name_known;
+    let nn = ocl.oc_name_known;
     const omndx = obj.corpsenm;
     let actualn = OBJ_NAME(ocl);
     let dn = OBJ_DESCR(ocl);
@@ -3027,10 +3083,15 @@ function xname_flags(obj, cxn_flags) {
     if (Role_if_x(M.PM_CLERIC))
         obj.bknown = 1;
 
-    /* iflags.override_ID (wizard-mode ^I) is not ported */
-    const known = obj.known;
-    const dknown = obj.dknown;
-    const bknown = obj.bknown;
+    let known, dknown, bknown;
+    if (game.iflags?.override_ID) {
+        known = dknown = bknown = true;
+        nn = 1;
+    } else {
+        known = obj.known;
+        dknown = obj.dknown;
+        bknown = obj.bknown;
+    }
 
     /*
      * Maybe find a previously unseen artifact.
@@ -3263,8 +3324,24 @@ function xname_flags(obj, cxn_flags) {
         /* if the name should be plural, do that now */
         if (pluralize)
             buf = makeplural(buf);
-        if (game.program_state?.gameover && obj.o_id)
-            xn_not_ported('end-of-game shirt/apron text');
+        /* end-of-game disclosure: readable text on worn/carried items */
+        if (game.program_state?.gameover && obj.o_id) {
+            switch (obj.otyp) {
+            case O.T_SHIRT:
+            case O.ALCHEMY_SMOCK:
+            case O.HAWAIIAN_SHIRT:
+                xn_not_ported('end-of-game shirt/apron text');
+                break;
+            case O.CANDY_BAR: {
+                const lbl = candy_wrapper_text(obj);
+                if (lbl)
+                    buf += ` labeled "${lbl}"`;
+                break;
+            }
+            default:
+                break;
+            }
+        }
     }
 
     if (nameit || (has_oname(obj) && dknown)) {
@@ -3290,7 +3367,7 @@ function xname_flags(obj, cxn_flags) {
 export function obj_is_pname(obj) {
     if (!obj.oartifact || !has_oname(obj))
         return false;
-    if (!game.program_state?.gameover /* && !iflags.override_ID */) {
+    if (!game.program_state?.gameover && !game.iflags?.override_ID) {
         if (not_fully_identified(obj))
             return false;
     }
@@ -3325,9 +3402,9 @@ export function not_fully_identified(otmp) {
 // C ref: objnam.c the_unique_obj()
 /* used for naming "the unique_item" instead of "a unique_item" */
 export function the_unique_obj(obj) {
-    const known = obj.known; /* || iflags.override_ID */
+    const known = (obj.known || game.iflags?.override_ID);
 
-    if (!obj.dknown /* && !iflags.override_ID */)
+    if (!obj.dknown && !game.iflags?.override_ID)
         return false;
     else if (obj.otyp === O.FAKE_AMULET_OF_YENDOR && !known)
         return true; /* lie */
@@ -3340,8 +3417,7 @@ export function the_unique_obj(obj) {
 // (C appends to its prefix buffer in place)
 function add_erosion_words(obj, prefix) {
     const iscrys = (obj.otyp === O.CRYSKNIFE);
-    /* iflags.override_ID (wizard-mode ^I) is not ported */
-    const rknown = obj.rknown;
+    const rknown = !game.iflags?.override_ID ? obj.rknown : true;
 
     if (!is_damageable(obj) && !iscrys)
         return prefix;
@@ -3406,9 +3482,16 @@ function doname_base(obj, doname_flags) {
     let prefix = '';
     let bp = xname(obj);
 
-    /* iflags.override_ID is not ported */
-    const known = obj.known, dknown = obj.dknown, cknown = obj.cknown,
-          bknown = obj.bknown, lknown = obj.lknown;
+    let known, dknown, cknown, bknown, lknown;
+    if (game.iflags?.override_ID) {
+        known = dknown = cknown = bknown = lknown = true;
+    } else {
+        known = obj.known;
+        dknown = obj.dknown;
+        cknown = obj.cknown;
+        bknown = obj.bknown;
+        lknown = obj.lknown;
+    }
 
     if (bp.startsWith("poisoned ") && obj.opoisoned) {
         bp = bp.slice(9);
@@ -3574,6 +3657,8 @@ function doname_base(obj, doname_flags) {
     case O.BALL_CLASS:
     case O.CHAIN_CLASS:
         prefix = add_erosion_words(obj, prefix);
+        if (obj.owornmask & (W_BALL | W_CHAIN))
+            bp += ` (${(obj.owornmask & W_BALL) ? "chained" : "attached"} to you)`;
         break;
     }
 
@@ -3635,7 +3720,7 @@ function doname_base(obj, doname_flags) {
                     : "at the ready"})`;
     }
     if ((obj.owornmask & ~(W_ARMOR | W_AMUL | W_WEP | W_SWAPWEP | W_QUIVER
-                           | W_RINGL | W_RINGR))
+                           | W_RINGL | W_RINGR | W_BALL | W_CHAIN))
         || ((obj.owornmask & (W_RINGL | W_RINGR)) && obj.oclass !== O.RING_CLASS))
         xn_not_ported('meat ring/tool/leash worn suffixes');
 

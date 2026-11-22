@@ -19,6 +19,15 @@ import { objects, CLOTH, COIN_CLASS, LARGE_BOX, CHEST, TOWEL, CORPSE,
          CREAM_PIE } from './objects.js';
 import { mons, S_DRAGON, S_EEL, M1_HIDE, M1_HUMANOID, M1_SLITHY, M1_AMORPHOUS,
          M1_OVIPAROUS, M1_SWIM, PM_TRAPPER, PM_GREMLIN } from './monsters.js';
+import { curse, unbless } from './mkobj.js';
+import { spec_ability, SPFX_INTEL } from './artifact.js';
+import { ART_MAGICBANE } from './artilist.js';
+import { Tobjnam, Yobjnam2 } from './objnam.js';
+import { hcolor } from './do_name.js';
+import { which_armor } from './worn.js';
+import { Blind, Hallucination } from './display.js';
+import { rn2, rnd } from './rng.js';
+import { ANTIMAGIC, HALF_SPDAM, W_SADDLE } from './const.js';
 
 /* C ref: mondata.h macros used here */
 const is_hider = (ptr) => (ptr.mflags1 & M1_HIDE) !== 0;
@@ -165,4 +174,92 @@ async function in_water() {
     /* You("sit in the %s.", hliquid("water")); gremlin split_mon(), the
        water_damage() rolls */
     throw new Error('dosit(): sitting in water (hliquid(), water_damage()) not ported yet');
+}
+
+/* C ref: youprop.h Antimagic, Half_spell_damage */
+function Antimagic() {
+    const p = uprop(ANTIMAGIC);
+    return !!(p.intrinsic || p.extrinsic);
+}
+function Half_spell_damage() {
+    const p = uprop(HALF_SPDAM);
+    return !!(p.intrinsic || p.extrinsic);
+}
+/* C ref: artifact.h u_wield_art() */
+function u_wield_art(art) { return !!game.uwep && game.uwep.oartifact === art; }
+/* C ref: color.h NH_BLACK */
+const NH_BLACK = "black";
+
+// C ref: sit.c rndcurse()
+/* curse a few inventory items at random! */
+export async function rndcurse() {
+    let nobj = 0;
+    let cnt, onum;
+    let otmp;
+    const mal_aura = (s) => `feel a malignant aura surround ${s}.`;
+
+    if (u_wield_art(ART_MAGICBANE) && rn2(20)) {
+        await You(mal_aura("the magic-absorbing blade"));
+        return;
+    }
+
+    if (Antimagic()) {
+        /* shieldeff(u.ux, u.uy): transient display only */
+    }
+
+    await You(mal_aura("you"));
+
+    for (otmp = game.invent; otmp; otmp = otmp.nobj) {
+        /* gold isn't subject to being cursed or blessed */
+        if (otmp.oclass === COIN_CLASS)
+            continue;
+        nobj++;
+    }
+    cnt = rnd(Math.trunc(6 / ((Antimagic() ? 1 : 0)
+                              + (Half_spell_damage() ? 1 : 0) + 1)));
+    if (nobj) {
+        for (; cnt > 0; cnt--) {
+            onum = rnd(nobj);
+            for (otmp = game.invent; otmp; otmp = otmp.nobj) {
+                /* as above */
+                if (otmp.oclass === COIN_CLASS)
+                    continue;
+                if (--onum === 0)
+                    break; /* found the target */
+            }
+            /* the !otmp case should never happen; picking an already
+               cursed item happens--avoid "resists" message in that case */
+            if (!otmp || otmp.cursed)
+                continue; /* next target */
+
+            if (otmp.oartifact && spec_ability(otmp, SPFX_INTEL)
+                && rn2(10) < 8) {
+                await pline(`${Tobjnam(otmp, "resist")}!`);
+                continue;
+            }
+
+            if (otmp.blessed)
+                unbless(otmp);
+            else
+                curse(otmp);
+        }
+        /* update_inventory(): no perm_invent window */
+    }
+
+    /* treat steed's saddle as extended part of hero's inventory */
+    if (game.u.usteed && !rn2(4)
+        && (otmp = which_armor(game.u.usteed, W_SADDLE)) && !otmp.cursed) {
+        /* skip if already cursed */
+        if (otmp.blessed)
+            unbless(otmp);
+        else
+            curse(otmp);
+        if (!Blind()) {
+            await pline(`${Yobjnam2(otmp, "glow")} ${
+                hcolor(otmp.cursed ? NH_BLACK : "brown")}.`);
+            otmp.bknown = Hallucination() ? 0 : 1; /* bypass set_bknown() */
+        } else {
+            otmp.bknown = 0; /* bypass set_bknown() */
+        }
+    }
 }

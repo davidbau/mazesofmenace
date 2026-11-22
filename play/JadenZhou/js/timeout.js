@@ -7,6 +7,7 @@
 // JS port does yet starts them (see the comments below).
 
 import { game } from './gstate.js';
+import * as P from './const.js';
 import { rnd } from './rng.js';
 import { MAX_EGG_HATCH_TIME } from './const.js';
 import { pline } from './display.js';
@@ -42,6 +43,107 @@ import { spec_ability, SPFX_LUCK } from './artifact.js';
 
 /* C ref: role.h Role_if() */
 function Role_if(pm) { return game.urole.mnum === pm; }
+
+
+// C ref: timeout.c propertynames[]
+/* used by wizard mode #timeout and #wizintrinsic; order by 'interest'
+   for timeout countdown, where most won't occur in normal play */
+const propertynames = [
+    { prop_num: P.INVULNERABLE, prop_name: "invulnerable" },
+    { prop_num: P.STONED, prop_name: "petrifying" },
+    { prop_num: P.SLIMED, prop_name: "becoming slime" },
+    { prop_num: P.STRANGLED, prop_name: "strangling" },
+    { prop_num: P.SICK, prop_name: "fatally sick" },
+    { prop_num: P.STUNNED, prop_name: "stunned" },
+    { prop_num: P.CONFUSION, prop_name: "confused" },
+    { prop_num: P.HALLUC, prop_name: "hallucinating" },
+    { prop_num: P.BLINDED, prop_name: "blinded" },
+    { prop_num: P.DEAF, prop_name: "deafness" },
+    { prop_num: P.VOMITING, prop_name: "vomiting" },
+    { prop_num: P.GLIB, prop_name: "slippery fingers" },
+    { prop_num: P.WOUNDED_LEGS, prop_name: "wounded legs" },
+    { prop_num: P.SLEEPY, prop_name: "sleepy" },
+    { prop_num: P.TELEPORT, prop_name: "teleporting" },
+    { prop_num: P.POLYMORPH, prop_name: "polymorphing" },
+    { prop_num: P.LEVITATION, prop_name: "levitating" },
+    { prop_num: P.FAST, prop_name: "very fast" },
+    { prop_num: P.CLAIRVOYANT, prop_name: "clairvoyant" },
+    { prop_num: P.DETECT_MONSTERS, prop_name: "monster detection" },
+    { prop_num: P.SEE_INVIS, prop_name: "see invisible" },
+    { prop_num: P.INVIS, prop_name: "invisible" },
+    /* temporary acid resistance and stone resistance can come from eating */
+    { prop_num: P.ACID_RES, prop_name: "acid resistance" },
+    { prop_num: P.STONE_RES, prop_name: "stoning resistance" },
+    /* timed displacement is possible via eating a displacer beast corpse */
+    { prop_num: P.DISPLACED, prop_name: "displaced" },
+    /* timed pass-walls is a potential prayer result if surrounded by stone
+       with nowhere to be safely teleported to */
+    { prop_num: P.PASSES_WALLS, prop_name: "pass thru walls" },
+    /* likewise for magical breathing vs poison gas regions */
+    { prop_num: P.MAGICAL_BREATHING, prop_name: "magical breathing" },
+    /* timed fire resistance and water walking are possible in explore mode
+       (as well as in wizard mode) after life-saving in lava if it fails to
+       teleport the hero to safety and player declines to die */
+    { prop_num: P.WWALKING, prop_name: "water walking" },
+    { prop_num: P.FIRE_RES, prop_name: "fire resistance" },
+    /*
+     * Properties beyond here don't have timed values during normal play,
+     * so there's not much point in trying to order them sensibly.
+     * They're either on or off based on equipment, role, actions, &c,
+     * but in wizard mode, #wizintrinsic can give them as timed effects.
+     */
+    { prop_num: P.COLD_RES, prop_name: "cold resistance" },
+    { prop_num: P.SLEEP_RES, prop_name: "sleep resistance" },
+    { prop_num: P.DISINT_RES, prop_name: "disintegration resistance" },
+    { prop_num: P.SHOCK_RES, prop_name: "shock resistance" },
+    { prop_num: P.POISON_RES, prop_name: "poison resistance" },
+    { prop_num: P.DRAIN_RES, prop_name: "drain resistance" },
+    { prop_num: P.SICK_RES, prop_name: "sickness resistance" },
+    { prop_num: P.ANTIMAGIC, prop_name: "magic resistance" },
+    { prop_num: P.HALLUC_RES, prop_name: "hallucination resistance" },
+    { prop_num: P.BLND_RES, prop_name: "light-induced blindness resistance" },
+    { prop_num: P.FUMBLING, prop_name: "fumbling" },
+    { prop_num: P.HUNGER, prop_name: "voracious hunger" },
+    { prop_num: P.TELEPAT, prop_name: "telepathic" },
+    { prop_num: P.WARNING, prop_name: "warning" },
+    { prop_num: P.WARN_OF_MON, prop_name: "warn: monster type or class" },
+    { prop_num: P.WARN_UNDEAD, prop_name: "warn: undead" },
+    { prop_num: P.SEARCHING, prop_name: "searching" },
+    { prop_num: P.INFRAVISION, prop_name: "infravision" },
+    { prop_num: P.ADORNED, prop_name: "adorned (+/- Cha)" },
+    { prop_num: P.STEALTH, prop_name: "stealthy" },
+    { prop_num: P.AGGRAVATE_MONSTER, prop_name: "monster aggravation" },
+    { prop_num: P.CONFLICT, prop_name: "conflict" },
+    { prop_num: P.JUMPING, prop_name: "jumping" },
+    { prop_num: P.TELEPORT_CONTROL, prop_name: "teleport control" },
+    { prop_num: P.FLYING, prop_name: "flying" },
+    { prop_num: P.SWIMMING, prop_name: "swimming" },
+    { prop_num: P.SLOW_DIGESTION, prop_name: "slow digestion" },
+    { prop_num: P.HALF_SPDAM, prop_name: "half spell damage" },
+    { prop_num: P.HALF_PHDAM, prop_name: "half physical damage" },
+    { prop_num: P.REGENERATION, prop_name: "HP regeneration" },
+    { prop_num: P.ENERGY_REGENERATION, prop_name: "energy regeneration" },
+    { prop_num: P.PROTECTION, prop_name: "extra protection" },
+    { prop_num: P.PROT_FROM_SHAPE_CHANGERS, prop_name: "protection from shape changers" },
+    { prop_num: P.POLYMORPH_CONTROL, prop_name: "polymorph control" },
+    { prop_num: P.UNCHANGING, prop_name: "unchanging" },
+    { prop_num: P.REFLECTING, prop_name: "reflecting" },
+    { prop_num: P.FREE_ACTION, prop_name: "free action" },
+    { prop_num: P.FIXED_ABIL, prop_name: "fixed abilities" },
+    { prop_num: P.LIFESAVED, prop_name: "life will be saved" },
+    { prop_num: 0, prop_name: null },
+];
+
+// C ref: timeout.c property_by_index()
+/* returns the property's name and sets propertynum.v to its number */
+export function property_by_index(idx, propertynum) {
+    if (!(idx >= 0 && idx < propertynames.length)) /* IndexOkT() */
+        idx = propertynames.length - 1;
+
+    if (propertynum)
+        propertynum.v = propertynames[idx].prop_num;
+    return propertynames[idx].prop_name;
+}
 
 // C ref: artifact.c confers_luck()
 export function confers_luck(obj) {

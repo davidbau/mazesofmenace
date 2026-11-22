@@ -8,7 +8,8 @@ import { obj_resists } from './dogmove.js';
 import { maybe_unhide_at } from './mon.js';
 import { doname, doname_with_price, makeplural } from './objnam.js';
 import { rn2 } from './rng.js';
-import { ing_suffix } from './hacklib.js';
+import { ing_suffix, visctrl } from './hacklib.js';
+import { def_oc_syms } from './drawing.js';
 import { body_part, hidden_gold, currency, empty_handed } from './insight.js';
 import { money_cnt } from './u_init.js';
 import { welded } from './wield.js';
@@ -25,7 +26,7 @@ import * as O from './objects.js';
 import { NO_COLOR, ATR_NONE, ATR_INVERSE } from './terminal.js';
 import {
     NHW_MENU, WIN_ERR, PICK_NONE, PICK_ONE, MENU_BEHAVE_STANDARD,
-    MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SKIPMENUCOLORS,
+    MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SKIPMENUCOLORS, MENU_ITEMFLAGS_SKIPINVERT,
     LOST_NONE, LOST_THROWN, LOST_EXPLODING, BLINDED, HALLUC,
     ONAME, has_oname,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_INACCESS,
@@ -39,21 +40,32 @@ import { mons, PM_COCKATRICE, PM_CHICKATRICE } from './monsters.js';
 import { STONE_RES, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED,
          BUC_UNKNOWN } from './const.js';
 import { weight, erosion_matters, Is_candle, obj_extract_self, splitobj,
-         dead_species } from './mkobj.js';
+         dead_species, curse } from './mkobj.js';
 import { itemactions } from './iactions.js';
-import { NON_PM, P_DAGGER, P_SHORT_SWORD, P_SABER, P_SPEAR } from './const.js';
+import { NON_PM, P_DAGGER, P_SHORT_SWORD, P_SABER, P_SPEAR, Is_knox_level,
+         Is_earthlevel, Is_airlevel, Is_firelevel, Is_waterlevel } from './const.js';
+import { dunlev, depth } from './dungeon.js';
+import { is_quest_artifact } from './questpgr.js';
+import { artitouch } from './quest.js';
+import { set_artifact_intrinsic, set_artifact_intrinsic_sync } from './artifact.js';
+import { record_achievement } from './insight.js';
+import { ACH_AMUL, ACH_CNDL, ACH_BELL, ACH_BOOK, ACH_MINE_PRIZE, ACH_SOKO_PRIZE,
+         W_ART } from './const.js';
 import { ART_MJOLLNIR } from './artilist.js';
 import { is_missile, is_ammo, setuqwep } from './wield.js';
 import { confers_luck } from './timeout.js';
 import { set_moreluck } from './attrib.js';
-import { setnotworn } from './worn.js';
+import { setnotworn, setworn } from './worn.js';
+import { oname } from './do_name.js';
+import { W_WEP, W_SWAPWEP, W_QUIVER, ONAME_SKIP_INVUPD } from './const.js';
 import { food_disappears } from './eat.js';
+import { maybe_reset_pick } from './lock.js';
 import { costly_spot, shop_keeper, inside_shop, inhishop, next_shkp, onbill,
          same_price } from './shk.js';
 import {
     tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
     tty_select_menu, tty_message_menu, tty_yn_function, tty_display_nhwindow,
-    tty_putstr, tty_destroy_nhwindow,
+    tty_putstr, tty_destroy_nhwindow, add_menu_str,
 } from './wintty.js';
 
 const invlet_basic = 52;
@@ -281,8 +293,8 @@ function sortloot_invent(sortpack) {
 
 // C ref: invent.c display_pickinv() -- internal function used by
 // display_inventory and getobj that can display inventory and return a
-// count as well as a letter (no wizard identify, no perm_invent, no
-// in-use-only listing)
+// count as well as a letter (wizard identify only when everything is
+// identified already; no perm_invent, no in-use-only listing)
 async function display_pickinv(lets, /* non-compacted list of invlet values */
                                xtra_choice, /* non-object "bare hands" or "fingers" */
                                query, /* optional; prompt string for menu */
@@ -298,8 +310,7 @@ async function display_pickinv(lets, /* non-compacted list of invlet values */
     if (lets && !lets.length)
         lets = null; /* simplify tests: (lets) instead of (lets && *lets) */
 
-    if (game.iflags?.override_ID && game.flags?.debug)
-        throw new Error('display_pickinv(): wizid is not ported yet');
+    const wizid = !!(game.flags?.debug && game.iflags?.override_ID);
 
     /* partial inventory in perm_invent setting; don't operate on
        full inventory window, use an alternate one instead; create
@@ -312,9 +323,9 @@ async function display_pickinv(lets, /* non-compacted list of invlet values */
     n = lets ? lets.length
              : !game.invent ? 0 : !game.invent.nobj ? 1 : 2;
     /* for xtra_choice, there's another 'item' not included in initial 'n';
-       for !lets (full invent), skip message_menu handling of single item
-       even if item count was 1 */
-    if (usextra || (n === 1 && !lets))
+       for !lets (full invent) and for override_ID (wizard mode identify),
+       skip message_menu handling of single item even if item count was 1 */
+    if (usextra || (n === 1 && (!lets || wizid)))
         ++n;
     if (n === 0) {
         await pline("Not carrying anything.");
@@ -353,7 +364,31 @@ async function display_pickinv(lets, /* non-compacted list of invlet values */
         throw new Error('display_pickinv(): in-use/sortloot menus are not ported yet');
     const sortedinvent = sortloot_invent(sortpack);
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
-    if (usextra) {
+    const wizid_fakeobj = { wizid_fakeobj: true }; /* struct obj wizid_fakeobj */
+    if (wizid) {
+        let prompt;
+        const unid_cnt = count_unidentified(game.invent);
+
+        prompt = "Debug Identify"; /* 'title' rather than 'prompt' */
+        if (unid_cnt)
+            prompt += ` -- unidentified or partially identified item${unid_cnt !== 1 ? "s" : ""}`;
+        add_menu_str(win, prompt);
+        if (!unid_cnt) {
+            add_menu_str(win,
+                         "(all items are permanently identified already)");
+        } else {
+            prompt = `select ${(unid_cnt === 1) ? "it" : "any or all of them"} to permanently identify`;
+            /* wiz_identify stuffed the wiz_identify command character (^I)
+               into iflags.override_ID for our use as an accelerator;
+               it could be ambiguous if player has assigned a letter to
+               the #wizidentify command, so include it as a group accelerator
+               but use '_' as the primary selector */
+            if (unid_cnt > 1)
+                prompt += ` (${visctrl(game.iflags.override_ID)} for all)`;
+            tty_add_menu(win, null, wizid_fakeobj, '_',
+                         String.fromCharCode(game.iflags.override_ID), ATR_NONE, clr, prompt, MENU_ITEMFLAGS_SKIPINVERT);
+        }
+    } else if (usextra) {
         if (sortpack)
             add_menu_heading(win, "Miscellaneous");
         tty_add_menu(win, null, HANDS_SYM, HANDS_SYM, '', ATR_NONE, clr,
@@ -369,6 +404,8 @@ async function display_pickinv(lets, /* non-compacted list of invlet values */
             if (lets && !lets.includes(otmp.invlet))
                 continue;
             if (!sortpack || otmp.oclass === def_inv_order[invlet]) {
+                if (wizid && !not_fully_identified_iv(otmp))
+                    continue;
                 /* maybe insert a class header */
                 if (sortpack && !classcount) {
                     const withsym = (want_reply && game.iflags?.menu_head_objsym);
@@ -377,10 +414,12 @@ async function display_pickinv(lets, /* non-compacted list of invlet values */
                     classcount++;
                 }
                 const ilet = otmp.invlet;
-                /* obj_to_glyph()/map_glyphinfo(): tty menus don't show
+                /* any.a_obj = otmp (wizid) or any.a_char = ilet;
+                   obj_to_glyph()/map_glyphinfo(): tty menus don't show
                    the glyph */
-                tty_add_menu(win, null, ilet, ilet, '', ATR_NONE, clr,
-                             doname(otmp), MENU_ITEMFLAGS_NONE);
+                tty_add_menu(win, null, wizid ? otmp : ilet, ilet,
+                             wizid ? def_oc_syms[otmp.oclass] : '',
+                             ATR_NONE, clr, doname(otmp), MENU_ITEMFLAGS_NONE);
             }
         }
         if (!sortpack)
@@ -396,9 +435,33 @@ async function display_pickinv(lets, /* non-compacted list of invlet values */
         throw new Error('display_pickinv(): force_invmenu is not ported yet');
 
     tty_end_menu(win, (query && query[0]) ? query : null);
-    const res = await tty_select_menu(win, want_reply ? PICK_ONE : PICK_NONE);
+    const res = await tty_select_menu(win, wizid ? PICK_ANY
+                                           : want_reply ? PICK_ONE : PICK_NONE);
     n = res.n;
-    if (n > 0) {
+    if (n > 0 && wizid) {
+        let all_id = false;
+
+        /* identifying items will update perm_invent, calling this
+           routine recursively, and we don't want the nested call
+           to filter on unID'd items */
+        game.iflags.override_ID = 0;
+        ret = '\0';
+        for (let i = 0; i < n; ++i) {
+            const otmp = res.selected[i].item;
+            if (otmp === wizid_fakeobj) {
+                await identify_pack(0, false);
+                /* identify_pack() performs update_inventory() */
+                all_id = true;
+                break;
+            } else {
+                if (not_fully_identified_iv(otmp))
+                    await identify(otmp);
+                /* identify() does not perform update_inventory() */
+            }
+        }
+        /* if (!all_id) update_inventory(): no perm_invent */
+        void all_id;
+    } else if (n > 0) {
         ret = res.selected[0].item;
         if (out_cnt)
             out_cnt.v = res.selected[0].count;
@@ -414,18 +477,38 @@ export async function display_inventory(lets, want_reply) {
 
 // C ref: invent.c freeinv_core()
 function freeinv_core(obj) {
+    const u = game.u;
+
     if (obj.oclass === O.COIN_CLASS) {
         game.disp_botl = true;
         return;
-    } else if (obj.otyp === O.AMULET_OF_YENDOR
-               || obj.otyp === O.CANDELABRUM_OF_INVOCATION
-               || obj.otyp === O.BELL_OF_OPENING
-               || obj.otyp === O.SPE_BOOK_OF_THE_DEAD || obj.oartifact) {
-        throw new Error('freeinv_core(): invocation items/artifacts not ported yet');
+    } else if (obj.otyp === O.AMULET_OF_YENDOR) {
+        if (!u.uhave.amulet)
+            console.error("impossible: don't have amulet?");
+        u.uhave.amulet = 0;
+    } else if (obj.otyp === O.CANDELABRUM_OF_INVOCATION) {
+        if (!u.uhave.menorah)
+            console.error("impossible: don't have candelabrum?");
+        u.uhave.menorah = 0;
+    } else if (obj.otyp === O.BELL_OF_OPENING) {
+        if (!u.uhave.bell)
+            console.error("impossible: don't have silver bell?");
+        u.uhave.bell = 0;
+    } else if (obj.otyp === O.SPE_BOOK_OF_THE_DEAD) {
+        if (!u.uhave.book)
+            console.error("impossible: don't have the book?");
+        u.uhave.book = 0;
+    } else if (obj.oartifact) {
+        if (is_quest_artifact(obj)) {
+            if (!u.uhave.questart)
+                console.error("impossible: don't have quest artifact?");
+            u.uhave.questart = 0;
+        }
+        set_artifact_intrinsic_sync(obj, 0, W_ART);
     }
 
     if (obj.otyp === O.LOADSTONE) {
-        throw new Error('freeinv_core(): loadstone curse() not ported yet');
+        curse(obj);
     } else if (confers_luck(obj)) {
         set_moreluck();
         game.disp_botl = true;
@@ -463,25 +546,52 @@ export function freeinv(obj) {
  * inventory.  Called _before_ the object has been added to the hero's
  * inventory.
  */
-export function addinv_core1(obj) {
+export async function addinv_core1(obj) {
+    const u = game.u;
+
     if (obj.oclass === O.COIN_CLASS) {
         game.disp_botl = true;
-    } else if (obj.otyp === O.AMULET_OF_YENDOR
-               || obj.otyp === O.CANDELABRUM_OF_INVOCATION
-               || obj.otyp === O.BELL_OF_OPENING
-               || obj.otyp === O.SPE_BOOK_OF_THE_DEAD) {
-        throw new Error('addinv_core1(): invocation items (u.uhave, record_achievement) not ported yet');
+    } else if (obj.otyp === O.AMULET_OF_YENDOR) {
+        if (u.uhave.amulet)
+            console.error('impossible: already have amulet?');
+        u.uhave.amulet = 1;
+        record_achievement(ACH_AMUL);
+    } else if (obj.otyp === O.CANDELABRUM_OF_INVOCATION) {
+        if (u.uhave.menorah)
+            console.error('impossible: already have candelabrum?');
+        u.uhave.menorah = 1;
+        record_achievement(ACH_CNDL);
+    } else if (obj.otyp === O.BELL_OF_OPENING) {
+        if (u.uhave.bell)
+            console.error('impossible: already have silver bell?');
+        u.uhave.bell = 1;
+        record_achievement(ACH_BELL);
+    } else if (obj.otyp === O.SPE_BOOK_OF_THE_DEAD) {
+        if (u.uhave.book)
+            console.error('impossible: already have the book?');
+        u.uhave.book = 1;
+        record_achievement(ACH_BOOK);
     } else if (obj.oartifact) {
-        throw new Error('addinv_core1(): artifacts (set_artifact_intrinsic) not ported yet');
+        if (is_quest_artifact(obj)) {
+            if (u.uhave.questart)
+                console.error('impossible: already have quest artifact?');
+            u.uhave.questart = 1;
+            await artitouch(obj);
+        }
+        await set_artifact_intrinsic(obj, 1, W_ART);
     }
 
     /* "special achievements"; revealed in end of game disclosure and
        dumplog, originally just recorded in XLOGFILE */
     const achieveo = game.context?.achieveo;
-    if (achieveo && obj.o_id === achieveo.mines_prize_oid) {
-        throw new Error('addinv_core1(): mines prize record_achievement() not ported yet');
-    } else if (achieveo && obj.o_id === achieveo.soko_prize_oid) {
-        throw new Error('addinv_core1(): sokoban prize record_achievement() not ported yet');
+    if (achieveo && obj.o_id === achieveo.mines_prize_oid) { /* is_mines_prize() */
+        record_achievement(ACH_MINE_PRIZE);
+        achieveo.mines_prize_oid = 0; /* done w/ luckstone o_id */
+        obj.nomerge = 0; /* was set in create_object(sp_lev.c) */
+    } else if (achieveo && obj.o_id === achieveo.soko_prize_oid) { /* is_soko_prize() */
+        record_achievement(ACH_SOKO_PRIZE);
+        achieveo.soko_prize_oid = 0; /* done w/ bag/amulet o_id */
+        obj.nomerge = 0; /* (got set in sp_lev.c) */
     }
 }
 
@@ -534,7 +644,7 @@ async function addinv_core0(obj, other_obj, update_perm_invent) {
         reset_justpicked(game.invent);
     }
 
-    addinv_core1(obj); /* handle most side effects of carrying obj */
+    await addinv_core1(obj); /* handle most side effects of carrying obj */
 
     added: {
         /* for addinv_before(); if something has been removed and is now
@@ -645,6 +755,16 @@ export function useup(obj) {
 
 /* C ref: shk.c onbill() -- in shk.js */
 
+// C ref: shk.c delete_contents()
+export function delete_contents(obj) {
+    let curr;
+
+    while ((curr = (obj.cobj && obj.cobj.length) ? obj.cobj[0] : null) !== null) {
+        obj_extract_self(curr);
+        obfree(curr, null);
+    }
+}
+
 // C ref: shk.c obfree()
 /* delete obj from the game; 'merge' is the stack it merged into, if any */
 export function obfree(obj, merge) {
@@ -661,9 +781,9 @@ export function obfree(obj, merge) {
         }
     }
     if (obj.cobj && obj.cobj.length) /* Has_contents(obj) */
-        throw new Error('obfree(): delete_contents() not ported yet');
+        delete_contents(obj);
     if (obj.otyp >= O.LARGE_BOX && obj.otyp <= O.BAG_OF_TRICKS) /* Is_container */
-        throw new Error('obfree(): maybe_reset_pick() not ported yet');
+        maybe_reset_pick(obj);
     if (obj.otyp === O.BOULDER)
         obj.next_boulder = 0;
 
@@ -1194,7 +1314,7 @@ export function count_unpaid(list) {
 
 /* an object chain as an array: JS keeps invent as an nobj chain and
    floor piles, minvent and container contents as arrays */
-function objchain_items(list) {
+export function objchain_items(list) {
     if (Array.isArray(list))
         return list;
     const res = [];
@@ -1268,15 +1388,32 @@ function stairs_description(sway, stcase) {
     if (!(tolev.dnum !== game.u.uz.dnum && sway.u_traversed)) {
         /* ordinary stairs or branch stairs to not-yet-visited branch */
         outbuf = `${stairs} ${updown}`;
-        if (sway.u_traversed)
-            throw new Error('stairs_description(): " to level %d" not ported yet');
+        if (sway.u_traversed) {
+            const specialdepth = (tolev.dnum === game.dungeon_topology.d_quest_dnum
+                                  || Is_knox_level(tolev)); /* single_level_branch(): knox */
+            const to_dlev = specialdepth ? dunlev(tolev) : depth(tolev);
+
+            outbuf += ` to level ${to_dlev}`;
+        }
     } else if (game.u.uz.dnum === 0 && game.u.uz.dlevel === 1 && sway.up) {
         /* stairs up from level one are a special case */
-        if (game.u.uhave?.amulet)
-            throw new Error('stairs_description(): stairs up with the Amulet not ported yet');
-        outbuf = `${stairs} ${updown} out of the dungeon`;
+        /* stairs up from level one are a special case; they are marked
+           as having been traversed because the hero obviously started
+           the game by coming down them, but the remote side varies
+           depending on whether the Amulet is being carried */
+        const amulet = game.u.uhave?.amulet;
+        outbuf = `${!amulet ? "" : "branch "}${stairs} ${updown} ${
+            !amulet ? "out of the dungeon"
+            /* minimize our expectations about what comes next */
+            : (Is_earthlevel(tolev) || Is_airlevel(tolev)
+               || Is_firelevel(tolev) || Is_waterlevel(tolev))
+              ? "to the Elemental Planes"
+              : "to the end game"}`;
     } else {
-        throw new Error('stairs_description(): known branch stairs not ported yet');
+        /* known branch stairs; tacking on destination level is too verbose */
+        outbuf = `branch ${stairs} ${updown} to ${game.dungeons[tolev.dnum].dname}`;
+        /* dungeons[].dname is capitalized; undo that for "The <Branch>" */
+        outbuf = outbuf.replace("The ", "the "); /* strsubst() */
     }
     return outbuf;
 }
@@ -1903,7 +2040,8 @@ export function stackobj(obj) {
 // C ref: invent.c merged() -- 'r' is { otmp, obj } (C: potmp, pobj);
 // returns 1 when obj was merged into otmp
 export function merged(r) {
-    const otmp = r.otmp, obj = r.obj;
+    let otmp = r.otmp;
+    const obj = r.obj;
     let discovered = false;
 
     if (mergable(otmp, obj)) {
@@ -1922,7 +2060,7 @@ export function merged(r) {
         } else if (!inv_Is_pudding(otmp))
             otmp.owt = weight(otmp);
         if (!has_oname(otmp) && has_oname(obj))
-            throw new Error('merged(): oname() is not ported yet');
+            otmp = r.otmp = oname(otmp, obj.oextra.oname, ONAME_SKIP_INVUPD);
         obj_extract_self(obj);
 
         if (obj.pickup_prev && otmp.where === 'OBJ_INVENT')
@@ -1947,8 +2085,32 @@ export function merged(r) {
                 discovered = true;
         }
         /* fixup for `#adjust' merging wielded darts, daggers, &c */
-        if (obj.owornmask && otmp.where === 'OBJ_INVENT')
-            throw new Error('merged(): merging worn items is not ported yet');
+        if (obj.owornmask && otmp.where === 'OBJ_INVENT') {
+            let wmask = otmp.owornmask | obj.owornmask;
+
+            /* Both the items might be worn in competing slots;
+               merger preference (regardless of which is which):
+             primary weapon + alternate weapon -> primary weapon;
+             primary weapon + quiver -> primary weapon;
+             alternate weapon + quiver -> alternate weapon.
+               (Prior to 3.3.0, it was not possible for the two
+               stacks to be worn in different slots and `obj'
+               didn't need to be unworn when merging.) */
+            if (wmask & W_WEP) {
+                wmask = W_WEP;
+            } else if (wmask & W_SWAPWEP) {
+                wmask = W_SWAPWEP;
+            } else if (wmask & W_QUIVER) {
+                wmask = W_QUIVER;
+            } else {
+                console.error(`impossible: merging strangely worn items (${wmask})`);
+                wmask = otmp.owornmask;
+            }
+            if ((otmp.owornmask & ~wmask) !== 0)
+                setnotworn(otmp);
+            setworn(otmp, wmask);
+            setnotworn(obj);
+        }
         if (obj.bypass)
             otmp.bypass = 1;
         /* handle puddings a bit differently */
@@ -2021,4 +2183,516 @@ export function useupf(obj, numused) {
     if (at_u && game.u.uundetected
         && (game.youmonst.data.mflags1 & M.M1_CONCEAL) !== 0) /* hides_under() */
         throw new Error('useupf(): hideunder() not ported yet');
+}
+
+// C ref: invent.c set_cknown_lknown()
+/* set obj->{cknown,lknown} if applicable */
+export function set_cknown_lknown(obj) {
+    if (Is_container_iv(obj) || obj.otyp === O.STATUE)
+        obj.cknown = obj.lknown = 1;
+    else if (obj.otyp === O.TIN)
+        obj.cknown = 1;
+    /* TODO? cknown might be extended to candy bar, where it would mean that
+       wrapper's text was known which in turn indicates candy bar's content */
+    return;
+}
+
+// C ref: invent.c fully_identify_obj()
+/* make an object actually be identified; no display updating */
+export function fully_identify_obj(otmp) {
+    discover_object_iv(otmp.otyp, true, true, true); /* makeknown() */
+    if (otmp.oartifact)
+        discover_artifact(otmp.oartifact);
+    observe_object_iv(otmp, Hallucination_iv());
+    otmp.known = otmp.bknown = otmp.rknown = 1;
+    set_cknown_lknown(otmp); /* set otmp->{cknown,lknown} if applicable */
+    if (otmp.otyp === O.EGG && otmp.corpsenm !== NON_PM) {
+        /* C ref: timeout.c learn_egg_type() */
+        /* baby monsters hatch from grown-up eggs */
+        const mnum = little_to_big(otmp.corpsenm);
+        game.mvitals[mnum].mvflags |= MV_KNOWS_EGG;
+        /* we might have just learned about other eggs being carried */
+        /* update_inventory(): no perm_invent */
+    }
+}
+
+// C ref: invent.c identify()
+/* ggetobj callback routine; identify an object and give immediate feedback */
+export async function identify(otmp) {
+    fully_identify_obj(otmp);
+    await prinv(null, otmp, 0);
+    return 1;
+}
+
+// C ref: invent.c menu_identify()
+/* menu of unidentified objects; select and identify up to id_limit of them */
+async function menu_identify(id_limit) {
+    let n, i, first = 1, tryct = 5;
+    /* assumptions:  id_limit > 0 and at least one unID'd item is present */
+
+    while (id_limit) {
+        const buf = `What would you like to identify ${first ? "first" : "next"}?`;
+        const olist = [];
+        for (let o = game.invent; o; o = o.nobj)
+            olist.push(o);
+        const pick_list = [];
+        n = await query_objlist_iv(buf, olist, (SIGNAL_NOMENU | SIGNAL_ESCAPE
+                                                 | USE_INVLET | INVORDER_SORT),
+                                   pick_list, PICK_ANY, not_fully_identified_iv);
+
+        if (n > 0) {
+            if (n > id_limit)
+                n = id_limit;
+            for (i = 0; i < n; i++, id_limit--)
+                await identify(pick_list[i].obj);
+            if (id_limit)
+                wait_synch_iv(); /* Before we loop to pop open another menu */
+            first = 0;
+        } else if (n === -2) { /* player used ESC to quit menu */
+            break;
+        } else if (n === -1) { /* no eligible items found */
+            await pline("That was all.");
+            break;
+        } else if (!--tryct) { /* stop re-prompting */
+            await pline(thats_enough_tries);
+            break;
+        } else { /* try again */
+            await pline("Choose an item; use ESC to decline.");
+        }
+    }
+}
+
+// C ref: invent.c count_unidentified()
+/* count the unidentified items */
+export function count_unidentified(objchn) {
+    let unid_cnt = 0;
+
+    for (let obj = objchn; obj; obj = obj.nobj)
+        if (not_fully_identified_iv(obj))
+            ++unid_cnt;
+    return unid_cnt;
+}
+
+// C ref: invent.c identify_pack()
+/* dialog with user to identify a given number of items; 0 means all */
+export async function identify_pack(id_limit,
+                                    learning_id) { /* T: just read unknown identify scroll */
+    let obj;
+    let n, unid_cnt = count_unidentified(game.invent);
+
+    if (!unid_cnt) {
+        await You(`have already identified ${!learning_id ? "all" : "the rest"} of your possessions.`);
+    } else if (!id_limit || id_limit >= unid_cnt) {
+        /* identify everything */
+        /* TODO:  use fully_identify_obj and cornline/menu/whatever here */
+        for (obj = game.invent; obj; obj = obj.nobj) {
+            if (not_fully_identified_iv(obj)) {
+                await identify(obj);
+                if (--unid_cnt < 1)
+                    break;
+            }
+        }
+    } else {
+        /* identify up to `id_limit' items */
+        n = 0;
+        if ((game.flags.menu_style ?? MENU_FULL_IV) === MENU_TRADITIONAL_IV)
+            throw new Error('identify_pack(): ggetobj() (menustyle:traditional) not ported yet');
+        if (n === 0 || n < -1)
+            await menu_identify(id_limit);
+    }
+    /* update_inventory(): no perm_invent */
+}
+
+/* C ref: wintty.c tty_wait_synch() -- the map window is up and no raw
+   output is pending, so this only flushes the (unbuffered) screen */
+function wait_synch_iv() {
+    if (game.ttyDisplay?.rawprint)
+        throw new Error('wait_synch(): getret() not ported yet');
+}
+/* C ref: youprop.h Hallucination */
+function Hallucination_iv() {
+    const p = game.u.uprops;
+    return !!(p[HALLUC_IV].intrinsic
+              && !(p[HALLUC_RES_IV].intrinsic || p[HALLUC_RES_IV].extrinsic));
+}
+/* C ref: obj.h Is_container() */
+function Is_container_iv(otmp) {
+    return otmp.otyp >= O.LARGE_BOX && otmp.otyp <= O.BAG_OF_TRICKS;
+}
+
+import { discover_object as discover_object_iv,
+         observe_object as observe_object_iv } from './o_init.js';
+import { discover_artifact } from './artifact.js';
+import { not_fully_identified as not_fully_identified_iv } from './objnam.js';
+import { query_objlist as query_objlist_iv } from './pickup.js';
+import { little_to_big } from './mondata.js';
+import { MV_KNOWS_EGG, SIGNAL_NOMENU, SIGNAL_ESCAPE, USE_INVLET,
+         INVORDER_SORT, PICK_ANY, thats_enough_tries,
+         MENU_TRADITIONAL as MENU_TRADITIONAL_IV, MENU_FULL as MENU_FULL_IV,
+         HALLUC as HALLUC_IV, HALLUC_RES as HALLUC_RES_IV } from './const.js';
+
+import { inv_cnt as inv_cnt_iv } from './hack.js';
+import { ECMD_CANCEL as ECMD_CANCEL_IV, ECMD_FAIL as ECMD_FAIL_IV } from './const.js';
+
+// C ref: hacklib.c letter()
+function letter_iv(c) {
+    return ('@' <= c && c <= 'Z') || ('a' <= c && c <= 'z');
+}
+
+// C ref: mkobj.c extract_nobj() -- for the hero's inventory chain
+function extract_nobj_invent(obj) {
+    let curr, prev;
+
+    for (prev = null, curr = game.invent; curr; prev = curr, curr = curr.nobj) {
+        if (curr === obj) {
+            if (prev)
+                prev.nobj = curr.nobj;
+            else
+                game.invent = curr.nobj;
+            break;
+        }
+    }
+    if (!curr)
+        throw new Error('extract_nobj: object lost'); /* panic() */
+    obj.where = 'OBJ_FREE';
+    obj.nobj = null;
+}
+
+// C ref: invent.c check_invent_gold()
+export function check_invent_gold(why) { /* 'why' == caller in case of warning */
+    let goldstacks = 0, wrongslot = 0;
+
+    /* there should be at most one stack of gold in invent, in slot '$' */
+    for (let otmp = game.invent; otmp; otmp = otmp.nobj)
+        if (otmp.oclass === O.COIN_CLASS) {
+            ++goldstacks;
+            if (otmp.invlet !== GOLD_SYM)
+                ++wrongslot;
+        }
+
+    if (goldstacks > 1 || wrongslot > 0) {
+        console.error(`impossible: ${why}: ${(wrongslot > 1) ? "gold in wrong slots"
+                      : (wrongslot > 0) ? "gold in wrong slot" : ""}${
+                      (wrongslot > 0 && goldstacks > 1) ? " and " : ""}${
+                      (goldstacks > 1) ? "multiple gold stacks" : ""}`);
+        return true; /* gold can be #adjusted */
+    }
+
+    return false; /* gold can't be #adjusted */
+}
+
+// C ref: invent.c adjust_ok()
+/* normal getobj callback for item to #adjust; excludes gold */
+function adjust_ok(obj) {
+    if (!obj || obj.oclass === O.COIN_CLASS)
+        return GETOBJ_EXCLUDE;
+
+    return GETOBJ_SUGGEST;
+}
+
+// C ref: invent.c adjust_gold_ok()
+/* getobj callback for item to #adjust if gold is wonky; allows gold */
+function adjust_gold_ok(obj) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+
+    return GETOBJ_SUGGEST;
+}
+
+// C ref: invent.c doorganize()
+/* #adjust command: inventory organizer by Del Lamb */
+export async function doorganize() {
+    /* when no invent, or just gold in '$' slot, there's nothing to adjust */
+    if (!game.invent || (game.invent.oclass === O.COIN_CLASS
+                         && game.invent.invlet === GOLD_SYM
+                         && !game.invent.nobj)) {
+        await You(`aren't carrying anything ${
+                  !game.invent ? "to adjust" : "adjustable"}.`);
+        return ECMD_OK;
+    }
+
+    if (!invlet_constant())
+        throw new Error('doorganize(): reassign() not ported yet');
+
+    /* filter passed to getobj() depends upon gold sanity */
+    const adjust_filter = check_invent_gold("adjust") ? adjust_gold_ok
+                                                      : adjust_ok;
+
+    /* get object the user wants to organize (the 'from' slot) */
+    const obj = await getobj("adjust", adjust_filter,
+                             GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
+
+    return doorganize_core(obj);
+}
+
+// C ref: invent.c adjust_split()
+/* alternate version of #adjust used by itemactions() for splitting */
+export async function adjust_split() {
+    let obj;
+    let splitamount = 0;
+
+    /* invlet should be queued so no getobj prompting is expected */
+    obj = await getobj("split", adjust_ok, 0 /* GETOBJ_NOFLAGS */);
+    if (!obj || obj.quan < 2 || obj.otyp === O.GOLD_PIECE)
+        return ECMD_FAIL_IV; /* caller has set things up to avoid this */
+
+    if (obj.quan === 2) {
+        splitamount = 1;
+    } else {
+        /* get first digit; doesn't wait for <return> */
+        throw new Error('adjust_split(): "Split off how many?" get_count() not ported yet');
+    }
+    if (splitamount < 1 || splitamount >= obj.quan) {
+        const Amount = "Amount to split from current stack must be";
+
+        if (splitamount < 1)
+            await pline(`${Amount} at least 1.`);
+        else
+            await pline(`${Amount} less than ${obj.quan}.`);
+        return ECMD_CANCEL_IV;
+    }
+
+    /* normally a split would take place in getobj() if player supplies
+       a count there, so doorganize_core() figures out 'splitamount'
+       from the object; it will undo the split if player cancels while
+       selecting the destination slot */
+    obj = splitobj(obj, splitamount);
+    return doorganize_core(obj);
+}
+
+// C ref: invent.c doorganize_core()
+async function doorganize_core(obj) {
+    let otmp, splitting, bumped;
+    let ix, trycnt;
+    let let_;
+    const GOLD_INDX = 0, GOLD_OFFSET = 1;
+    const OVRFLW_INDX = GOLD_OFFSET + invlet_basic; /* past gold+2*26 letters */
+    let lets; /* room for '$a-zA-Z#' */
+    let qbuf;
+    let objname, otmpname;
+    let adj_type;
+    let ever_mind = false;
+
+    if (!obj)
+        return ECMD_CANCEL_IV;
+
+    /* can only be gold if check_invent_gold() found a problem:  multiple '$'
+       stacks and/or gold in some other slot, otherwise (*adjust_filter)()
+       won't allow gold to be picked; if player has picked any stack of gold
+       as #adjust 'from' slot, we'll force the 'to' slot to be '$' below */
+    const isgold = (obj.oclass === O.COIN_CLASS);
+
+    /* figure out whether user gave a split count to getobj() */
+    splitting = bumped = null;
+    for (otmp = game.invent; otmp; otmp = otmp.nobj)
+        if (otmp.nobj === obj) { /* knowledge of splitobj() operation */
+            if (otmp.invlet === obj.invlet)
+                splitting = otmp;
+            break;
+        }
+
+    /* merged(); C's merged() gives the "comparing" message itself */
+    const do_merged = async (r) => {
+        const res = merged(r);
+        if (res && r.learned)
+            await pline("You learn more about your items by comparing them.");
+        return res;
+    };
+
+    /* initialize the list with all lower and upper case letters */
+    lets = new Array(1 + invlet_basic + 1 + 1);
+    lets[GOLD_INDX] = (obj.oclass === O.COIN_CLASS) ? GOLD_SYM : ' ';
+    ix = GOLD_OFFSET;
+    for (let c = 97; c <= 122; c++)
+        lets[ix++] = String.fromCharCode(c); /* 'a'..'z' */
+    for (let c = 65; c <= 90; c++)
+        lets[ix++] = String.fromCharCode(c); /* 'A'..'Z' */
+    lets[OVRFLW_INDX] = ' ';
+    lets[lets.length - 1] = '\0';
+    /* for floating inv letters, truncate list after the first open slot */
+    if (!invlet_constant() && (ix = inv_cnt_iv(false)) < invlet_basic)
+        lets[ix + (splitting ? 1 : 2)] = '\0';
+
+    /* blank out all the letters currently in use in the inventory
+       except those that will be merged with the selected object */
+    for (otmp = game.invent; otmp; otmp = otmp.nobj)
+        if (otmp !== obj && !mergable(otmp, obj)) {
+            let_ = otmp.invlet;
+            if (let_ >= 'a' && let_ <= 'z')
+                lets[GOLD_OFFSET + let_.charCodeAt(0) - 97] = ' ';
+            else if (let_ >= 'A' && let_ <= 'Z')
+                lets[GOLD_OFFSET + let_.charCodeAt(0) - 65 + 26] = ' ';
+            /* overflow defaults to off, but it we find a stack using that
+               slot, switch to on -- the opposite of normal invlet handling */
+            else if (let_ === NOINVSYM)
+                lets[OVRFLW_INDX] = NOINVSYM;
+        }
+
+    /* compact the list by removing all the blanks */
+    let compacted = '';
+    for (ix = 0; lets[ix] !== '\0'; ix++)
+        if (lets[ix] !== ' ')
+            compacted += lets[ix];
+    /* and by dashing runs of letters */
+    if (compacted.length > 5)
+        compacted = compactify(compacted);
+    lets = compacted;
+
+    /* get 'to' slot to use as destination */
+    if (!splitting)
+        qbuf = "Adjust letter";
+    else /* note: splitting->quan is the amount being left in original slot */
+        qbuf = `Split ${obj.quan}`;
+    qbuf += ` to what [${lets}]${game.invent ? " (? see used letters)" : ""}?`;
+    let noadjust = false;
+    for (trycnt = 1; ; ++trycnt) {
+        let_ = !isgold ? await tty_yn_function(qbuf, null, '\0') /* yn_function() */
+                       : GOLD_SYM;
+        if (let_ === '?' || let_ === '*')
+            throw new Error('doorganize_core(): display_used_invlets() not ported yet');
+        if (quitchars.includes(let_)
+            /* adjusting to same slot is meaningful since all
+               compatible stacks get collected along the way,
+               but splitting to same slot is not */
+            || (splitting && let_ === obj.invlet)) {
+            noadjust = true;
+            break;
+        } else if (let_ === GOLD_SYM && obj.oclass !== O.COIN_CLASS) {
+            await pline(`Only gold coins may be moved into the '${GOLD_SYM}' slot.`);
+            ever_mind = true;
+            noadjust = true;
+            break;
+        }
+        /* letter() classifies '@' as one; compactify() can put '-' in lets;
+           the only thing of interest that strchr() might find is '$' or '#'
+           since letter() catches everything else that we put into lets[] */
+        if ((letter_iv(let_) && let_ !== '@') || (lets.includes(let_) && let_ !== '-'))
+            break; /* got one */
+        if (trycnt === 5) {
+            noadjust = true;
+            break;
+        }
+        await pline("Select an inventory slot letter."); /* else try again */
+    }
+    if (noadjust) {
+        /* noadjust: */
+        if (splitting)
+            await do_merged({ otmp: splitting, obj });
+        if (!ever_mind)
+            await pline(Never_mind);
+        return ECMD_OK;
+    }
+
+    const collect = (let_ === obj.invlet);
+    /* change the inventory and print the resulting item */
+    adj_type = collect ? "Collecting:"
+               : !splitting ? "Moving:"
+                 : "Splitting:";
+
+    /*
+     * don't use freeinv/addinv to avoid double-touching artifacts,
+     * dousing lamps, losing luck, cursing loadstone, etc.
+     */
+    extract_nobj_invent(obj);
+
+    for (otmp = game.invent; otmp; ) {
+        otmpname = has_oname(otmp) ? otmp.oextra.oname : null;
+        /* it's tempting to pull this outside the loop, but merged() could
+           free ONAME(obj) [via obfree()] and replace it with ONAME(otmp) */
+        objname = has_oname(obj) ? obj.oextra.oname : null;
+
+        if (collect) {
+            /* Collecting: #adjust an inventory stack into its same slot;
+               keep it there and merge other compatible stacks into it.
+               Traditional inventory behavior is to merge unnamed stacks
+               with compatible named ones; we only want that if it is
+               the 'from' stack (obj) with a name and candidate (otmp)
+               without one, not unnamed 'from' with named candidate. */
+            const r = { otmp, obj };
+            if ((!otmpname || (objname && objname === otmpname))
+                && await do_merged(r)) {
+                /*adj_type = "Collecting:"; //already set to this*/
+                obj = otmp = r.otmp;
+                otmp = otmp.nobj;
+                extract_nobj_invent(obj);
+                continue; /* otmp has already been updated */
+            }
+        } else if (otmp.invlet === let_) {
+            /* Merging: when from and to are compatible */
+            let r = { otmp, obj };
+            if ((!otmpname || (objname && objname === otmpname))
+                && await do_merged(r)) {
+                adj_type = "Merging:";
+                obj = otmp = r.otmp;
+                otmp = otmp.nobj;
+                extract_nobj_invent(obj);
+                break; /* otmp has been updated and we're done merging */
+            }
+            /* Moving or splitting: don't merge extra compatible stacks.
+               Found 'otmp' in destination slot; merge if compatible,
+               otherwise bump whatever is there to an open slot. */
+            if (!splitting) {
+                adj_type = "Swapping:";
+                otmp.invlet = obj.invlet;
+            } else {
+                /* strip 'from' name if it has one */
+                if (objname && !obj.oartifact)
+                    obj.oextra.oname = ''; /* ONAME(obj) = (char *) 0 */
+                if (!mergable(otmp, obj)) {
+                    /* won't merge; put 'from' name back */
+                    if (objname)
+                        obj.oextra.oname = objname;
+                } else {
+                    /* will merge; discard 'from' name */
+                    if (objname)
+                        objname = null;
+                }
+
+                r = { otmp, obj };
+                if (await do_merged(r)) {
+                    adj_type = "Splitting and merging:";
+                    obj = otmp = r.otmp;
+                    extract_nobj_invent(obj);
+                } else if (inv_cnt_iv(false) >= invlet_basic) {
+                    await do_merged({ otmp: splitting, obj }); /* undo split */
+                    /* "knapsack cannot accommodate any more items" */
+                    await pline("Your pack is too full."); /* Your() */
+                    return ECMD_OK;
+                } else {
+                    bumped = otmp;
+                    extract_nobj_invent(bumped);
+                }
+            } /* moving vs splitting */
+            break; /* not collecting and found 'to' slot */
+        } /* collect */
+        otmp = otmp.nobj;
+    }
+
+    /* inline addinv; insert loose object at beginning of inventory */
+    obj.invlet = let_;
+    obj.nobj = game.invent;
+    obj.where = 'OBJ_INVENT';
+    game.invent = obj;
+    reorder_invent();
+    if (bumped) {
+        /* splitting the 'from' stack is causing an incompatible
+           stack in the 'to' slot to be moved into an open one;
+           we need to do another inline insertion to inventory */
+        assigninvlet(bumped);
+        bumped.nobj = game.invent;
+        bumped.where = 'OBJ_INVENT';
+        game.invent = bumped;
+        reorder_invent();
+    }
+
+    /* messages deferred until inventory has been fully reestablished */
+    await prinv(adj_type, obj, 0);
+    if (bumped)
+        await prinv("Moving:", bumped, 0);
+    if (splitting && game.context?.objsplit) { /* clear_splitobjs() */
+        game.context.objsplit.parent_oid = 0;
+        game.context.objsplit.child_oid = 0;
+    }
+    /* update_inventory(): no perm_invent */
+    return ECMD_OK;
 }

@@ -10,9 +10,18 @@
 import { game } from './gstate.js';
 import { thitu } from './mthrowu.js';
 import { obfree } from './invent.js';
+import { get_obj_location } from './shk.js';
+import { tty_display_nhwindow } from './wintty.js';
+import { create_gas_cloud } from './region.js';
+import { A_STR, FREE_ACTION } from './const.js';
+import { the } from './iactions.js';
+import { xname } from './objnam.js';
 import { observe_object } from './o_init.js';
 import { poisoned } from './attrib.js';
 import { A_CON } from './const.js';
+import { TELEPORT, POISON_RES, COLD_RES, SHOCK_RES, DISINT_RES, TELEPORT_CONTROL,
+         STEALTH, FAST, INTRINSIC } from './const.js';
+import { PM_WIZARD, PM_ELF, PM_VALKYRIE } from './monsters.js';
 import { rn2, rnl } from './rng.js';
 import { dunlev, dunlevs_in_dungeon, In_hell } from './dungeon.js';
 import {
@@ -57,7 +66,8 @@ import { bimanual } from './wield.js';
 /* C ref: mondata.h resists_ston() */
 function resists_ston(mon) { return Resists_Elem(mon, STONE_RES); }
 import { rndmonnum_adj, mkcorpstat, add_to_container, weight } from './mkobj.js';
-import { makemon, sobj_at, is_pool, is_lava, closed_door } from './makemon.js';
+import { makemon, sobj_at, is_pool, is_lava, closed_door, goodpos } from './makemon.js';
+import { crawl_destination } from './hack.js';
 import { linedup } from './monmove.js';
 import { xdir, ydir, N_DIRS, ZAP_POS, is_xport } from './const.js';
 import { mongone, wake_nearto } from './mon.js';
@@ -70,6 +80,9 @@ import { m_in_air } from './monmove.js';
 import { canseemon } from './display.js';
 import { mon_nam, Monnam } from './do_name.js';
 import { You_hear } from './sounds.js';
+import { self_invis_message } from './potion.js';
+import { perceives, pm_invisible } from './mondata.js';
+import { INVIS, SEE_INVIS } from './const.js';
 import { just_an } from './objnam.js';
 import { seemimic } from './mon.js';
 import { resist } from './zap.js';
@@ -93,7 +106,12 @@ import { Is_container, erosion_matters, is_flammable } from './mkobj.js';
 import { TRAP_NOT_IMMUNE, TRAP_CLEARLY_IMMUNE, TRAP_HIDDEN_IMMUNE,
          In_endgame, In_sokoban, Is_earthlevel, FIRE_RES } from './const.js';
 import { AMULET_OF_YENDOR, SCR_FIRE, SPE_FIREBALL } from './objects.js';
-import { vtense, makeplural } from './objnam.js';
+import { vtense, makeplural, yname, cxname } from './objnam.js';
+import { hliquid } from './potion.js';
+import { SCR_BLANK_PAPER, SCR_MAIL, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD,
+         SPE_NOVEL, POT_ACID, POT_WATER, OILSKIN_SACK, ICE_BOX, LARGE_BOX,
+         CHEST } from './objects.js';
+import { TT_BURIEDBALL } from './const.js';
 import { LEG, BOTH_SIDES } from './const.js';
 import { on_level, at_dgn_entrance } from './dungeon.js';
 import { is_neuter } from './mondata.js';
@@ -303,7 +321,41 @@ export async function losehp(n, knam, k_format) {
         await pline("You die..."); /* urgent_pline() */
         await done(DIED);
     } else if (n > 0 && u.uhp * 10 < u.uhpmax)
-        throw new Error('losehp(): maybe_wail() not ported yet');
+        await maybe_wail();
+}
+
+// C ref: hack.c maybe_wail()
+export async function maybe_wail() {
+    const powers = [ TELEPORT, SEE_INVIS, POISON_RES, COLD_RES,
+                     SHOCK_RES, FIRE_RES, SLEEP_RES, DISINT_RES,
+                     TELEPORT_CONTROL, STEALTH, FAST, INVIS ];
+    const u = game.u;
+
+    if (game.moves <= (game.wailmsg || 0) + 50)
+        return;
+
+    game.wailmsg = game.moves;
+    if (game.urole.mnum === PM_WIZARD || game.urace.mnum === PM_ELF
+        || game.urole.mnum === PM_VALKYRIE) { /* Role_if(), Race_if() */
+        let who, i, powercnt;
+
+        who = (game.urole.mnum === PM_WIZARD || game.urole.mnum === PM_VALKYRIE)
+              ? game.urole.name.m : "Elf";
+        if (u.uhp === 1) {
+            await pline(`${who} is about to die.`);
+        } else {
+            for (i = 0, powercnt = 0; i < powers.length; ++i)
+                if (u.uprops[powers[i]].intrinsic & INTRINSIC)
+                    ++powercnt;
+
+            await pline((powercnt >= 4) ? `${who}, all your powers will be lost...`
+                                        : `${who}, your life force is running out.`);
+        }
+    } else {
+        /* Soundeffect(se_wailing_of_the_banshee, 75): no sound */
+        await You_hear(u.uhp === 1 ? "the wailing of the Banshee..."
+                                   : "the howling of the CwnAnnwn...");
+    }
 }
 
 // C ref: do.c set_wounded_legs()
@@ -636,7 +688,7 @@ export function locomotion(ptr, def) {
                 : (ptr.mflags1 & M1_SLITHY) ? slither[idx]
                   : amorphous(ptr) ? ooze[idx]
                     : !ptr.mmove ? immobile[idx]
-                      : (ptr.mflags1 & M1_NOLIMBS) ? crawl[idx]
+                      : ((ptr.mflags1 & M1_NOLIMBS) === M1_NOLIMBS) ? crawl[idx] /* nolimbs() */
                         : def);
 }
 
@@ -1202,10 +1254,16 @@ async function trapeffect_slp_gas_trap(mtmp, trap, trflags) {
 }
 
 // C ref: trap.c water_damage()
-/* Get an object wet and damage it appropriately; ER_* result */
-async function water_damage(obj, ostr, force) {
-    const ER_NOTHING = 0;
-    const in_invent = obj && obj.where === 'OBJ_INVENT';
+/* Get an object wet and damage it appropriately.
+   Returns an erosion return value (ER_*). */
+export async function water_damage(
+    obj,   /* might be Null; return ER_NOTHING if so */
+    ostr,  /* if non-Null, use instead of cxname() in messages */
+    force) /* if True, skip luck-based protection check */
+{
+    const ER_NOTHING = 0, ER_GREASED = 1, ER_DAMAGED = 2;
+    const in_invent = !!obj && obj.where === 'OBJ_INVENT'; /* carried(obj) */
+    let described = false;
 
     if (!obj)
         return ER_NOTHING;
@@ -1213,16 +1271,50 @@ async function water_damage(obj, ostr, force) {
     if (obj.lamplit) /* splash_lit(obj) */
         throw new Error('water_damage(): splash_lit() not ported yet');
 
-    /* if (!ostr) ostr = cxname(obj): only erode_obj()'s messages use it */
+    if (!ostr)
+        ostr = cxname(obj);
 
     if (obj.otyp === CAN_OF_GREASE && obj.spe > 0) {
         return ER_NOTHING;
     } else if (obj.otyp === TOWEL && obj.spe < 7) {
+        /* wet_a_towel(obj, -rnd(7 - obj->spe), TRUE) */
         throw new Error('water_damage(): wet_a_towel() not ported yet');
     } else if (obj.greased) {
-        throw new Error('water_damage(): greased object not ported yet');
-    } else if (Is_container(obj)) {
-        throw new Error('water_damage(): container contents not ported yet');
+        if (!rn2(2)) {
+            obj.greased = 0;
+            if (in_invent) {
+                await pline_The(`grease on ${yname(obj)} washes off.`);
+                described = true; /* used to modify potion feedback */
+                /* update_inventory(): no perm_invent */
+            }
+            /* ungreased potions of acid will always be destroyed by water */
+            if (obj.otyp === POT_ACID) {
+                void described;
+                throw new Error('water_damage(): pot_acid_damage() not ported yet');
+            }
+        }
+        return ER_GREASED;
+    } else if (Is_container(obj)
+               && (!Waterproof_container(obj) || (obj.cursed && !rn2(3)))) {
+        if (in_invent) {
+            await pline(`Some ${hliquid("water")} gets into your ${ostr}!`);
+            game.mentioned_water = !Hallucination();
+        }
+        await water_damage_chain(obj.cobj, false);
+        return ER_DAMAGED; /* contents were damaged */
+    } else if (Waterproof_container(obj)) {
+        if (in_invent && !Blind() && !Underwater_t()) {
+            await pline_The(`${hliquid("water")} cannot get into your ${ostr}.`);
+            game.mentioned_water = !Hallucination();
+            /* makeknown(obj->otyp): if an oilskin sack, discover it;
+               doesn't matter for chest, large box, ice box */
+            throw new Error('water_damage(): makeknown() of a waterproof container not ported yet');
+        }
+        /* not actually damaged, but because we /didn't/ get the "water
+           gets into!" message, the player now has more information and
+           thus we need to waste any potion they may have used (also,
+           flavourwise the water is now on the floor) */
+        return ER_DAMAGED;
     } else if (!force && (Luck() + 5) > rn2(20)) {
         /*  chance per item of sustaining damage:
             *   max luck:               10%
@@ -1230,13 +1322,162 @@ async function water_damage(obj, ostr, force) {
             *   awful luck (Luck<-4):  100%
             */
         return ER_NOTHING;
-    } else if (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS
-               || obj.oclass === POTION_CLASS) {
-        void in_invent;
-        throw new Error('water_damage(): scroll/spellbook/potion damage not ported yet');
+    } else if (obj.oclass === SCROLL_CLASS) {
+        if (obj.otyp === SCR_BLANK_PAPER
+            || obj.otyp === SCR_MAIL) /* MAIL_STRUCTURES */
+            return 0;
+        if (in_invent)
+            await Your(`${ostr} ${vtense(ostr, "fade")}.`);
+
+        obj.otyp = SCR_BLANK_PAPER;
+        obj.dknown = 0;
+        obj.spe = 0;
+        /* if (in_invent) update_inventory(): no perm_invent */
+        return ER_DAMAGED;
+    } else if (obj.oclass === SPBOOK_CLASS) {
+        const otyp = obj.otyp;
+
+        if (otyp === SPE_BOOK_OF_THE_DEAD) {
+            throw new Error('water_damage(): Book of the Dead not ported yet');
+        } else if (otyp === SPE_BLANK_PAPER) {
+            return 0;
+        }
+        if (in_invent)
+            await Your(`${ostr} ${vtense(ostr, "fade")}.`);
+
+        obj.otyp = SPE_BLANK_PAPER;
+        /* same re-init as over-reading or polymorph; matters if it gets
+           polymorphed into non-blank; doesn't matter if eventually written
+           on since that replaces it with new book and studied count of 0 */
+        if (obj.spestudied)
+            obj.spestudied = rn2(obj.spestudied);
+        obj.dknown = 0;
+        /* blanking a novel is more involved than blanking a spellbook */
+        if (otyp === SPE_NOVEL) /* old type */
+            throw new Error('water_damage(): blank_novel() not ported yet');
+        /* if (in_invent) update_inventory(): no perm_invent */
+        return ER_DAMAGED;
+    } else if (obj.oclass === POTION_CLASS) {
+        if (obj.otyp === POT_ACID) {
+            throw new Error('water_damage(): pot_acid_damage() not ported yet');
+        } else if (obj.odiluted) {
+            if (in_invent)
+                await Your(`${ostr} ${vtense(ostr, "dilute")} further.`);
+
+            obj.otyp = POT_WATER;
+            obj.dknown = 0;
+            obj.blessed = obj.cursed = 0;
+            obj.odiluted = 0;
+            /* if (in_invent) update_inventory(): no perm_invent */
+            return ER_DAMAGED;
+        } else if (obj.otyp !== POT_WATER) {
+            if (in_invent)
+                await Your(`${ostr} ${vtense(ostr, "dilute")}.`);
+
+            obj.odiluted++;
+            /* if (in_invent) update_inventory(): no perm_invent */
+            return ER_DAMAGED;
+        }
     } else {
         return await erode_obj(obj, ostr, ERODE_RUST, EF_NONE);
     }
+    return ER_NOTHING;
+}
+
+// C ref: trap.c water_damage_chain()
+/* "obj" is the first object of a chain: an array (the pile at a map spot,
+   top first, standing in for ->nexthere, or a container's cobj[]), or the
+   head of an ->nobj chain (inventory); here only picks the link in C */
+export async function water_damage_chain(obj, here) {
+    const is_arr = Array.isArray(obj);
+    void here;
+    if (!obj || (is_arr && !obj.length))
+        return;
+
+    /* initialize acid context: so far, neither seen (dknown) potions of
+       acid nor unseen have exploded during this water damage sequence */
+    game.acid_ctx = { dkn_boom: 0, unk_boom: 0, ctx_valid: true };
+    /* we don't want to permanently overwrite bhitpos below, since we can get
+       here from scenarios where it was in use up the call stack (e.g. thrown
+       item hurtling the levitating hero into a wall of water) */
+    if (!game.bhitpos)
+        game.bhitpos = { x: 0, y: 0 };
+    const save_bhitpos = { x: game.bhitpos.x, y: game.bhitpos.y };
+    /* erode_obj() relies on bhitpos if target objects aren't carried by
+       the hero or a monster, to check visibility controlling feedback */
+    const loc = obj_location(is_arr ? obj[0] : obj);
+    if (loc)
+        game.bhitpos.x = loc.x, game.bhitpos.y = loc.y;
+
+    if (is_arr) {
+        for (const otmp of obj.slice())
+            await water_damage(otmp, null, false);
+    } else {
+        let otmp;
+        for (; obj; obj = otmp) {
+            otmp = obj.nobj;
+            await water_damage(obj, null, false);
+        }
+    }
+
+    /* reset acid context and bhitpos */
+    game.acid_ctx = { dkn_boom: 0, unk_boom: 0, ctx_valid: false };
+    game.bhitpos.x = save_bhitpos.x, game.bhitpos.y = save_bhitpos.y;
+}
+
+/* C ref: mkobj.c get_obj_location(obj, &x, &y, CONTAINED_TOO) */
+function obj_location(obj) {
+    for (let o = obj; o; o = o.ocontainer) {
+        switch (o.where) {
+        case 'OBJ_INVENT':
+            return { x: game.u.ux, y: game.u.uy };
+        case 'OBJ_FLOOR':
+            return { x: o.ox, y: o.oy };
+        case 'OBJ_MINVENT':
+            if (o.ocarry && o.ocarry.mx)
+                return { x: o.ocarry.mx, y: o.ocarry.my };
+            return null;
+        case 'OBJ_CONTAINED':
+            continue;
+        default:
+            return null;
+        }
+    }
+    return null;
+}
+
+/* C ref: obj.h Waterproof_container(), Is_box() */
+function Waterproof_container(o) {
+    return o.otyp === OILSKIN_SACK || o.otyp === ICE_BOX
+           || o.otyp === LARGE_BOX || o.otyp === CHEST;
+}
+
+/* C ref: youprop.h Underwater */
+function Underwater_t() { return !!game.u.uinwater; }
+
+// C ref: trap.c delfloortrap() -- Destroy a trap that emanates from the
+// floor.
+export async function delfloortrap(ttmp) {
+    /* some of these are arbitrary -dlc */
+    if (ttmp && ((ttmp.ttyp === SQKY_BOARD) || (ttmp.ttyp === BEAR_TRAP)
+                 || (ttmp.ttyp === LANDMINE) || (ttmp.ttyp === FIRE_TRAP)
+                 || is_pit(ttmp.ttyp)
+                 || is_hole(ttmp.ttyp)
+                 || (ttmp.ttyp === TELEP_TRAP) || (ttmp.ttyp === LEVEL_TELEP)
+                 || (ttmp.ttyp === WEB) || (ttmp.ttyp === MAGIC_TRAP)
+                 || (ttmp.ttyp === ANTI_MAGIC))) {
+        let mtmp;
+
+        if (game.u.ux === ttmp.tx && game.u.uy === ttmp.ty) {
+            if (game.u.utraptype !== TT_BURIEDBALL)
+                await reset_utrap(true);
+        } else if ((mtmp = m_at(ttmp.tx, ttmp.ty)) != null) {
+            mtmp.mtrapped = 0;
+        }
+        deltrap(ttmp);
+        return true;
+    }
+    return false;
 }
 
 /* C ref: you.h Luck */
@@ -1251,7 +1492,7 @@ const MAX_ERODE = 3;
 
 // C ref: trap.c erode_obj() -- the rust case, as reached from water_damage()
 /* returns ER_DAMAGED, ER_GREASED, ER_NOTHING or ER_DESTROYED */
-async function erode_obj(otmp, ostr, type, ef_flags) {
+export async function erode_obj(otmp, ostr, type, ef_flags) {
     const ER_NOTHING = 0, ER_DAMAGED = 2;
     const action = ["smoulder", "rust", "rot", "corrode", "crack"],
           bythe = ["heat", "oxidation", "decay", "corrosion", "impact"];
@@ -1265,10 +1506,13 @@ async function erode_obj(otmp, ostr, type, ef_flags) {
     const victim = (otmp.where === 'OBJ_INVENT') ? game.youmonst
                    : (otmp.where === 'OBJ_MINVENT') ? otmp.ocarry : null;
     const uvictim = (victim === game.youmonst);
-    const vismon = victim && (victim !== game.youmonst) && canseemon(victim);
-    if (!victim)
-        throw new Error('erode_obj(): floor object (visobj) not ported yet');
-    const visobj = false;
+    const vismon = !!victim && (victim !== game.youmonst) && canseemon(victim);
+    /* Is gb.bhitpos correct here? Ugh. */
+    const bhx = game.bhitpos?.x ?? 0, bhy = game.bhitpos?.y ?? 0;
+    const visobj = (!victim && cansee(bhx, bhy)
+                    && (!is_pool(bhx, bhy)
+                        || (dist2(bhx, bhy, game.u.ux, game.u.uy) < 3 /* next2u() */
+                            && !!game.u.uinwater /* Underwater */)));
 
     switch (type) {
     case ERODE_RUST:
@@ -1279,20 +1523,28 @@ async function erode_obj(otmp, ostr, type, ef_flags) {
     }
     const erosion = is_primary ? otmp.oeroded : otmp.oeroded2;
 
+    if (!ostr)
+        ostr = cxname(otmp);
+    /* 'visobj' messages insert "the"; probably ought to switch to the() */
+    if (visobj && !(uvictim || vismon) && ostr.toLowerCase().startsWith("the "))
+        ostr = ostr.slice(4);
+
     if (check_grease && otmp.greased) {
         throw new Error('erode_obj(): grease_protect() not ported yet');
     } else if (!erosion_matters(otmp)) {
         return ER_NOTHING;
     } else if (!vulnerable || (otmp.oerodeproof && otmp.rknown)) {
         if (game.flags.verbose && print && (uvictim || vismon))
-            throw new Error('erode_obj(): "not affected" message not ported yet');
+            await pline(`${uvictim ? "Your" : s_suffix(Monnam(victim))} ${ostr} ${
+                vtense(ostr, "are")} not affected by ${bythe[type]}.`);
         return ER_NOTHING;
     } else if (otmp.oerodeproof || (otmp.blessed && !rnl(4))) {
         if (game.flags.verbose && (print || otmp.oerodeproof)
             && (uvictim || vismon || visobj)) {
-            if (!uvictim || !ostr)
-                throw new Error('erode_obj(): "Somehow" message not ported yet');
-            await pline(`Somehow, your ${ostr} ${vtense(ostr, "are")} not affected by the ${bythe[type]}.`);
+            await pline(`Somehow, ${uvictim ? "your"
+                                    : !vismon ? "the" /* visobj */
+                                      : s_suffix(mon_nam(victim))} ${ostr} ${
+                vtense(ostr, "are")} not affected by the ${bythe[type]}.`);
         }
         /* We assume here that if the object is protected because it
          * is blessed, it still shows some minor signs of wear, and
@@ -1309,9 +1561,10 @@ async function erode_obj(otmp, ostr, type, ef_flags) {
                        : erosion ? " further" : "";
 
         if (uvictim || vismon || visobj) {
-            if (!uvictim || !ostr)
-                throw new Error('erode_obj(): erosion message for this object not ported yet');
-            await pline(`Your ${ostr} ${vtense(ostr, action[type])}${adverb}!`);
+            await pline(`${uvictim ? "Your"
+                           : !vismon ? "The" /* visobj */
+                             : s_suffix(Monnam(victim))} ${ostr} ${
+                vtense(ostr, action[type])}${adverb}!`);
         }
 
         if (ef_flags & EF_PAY)
@@ -1327,8 +1580,14 @@ async function erode_obj(otmp, ostr, type, ef_flags) {
     } else if (ef_flags & EF_DESTROY) {
         throw new Error('erode_obj(): destroying an eroded object not ported yet');
     } else {
-        if (game.flags.verbose && print)
-            throw new Error('erode_obj(): "completely rusty" message not ported yet');
+        if (game.flags.verbose && print) {
+            const msg = ["burnt", "rusted", "rotten", "corroded", "cracked"];
+            if (uvictim)
+                await pline(`Your ${ostr} ${vtense(ostr, "look")} completely ${msg[type]}.`);
+            else if (vismon)
+                await pline(`${s_suffix(Monnam(victim))} ${ostr} ${
+                    vtense(ostr, "look")} completely ${msg[type]}.`);
+        }
         return ER_NOTHING;
     }
 }
@@ -1453,28 +1712,28 @@ async function trapeffect_rust_trap(mtmp, trap, trflags) {
             if (in_sight)
                 throw new Error('trapeffect_rust_trap(): mbodypart() message not ported yet');
             target = which_armor(mtmp, W_ARMH);
-            water_damage(target, null, true);
+            await water_damage(target, null, true);
             break;
         case 1:
             if (in_sight)
                 throw new Error('trapeffect_rust_trap(): mbodypart() message not ported yet');
             target = which_armor(mtmp, W_ARMS);
-            if (water_damage(target, "shield", true) !== 0 /* ER_NOTHING */)
+            if (await water_damage(target, "shield", true) !== 0 /* ER_NOTHING */)
                 break;
             target = mtmp.mw; /* MON_WEP(mtmp) */
             if (target && bimanual(target))
-                water_damage(target, null, true);
+                await water_damage(target, null, true);
             /* mglovecheck: */
             target = which_armor(mtmp, W_ARMG);
-            water_damage(target, null, true);
+            await water_damage(target, null, true);
             break;
         case 2:
             if (in_sight)
                 throw new Error('trapeffect_rust_trap(): mbodypart() message not ported yet');
-            water_damage(mtmp.mw, null, true);
+            await water_damage(mtmp.mw, null, true);
             /* goto mglovecheck */
             target = which_armor(mtmp, W_ARMG);
-            water_damage(target, null, true);
+            await water_damage(target, null, true);
             break;
         default:
             if (in_sight)
@@ -1485,11 +1744,11 @@ async function trapeffect_rust_trap(mtmp, trap, trflags) {
                     && (otmp.owornmask & (W_WEP | W_SWAPWEP)) === 0)
                     throw new Error('trapeffect_rust_trap(): splash_lit() not ported yet');
             if ((target = which_armor(mtmp, W_ARMC)) != null)
-                water_damage(target, null, true);
+                await water_damage(target, null, true);
             else if ((target = which_armor(mtmp, W_ARM)) != null)
-                water_damage(target, null, true);
+                await water_damage(target, null, true);
             else if ((target = which_armor(mtmp, W_ARMU)) != null)
-                water_damage(target, "shirt", true);
+                await water_damage(target, "shirt", true);
         }
 
         if (mptr === mons[PM_IRON_GOLEM]) { /* completelyrusts(mptr) */
@@ -1963,8 +2222,32 @@ async function domagictrap() {
         case 10:
             /* sometimes nothing happens */
             break;
-        case 11: /* toggle intrinsic invisibility */
-            throw new Error('domagictrap(): invisibility toggle not ported yet');
+        case 11: { /* toggle intrinsic invisibility */
+            const inv = u.uprops[INVIS], seeinv = u.uprops[SEE_INVIS];
+            const Invis = (inv.intrinsic || inv.extrinsic) && !inv.blocked;
+            const See_invisible = !!(seeinv.intrinsic || seeinv.extrinsic
+                                     || perceives(game.youmonst.data));
+
+            /* Soundeffect(se_low_hum, 100); */
+            await You_hear("a low hum.");
+            if (!Invis) {
+                if (!Blind())
+                    await self_invis_message();
+            } else if (!inv.extrinsic && !pm_invisible(game.youmonst.data)) {
+                if (!Blind()) {
+                    if (!See_invisible)
+                        await You("can see yourself again!");
+                    else
+                        await pline("You can't see through yourself anymore."); /* You_cant() */
+                }
+            } else {
+                /* If we're invisible from another source */
+                await You_feel(`a little more ${inv.intrinsic ? "obvious" : "hidden"} now.`);
+            }
+            inv.intrinsic = inv.intrinsic ? 0 : (inv.intrinsic | FROMOUTSIDE);
+            newsym(u.ux, u.uy);
+            break;
+        }
         case 12: /* a flash of fire */
             throw new Error('domagictrap(): dofiretrap() not ported yet');
 
@@ -2734,4 +3017,146 @@ export function maketrap(x, y, typ) {
         ftraps().unshift(ttmp);
     }
     return ttmp;
+}
+
+// C ref: trap.c rnd_nextto_goodpos()
+/* pick a random goodpos() next to x,y and write its coordinates to xy;
+   returns TRUE if found, FALSE if not */
+export function rnd_nextto_goodpos(xy, mtmp) {
+    let i, j;
+    const is_u = (mtmp === game.youmonst);
+    let nx, ny, k;
+    const dirs = new Array(N_DIRS);
+
+    for (i = 0; i < N_DIRS; ++i)
+        dirs[i] = i;
+    for (i = N_DIRS; i > 0; --i) {
+        j = rn2(i);
+        k = dirs[j];
+        dirs[j] = dirs[i - 1];
+        dirs[i - 1] = k;
+    }
+    for (i = 0; i < N_DIRS; ++i) {
+        nx = xy.x + xdir[dirs[i]];
+        ny = xy.y + ydir[dirs[i]];
+        /* crawl_destination and goodpos both include an isok() check */
+        if (is_u ? crawl_destination(nx, ny) : goodpos(nx, ny, mtmp, 0)) {
+            xy.x = nx;
+            xy.y = ny;
+            return true;
+        }
+    }
+    return false;
+}
+
+// C ref: trap.c chest_trap()
+/* only called when the player is doing something to the chest directly;
+   returns True if chest is destroyed, False if it remains in play */
+export async function chest_trap(obj, bodypart, disarm) {
+    const u = game.u;
+    let otmp = obj;
+    let msg;
+
+    const loc = get_obj_location(obj, 0); /* might be carried */
+    if (loc)
+        obj.ox = loc[0], obj.oy = loc[1];
+
+    otmp.tknown = 0;   /* for xname(); will be set to 1 below */
+    otmp.otrapped = 0; /* trap is one-shot; clear flag first in case
+                        * chest kills you and ends up in bones file */
+    await You(disarm ? "set it off!" : "trigger a trap!");
+    await tty_display_nhwindow(game.WIN_MESSAGE, false);
+    if (Luck() > -13 && rn2(13 + Luck()) > 7) { /* saved by luck */
+        /* trap went off, but good luck prevents damage */
+        switch (rn2(13)) {
+        case 12:
+        case 11:
+            msg = "explosive charge is a dud";
+            break;
+        case 10:
+        case 9:
+            msg = "electric charge is grounded";
+            break;
+        case 8:
+        case 7:
+            msg = "flame fizzles out";
+            break;
+        case 6:
+        case 5:
+        case 4:
+            msg = "poisoned needle misses";
+            break;
+        case 3:
+        case 2:
+        case 1:
+        case 0:
+            msg = "gas cloud blows away";
+            break;
+        default:
+            msg = null;
+            break;
+        }
+        if (msg)
+            await pline(`But luckily the ${msg}!`);
+    } else {
+        switch (rn2(20) ? ((Luck() >= 13) ? 0 : rn2(13 - Luck())) : rn2(26)) {
+        case 25:
+        case 24:
+        case 23:
+        case 22:
+        case 21:
+            throw new Error('chest_trap(): exploding chest not ported yet');
+        case 20:
+        case 19:
+        case 18:
+        case 17:
+            await pline(`A cloud of noxious gas billows from ${the(xname(obj))}.`);
+            if (rn2(3))
+                await poisoned("gas cloud", A_STR, "cloud of poison gas", 15,
+                               false);
+            else
+                await create_gas_cloud(obj.ox, obj.oy, 1, 8);
+            exercise(A_CON, false);
+            break;
+        case 16:
+        case 15:
+        case 14:
+        case 13:
+            await You_feel(`a needle prick your ${body_part(bodypart)}.`);
+            await poisoned("needle", A_CON, "poisoned needle", 10, false);
+            exercise(A_CON, false);
+            break;
+        case 12:
+        case 11:
+        case 10:
+        case 9:
+            throw new Error('chest_trap(): dofiretrap() not ported yet');
+        case 8:
+        case 7:
+        case 6:
+            throw new Error('chest_trap(): electric shock (destroy_items()) not ported yet');
+        case 5:
+        case 4:
+        case 3:
+            if (!(uprop(FREE_ACTION).intrinsic || uprop(FREE_ACTION).extrinsic)) {
+                await pline("Suddenly you are frozen in place!");
+                nomul(-d(5, 6));
+                game.multi_reason = "frozen by a trap";
+                exercise(A_DEX, false);
+                game.nomovemsg = "You can move again."; /* You_can_move_again */
+            } else
+                await You("momentarily stiffen.");
+            break;
+        case 2:
+        case 1:
+        case 0:
+            throw new Error('chest_trap(): stunning gas (rndcolor()) not ported yet');
+        default:
+            break;
+        }
+        game.disp_botl = true; /* bot(): to get immediate botl re-display */
+    }
+
+    obj.tknown = 1; /* hero knows chest is no longer trapped */
+    return false;
 }

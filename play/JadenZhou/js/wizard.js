@@ -1,15 +1,24 @@
 // wizard.js — the Wizard of Yendor's tricks and the nasty monsters.
-// C ref: wizard.c — nasties[], pick_nasty().
+// C ref: wizard.c — nasties[], pick_nasty(), has_aggravatables(),
+// clonewiz(), nasty().
 //
 // Not ported yet: the rest of wizard.c (the Wizard's AI, amulet(),
-// nasty(), cuss(), resurrect(), intervene()).
+// cuss(), resurrect(), intervene()).
 
 import { game } from './gstate.js';
-import { ROLL_FROM } from './rng.js';
+import { ROLL_FROM, rn2, rnd } from './rng.js';
 import * as MM from './monsters.js';
 import { mons, G_HELL, G_NOHELL } from './monsters.js';
-import { NEUTRAL, G_GENOD, Is_rogue_level } from './const.js';
-import { In_hell } from './dungeon.js';
+import { NEUTRAL, G_GENOD, Is_rogue_level, STRAT_WAITFORU, MM_NOWAIT,
+         MM_NOMSG, NO_MM_FLAGS, M_AP_MONSTER, PROT_FROM_SHAPE_CHANGERS,
+         In_endgame } from './const.js';
+import { In_hell, In_W_tower } from './dungeon.js';
+import { makemon, set_malign } from './makemon.js';
+import { enexto } from './teleport.js';
+import { add_to_minv, mksobj } from './mkobj.js';
+import { FAKE_AMULET_OF_YENDOR } from './objects.js';
+import { newsym } from './display.js';
+import { monster_census } from './minion.js';
 import { big_to_little } from './mondata.js';
 import { def_monsyms } from './drawing.js';
 
@@ -84,4 +93,178 @@ export function pick_nasty(
     }
 
     return res;
+}
+
+/* C ref: monst.h DEADMONSTER(), helpless(); mondata.c attacktype() */
+function DEADMONSTER(mon) { return mon.mhp < 1; }
+function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
+function attacktype(ptr, atyp) { return ptr.mattk.some(a => a.aatyp === atyp); }
+/* C ref: hack.h sgn() */
+function sgn(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
+
+// C ref: wizard.c wizapp[]
+const wizapp = [
+    MM.PM_HUMAN, MM.PM_WATER_DEMON, MM.PM_VAMPIRE, MM.PM_RED_DRAGON,
+    MM.PM_TROLL, MM.PM_UMBER_HULK, MM.PM_XORN, MM.PM_XAN,
+    MM.PM_COCKATRICE, MM.PM_FLOATING_EYE, MM.PM_GUARDIAN_NAGA, MM.PM_TRAPPER,
+];
+
+// C ref: wizard.c has_aggravatables()
+/* are there any monsters mon could aggravate? */
+export function has_aggravatables(mon) {
+    const u = game.u;
+    const in_w_tower = In_W_tower(mon.mx, mon.my, u.uz);
+
+    if (in_w_tower !== In_W_tower(u.ux, u.uy, u.uz))
+        return false;
+
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        if (DEADMONSTER(mtmp))
+            continue;
+        if (in_w_tower !== In_W_tower(mtmp.mx, mtmp.my, u.uz))
+            continue;
+        if ((mtmp.mstrategy & STRAT_WAITFORU) !== 0 || helpless(mtmp))
+            return true;
+    }
+    return false;
+}
+
+// C ref: wizard.c clonewiz()
+/* "Double Trouble" spell cast by the Wizard; caller is responsible for
+   only casting this when there is currently one wizard in existence;
+   the clone can't use it unless/until its creator has been killed off */
+export function clonewiz() {
+    const u = game.u;
+    let mtmp2;
+
+    if ((mtmp2 = makemon(mons[MM.PM_WIZARD_OF_YENDOR], u.ux, u.uy, MM_NOWAIT))
+        !== null) {
+        mtmp2.msleeping = mtmp2.mtame = mtmp2.mpeaceful = 0;
+        if (!u.uhave.amulet && rn2(2)) { /* give clone a fake */
+            add_to_minv(mtmp2, mksobj(FAKE_AMULET_OF_YENDOR, true, false));
+        }
+        const P = u.uprops[PROT_FROM_SHAPE_CHANGERS];
+        if (!(P.intrinsic || P.extrinsic)) { /* !Protection_from_shape_changers */
+            mtmp2.m_ap_type = M_AP_MONSTER;
+            mtmp2.mappearance = ROLL_FROM(wizapp);
+        }
+        newsym(mtmp2.mx, mtmp2.my);
+    }
+}
+
+// C ref: wizard.c nasty()
+/* create some nasty monsters, aligned with the caster or neutral; chaotic
+   and unaligned are treated as equivalent; if summoner is Null, this is
+   for late-game harassment (after the Wizard has been killed at least once
+   or the invocation ritual has been performed), in which case we treat
+   'summoner' as neutral, since that will produce the greatest number of
+   creatures on average (in 3.6.0 and earlier, Null was treated as chaotic);
+   returns the number of monsters created */
+export function nasty(summoner) {
+    const u = game.u;
+    let mtmp;
+    const bypos = { x: 0, y: 0 };
+    let i, j, count, census, tmp, makeindex,
+        s_cls, m_cls, difcap, trylimit, castalign;
+    /* when a monster casts the "summon nasties" spell, it gives feedback;
+       when random post-Wizard harassment casts that, we give feedback */
+    const mmflags = summoner ? MM_NOMSG : NO_MM_FLAGS;
+
+    const MAXNASTIES = 10; /* more than this can be created */
+
+    /* some candidates may be created in groups, so simple count
+       of non-null makemon() return is inadequate */
+    census = monster_census(false);
+
+    if (!rn2(10) && In_hell(u.uz)) {
+        /* this might summon a demon prince or lord */
+        throw new Error('nasty(): msummon() not ported yet');
+    } else {
+        count = 0;
+        s_cls = summoner ? summoner.data.mlet : 0;
+        difcap = summoner ? summoner.data.difficulty : 0; /* spellcasters */
+        castalign = summoner ? sgn(summoner.data.maligntyp) : 0;
+        tmp = (u.ulevel > 3) ? Math.trunc(u.ulevel / 3) : 1;
+        /* if we don't have a casting monster, nasties appear around hero,
+           otherwise they'll appear around spot summoner thinks she's at */
+        bypos.x = u.ux;
+        bypos.y = u.uy;
+        for (i = rnd(tmp); i > 0 && count < MAXNASTIES; --i) {
+            /* Of the 44 nasties[], 10 are lawful, 14 are chaotic,
+             * and 20 are neutral.  [...] */
+            for (j = 0; j < 20; j++) {
+                /* Don't create more spellcasters of the monster's level or
+                 * higher--avoids chain summoners filling up the level.
+                 */
+                trylimit = 10 + 1; /* 10 tries */
+                let nextj = false;
+                do {
+                    if (!--trylimit) {
+                        nextj = true; /* goto nextj */
+                        break;
+                    }
+                    makeindex = pick_nasty(difcap);
+                    m_cls = mons[makeindex].mlet;
+                } while ((difcap > 0 && mons[makeindex].difficulty >= difcap
+                          && attacktype(mons[makeindex], MM.AT_MAGC))
+                         || (s_cls === MM.S_DEMON && m_cls === MM.S_ANGEL)
+                         || (s_cls === MM.S_ANGEL && m_cls === MM.S_DEMON));
+                if (nextj)
+                    continue; /* break this loop, continue outer one */
+                /* do this after picking the monster to place */
+                if (summoner && !enexto(bypos, summoner.mux, summoner.muy,
+                                        mons[makeindex]))
+                    continue;
+                /* this honors genocide but overrides extinction; it ignores
+                   inside-hell-only (G_HELL) & outside-hell-only (G_NOHELL) */
+                if ((mtmp = makemon(mons[makeindex], bypos.x, bypos.y,
+                                    mmflags)) !== null) {
+                    mtmp.msleeping = mtmp.mpeaceful = mtmp.mtame = 0;
+                    set_malign(mtmp);
+                } else {
+                    /* random monster to substitute for geno'd selection;
+                       unlike direct choice, not forced to be hostile [why?];
+                       limit spellcasters to inhibit chain summoning */
+                    if ((mtmp = makemon(null, bypos.x, bypos.y, mmflags))
+                        !== null) {
+                        m_cls = mtmp.data.mlet;
+                        if ((difcap > 0 && mtmp.data.difficulty >= difcap
+                             /* always capping for substitutes made wanton
+                                genocide become too strong in the endgame */
+                             && rn2(In_endgame(u.uz) ? 3 : 7) /* usually */
+                             && attacktype(mtmp.data, MM.AT_MAGC))
+                            || (s_cls === MM.S_DEMON && m_cls === MM.S_ANGEL)
+                            || (s_cls === MM.S_ANGEL && m_cls === MM.S_DEMON))
+                            throw new Error('nasty(): unmakemon() not ported yet');
+                    }
+                }
+
+                if (mtmp) {
+                    /* if creating an arch-lich or Archon, further directly
+                       selected nasties will have to be less difficult, and
+                       substitues for geno victims will usually be less
+                       (note: Archon is not in nasties[] but could be chosen
+                       as random replacement for a genocided selection) */
+                    if (mtmp.data === mons[MM.PM_ARCH_LICH]
+                        || mtmp.data === mons[MM.PM_ARCHON]) {
+                        tmp = Math.min(mons[MM.PM_ARCHON].difficulty, /* A:26 */
+                                       mons[MM.PM_ARCH_LICH].difficulty); /* L:31 */
+                        if (!difcap || difcap > tmp)
+                            difcap = tmp; /* rest must be lower difficulty */
+                    }
+                    /* delay first use of spell or breath attack */
+                    mtmp.mspec_used = rnd(4);
+
+                    if (++count >= MAXNASTIES
+                        || mtmp.data.maligntyp === 0
+                        || sgn(mtmp.data.maligntyp) === castalign)
+                        break;
+                }
+            } /* for j */
+        } /* for i */
+    }
+
+    if (count)
+        count = monster_census(false) - census;
+    return count;
 }

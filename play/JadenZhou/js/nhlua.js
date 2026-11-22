@@ -60,6 +60,7 @@ import { NUMMONS, HIGH_PM } from './monsters.js';
 import { FIRST_OBJECT, NUM_OBJECTS } from './objects.js';
 import { hellfill_lua_files } from './hellfill_lua.js';
 import { wizard_lua_files } from './wizard_lua.js';
+import { sanctum_lua_files } from './sanctum_lua.js';
 
 // C's impossible() (pline.c) is not ported yet.
 function impossible(msg) { console.error(`impossible: ${msg}`); }
@@ -524,6 +525,8 @@ function nhl_lua_file(fname) {
         return hellfill_lua_files[fname];
     if (Object.hasOwn(wizard_lua_files, fname))
         return wizard_lua_files[fname];
+    if (Object.hasOwn(sanctum_lua_files, fname))
+        return sanctum_lua_files[fname];
     return null;
 }
 

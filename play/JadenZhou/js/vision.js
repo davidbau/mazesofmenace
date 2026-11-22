@@ -736,6 +736,37 @@ export function do_clear_area(scol, srow, range, func, arg) {
     }
 }
 
+// C ref: vision.c do_clear_area() -- the same, for a client "func" that
+// is async (prints messages or reaches other async code, e.g.
+// fountain.c gush()); only the hero-centered case is ported
+export async function do_clear_area_async(scol, srow, range, func, arg) {
+    if (scol !== game.u.ux || srow !== game.u.uy)
+        throw new Error('do_clear_area(): async client off the hero not ported yet');
+    let x, y, min_x, max_x, max_y, offset;
+    /* detecting(func) is False for every async caller */
+    const override_vision = false;
+
+    if (range > 15 /* MAX_RADIUS */ || range < 1)
+        throw new Error(`do_clear_area:  illegal range ${range}`);
+    if (game.vision_full_recalc)
+        vision_recalc(0); /* recalc vision if dirty */
+    const limits = circle_start[range]; /* circle_ptr(range) */
+    if ((max_y = (srow + range)) >= ROWNO)
+        max_y = ROWNO - 1;
+    if ((y = (srow - range)) < 0)
+        y = 0;
+    for (; y <= max_y; y++) {
+        offset = circle_data[limits + Math.abs(y - srow)];
+        if ((min_x = (scol - offset)) < 1)
+            min_x = 1;
+        if ((max_x = (scol + offset)) >= COLNO)
+            max_x = COLNO - 1;
+        for (x = min_x; x <= max_x; x++)
+            if (couldsee(x, y) || override_vision)
+                await func(x, y, arg);
+    }
+}
+
 // C ref: vision_recalc(control)
 export function vision_recalc(control = 0) {
     const u = game.u;

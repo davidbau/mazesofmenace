@@ -6,6 +6,7 @@
 // teleport.c.
 
 import { game } from './gstate.js';
+import { remove_worm, place_worm_tail_randomly } from './worm.js';
 import { rn2, rnl } from './rng.js';
 import { pline } from './display.js';
 import { tty_getlin } from './wintty.js';
@@ -44,7 +45,12 @@ import { MIGR_RANDOM } from './const.js';
 import { within_bounded_area } from './rect.js';
 import { obj_extract_self, place_object } from './mkobj.js';
 import { flooreffects } from './do.js';
-import { dist2 } from './hacklib.js';
+import { dist2, distmin } from './hacklib.js';
+import { drag_ball, move_bc, placebc, unplacebc } from './ball.js';
+import { fill_pit } from './muse.js';
+import { reset_utrap } from './trap.js';
+import { near_capacity } from './hack.js';
+import { SLT_ENCUMBER, TELEDS_ALLOW_DRAG } from './const.js';
 import { CORPSE, AMULET_OF_YENDOR, BOULDER } from './objects.js';
 import { STRAT_APPEARMSG, RLOC_MSG, RLOC_NONE, NO_TRAP_FLAGS, BLINDED,
          BOLT_LIM } from './const.js';
@@ -62,6 +68,10 @@ import { ACURR } from './attrib.js';
 import { check_capacity } from './hack.js';
 import { morehungry } from './eat.js';
 import { in_out_region, update_player_regions, update_monster_region } from './region.js';
+import { learnscroll } from './read.js';
+
+/* C ref: youprop.h Punished */
+function Punished() { return !!game.uball; }
 
 /* C ref: mondata.h is_rider() */
 function is_rider(ptr) {
@@ -273,18 +283,49 @@ async function rloc_to_flag(mtmp, x, y, rlocflags) {
 // C ref: teleport.c teleds() -- put the hero at <nux,nuy> on this level
 export async function teleds(nux, nuy, teleds_flags) {
     const u = game.u;
+    let was_swallowed;
+    let ball_active, ball_still_in_range = false,
+        allow_drag = (teleds_flags & TELEDS_ALLOW_DRAG) !== 0;
     const is_teleport = (teleds_flags & TELEDS_TELEPORT) !== 0;
 
     /* vault_occupied(u.urooms) ? findgd() : 0 */
     if (u.urooms && in_rooms_vault(u.urooms))
         throw new Error('teleds(): vault guard not ported yet');
-    if (u.utraptype === TT_BURIEDBALL || game.uball)
-        throw new Error('teleds(): ball and chain not ported yet');
-    /* ball_active = (Punished && uball->where != OBJ_FREE): no ball */
-    /* reset_utrap(FALSE): set_utrap(0, 0) */
-    u.utrap = 0;
-    u.utraptype = 0;
-    const was_swallowed = u.uswallow; /* set_ustuck(Null) clears uswallow */
+
+    if (u.utraptype === TT_BURIEDBALL) {
+        /* unearth it */
+        throw new Error('teleds(): buried_ball_to_punishment() not ported yet');
+    }
+    ball_active = (Punished() && game.uball.where !== 'OBJ_FREE');
+    if (!ball_active
+        || near_capacity() > SLT_ENCUMBER
+        || distmin(u.ux, u.uy, nux, nuy) > 1)
+        allow_drag = false;
+
+    /* If they have to move the ball, then drag if allow_drag is true;
+     * otherwise they are teleporting, so unplacebc().
+     * If they don't have to move the ball, then always "drag" whether or
+     * not allow_drag is true, because we are calling that function, not
+     * to drag, but to move the chain.  *However*, there are some dumb
+     * special cases:
+     *    0                          0
+     *   _X  move east       ----->  X_
+     *    @                           @
+     * These are permissible if teleporting, but not if dragging.  As a
+     * result, drag_ball() needs to know about allow_drag and might end
+     * up dragging the ball anyway.  Also, drag_ball() might find that
+     * dragging the ball is completely impossible (ball in range but there's
+     * rock in the way), in which case it teleports the ball on its own.
+     */
+    if (ball_active) {
+        if (game.uball.where !== 'OBJ_INVENT' /* !carried(uball) */
+            && distmin(nux, nuy, game.uball.ox, game.uball.oy) <= 2)
+            ball_still_in_range = true; /* don't have to move the ball */
+        else if (!allow_drag)
+            unplacebc(); /* have to move the ball */
+    }
+    await reset_utrap(false);
+    was_swallowed = u.uswallow; /* set_ustuck(Null) clears uswallow */
     set_ustuck(null);
     u.ux0 = u.ux;
     u.uy0 = u.uy;
@@ -297,15 +338,28 @@ export async function teleds(nux, nuy, teleds_flags) {
     if (was_swallowed)
         throw new Error('teleds(): leaving an engulfer not ported yet');
 
+    if (ball_active && (ball_still_in_range || allow_drag)) {
+        /* bc_control, ballx, bally, chainx, chainy, cause_delay */
+        const bc = {};
+
+        if (await drag_ball(nux, nuy, bc, allow_drag))
+            move_bc(0, bc.bc_control, bc.ballx, bc.bally, bc.chainx, bc.chainy);
+        else {
+            /* dragging fails if hero is encumbered beyond 'burdened' */
+            /* uball might've been cleared via drag_ball -> spoteffects ->
+               dotrap -> magic trap unpunishment */
+            ball_active = (Punished() && game.uball.where !== 'OBJ_FREE');
+            if (ball_active)
+                unplacebc(); /* to match placebc() below */
+        }
+    }
+
     /* must set u.ux, u.uy after drag_ball(), which may need to know
        the old position if allow_drag is true... */
     u_on_newpos(nux, nuy); /* set u.<x,y>, usteed-><mx,my>; cliparound() */
-    /* fill_pit(u.ux0, u.uy0): a pit/hole with a boulder at the old spot */
-    {
-        const t = t_at(u.ux0, u.uy0);
-        if (t && (is_pit(t.ttyp) || is_hole(t.ttyp)) && sobj_at(BOULDER, u.ux0, u.uy0))
-            throw new Error('teleds(): fill_pit() not ported yet');
-    }
+    await fill_pit(u.ux0, u.uy0);
+    if (ball_active && game.uchain && game.uchain.where === 'OBJ_FREE')
+        await placebc(); /* put back the ball&chain if they were taken off map */
     update_player_regions();
     /*
      *  Make sure the hero disappears from the old location.  This will
@@ -473,7 +527,7 @@ export async function scrolltele(scroll) {
     if (noteleport_level(game.youmonst) && !game.flags?.debug) {
         await pline("A mysterious force prevents you from teleporting!");
         if (scroll)
-            throw new Error('scrolltele(): learnscroll() not ported yet');
+            learnscroll(scroll);
         return;
     }
 
@@ -497,7 +551,7 @@ export async function scrolltele(scroll) {
                 whobuf += ` and ${mon_nam(u.usteed)}`;
             await pline(`Where do ${whobuf} want to be teleported?`);
             if (scroll)
-                throw new Error('scrolltele(): learnscroll() not ported yet');
+                learnscroll(scroll);
             let cc = { x: u.ux, y: u.uy };
             const iflags = game.iflags;
             if (!iflags.travelcc)
@@ -527,7 +581,7 @@ export async function scrolltele(scroll) {
        "materialize" message regardless of how far you teleported so
        discovery of scroll type is unconditional */
     if (scroll)
-        throw new Error('scrolltele(): learnscroll() not ported yet');
+        learnscroll(scroll);
 
     await safe_teleds(TELEDS_TELEPORT);
 }
@@ -780,6 +834,7 @@ export async function level_tele() {
     let buf = '';
     const newlevel = { dnum: 0, dlevel: 0 };
     let force_dest = false;
+    let random_levtport = false; /* C: goto random_levtport */
 
     if ((u.uhave?.amulet || In_endgame(u.uz) /* || In_sokoban(&u.uz) */)
         && !wizard) {
@@ -805,10 +860,12 @@ export async function level_tele() {
             }
             buf = await tty_getlin(qbuf);
             if (buf === "*") {
-                return; /* goto random_levtport -- not ported yet */
+                random_levtport = true; /* goto random_levtport */
+                break;
             } else if (Confusion && rnl(5)) {
                 await pline("Oops...");
-                return; /* goto random_levtport -- not ported yet */
+                random_levtport = true; /* goto random_levtport */
+                break;
             } else if (buf === "\x1b") { /* cancelled */
                 return;
             }
@@ -826,21 +883,27 @@ export async function level_tele() {
                 force_dest = true;
             } else {
                 if (!/^-?\d+$/.test(buf))
-                    return; /* lev_by_name() -- not ported yet */
+                    throw new Error('level_tele(): lev_by_name() not ported yet');
                 newlev = parseInt(buf, 10); /* atoi() */
             }
         } while (!newlev && !digit(buf[0])
                  && (buf[0] !== '-' || !digit(buf[1])) && trycnt < 10);
 
         /* no dungeon escape via this route */
-        if (newlev === 0)
-            throw new Error('level_tele(): "Go to Nowhere" not ported yet');
+        if (random_levtport)
+            ; /* goto random_levtport (below) */
+        else if (newlev === 0) {
+            if (trycnt >= 10)
+                random_levtport = true; /* goto random_levtport */
+            else
+                throw new Error('level_tele(): "Go to Nowhere" not ported yet');
+        }
 
         /* if in Knox and the requested level > 0, stay put.
          * we let negative values requests fall into the "heaven" loop.
          */
         /* single_level_branch(): Is_knox() */
-        if (g.dungeon_topology.d_knox_level
+        if (!random_levtport && g.dungeon_topology.d_knox_level
             && on_level(u.uz, g.dungeon_topology.d_knox_level) && newlev > 0
             && !force_dest)
             throw new Error('level_tele(): single_level_branch() not ported yet');
@@ -852,11 +915,18 @@ export async function level_tele() {
          *
          * we let negative values requests fall into the "heaven" handling.
          */
-        if (In_quest(u.uz) && newlev > 0)
+        if (!random_levtport && In_quest(u.uz) && newlev > 0)
             newlev = newlev + g.dungeons[u.uz.dnum].depth_start - 1;
     } else { /* involuntary level tele */
-        /* random_levtport: random_teleport_level() -- not ported yet */
-        throw new Error('level_tele(): random_levtport not ported yet');
+        random_levtport = true;
+    }
+    if (random_levtport) {
+        /* random_levtport: */
+        newlev = random_teleport_level();
+        if (newlev === depth(u.uz)) {
+            await pline("You shudder for a moment."); /* You1(shudder_for_moment) */
+            return;
+        }
     }
 
     /* u.utrap && u.utraptype == TT_BURIEDBALL: punishment not ported */
@@ -1063,7 +1133,15 @@ export async function rloc_to_core(mtmp, x, y, rlocflags) {
         }
 
         if (mtmp.wormno) {
-            throw new Error('rloc_to_core(): remove_worm() not ported yet');
+            const lst = game.level.monsters || [];
+            const idx = lst.indexOf(mtmp);
+
+            remove_worm(mtmp);
+            /* remove_worm() took the head off the list too; keep its place
+               in the list, off the map as for remove_monster() below */
+            if (idx >= 0 && !lst.includes(mtmp))
+                lst.splice(idx, 0, mtmp);
+            mtmp.mx = 0, mtmp.my = 0;
         } else {
             /* remove_monster(oldx, oldy): game.level.monsters is keyed by
                mx/my, so moving the monster below is enough */
@@ -1075,6 +1153,9 @@ export async function rloc_to_core(mtmp, x, y, rlocflags) {
     mon_track_clear(mtmp);
     place_monster(mtmp, x, y); /* put monster down */
     update_monster_region(mtmp);
+
+    if (mtmp.wormno) /* now put down tail */
+        place_worm_tail_randomly(mtmp, x, y);
 
     if (u.ustuck === mtmp)
         throw new Error('rloc_to_core(): u.ustuck teleporting not ported yet');

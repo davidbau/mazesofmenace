@@ -19,7 +19,7 @@ import * as K from './const.js';
 import { MAXSPELL, objects, OBJ_DESCR } from './objects.js';
 import * as O from './objects.js';
 import * as M from './monsters.js';
-import { mksobj, mkobj } from './mkobj.js';
+import { mksobj, mkobj, weight } from './mkobj.js';
 import { aligns } from './role.js';
 import { set_uasmon } from './polyself.js';
 import { newhp, adjabil, adjattrib, init_attr, vary_init_attr } from './attrib.js';
@@ -743,14 +743,6 @@ function useupall(obj) {
     obj.where = 'OBJ_FREE';
 }
 
-// C ref: mkobj.c weight() -- base weight; container contents and corpse
-// weights are not needed for starting inventory
-function weight(obj) {
-    const wt = objects[obj.otyp].oc_weight;
-    if (obj.oclass === O.COIN_CLASS)
-        return Math.max(Math.trunc((obj.quan + 50) / 100), 1);
-    return obj.quan > 1 ? wt * obj.quan : (wt || 1);
-}
 
 // C ref: mkobj.c dealloc_obj() -- nothing to free in JS
 function dealloc_obj(obj) { /* garbage collected */ }

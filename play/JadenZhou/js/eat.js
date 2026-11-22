@@ -25,12 +25,13 @@ import { objects, RIN_SLOW_DIGESTION, MEAT_RING, RIN_PROTECTION,
 import { near_capacity, end_running } from './hack.js';
 import { ACURR } from './attrib.js';
 import * as M from './monsters.js';
+import { ALTAR as ALTAR_TYP, ICE as ICE_TYP } from './const.js';
 import { mons } from './monsters.js';
 import { SPINACH_TIN, ROTTEN_TIN, HOMEMADE_TIN, NON_PM, NEUTRAL } from './const.js';
 import { FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
          ACID_RES, STONE_RES, TELEPORT, TELEPORT_CONTROL, TELEPAT,
          LAST_PROP } from './const.js';
-import { can_teleport, control_teleport, telepathic } from './mondata.js';
+import { can_teleport, control_teleport, telepathic, attacktype_fordmg } from './mondata.js';
 import { getobj } from './invent.js';
 import { is_edible } from './iactions.js';
 import { can_reach_floor } from './engrave.js';
@@ -766,6 +767,69 @@ function food_xname(food, the_pfx) {
     return result;
 }
 
+// C ref: mondata.c cantvomit()
+function cantvomit(ptr) {
+    /* rats and mice are incapable of vomiting; likewise with horses;
+       which other creatures have the same limitation? */
+    if (ptr.mlet === M.S_RODENT && ptr !== M.mons[M.PM_ROCK_MOLE]
+        && ptr !== M.mons[M.PM_WOODCHUCK])
+        return true;
+    if (ptr === M.mons[M.PM_WARHORSE] || ptr === M.mons[M.PM_HORSE]
+        || ptr === M.mons[M.PM_PONY])
+        return true;
+    return false;
+}
+
+// C ref: eat.c vomit() -- A good idea from David Neves
+export async function vomit() {
+    const g = game;
+    const u = g.u;
+    let spewed = false;
+
+    if (cantvomit(g.youmonst.data)) {
+        /* doesn't cure food poisoning; message assumes that we aren't
+           dealing with some esoteric body_part() */
+        await Your("jaw gapes convulsively.");
+    } else {
+        if (u.uprops[SICK].intrinsic && (u.usick_type & SICK_VOMITABLE) !== 0)
+            await make_sick(0, null, true, SICK_VOMITABLE);
+        /* if not enough in stomach to actually vomit then dry heave;
+           vomiting_dialog() gives a vomit message when its countdown
+           reaches 0, but only if u.uhs < FAINTING (and !cantvomit()) */
+        if (u.uhs >= FAINTING)
+            await Your(`${body_part(STOMACH)} heaves convulsively!`);
+        else
+            spewed = true;
+    }
+
+    /* nomul()/You_can_move_again used to be unconditional, which was
+       viable while eating but not for Vomiting countdown where hero might
+       be immobilized for some other reason at the time vomit() is called */
+    if (g.multi >= -2) {
+        nomul(-2);
+        g.multi_reason = "vomiting";
+        g.nomovemsg = "You can move again."; /* You_can_move_again */
+    }
+
+    if (spewed) {
+        const ptr = g.youmonst.data;
+        const mattk = attacktype_fordmg(ptr, M.AT_BREA, M.AD_ACID);
+
+        /* currently, only yellow dragons can breathe acid */
+        if (mattk)
+            throw new Error('vomit(): ubreatheu() not ported yet');
+        /* vomiting on an altar is, all things considered, rather impolite */
+        if (g.level.at(u.ux, u.uy).typ === ALTAR_TYP)
+            throw new Error('vomit(): altar_wrath() not ported yet');
+        /* if poly'd into acidic form, stomach acid is stronger than normal */
+        if ((ptr.mflags1 & M.M1_ACID) !== 0) {
+            /* TODO: if there's a web here, destroy that too (before ice) */
+            if (g.level.at(u.ux, u.uy).typ === ICE_TYP)
+                throw new Error('vomit(): melt_ice() not ported yet');
+        }
+    }
+}
+
 // C ref: eat.c choke()
 /* To a full belly all food is bad. (It.) */
 async function choke(food) {
@@ -790,7 +854,7 @@ async function choke(food) {
         }
         await You("stuff yourself and then vomit voluminously.");
         await morehungry(Hunger() ? (u.uhunger - 60) : 1000); /* just got very sick! */
-        throw new Error('choke(): vomit() not ported yet');
+        await vomit();
     } else {
         /*
          * Note all "killer"s below read "Choked on %s" on the
@@ -2230,8 +2294,8 @@ export async function doeat() {
         /* let them eat rings */
         await You_cant("eat something you're wearing.");
         return ECMD_OK;
-    } else if (!(carried(otmp) ? retouch_object(otmp)
-                               : touch_artifact(otmp, game.youmonst))) {
+    } else if (!(carried(otmp) ? await retouch_object(otmp, false)
+                               : await touch_artifact(otmp, game.youmonst))) {
         return ECMD_TIME; /* got blasted so use a turn */
     }
     if (objects[otmp.otyp].oc_material >= IRON

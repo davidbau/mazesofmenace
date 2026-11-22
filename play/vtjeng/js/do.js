@@ -894,7 +894,7 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing = false, rawEnv = 
                     + `${the(xnameFresh(otmp, state), state)} into the ${what}.`,
                 state,
             );
-            if (state.flags?.verbose !== false && !Blind(state.u)) {
+            if (state.flags.verbose && !Blind(state.u)) {
                 await message('Now you can cross it!', state);
             }
         }
@@ -942,7 +942,7 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing = false, rawEnv = 
                 state,
                 {},
             );
-        } else if (!fillsUp && state.flags?.verbose !== false
+        } else if (!fillsUp && state.flags.verbose
             && (pushing ? !Blind(state.u) : cansee(rx, ry, state))) {
             await message('It sinks without a trace!', state);
         }
@@ -2674,11 +2674,8 @@ export async function goto_level(
     maybe_reset_pick(null, state);
     reset_trapset(state);
     // do.c:1607 clears iflags.travelcc, the travel command's destination
-    // cache. Preserve the object because the C fields are part of the live
-    // iflags struct, and initialize the containing fields for direct callers
-    // that construct a state without running the normal startup path.
+    // cache, a coord embedded in the iflags struct.
     state.iflags ??= {};
-    state.iflags.travelcc ??= { x: 0, y: 0 };
     state.iflags.travelcc.x = 0;
     state.iflags.travelcc.y = 0;
     if (state.context) {
@@ -3159,10 +3156,7 @@ export async function goto_level(
 export function save_currentstate(state = game) {
     if (!state.flags?.ins_chkpt) return;
     state.program_state ??= {};
-    // program_state.in_checkpoint is C's counter; the port leaves the key
-    // out while it is zero, so restore the value it had on entry.
-    const savedCheckpoint = state.program_state.in_checkpoint;
-    state.program_state.in_checkpoint = (savedCheckpoint ?? 0) + 1;
+    state.program_state.in_checkpoint++;
     try {
         if (state.iflags?.purge_monsters) dmonsfree(state);
         level_info(ledger_no(state.u.uz, state), state).flags |= VISITED;
@@ -3174,8 +3168,7 @@ export function save_currentstate(state = game) {
         savemonchn(state.gm?.migrating_mons, state, { releasing: false });
         save_msghistory(state);
     } finally {
-        if (savedCheckpoint === undefined) delete state.program_state.in_checkpoint;
-        else state.program_state.in_checkpoint = savedCheckpoint;
+        state.program_state.in_checkpoint--;
     }
 }
 

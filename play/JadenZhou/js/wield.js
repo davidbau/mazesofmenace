@@ -4,6 +4,8 @@
 // Ported so far: welded() with its will_weld()/erodeable_wep() macros,
 // obj.h is_weptool()/bimanual(), and engrave.c freehand().
 
+import { retouch_object, arti_speak } from './artifact.js';
+import { artifact_light } from './worn.js';
 import { game } from './gstate.js';
 import { P_NONE, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, P_POLEARMS, P_LANCE,
          W_WEP, W_SWAPWEP, W_QUIVER } from './const.js';
@@ -231,16 +233,10 @@ function cantwield(ptr) {
 function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
 function verysmall(ptr) { return ptr.msize < MZ_SMALL; }
 
-// C ref: artifact.c retouch_object() -- only the hero-can-handle-it case
-export function retouch_object(wep) {
-    if (wep.oartifact)
-        throw new Error('retouch_object(): touch_artifact() not ported yet');
-    if (objects[wep.otyp].oc_material === SILVER && Hate_silver())
-        throw new Error('retouch_object(): silver damage not ported yet');
-    return true;
-}
+// C ref: artifact.c retouch_object() (ported in artifact.js)
+export { retouch_object };
 /* C ref: you.h Hate_silver; mondata.h hates_silver() */
-function Hate_silver() {
+export function Hate_silver() {
     const ptr = game.youmonst?.data;
     return ((game.u.ulycn ?? -1) >= 0
             || !!(ptr && ((ptr.mflags2 & M2_WERE) || ptr.mlet === S_VAMPIRE
@@ -261,7 +257,7 @@ export async function ready_weapon(wep) {
         throw new Error('ready_weapon(): cant_wield_corpse() not ported yet');
     } else if (game.uarms && bimanual(wep)) {
         throw new Error('ready_weapon(): two-handed weapon with a shield not ported yet');
-    } else if (!retouch_object(wep)) {
+    } else if (!(await retouch_object(wep, false))) {
         res = ECMD_TIME; /* takes a turn even though it doesn't get wielded */
     } else {
         /* Weapon WILL be wielded after this point */
@@ -287,8 +283,13 @@ export async function ready_weapon(wep) {
         if (was_twoweap && !game.u.twoweap && (game.flags?.verbose ?? true))
             throw new Error('ready_weapon(): no-longer-twoweapon message not ported yet');
 
-        if (wep.oartifact)
-            throw new Error('ready_weapon(): arti_speak() not ported yet');
+        /* KMH -- Talking artifacts are finally implemented */
+        if (wep.oartifact) {
+            res |= await arti_speak(wep); /* sets ECMD_TIME bit if artifact speaks */
+        }
+
+        if (artifact_light(wep) && !wep.lamplit)
+            throw new Error('ready_weapon(): begin_burn() of a light-emitting artifact not ported yet');
         if (wep.unpaid)
             throw new Error('ready_weapon(): shopkeeper warning not ported yet');
     }

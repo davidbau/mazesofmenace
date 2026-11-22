@@ -25,6 +25,7 @@ import { AD_STCK, AD_WRAP, AT_ENGL, AT_HUGS, M1_HIDE, M1_CLING, S_MIMIC,
          MZ_HUGE } from './monsters.js';
 import { dmgtype, is_flyer } from './mondata.js';
 import { set_levltyp } from './mkmaze.js';
+import { sanitize_name } from './bones.js';
 
 const BUFSZ = 256;
 
@@ -327,6 +328,25 @@ export function random_engraving(pristine_copy) {
     let outbuf = pristine_copy.s;
     outbuf = wipeout_text(outbuf, Math.trunc(outbuf.length / 4), 0);
     return outbuf;
+}
+
+// C ref: engrave.c sanitize_engravings()
+export function sanitize_engravings() {
+    for (let ep = game.level.head_engr; ep; ep = ep.nxt_engr) {
+        ep.engr_txt.actual_text = sanitize_name(ep.engr_txt.actual_text);
+    }
+}
+
+// C ref: engrave.c forget_engravings()
+export function forget_engravings() {
+    for (let ep = game.level.head_engr; ep; ep = ep.nxt_engr) {
+        ep.erevealed = ep.eread = 0;
+
+        /* Note: engr_txt[actual_text], engr_txt[rememberd_text], and
+         * engr_txt[pristine_text] retain their original text rather
+         * than get updated to reflect each engraving's current text.
+         * Does it matter? */
+    }
 }
 
 // C ref: engrave.c make_grave()

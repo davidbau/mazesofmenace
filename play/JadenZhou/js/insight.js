@@ -17,6 +17,7 @@
 // youprop.h property macros).
 
 import { game } from './gstate.js';
+import { count_wsegs, wseg_at } from './worm.js';
 import {
     A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_NONE, A_STR, A_INT, A_WIS, A_DEX,
     A_CON, A_CHA, A_CURRENT, A_ORIGINAL, NHW_MENU, PICK_NONE,
@@ -46,8 +47,12 @@ import {
 } from './const.js';
 import {
     tty_create_nhwindow, tty_start_menu, add_menu_str, tty_end_menu,
-    tty_select_menu, tty_destroy_nhwindow, tty_yn_function,
+    tty_select_menu, tty_destroy_nhwindow, tty_yn_function, tty_putstr_sync,
+    tty_display_nhwindow, tty_putstr,
 } from './wintty.js';
+import { VANQ_MLVL_MNDX, VANQ_MSTR_MNDX, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX,
+         VANQ_MCLS_HTOL, VANQ_MCLS_LTOH, VANQ_COUNT_H_L,
+         VANQ_COUNT_L_H } from './const.js';
 import {
     objects, OBJ_NAME, WEAPON_CLASS, GEM_CLASS, COIN_CLASS,
     GAUNTLETS_OF_POWER, DUNCE_CAP, SHIELD_OF_REFLECTION, TOWEL, CORPSE, TIN,
@@ -70,6 +75,7 @@ import { depth, dunlev, on_level } from './dungeon.js';
 import { find_ac, money_cnt } from './u_init.js';
 import { near_capacity, inv_weight, in_rooms } from './hack.js';
 import { SHOPBASE, NO_ROOM, ROOMOFFSET } from './const.js';
+import { ACH_RNK1, ACH_RNK8, ACH_SOKO, N_ACH } from './const.js';
 import { ACURR, ABASE, AMAX, ATTRMAX, from_what } from './attrib.js';
 import { P_SKILL, P_MAX_SKILL, P_ADVANCE, P_RESTRICTED, weapon_type,
          practice_needed_to_advance } from './weapon.js';
@@ -394,8 +400,9 @@ export function body_part(part) {
 function contained_gold(obj, even_if_unknown) {
     let value = 0;
 
-    /* objects other than coins won't have any gold inside them */
-    for (let otmp = obj.cobj; otmp; otmp = otmp.nobj)
+    /* objects other than coins won't have any gold inside them
+       (JS container contents are an array) */
+    for (const otmp of (Array.isArray(obj.cobj) ? obj.cobj : []))
         if (otmp.oclass === COIN_CLASS)
             value += otmp.quan;
         else if (otmp.cobj && (otmp.cknown || even_if_unknown))
@@ -626,7 +633,7 @@ function enlght_out(buf) {
     if (game.en_via_menu) {
         add_menu_str(game.en_win, buf);
     } else
-        throw new Error('enlght_out(): putstr() to a text window not ported yet');
+        tty_putstr_sync(game.en_win, 0, buf);
 }
 
 // C ref: insight.c enlght_line()
@@ -883,7 +890,7 @@ export async function enlightenment(mode, /* BASICENLIGHTENMENT | MAGICENLIGHTEN
     enl_msg("Total elapsed playing time ", "is", "was", buf, "");
 
     if (!game.en_via_menu) {
-        throw new Error('enlightenment(): end-of-game text window not ported yet');
+        await tty_display_nhwindow(game.en_win, true);
     } else {
         tty_end_menu(game.en_win, null);
         await tty_select_menu(game.en_win, PICK_NONE);
@@ -2138,8 +2145,20 @@ export async function mstatusline(mtmp) {
     } else if (mtmp.mpeaceful)
         info += ", peaceful";
 
-    if (mtmp.data === M.mons[M.PM_LONG_WORM])
-        throw new Error('mstatusline(): long worm segments not ported yet');
+    if (mtmp.data === M.mons[M.PM_LONG_WORM]) {
+        let segndx, nsegs = count_wsegs(mtmp);
+
+        /* the worm code internals don't consider the head to be one of
+           the worm's segments, but we count it as such when presenting
+           worm feedback to the player */
+        if (!nsegs) {
+            info += ", single segment";
+        } else {
+            ++nsegs; /* include head in the segment count */
+            segndx = wseg_at(mtmp, game.bhitpos.x, game.bhitpos.y);
+            info += `, ${segndx}${ordin(segndx)} of ${nsegs} segments`;
+        }
+    }
     if (mtmp.cham != null && mtmp.cham >= 0 /* ismnum() */
         && mtmp.data !== M.mons[mtmp.cham])
         /* don't reveal the innate form (chameleon, vampire, &c),
@@ -2275,13 +2294,140 @@ function num_gone(mvflags) {
     return mindx;
 }
 
+// C ref: insight.c record_achievement()
+/* add an achievement to the list; C's list is 0-terminated, here it's a
+   plain array */
+export function record_achievement(achidx) {
+    const u = game.u;
+    let i;
+    let repeat_achievement = 0;
+    const absidx = Math.abs(achidx);
+
+    if (!u.uachieved)
+        u.uachieved = [];
+    /* valid achievements range from 1 to N_ACH-1; however, ranks can be
+       stored as the complement (ie, negative) to track gender */
+    if ((achidx < 1 && (absidx < ACH_RNK1 || absidx > ACH_RNK8))
+        || achidx >= N_ACH) {
+        console.error(`impossible: Achievement #${achidx} is out of range.`);
+        return;
+    }
+
+    /* find first empty slot or achievement #achidx; an attempt to
+       duplicate an achievement can happen if any of Bell, Candelabrum,
+       Book, or Amulet is dropped then picked up again */
+    for (i = 0; i < u.uachieved.length; ++i)
+        if (Math.abs(u.uachieved[i]) === absidx) {
+            repeat_achievement = 1;
+            break;
+        }
+
+    /* SoundAchievement(achidx, 0, repeat_achievement): no sound interface */
+
+    if (repeat_achievement)
+        return; /* already recorded, don't duplicate it */
+    u.uachieved[i] = achidx;
+
+    /* livelog_printf(): the livelog isn't shown on the tty */
+}
+
+// C ref: insight.c remove_achievement()
+/* discard a recorded achievement; return True if removed, False otherwise */
+export function remove_achievement(achidx) {
+    const u = game.u;
+    const list = u.uachieved || [];
+    let i;
+
+    for (i = 0; i < list.length; ++i)
+        if (Math.abs(list[i]) === Math.abs(achidx))
+            break; /* stop when found */
+    if (i >= list.length) /* not found */
+        return false;
+    list.splice(i, 1);
+    return true;
+}
+
 // C ref: insight.c count_achievements()
 export function count_achievements() {
     return (game.u.uachieved || []).length;
 }
 
-// C ref: insight.c list_vanquished() -- the question; the list itself
-// isn't ported
+// C ref: insight.c achieve_rank()
+/* convert a rank index to an achievement number; encode it when female
+   in order to subsequently report gender-specific ranks accurately */
+export function achieve_rank(rank) /* 1..8 */ {
+    let achidx = (rank - 1) + ACH_RNK1;
+
+    if (game.flags.female)
+        achidx = -achidx;
+    return achidx;
+}
+
+// C ref: insight.c sokoban_in_play()
+/* return True if sokoban branch has been entered, False otherwise */
+export function sokoban_in_play() {
+    for (const a of game.u.uachieved || [])
+        if (a === ACH_SOKO)
+            return true;
+    return false;
+}
+
+// C ref: insight.c vanqsort_cmp() -- qsort() comparison for the
+// vanquished list, by flags.vanq_sortmode
+function vanqsort_cmp(indx1, indx2) {
+    const sortmode = game.flags.vanq_sortmode || 0;
+    let res;
+
+    switch (sortmode) {
+    default:
+    case VANQ_MLVL_MNDX:
+        /* sort by monster level */
+        res = M.mons[indx2].mlevel - M.mons[indx1].mlevel; /* mlevel high to low */
+        break;
+    case VANQ_MSTR_MNDX:
+        /* sort by monster toughness */
+        res = M.mons[indx2].difficulty - M.mons[indx1].difficulty; /* monstr high to low */
+        break;
+    case VANQ_ALPHA_SEP: {
+        const uniq1 = UniqCritterIndx(indx1) ? 1 : 0,
+              uniq2 = UniqCritterIndx(indx2) ? 1 : 0;
+        if (uniq1 ^ uniq2) { /* one or other uniq, but not both */
+            res = uniq2 - uniq1;
+            break;
+        } /* else both unique or neither unique */
+    }
+    /*FALLTHRU*/
+    case VANQ_ALPHA_MIX: { // eslint-disable-line no-fallthrough
+        /* strcmpi(): caseblind alpha, low to high */
+        const name1 = M.mons[indx1].pmnames[NEUTRAL].toLowerCase(),
+              name2 = M.mons[indx2].pmnames[NEUTRAL].toLowerCase();
+        res = name1 < name2 ? -1 : name1 > name2 ? 1 : 0;
+        break;
+    }
+    case VANQ_MCLS_HTOL:
+    case VANQ_MCLS_LTOH:
+        throw new Error('vanqsort_cmp(): sorting by monster class not ported yet');
+    case VANQ_COUNT_H_L:
+    case VANQ_COUNT_L_H:
+        res = game.mvitals[indx2].died - game.mvitals[indx1].died; /* dead count high to low */
+        if (sortmode === VANQ_COUNT_L_H)
+            res = -res; /* dead count low to high */
+        break;
+    }
+    /* tiebreaker: internal mons[] index */
+    if (res === 0)
+        res = indx1 - indx2; /* mndx low to high */
+    return res;
+}
+
+/* C ref: mondata.h is_rider(), type_is_pname() */
+function is_rider(ptr) {
+    return ptr === M.mons[M.PM_DEATH] || ptr === M.mons[M.PM_FAMINE]
+           || ptr === M.mons[M.PM_PESTILENCE];
+}
+function type_is_pname(ptr) { return (ptr.mflags2 & M.M2_PNAME) !== 0; }
+
+// C ref: insight.c list_vanquished()
 export async function list_vanquished(defquery, ask) {
     let c;
     /* 'A' is only supplied by 'm #vanquished'; 'd' is only supplied by
@@ -2298,10 +2444,14 @@ export async function list_vanquished(defquery, ask) {
 
     /* get totals first */
     let ntypes = 0;
+    let total_killed = 0;
+    const mindx = [];
     for (let i = M.LOW_PM; i < M.NUMMONS; i++) {
-        if (!game.mvitals[i]?.died)
+        let nkilled;
+        if ((nkilled = (game.mvitals[i]?.died || 0)) === 0)
             continue;
-        ntypes++;
+        mindx[ntypes++] = i;
+        total_killed += nkilled;
     }
 
     /* vanquished creatures list;
@@ -2327,10 +2477,80 @@ export async function list_vanquished(defquery, ask) {
 
         if (c === 'q')
             game.program_state.stopprint = (game.program_state.stopprint || 0) + 1;
-        if (c === 'y' || c === 'a')
-            throw new Error('list_vanquished(): the vanquished list not ported yet');
+        if (c === 'y' || c === 'a') {
+            let mlet, prev_mlet = 0; /* used as small integer, not character */
+            let was_uniq = false, special_hdr = false;
+            let buf, buftoo;
+
+            if (c === 'a' && ntypes > 1) /* ask user to choose sort order */
+                throw new Error('list_vanquished(): set_vanq_order() not ported yet');
+            const sortmode = game.flags.vanq_sortmode || 0;
+            const uniq_header = (sortmode === VANQ_ALPHA_SEP);
+            const class_header = ((sortmode === VANQ_MCLS_LTOH
+                                   || sortmode === VANQ_MCLS_HTOL)
+                                  && ntypes > 1);
+
+            const klwin = tty_create_nhwindow(NHW_MENU);
+            await tty_putstr(klwin, 0, "Vanquished creatures:");
+            if (!dumping)
+                await tty_putstr(klwin, 0, "");
+
+            mindx.sort(vanqsort_cmp); /* qsort() */
+            for (let ni = 0; ni < ntypes; ni++) {
+                const i = mindx[ni];
+                const nkilled = game.mvitals[i].died;
+                const Rider = is_rider(M.mons[i]);
+                mlet = M.mons[i].mlet;
+                if (class_header
+                    && (mlet !== prev_mlet || (special_hdr && !Rider))) {
+                    throw new Error('list_vanquished(): class headers (def_monsyms[].explain) not ported yet');
+                }
+                if (UniqCritterIndx(i)) {
+                    buf = `${!type_is_pname(M.mons[i]) ? "the " : ""}${
+                        M.mons[i].pmnames[NEUTRAL]}`;
+                    if (nkilled > 1)
+                        buf += ` (${N_times(nkilled)})`;
+                    was_uniq = true;
+                } else {
+                    if (uniq_header && was_uniq) {
+                        await tty_putstr(klwin, 0, "");
+                        was_uniq = false;
+                    }
+                    /* trolls or undead might have come back,
+                       but we don't keep track of that */
+                    if (nkilled === 1)
+                        buf = an(M.mons[i].pmnames[NEUTRAL]);
+                    else
+                        buf = `${String(nkilled).padStart(3)} ${
+                            makeplural(M.mons[i].pmnames[NEUTRAL])}`;
+                }
+                /* number of leading spaces to match 3 digit prefix */
+                const lc = buf.toLowerCase();
+                let pfx = lc.startsWith("the ") ? 0
+                          : lc.startsWith("an ") ? 1
+                            : lc.startsWith("a ") ? 2
+                              : !(buf[2] >= '0' && buf[2] <= '9') ? 4 : 0;
+                if (class_header)
+                    ++pfx;
+                buftoo = ' '.repeat(pfx) + buf;
+                await tty_putstr(klwin, 0, buftoo);
+            }
+            /*
+             * if (Hallucination)
+             *     putstr(klwin, 0, "and a partridge in a pear tree");
+             */
+            if (ntypes > 1) {
+                if (!dumping)
+                    await tty_putstr(klwin, 0, "");
+                buf = `${total_killed} creatures vanquished.`;
+                await tty_putstr(klwin, 0, buf);
+            }
+            await tty_display_nhwindow(klwin, true);
+            await tty_destroy_nhwindow(klwin);
+        }
     } else if (!game.program_state?.gameover) {
-        throw new Error('list_vanquished(): #vanquished not ported yet');
+        /* #vanquished rather than final disclosure, so pline() is ok */
+        await pline("No creatures have been vanquished.");
     } else if (dumping) {
         throw new Error('list_vanquished(): DUMPLOG not ported yet');
     }
@@ -2382,3 +2602,41 @@ export async function dogenocided() {
     await list_genocided(game.iflags.menu_requested ? 'a' : 'y', false);
     return 0; /* ECMD_OK */
 }
+
+// C ref: insight.c trap_predicament()
+/* describe u.utraptype; used by status_enlightenment() and self_lookat() */
+export function trap_predicament(final, wizxtra) {
+    const u = game.u;
+    let outbuf;
+    let t;
+
+    /* caller has verified u.utrap */
+    switch (u.utraptype) {
+    case TT_BURIEDBALL_IS:
+        outbuf = "tethered to something buried";
+        break;
+    case TT_LAVA_IS:
+        outbuf = `sinking into ${final ? "lava" : hliquid_is("lava")}`;
+        break;
+    case TT_INFLOOR_IS:
+        outbuf = `stuck in ${the_is(surface_is(u.ux, u.uy))}`;
+        break;
+    default: /* TT_BEARTRAP, TT_PIT, or TT_WEB */
+        outbuf = "trapped";
+        if ((t = t_at_is(u.ux, u.uy)) != null) /* should never be null */
+            outbuf += ` in ${an(trapname_is(t.ttyp, false))}`;
+        break;
+    }
+    if (wizxtra) { /* give extra information for wizard mode enlightenment */
+        /* curly braces: u.utrap is an escape attempt counter rather than a
+           turn timer so use different ornamentation than usual parentheses */
+        outbuf += ` {${u.utrap}}`;
+    }
+    return outbuf;
+}
+
+import { TT_BURIEDBALL as TT_BURIEDBALL_IS, TT_LAVA as TT_LAVA_IS,
+         TT_INFLOOR as TT_INFLOOR_IS } from './const.js';
+import { hliquid as hliquid_is } from './potion.js';
+import { the as the_is, surface as surface_is } from './iactions.js';
+import { t_at as t_at_is, trapname as trapname_is } from './trap.js';

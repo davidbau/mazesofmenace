@@ -11,9 +11,9 @@ import { mons, PM_HIGH_CLERIC, PM_ALIGNED_CLERIC } from './monsters.js';
 import { AMULET_OF_YENDOR } from './objects.js';
 import {
     A_NONE, A_LAWFUL, A_CHAOTIC, A_NEUTRAL, N_DIRS, ROOMOFFSET, ALL_TRAPS,
-    MM_EPRI, RLOC_NOMSG, W_ARMC, Amask2align,
+    MM_EPRI, RLOC_NOMSG, W_ARMC, Amask2align, MM_ADJACENTOK, MM_EMIN,
 } from './const.js';
-import { on_level, assign_level } from './dungeon.js';
+import { on_level, assign_level, mapseen_temple } from './dungeon.js';
 import { makemon, mongets, set_malign, m_at, MON_AT } from './makemon.js';
 import { mkobj, curse, uncurse, SPBOOK_no_NOVEL } from './mkobj.js';
 import { mpickobj } from './steal.js';
@@ -46,6 +46,7 @@ import { canseemon, You } from './display.js';
 import { Monnam } from './do_name.js';
 import { body_part } from './insight.js';
 import { record_achievement } from './do.js';
+import { ACH_TMPL } from './const.js';
 
 // C ref: priest.c ALGN_SINNED, ALGN_DEVOUT
 const ALGN_SINNED = (-4); /* worse than strayed (-1..-3) */
@@ -388,7 +389,7 @@ export async function intemple(roomno) {
 
     if ((priest = findpriest(String.fromCharCode(roomno))) !== null) {
         /* tended */
-        record_achievement('ACH_TMPL');
+        record_achievement(ACH_TMPL);
 
         const epri_p = priest.epri;
         const shrined = has_shrine(priest);
@@ -466,8 +467,8 @@ export async function intemple(roomno) {
             }
         }
         /* recognize the Valley of the Dead and Moloch's Sanctum
-           once hero has encountered the temple priest on those levels:
-           mapseen_temple(priest) -- the dungeon overview isn't ported */
+           once hero has encountered the temple priest on those levels */
+        mapseen_temple(priest);
     } else {
         /* untended */
 
@@ -503,6 +504,32 @@ function is_rider(ptr) {
            || ptr === mons[PM_PESTILENCE];
 }
 
+// C ref: priest.c mk_roamer()
+/* synchronous, as sp_lev.c create_monster() calls it while making a level;
+   uses rloc_mklev() for the "insurance" rloc() */
+export function mk_roamer(ptr, alignment, x, y, peaceful) {
+    let roamer;
+    const coaligned = (game.u.ualign.type === alignment);
+
+    if (MON_AT(x, y))
+        rloc_mklev(m_at(x, y), RLOC_NOMSG); /* insurance */
+
+    if (!(roamer = makemon(ptr, x, y, MM_ADJACENTOK | MM_EMIN | MM_NOMSG)))
+        return null;
+
+    roamer.emin.min_align = alignment;
+    roamer.emin.renegade = (coaligned && !peaceful) ? 1 : 0;
+    roamer.ispriest = 0;
+    roamer.isminion = 1;
+    mon_learns_traps(roamer, ALL_TRAPS); /* traps are known */
+    roamer.mpeaceful = peaceful ? 1 : 0;
+    roamer.msleeping = 0;
+    set_malign(roamer); /* peaceful may have changed */
+
+    /* MORE TO COME */
+    return roamer;
+}
+
 // C ref: priest.c in_your_sanctuary()
 export function in_your_sanctuary(
     mon, /* if non-null, <mx,my> overrides <x,y> */
@@ -525,4 +552,13 @@ export function in_your_sanctuary(
         return false;
     return !!(has_shrine(priest) && p_coaligned(priest)
               && priest.mpeaceful);
+}
+
+// C ref: priest.c restpriest()
+/* called in restoring a level */
+export function restpriest(mtmp, ghostly) {
+    if (game.u.uz.dlevel) {
+        if (ghostly)
+            assign_level(mtmp.mextra.epri.shrlevel, game.u.uz);
+    }
 }

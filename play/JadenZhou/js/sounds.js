@@ -33,6 +33,8 @@ import { canspotmon, vobj_at } from './display.js';
 import { m_at } from './makemon.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { night } from './calendar.js';
+import * as MM from './monsters.js';
+import { p_coaligned } from './priest.js';
 import { getdir } from './cmd.js';
 import { is_flyer, is_undead, is_vampshifter } from './mondata.js';
 
@@ -169,7 +171,7 @@ async function oracle_sound(mtmp) {
 
 // C ref: mon.c get_iter_mons()
 /* iterate all living monsters on the level until bfunc returns TRUE */
-async function get_iter_mons(bfunc) {
+export async function get_iter_mons(bfunc) {
     let mtmp, mtmp2;
 
     for (mtmp = game.fmon; mtmp; mtmp = mtmp2) {
@@ -445,6 +447,74 @@ function growl_sound(mtmp) {
         ret = "scream";
     }
     return ret;
+}
+
+// C ref: sounds.c maybe_gasp()
+/* hero has attacked a peaceful monster within 'mon's view */
+export function maybe_gasp(mon) {
+    const Exclam = [
+        "Gasp!", "Uh-oh.", "Oh my!", "What?", "Why?",
+    ];
+    const mptr = mon.data;
+    let msound = mptr.msound;
+    let dogasp = false;
+
+    /* other roles' guardians and cross-aligned priests don't gasp */
+    if ((msound === MM.MS_GUARDIAN && mptr !== MM.mons[game.urole.guardnum])
+        || (msound === MM.MS_PRIEST && !p_coaligned(mon)))
+        msound = MM.MS_SILENT;
+    /* co-aligned angels do gasp */
+    else if (msound === MM.MS_CUSS && mon.mextra?.emin /* has_emin() */
+             && (p_coaligned(mon) ? !mon.mextra.emin.renegade
+                                  : mon.mextra.emin.renegade))
+        msound = MM.MS_HUMANOID;
+
+    /*
+     * Only called for humanoids so animal noise handling is ignored.
+     */
+    switch (msound) {
+    case MM.MS_HUMANOID:
+    case MM.MS_ARREST: /* Kops */
+    case MM.MS_SOLDIER: /* solider, watchman */
+    case MM.MS_GUARD: /* vault guard */
+    case MM.MS_NURSE:
+    case MM.MS_SEDUCE: /* nymph, succubus/incubus */
+    case MM.MS_LEADER: /* quest leader */
+    case MM.MS_GUARDIAN: /* leader's guards */
+    case MM.MS_SELL: /* shopkeeper */
+    case MM.MS_ORACLE:
+    case MM.MS_PRIEST: /* temple priest, roaming aligned priest (not mplayer) */
+    case MM.MS_BOAST: /* giants */
+    case MM.MS_IMITATE: /* doppelganger, leocrotta, Aleax */
+        dogasp = true;
+        break;
+    /* issue comprehensible word(s) if hero is similar type of creature */
+    case MM.MS_ORC: /* used to be synonym for MS_GRUNT */
+    case MM.MS_GRUNT: /* ogres, trolls, gargoyles, one or two others */
+    case MM.MS_LAUGH: /* leprechaun, gremlin */
+    case MM.MS_ROAR: /* dragon, xorn, owlbear */
+    case MM.MS_BELLOW: /* crocodile */
+    /* capable of speech but only do so if hero is similar type */
+    case MM.MS_DJINNI:
+    case MM.MS_VAMPIRE: /* vampire in its own form */
+    case MM.MS_WERE: /* lycanthrope in human form */
+    case MM.MS_SPELL: /* titan, barrow wight, Nazgul, nalfeshnee */
+        dogasp = (mptr.mlet === game.youmonst.data.mlet);
+        break;
+    /* capable of speech but don't care if you attack peacefuls */
+    case MM.MS_BRIBE:
+    case MM.MS_CUSS:
+    case MM.MS_RIDER:
+    case MM.MS_NEMESIS:
+    /* can't speak */
+    case MM.MS_SILENT:
+    default:
+        break;
+    }
+    if (dogasp) {
+        return ROLL_FROM(Exclam); /* [mon->m_id % SIZE(Exclam)]; */
+    }
+    return null;
 }
 
 // C ref: sounds.c growl()

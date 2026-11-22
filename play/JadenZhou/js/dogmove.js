@@ -5,7 +5,9 @@
 // Branches that need code no session reaches yet throw a
 // 'not ported yet' error instead of skipping their rolls.
 
+import { touch_artifact_mon } from './artifact.js';
 import { game } from './gstate.js';
+import { eaten_stat } from './eat.js';
 import { mon_wield_item } from './weapon.js';
 import { rn2, rnd } from './rng.js';
 import { dist2, distmin } from './hacklib.js';
@@ -264,25 +266,6 @@ export function dogfood(mon, obj) {
     }
 }
 
-// C ref: mkobj.c weight() -- obj->owt as C maintains it; container
-// contents aren't tracked yet (callers only need a lower bound there)
-function obj_weight(obj) {
-    const wt = objects[obj.otyp].oc_weight;
-    if (obj.otyp === O.CORPSE && obj.corpsenm >= 0) {
-        const long_wt = obj.quan * mons[obj.corpsenm].cwt;
-        if (obj.oeaten)
-            throw new Error('weight(): eaten_stat() not ported yet');
-        return (long_wt > 32767) ? 32767 : long_wt;
-    } else if (obj.oclass === O.FOOD_CLASS && obj.oeaten) {
-        throw new Error('weight(): eaten_stat() not ported yet');
-    } else if (obj.oclass === O.COIN_CLASS) {
-        return Math.trunc((obj.quan + 50) / 100);
-    } else if (obj.otyp === O.CANDELABRUM_OF_INVOCATION && obj.spe) {
-        throw new Error('weight(): candelabrum not ported yet');
-    }
-    return (wt ? wt * obj.quan : (obj.quan + 1) >> 1);
-}
-
 /* C ref: mondata.h strongmonst() */
 function strongmonst(ptr) { return (ptr.mflags2 & M.M2_STRONG) !== 0; }
 
@@ -292,7 +275,7 @@ export function curr_mon_load(mtmp) {
 
     for (const obj of minv(mtmp)) {
         if (obj.otyp !== O.BOULDER || !throws_rocks(mtmp.data))
-            curload += obj_weight(obj);
+            curload += obj.owt;
     }
 
     return curload;
@@ -334,17 +317,16 @@ export function can_touch_safely(mtmp, otmp) {
         && (otyp !== O.BELL_OF_OPENING
             || (mtmp.data.mflags3 & M.M3_COVETOUS) === 0 /* !is_covetous() */))
         return false;
-    if (otmp.oartifact)
-        throw new Error('can_touch_safely(): touch_artifact() not ported yet');
+    if (!touch_artifact_mon(otmp, mtmp))
+        return false;
     return true;
 }
 
 // ── C ref: mon.c can_carry() ──
 export function can_carry(mtmp, otmp) {
     const u = game.u;
-    const otyp = otmp.otyp;
+    const otyp = otmp.otyp, newload = otmp.owt;
     const mdat = mtmp.data;
-    let newload;
 
     if ((mdat.mflags1 & M.M1_NOTAKE) !== 0)
         return 0; /* can't carry anything */
@@ -396,17 +378,6 @@ export function can_carry(mtmp, otmp) {
     if (mdat.mlet === M.S_NYMPH)
         return (otmp.oclass === O.ROCK_CLASS) ? 0 : iquan;
 
-    /* newload = otmp->owt */
-    const is_container = (otyp >= O.LARGE_BOX && otyp <= O.BAG_OF_TRICKS);
-    if (is_container || otyp === O.STATUE) {
-        /* contents only add weight: if the empty container is already
-           too heavy the answer doesn't depend on them */
-        newload = (otyp === O.STATUE) ? 0 : objects[otyp].oc_weight;
-        if (curr_mon_load(mtmp) + newload > max_mon_load(mtmp))
-            return 0;
-        throw new Error('can_carry(): container/statue weight() not ported yet');
-    }
-    newload = obj_weight(otmp);
     if (curr_mon_load(mtmp) + newload > max_mon_load(mtmp))
         return 0;
 
@@ -561,8 +532,10 @@ export function dog_nutrition(mtmp, obj) {
             nutrit *= 2;
             break;
         }
-        if (obj.oeaten)
-            throw new Error('dog_nutrition(): eaten_stat() not ported yet');
+        if (obj.oeaten) {
+            mtmp.meating = eaten_stat(mtmp.meating, obj);
+            nutrit = eaten_stat(nutrit, obj);
+        }
     } else if (obj.oclass === O.COIN_CLASS) {
         mtmp.meating = Math.trunc(obj.quan / 2000) + 1;
         if (mtmp.meating < 0)

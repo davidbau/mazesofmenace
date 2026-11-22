@@ -13,6 +13,7 @@
 // (mhitm) branches of those handlers throw a 'not ported yet' error.
 
 import { game } from './gstate.js';
+import { cutworm } from './worm.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { pline, canspotmon, You } from './display.js';
 import { Monnam, y_monnam } from './do_name.js';
@@ -1159,8 +1160,7 @@ async function known_hitum(
                 u.uconduct.weaphit = oldweaphit;
             }
             if (mon.wormno && mhit.val)
-                throw new Error('known_hitum(): cutworm() not ported yet');
-            void slice_or_chop;
+                await cutworm(mon, game.bhitpos.x, game.bhitpos.y, slice_or_chop);
         }
     }
     return malive;

@@ -15,7 +15,7 @@ import { NON_PM, MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
          FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
          ACID_RES, STONE_RES, DRAIN_RES, ANTIMAGIC, BLND_RES, ALL_TRAPS,
          NO_TRAP, W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP, W_ARMC, W_ARM,
-         W_ARMH, BLINDED, G_GENOD,
+         W_ARMH, BLINDED, G_GENOD, INTRINSIC,
        } from './const.js';
 import { objects, ALCHEMY_SMOCK, WEAPON_CLASS, GRAY_DRAGON_SCALES,
          YELLOW_DRAGON_SCALES, GRAY_DRAGON_SCALE_MAIL,
@@ -424,6 +424,9 @@ export function Resists_Elem(mon, propindx) {
 export function resists_fire(mon) { return Resists_Elem(mon, FIRE_RES); }
 export function resists_sleep(mon) { return Resists_Elem(mon, SLEEP_RES); }
 export function resists_poison(mon) { return Resists_Elem(mon, POISON_RES); }
+export function resists_cold(mon) { return Resists_Elem(mon, COLD_RES); }
+export function resists_elec(mon) { return Resists_Elem(mon, SHOCK_RES); }
+export function resists_acid(mon) { return Resists_Elem(mon, ACID_RES); }
 
 /* hero inventory is a nobj chain; monster minvent is an array in pickup
    order (C prepends, so walk it newest first) */
@@ -988,4 +991,18 @@ export function same_race(pm1, pm2) {
         assorted bugs and blobs with their closest variants] */
     /* didn't match */
     return false;
+}
+
+// C ref: mondata.c give_u_to_m_resistances()
+/* give monster mtmp the same intrinsics hero has */
+export function give_u_to_m_resistances(mtmp) {
+    /* convert the hero's current set of intrinsics to their monster
+       equivalents -- FIRE_RES to MR_FIRE, COLD_RES to MR_COLD, etc -- and
+       add each to the mintrinsics field for the given monster */
+    for (let intr = FIRE_RES; intr <= STONE_RES; intr++) {
+        if (((game.u.uprops[intr]?.intrinsic || 0) & INTRINSIC) !== 0) {
+            /* res_to_mr(intr) */
+            mtmp.mintrinsics = ((mtmp.mintrinsics ?? 0) | (1 << (intr - 1))) & 0xffff;
+        }
+    }
 }

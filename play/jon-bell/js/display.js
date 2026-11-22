@@ -5168,7 +5168,8 @@ export function level_transition_capture_old_paint() {
 export function capture_painted_frame() {
     const g = game;
     if (!g || !g.level) return null;
-    return { cells: _capture_painted_cells(), moves: _painted_moves() };
+    return { cells: _capture_painted_cells(), moves: _painted_moves(),
+             epoch: _flush_epoch };
 }
 /* The status half of a pre-movemon frame (pickup-encumber prinv page). C ref:
  * pline.c:273-274 flush_screen() -> bot() at the encumber_msg instant. */
@@ -14408,6 +14409,22 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
         (game._topl_urgent_marks ||= []).push(String(msg));
     const previousLoneFrame = game._lonePlineFrame;
     if (prev && prev.length > 0) {
+        /* C topl.c:262-265: this pair joins onto gt.toplines only when the
+         * combined length fits the CO-1-8 reserve, the incoming line is not
+         * "You die", and the standing line did not wrap (cw->cury == 0).
+         * The JOIN arm (:266-271) runs no remember_topl(), so the ^P walk
+         * cursor (cw->maxcol, reset solely by remember_topl's push at
+         * topl.c:189) keeps its place across a joining pline — input.js then
+         * must not reset the walk at the commit key either.  Every OTHER case
+         * here falls through to the replace arm (:272-281), whose
+         * remember_topl() files the NON-EMPTY standing line and DOES reset
+         * the walk.  (The adopted arm's prev is already the merged line, so
+         * its fit test is that line alone.) */
+        game._topl_pline_filed_reset = adoptedResult
+            ? (prev.length >= TOPL_LIMIT || prev.includes('\n')
+               || String(msg).startsWith('You die'))
+            : (prev.length + 2 + String(msg).length >= TOPL_LIMIT
+               || String(msg).startsWith('You die') || prev.includes('\n'));
         /* The result-channel merge above has already appended this message. */
         if (adoptedResult) {
             // keep the join record created by _topl_merge_result()
@@ -14547,6 +14564,7 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
                                      runFlush: game._runFlushSeq | 0,
                                      statusSeq: game._statusPaintSeq | 0 };
         game._pending_message = msg;
+        game._topl_pline_filed_reset = !game._toplEmptyAfterSuppress;
     }
     if (!(game._topl_suppress_history || game._topl_suppress_once))
     if (!game._topl_suppress_history)

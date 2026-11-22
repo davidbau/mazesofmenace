@@ -24,11 +24,12 @@ import { create_savefile, open_savefile, delete_savefile, open_levelfile,
          delete_levelfile, level_info, store_version, HACK_UID } from './files.js';
 import { genders, aligns } from './role.js';
 import { close_nhfile } from './sfbase.js';
-import { ledger_no, maxledgerno } from './dungeon.js';
+import { ledger_no, maxledgerno, save_mapseen } from './dungeon.js';
 import { pline, There, docrt } from './display.js';
 import { tty_clear_nhwindow, tty_yn_function, tty_display_nhwindow,
          tty_exit_nhwindows, tty_getmsghistory } from './wintty.js';
 import { nomul } from './hack.js';
+import { save_worm } from './worm.js';
 import { vision_recalc } from './vision.js';
 import { change_luck } from './attrib.js';
 import { monsndx } from './mondata.js';
@@ -358,7 +359,13 @@ function save_dungeon(nhfp, perform_write, free_data) {
         Sfo(nhfp, maxledgerno(), "level_info_count");
         Sfo(nhfp, g.level_info ?? null, "svl.level_info");
         Sfo(nhfp, g.inv_pos ?? null, "svi.inv_pos");
-        Sfo(nhfp, g.mapseenchn ?? null, "mapseen");
+        let count, curr_ms;
+        for (count = 0, curr_ms = g.mapseenchn ?? null; curr_ms;
+             curr_ms = curr_ms.next)
+            count++;
+        Sfo(nhfp, count, "mapseen_count");
+        for (curr_ms = g.mapseenchn ?? null; curr_ms; curr_ms = curr_ms.next)
+            save_mapseen(nhfp, curr_ms);
     }
     if (free_data) {
         g.branches = null;
@@ -458,6 +465,7 @@ const LEVEL_SAVED_FIELDS = new Set([
     'nroom', 'subrooms', 'nsubroom', 'monsters', 'traps', 'objects',
     'buriedobjlist', 'head_engr', 'damagelist', 'regions', 'bonesinfo',
     'timer_base', 'light_base',
+    'wsegs', /* worm tail cells of level.monsters[][]: rebuilt by getlev() */
 ]);
 
 // C ref: save.c savelev_core()
@@ -644,10 +652,6 @@ function save_rooms(nhfp) {
         "room-mkroom");
 }
 
-// C ref: worm.c save_worm() -- long worms aren't ported
-function save_worm(nhfp) {
-    Sfo(nhfp, game.level?.worms ?? null, "worm");
-}
 
 // C ref: engrave.c save_engravings()
 function save_engravings(nhfp) {

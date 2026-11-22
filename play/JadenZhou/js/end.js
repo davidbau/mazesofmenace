@@ -22,11 +22,13 @@ import {
     DISCLOSE_NO_WITHOUT_PROMPT, DISCLOSE_PROMPT_DEFAULT_YES,
     DISCLOSE_PROMPT_DEFAULT_SPECIAL, In_quest, In_endgame, Is_astralevel,
     Is_knox_level, LOW_PM, M_AP_MONSTER, SICK, TIMEOUT, UNCHANGING, TT_LAVA,
+    IS_GRAVE, PARANOID_QUIT,
 } from './const.js';
+import { nomul } from './hack.js';
 import { mons, PM_HIGH_CLERIC, PM_GHOST, PM_WRAITH, PM_VAMPIRE, PM_GHOUL,
          PM_HUMAN, PM_GREEN_SLIME, PM_TOURIST, S_WRAITH, S_MUMMY, S_VAMPIRE,
          G_UNIQ, G_NOCORPSE, M2_PNAME } from './monsters.js';
-import { AMULET_OF_LIFE_SAVING, LARGE_BOX, STATUE, TIN,
+import { AMULET_OF_LIFE_SAVING, LARGE_BOX, STATUE, TIN, CORPSE,
          FAKE_AMULET_OF_YENDOR } from './objects.js';
 import { pmname, Mgender, m_monnam } from './do_name.js';
 import { shkname, shkname_is_pname } from './shknam.js';
@@ -37,7 +39,13 @@ import { record_achievement } from './do.js';
 import { can_make_bones, savebones } from './bones.js';
 import { paybill, finish_paybill } from './shk.js';
 import { discover_object } from './o_init.js';
-import { Is_container } from './mkobj.js';
+import { sortloot } from './pickup.js';
+import { the, thesimpleoname } from './iactions.js';
+import { xname, doname_with_price } from './objnam.js';
+import { NHW_MENU, SORTLOOT_LOOT, SORTLOOT_PACK } from './const.js';
+import { BAG_OF_TRICKS } from './objects.js';
+import { Is_container, place_object, mk_named_object } from './mkobj.js';
+import { make_grave } from './engrave.js';
 import { deepest_lev_reached, depth, dunlev, on_level } from './dungeon.js';
 import { money_cnt } from './u_init.js';
 import { hidden_gold, currency, enlightenment, list_vanquished,
@@ -45,22 +53,23 @@ import { hidden_gold, currency, enlightenment, list_vanquished,
 import { keepdogs } from './dog.js';
 import { Goodbye } from './role.js';
 import { inven_inuse } from './restore.js';
-import { useup, display_inventory, carrying } from './invent.js';
+import { useup, display_inventory, carrying, stackobj } from './invent.js';
 import { adjattrib, ACURR, minuhpmax, setuhpmax } from './attrib.js';
 import { init_uhunger } from './eat.js';
 import { paranoid_query } from './cmd.js';
 import { delete_levelfile } from './files.js';
-import { maxledgerno } from './dungeon.js';
+import { maxledgerno, show_overview } from './dungeon.js';
 import { formatkiller, killer, topten } from './topten.js';
 import { genl_outrip } from './rip.js';
 import { nh_terminate } from './save.js';
 import {
     tty_display_nhwindow, tty_destroy_nhwindow, tty_create_nhwindow,
     tty_putstr, tty_exit_nhwindows, tty_raw_print, tty_yn_function,
-    tty_destroy_mapwindow, tty_destroy_statuswindow,
+    tty_destroy_mapwindow, tty_destroy_statuswindow, tty_clear_nhwindow,
 } from './wintty.js';
 
 const EXIT_SUCCESS = 0;
+const BUFSZ = 256;
 
 /*
  * The order of these needs to match the macros in hack.h.
@@ -105,6 +114,8 @@ function Role_if(pm) { return game.urole.mnum === pm; }
 function Lifesaved() { return !!game.u.uprops[LIFESAVED]?.extrinsic; }
 /* C ref: obj.h SchroedingersBox() */
 function SchroedingersBox(o) { return o.otyp === LARGE_BOX && o.spe === 1; }
+/* C ref: hacklib.c upstart() */
+function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 /* C ref: hack.h makeknown() */
 function makeknown(x) { discover_object(x, true, false, true); }
 /* C ref: integer.h nowrap_add() */
@@ -348,7 +359,7 @@ async function disclose(how, taken) {
                                         "ynq", defquery)
                 : defquery;
         if (c === 'y')
-            throw new Error('disclose(): show_overview() not ported yet');
+            await show_overview((how >= PANICKED) ? 1 : 2, how);
         if (c === 'q')
             inc_done_stopprint();
     }
@@ -370,7 +381,7 @@ async function savelife(how) {
     if (u.uhpmax < uhpmin)
         setuhpmax(uhpmin, true);
     u.uhp = Math.min(u.uhpmax, givehp);
-    if (Upolyd()) /* Unchanging, or death which bypasses losing hit points */
+    if (Upolyd(game.u)) /* Unchanging, or death which bypasses losing hit points */
         u.mh = Math.min(u.mhmax, givehp);
     if (u.uhunger < 500 || how === CHOKING) {
         init_uhunger();
@@ -441,11 +452,18 @@ export async function done_object_cleanup() {
     ox = u.ux + (u.dx || 0), oy = u.uy + (u.dy || 0);
     if (!isok(ox, oy) || !accessible(ox, oy))
         ox = u.ux, oy = u.uy;
-    void ox; void oy;
-    /* put thrown or kicked object on map (for bones) */
-    if ((g.thrownobj && (!g.thrownobj.where || g.thrownobj.where === 'OBJ_FREE'))
-        || (g.kickedobj && (!g.kickedobj.where || g.kickedobj.where === 'OBJ_FREE')))
-        throw new Error('done_object_cleanup(): placing a thrown/kicked object not ported yet');
+    /* put thrown or kicked object on map (for bones); location might
+       be incorrect (perhaps killed by divine lightning when throwing at
+       a temple priest?) but this should be better than just vanishing
+       (fragile stuff should be taken care of before getting here) */
+    if (g.thrownobj && (!g.thrownobj.where || g.thrownobj.where === 'OBJ_FREE')) {
+        place_object(g.thrownobj, ox, oy);
+        stackobj(g.thrownobj), g.thrownobj = null;
+    }
+    if (g.kickedobj && (!g.kickedobj.where || g.kickedobj.where === 'OBJ_FREE')) {
+        place_object(g.kickedobj, ox, oy);
+        stackobj(g.kickedobj), g.kickedobj = null;
+    }
     /* if Punished hero dies during level change or dies or quits while
        swallowed, uball and uchain will be in limbo; put them on floor
        so bones will have them and object list cleanup finds them */
@@ -465,6 +483,50 @@ export async function done_object_cleanup() {
 function artifact_score(list, counting, endwin) {
     void list; void counting; void endwin;
     throw new Error('artifact_score(): not ported yet');
+}
+
+// C ref: end.c done2()
+/* "#quit" command or keyboard interrupt */
+export async function done2() {
+    const g = game;
+    const u = g.u;
+    let abandon_tutorial = false;
+
+    if (u.uz.dnum === g.dungeon_topology?.d_tutorial_dnum /* In_tutorial() */
+        && await tty_yn_function("Switch from the tutorial back to regular play?",
+                                 "yn", 'n') === 'y') /* y_n() */
+        abandon_tutorial = true;
+
+    if (abandon_tutorial || !(await paranoid_query(
+            (g.flags.paranoia_bits & PARANOID_QUIT) !== 0, /* ParanoidQuit */
+            "Really quit without saving?"))) {
+        /* (void) signal(SIGINT, (SIG_RET_TYPE) done1); */
+        tty_clear_nhwindow(g.WIN_MESSAGE);
+        /* curs_on_u(): the cursor goes back to the hero at the next
+           input wait */
+        wait_synch();
+        if (g.multi > 0)
+            nomul(0);
+        if (g.multi === 0) {
+            u.uinvulnerable = 0; /* avoid ctrl-C bug -dlc */
+            u.usleep = 0;
+        }
+
+        if (abandon_tutorial)
+            throw new Error('done2(): schedule_goto() out of the tutorial not ported yet');
+        return 0; /* ECMD_OK */
+    }
+
+    if (g.flags.debug) { /* wizard (UNIX) */
+        const c = await tty_yn_function("Dump core?", "ynq", 'n'); /* ynq() */
+
+        if (c === 'y') {
+            throw new Error('done2(): NH_abort() not ported yet');
+        } else if (c === 'q')
+            inc_done_stopprint(); /* done_stopprint++ */
+    }
+    await done(QUIT);
+    return 0; /* ECMD_OK */
 }
 
 // C ref: end.c done()
@@ -519,7 +581,7 @@ export async function done(how) {
     if (how < PANICKED) {
         u.umortality = (u.umortality || 0) + 1;
         /* in case caller hasn't already done this */
-        if (u.uhp !== 0 || (Upolyd() && u.mh !== 0)) {
+        if (u.uhp !== 0 || (Upolyd(u) && u.mh !== 0)) {
             /* force HP to zero in case it is still positive (some
                deaths aren't triggered by loss of hit points), or
                negative (-1 is used as a flag in some circumstances
@@ -768,8 +830,18 @@ async function really_done(how) {
     /* grave creation should be after disclosure so it doesn't have
        this grave in the current level's features for #overview */
     if (bones_ok && u.ugrave_arise === NON_PM
-        && !(mons[u.umonnum].geno & G_NOCORPSE)) {
-        throw new Error('really_done(): mk_named_object() of the corpse and make_grave() not ported yet');
+        && !(g.mvitals[u.umonnum].mvflags & G_NOCORPSE)) {
+        /* Base corpse on race when not poly'd since original u.umonnum
+           is based on role, and all role monsters are human. */
+        const mnum = !Upolyd(u) ? g.urace.mnum : u.umonnum,
+              was_already_grave = IS_GRAVE(g.level.at(u.ux, u.uy).typ);
+
+        corpse = mk_named_object(CORPSE, mons[mnum], u.ux, u.uy, g.plname);
+        pbuf = `${g.plname}, `;
+        pbuf += formatkiller(BUFSZ - pbuf.length, how, true);
+        make_grave(u.ux, u.uy, pbuf);
+        if (IS_GRAVE(g.level.at(u.ux, u.uy).typ) && !was_already_grave)
+            g.level.at(u.ux, u.uy).emptygrave = 1; /* corpse isn't buried */
     }
     pbuf = ''; /* clear grave text; also lint suppression */
 
@@ -929,12 +1001,78 @@ async function dump_forward_putstr(win, attr, str, no_forward) {
 
 // C ref: end.c container_contents()
 /* used for disclosure and for the ':' choice when looting a container */
+/* 'list' is an object chain: the hero's invent (linked by nobj) or a
+   container's cobj array */
 export async function container_contents(list, identified, all_containers,
                                          reportempty) {
-    void identified; void reportempty;
-    for (let box = list; box; box = box.nobj) {
-        if (Is_container(box) || box.otyp === STATUE)
-            throw new Error('container_contents(): not ported yet');
+    let buf;
+    let cat;
+    const dumping = !!game.iflags?.in_dumplog;
+    const boxes = Array.isArray(list) ? list.slice() : [];
+    if (!Array.isArray(list))
+        for (let o = list; o; o = o.nobj)
+            boxes.push(o);
+
+    for (const box of boxes) {
+        if (Is_container(box) || box.otyp === STATUE) {
+            if (!box.cknown || (identified && !box.lknown)) {
+                box.cknown = 1; /* we're looking at the contents now */
+                if (identified)
+                    box.lknown = 1;
+                /* update_inventory(): no perm_invent window */
+            }
+            if (box.otyp === BAG_OF_TRICKS) {
+                continue; /* wrong type of container */
+            } else if (box.cobj && box.cobj.length) {
+                const tmpwin = tty_create_nhwindow(NHW_MENU);
+
+                /* at this stage, the SchroedingerBox() flag is only set
+                   if the cat inside the box is alive; the box actually
+                   contains a cat corpse that we'll pretend is not there;
+                   for dead cat, the flag will be clear and there'll be
+                   a cat corpse inside the box; either way, inventory
+                   reports the box as containing "1 item" */
+                cat = SchroedingersBox(box);
+
+                buf = `Contents of ${the(xname(box))}:`;
+                await tty_putstr(tmpwin, 0, buf);
+                if (!dumping)
+                    await tty_putstr(tmpwin, 0, "");
+                if (box.cobj.length && !cat) {
+                    const sortloot_opt = game.flags.sortloot ?? 'l';
+                    const sortflags = (((sortloot_opt === 'l'
+                                         || sortloot_opt === 'f')
+                                        ? SORTLOOT_LOOT : 0)
+                                       | ((game.flags.sortpack ?? true)
+                                          ? SORTLOOT_PACK : 0));
+                    const sortedcobj = sortloot(box.cobj, sortflags, false,
+                                                null);
+                    for (const srtc of sortedcobj) {
+                        const obj = srtc.obj;
+                        if (identified) {
+                            discover_object(obj.otyp, true, true, false);
+                            obj.dknown = 1; /* observe_object unnecessary */
+                            obj.known = obj.bknown = obj.rknown = 1;
+                            if (Is_container(obj) || obj.otyp === STATUE)
+                                obj.cknown = obj.lknown = 1;
+                        }
+                        await tty_putstr(tmpwin, 0, `  ${doname_with_price(obj)}`);
+                    }
+                } else if (cat) {
+                    await tty_putstr(tmpwin, 0, "  Schroedinger's cat!");
+                }
+                if (dumping)
+                    await tty_putstr(0, 0, "");
+                await tty_display_nhwindow(tmpwin, true);
+                tty_destroy_nhwindow(tmpwin);
+                if (all_containers)
+                    await container_contents(box.cobj, identified, true,
+                                             reportempty);
+            } else if (reportempty) {
+                await pline(`${upstart(thesimpleoname(box))} is empty.`);
+                await tty_display_nhwindow(game.WIN_MESSAGE, false);
+            }
+        }
         if (!all_containers)
             break;
     }

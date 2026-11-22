@@ -23,6 +23,7 @@ import {
     emitQueuedNotices,
     clearTtyMessageWindow,
     dismissPendingTtyMessage,
+    messageWindow,
     MORE_PROMPT,
     TOPLINE_EMPTY,
     TOPLINE_NEED_MORE,
@@ -30,6 +31,7 @@ import {
 } from './tty_message.js';
 import {
     BUFSZ, H_UNK, H_UTF8, PICK_ANY, PICK_NONE, PICK_ONE, PRIMARYSET,
+    WIN_CANCELLED,
 } from './const.js';
 import {
     ok_align,
@@ -525,7 +527,8 @@ export async function displayTtyMenuTextWindow(
     // only the full-screen branch's term_clear_screen() can provide that
     // clearing without this message-window operation.
     // A set WIN_STOP makes that flush return at once (WIN_CANCELLED bit).
-    if (display.toplin === TOPLINE_NEED_MORE && !state._ttyMessageStopped) {
+    if (display.toplin === TOPLINE_NEED_MORE
+        && !(messageWindow(state)?.flags & WIN_CANCELLED)) {
         await dismissPendingTtyMessage(state);
         // dismissPendingTtyMessage() leaves TOPLINE_EMPTY after its More
         // response. Restore NEED_MORE so clearTtyMessageWindow() follows the
@@ -1035,7 +1038,7 @@ export async function displayTtyTextWindow(state = game, lines) {
     // Flush an unacknowledged top-line message before the text window
     // covers it, the same guard selectTtyMenu() applies for menus.
     if (display.toplin === TOPLINE_NEED_MORE
-        && !state._ttyMessageStopped
+        && !(messageWindow(state)?.flags & WIN_CANCELLED)
         && await dismissPendingTtyMessage(state)) {
         if (state.nhDisplay) state.nhDisplay.toplin = TOPLINE_NEED_MORE;
         clearTtyMessageWindow(state);
@@ -1235,21 +1238,27 @@ function sourceChoiceSelector(line) {
         ? text[0] : '';
 }
 
+// C ref: wintty.c process_menu_window()'s gacc[] for PICK_ONE (1349-1379)
+// and its group_accel arm (1742-1749).  gcnt[] counts an accelerator only on
+// an entry whose selector differs from it, and PICK_ONE accepts an
+// accelerator only when that count is exactly one.  Gold's '$', which is its
+// own selector under USE_INVLET, is therefore counted zero times and is not a
+// group accelerator: '$' picks gold only as a selector, on gold's own page.
+// The value is that of the one counted entry.  Two parts of the C are not
+// represented: invert_all() also toggles an entry that carries the
+// accelerator as its own selector, and gcnt[] also counts an entry with a
+// zero identifier, which selectableItems() leaves out here as it does for
+// PICK_ANY.
 function pickOneGroupChoices(spec) {
     if (spec.items) {
+        const items = selectableItems(spec);
         const grouped = new Map();
-        const counts = new Map();
-        for (const item of selectableItems(spec)) {
-            if (!item.groupSelector) continue;
-            counts.set(
-                item.groupSelector,
-                (counts.get(item.groupSelector) ?? 0) + 1,
-            );
-            grouped.set(item.groupSelector, item.value);
+        for (const ch of menuGroupAccelerators(items, PICK_ONE)) {
+            grouped.set(ch, items.find((item) => (
+                item.groupSelector === ch && item.selector !== ch
+            )).value);
         }
-        return new Map([...grouped].filter(([selector]) => (
-            counts.get(selector) === 1
-        )));
+        return grouped;
     }
 
     const choices = spec.choices ?? new Map();
@@ -1634,20 +1643,29 @@ function invertItems(state, items, pendingCount = null, groupToggle = false) {
     return changed;
 }
 
-// C ref: wintty.c process_menu_window()'s gacc[] for PICK_ANY (1349-1379).
+// C ref: wintty.c process_menu_window()'s gacc[] (1349-1379).
 // A group accelerator counts once some entry's differs from its selector;
 // then every accelerator that differs from its entry's selector, or is the
-// gold symbol, is accepted.  invert_all() later toggles every entry that
-// carries the accelerator, whatever its selector.
-export function pickAnyGroupAccelerators(items) {
+// gold symbol, is accepted: for PICK_ANY whatever its count, for PICK_ONE
+// only when gcnt[] holds exactly one entry whose selector differs from it.
+// invert_all() later toggles every entry that carries the accelerator,
+// whatever its selector.
+export function menuGroupAccelerators(items, how) {
     const gacc = new Set();
-    if (!items.some((item) => (
-        item.groupSelector && item.groupSelector !== item.selector
-    ))) return gacc;
+    const gcnt = new Map();
+    for (const item of items) {
+        if (item.groupSelector && item.groupSelector !== item.selector) {
+            gcnt.set(
+                item.groupSelector, (gcnt.get(item.groupSelector) ?? 0) + 1,
+            );
+        }
+    }
+    if (!gcnt.size) return gacc;
     for (const item of items) {
         if (item.groupSelector
             && (item.groupSelector !== item.selector
-                || item.groupSelector === GOLD_SYM))
+                || item.groupSelector === GOLD_SYM)
+            && (how === PICK_ANY || gcnt.get(item.groupSelector) === 1))
             gacc.add(item.groupSelector);
     }
     return gacc;
@@ -1659,7 +1677,7 @@ async function selectAnyTtyMenu(state, spec) {
         items: (spec.items ?? []).map(copyMenuItem),
     };
     const allItems = selectableItems(workingSpec);
-    const gacc = pickAnyGroupAccelerators(allItems);
+    const gacc = menuGroupAccelerators(allItems, PICK_ANY);
     const groupItems = (ch) => (gacc.has(ch)
         ? allItems.filter((item) => item.groupSelector === ch) : []);
     let pageIndex = 0;
@@ -1836,7 +1854,7 @@ export async function selectTtyMenu(state = game, spec) {
     // After Escape at --More--, WIN_STOP shares WIN_CANCELLED's bit, so the
     // NHW_MESSAGE call returns at once and only the clear below runs.
     if (state.nhDisplay?.toplin === TOPLINE_NEED_MORE
-        && !state._ttyMessageStopped
+        && !(messageWindow(state)?.flags & WIN_CANCELLED)
         && await dismissPendingTtyMessage(state)) {
         if (state.nhDisplay) state.nhDisplay.toplin = TOPLINE_NEED_MORE;
         clearTtyMessageWindow(state);

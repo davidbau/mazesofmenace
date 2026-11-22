@@ -233,9 +233,14 @@ export function self_lookat() {
         + `${pmname(game.youmonst.data, game.flags.female ? FEMALE : MALE)}`
         + ` called ${game.plname}`;
     if (u.usteed)
-        throw new Error('self_lookat(): steed not ported yet');
-    if (u.uundetected || game.uball || u.utrap)
-        throw new Error('self_lookat(): hidden/punished/trapped hero not ported yet');
+        outbuf += `, mounted on ${y_monnam_pg(u.usteed)}`;
+    if (u.uundetected || (u.mtimedone && game.youmonst.m_ap_type)
+        || visible_region_at_pg(u.ux, u.uy))
+        throw new Error('self_lookat(): mhidden_description() not ported yet');
+    if (game.uball) /* Punished */
+        outbuf += `, chained to ${game.uball ? ansimpleoname_pg(game.uball) : "nothing?"}`;
+    if (u.utrap) /* bear trap, pit, web, in-floor, in-lava, tethered */
+        outbuf += `, ${trap_predicament(0, false)}`;
     return outbuf;
 }
 
@@ -856,3 +861,8 @@ export async function dowhatdoes() {
 async function hmenu_dowhatis() {
     await dowhatis();
 }
+
+import { trap_predicament } from './insight.js';
+import { y_monnam as y_monnam_pg } from './do_name.js';
+import { visible_region_at as visible_region_at_pg } from './region.js';
+import { ansimpleoname as ansimpleoname_pg } from './iactions.js';

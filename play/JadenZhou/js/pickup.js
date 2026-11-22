@@ -82,6 +82,29 @@ import { mons, M2_ROCKTHROW, PM_COCKATRICE, PM_CHICKATRICE, PM_DEATH,
 import { LOST_THROWN, LOST_DROPPED, LOST_STOLEN, LOST_EXPLODING, QBUFSZ,
          SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, HALLUC,
          STONE_RES } from './const.js';
+import { The, Tobjnam, Yname2, yname } from './objnam.js';
+import { losehp, Maybe_Half_Phys, chest_trap } from './trap.js';
+import { KILLED_BY_AN, W_SADDLE, ARTICLE_THE, SUPPRESS_SADDLE, SELL_NORMAL, SELL_DELIBERATE, SELL_DONTSELL, NO_MINVENT, MM_ADJACENTOK, MM_NOMSG, ONAME_NO_FLAGS, NHW_TEXT, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_SUGGEST, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, BUCX_TYPES, MENU_ITEMFLAGS_SELECTED, PICK_ONE, MENU_PARTIAL, FOOT } from './const.js';
+import { pick_lock, u_have_forceable_weapon } from './lock.js';
+import { rnd } from './rng.js';
+import { ceiling } from './dungeon.js';
+import { which_armor } from './worn.js';
+import { x_monnam, Monnam, christen_monst, oname, rndmonnam } from './do_name.js';
+import { extract_from_minvent } from './steal.js';
+import { thesimpleoname, ysimple_name } from './iactions.js';
+import { hold_another_object } from './wizcmds.js';
+import { WAN_CANCELLATION, LARGE_BOX, CHEST, ICE_BOX, AMULET_OF_YENDOR, CANDELABRUM_OF_INVOCATION, BELL_OF_OPENING, SPE_BOOK_OF_THE_DEAD, LEASH, STATUE, PICK_AXE, DWARVISH_MATTOCK, BRASS_LANTERN, OIL_LAMP, TALLOW_CANDLE, WAX_CANDLE, POT_OIL } from './objects.js';
+import { obfree, freeinv, getobj, objchain_items } from './invent.js';
+import { shop_keeper, sellobj, get_obj_location } from './shk.js';
+import { Norep, pline_The, bot, canspotmon } from './display.js';
+import { welded, setuwep, setuswapwep, setuqwep } from './wield.js';
+import { MZ_LARGE, PM_ICE_TROLL, PM_HOUSECAT } from './monsters.js';
+import { add_to_container, start_corpse_timeout, set_corpsenm } from './mkobj.js';
+import { makemon, set_malign } from './makemon.js';
+import { more_experienced, newexplevel } from './exper.js';
+import { currency } from './insight.js';
+import { container_contents } from './end.js';
+import { discover_object } from './o_init.js';
 
 function impossible(msg) { console.error(`impossible: ${msg}`); }
 
@@ -330,7 +353,7 @@ function all_but_uchain(obj) {
    position, the stable-sort tiebreak), orderclass/subclass/disco/inuse
    (set by loot_classify(), 0 = not yet classified) and str (loot_xname(),
    formatted at most once per sort) */
-function sortloot(olist, mode, by_nexthere, filterfunc) {
+export function sortloot(olist, mode, by_nexthere, filterfunc) {
     void by_nexthere; /* olist is already the pile (nexthere) or the chain */
     /* the 'keep cockatrice corpses' flag is overloaded with sort mode */
     const augment_filter = (mode & SORTLOOT_PETRIFY) !== 0;
@@ -807,7 +830,7 @@ export function allow_category(obj) {
 export function count_justpicked(olist) {
     let cnt = 0;
 
-    for (let otmp = olist; otmp; otmp = otmp.nobj)
+    for (const otmp of objchain_items(olist))
         if (otmp.pickup_prev)
             cnt++;
 
@@ -816,7 +839,7 @@ export function count_justpicked(olist) {
 
 // C ref: pickup.c find_justpicked()
 export function find_justpicked(olist) {
-    for (let otmp = olist; otmp; otmp = otmp.nobj)
+    for (const otmp of objchain_items(olist))
         if (otmp.pickup_prev)
             return otmp;
 
@@ -849,7 +872,7 @@ export async function query_category(qstr, /* query string */
     const clr = NO_COLOR;
 
     pick_list.length = 0;
-    if (!olist)
+    if (!olist || (Array.isArray(olist) && !olist.length))
         return 0;
     if ((qflags & BY_NEXTHERE) !== 0)
         throw new Error('query_category(): a floor pile (BY_NEXTHERE) not ported yet');
@@ -891,10 +914,11 @@ export async function query_category(qstr, /* query string */
     const ccount = count_categories(olist, qflags);
     /* no point in actually showing a menu for a single category */
     if (ccount === 1 && !do_unpaid && !do_usedup && num_buc_types <= 1) {
-        let curr;
-        for (curr = olist; curr; curr = curr.nobj) {
-            if (ofilter && !ofilter(curr))
+        let curr = null;
+        for (const o of objchain_items(olist)) {
+            if (ofilter && !ofilter(o))
                 continue;
+            curr = o;
             break;
         }
         if (curr) {
@@ -953,7 +977,7 @@ export async function query_category(qstr, /* query string */
     let pi = 0;
     do {
         let collected_type_name = false;
-        for (let curr = olist; curr; curr = curr.nobj) {
+        for (const curr of objchain_items(olist)) {
             if (curr.oclass === pack[pi]) {
                 if (ofilter && !ofilter(curr))
                     continue;
@@ -1050,7 +1074,7 @@ function count_categories(olist, qflags) {
 
     for (const pack of def_inv_order) { /* flags.inv_order */
         let counted_category = false;
-        for (let curr = olist; curr; curr = curr.nobj) {
+        for (const curr of objchain_items(olist)) {
             if (curr.oclass === pack) {
                 if (do_worn && !(curr.owornmask
                                  & (W_ARMOR | W_ACCESSORY | W_WEAPONS)))
@@ -1218,9 +1242,23 @@ const slightloadpfx = "You have a little trouble",
  *  object is removed from it.
  */
 function delta_cwt(container, obj) {
+    let owt, nwt;
+
     if (container.otyp !== BAG_OF_HOLDING)
         return obj.owt;
-    throw new Error('delta_cwt(): bag of holding weight not ported yet');
+
+    owt = nwt = container.owt;
+    /* find the object so that we can remove it */
+    const i = (container.cobj || []).indexOf(obj);
+    if (i < 0) {
+        throw new Error('delta_cwt: obj not inside container?');
+    } else {
+        /* temporarily remove the object and calculate resulting weight */
+        container.cobj.splice(i, 1);
+        nwt = weight(container);
+        container.cobj.splice(i, 0, obj); /* put the object back */
+    }
+    return owt - nwt;
 }
 
 // C ref: pickup.c carry_count()
@@ -1483,7 +1521,7 @@ export async function pickup_object(obj,
     } else if (obj.where === 'OBJ_MINVENT' && obj.owornmask
                && game.u.uswallow && obj.ocarry === game.u.ustuck) {
         throw new Error('pickup_object(): ysimple_name() for a worn engulfer item not ported yet');
-    } else if (obj.oartifact && !touch_artifact(obj, game.youmonst)) {
+    } else if (obj.oartifact && !(await touch_artifact(obj, game.youmonst))) {
         return 0;
     } else if (obj.otyp === CORPSE) {
         if (fatal_corpse_mistake(obj, telekinesis)
@@ -1742,17 +1780,19 @@ async function able_to_loot(x, y, looting) { /* loot vs tip */
     return true;
 }
 
-// C ref: pickup.c do_loot_cont() -- a locked container so far;
-// use_container() is not ported yet
-async function do_loot_cont(cobj, cindex, ccount) {
-    void cindex;
+// C ref: pickup.c do_loot_cont()
+/* returns the time used; C's *cobjp is cleared there when the container
+   got destroyed, which only the caller's loop would look at */
+async function do_loot_cont(cobj,
+                            cindex, /* index of this container (1..N)... */
+                            ccount) { /* ...number of them (N) */
     if (!cobj)
         return ECMD_OK;
     if (cobj.olocked) {
-        const res = ECMD_OK;
+        let res = ECMD_OK;
 
         if (cobj.lknown)
-            throw new Error('do_loot_cont(): The() not ported yet');
+            await pline(`${The(xname(cobj))} is locked.`);
         else
             await pline(`Hmmm, ${the(xname(cobj))} turns out to be locked.`);
         cobj.lknown = 1;
@@ -1760,24 +1800,47 @@ async function do_loot_cont(cobj, cindex, ccount) {
         const autounlock = game.flags.autounlock ?? AUTOUNLOCK_APPLY_KEY;
         if (autounlock) {
             let unlocktool = null;
+            const ox = cobj.ox, oy = cobj.oy;
 
             game.u.dz = 0; /* might be non-zero from previous command since
                             * #loot isn't a move command; pick_lock() cares */
+            /* if both the untrap and apply_key bits are set, untrap
+               attempt will be performed first but we need to set up
+               unlocktool in case "check for trap?" is declined */
             if (((autounlock & AUTOUNLOCK_APPLY_KEY) !== 0
                  && (unlocktool = autokey(true)) !== null)
                 || (autounlock & AUTOUNLOCK_UNTRAP) !== 0) {
-                throw new Error('do_loot_cont(): pick_lock() not ported yet');
+                /* pass ox and oy to avoid direction prompt */
+                if (await pick_lock(unlocktool, ox, oy, cobj))
+                    res = ECMD_TIME;
+                /* attempting to untrap or unlock might trigger a trap
+                   which destroys 'cobj'; inform caller if that happens */
+                return res;
             }
-            if ((autounlock & AUTOUNLOCK_FORCE) !== 0 && ccount === 1)
-                throw new Error('do_loot_cont(): u_have_forceable_weapon() not ported yet');
+            if ((autounlock & AUTOUNLOCK_FORCE) !== 0
+                && res !== ECMD_TIME
+                && ccount === 1 && u_have_forceable_weapon()) {
+                /* single container, and we could #force it open... */
+                /* note: doforce asks for confirmation */
+                throw new Error('do_loot_cont(): cmdq_add_ec(doforce) not ported yet');
+            }
         }
         return res;
     }
     cobj.lknown = 1; /* floor container, so no need for update_inventory() */
 
-    if (cobj.otyp === BAG_OF_TRICKS)
-        throw new Error('do_loot_cont(): bag of tricks not ported yet');
-    throw new Error('do_loot_cont(): use_container() not ported yet');
+    if (cobj.otyp === BAG_OF_TRICKS) {
+        let tmp;
+
+        await You(`carefully open ${the(xname(cobj))}...`);
+        await pline("It develops a huge set of teeth and bites you!");
+        tmp = rnd(10);
+        await losehp(Maybe_Half_Phys(tmp), "carnivorous bag", KILLED_BY_AN);
+        makeknown(BAG_OF_TRICKS);
+        game.abort_looting = true;
+        return ECMD_TIME;
+    }
+    return await use_container(cobj, false, (cindex < ccount));
 }
 
 // C ref: pickup.c doloot() -- the #loot command
@@ -1791,8 +1854,7 @@ export async function doloot() {
 }
 
 // C ref: pickup.c doloot_core() -- loot a container on the floor or loot
-// saddle from mon; looting containers (able_to_loot(), do_loot_cont())
-// and monsters (loot_mon()) are not ported yet
+// saddle from mon
 async function doloot_core() {
     let c = -1;
     let timepassed = 0;
@@ -1800,8 +1862,8 @@ async function doloot_core() {
     let underfoot = true;
     const dont_find_anything = "don't find anything";
     let mtmp;
-    const prev_inquiry = 0;
-    const prev_loot = false;
+    let prev_inquiry = 0;
+    let prev_loot = false;
     let num_conts = 0;
 
     game.abort_looting = false;
@@ -1835,12 +1897,45 @@ async function doloot_core() {
                 if (!(await able_to_loot(cc.x, cc.y, true)))
                     return ECMD_OK;
 
-                if (u_prop(BLINDED) && !game.uarmg
-                    && objects_at(cc.x, cc.y).some(o => o.otyp === CORPSE))
-                    throw new Error('doloot_core(): will_feel_cockatrice() not ported yet');
+                if (pk_Blind() && !game.uarmg) {
+                    /* if blind and without gloves, attempting to #loot at the
+                       location of a cockatrice corpse is fatal before asking
+                       whether to manipulate any containers */
+                    for (const nobj of objects_at(cc.x, cc.y))
+                        if (nobj.otyp === CORPSE
+                            && will_feel_cockatrice(nobj, false))
+                            throw new Error('doloot_core(): feel_cockatrice() not ported yet');
+                }
 
                 if (num_conts > 1) {
-                    throw new Error('doloot_core(): "Loot which containers?" menu not ported yet');
+                    /* use a menu to loot many containers */
+                    let n;
+                    const clr = NO_COLOR;
+
+                    const win = tty_create_nhwindow(NHW_MENU);
+                    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+
+                    for (const cobj of objects_at(cc.x, cc.y))
+                        if (Is_container(cobj))
+                            tty_add_menu(win, null, cobj, 0, 0, ATR_NONE, clr,
+                                         doname(cobj), MENU_ITEMFLAGS_NONE);
+                    tty_end_menu(win, "Loot which containers?");
+                    const res = await tty_select_menu(win, PICK_ANY);
+                    n = res.n;
+                    tty_destroy_nhwindow(win);
+
+                    if (n > 0) {
+                        for (let i = 1; i <= n; i++) {
+                            const cobj = res.selected[i - 1].item;
+                            timepassed |= await do_loot_cont(cobj, i, n);
+                            if (game.abort_looting) {
+                                /* chest trap or magic bag explosion or <esc> */
+                                return (timepassed ? ECMD_TIME : ECMD_OK);
+                            }
+                        }
+                    }
+                    if (n !== 0)
+                        c = 'y';
                 } else {
                     for (const cobj of objects_at(cc.x, cc.y)) {
                         if (Is_container(cobj)) {
@@ -1866,7 +1961,7 @@ async function doloot_core() {
         /* lootmon: */
         if (c !== 'y' && (mon_beside(game.u.ux, game.u.uy)
                           || game.iflags?.menu_requested)) {
-            const looted_mon = false;
+            let looted_mon = false;
             if (!(await get_adjacent_loc("Loot in what direction?",
                                          "Invalid loot location",
                                          game.u.ux, game.u.uy, cc)))
@@ -1874,11 +1969,19 @@ async function doloot_core() {
             underfoot = (cc.x === game.u.ux && cc.y === game.u.uy);
             if (underfoot && container_at(cc.x, cc.y, false))
                 continue; /* goto lootcont */
-            if (game.u.dz < 0)
-                throw new Error('doloot_core(): ceiling() not ported yet');
+            if (game.u.dz < 0) {
+                await You(`${dont_find_anything} to loot on the ${ceiling(cc.x, cc.y)}.`);
+                return ECMD_TIME;
+            }
             mtmp = m_at(cc.x, cc.y);
-            if (mtmp)
-                throw new Error('doloot_core(): loot_mon() not ported yet');
+            if (mtmp) {
+                const info = { passed_info: prev_inquiry, prev_loot };
+                timepassed = await loot_mon(mtmp, info, info);
+                prev_inquiry = info.passed_info;
+                prev_loot = info.prev_loot;
+                if (timepassed)
+                    looted_mon = true;
+            }
             /* always use a turn when choosing a direction is impaired,
                even if you've successfully targeted a saddled creature
                and then answered "no" to the "remove its saddle?" prompt */
@@ -1908,4 +2011,953 @@ async function doloot_core() {
         void num_conts;
         return (timepassed ? ECMD_TIME : ECMD_OK);
     }
+}
+
+// C ref: pickup.c loot_mon() -- returns amount of time passed;
+// 'passed_info' and 'prev_loot' are { passed_info } / { prev_loot } holders
+// (C's int *passed_info, boolean *prev_loot), either may be null
+export async function loot_mon(mtmp, passed_info, prev_loot) {
+    let c = -1;
+    let timepassed = 0;
+    let otmp;
+    const u = game.u;
+
+    /* 3.3.1 introduced the ability to remove saddle from a steed.
+     *  *passed_info is set to TRUE if a loot query was given.
+     *  *prev_loot is set to TRUE if something was actually acquired in here.
+     */
+    if (mtmp && mtmp !== u.usteed && (otmp = which_armor(mtmp, W_SADDLE))) {
+        if (passed_info)
+            passed_info.passed_info = 1;
+        const qbuf = `Do you want to remove the saddle from ${
+            x_monnam(mtmp, ARTICLE_THE, null, SUPPRESS_SADDLE, false)}?`;
+        if ((c = await tty_yn_function(qbuf, "ynq", 'n')) === 'y') {
+            if ((game.youmonst.data.mflags1 & M1_NOLIMBS) === M1_NOLIMBS) {
+                await You_cant("do that without limbs."); /* not body_part(HAND) */
+                return 0;
+            }
+            if (otmp.cursed) {
+                await You(`can't.  The saddle seems to be stuck to ${
+                    x_monnam(mtmp, ARTICLE_THE, null, SUPPRESS_SADDLE, false)}.`);
+                /* the attempt costs you time */
+                return 1;
+            }
+            await extract_from_minvent(mtmp, otmp, true, false);
+            if (game.flags.verbose ?? true)
+                await You(`take ${thesimpleoname(otmp)} off of ${mon_nam(mtmp)}.`);
+            otmp = await hold_another_object(otmp, "You drop %s!", doname(otmp),
+                                             null);
+            timepassed = rnd(3);
+            if (prev_loot)
+                prev_loot.prev_loot = true;
+        } else if (c === 'q') {
+            return 0;
+        }
+    }
+    /* 3.4.0 introduced ability to pick things up from swallower's stomach */
+    if (u.uswallow) {
+        const count = passed_info ? passed_info.passed_info : 0;
+
+        timepassed = await pickup(count);
+    }
+    return timepassed;
+}
+
+/* C ref: obj.h Is_mbag(), Is_box(), SchroedingersBox(); invent.c carried() */
+function Is_mbag(o) { return o.otyp === BAG_OF_HOLDING || o.otyp === BAG_OF_TRICKS; }
+function Is_box(o) { return o.otyp === LARGE_BOX || o.otyp === CHEST; }
+function SchroedingersBox(o) { return o.otyp === LARGE_BOX && o.spe === 1; }
+function carried(o) { return o.where === 'OBJ_INVENT'; }
+/* C ref: pickup.c Icebox */
+function Icebox() { return game.current_container.otyp === ICE_BOX; }
+/* C ref: decl.c something */
+const something = "something";
+
+// C ref: pickup.c mbag_explodes()
+/*
+ * Decide whether an object being placed into a magic bag will cause
+ * it to explode.  If the object is a bag itself, check recursively.
+ */
+function mbag_explodes(obj, depthin) {
+    /* these won't cause an explosion when they're empty */
+    if ((obj.otyp === WAN_CANCELLATION || obj.otyp === BAG_OF_TRICKS)
+        && obj.spe <= 0)
+        return false;
+
+    /* odds: 1/1, 2/2, 3/4, 4/8, 5/16, 6/32, 7/64, 8/128, 9/128, 10/128,... */
+    if ((Is_mbag(obj) || obj.otyp === WAN_CANCELLATION)
+        && (rn2(1 << (depthin > 7 ? 7 : depthin)) <= depthin))
+        return true;
+    else if (Has_contents(obj)) {
+        for (const otmp of obj.cobj)
+            if (mbag_explodes(otmp, depthin + 1))
+                return true;
+    }
+    return false;
+}
+
+// C ref: pickup.c is_boh_item_gone()
+function is_boh_item_gone() {
+    return !rn2(13);
+}
+
+// C ref: pickup.c boh_loss()
+async function boh_loss(container, held) {
+    /* sometimes toss objects if a cursed magic bag */
+    if (Is_mbag(container) && container.cursed && Has_contents(container)) {
+        let loss = 0;
+
+        for (const curr of container.cobj.slice()) {
+            if (is_boh_item_gone()) {
+                obj_extract_self(curr);
+                loss += await mbag_item_gone(held, curr, false);
+            }
+        }
+        return loss;
+    }
+    return 0;
+}
+
+// C ref: pickup.c mbag_item_gone()
+/* an object inside a cursed bag of holding is being destroyed */
+async function mbag_item_gone(held, item, silent) {
+    const loss = 0;
+
+    if (!silent) {
+        if (item.dknown)
+            await pline(`${Doname2(item)} ${otense(item, "have")} vanished!`);
+        else
+            await You(`${pk_Blind() ? "notice" : "see"} ${doname(item)} disappear!`);
+    }
+
+    if (game.u.ushops && game.u.ushops.length
+        && shop_keeper(game.u.ushops.charCodeAt(0)))
+        throw new Error('mbag_item_gone(): stolen_value() not ported yet');
+    obfree(item, null);
+    return loss;
+}
+
+/* C ref: objnam.c Doname2() */
+function Doname2(obj) {
+    const s = doname(obj);
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+/* C ref: objnam.c Ysimple_name2() */
+function Ysimple_name2(obj) {
+    const s = ysimple_name(obj);
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// C ref: shk.c sellobj_state()
+function sellobj_state(deliberate) {
+    /* If we're deliberately dropping something, there's no automatic
+       response to the shopkeeper's "want to sell" query; however, if we
+       accidentally drop anything, the shk will buy it/them without asking.
+       This retains the old pre-query risk that slippery fingers while in
+       shops entailed:  you drop it, you've lost it.
+     */
+    game.sell_response = (deliberate !== SELL_NORMAL) ? '\0' : 'a';
+    game.sell_how = deliberate;
+    game.auto_credit = false;
+}
+
+// C ref: mkobj.c unsplitobj() -- only the "not split" result is ported
+function unsplitobj(obj) {
+    const os = game.context.objsplit || {};
+    if (obj.where !== 'OBJ_INVENT' && obj.where !== 'OBJ_MINVENT'
+        && obj.where !== 'OBJ_CONTAINED')
+        return null;
+    if (obj.o_id === os.child_oid || obj.o_id === os.parent_oid)
+        throw new Error('unsplitobj(): rejoining a split stack not ported yet');
+    return null;
+}
+
+// C ref: pickup.c in_container()
+/* Returns: -1 to stop, 1 item was inserted, 0 item was not inserted. */
+async function in_container(obj) {
+    const u = game.u;
+    const cont = game.current_container;
+    const floor_container = cont ? !carried(cont) : false;
+    let was_unpaid = false;
+    let buf;
+
+    if (!cont) {
+        impossible("<in> no current_container?");
+        return 0;
+    } else if (obj === game.uball || obj === game.uchain) {
+        await You("must be kidding.");
+        return 0;
+    } else if (obj === cont) {
+        await pline("That would be an interesting topological exercise.");
+        return 0;
+    } else if ((obj.owornmask || 0) & (W_ARMOR | W_ACCESSORY)) {
+        await Norep(`You cannot ${Icebox() ? "refrigerate" : "stash"} ${something} you are wearing.`);
+        return 0;
+    } else if ((obj.otyp === LOADSTONE) && obj.cursed) {
+        obj.bknown = 1; /* set_bknown(obj, 1) */
+        await pline_The(`stone${(obj.quan !== 1) ? "s" : ""} won't leave your person.`);
+        return 0;
+    } else if (obj.otyp === AMULET_OF_YENDOR
+               || obj.otyp === CANDELABRUM_OF_INVOCATION
+               || obj.otyp === BELL_OF_OPENING
+               || obj.otyp === SPE_BOOK_OF_THE_DEAD) {
+        /* Prohibit Amulets in containers; if you allow it, monsters can't
+         * steal them.  It also becomes a pain to check to see if someone
+         * has the Amulet.  Ditto for the Candelabrum, the Bell and the Book.
+         */
+        await pline(`${The(xname(obj))} cannot be confined in such trappings.`);
+        return 0;
+    } else if (obj.otyp === LEASH && obj.leashmon) {
+        await pline(`${Tobjnam(obj, "are")} attached to your pet.`);
+        return 0;
+    } else if (obj === game.uwep) {
+        if (welded(obj))
+            throw new Error('in_container(): weldmsg() not ported yet');
+        setuwep(null);
+        /* This uwep check is obsolete.  It dates to 3.0 and earlier when
+         * unwielding Firebrand would be fatal in hell if hero had no other
+         * fire resistance.  Life-saving would force it to be re-wielded.
+         */
+        if (game.uwep)
+            return 0; /* unwielded, died, rewielded */
+    } else if (obj === game.uswapwep) {
+        setuswapwep(null);
+    } else if (obj === game.uquiver) {
+        setuqwep(null);
+    }
+
+    if (fatal_corpse_mistake(obj, false))
+        return -1;
+
+    /* boxes, boulders, and big statues can't fit into any container */
+    if (obj.otyp === ICE_BOX || Is_box(obj) || obj.otyp === BOULDER
+        || (obj.otyp === STATUE && mons[obj.corpsenm].msize >= MZ_LARGE)) {
+        /* consumes multiple obufs but not enough to overwrite the result */
+        buf = the(xname(obj));
+        await You(`cannot fit ${buf} into ${the(xname(cont))}.`);
+        return 0;
+    }
+
+    freeinv(obj);
+
+    if (obj.lamplit) /* obj_is_burning(obj): this used to be part of freeinv() */
+        throw new Error('in_container(): snuff_lit() not ported yet');
+
+    if (floor_container && costly_spot(u.ux, u.uy)) {
+        /* defer gold until after put-in message */
+        if (obj.oclass !== COIN_CLASS) {
+            /* sellobj() will take an unpaid item off the shop bill */
+            was_unpaid = !!obj.unpaid;
+            if (game.sellobj_first) {
+                /* don't sell when putting the item into your own container,
+                   but handle billing correctly */
+                sellobj_state(cont.no_charge ? SELL_DONTSELL : SELL_DELIBERATE);
+                game.sellobj_first = false;
+            }
+            await sellobj(obj, u.ux, u.uy);
+        }
+    }
+    if (Icebox() && !age_is_relative(obj)) {
+        obj.age = (game.moves || 0) - obj.age; /* actual age */
+        /* stop any corpse timeouts when frozen */
+        if (obj.otyp === CORPSE) {
+            if (obj.timer && (obj.timer.action === 'ROT_CORPSE'
+                              || obj.timer.action === 'REVIVE_MON'))
+                obj.timer = null; /* stop_timer(ROT_CORPSE), (REVIVE_MON) */
+            /* if this is the corpse of a cancelled ice troll, uncancel it */
+            if (obj.corpsenm === PM_ICE_TROLL && obj.oextra?.omonst)
+                obj.oextra.omonst.mcan = 0;
+        } else if (obj.globby && obj.timer) {
+            throw new Error('in_container(): stop_timer(SHRINK_GLOB) not ported yet');
+        }
+    } else if (Is_mbag(cont) && mbag_explodes(obj, 0)) {
+        throw new Error('in_container(): magic bag explosion (do_boh_explosion()) not ported yet');
+    }
+
+    if (game.current_container) {
+        buf = the(xname(cont));
+        await You(`put ${doname(obj)} into ${buf}.`);
+
+        /* gold in container always needs to be added to credit */
+        if (floor_container && obj.oclass === COIN_CLASS)
+            await sellobj(obj, cont.ox, cont.oy);
+        add_to_container(cont, obj);
+        cont.owt = weight(cont);
+    }
+    /* gold needs this, and freeinv() many lines above may cause
+     * the encumbrance to disappear from the status, so just always
+     * update status immediately.
+     */
+    bot();
+    void was_unpaid;
+    return (game.current_container ? 1 : -1);
+}
+
+// C ref: pickup.c ck_bag()
+/* askchain() filter used by in_container();
+ * returns True if the container is intact and 'obj' isn't it, False if
+ * container is gone (magic bag explosion) or 'obj' is the container itself;
+ * also used by getobj() when picking a single item to stash
+ */
+export function ck_bag(obj) {
+    return (game.current_container && obj !== game.current_container);
+}
+
+// C ref: pickup.c out_container()
+/* Returns: -1 to stop, 1 item was removed, 0 item was not removed. */
+async function out_container(obj) {
+    let otmp;
+    let res;
+    let count;
+    const is_gold = (obj.oclass === COIN_CLASS);
+    const cont = game.current_container;
+
+    if (!cont) {
+        impossible("<out> no current_container?");
+        return -1;
+    } else if (is_gold) {
+        obj.owt = weight(obj);
+    }
+
+    if (obj.oartifact && !(await touch_artifact(obj, game.youmonst)))
+        return 0;
+
+    if (fatal_corpse_mistake(obj, false))
+        return -1;
+
+    count = obj.quan;
+    const cnt_p = { val: count };
+    if ((res = await lift_object(obj, cont, cnt_p, false)) <= 0)
+        return res;
+    count = cnt_p.val;
+
+    if (obj.quan !== count && obj.otyp !== LOADSTONE)
+        obj = splitobj(obj, count);
+
+    /* Remove the object from the list. */
+    obj_extract_self(obj);
+    cont.owt = weight(cont);
+
+    if (Icebox())
+        removed_from_icebox(obj);
+
+    if (!obj.unpaid && !carried(cont)
+        && costly_spot(cont.ox, cont.oy)) {
+        obj.ox = cont.ox;
+        obj.oy = cont.oy;
+        await addtobill(obj, false, false, false);
+    }
+    if (is_pick(obj) && obj.unpaid)
+        throw new Error('out_container(): pick_pick() not ported yet');
+
+    otmp = await addinv(obj);
+    await pickup_prinv(otmp, count, "removing");
+
+    if (is_gold) {
+        bot(); /* update character's gold piece count immediately */
+    }
+    return 1;
+}
+
+/* C ref: obj.h is_pick() */
+function is_pick(otmp) {
+    return (otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK);
+}
+
+// C ref: pickup.c removed_from_icebox()
+/* taking a corpse out of an ice box needs a couple of adjustments */
+export function removed_from_icebox(obj) {
+    if (!age_is_relative(obj)) {
+        obj.age = (game.moves || 0) - obj.age; /* actual age */
+        if (obj.otyp === CORPSE) {
+            const m = obj.oextra?.omonst || null; /* get_mtraits(obj, FALSE) */
+            const iceT = m ? (m.data === mons[PM_ICE_TROLL])
+                           : (obj.corpsenm === PM_ICE_TROLL);
+
+            /* start a revive timer if this corpse is for an ice troll,
+               otherwise start a rot-away timer (even for other trolls) */
+            obj.norevive = iceT ? 0 : 1;
+            start_corpse_timeout(obj);
+        } else if (obj.globby) {
+            /* non-frozen globs gradually shrink away to nothing */
+            throw new Error('removed_from_icebox(): start_glob_timeout() not ported yet');
+        }
+    }
+}
+
+// C ref: pickup.c observe_quantum_cat()
+/* used for #loot/apply, #tip, and final disclosure */
+export async function observe_quantum_cat(box, makecat, givemsg) {
+    const sc = "Schroedinger's Cat";
+    let deadcat;
+    let livecat = null;
+    const itsalive = !rn2(2);
+
+    const loc = get_obj_location(box, 0);
+    if (loc)
+        box.ox = loc[0], box.oy = loc[1]; /* in case it's being carried */
+
+    /* SchroedingersBox already has a cat corpse in it */
+    deadcat = (box.cobj && box.cobj.length) ? box.cobj[0] : null;
+    if (itsalive) {
+        if (makecat)
+            livecat = await makemon(mons[PM_HOUSECAT], box.ox, box.oy,
+                                    NO_MINVENT | MM_ADJACENTOK | MM_NOMSG);
+        if (livecat) {
+            livecat.mpeaceful = 1;
+            set_malign(livecat);
+            if (givemsg) {
+                if (!canspotmon(livecat))
+                    await You(`think ${something} brushed your ${body_part(FOOT)}.`);
+                else
+                    await pline(`${Monnam(livecat)} inside the box is still alive!`);
+            }
+            christen_monst(livecat, sc);
+            if (deadcat) {
+                obj_extract_self(deadcat);
+                obfree(deadcat, null), deadcat = null;
+            }
+            box.owt = weight(box);
+            box.spe = 0;
+
+            if (!game.context.mon_moving) {
+                /* give experience points for releasing live cat; slightly
+                   different amount from what is given for "killing" it */
+                more_experienced(10, 20); /* 10:current exp; 20:score bonus */
+                await newexplevel();
+            }
+        }
+    } else {
+        box.spe = 0; /* now an ordinary box (with a cat corpse inside) */
+        if (givemsg)
+            await pline_The(`${u_prop(HALLUC) ? rndmonnam(null) : "housecat"} inside the box is dead!`);
+        if (deadcat) {
+            /* set_corpsenm() will start the rot timer that was removed
+               when makemon() created SchroedingersBox; start it from
+               now rather than from when this special corpse got created */
+            deadcat.age = game.moves || 0;
+            set_corpsenm(deadcat, PM_HOUSECAT);
+            deadcat = oname(deadcat, sc, ONAME_NO_FLAGS);
+
+            if (!game.context.mon_moving) {
+                /* give experience points for the death of the cat since
+                   that has been finalized by the hero opening the box */
+                more_experienced(20, 10); /* 20:current exp; 10:score bonus */
+                await newexplevel();
+            }
+        }
+    }
+}
+
+// C ref: pickup.c container_gone()
+/* used by askchain() to check for magic bag explosion */
+export function container_gone(fn) {
+    /* result is only meaningful while use_container() is executing */
+    return ((fn === in_container || fn === out_container)
+            && !game.current_container);
+}
+
+// C ref: pickup.c explain_container_prompt()
+async function explain_container_prompt(more_containers) {
+    const explaintext = [
+        "Container actions:",
+        "",
+        " : -- Look: examine contents",
+        " o -- Out: take things out",
+        " i -- In: put things in",
+        " b -- Both: first take things out, then put things in",
+        " r -- Reversed: put things in, then take things out",
+        " s -- Stash: put one item in", "",
+        " n -- Next: loot next selected container",
+        " q -- Quit: finished",
+        " ? -- Help: display this text.",
+        ""
+    ];
+
+    /* "Do what with <container>? [:oibrsq or ?] (q)" */
+    const win = tty_create_nhwindow(NHW_TEXT);
+    for (const txt of explaintext) {
+        if (!more_containers && txt.startsWith(" n "))
+            continue;
+        await tty_putstr(win, 0, txt);
+    }
+    await tty_display_nhwindow(win, false);
+    tty_destroy_nhwindow(win);
+}
+
+// C ref: pickup.c u_handsy()
+export async function u_handsy() {
+    if (game.youmonst.data.mflags1 & M1_NOHANDS) {
+        await You("have no hands!"); /* not `body_part(HAND)' */
+        return false;
+    } else if (!freehand()) {
+        await You(`have no free ${body_part(HAND)}.`);
+        return false;
+    }
+    return true;
+}
+
+// C ref: pickup.c stash_ok()
+/* getobj callback for object to be stashed into a container */
+function stash_ok(obj) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+
+    /* downplay the container being stashed into */
+    if (!ck_bag(obj))
+        return GETOBJ_EXCLUDE_SELECTABLE;
+    /* Possible extension: downplay things too big to fit into containers (in
+     * which case extract in_container()'s logic.) */
+
+    return GETOBJ_SUGGEST;
+}
+
+// C ref: pickup.c use_container()
+/* C's 'objp' is passed by value here; the result is the time used */
+export async function use_container(obj,
+                                    held,
+                                    more_containers) { /* True iff #loot multiple and this isn't last */
+    let otmp;
+    let quantum_cat, cursed_mbag, loot_out, loot_in, loot_in_first,
+        stash_one, inokay, outokay, outmaybe;
+    let c, emptymsg = '', qbuf;
+    let used = ECMD_OK;
+    let loss;
+
+    game.abort_looting = false;
+    game.sellobj_first = true; /* in_container() should call sellobj_state() */
+
+    if (!(await u_handsy()))
+        return ECMD_OK;
+
+    if (!obj.lknown) { /* do this in advance */
+        obj.lknown = 1;
+        /* if (held) update_inventory(); */
+    }
+    if (obj.olocked) {
+        await pline(`${Tobjnam(obj, "are")} locked.`);
+        if (held)
+            await You("must put it down to unlock.");
+        return ECMD_OK;
+    } else if (obj.otrapped) {
+        if (held)
+            await You(`open ${the(xname(obj))}...`);
+        await chest_trap(obj, HAND, false);
+        /* even if the trap fails, you've used up this turn */
+        if ((game.multi || 0) >= 0) { /* in case we didn't become paralyzed */
+            nomul(-1);
+            game.multi_reason = "opening a container";
+            game.nomovemsg = "";
+        }
+        game.abort_looting = true;
+        return ECMD_TIME;
+    }
+
+    game.current_container = obj; /* for use by in/out_container */
+    /*
+     * From here on out, all early returns go through 'containerdone:'.
+     */
+
+    /* check for Schroedinger's Cat */
+    quantum_cat = SchroedingersBox(game.current_container);
+    if (quantum_cat) {
+        await observe_quantum_cat(game.current_container, true, true);
+        used = ECMD_TIME;
+    }
+
+    cursed_mbag = Is_mbag(game.current_container)
+        && game.current_container.cursed
+        && Has_contents(game.current_container);
+    if (cursed_mbag
+        && (loss = await boh_loss(game.current_container, held)) !== 0) {
+        used = ECMD_TIME;
+        await You(`owe ${loss} ${currency(loss)} for lost merchandise.`);
+        game.current_container.owt = weight(game.current_container);
+    }
+    /* might put something in if carrying anything other than just the
+       container itself (invent is not the container or has a next object) */
+    inokay = (game.invent != null && (game.invent !== game.current_container
+                                      || game.invent.nobj));
+    /* might take something out if container isn't empty */
+    outokay = Has_contents(game.current_container);
+    if (!outokay) /* preformat the empty-container message */
+        emptymsg = `${Ysimple_name2(game.current_container)} is ${
+            (quantum_cat || cursed_mbag) ? "now " : ""}empty.`;
+
+    /*
+     * What-to-do prompt's list of possible actions:
+     * (see the C source for the details)
+     *
+     * Do what with <the/your/Shk's container>? [:oibrs nq or ?] (q)
+     * or
+     * <The/Your/Shk's container> is empty.  Do what with it? [:irs nq or ?]
+     */
+    const menu_style = game.flags.menu_style ?? MENU_FULL;
+    for (;;) { /* repeats iff '?' or ':' gets chosen */
+        outmaybe = (outokay || !game.current_container.cknown);
+        if (!outmaybe)
+            qbuf = safe_qbuf(null, " is empty.  Do what with it?",
+                             game.current_container, Yname2, "This");
+        else
+            qbuf = safe_qbuf("Do what with ", "?", game.current_container,
+                             yname, "it");
+        /* ask player about what to do with this container */
+        if (menu_style === MENU_PARTIAL || menu_style === MENU_FULL) {
+            if (!inokay && !outmaybe) {
+                /* nothing to take out, nothing to put in;
+                   trying to do both will yield proper feedback */
+                c = 'b';
+            } else {
+                c = await in_or_out_menu(qbuf, game.current_container,
+                                         outmaybe, inokay,
+                                         (used !== ECMD_OK),
+                                         more_containers);
+            }
+        } else { /* TRADITIONAL or COMBINATION */
+            let xbuf = ''; /* list of extra acceptable responses */
+            let pbuf = ":";                  /* look inside */
+            if (outmaybe) pbuf += "o"; else xbuf += "o"; /* take out */
+            if (inokay) pbuf += "i"; else xbuf += "i";   /* put in */
+            if (outmaybe) pbuf += "b"; else xbuf += "b"; /* both */
+            if (inokay) pbuf += "rs"; else xbuf += "rs"; /* reversed, stash */
+            pbuf += " ";                     /* separator */
+            if (more_containers) pbuf += "n"; else xbuf += "n"; /* next container */
+            pbuf += "q";                     /* quit */
+            if (game.iflags?.cmdassist ?? true)
+                /* this unintentionally allows user to answer with 'o' or
+                   'r'; fortunately, those are already valid choices here */
+                pbuf += " or ?"; /* help */
+            else
+                xbuf += "?";
+            if (xbuf)
+                pbuf += "\x1b" + xbuf;
+            c = await tty_yn_function(qbuf, pbuf, more_containers ? 'n' : 'q');
+            if (typeof c === 'number')
+                c = String.fromCharCode(c);
+        } /* PARTIAL|FULL vs other modes */
+
+        if (c === '?') {
+            await explain_container_prompt(more_containers);
+        } else if (c === ':') { /* note: will set obj->cknown */
+            if (!game.current_container.cknown)
+                used = ECMD_TIME; /* gaining info */
+            await container_contents(game.current_container, false, false, true);
+        } else
+            break;
+    } /* loop until something other than '?' or ':' is picked */
+
+    if (c === 'q')
+        game.abort_looting = true;
+    if (c !== 'n' && c !== 'q') { /* [not strictly needed; falling thru works] */
+        loot_out = (c === 'o' || c === 'b' || c === 'r');
+        loot_in = (c === 'i' || c === 'b' || c === 'r');
+        loot_in_first = (c === 'r'); /* both, reversed */
+        stash_one = (c === 's');
+
+        /* out-only or out before in */
+        if (loot_out && !loot_in_first) {
+            if (!Has_contents(game.current_container)) {
+                await pline(emptymsg); /* <whatever> is empty. */
+                if (!game.current_container.cknown)
+                    used = ECMD_TIME;
+                game.current_container.cknown = 1;
+            } else {
+                add_valid_menu_class(0); /* reset */
+                if (menu_style === MENU_TRADITIONAL)
+                    used |= await traditional_loot(false);
+                else
+                    used |= ((await menu_loot(0, false)) > 0) ? 1 : 0;
+                add_valid_menu_class(0);
+            }
+            /* recalculate 'inokay' in case something was just taken out and
+               inventory is no longer empty or no longer just the container */
+            inokay = (game.invent && (game.invent !== game.current_container
+                                      || game.invent.nobj));
+        }
+
+        if ((loot_in || stash_one) && !inokay) {
+            await You(`don't have anything${game.invent ? " else" : ""} to ${
+                stash_one ? "stash" : "put in"}.`);
+            loot_in = stash_one = false;
+        }
+
+        /*
+         * Gone: being nice about only selecting food if we know we are
+         * putting things in an ice chest.
+         */
+        if (loot_in) {
+            add_valid_menu_class(0); /* reset */
+            if (menu_style === MENU_TRADITIONAL)
+                used |= await traditional_loot(true);
+            else
+                used |= ((await menu_loot(0, true)) > 0) ? 1 : 0;
+            add_valid_menu_class(0);
+        } else if (stash_one) {
+            /* put one item into container */
+            if ((otmp = await getobj("stash", stash_ok,
+                                     GETOBJ_PROMPT | GETOBJ_ALLOWCNT)) != null) {
+                if (await in_container(otmp)) {
+                    used = 1;
+                } else {
+                    /* couldn't put selected item into container for some
+                       reason; might need to undo splitobj() */
+                    unsplitobj(otmp);
+                }
+            }
+        }
+        /* putting something in might have triggered magic bag explosion */
+        if (!game.current_container)
+            loot_out = false;
+
+        /* out after in */
+        if (loot_out && loot_in_first) {
+            if (!Has_contents(game.current_container)) {
+                await pline(emptymsg); /* <whatever> is empty. */
+                if (!game.current_container.cknown)
+                    used = 1;
+                game.current_container.cknown = 1;
+            } else {
+                add_valid_menu_class(0); /* reset */
+                if (menu_style === MENU_TRADITIONAL)
+                    used |= await traditional_loot(false);
+                else
+                    used |= ((await menu_loot(0, false)) > 0) ? 1 : 0;
+                add_valid_menu_class(0);
+            }
+        }
+    }
+
+    /* containerdone: */
+    if (used) {
+        /* Not completely correct; if we put something in without knowing
+           whatever was already inside, now we suddenly do.  That can't
+           be helped unless we want to track things item by item and then
+           deal with containers whose contents are "partly known". */
+        if (game.current_container)
+            game.current_container.cknown = 1;
+        /* update_inventory(); */
+    }
+
+    sellobj_state(SELL_NORMAL); /* in case in_container() set it */
+    if (game.current_container)
+        game.current_container = null; /* avoid hanging on to stale pointer */
+    else
+        game.abort_looting = true;
+    return used;
+}
+
+// C ref: pickup.c traditional_loot()
+/* loot current_container (take things out or put things in), by prompting */
+async function traditional_loot(put_in) {
+    void put_in;
+    throw new Error('traditional_loot(): query_classes()/askchain() not ported yet');
+}
+
+// C ref: pickup.c menu_loot()
+/* loot current_container (take things out or put things in), using a menu */
+async function menu_loot(retry, put_in) {
+    let n, i, n_looted = 0;
+    let all_categories = true, loot_everything = false, autopick = false;
+    let buf;
+    let loot_justpicked = false;
+    const action = put_in ? "Put in" : "Take out";
+    let otmp;
+    const pick_list = [];
+    let mflags, res;
+    let count = 0;
+
+    game.pickup_encumbrance = 0; /* used by out_container(); no harm in
+                                  * zeroing it if about to use in_container() */
+    if (retry) {
+        all_categories = (retry === -2);
+    } else if ((game.flags.menu_style ?? MENU_FULL) === MENU_FULL) {
+        all_categories = false;
+        buf = `${action} what type of objects?`;
+        mflags = (ALL_TYPES | UNPAID_TYPES | BUCX_TYPES | CHOOSE_ALL
+                  | JUSTPICKED);
+        n = await query_category(buf,
+                                 put_in ? game.invent : game.current_container.cobj,
+                                 mflags, pick_list, PICK_ANY);
+            /* when paranoid_confirm:A is set, 'A' by itself implies
+               'A'+'a' which will be followed by a confirmation prompt;
+               when that option isn't set, 'A' by itself is rejected
+               by query_categorry() and result here will be n==0 */
+        if (!n)
+            return ECMD_OK; /* no non-autopick category filters specified */
+
+        for (i = 0; i < n; i++) {
+            if (pick_list[i].item === 0x41 /* 'A' */) {
+                loot_everything = autopick = true;
+            } else if (put_in && pick_list[i].item === 0x50 /* 'P' */) {
+                loot_justpicked = true;
+                count = Math.max(0, pick_list[i].count);
+                add_valid_menu_class(pick_list[i].item);
+                loot_everything = false;
+            } else if (pick_list[i].item === ALL_TYPES_SELECTED) {
+                all_categories = true;
+            } else {
+                add_valid_menu_class(pick_list[i].item);
+                loot_everything = false;
+            }
+        }
+    }
+
+    if (autopick) {
+        let inout_func; /* in_container or out_container */
+        let firstobj;
+
+        if (!put_in) {
+            game.current_container.cknown = 1;
+            inout_func = out_container;
+            firstobj = game.current_container.cobj.slice();
+        } else {
+            inout_func = in_container;
+            firstobj = objchain_items(game.invent);
+        }
+        /*
+         * Note:  for put_in, current_container might be destroyed during
+         * mid-traversal by a magic bag explosion.
+         * Note too:  items are processed in internal list order rather
+         * than menu display order ('sortpack') or 'sortloot' order;
+         * for put_in that should be item->invlet order so reasonable.
+         */
+        for (otmp of firstobj) {
+            if (!game.current_container)
+                break;
+            if (loot_everything || all_categories || allow_category(otmp)) {
+                res = await inout_func(otmp);
+                if (res < 0)
+                    break;
+                n_looted += res;
+            }
+        }
+    } else if (put_in && loot_justpicked
+               && count_justpicked(game.invent) === 1) {
+        otmp = find_justpicked(game.invent);
+        if (otmp) {
+            n_looted = 1;
+            if (count > 0 && count < otmp.quan) {
+                otmp = splitobj(otmp, count);
+            }
+            await in_container(otmp);
+            /* return value doesn't matter, even if container blew up */
+        }
+    } else {
+        mflags = INVORDER_SORT | INCLUDE_VENOM;
+        if (put_in && (game.flags.invlet_constant ?? true))
+            mflags |= USE_INVLET;
+        if (put_in && loot_justpicked)
+            mflags |= JUSTPICKED;
+        if (!put_in)
+            game.current_container.cknown = 1;
+        buf = `${action} what?`;
+        const olist = [];
+        n = await query_objlist(buf,
+                                put_in ? objchain_items(game.invent)
+                                       : game.current_container.cobj,
+                                mflags, olist, PICK_ANY,
+                                all_categories ? allow_all : allow_category);
+        if (n) {
+            n_looted = n;
+            for (i = 0; i < n; i++) {
+                otmp = olist[i].obj;
+                count = olist[i].count;
+                if (count > 0 && count < otmp.quan) {
+                    otmp = splitobj(otmp, count);
+                    /* special split case also handled by askchain() */
+                }
+                res = put_in ? await in_container(otmp) : await out_container(otmp);
+                if (res <= 0) {
+                    if (!game.current_container) {
+                        /* otmp caused current_container to explode;
+                           both are now gone */
+                        otmp = null; /* and break loop */
+                    } else if (otmp && otmp !== olist[i].obj) {
+                        /* split occurred, merge again */
+                        unsplitobj(otmp);
+                    }
+                    if (res < 0)
+                        break;
+                }
+            }
+        }
+    }
+    return n_looted ? ECMD_TIME : ECMD_OK;
+}
+
+// C ref: pickup.c in_or_out_menu()
+async function in_or_out_menu(prompt, obj,
+                              outokay,     /* can take out */
+                              inokay,      /* can put in */
+                              alreadyused, /* controls phrasing of the decline choice */
+                              more_containers) {
+    /* underscore is not a choice; it's used to skip element [0] */
+    const lootchars = "_:oibrsnq", abc_chars = "_:abcdenq";
+    let buf;
+    let n;
+    const menuselector = game.flags.lootabc ? abc_chars : lootchars;
+    const clr = NO_COLOR;
+
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+
+    buf = `Look inside ${thesimpleoname(obj)}`;
+    tty_add_menu(win, null, 1 /* ':' */, menuselector[1], 0, ATR_NONE, clr,
+                 buf, MENU_ITEMFLAGS_NONE);
+    if (outokay) {
+        buf = `take ${something} out`;
+        tty_add_menu(win, null, 2 /* 'o' */, menuselector[2], 0, ATR_NONE, clr,
+                     buf, MENU_ITEMFLAGS_NONE);
+    }
+    if (inokay) {
+        buf = `put ${something} in`;
+        tty_add_menu(win, null, 3 /* 'i' */, menuselector[3], 0, ATR_NONE, clr,
+                     buf, MENU_ITEMFLAGS_NONE);
+    }
+    if (outokay) {
+        buf = `${inokay ? "both; " : ""}take out, then put in`;
+        tty_add_menu(win, null, 4 /* 'b' */, menuselector[4], 0, ATR_NONE, clr,
+                     buf, MENU_ITEMFLAGS_NONE);
+    }
+    if (inokay) {
+        buf = `${outokay ? "both reversed; " : ""}put in, then take out`;
+        tty_add_menu(win, null, 5 /* 'r' */, menuselector[5], 0, ATR_NONE, clr,
+                     buf, MENU_ITEMFLAGS_NONE);
+        buf = `stash one item into ${thesimpleoname(obj)}`;
+        tty_add_menu(win, null, 6 /* 's' */, menuselector[6], 0, ATR_NONE, clr,
+                     buf, MENU_ITEMFLAGS_NONE);
+    }
+    add_menu_str(win, "");
+    if (more_containers) {
+        tty_add_menu(win, null, 7 /* 'n' */, menuselector[7], 0, ATR_NONE, clr,
+                     "loot next container", MENU_ITEMFLAGS_SELECTED);
+    }
+    buf = alreadyused ? "done" : "do nothing";
+    tty_add_menu(win, null, 8 /* 'q' */, menuselector[8], 0, ATR_NONE, clr,
+                 buf,
+                 more_containers ? MENU_ITEMFLAGS_NONE : MENU_ITEMFLAGS_SELECTED);
+
+    tty_end_menu(win, prompt);
+    const res = await tty_select_menu(win, PICK_ONE);
+    n = res.n;
+    tty_destroy_nhwindow(win);
+    if (n > 0) {
+        let k = res.selected[0].item;
+
+        if (n > 1 && k === (more_containers ? 7 : 8))
+            k = res.selected[1].item;
+        return lootchars[k]; /* :,o,i,b,r,s,n,q */
+    }
+    return (n === 0 && more_containers) ? 'n' : 'q'; /* next or quit */
+}
+
+/* C ref: hack.h makeknown() */
+function makeknown(otyp) { discover_object(otyp, true, true, true); }
+
+/* C ref: obj.h age_is_relative() */
+function age_is_relative(otmp) {
+    return (otmp.otyp === BRASS_LANTERN || otmp.otyp === OIL_LAMP
+            || otmp.otyp === CANDELABRUM_OF_INVOCATION
+            || otmp.otyp === TALLOW_CANDLE || otmp.otyp === WAX_CANDLE
+            || otmp.otyp === POT_OIL);
 }

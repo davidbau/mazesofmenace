@@ -14,6 +14,8 @@
 // they are ported (their C counterparts are listed in sp_lev_des_names).
 
 import { game } from './gstate.js';
+import { flip_worm_segs_vertical, flip_worm_segs_horizontal,
+         flip_wseg_cells } from './worm.js';
 import { does_block, block_point } from './vision.js';
 import { rn2, rn1, rnd, ROLL_FROM } from './rng.js';
 import { depth, In_hell, on_level } from './dungeon.js';
@@ -95,7 +97,8 @@ import { induced_align } from './dungeon.js';
 import { nhl_push_obj } from './nhlobj.js';
 import { bury_an_obj } from './dig.js';
 import { stock_room } from './shknam.js';
-import { priestini } from './priest.js';
+import { priestini, mk_roamer } from './priest.js';
+import { Amask2align } from './const.js';
 import { make_engr_at, engr_at, del_engr_at } from './engrave.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, Is_waterlevel } from './const.js';
 import {
@@ -2124,7 +2127,7 @@ function create_monster(m, croom) {
         return;
 
     if (m.sp_amask !== AM_SPLEV_RANDOM)
-        nhl_error(null, 'create_monster: mk_roamer() is not ported yet');
+        mtmp = mk_roamer(pm, Amask2align(amask), x, y, m.peaceful);
     else if (PM_ARCHEOLOGIST <= m.id && m.id <= PM_WIZARD)
         nhl_error(null, 'create_monster: mk_mplayer() is not ported yet');
     else
@@ -3653,7 +3656,10 @@ export function flip_level(flp, extras) {
             Flip_coord(mtmp.mextra?.eshk?.shk); /* shk's preferred spot */
             Flip_coord(mtmp.mextra?.eshk?.shd); /* shop door */
         } else if (mtmp.wormno) {
-            throw new Error('flip_level(): long worm segments not ported yet');
+            if (flp & 1)
+                flip_worm_segs_vertical(mtmp, miny, maxy);
+            if (flp & 2)
+                flip_worm_segs_horizontal(mtmp, minx, maxx);
         }
     }
 
@@ -3800,6 +3806,8 @@ export function flip_level(flp, extras) {
                 locs[nx][y] = trm;
             }
     }
+    /* level.monsters[][] cells holding long worm tail segments */
+    flip_wseg_cells(flp, minx, miny, maxx, maxy);
 
     /* timed effects: MELT_ICE_AWAY level timers are kept on the location
        (levl[x][y].timer, see nhlua.js), so they moved with the map */

@@ -19,7 +19,7 @@ import {
 } from './monsters.js';
 import { ACURR, adjabil, newhp } from './attrib.js';
 import { xlev_to_rank } from './botl.js';
-import { record_achievement } from './do.js';
+import { record_achievement, achieve_rank } from './insight.js';
 import { pline } from './display.js';
 import { Goodbye } from './role.js';
 import { resists_drli } from './mondata.js';
@@ -272,7 +272,7 @@ export async function pluslvl(
         /* SoundAchievement(0, sa2_xplevelup, 0): no sound interface */
         const newrank = xlev_to_rank(u.ulevel);
         if (newrank > oldrank)
-            record_achievement(`ACH_RNK${newrank}`); /* achieve_rank(newrank) */
+            record_achievement(achieve_rank(newrank));
         /* livelog_printf(LL_MINORAC, "...gained experience level %d"): the
            livelog isn't shown on the tty */
         if (u.ulevel > (u.ulevelpeak || 0))

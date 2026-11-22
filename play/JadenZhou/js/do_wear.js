@@ -822,7 +822,7 @@ function learnring(ring, observed) {
 }
 
 // C ref: do_wear.c adj_abon()
-function adj_abon(otmp, delta) {
+export function adj_abon(otmp, delta) {
     const g = game;
     if (g.uarmg && g.uarmg === otmp && otmp.otyp === O.GAUNTLETS_OF_DEXTERITY) {
         if (delta) {
@@ -1354,7 +1354,7 @@ async function accessory_or_armor_on(obj) {
         }
     }
 
-    if (!retouch_object(obj))
+    if (!(await retouch_object(obj, false)))
         return ECMD_TIME; /* costs a turn even though it didn't get worn */
 
     if (armor) {
@@ -2327,3 +2327,138 @@ export function inaccessible_equipment(obj,
 function takeoff_ok(obj) {
     return equip_ok(obj, true, false);
 }
+
+// C ref: do_wear.c some_armor()
+/* pick a random piece of armor worn by victim */
+export function some_armor(victim) {
+    const you = (victim === game.youmonst);
+    let otmph, otmp;
+
+    otmph = you ? game.uarmc : which_armor_dw(victim, W_ARMC);
+    if (!otmph)
+        otmph = you ? game.uarm : which_armor_dw(victim, W_ARM);
+    if (!otmph)
+        otmph = you ? game.uarmu : which_armor_dw(victim, W_ARMU);
+
+    otmp = you ? game.uarmh : which_armor_dw(victim, W_ARMH);
+    if (otmp && (!otmph || !rn2_dw(4)))
+        otmph = otmp;
+    otmp = you ? game.uarmg : which_armor_dw(victim, W_ARMG);
+    if (otmp && (!otmph || !rn2_dw(4)))
+        otmph = otmp;
+    otmp = you ? game.uarmf : which_armor_dw(victim, W_ARMF);
+    if (otmp && (!otmph || !rn2_dw(4)))
+        otmph = otmp;
+    otmp = you ? game.uarms : which_armor_dw(victim, W_ARMS);
+    if (otmp && (!otmph || !rn2_dw(4)))
+        otmph = otmp;
+    return otmph || null;
+}
+
+// C ref: do_wear.c disintegrate_arm() -- destroying the armor
+// (maybe_destroy_armor(), wornarm_destroyed()) is not ported yet
+export async function disintegrate_arm(atmp) {
+    const g = game;
+    if (g.uarmc || g.uarm || g.uarmu || g.uarmh || g.uarmg || g.uarmf
+        || g.uarms)
+        throw new Error('disintegrate_arm(): maybe_destroy_armor()/wornarm_destroyed() not ported yet');
+    void atmp;
+    return 0; /* could not destroy anything */
+}
+
+// C ref: do_wear.c obj_erode_type()
+/* return ERODE_foo erosion type which can apply to object */
+function obj_erode_type(otmp) {
+    if (is_flammable(otmp))
+        return ERODE_BURN;
+    else if (is_rustprone(otmp))
+        return ERODE_RUST;
+    else if (is_crackable(otmp))
+        return ERODE_CRACK;
+    else if (is_rottable(otmp))
+        return ERODE_ROT;
+    else if (is_corrodeable(otmp))
+        return ERODE_CORRODE;
+    return ERODE_NONE;
+}
+
+// C ref: do_wear.c destroy_arm()
+/* erode a number of worn armor(s).
+   if the armor is hit when max eroded, destroys it. */
+export async function destroy_arm() {
+    const g = game;
+    const armors = [];
+    let otmp;
+    let i;
+    const hits = rn2_dw(4) + 1;
+    let ret = 0;
+
+    /* gather worn armor; include non-erodeable ones */
+    if (g.uarm) armors.push(g.uarm);
+    if (g.uarmc) armors.push(g.uarmc);
+    if (g.uarmh) armors.push(g.uarmh);
+    if (g.uarms) armors.push(g.uarms);
+    if (g.uarmg) armors.push(g.uarmg);
+    if (g.uarmf) armors.push(g.uarmf);
+    if (g.uarmu) armors.push(g.uarmu);
+    if (!armors.length)
+        return 0;
+
+    for (i = 0; i < hits; i++) {
+        otmp = armors[rn2_dw(armors.length)];
+
+        if (erosion_matters(otmp) && is_damageable(otmp) && !otmp.oerodeproof) {
+            const erosion = obj_erode_type(otmp);
+
+            if (erosion !== ERODE_NONE) {
+                const r = await erode_obj(otmp, xname(otmp), erosion,
+                                          EF_PAY | EF_DESTROY);
+
+                if (r !== ER_NOTHING)
+                    ret = 1;
+                if (r === ER_DESTROYED)
+                    break;
+            }
+        }
+    }
+
+    if (ret)
+        await stop_occupation_dw();
+    return ret;
+}
+
+// C ref: do_wear.c any_worn_armor_ok()
+/* getobj callback for object to destroy with blessed destroy armor;
+   suggest any worn armor, even if covered by other armor */
+export function any_worn_armor_ok(obj) {
+    if (obj && (obj.owornmask & W_ARMOR))
+        return GETOBJ_SUGGEST;
+    return GETOBJ_EXCLUDE;
+}
+
+// C ref: do_wear.c count_worn_armor()
+/* number of armor pieces worn by hero */
+export function count_worn_armor() {
+    const g = game;
+    let ret = 0;
+
+    if (g.uarm) ret++;
+    if (g.uarmc) ret++;
+    if (g.uarmh) ret++;
+    if (g.uarms) ret++;
+    if (g.uarmg) ret++;
+    if (g.uarmf) ret++;
+    if (g.uarmu) ret++;
+
+    return ret;
+}
+
+import { rn2 as rn2_dw } from './rng.js';
+import { which_armor as which_armor_dw } from './worn.js';
+import { erode_obj } from './trap.js';
+import { stop_occupation as stop_occupation_dw } from './allmain.js';
+import { is_flammable, is_rustprone, is_crackable, is_rottable,
+         is_corrodeable, erosion_matters, is_damageable } from './mkobj.js';
+import { ERODE_BURN, ERODE_RUST, ERODE_CRACK, ERODE_ROT, ERODE_CORRODE,
+         ERODE_NONE, ER_NOTHING, ER_DESTROYED, EF_PAY,
+         EF_DESTROY } from './const.js';

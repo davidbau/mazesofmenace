@@ -4,7 +4,10 @@
 // Not ported yet: make_familiar, pick_familiar_pm, dog movement/food
 // (dogmove.c), keepdogs/losedogs, tamedog and the rest of dog.c.
 
+import { set_residency } from './shk.js';
 import { game } from './gstate.js';
+import { redraw_worm, count_wsegs, wormgone, get_wormno, initworm,
+         MAX_NUM_WORMS } from './worm.js';
 import { rn2 } from './rng.js';
 import { A_CHA, MM_EDOG, NO_MINVENT, NON_PM, STRAT_WAITFORU,
          STRAT_ARRIVE, MON_MIGRATING, MON_LIMBO, MIGR_EXACT_XY, RLOC_NOMSG,
@@ -14,7 +17,7 @@ import { mons, PM_LITTLE_DOG, PM_KITTEN, PM_PONY, PM_CAVE_DWELLER,
          PM_LONG_WORM } from './monsters.js';
 import { AMULET_OF_YENDOR } from './objects.js';
 import { makemon, is_domestic, set_malign, put_saddle_on_mon,
-         m_at, pm_to_cham } from './makemon.js';
+         m_at, pm_to_cham, place_monster } from './makemon.js';
 import { monsndx, regenerates } from './mondata.js';
 import { healmon } from './mon.js';
 import { M1_CARNIVORE, M1_HERBIVORE, S_MIMIC } from './monsters.js';
@@ -222,7 +225,7 @@ export async function abuse_dog(mtmp) {
         if (!mtmp.mtame) {
             newsym(mtmp.mx, mtmp.my);
             if (mtmp.wormno)
-                throw new Error('abuse_dog(): redraw_worm() not ported yet');
+                redraw_worm(mtmp);
         }
     }
 }
@@ -270,12 +273,23 @@ function mon_leave(mtmp) {
     /* if this is a shopkeeper, clear the 'resident' field of her shop;
        if/when she returns, it will be set back by mon_arrive()  */
     if (mtmp.isshk)
-        throw new Error('mon_leave(): set_residency() not ported yet');
+        set_residency(mtmp, true);
 
     /* if this is a long worm, handle its tail segments before mtmp itself;
        we pass possibly truncated segment count to caller via return value  */
-    if (mtmp.wormno)
-        throw new Error('mon_leave(): long worm wormgone() not ported yet');
+    if (mtmp.wormno) {
+        const cnt = count_wsegs(mtmp), mx = mtmp.mx, my = mtmp.my;
+
+        /* since monst->wormno is overloaded to hold the number of
+           tail segments during migration, a very long worm with
+           more segments than can fit in that field gets truncated */
+        num_segs = Math.min(cnt, MAX_NUM_WORMS - 1);
+        wormgone(mtmp);
+        /* put the head back; note: mtmp might not be on the map if this
+           is happening during a failed attempt to migrate to this level */
+        if (mx)
+            place_monster(mtmp, mx, my);
+    }
 
     return num_segs;
 }
@@ -452,6 +466,16 @@ export function migrate_to_level(
         vision_recalc(0);
 }
 
+// C ref: dog.c update_mlstmv()
+/* record `last move time' for all monsters prior to level save so that
+   mon_arrive() can catch up for lost time when they're restored later */
+export function update_mlstmv() {
+    /* iter_mons(set_mon_lastmove) */
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon)
+        if (!(mtmp.mhp <= 0)) /* !DEADMONSTER(mtmp) */
+            mtmp.mlstmv = game.moves; /* set_mon_lastmove() */
+}
+
 /* note: always reset when used so doesn't need to be part of struct 'g' */
 let failed_arrivals = null;
 
@@ -532,7 +556,7 @@ export async function losedogs() {
 }
 
 // C ref: dog.c mon_arrive()
-// Long worm tails, portal arrivals and failed arrivals (m_into_limbo())
+// Portal arrivals and failed arrivals (m_into_limbo())
 // are not ported yet.
 export async function mon_arrive(mtmp, when) {
     const g = game;
@@ -544,12 +568,14 @@ export async function mon_arrive(mtmp, when) {
     mtmp.nmon = g.fmon;
     g.fmon = mtmp;
     if (mtmp.isshk)
-        throw new Error('mon_arrive(): set_residency() not ported yet');
+        set_residency(mtmp, false);
 
     num_segs = mtmp.wormno;
     /* baby long worms have no tail so don't use is_longworm() */
     if (mtmp.data === mons[PM_LONG_WORM]) {
-        throw new Error('mon_arrive(): long worm get_wormno()/initworm() not ported yet');
+        mtmp.wormno = get_wormno();
+        if (mtmp.wormno)
+            initworm(mtmp, num_segs);
     } else
         mtmp.wormno = 0;
 

@@ -24,6 +24,7 @@ import { FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
          MSLOW, W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
          W_AMUL, W_TOOL } from './const.js';
 import { ART_SUNSWORD, ART_EYES_OF_THE_OVERWORLD } from './artilist.js';
+import { set_artifact_intrinsic_sync } from './artifact.js';
 import { newsym, pline } from './display.js';
 import { cansee } from './vision.js';
 import { canseemon } from './display.js';
@@ -259,7 +260,7 @@ export function setworn(obj, mask) {
                         if ((p = w_blocks(oobj, mask)) !== 0)
                             uprop(p).blocked &= ~wp.w_mask;
                         if (oobj.oartifact)
-                            throw new Error('setworn(): set_artifact_intrinsic() not ported yet');
+                            set_artifact_intrinsic_sync(oobj, 0, mask);
                     }
                     /* in case wearing or removal is in progress or removal
                        is pending (via 'A' command for multiple items) */
@@ -282,7 +283,7 @@ export function setworn(obj, mask) {
                                 uprop(p).blocked |= wp.w_mask;
                         }
                         if (obj.oartifact)
-                            throw new Error('setworn(): set_artifact_intrinsic() not ported yet');
+                            set_artifact_intrinsic_sync(obj, 1, mask);
                     }
                 }
             }
@@ -326,7 +327,7 @@ export function setnotworn(obj) {
             monstunseesu(cvt_prop_to_mseenres(p)); /* remove this extrinsic from seenres */
             obj.owornmask &= ~wp.w_mask;
             if (obj.oartifact)
-                throw new Error('setnotworn(): set_artifact_intrinsic() not ported yet');
+                set_artifact_intrinsic_sync(obj, 0, wp.w_mask);
             if ((p = w_blocks(obj, wp.w_mask)) !== 0)
                 uprop(p).blocked &= ~wp.w_mask;
         }
@@ -341,7 +342,7 @@ export function setnotworn(obj) {
 
 // C ref: worn.c recalc_telepat_range()
 /* calc the range of hero's unblind telepathy */
-function recalc_telepat_range() {
+export function recalc_telepat_range() {
     const g = game;
     let nobjs = 0;
 
@@ -362,7 +363,7 @@ function recalc_telepat_range() {
 }
 
 // C ref: artifact.c artifact_light()
-function artifact_light(obj) {
+export function artifact_light(obj) {
     /* not artifacts but treat them as if they were because they emit
        light without burning */
     if (obj && (obj.otyp === O.GOLD_DRAGON_SCALE_MAIL

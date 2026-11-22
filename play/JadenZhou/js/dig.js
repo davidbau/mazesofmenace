@@ -206,8 +206,17 @@ export function may_dig(x, y) {
 }
 
 
+// C ref: dig.c is_digging()
+/* the hero's occupation is the dig() occupation */
+export function is_digging() {
+    if (game.occupation && game.occupation.name === 'dig') {
+        return true;
+    }
+    return false;
+}
+
 // C ref: dig.c watch_dig() -- town watchmen react to digging
-function watch_dig(mtmp, x, y, zap) {
+export function watch_dig(mtmp, x, y, zap) {
     const lev = game.level.at(x, y);
     void mtmp; void zap;
 

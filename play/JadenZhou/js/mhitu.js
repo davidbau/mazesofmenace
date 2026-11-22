@@ -16,7 +16,10 @@ import { find_offensive, use_offensive } from './muse.js';
 import { mhitm_adtyping, mhitm_knockback } from './uhitm.js';
 import { is_undead, is_vampshifter, is_demon, is_were, is_swimmer,
          perceives, is_orc, dmgtype, is_neuter } from './mondata.js';
-import { midnight } from './calendar.js';
+import { midnight, night } from './calendar.js';
+import { new_were } from './were.js';
+import { In_hell } from './dungeon.js';
+import { PROT_FROM_SHAPE_CHANGERS } from './const.js';
 import * as M from './monsters.js';
 import { mons, AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH,
          AT_BUTT, AT_TENT, AT_HUGS, AT_GAZE, AT_EXPL, AT_BOOM, AT_ENGL,
@@ -34,6 +37,7 @@ import { objects, AMULET_OF_GUARDING, WEAPON_CLASS, TOOL_CLASS, TOWEL,
          PIERCE } from './objects.js';
 import { mon_wield_item, hitval } from './weapon.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
+import { castmu, buzzmu } from './mcastu.js';
 import { Is_rogue_level, DIED } from './const.js';
 import { done_in_by } from './end.js';
 import { ART_SNICKERSNEE } from './artilist.js';
@@ -346,6 +350,50 @@ export function mtrapped_in_pit(mtmp) {
  * mattacku: monster attacks you
  *      returns 1 if monster dies (e.g. "yellow light"), 0 otherwise
  */
+// C ref: mhitu.c summonmu() -- demons summoning demons, were creatures
+// changing form and summoning critters; extracted from mattacku()
+async function summonmu(mtmp, youseeit) {
+    let mdat = mtmp.data;
+
+    /*
+     * Extracted from mattacku() to reduce clutter there.
+     * Caller has verified that 'mtmp' hasn't been cancelled
+     * and isn't a shapechanger.
+     */
+
+    if (is_demon(mdat)) {
+        if (mdat !== mons[M.PM_BALROG] && mdat !== mons[M.PM_AMOROUS_DEMON]) {
+            if (!rn2(In_hell(game.u.uz) ? 10 : 16))
+                throw new Error('summonmu(): msummon() not ported yet');
+        }
+        return; /* no such thing as a demon were creature, so we're done */
+    }
+
+    if (is_were(mdat)) {
+        const Prot_shape = !!(game.u.uprops[PROT_FROM_SHAPE_CHANGERS].intrinsic
+                              || game.u.uprops[PROT_FROM_SHAPE_CHANGERS].extrinsic);
+        /* if hero has Protection_from_shape_changers, new_were() will work
+           in the critter-to-human direction but be a no-op the other way;
+           we repeat the criteria here for clarity */
+        if ((mdat.mflags2 & M.M2_HUMAN) !== 0) { /* is_human(): maybe switch to animal form */
+            if (!Prot_shape && !rn2(5 - (night() * 2)))
+                await new_were(mtmp);
+        } else { /* maybe switch to back human form */
+            if (Prot_shape || !rn2(30))
+                await new_were(mtmp);
+        }
+        mdat = mtmp.data; /* form change invalidates cached value */
+
+        /* maybe summon compatible critters;
+           not blocked by Protection_from_shape_changers */
+        if (!rn2(10)) {
+            void youseeit;
+            throw new Error('summonmu(): were_summon() not ported yet');
+        }
+        return;
+    } /* were creature */
+}
+
 export async function mattacku(mtmp) {
     const u = game.u;
     let mattk;
@@ -408,8 +456,18 @@ export async function mattacku(mtmp) {
        demons can summon more demons and were creatures can summon critters;
        also, were creature might change from human to animal or vice versa */
     if (mtmp.cham === NON_PM && !mtmp.mcan && !v.range2
-        && (is_demon(mdat) || is_were(mdat)))
-        throw new Error('mattacku(): summonmu() not ported yet');
+        && (is_demon(mdat) || is_were(mdat))) {
+        const already_fleeing = mtmp.mflee !== 0 && !!mtmp.mflee;
+
+        await summonmu(mtmp, v.youseeit);
+        /* were-creature might have changed to beast form; if that has
+           caused it to become afraid (due to non-human reacting to scroll
+           of scare monster or engraved "Elbereth" which was being ignored
+           while in human form), don't continue this attack */
+        if (mtmp.mflee && !already_fleeing)
+            return 0;
+        mdat = mtmp.data; /* update cached value in case of were change */
+    }
 
     if (u.uinvulnerable) { /* in the midst of successful prayer */
         /* monsters won't attack you */
@@ -563,9 +621,9 @@ export async function mattacku(mtmp) {
             break;
         case AT_MAGC:
             if (v.range2)
-                throw new Error('mattacku(): buzzmu() not ported yet');
+                sum[i] = await buzzmu(mtmp, mattk);
             else
-                throw new Error('mattacku(): castmu() not ported yet');
+                sum[i] = await castmu(mtmp, mattk, true, v.foundyou);
             break;
 
         default: /* no attack */

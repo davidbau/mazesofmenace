@@ -8,20 +8,24 @@
 // ported yet.
 
 import { game } from './gstate.js';
-import { pline, pline_The, docrt, flush_screen } from './display.js';
+import { container_impact_dmg } from './dokick.js';
+import { pline, pline_The, docrt, flush_screen, Hallucination,
+         Blind } from './display.js';
+import { bones_include_name } from './bones.js';
 import { You_hear } from './sounds.js';
 import { sellobj } from './shk.js';
 import { olfaction } from './mondata.js';
-import { ACH_HELL } from './const.js';
+import { ACH_HELL, ACH_MINE, ACH_SOKO, ACH_BGRM } from './const.js';
 import {
     depth, dunlev, dunlevs_in_dungeon, ledger_no, on_level, assign_level,
     In_hell, builds_up, at_dgn_entrance, level_difficulty,
-    In_W_tower,
+    In_W_tower, recalc_mapseen, recbranch_mapseen, remdun_mapseen,
+    print_level_annotation,
 } from './dungeon.js';
 import { In_endgame, Is_waterlevel, Is_airlevel, IS_ALTAR, ROOM, CORR } from './const.js';
 import * as O from './objects.js';
 import { is_pool, is_lava, u_at } from './makemon.js';
-import { t_at, is_pit, is_hole } from './trap.js';
+import { t_at, is_pit, is_hole, set_utrap } from './trap.js';
 import { cansee } from './vision.js';
 import { PM_TOURIST, PM_ROGUE } from './monsters.js';
 import { onquest, ok_to_quest } from './quest.js';
@@ -54,13 +58,18 @@ import { MENU_FULL, MENU_TRADITIONAL, MENU_COMBINATION, UNPAID_TYPES,
 import { GETOBJ_PROMPT, GETOBJ_ALLOWCNT, ECMD_FAIL, ECMD_TIME, W_ARMOR,
          W_ACCESSORY, W_SADDLE, IS_SINK, LOST_DROPPED } from './const.js';
 import { welded, setuwep, setuqwep, setuswapwep } from './wield.js';
+import { placebc, unplacebc, drag_down, ballrelease, drop_ball } from './ball.js';
 import { You, newsym, stairway_at } from './display.js';
 import { can_reach_floor } from './engrave.js';
 import { doname } from './objnam.js';
 import { place_object } from './mkobj.js';
 import { encumber_msg } from './pickup.js';
 import { rn2, rnd } from './rng.js';
-import { You_cant } from './display.js';
+import { You_cant, Your } from './display.js';
+import { BLINDED, TIMEOUT, FACE } from './const.js';
+import { incr_itimeout, set_itimeout, make_blinded } from './potion.js';
+import { body_part, record_achievement } from './insight.js';
+import { set_occupation } from './allmain.js';
 import { ECMD_OK, LADDER, UNENCUMBERED, SLT_ENCUMBER, TOOKPLUNGE, KILLED_BY,
          TT_PIT, Is_stronghold, RLOC_NOMSG, LEVITATION, FLYING,
          FUMBLING } from './const.js';
@@ -413,6 +422,32 @@ async function currentlevel_rewrite() {
     return nhfp;
 }
 
+// C ref: do.c familiar_level_msg()
+async function familiar_level_msg() {
+    const fam_msgs = [
+        "You have a sense of deja vu.",
+        "You feel like you've been here before.",
+        "This place %s familiar...", null /* no message */
+    ];
+    const halu_fam_msgs = [
+        "Whoa!  Everything %s different.",
+        "You are surrounded by twisty little passages, all alike.",
+        "Gee, this %s like uncle Conan's place...", null /* no message */
+    ];
+    let mesg;
+    const which = rn2(4);
+
+    if (Hallucination())
+        mesg = halu_fam_msgs[which];
+    else
+        mesg = fam_msgs[which];
+    if (mesg && mesg.includes('%')) {
+        mesg = mesg.replace('%s', !Blind() ? "looks" : "seems");
+    }
+    if (mesg)
+        await pline(mesg);
+}
+
 // C ref: do.c goto_level()
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     const g = game;
@@ -420,9 +455,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     let up = (depth(newlevel) < depth(u.uz));
     const newdungeon = (u.uz.dnum !== newlevel.dnum);
     let leaving_tutorial = false;
-    /* familiar: never set (no bones files);
-       dist, do_fall_dmg: falling isn't ported */
-    let new_ = false;
+    /* dist, do_fall_dmg: falling isn't ported */
+    let new_ = false, familiar = false;
     const prev_temperature = g.level.flags?.temperature || 0;
     const was_in_W_tower = In_W_tower(u.ux, u.uy, u.uz);
 
@@ -478,10 +512,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         throw new Error('goto_level(): impact_drop() not ported yet');
 
     await check_special_room(true); /* probably was a trap door */
-    /* if (Punished) unplacebc(): punishment not ported */
-    /* reset_utrap(FALSE) */
-    u.utrap = 0;
-    u.utraptype = 0;
+    if (Punished())
+        unplacebc();
+    /* reset_utrap(FALSE); needed in level_tele */
+    set_utrap(0, 0);
     /* fill_pit(u.ux, u.uy): pits aren't ported yet */
     /* set_ustuck((struct monst *) 0) */
     u.ustuck = null;
@@ -491,7 +525,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     u.uundetected = 0; /* not hidden, even if means are available */
     if (!g.iflags?.nofollowers)
         await keepdogs(false);
-    /* recalc_mapseen(): #overview isn't ported yet */
+    recalc_mapseen(); /* recalculate map overview before we leave the level */
     /* vision_recalc(2): we no longer see anything on the level; the
        vision state is rebuilt by vision_reset() on arrival */
 
@@ -527,7 +561,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* Is_rogue_level(newlevel) || Is_rogue_level(&u.uz): assign_graphics():
        the rogue level isn't ported yet */
     /* check_gold_symbol(): display only */
-    /* recbranch_mapseen(): #overview isn't ported yet */
+    /* record this level transition as a potential seen branch unless using
+     * some non-standard means of transportation (level teleport).
+     */
+    if ((at_stairs || falling || portal) && (u.uz.dnum !== newlevel.dnum))
+        recbranch_mapseen(u.uz, newlevel);
     assign_level(u.uz0, u.uz);
     assign_level(u.uz, newlevel);
     assign_level(u.utolev, newlevel);
@@ -557,7 +595,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         }
         await mklev();
         new_ = true; /* made the level */
-        /* familiar = bones_include_name(svp.plname): no bones files */
+        familiar = bones_include_name(g.plname);
     } else {
         /* returning to previously visited level; reload it */
         const whynot = { v: '' };
@@ -620,8 +658,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             } else if (near_capacity() > UNENCUMBERED
                        || Punished() || Fumbling()) {
                 await You(`fall down the ${g.at_ladder ? "ladder" : "stairs"}.`);
-                if (Punished())
-                    throw new Error('goto_level(): drag_down() not ported yet');
+                if (Punished()) {
+                    await drag_down();
+                    if (!welded(g.uball))
+                        await ballrelease(false);
+                }
                 /* falling off steed has its own losehp() call */
                 if (u.usteed)
                     throw new Error('goto_level(): dismount_steed(DISMOUNT_FELL) not ported yet');
@@ -643,7 +684,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             throw new Error('goto_level(): falling arrival not ported yet');
     }
 
-    /* if (Punished) placebc(): punishment not ported */
+    if (Punished())
+        await placebc();
     /* obj_delivery(FALSE) */
     if (g.migrating_objs)
         throw new Error('goto_level(): obj_delivery() not ported yet');
@@ -707,8 +749,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (In_hell(u.uz) && !on_level(u.uz, g.dungeon_topology.d_valley_level))
         u.uevent.gehennom_entered = 1;
 
-    /* familiar is bones_include_name(plname): bones files aren't ported,
-       so a new level is never familiar */
+    if (familiar)
+        await familiar_level_msg();
 
     /* special location arrival messages/events */
     const topo = g.dungeon_topology;
@@ -721,17 +763,17 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         throw new Error('goto_level(): Fort Ludios arrival not ported yet');
     } else if (u.uz.dnum === topo.d_mines_dnum) { /* In_mines() */
         if (newdungeon)
-            record_achievement('ACH_MINE');
+            record_achievement(ACH_MINE);
     } else if (u.uz.dnum === topo.d_sokoban_dnum) { /* In_sokoban() */
         if (newdungeon)
-            record_achievement('ACH_SOKO');
+            record_achievement(ACH_SOKO);
     } else {
         if (new_ && topo.d_rogue_level?.dlevel
             && on_level(u.uz, topo.d_rogue_level)) { /* Is_rogue_level() */
             throw new Error('goto_level(): the rogue level not ported yet');
         } else if (new_ && topo.d_bigroom_level?.dlevel
                    && on_level(u.uz, topo.d_bigroom_level)) { /* Is_bigroom() */
-            record_achievement('ACH_BGRM');
+            record_achievement(ACH_BGRM);
         }
         /* main dungeon message from your quest leader */
         if (u.uz0.dnum !== topo.d_quest_dnum && at_dgn_entrance("The Quest")
@@ -768,7 +810,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* save_currentstate(): INSURANCE, no files */
     /* notice_mon_on(); notice_all_mons(TRUE): a11y mon_notices is off */
 
-    /* print_level_annotation(): a new level has no annotation */
+    await print_level_annotation();
     /* give room entrance message, if any */
     await check_special_room(false);
     /* deliver objects traveling with player */
@@ -827,16 +869,8 @@ async function temperature_change_msg(prev_temperature) {
     }
 }
 
-// C ref: insight.c record_achievement() -- the achievement list is only
-// shown by #achievements and the dumplog, neither ported; C's livelog
-// message isn't shown on the tty
-export function record_achievement(achidx) {
-    const u = game.u;
-    if (!u.uachieved) u.uachieved = [];
-    if (u.uachieved.includes(achidx))
-        return;
-    u.uachieved.push(achidx);
-}
+// C ref: insight.c record_achievement() (ported in insight.js)
+export { record_achievement };
 
 // C ref: do.c flooreffects() -- only the plain case, where nothing
 // happens to the object, is ported; boulders filling pits or pools, lava
@@ -1152,10 +1186,10 @@ export async function dropz(obj, with_impact) {
             return;
         place_object(obj, game.u.ux, game.u.uy);
         if (with_impact)
-            throw new Error('dropz(): container_impact_dmg() not ported yet');
+            await container_impact_dmg(obj, game.u.ux, game.u.uy);
         impact_disturbs_zombies(obj, with_impact);
         if (obj === game.uball)
-            throw new Error('dropz(): drop_ball() not ported yet');
+            await drop_ball(game.u.ux, game.u.uy);
         else if (game.level.flags?.has_shop)
             await sellobj(obj, game.u.ux, game.u.uy);
         stackobj(obj);
@@ -1256,4 +1290,55 @@ export function u_on_rndspot(upflag) {
     /* might have just left solid rock and unblocked levitation */
     /* switch_terrain(): no rolls; Levitation/Flying blocking by terrain
        isn't ported yet */
+}
+
+// C ref: do.c wipeoff() -- occupation callback for #wipe
+async function wipeoff() {
+    const u = game.u;
+    let udelta = u.ucreamed || 0;
+    let ldelta = uprop(BLINDED).intrinsic & TIMEOUT; /* BlindedTimeout */
+
+    if (udelta > 4)
+        udelta = 4;
+    u.ucreamed -= udelta; /*u.ucreamed -= min(u.ucreamed,4);*/
+    if (ldelta > 4)
+        ldelta = 4;
+    incr_itimeout(BLINDED, -ldelta); /*HBlinded -= min(BlindedTimeout,4L);*/
+
+    if (!uprop(BLINDED).intrinsic) { /* !HBlinded */
+        await pline("You've got the glop off.");
+        u.ucreamed = 0;
+        if (!gulp_blnd_check()) {
+            set_itimeout(BLINDED, 1);
+            await make_blinded(0, true);
+        }
+        return 0;
+    } else if (!u.ucreamed) {
+        await Your(`${body_part(FACE)} feels clean now.`);
+        return 0;
+    }
+    return 1; /* still busy */
+}
+
+// C ref: mhitu.c gulp_blnd_check() -- an engulfer with a blinding
+// engulf attack re-blinds the hero
+function gulp_blnd_check() {
+    /* !Blinded && u.uswallow && attacktype_fordmg(AT_ENGL, AD_BLND) ... */
+    if (!uprop(BLINDED).intrinsic && game.u.uswallow)
+        throw new Error('gulp_blnd_check(): engulfed by a blinder (gulpmu()) not ported yet');
+    return false;
+}
+
+// C ref: do.c dowipe() -- the #wipe command - wipe off your face
+export async function dowipe() {
+    if (game.u.ucreamed) {
+        const buf = `wiping off your ${body_part(FACE)}`;
+        set_occupation(wipeoff, buf, 0);
+        /* Not totally correct; what if they change back after now
+         * but before they're finished wiping?
+         */
+        return ECMD_TIME;
+    }
+    await Your(`${body_part(FACE)} is already clean.`);
+    return ECMD_TIME;
 }

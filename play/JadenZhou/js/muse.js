@@ -4,6 +4,7 @@
 // error instead of skipping their rolls.
 
 import { game } from './gstate.js';
+import { worm_move } from './worm.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { distmin } from './hacklib.js';
 import { cansee, couldsee } from './vision.js';
@@ -1075,7 +1076,7 @@ export async function use_defensive(mtmp) {
         newsym(mtmp.mx, mtmp.my); /* update old location */
         place_monster(mtmp, game.trapx, game.trapy);
         if (mtmp.wormno)
-            throw new Error('use_defensive(): worm_move() not ported yet');
+            worm_move(mtmp);
         newsym(game.trapx, game.trapy);
 
         migrate_to_level(mtmp, ledger_no(u.uz) + 1, MIGR_RANDOM, null);
@@ -1164,7 +1165,7 @@ export async function use_defensive(mtmp) {
         newsym(mtmp.mx, mtmp.my); /* update old location */
         place_monster(mtmp, game.trapx, game.trapy);
         if (mtmp.wormno)
-            throw new Error('use_defensive(): worm_move() not ported yet');
+            worm_move(mtmp);
         maybe_unhide_at(mtmp.mx, mtmp.my);
         newsym(game.trapx, game.trapy);
         /* 0: 'no object' rather than STRANGE_OBJECT; FALSE: obj not seen */
@@ -1252,7 +1253,7 @@ function unbless(otmp) {
 }
 
 // C ref: trap.c fill_pit()
-async function fill_pit(x, y) {
+export async function fill_pit(x, y) {
     let otmp;
     const t = t_at(x, y);
 
@@ -1983,7 +1984,7 @@ export async function use_misc(mtmp) {
         place_monster(mtmp, game.trapx, game.trapy);
         maybe_unhide_at(game.trapx, game.trapy);
         if (mtmp.wormno)
-            throw new Error('use_misc(): worm_move() not ported yet');
+            worm_move(mtmp);
         newsym(game.trapx, game.trapy);
 
         await newcham(mtmp, null, NC_SHOW_MSG);

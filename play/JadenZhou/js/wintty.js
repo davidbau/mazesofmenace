@@ -26,6 +26,7 @@ import {
 import { genl_player_setup } from './role.js';
 import { lowc } from './hacklib.js';
 import { row_refresh, bot, flush_screen, pline, docrt } from './display.js';
+import { vision_recalc } from './vision.js';
 import { extcmds_match, readchar as core_readchar, key2txt } from './cmd.js';
 import { extcmdlist, ECM_NOFLAGS, ECM_IGNOREAC, ECM_EXACTMATCH } from './func_tab.js';
 
@@ -515,6 +516,40 @@ export function tty_putstr(window, attr, str) {
     }
 }
 
+// C ref: wintty.c tty_putstr() -- the NHW_MENU and NHW_TEXT case, for a
+// synchronous caller (e.g. insight.c enlght_out()); the paths that would
+// have to await (a full NHW_TEXT page, breaking an over-long line) stop
+export function tty_putstr_sync(window, attr, str) {
+    const cw = wins()[window];
+    const t = tty();
+    let i;
+
+    if (str == null || (cw.flags & WIN_CANCELLED))
+        return;
+    if (cw.type !== NHW_MENU && cw.type !== NHW_TEXT)
+        throw new Error(`tty_putstr(): synchronous putstr to window type ${cw.type} not ported yet`);
+    if (cw.type === NHW_TEXT && (cw.cury + cw.offy) === t.rows - 1)
+        throw new Error('tty_putstr(): full text page from a synchronous caller not ported yet');
+    if (str.length + 1 > t.cols)
+        throw new Error('tty_putstr(): line breaking from a synchronous caller not ported yet');
+    /* always grows one at a time, but alloc 12 at a time */
+    if (!cw.data)
+        cw.data = [];
+    if (cw.cury >= cw.rows) {
+        cw.rows += 12;
+        for (i = cw.maxrow; i < cw.rows; i++)
+            cw.data[i] = null;
+    }
+    const n0 = str.length + 1;
+    /* data[i] = { attr, str }: C keeps attr + 1 in the first byte */
+    cw.data[cw.cury] = { attr, str };
+
+    if (n0 > cw.maxcol)
+        cw.maxcol = n0;
+    if (++cw.cury > cw.maxrow)
+        cw.maxrow = cw.cury;
+}
+
 // C ref: wintty.c tty_putstr() -- the NHW_MENU and NHW_TEXT case
 async function tty_putstr_menu_text(window, cw, attr, str) {
     const t = tty();
@@ -975,7 +1010,7 @@ export async function tty_yn_function(query, resp, def) {
         /* not pline("%s ", prompt);
            trailing space is wanted here in case of reprompt */
         prompt += ' ';
-        await update_topl(prompt); /* custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY) */
+        await custompline(prompt); /* custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY) */
 
         do { /* loop until we get valid input */
             q = await readchar();
@@ -1007,7 +1042,7 @@ export async function tty_yn_function(query, resp, def) {
     } else {
         /* no restriction on allowed response, so always preserve case */
         prompt = `${query} `;
-        await update_topl(prompt); /* custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY) */
+        await custompline(prompt); /* custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY) */
         q = await readchar();
     }
     /* clean_up: addtopl(rtmp); -- rewrite gt.toplines instead */
@@ -1148,8 +1183,11 @@ async function hooked_tty_getlin(query, hook) {
 // C ref: pline.c custompline() -- vpline() of a prompt: bring the map up
 // to date, then put the text in the message window
 async function custompline(line) {
+    /* vpline(): bring the map and status up to date before putmesg() */
+    if (game.vision_full_recalc)
+        vision_recalc(0);
     if (game.u?.ux)
-        await flush_screen(1);
+        await flush_screen(1); /* %% */
     await tty_putstr(game.WIN_MESSAGE, 0, line);
 }
 

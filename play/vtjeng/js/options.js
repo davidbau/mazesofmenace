@@ -103,6 +103,7 @@ import {
     STONE,
     SYM_BOULDER,
     UNENCUMBERED,
+    VANQ_MLVL_MNDX,
     VIA_DIALOG,
     VIA_PROMPTS,
     WARNCOUNT,
@@ -285,6 +286,7 @@ import { displayTtyTextWindow } from './tty_menu.js';
 import { note_unported } from './unported.js';
 import { choose_disco_sort } from './o_init.js';
 import { game } from './gstate.js';
+import { zero_flag, zero_instance_flags } from './flag.js';
 
 const PET_NAME_BYTE_LIMIT = 62; // PL_PSIZ - 1
 const PLAYER_NAME_BYTE_LIMIT = 31; // PL_NSIZ - 1
@@ -499,41 +501,48 @@ function defaultResult() {
         race: ROLE_NONE,
         gender: ROLE_NONE,
         align: ROLE_NONE,
-        // Every boolean option's startup value comes from allopt[].initval
-        // through applyBooleanOptionDefaults() below, so only the fields
-        // initoptions_init() sets separately appear here.
+        // C zero-initializes flags (decl.c), so every member not written
+        // below starts at js/flag.js's zero. options.c allopt_array_init()
+        // first runs each compound option's do_init arm; initoptions_init()
+        // then sets the boolean options' compiled-in values, through
+        // applyBooleanOptionDefaults() below, and these members, in source
+        // order, before the configuration file is read.
         flags: {
+            ...zero_flag(),
+            // optfn_autounlock()'s do_init arm (options.c:1073-1074).
+            autounlock: AUTOUNLOCK_APPLY_KEY,
+            // optfn_sortdiscoveries()'s do_init arm (options.c:3867-3868).
+            discosort: 'o',
+            // optfn_sortvanquished()'s do_init arm (options.c:3966-3967),
+            // insight.c vanqorders[] index 0, "traditional".
+            vanq_sortmode: VANQ_MLVL_MNDX,
+            // initoptions_init() (options.c:7170-7176).
+            end_own: false,
+            end_top: 3,
+            end_around: 2,
+            paranoia_bits: PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP,
+            // Recorder release builds have no git-branch metadata, so
+            // have_branch is FALSE and versinfo is VI_NUMBER.
+            versinfo: 1,
+            // PILE_LIMIT_DFLT.
+            pile_limit: 5,
+            runmode: RUN_LEAP,
+            // options.c:7193-7194: the hero's role, race, gender and
+            // alignment have not been chosen yet.
             initrole: ROLE_NONE,
             initrace: ROLE_NONE,
             initgend: ROLE_NONE,
             initalign: ROLE_NONE,
-            debug: false,
-            explore: false,
-            // options.c initoptions_init(): PILE_LIMIT_DFLT.
-            pile_limit: 5,
-            // options.c initoptions_init() sets sortloot to 'l', which sorts
-            // loot but not inventory; display_pickinv() compares against 'f'.
-            sortloot: 'l',
-            // options.c def_inv_order[], the class order the inventory menu
-            // walks. The trailing 0 terminates the list in C, so the array
-            // holds only its class bytes. change_inv_order() below is the one
-            // startup path that rewrites it.
+            // options.c:7204-7205 copies def_inv_order[], the class order
+            // the inventory menu walks. The trailing 0 terminates the list in
+            // C, so the array holds only its class bytes. change_inv_order()
+            // below is the one startup path that rewrites it.
             inv_order: [
                 COIN_CLASS, AMULET_CLASS, WEAPON_CLASS, ARMOR_CLASS,
                 FOOD_CLASS, SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS,
                 RING_CLASS, WAND_CLASS, TOOL_CLASS, GEM_CLASS, ROCK_CLASS,
                 BALL_CLASS, CHAIN_CLASS,
             ],
-            // options.c initoptions_init() sets flags.runmode = RUN_LEAP.
-            runmode: RUN_LEAP,
-            // Recorder release builds have no git-branch metadata, so
-            // options.c defaults versinfo to VI_NUMBER.
-            versinfo: 1,
-            // The remaining initoptions_init() assignments, in source order.
-            end_own: false,
-            end_top: 3,
-            end_around: 2,
-            paranoia_bits: PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP,
             // C's char array of object-class indices, empty for "all". Its
             // bytes are class numbers rather than class symbols, which is why
             // oc_to_str() maps them through def_oc_syms[]. Spelled as an
@@ -541,95 +550,52 @@ function defaultResult() {
             // optfn_pickup_types()'s do_set arm is what rewrites it.
             pickup_types: [],
             pickup_burden: MOD_ENCUMBER,
+            // 'l' sorts loot but not inventory; display_pickinv() compares
+            // against 'f'.
+            sortloot: 'l',
             end_disclose: Array(NUM_DISCLOSURE_OPTIONS).fill(
                 DISCLOSE_PROMPT_DEFAULT_NO,
             ),
+            // options.c:7258.
             menu_style: MENU_FULL,
-            // optfn_autounlock()'s do_init arm, which allopt_array_init()
-            // runs for every option before the configuration file is read.
-            autounlock: AUTOUNLOCK_APPLY_KEY,
-            // o_init.c get_sortdisco() rewrites any unrecognized value to 'o',
-            // which is also what a zeroed flags struct resolves to.
-            discosort: 'o',
-            // insight.c vanqorders[] index 0, "traditional".
-            vanq_sortmode: 0,
-            // A version number packed by feature_alert_opts(); zero means no
-            // alert is suppressed.
-            suppress_alert: 0,
         },
+        // C zero-initializes iflags (decl.c), so every member not written
+        // below starts at js/flag.js's zero; options.c initoptions_init()
+        // then sets these, in source order, before the configuration file is
+        // read. The boolean options' compiled-in values come from
+        // applyBooleanOptionDefaults() below, and the compound options'
+        // do_init arms leave their members at zero. window_inited is FALSE
+        // until wintty.c:1883 raises it; scripts/window-inited.test.mjs keeps
+        // every write of it at the C sites.
         iflags: {
-            // options.c initializes instance_flags to zero, which is STONE.
-            // Its boolean handler restores this value on every toggle.
-            prev_decor: STONE,
-            // flag.h:303 iflags.window_inited starts FALSE in every process,
-            // so in every segment. wintty.c:1883 tty_display_nhwindow()
-            // raises it when allmain.c init_sound_disp_gamewindows() first
-            // shows WIN_MESSAGE (js/tty_message.js
-            // displayPendingTtyMessageWindow()); wintty.c:844, :2022 and
-            // end.c:410 clear it. Readers test it as C does, by truth value;
-            // scripts/window-inited.test.mjs keeps every write at those sites.
-            window_inited: false,
-            // options.c initoptions_init() sets these after zeroing iflags.
+            ...zero_instance_flags(),
+            msg_history: 20,
+            // initoptions_init()'s TTY_GRAPHICS arm; this build is tty.
+            prevmsg_window: 's',
+            // wintype.h ATR_INVERSE is 7; js/terminal.js's ATR_INVERSE is
+            // the frozen terminal's bit instead.
+            menu_headings: {
+                color: NO_COLOR,
+                attr: 7,
+            },
+            getpos_coords: GPCOORDS_NONE,
             wc_align_message: ALIGN_TOP,
             wc_align_status: ALIGN_BOTTOM,
             wc2_statuslines: 2,
-            wc2_petattr: 7,
-            // options.c initoptions_init() sets the curses-only window-border
-            // mode after the instance-flags struct starts zeroed.
+            wc2_petattr: 7, // ATR_INVERSE
+            // The curses-only window-border mode, 'Auto'.
             wc2_windowborders: 2,
-            hilite_delta: 0,
+            menuinvertmode: 1,
+            // Port-only members, which flag.h does not declare: C keeps the
+            // status highlight rules and enabled conditions in botl.c and the
+            // menu command aliases in gm.mapped_menu_cmds/mapped_menu_op.
+            // scripts/iflags-state.test.mjs pins their uses.
             status_hilites: [],
             status_conditions: { ...DEFAULT_STATUS_CONDITIONS },
-            num_pad: false,
-            num_pad_mode: 0,
-            getpos_coords: GPCOORDS_NONE,
             // options.c keeps these as parallel, insertion-ordered strings.
             // The first alias for an incoming key wins in map_menu_cmd().
             mapped_menu_cmds: '',
             mapped_menu_op: '',
-            menu_headings: {
-                attr: 7,
-                color: NO_COLOR,
-            },
-            msg_history: 20,
-            // options.c optfn_scroll_amount() and optfn_scroll_margin()
-            // leave the zeroed instance-flags fields alone during do_init.
-            wc_scroll_amount: 0,
-            wc_scroll_margin: 0,
-            // options.c optfn_tile_height() and optfn_tile_width() likewise
-            // leave their zeroed instance-flags fields alone during do_init.
-            wc_tile_file: null,
-            wc_tile_height: 0,
-            wc_tile_width: 0,
-            // options.c optfn_windowcolors() leaves the zeroed four-entry
-            // iflags array alone during do_init; wc_set_window_colors() owns
-            // each nullable foreground/background pair after that.
-            wcolors: Array.from(
-                { length: 4 }, () => ({ fg: null, bg: null }),
-            ),
-            // options.c optfn_vary_msgcount() also leaves its zeroed
-            // instance-flags field alone during do_init.
-            wc_vary_msgcount: 0,
-            // options.c optfn_mouse_support() leaves this zeroed
-            // instance-flags field alone during do_init.
-            wc_mouse_support: 0,
-            // options.c optfn_map_mode() also leaves this zeroed field alone;
-            // zero is MAP_MODE_TILES.
-            wc_map_mode: MAP_MODE_TILES,
-            // options.c optfn_player_selection() leaves this zeroed field
-            // alone during do_init; zero is VIA_DIALOG.
-            wc_player_selection: VIA_DIALOG,
-            // options.c optfn_perminv_mode() leaves this zeroed field alone
-            // during do_init; zero is InvOptNone.
-            perminv_mode: INVOPT_NONE,
-            // options.c optfn_term_cols() and optfn_term_rows() leave these
-            // zeroed instance-flags fields alone during do_init.
-            wc2_term_cols: 0,
-            wc2_term_rows: 0,
-            // initoptions_init()'s TTY_GRAPHICS arm; this build is tty.
-            prevmsg_window: 's',
-            menuinvertmode: 1,
-            getloc_filter: GFILTER_NONE,
         },
         a11y: {
             mon_notices_blocked: 0,
@@ -2829,10 +2795,7 @@ export function optfn_menu_shift_right(...args) { return shared_menu_optfn(...ar
 async function handler_menu_headings(state, helpers) {
     state.iflags ??= {};
     state.go ??= {};
-    const current = { ...(state.iflags.menu_headings ?? {
-        color: NO_COLOR,
-        attr: 7,
-    }) };
+    const current = { ...state.iflags.menu_headings };
     const gotca = await query_color_attr(
         state, current, 'How to highlight menu headings:', helpers,
     );
@@ -3958,7 +3921,7 @@ export async function handler_perminv_mode(state, helpers) {
     state.iflags ??= {};
     state.flags ??= {};
     const old_perm_invent = Boolean(state.iflags.perm_invent);
-    const old_pi = state.iflags.perminv_mode ?? INVOPT_NONE;
+    const old_pi = state.iflags.perminv_mode;
     let new_pi = old_pi;
     const widest = 11; // WINDOWPORT(tty): "full+grid__" in options.c
     const items = [];

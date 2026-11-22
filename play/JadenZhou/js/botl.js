@@ -9,7 +9,7 @@ import { game } from './gstate.js';
 import { roles } from './role.js';
 import { str_start_is } from './hacklib.js';
 import { NON_PM, In_endgame } from './const.js';
-import { depth, dunlev, on_level } from './dungeon.js';
+import { depth, dunlev, on_level, endgamelevelname } from './dungeon.js';
 
 // C ref: botl.c xlev_to_rank()
 /* convert experience level (1..30) to rank index (0..8) */
@@ -182,7 +182,10 @@ export function describe_level(dflgs) {
         buf = `Home ${dunlev(u.uz)}`;
     } else if (In_endgame(u.uz)) {
         /* [3.6.2: this used to be "Astral Plane" or generic "End Game"] */
-        throw new Error('describe_level(): endgamelevelname() not ported yet');
+        buf = endgamelevelname(depth(u.uz));
+        if (!addbranch)
+            buf = buf.replace("Plane of ", ""); /* just keep <element> */
+        addbranch = false;
     } else {
         /* ports with more room may expand this one */
         if (!addbranch)

@@ -3,6 +3,8 @@
 // Ported so far: christen_monst(), rndghostname(), noveltitle(), the x_monnam()
 // family.
 
+import { set_artifact_intrinsic_sync } from './artifact.js';
+import { W_WEP } from './const.js';
 import { game } from './gstate.js';
 import { rn2, ROLL_FROM, rn2_on_display_rng } from './rng.js';
 import { canspotmon } from './display.js';
@@ -93,7 +95,7 @@ export async function docallcmd() {
     case 'i': /* name an individual object in inventory */
         obj = await getobj("name", name_ok, GETOBJ_PROMPT);
         if (obj)
-            throw new Error('docallcmd(): do_oname() not ported yet');
+            await do_oname(obj);
         break;
     case 'o': /* name a type of object in inventory */
         obj = await getobj("call", call_ok, GETOBJ_NOFLAGS);
@@ -115,9 +117,17 @@ export async function docallcmd() {
     case 'd': /* name a type of object on the discoveries list */
         throw new Error('docallcmd(): rename_disco() not ported yet');
     case 'a': /* annotate level */
-        throw new Error('docallcmd(): donamelevel() not ported yet');
+        await donamelevel();
+        break;
     }
     return ECMD_OK;
+}
+
+// C ref: do_name.c safe_oname()
+export function safe_oname(obj) {
+    if (obj.oextra?.oname) /* has_oname(obj) */
+        return obj.oextra.oname; /* ONAME(obj) */
+    return "";
 }
 
 // C ref: do_name.c christen_monst()
@@ -137,8 +147,102 @@ export function christen_monst(mtmp, name) {
     return mtmp;
 }
 
-import { exist_artifact, artifact_exists } from './artifact.js';
-import { ONAME_VIA_NAMING, ONAME_SKIP_INVUPD } from './const.js';
+import { exist_artifact, artifact_exists, artifact_name,
+         restrict_name } from './artifact.js';
+import { donamelevel } from './dungeon.js';
+import { ONAME_VIA_NAMING, ONAME_SKIP_INVUPD, ONAME_KNOW_ARTI, QBUFSZ,
+         HAND } from './const.js';
+import { safe_qbuf } from './pickup.js';
+import { simpleonames } from './iactions.js';
+import { mungspaces, strncmpi } from './hacklib.js';
+import { tty_getlin, tty_display_nhwindow } from './wintty.js';
+import { wipeout_text } from './engrave.js';
+import { rnd_on_display_rng } from './rng.js';
+import { pline } from './display.js';
+import { body_part } from './insight.js';
+import { SPE_NOVEL } from './objects.js';
+
+// C ref: do_name.c name_from_player() -- get a name for a monster or an
+// object from player; truncate if longer than PL_PSIZ, then return it
+// (null for no name); the !EDIT_GETLIN build ignores defres
+async function name_from_player(prompt, defres) {
+    void defres;
+    let outbuf = await tty_getlin(prompt);
+    if (!outbuf || outbuf[0] === '\x1b')
+        return null;
+
+    /* strip leading and trailing spaces, condense internal sequences */
+    outbuf = mungspaces(outbuf);
+    if (outbuf.length >= PL_PSIZ)
+        outbuf = outbuf.slice(0, PL_PSIZ - 1);
+    return outbuf;
+}
+
+// C ref: do_name.c do_oname() -- name an individual object
+async function do_oname(obj) {
+    let bufp, buf, bufcpy, qbuf;
+    let aname;
+    const objtyp = { otyp: 0 /* STRANGE_OBJECT */ };
+
+    /* Do this now because there's no point in even asking for a name */
+    if (obj.otyp === SPE_NOVEL)
+        throw new Error('do_oname(): Ysimple_name2() for a novel not ported yet');
+
+    /* is_plural(): quan != 1 (the Eyes of the Overworld case aside) */
+    qbuf = `What do you want to name ${(obj.quan !== 1) ? "these" : "this"} `;
+    qbuf = safe_qbuf(qbuf, "?", obj, xname, "item");
+    /* use getlin() to get a name string from the player */
+    if ((buf = await name_from_player(qbuf, safe_oname(obj))) === null)
+        return;
+
+    /*
+     * We don't violate illiteracy conduct here, although it is
+     * arguable that we should for anything other than "X".  Doing so
+     * would make attaching player's notes to hero's inventory have an
+     * in-game effect, which may or may not be the correct thing to do.
+     *
+     * We do violate illiteracy in oname() if player creates Sting or
+     * Orcrist, clearly being literate (no pun intended...).
+     */
+
+    if (obj.oartifact) {
+        /* this used to give "The artifact seems to resist the attempt."
+           but resisting is definite, no "seems to" about it */
+        await pline(`${obj.oextra?.oname ? obj.oextra.oname
+                                         : "The artifact"} resists the attempt.`);
+        return;
+    }
+
+    /* relax restrictions over proper capitalization for artifacts */
+    if ((aname = artifact_name(buf, objtyp, true)) !== null
+        && (restrict_name(obj, aname) || exist_artifact(obj.otyp, aname))) {
+        /* substitute canonical spelling before slippage */
+        buf = aname;
+        /* the hand slip scuffs one or two letters as if the text had
+           been trodden upon */
+        bufcpy = buf;
+        /* for "the Foo of Bar", only scuff "Foo of Bar" part */
+        const off = !strncmpi(buf, "the ", 4) ? 4 : 0;
+        do {
+            bufp = buf.slice(off);
+            buf = buf.slice(0, off) + wipeout_text(bufp, rnd_on_display_rng(2), 0);
+        } while (buf === bufcpy);
+        await pline(`While engraving, your ${body_part(HAND)} slips.`);
+        await tty_display_nhwindow(game.WIN_MESSAGE, false);
+        await You(`engrave: "${buf}".`);
+        /* violate illiteracy conduct since hero attempted to write
+           a valid artifact name */
+        game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
+    } else if (obj.otyp === objtyp.otyp) {
+        /* artifact_name() found a match and restrict_name() didn't reject
+           it; since 'obj' is the right type, naming will change it into an
+           artifact so use canonical capitalization (Sting or Orcrist) */
+        buf = aname;
+    }
+
+    obj = oname(obj, buf, ONAME_VIA_NAMING | ONAME_KNOW_ARTI);
+}
+
 
 // C ref: do_name.c oname()
 export function oname(
@@ -175,7 +279,7 @@ export function oname(
             throw new Error('oname(): untwoweapon() is not ported yet');
         /* activate warning if you've just named your weapon "Sting" */
         if (obj === game.uwep)
-            throw new Error('oname(): set_artifact_intrinsic() is not ported yet');
+            set_artifact_intrinsic_sync(obj, true, W_WEP);
         /* if obj is owned by a shop, increase your bill */
         if (obj.unpaid)
             throw new Error('oname(): alter_cost() is not ported yet');
@@ -805,3 +909,38 @@ export function monverbself(mon, monnamtext, verb, othertext) {
     monnamtext += " " + selfbuf;
     return monnamtext;
 }
+
+// C ref: do_name.c hcolors[]
+const hcolors = [
+    "ultraviolet", "infrared", "bluish-orange", "reddish-green", "dark white",
+    "light black", "sky blue-pink", "pinkish-cyan", "indigo-chartreuse",
+    "salty", "sweet", "sour", "bitter", "umami", /* basic tastes */
+    "striped", "spiral", "swirly", "plaid", "checkered", "argyle", "paisley",
+    "blotchy", "guernsey-spotted", "polka-dotted", "square", "round",
+    "triangular", "cabernet", "sangria", "fuchsia", "wisteria", "lemon-lime",
+    "strawberry-banana", "peppermint", "romantic", "incandescent",
+    "octarine", /* Discworld: the Colour of Magic */
+    "excitingly dull", "mauve", "electric",
+    "neon", "fluorescent", "phosphorescent", "translucent", "opaque",
+    "psychedelic", "iridescent", "rainbow-colored", "polychromatic",
+    "colorless", "colorless green",
+    "dancing", "singing", "loving", "loudy", "noisy", "clattery", "silent",
+    "apocyan", "infra-pink", "opalescent", "violant", "tuneless",
+    "viridian", "aureolin", "cinnabar", "purpurin", "gamboge", "madder",
+    "bistre", "ecru", "fulvous", "tekhelet", "selective yellow",
+];
+
+// C ref: do_name.c hcolor()
+export function hcolor(colorpref) {
+    return (Hallucination_dn() || !colorpref)
+        ? hcolors[rn2_on_display_rng(hcolors.length)]
+        : colorpref;
+}
+
+/* C ref: youprop.h Hallucination */
+function Hallucination_dn() {
+    const p = game.u.uprops;
+    return !!(p[HALLUC_DN].intrinsic
+              && !(p[HALLUC_RES_DN].intrinsic || p[HALLUC_RES_DN].extrinsic));
+}
+import { HALLUC as HALLUC_DN, HALLUC_RES as HALLUC_RES_DN } from './const.js';

@@ -7,6 +7,9 @@
 // 'not ported yet' error instead of skipping their rolls.
 
 import { game } from './gstate.js';
+import { worm_move, worm_nomove, wormhitu, see_wsegs } from './worm.js';
+import { picking_lock } from './lock.js';
+import { is_digging, watch_dig } from './dig.js';
 import { rn2, rnd, d } from './rng.js';
 import { dist2, distmin } from './hacklib.js';
 import { cansee, couldsee, clear_path, vision_recalc,
@@ -36,6 +39,15 @@ import { You_hear } from './sounds.js';
 import { find_defensive, find_offensive, find_misc, use_defensive,
          use_misc, cures_stoning, mcould_eat_tin } from './muse.js';
 import { mattacku } from './mhitu.js';
+import { castmu } from './mcastu.js';
+import { M_ATTK_HIT, G_GENOD } from './const.js';
+import { an, xname } from './objnam.js';
+import { delobj } from './invent.js';
+import { grow_up } from './makemon.js';
+import { is_organic } from './objects.js';
+import { eaten_stat } from './eat.js';
+import { extract_from_minvent } from './steal.js';
+import { m_consume_obj } from './mon.js';
 import { mon_wield_item, select_rwep, autoreturn_weapon,
          m_has_launcher_and_ammo } from './weapon.js';
 import { visible_region_at, create_gas_cloud, m_in_out_region } from './region.js';
@@ -80,7 +92,7 @@ import { ART_EXCALIBUR, ART_SNICKERSNEE } from './artilist.js';
 import { In_hell } from './dungeon.js';
 import { stop_occupation } from './allmain.js';
 import { shk_move, costly_spot, after_shk_move, inhishop } from './shk.js';
-import { in_rooms } from './hack.js';
+import { in_rooms, in_town } from './hack.js';
 import { pri_move, in_your_sanctuary } from './priest.js';
 import { quest_stat_check, quest_talk } from './quest.js';
 
@@ -251,6 +263,25 @@ function monhaskey(mon, for_unlocking) {
     if (for_unlocking && m_carrying(mon, CREDIT_CARD))
         return true;
     return !!(m_carrying(mon, SKELETON_KEY) || m_carrying(mon, LOCK_PICK));
+}
+
+// C ref: monmove.c watch_on_duty()
+async function watch_on_duty(mtmp) {
+    const u = game.u;
+    const cc = { x: 0, y: 0 };
+
+    if (mtmp.mpeaceful && in_town(u.ux + u.dx, u.uy + u.dy)
+        && mtmp.mcansee && m_canseeu(mtmp) && !rn2(3)) {
+        if (picking_lock(cc) && IS_DOOR(game.level.at(cc.x, cc.y).typ)
+            && (game.level.at(cc.x, cc.y).doormask & D_LOCKED)) {
+            if (couldsee(mtmp.mx, mtmp.my))
+                throw new Error('watch_on_duty(): mon_yells()/angry_guards() not ported yet');
+        } else if (is_digging()) {
+            /* chewing, wand/spell of digging are checked elsewhere */
+            watch_dig(mtmp, game.context.digging.pos.x,
+                      game.context.digging.pos.y, false);
+        }
+    }
 }
 
 // ── C ref: monmove.c dochugw() ──
@@ -649,6 +680,87 @@ function m_arrival(mon) {
     return -1;
 }
 
+// ── C ref: monmove.c find_pmmonst() ──
+function find_pmmonst(pm) {
+    let mtmp = null;
+
+    if ((game.mvitals[pm].mvflags & G_GENOD) === 0)
+        for (mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+            if (mtmp.mhp < 1) /* DEADMONSTER() */
+                continue;
+            if (mtmp.data === mons[pm])
+                break;
+        }
+
+    return mtmp || null;
+}
+
+// ── C ref: monmove.c bee_eat_jelly() ──
+/* killer bee 'mon' is on a spot containing lump of royal jelly 'obj' and
+   will eat it if there is no queen bee on the level; return 1: mon died,
+   0: mon ate jelly and used up its move, -1: mon didn't eat jelly to use
+   its move [the return values are ordered so that a caller who does
+   'if (res >= 0) return res' gets the right result] */
+async function bee_eat_jelly(mon, obj) {
+    let m_delay;
+    const mtmp = find_pmmonst(M.PM_QUEEN_BEE);
+
+    /* if there's no queen on the level, eat the royal jelly and become one */
+    if (!mtmp) {
+        m_delay = obj.blessed ? 3 : !obj.cursed ? 5 : 7;
+        if (obj.quan > 1)
+            obj = splitobj(obj, 1);
+        if (canseemon(mon))
+            await pline(`${Monnam(mon)} eats ${an(xname(obj))}.`); /* pline_mon() */
+        delobj(obj);
+
+        if (mon.m_lev < mons[M.PM_QUEEN_BEE].mlevel - 1)
+            mon.m_lev = mons[M.PM_QUEEN_BEE].mlevel - 1;
+        /* there should be delay after eating, but that's too much
+           hassle; transform immediately, then have a short delay */
+        await grow_up(mon, null);
+
+        if (mon.mhp < 1) /* DEADMONSTER() */
+            return 1; /* dead; apparently queen bees have been genocided */
+        mon.mfrozen = m_delay, mon.mcanmove = 0;
+        return 0; /* bee used its move */
+    }
+    return -1; /* a queen is already present; ordinary bee hasn't moved yet */
+}
+
+/* C ref: obj.h is_mines_prize(), is_soko_prize() */
+function is_mines_prize(o) {
+    return o.o_id === game.context.achieveo?.mines_prize_oid;
+}
+function is_soko_prize(o) {
+    return o.o_id === game.context.achieveo?.soko_prize_oid;
+}
+
+// ── C ref: monmove.c gelcube_digests() ──
+/* gelatinous cube eats something from its inventory */
+async function gelcube_digests(mtmp) {
+    if (mtmp.meating || !mtmp.minvent || !mtmp.minvent.length)
+        return -1;
+
+    /* walk mon->minvent in C chain order (newest first) */
+    let otmp = null;
+    for (const o of mtmp.minvent.slice().reverse()) {
+        if (is_organic(o) && !o.oartifact
+            && !is_mines_prize(o) && !is_soko_prize(o)) {
+            otmp = o;
+            break;
+        }
+    }
+
+    if (!otmp)
+        return -1;
+
+    mtmp.meating = eaten_stat(mtmp.meating, otmp);
+    extract_from_minvent(mtmp, otmp, true, true);
+    await m_consume_obj(mtmp, otmp);
+    return 0; /* used a move */
+}
+
 // ── C ref: monmove.c dochug() ──
 export async function dochug(mtmp) {
     const u = game.u;
@@ -750,7 +862,7 @@ export async function dochug(mtmp) {
 
     /* the watch will look around and see if you are up to no good :-) */
     if (is_watch(mdat)) {
-        throw new Error('watch_on_duty() not ported yet');
+        await watch_on_duty(mtmp);
     /* mind flayers can make psychic attacks! */
     } else if (is_mind_flayer(mdat) && !rn2(20)) {
         throw new Error('mind_blast() not ported yet');
@@ -783,8 +895,20 @@ export async function dochug(mtmp) {
      * PHASE THREE: Now the actual movement phase
      */
 
-    if (mdat === mons[M.PM_KILLER_BEE] || mdat === mons[M.PM_GELATINOUS_CUBE])
-        throw new Error('dochug(): bee_eat_jelly()/gelcube_digests() not ported yet');
+    /* A killer bee may eat honey in order to turn into a queen bee,
+       costing it a move. */
+    let otmp, res;
+    if (mdat === mons[M.PM_KILLER_BEE]
+        /* could be smarter and deliberately move to royal jelly, but
+           then we'd need to scan the level for queen bee in advance;
+           avoid that overhead and rely on serendipity... */
+        && (otmp = sobj_at(OBJ.LUMP_OF_ROYAL_JELLY, mtmp.mx, mtmp.my)) !== null
+        && (res = await bee_eat_jelly(mtmp, otmp)) >= 0)
+        return res;
+
+    if (mdat === mons[M.PM_GELATINOUS_CUBE]
+        && (res = await gelcube_digests(mtmp)) >= 0)
+        return res;
 
     /* A monster that passes the following checks has the opportunity
        to move. Movement itself is handled by the m_move() function. */
@@ -795,12 +919,21 @@ export async function dochug(mtmp) {
         || (!mtmp.mcansee && !rn2(4)) || mtmp.mpeaceful) {
 
         /* Possibly cast an undirected spell if not attacking you */
+        /* note that most of the time castmu() will pick a directed
+           spell and do nothing, so the monster moves normally */
+        /* arbitrary distance restriction to keep monster far away
+           from you from having cast dozens of sticks-to-snakes
+           or similar spells by the time you reach it */
         if (!mtmp.mspec_used
             && dist2(mtmp.mx, mtmp.my, u.ux, u.uy) <= 49) {
             for (const a of mdat.mattk) {
                 if (a.aatyp === M.AT_MAGC
-                    && (a.adtyp === M.AD_SPEL || a.adtyp === M.AD_CLRC))
-                    throw new Error('dochug(): castmu() not ported yet');
+                    && (a.adtyp === M.AD_SPEL || a.adtyp === M.AD_CLRC)) {
+                    if ((await castmu(mtmp, a, false, false) & M_ATTK_HIT)) {
+                        status = MMOVE_DONE; /* bypass m_move() */
+                        break;
+                    }
+                }
             }
         }
 
@@ -867,8 +1000,10 @@ export async function dochug(mtmp) {
             if (await mattacku(mtmp))
                 return 1; /* monster died (e.g. exploded) */
         }
-        if (mtmp.wormno)
-            throw new Error('dochug(): wormhitu() not ported yet');
+        if (mtmp.wormno) {
+            if (await wormhitu(mtmp))
+                return 1; /* worm died (poly'd hero passive counter-attack) */
+        }
     }
     /* special speeches for quest monsters */
     if (!helpless(mtmp) && d.nearby)
@@ -1509,8 +1644,7 @@ export async function m_move(mtmp, after) {
     can_open = !(nohands(ptr) || verysmall(ptr));
     can_unlock = ((can_open && monhaskey(mtmp, true))
                   || mtmp.iswiz || is_rider(ptr));
-    if (mtmp.wormno)
-        throw new Error('m_move(): long worms not ported yet');
+    if (!mtmp.wormno) { /* if (mtmp->wormno) goto not_special; */
     /* my dog gets special treatment */
     if (mtmp.mtame) {
         return await postmov(mtmp, ptr, omx, omy, await dog_move(mtmp, after),
@@ -1548,6 +1682,7 @@ export async function m_move(mtmp, after) {
     /* teleport if that lies in our nature */
     if (ptr === mons[M.PM_TENGU] && !rn2(5) && !mtmp.mcan)
         throw new Error('m_move(): tengu rloc() not ported yet');
+    } /* !mtmp->wormno */
 
     /* not_special: */
     if (u.uswallow && !mtmp.mflee && u.ustuck !== mtmp)
@@ -1733,11 +1868,17 @@ export async function m_move(mtmp, after) {
 
         await m_postmove_effect(mtmp);
 
-        /* move a normal monster */
+        /* move a normal monster; for a long worm, remove_monster() and
+           place_monster() only manipulate the head; they leave tail as-is */
         /* remove_monster(omx, omy): game.level.monsters is a list keyed
            by mx/my, so place_monster() moving it is enough */
         place_monster(mtmp, nix, niy);
         /* msg_mon_movement(): a11y.mon_movement is off by default */
+        /* for a long worm, insert a new segment to reconnect the head
+           with the tail; worm_move() keeps the end of the tail if worm
+           is scheduled to grow, removes that for move-without-growing */
+        if (mtmp.wormno)
+            worm_move(mtmp);
 
         maybe_unhide_at(mtmp.mx, mtmp.my);
 
@@ -1748,10 +1889,9 @@ export async function m_move(mtmp, after) {
             return MMOVE_MOVED;
         }
         /* for a long worm, shrink it (by discarding end of tail) when
-           it has failed to move: worm_nomove(): long worms aren't
-           ported yet */
+           it has failed to move */
         if (mtmp.wormno)
-            throw new Error('m_move(): worm_nomove() not ported yet');
+            worm_nomove(mtmp);
     }
     return await postmov(mtmp, ptr, omx, omy, mmoved,
                    seenflgs, can_tunnel, can_unlock, can_open);
@@ -1937,8 +2077,11 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
             if (await mpickstuff(mtmp))
                 mmoved = MMOVE_DONE;
 
-            if (mtmp.minvis)
+            if (mtmp.minvis) {
                 newsym(mtmp.mx, mtmp.my);
+                if (mtmp.wormno)
+                    see_wsegs(mtmp);
+            }
         }
 
         await maybe_spin_web(mtmp);

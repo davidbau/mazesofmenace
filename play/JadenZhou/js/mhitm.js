@@ -36,6 +36,8 @@ import { ART_SNICKERSNEE } from './artilist.js';
 import { dist2 } from './hacklib.js';
 import { mon_visible } from './display.js';
 import { dmgtype, is_were, is_demon, is_vampshifter } from './mondata.js';
+import { completelyburns, completelyrots, completelyrusts } from './mon.js';
+import { resists_acid, resists_cold, resists_fire, resists_elec } from './mondata.js';
 
 function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
 /* C ref: youprop.h Conflict, Blind */
@@ -142,12 +144,20 @@ export function max_passive_dmg(mdef, magr) {
         if (mdef.data.mattk[i].aatyp === AT_NONE
             || mdef.data.mattk[i].aatyp === AT_BOOM) {
             adtyp = mdef.data.mattk[i].adtyp;
-            if (adtyp !== AD_PHYS)
-                throw new Error('max_passive_dmg(): elemental passives not ported yet');
-            dmg = mdef.data.mattk[i].damn;
-            if (!dmg)
-                dmg = mdef.data.mlevel + 1;
-            dmg *= mdef.data.mattk[i].damd;
+            if ((adtyp === M.AD_FIRE && completelyburns(magr.data))
+                || (adtyp === M.AD_DCAY && completelyrots(magr.data))
+                || (adtyp === M.AD_RUST && completelyrusts(magr.data))) {
+                dmg = magr.mhp;
+            } else if ((adtyp === M.AD_ACID && !resists_acid(magr))
+                       || (adtyp === M.AD_COLD && !resists_cold(magr))
+                       || (adtyp === M.AD_FIRE && !resists_fire(magr))
+                       || (adtyp === M.AD_ELEC && !resists_elec(magr))
+                       || adtyp === AD_PHYS) {
+                dmg = mdef.data.mattk[i].damn;
+                if (!dmg)
+                    dmg = mdef.data.mlevel + 1;
+                dmg *= mdef.data.mattk[i].damd;
+            }
             dmg *= multi2;
             break;
         }

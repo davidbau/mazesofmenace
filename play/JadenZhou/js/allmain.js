@@ -25,7 +25,8 @@ import { deferred_goto, hellish_smoke_mesg } from './do.js';
 import { com_pager } from './questpgr.js';
 import { objects_globals_init } from './objects.js';
 import { init_objects } from './o_init.js';
-import { init_dungeons, depth, find_level, In_hell } from './dungeon.js';
+import { init_dungeons, depth, find_level, In_hell,
+         print_level_annotation } from './dungeon.js';
 import { ask_do_tutorial } from './options.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
 import { change_luck } from './attrib.js';
@@ -186,9 +187,8 @@ export async function welcome(new_game) /* false => restoring an old game */ {
         /* if restoring in Gehennom, give same hot/smoky message as when
            first entering it */
         await hellish_smoke_mesg();
-        /* remind player of the level annotation, like in goto_level():
-           print_level_annotation() -- level annotations (#annotate,
-           mapseen) aren't ported, so there is none to print */
+        /* remind player of the level annotation, like in goto_level() */
+        await print_level_annotation();
     }
 }
 

@@ -9,7 +9,11 @@
 // filter toggles, and the dungeon-feature symbol search.
 
 import { game } from './gstate.js';
-import { pline, newsym, flush_screen } from './display.js';
+import { pline, newsym, flush_screen, glyph_at, glyph_kind,
+         back_to_glyph } from './display.js';
+import { invocation_pos } from './mklev.js';
+import { t_at } from './trap.js';
+import { VIBRATING_SQUARE } from './const.js';
 import { tty_putstr, tty_clear_nhwindow } from './wintty.js';
 import { visctrl } from './hacklib.js';
 import { handle_tip, is_valid_travelpt } from './hack.js';
@@ -41,8 +45,30 @@ const DEFSYM_CHARS = [
 ];
 const S_trwall = 11, S_ndoor = 12, S_vodoor = 13, S_hcdoor = 16,
     S_room = 19, S_darkroom = 20, S_engroom = 21, S_corr = 22, S_litcorr = 23,
-    S_engrcorr = 24, S_arrow_trap = 49, S_trapped_chest = 73, S_vbeam = 74,
-    S_poisoncloud = 86;
+    S_engrcorr = 24, S_arrow_trap = 49, S_trapped_chest = 73;
+
+/* C ref: display.h glyph_is_cmap() + glyph_to_cmap() -- for a glyph_at(),
+   remembered (lev->glyph) or back_to_glyph() glyph: its defsym.h S_* index,
+   or null when it isn't a cmap glyph (or is the unexplored glyph) */
+function glyph_cmapidx(glyph) {
+    if (!glyph || glyph_kind_gp(glyph) !== 'cmap' || glyph.cmapidx === undefined)
+        return null;
+    return glyph.cmapidx;
+}
+function glyph_kind_gp(glyph) { return glyph.kind ?? glyph_kind(glyph); }
+
+// C ref: getpos.c known_vibrating_square_at()
+function known_vibrating_square_at(x, y) {
+    /* note: this only acknowledges the genuine vibrating square, not
+       fake ones produced by wizard mode wishing for traps which could
+       possibly be transfered to normal play via bones file */
+    if (invocation_pos(x, y)) {
+        const ttmp = t_at(x, y);
+
+        return !!(ttmp && ttmp.ttyp === VIBRATING_SQUARE && ttmp.tseen);
+    }
+    return false;
+}
 
 
 function gp() {
@@ -298,19 +324,63 @@ export async function getpos(ccp, force, goal) {
                     matching[sidx] = ++k;
             }
             if (k) {
-                /* pass 0: just past current pos to lower right;
-                   pass 1: upper left corner to current pos; at each spot
-                   C checks glyph_at(), the remembered levl[][].glyph and
-                   back_to_glyph() for a matching cmap symbol.  The JS map
-                   keeps those glyphs without their cmap index, so only a
-                   search for symbols none of them can hold is ported: the
-                   transient zap/shield/explosion/swallow and getpos
-                   symbols (S_vbeam .. S_expl_br except S_poisoncloud) are
-                   only ever drawn with tmp_at() and never left in gbuf or
-                   remembered, so such a search always fails */
-                for (let sidx = 0; sidx < DEFSYM_CHARS.length; sidx++)
-                    if (matching[sidx] && (sidx < S_vbeam || sidx === S_poisoncloud))
-                        throw new Error(`getpos(): dungeon feature search for '${ch}' not ported yet`);
+                let foundc = false;
+                for (let pass = 0; pass <= 1 && !foundc; pass++) {
+                    /* pass 0: just past current pos to lower right;
+                       pass 1: upper left corner to current pos */
+                    const lo_y = (pass === 0) ? cy : 0;
+                    const hi_y = (pass === 0) ? ROWNO - 1 : cy;
+                    for (let ty = lo_y; ty <= hi_y && !foundc; ty++) {
+                        const lo_x = (pass === 0 && ty === lo_y) ? cx + 1 : 1;
+                        const hi_x = (pass === 1 && ty === hi_y) ? cx : COLNO - 1;
+                        for (let tx = lo_x; tx <= hi_x; tx++) {
+                            /* first, look at what is currently visible
+                               (might be monster) */
+                            let kg = glyph_at(tx, ty);
+                            if (glyph_cmapidx(kg) !== null
+                                && matching[glyph_cmapidx(kg)]) {
+                                foundc = true;
+                            /* next, try glyph that's remembered here
+                               (might be trap or object) */
+                            } else if (game.level.flags?.hero_memory
+                                /* !terrainmode: don't move to remembered
+                                   trap or object if not currently shown */
+                                       && !game.iflags.terrainmode
+                                       && glyph_cmapidx(kg = game.level.at(tx, ty).remembered_glyph) !== null
+                                       && matching[glyph_cmapidx(kg)]) {
+                                foundc = true;
+                            /* FIXME: check player-specified vib.sq trap
+                               symbol rather than or in addition to '~' */
+                            } else if (ch === '~'
+                                       && known_vibrating_square_at(tx, ty)) {
+                                foundc = true;
+                            /* last, try actual terrain here (shouldn't
+                               we be using svl.lastseentyp[][] instead?) */
+                            } else if (game.level.at(tx, ty).seenv
+                                       && glyph_cmapidx(kg = back_to_glyph(tx, ty)) !== null
+                                       && matching[glyph_cmapidx(kg)]) {
+                                foundc = true;
+                            }
+                            if (foundc) {
+                                /* foundc: */
+                                cx = tx, cy = ty;
+                                if (msg_given) {
+                                    tty_clear_nhwindow(game.WIN_MESSAGE);
+                                    msg_given = false;
+                                }
+                                break;
+                            }
+                        } /* column */
+                    }     /* row */
+                }         /* pass */
+                if (foundc) {
+                    /* goto nxtc */
+                    game.getposx = cx;
+                    game.getposy = cy;
+                    curs_map(cx, cy);
+                    await flush_screen(0);
+                    continue;
+                }
                 await pline(`Can't find dungeon feature '${ch}'.`);
                 msg_given = true;
                 /* goto nxtc */

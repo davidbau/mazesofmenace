@@ -32,6 +32,32 @@ import { P_SKILLED, P_BASIC, ONAME_NO_FLAGS, GETOBJ_EXCLUDE, GETOBJ_SUGGEST,
 import { getobj } from './invent.js';
 import { mksobj, permapoisoned } from './mkobj.js';
 import { oname } from './do_name.js';
+import { obj_shuffle_range } from './o_init.js';
+import { ART_SUNSWORD } from './artilist.js';
+import { HALLUC, PROTECTION } from './const.js';
+import { see_monsters } from './display.js';
+import { recalc_telepat_range } from './worn.js';
+import { make_hallucinated } from './potion.js';
+import { invocation_pos } from './mklev.js';
+import { Hate_silver } from './wield.js';
+import { You_cant } from './display.js';
+import { yname } from './objnam.js';
+import { killer_xname } from './mthrowu.js';
+import { Maybe_Half_Phys, losehp } from './trap.js';
+import { exercise } from './attrib.js';
+import { rnd, d } from './rng.js';
+import { You } from './display.js';
+import { s_suffix } from './hacklib.js';
+import { the } from './iactions.js';
+import { xname } from './objnam.js';
+import { is_mplayer } from './makemon.js';
+import { mon_aligntyp } from './priest.js';
+import { A_WIS } from './const.js';
+import { KILLED_BY, A_CON, ECMD_OK, ECMD_TIME } from './const.js';
+import { getrumor } from './rumors.js';
+import { bcsign } from './mkobj.js';
+import { pline } from './display.js';
+import { Tobjnam } from './objnam.js';
 
 // C ref: artifact.h SPFX_*
 export const SPFX_NONE = 0x00000000;
@@ -516,6 +542,75 @@ export function artifact_name(
     return null;
 }
 
+// C ref: artifact.c discover_artifact() -- add identified artifact to
+// discoveries list
+export function discover_artifact(m) {
+    const artidisco = game.artidisco;
+    let i;
+
+    /* look for this artifact in the discoveries list;
+       if we hit an empty slot then it's not present, so add it */
+    for (i = 0; i < NROFARTIFACTS; i++)
+        if (artidisco[i] === 0 || artidisco[i] === m) {
+            artidisco[i] = m;
+            return;
+        }
+    /* there is one slot per artifact, so we should never reach the
+       end without either finding the artifact or an empty slot... */
+    throw new Error(`impossible: couldn't discover artifact (${m})`);
+}
+
+// C ref: artifact.c restrict_name()
+/* is 'name' a restricted artifact name for objects of otmp's type? */
+export function restrict_name(otmp, name) {
+    const arts = artilist();
+    let aname, odesc, other;
+    const sametype = new Array(O.objects.length).fill(false);
+    let i, lo, hi;
+    const otyp = otmp.otyp, ocls = O.objects[otyp].oc_class;
+
+    if (!name)
+        return false;
+    if (!strncmpi(name, "the ", 4))
+        name = name.slice(4);
+
+    /* decide what types of objects are the same as otyp;
+       if it's been discovered, then only itself matches;
+       otherwise, include all other undiscovered objects
+       of the same class which have the same description
+       or share the same pool of shuffled descriptions */
+    sametype[otyp] = true;
+    if (!O.objects[otyp].oc_name_known
+        && (odesc = O.OBJ_DESCR(O.objects[otyp])) != null) {
+        ({ lo, hi } = obj_shuffle_range(otyp));
+        for (i = game.bases[ocls]; i < O.objects.length; i++) {
+            if (O.objects[i].oc_class !== ocls)
+                break;
+            if (!O.objects[i].oc_name_known
+                && (other = O.OBJ_DESCR(O.objects[i])) != null
+                && (odesc === other || (i >= lo && i <= hi)))
+                sametype[i] = true;
+        }
+    }
+
+    /* Since almost every artifact is SPFX_RESTR, it doesn't cost
+       us much to do the string comparison before the spfx check.
+       Bug fix:  don't name multiple elven daggers "Sting".
+     */
+    for (let a = 1; arts[a].otyp; a++) {
+        if (!sametype[arts[a].otyp])
+            continue;
+        aname = arts[a].name;
+        if (!strncmpi(aname, "the ", 4))
+            aname = aname.slice(4);
+        if (aname === name)
+            return ((arts[a].spfx & (SPFX_NOGEN | SPFX_RESTR)) !== 0
+                    || otmp.quan > 1);
+    }
+
+    return false;
+}
+
 // C ref: artifact.c exist_artifact()
 export function exist_artifact(otyp, name) {
     const arts = artilist();
@@ -674,6 +769,243 @@ export function get_artifact(obj) {
     return arts[ART_NONARTIFACT];
 }
 
+// C ref: artifact.c spec_m2()
+/* return the M2 flags of monster that an artifact's special attacks apply
+ * against */
+export function spec_m2(otmp) {
+    const artifact = get_artifact(otmp);
+
+    if (artifact !== artilist()[ART_NONARTIFACT])
+        return artifact.mtype;
+    return 0;
+}
+
+// C ref: artifact.c set_artifact_intrinsic() -- the body; it yields where
+// C calls make_hallucinated() (which can redraw and print) or arti_invoke(),
+// so that set_artifact_intrinsic() can await those and the synchronous
+// set_artifact_intrinsic_sync() can stop when it would have to.
+/* 'mask' here is the property index whose extrinsic C's 'long *mask'
+   points at */
+function* set_artifact_intrinsic_core(otmp, on, wp_mask) {
+    const u = game.u;
+    const arts = artilist();
+    let mask = 0;
+    const oart = get_artifact(otmp);
+    let art, obj;
+    let dtyp, spfx;
+    const E = (p) => u.uprops[p];
+
+    if (oart === arts[ART_NONARTIFACT])
+        return;
+
+    /* effects from the defn field */
+    dtyp = (wp_mask !== W_ART) ? oart.defn.adtyp : oart.cary.adtyp;
+
+    if (dtyp === M.AD_FIRE)
+        mask = FIRE_RES;        /* &EFire_resistance */
+    else if (dtyp === M.AD_COLD)
+        mask = COLD_RES;        /* &ECold_resistance */
+    else if (dtyp === M.AD_ELEC)
+        mask = SHOCK_RES;       /* &EShock_resistance */
+    else if (dtyp === M.AD_MAGM)
+        mask = ANTIMAGIC;       /* &EAntimagic */
+    else if (dtyp === M.AD_DISN)
+        mask = DISINT_RES;      /* &EDisint_resistance */
+    else if (dtyp === M.AD_DRST)
+        mask = POISON_RES;      /* &EPoison_resistance */
+    else if (dtyp === M.AD_DRLI)
+        mask = DRAIN_RES;       /* &EDrain_resistance */
+
+    if (mask && wp_mask === W_ART && !on) {
+        /* find out if some other artifact also confers this intrinsic;
+           if so, leave the mask alone */
+        for (obj = game.invent; obj; obj = obj.nobj) {
+            if (obj !== otmp && obj.oartifact) {
+                art = get_artifact(obj);
+                if (art !== arts[ART_NONARTIFACT]
+                    && art.cary.adtyp === dtyp) {
+                    mask = 0;
+                    break;
+                }
+            }
+        }
+    }
+    if (mask) {
+        if (on)
+            E(mask).extrinsic |= wp_mask;
+        else
+            E(mask).extrinsic &= ~wp_mask;
+    }
+
+    /* intrinsics from the spfx field; there could be more than one */
+    spfx = (wp_mask !== W_ART) ? oart.spfx : oart.cspfx;
+    if (spfx && wp_mask === W_ART && !on) {
+        /* don't change any spfx also conferred by other artifacts */
+        for (obj = game.invent; obj; obj = obj.nobj)
+            if (obj !== otmp && obj.oartifact) {
+                art = get_artifact(obj);
+                if (art !== arts[ART_NONARTIFACT])
+                    spfx &= ~art.cspfx;
+            }
+    }
+
+    if (spfx & SPFX_SEARCH) {
+        if (on)
+            E(SEARCHING).extrinsic |= wp_mask;
+        else
+            E(SEARCHING).extrinsic &= ~wp_mask;
+    }
+    if (spfx & SPFX_HALRES) {
+        /* make_hallucinated must (re)set the mask itself to get
+         * the display right */
+        /* restoring needed because this is the only artifact intrinsic
+         * that can print a message--need to guard against being printed
+         * when restoring a game
+         */
+        yield { what: 'make_hallucinated',
+                args: [on ? 0 : 1,
+                       game.program_state?.restoring ? false : true,
+                       wp_mask] };
+    }
+    if (spfx & SPFX_ESP) {
+        if (on)
+            E(TELEPAT).extrinsic |= wp_mask;
+        else
+            E(TELEPAT).extrinsic &= ~wp_mask;
+        recalc_telepat_range();
+        see_monsters();
+    }
+    if (spfx & SPFX_STLTH) {
+        if (on)
+            E(STEALTH).extrinsic |= wp_mask;
+        else
+            E(STEALTH).extrinsic &= ~wp_mask;
+    }
+    if (spfx & SPFX_REGEN) {
+        if (on)
+            E(REGENERATION).extrinsic |= wp_mask;
+        else
+            E(REGENERATION).extrinsic &= ~wp_mask;
+    }
+    if (spfx & SPFX_TCTRL) {
+        if (on)
+            E(TELEPORT_CONTROL).extrinsic |= wp_mask;
+        else
+            E(TELEPORT_CONTROL).extrinsic &= ~wp_mask;
+    }
+    if (spfx & SPFX_WARN) {
+        if (spec_m2(otmp)) {
+            const warntype = game.context.warntype = game.context.warntype || {};
+            if (on) {
+                E(WARN_OF_MON).extrinsic |= wp_mask;
+                warntype.obj = (warntype.obj || 0) | spec_m2(otmp);
+            } else {
+                E(WARN_OF_MON).extrinsic &= ~wp_mask;
+                warntype.obj = (warntype.obj || 0) & ~spec_m2(otmp);
+            }
+            see_monsters();
+        } else {
+            if (on)
+                E(WARNING).extrinsic |= wp_mask;
+            else
+                E(WARNING).extrinsic &= ~wp_mask;
+        }
+    }
+    if (spfx & SPFX_EREGEN) {
+        if (on)
+            E(ENERGY_REGENERATION).extrinsic |= wp_mask;
+        else
+            E(ENERGY_REGENERATION).extrinsic &= ~wp_mask;
+    }
+    if (spfx & SPFX_HSPDAM) {
+        if (on)
+            E(HALF_SPDAM).extrinsic |= wp_mask;
+        else
+            E(HALF_SPDAM).extrinsic &= ~wp_mask;
+    }
+    if (spfx & SPFX_HPHDAM) {
+        if (on)
+            E(HALF_PHDAM).extrinsic |= wp_mask;
+        else
+            E(HALF_PHDAM).extrinsic &= ~wp_mask;
+    }
+    if (spfx & SPFX_XRAY) {
+        /* this assumes that no one else is using xray_range */
+        if (on)
+            u.xray_range = 3;
+        else
+            u.xray_range = -1;
+        game.vision_full_recalc = 1;
+    }
+    if ((spfx & SPFX_REFLECT) && (wp_mask & W_WEP)) {
+        if (on)
+            E(REFLECTING).extrinsic |= wp_mask;
+        else
+            E(REFLECTING).extrinsic &= ~wp_mask;
+    }
+    if (spfx & SPFX_PROTECT) {
+        if (on)
+            E(PROTECTION).extrinsic |= wp_mask;
+        else
+            E(PROTECTION).extrinsic &= ~wp_mask;
+    }
+
+    if (wp_mask === W_ART && !on && oart.inv_prop) {
+        /* might have to turn off invoked power too */
+        if (oart.inv_prop <= LAST_PROP
+            && (u.uprops[oart.inv_prop].extrinsic & W_ARTI))
+            yield { what: 'arti_invoke', args: [otmp] };
+    }
+
+    if (wp_mask === W_WEP && otmp.oartifact === ART_SUNSWORD) { /* is_art() */
+        if (on)
+            E(BLND_RES).extrinsic |= wp_mask;
+        else
+            E(BLND_RES).extrinsic &= ~wp_mask;
+    }
+}
+
+// C ref: artifact.c set_artifact_intrinsic()
+/* used to make the hero feel the effects of an artifact */
+export async function set_artifact_intrinsic(otmp, on, wp_mask) {
+    const gen = set_artifact_intrinsic_core(otmp, on, wp_mask);
+    let r = gen.next();
+    while (!r.done) {
+        const req = r.value;
+        let val;
+        if (req.what === 'make_hallucinated')
+            val = await make_hallucinated(...req.args);
+        else /* arti_invoke(otmp): turning off an invoked power */
+            throw new Error('set_artifact_intrinsic(): arti_invoke() not ported yet');
+        r = gen.next(val);
+    }
+}
+
+// C ref: artifact.c set_artifact_intrinsic() -- for synchronous callers
+// (setworn(), setnotworn(), freeinv_core()); stops where C would print
+export function set_artifact_intrinsic_sync(otmp, on, wp_mask) {
+    const gen = set_artifact_intrinsic_core(otmp, on, wp_mask);
+    let r = gen.next();
+    while (!r.done) {
+        const req = r.value;
+        if (req.what === 'make_hallucinated') {
+            const [xtime, , mask] = req.args;
+            /* potion.c make_hallucinated() with a mask: when the hero isn't
+               hallucinating only the resistance mask changes; otherwise
+               the display is redone and a message given */
+            if (game.u.uprops[HALLUC].intrinsic)
+                throw new Error('set_artifact_intrinsic(): make_hallucinated() in a synchronous caller not ported yet');
+            if (!xtime)
+                game.u.uprops[HALLUC_RES].extrinsic |= mask;
+            else
+                game.u.uprops[HALLUC_RES].extrinsic &= ~mask;
+        } else { /* arti_invoke(otmp): turning off an invoked power */
+            throw new Error('set_artifact_intrinsic(): arti_invoke() not ported yet');
+        }
+        r = gen.next(false);
+    }
+}
+
 // C ref: artifact.c arti_reflects()
 export function arti_reflects(obj) {
     const arti = get_artifact(obj);
@@ -742,51 +1074,215 @@ function bane_applies(oart, mon) {
     return false;
 }
 
-// C ref: artifact.c touch_artifact() -- the hero's case; monsters and
-// the "blasted" damage are not ported yet
-/* return 1 if the object can be picked up/wielded by mon, 0 if not */
-export function touch_artifact(obj, mon) {
-    const arts = artilist();
-    const oart = get_artifact(obj);
+// C ref: artifact.c touch_artifact() -- the badclass/badalign tests,
+// shared by touch_artifact() and touch_artifact_mon(); no dice
+function touch_artifact_tests(oart, mon) {
     let badclass, badalign;
     const u = game.u;
-
-    game.touch_blasted = false;
-    if (oart === arts[ART_NONARTIFACT])
-        return 1;
-
     const yours = (mon === game.youmonst);
     /* all quest artifacts are self-willed; if this ever changes, `badclass'
        will have to be extended to explicitly include quest artifacts */
     const self_willed = ((oart.spfx & SPFX_INTEL) !== 0);
+
     if (yours) {
         badclass = self_willed
-                   && ((oart.role !== NON_PM && game.urole.mnum !== oart.role)
+                   && ((oart.role !== NON_PM && game.urole.mnum !== oart.role) /* !Role_if() */
                        || (oart.race !== NON_PM
-                           && game.urace.mnum !== oart.race));
+                           && game.urace.mnum !== oart.race)); /* !Race_if() */
         badalign = ((oart.spfx & SPFX_RESTR) !== 0
                     && oart.alignment !== A_NONE
                     && (oart.alignment !== u.ualign.type
                         || u.ualign.record < 0));
-    } else {
-        throw new Error('touch_artifact(): monsters touching artifacts are not ported yet');
+    } else if (!(mon.data.mflags3 & M.M3_COVETOUS) /* !is_covetous() */
+               && !is_mplayer(mon.data)) {
+        badclass = self_willed && oart.role !== NON_PM
+                   && oart !== artilist()[ART_EXCALIBUR];
+        badalign = !!(oart.spfx & SPFX_RESTR) && oart.alignment !== A_NONE
+                   && (oart.alignment !== mon_aligntyp(mon));
+    } else { /* an M3_WANTSxxx monster or a fake player */
+        /* special monsters trying to take the Amulet, invocation tools or
+           quest item can touch anything except `spec_applies' artifacts */
+        badclass = badalign = false;
     }
     /* weapons which attack specific categories of monsters are
        bad for them even if their alignments happen to match */
     if (!badalign)
         badalign = bane_applies(oart, mon);
+    return { yours, self_willed, badclass, badalign };
+}
+
+// C ref: artifact.c touch_artifact()
+/*
+ * creature (usually hero) tries to touch (pick up or wield) an artifact obj.
+ * Returns 0 if the object refuses to be touched.
+ * This routine does not change any object chains.
+ * Ignores such things as gauntlets, assuming the artifact is not
+ * fooled by such trappings.
+ */
+export async function touch_artifact(obj, mon) {
+    const oart = get_artifact(obj);
+
+    game.touch_blasted = false;
+    if (oart === artilist()[ART_NONARTIFACT])
+        return 1;
+
+    const { yours, self_willed, badclass, badalign } = touch_artifact_tests(oart, mon);
 
     if (((badclass || badalign) && self_willed)
         || (badalign && (!yours || !rn2(4)))) {
-        throw new Error('touch_artifact(): "You are blasted by its power" is not ported yet');
+        let dmg, tmp;
+
+        if (!yours)
+            return 0;
+        await You(`are blasted by ${s_suffix(the(xname(obj)))} power!`);
+        game.touch_blasted = true;
+        dmg = d((Antimagic() ? 2 : 4), (self_willed ? 10 : 4));
+        /* add half (maybe quarter) of the usual silver damage bonus */
+        if (O.objects[obj.otyp].oc_material === O.SILVER && Hate_silver()) {
+            tmp = rnd(10);
+            dmg += Maybe_Half_Phys(tmp);
+        }
+        await losehp(dmg, `touching ${oart.name}`, KILLED_BY); /* magic damage, not physical */
+        exercise(A_WIS, false);
     }
 
     /* can pick it up unless you're totally non-synch'd with the artifact */
     if (badclass && badalign && self_willed) {
-        throw new Error('touch_artifact(): an artifact evading your grasp is not ported yet');
+        if (yours) {
+            if (obj.where !== 'OBJ_INVENT') /* !carried(obj) */
+                await pline(`${Tobjnam(obj, "evade")} your grasp!`);
+            else
+                await pline(`${Tobjnam(obj, "are")} beyond your control!`);
+        }
+        return 0;
     }
 
     return 1;
+}
+
+// C ref: artifact.c touch_artifact() -- for synchronous monster callers;
+// a monster touching an artifact rolls no dice and gets no messages
+export function touch_artifact_mon(obj, mon) {
+    const oart = get_artifact(obj);
+
+    if (mon === game.youmonst)
+        throw new Error('touch_artifact_mon(): the hero needs touch_artifact()');
+    game.touch_blasted = false;
+    if (oart === artilist()[ART_NONARTIFACT])
+        return 1;
+
+    const { self_willed, badclass, badalign } = touch_artifact_tests(oart, mon);
+
+    if (((badclass || badalign) && self_willed) || badalign)
+        return 0; /* (!yours) */
+
+    /* can pick it up unless you're totally non-synch'd with the artifact */
+    if (badclass && badalign && self_willed)
+        return 0;
+
+    return 1;
+}
+
+/* C ref: youprop.h Antimagic */
+function Antimagic() {
+    const p = game.u.uprops[ANTIMAGIC];
+    return !!(p.intrinsic || p.extrinsic);
+}
+
+// C ref: artifact.c retouch_object()
+/* decide whether a particular item can be used by the hero; returns 1 if
+   it can, 0 if it can't (and may have been dropped).  C passes the object
+   by reference so that it can be cleared; the callers here only use the
+   return value. */
+export async function retouch_object(obj,
+                                     loseit) /* whether to drop it if hero can longer touch it */ {
+    const u = game.u;
+
+    /* allow hero in silver-hating form to try to perform invocation ritual */
+    if (obj.otyp === O.BELL_OF_OPENING
+        && invocation_pos(u.ux, u.uy) && !On_stairs(u.ux, u.uy)) {
+        return 1;
+    }
+
+    if (await touch_artifact(obj, game.youmonst)) {
+        let dmg = 0, tmp;
+        const ag = (O.objects[obj.otyp].oc_material === O.SILVER && Hate_silver()),
+              bane = bane_applies(get_artifact(obj), game.youmonst);
+
+        /* nothing else to do if hero can successfully handle this object */
+        if (!ag && !bane)
+            return 1;
+
+        /* hero can't handle this object, but didn't get touch_artifact()'s
+           "<obj> evades your grasp|control" message; give an alternate one */
+        await You_cant(`handle ${yname(obj)}${obj.owornmask ? " anymore" : ""}!`);
+        /* also inflict damage unless touch_artifact() already did so */
+        if (!game.touch_blasted) {
+            let what = killer_xname(obj);
+
+            if (ag && !obj.oartifact && !bane) {
+                /* 'obj' is silver; for rings and wands it ended up that
+                   way due to randomization at start of game; showing this
+                   game's silver item without stating that it is silver
+                   potentially leads to confusion about cause of death */
+                if (obj.oclass === O.RING_CLASS)
+                    what = "a silver ring";
+                else if (obj.oclass === O.WAND_CLASS)
+                    what = "a silver wand";
+                /* for anything else, stick with killer_xname() */
+            }
+            /* damage is somewhat arbitrary; half the usual 1d20 physical
+               for silver, 1d10 magical for <foo>bane, potentially both */
+            if (ag) {
+                tmp = rnd(10);
+                dmg += Maybe_Half_Phys(tmp);
+            }
+            if (bane)
+                dmg += rnd(10);
+            await losehp(dmg, `handling ${what}`, KILLED_BY);
+            exercise(A_CON, false);
+        }
+    }
+
+    /* removing a worn item might result in loss of levitation,
+       dropping the hero onto a polymorph trap or into water or
+       lava and potentially dropping or destroying the item */
+    if (obj.owornmask)
+        throw new Error('retouch_object(): remove_worn_item() of an untouchable item not ported yet');
+
+    /* if we still have it and caller wants us to drop it, do so now */
+    if (loseit && obj)
+        throw new Error('retouch_object(): dropping an untouchable item not ported yet');
+    return 0;
+}
+
+// C ref: artifact.c arti_speak()
+/* Artifacts that are speaking */
+export async function arti_speak(obj) {
+    const oart = get_artifact(obj);
+    let line;
+
+    /* Is this a speaking artifact? */
+    if (oart === artilist()[ART_NONARTIFACT] || !(oart.spfx & SPFX_SPEAK))
+        return ECMD_OK; /* nothing happened */
+
+    const buf = { s: '' };
+
+    line = getrumor(bcsign(obj), buf, true);
+    if (!line)
+        line = "NetHack rumors file closed for renovation.";
+    await pline(`${Tobjnam(obj, "whisper")}:`);
+    /* SetVoice(): no voice interface */
+    await pline(`"${line}"`); /* verbalize1() */
+    return ECMD_TIME;
+}
+
+/* C ref: stairs.c On_stairs() */
+function On_stairs(x, y) {
+    for (let s = game.stairs; s; s = s.next)
+        if (s.sx === x && s.sy === y)
+            return true;
+    return false;
 }
 
 // C ref: artifact.c abil_to_adtyp() -- 'abil' is the property index

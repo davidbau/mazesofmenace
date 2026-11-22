@@ -26,9 +26,10 @@ import { extcmdlist, CMD_NOT_AVAILABLE, INTERNALCMD, WIZMODECMD, AUTOCOMPLETE,
 import { strcmpi, strncmpi, highc, visctrl, strstri } from './hacklib.js';
 import { dosearch } from './detect.js';
 import { level_tele, dotelecmd } from './teleport.js';
-import { wiz_level_change, wiz_wish } from './wizcmds.js';
+import { wiz_level_change, wiz_wish, wiz_identify, wiz_intrinsic, wiz_map,
+         wiz_detect } from './wizcmds.js';
 import { ddoinv, dolook, doprgold, doprwep, doprarm, doprring, dopramulet,
-         doprtool, add_menu_heading } from './invent.js';
+         doprtool, add_menu_heading, doorganize, adjust_split } from './invent.js';
 import { cmd_safety_prevention, nomul, domove, DOMOVE_WALK,
          DOMOVE_RUSH, confdir } from './hack.js';
 export { domove };
@@ -37,12 +38,12 @@ import { IS_DOOR, IS_FURNITURE, NHW_TEXT, ECMD_OK, ECMD_TIME, ECMD_CANCEL,
 import { dovspell, docast } from './spell.js';
 import { dosit } from './sit.js';
 import { doinvoke } from './artifact.js';
-import { donamelevel } from './dungeon.js';
+import { donamelevel, dooverview, recalc_mapseen } from './dungeon.js';
 import { authorize_explore_mode } from './sys.js';
 import { dodiscovered } from './o_init.js';
 import { doattributes, dogenocided } from './insight.js';
 import { wiz_genesis } from './wizcmds.js';
-import { dodrop, doddrop, dodown, doup } from './do.js';
+import { dodrop, doddrop, dodown, doup, dowipe } from './do.js';
 import { dozap } from './zap.js';
 import { docallcmd } from './do_name.js';
 import { doloot } from './pickup.js';
@@ -55,13 +56,14 @@ import { enhance_weapon_skill } from './weapon.js';
 import { doapply, dorub, dojump } from './apply.js';
 import { doeat } from './eat.js';
 import { dowear, doputon, dotakeoff, ia_dotakeoff } from './do_wear.js';
-import { dodrink, dodip } from './potion.js';
+import { dodrink, dodip, aggravate } from './potion.js';
 import { dopay } from './shk.js';
 import { dotogglepickup, doset_simple, doset } from './options.js';
 import { doread } from './read.js';
 import { dohelp, dowhatis, dowhatdoes, dowhatdoes_core } from './pager.js';
-import { doopen } from './lock.js';
+import { doopen, doforce, doclose } from './lock.js';
 import { dosave } from './save.js';
+import { done2 } from './end.js';
 
 // C ref: cmd.c extcmds_match() -- the indices of the extcmdlist[]
 // entries matching findstr
@@ -100,6 +102,9 @@ export function extcmds_match(findstr, ecmflags) {
 // extended commands both go through this table)
 const cmd_funcs = {
     doextcmd: () => doextcmd(),
+    done2: () => done2(),
+    doorganize: () => doorganize(),
+    adjust_split: () => adjust_split(),
     doextlist: () => doextlist(),
     dosearch: () => dosearch(),
     dopray: () => dopray(),
@@ -146,6 +151,8 @@ const cmd_funcs = {
     enhance_weapon_skill: () => enhance_weapon_skill(),
     dohelp: () => dohelp(),
     doopen: () => doopen(),
+    doforce: () => doforce(),
+    doclose: () => doclose(),
     dojump: () => dojump(),
     do_reqmenu: () => do_reqmenu(),
     do_rush: () => do_rush(),
@@ -169,10 +176,17 @@ const cmd_funcs = {
     dodip: () => dodip(),
     doinvoke: () => doinvoke(),
     donamelevel: () => donamelevel(),
+    dooverview: () => dooverview(),
+    domonability: () => domonability(),
+    dowipe: () => dowipe(),
     dogenocided: () => dogenocided(),
     doturn: () => doturn(),
     dosacrifice: () => dosacrifice(),
     enter_explore_mode: () => enter_explore_mode(),
+    wiz_identify: () => wiz_identify(),
+    wiz_intrinsic: () => wiz_intrinsic(),
+    wiz_map: () => wiz_map(),
+    wiz_detect: () => wiz_detect(),
 };
 /* C ref: cmd.c do_move_<dir>(), do_run_<dir>(), do_rush_<dir>() */
 ["west", "northwest", "north", "northeast", "east", "southeast", "south",
@@ -219,6 +233,74 @@ async function doextcmd() {
     } while (func === "doextlist");
 
     return retval;
+}
+
+/* C ref: mondata.h is_hider(), hides_under(), webmaker(), can_breathe(),
+   attacktype(), is_mind_flayer(), likes_gems(), is_unicorn() */
+function is_hider(ptr) { return (ptr.mflags1 & M1_HIDE) !== 0; }
+function hides_under(ptr) { return (ptr.mflags1 & M1_CONCEAL) !== 0; }
+function webmaker(ptr) {
+    return ptr === mons[PM_CAVE_SPIDER] || ptr === mons[PM_GIANT_SPIDER];
+}
+function attacktype(ptr, atyp) { return ptr.mattk.some(a => a.aatyp === atyp); }
+function can_breathe(ptr) { return attacktype(ptr, AT_BREA); }
+function is_mind_flayer(ptr) {
+    return ptr === mons[PM_MIND_FLAYER] || ptr === mons[PM_MASTER_MIND_FLAYER];
+}
+function is_unicorn(ptr) {
+    return ptr.mlet === S_UNICORN && (ptr.mflags2 & M2_JEWELS) !== 0;
+}
+
+// C ref: cmd.c domonability() -- #monster command - use special monster
+// ability while polymorphed
+async function domonability() {
+    const u = game.u;
+    const uptr = game.youmonst.data;
+    const might_hide = (is_hider(uptr) || hides_under(uptr));
+    let c = '\0';
+
+    if (might_hide && webmaker(uptr)) {
+        c = await tty_yn_function("Hide [h] or spin a web [s]?",
+                                  "hsq", 'q'); /* hidespinchars */
+        if (c === 'q' || c === '\x1b')
+            return ECMD_OK;
+    }
+    if (can_breathe(uptr))
+        throw new Error('domonability(): dobreathe() not ported yet');
+    else if (attacktype(uptr, AT_SPIT))
+        throw new Error('domonability(): dospit() not ported yet');
+    else if (uptr.mlet === S_NYMPH)
+        throw new Error('domonability(): doremove() not ported yet');
+    else if (attacktype(uptr, AT_GAZE))
+        throw new Error('domonability(): dogaze() not ported yet');
+    else if (is_were(uptr))
+        throw new Error('domonability(): dosummon() not ported yet');
+    else if ((c !== '\0') ? c === 'h' : might_hide)
+        throw new Error('domonability(): dohide() not ported yet');
+    else if ((c !== '\0') ? c === 's' : webmaker(uptr))
+        throw new Error('domonability(): dospinweb() not ported yet');
+    else if (is_mind_flayer(uptr))
+        throw new Error('domonability(): domindblast() not ported yet');
+    else if (u.umonnum === PM_GREMLIN) {
+        throw new Error('domonability(): gremlin split_mon() not ported yet');
+    } else if (is_unicorn(uptr)) {
+        throw new Error('domonability(): use_unicorn_horn() not ported yet');
+    } else if (uptr.msound === MS_SHRIEK) {
+        await You("shriek.");
+        if (u.uburied)
+            await pline("Unfortunately sound does not carry well through rock.");
+        else
+            aggravate();
+    } else if (is_vampire(uptr) || is_vampshifter(game.youmonst)) {
+        throw new Error('domonability(): dopoly() not ported yet');
+    } else if (u.usteed && can_breathe(u.usteed.data)) {
+        throw new Error('domonability(): pet_ranged_attk() not ported yet');
+    } else if (u.umonnum !== u.umonster) { /* Upolyd */
+        await pline("Any special ability you may have is purely reflexive.");
+    } else {
+        await You("don't have a special ability in your normal form!");
+    }
+    return ECMD_OK;
 }
 
 // C ref: cmd.c enter_explore_mode() -- #exploremode (M-X)
@@ -432,8 +514,8 @@ async function doterrain() {
     const clr = NO_COLOR;
 
     /* this used to be done each time vision was recalculated, so would
-       always be up to date (hopefully); now we do it on demand instead:
-       recalc_mapseen() -- the dungeon overview isn't ported */
+       always be up to date (hopefully); now we do it on demand instead */
+    recalc_mapseen();
 
     /*
      * normal play: choose between known map without mons, obj, and traps
@@ -521,7 +603,10 @@ async function donull() {
     return 1; /* ECMD_TIME: Do nothing, but let other things happen */
 }
 import { COLNO, ROWNO, xdir, ydir, zdir } from './const.js';
-import { PM_GRID_BUG } from './monsters.js';
+import { PM_GRID_BUG, mons, PM_CAVE_SPIDER, PM_GIANT_SPIDER, PM_MIND_FLAYER,
+         PM_MASTER_MIND_FLAYER, PM_GREMLIN, AT_BREA, AT_SPIT, AT_GAZE, S_NYMPH,
+         S_UNICORN, M1_HIDE, M1_CONCEAL, M2_JEWELS, MS_SHRIEK } from './monsters.js';
+import { is_were, is_vampire, is_vampshifter } from './mondata.js';
 
 /* C ref: cmd.c dirchars[] for number_pad off (sdir): DIR_W .. DIR_SW,
    then DIR_DOWN '>' and DIR_UP '<' */

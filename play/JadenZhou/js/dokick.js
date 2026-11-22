@@ -35,6 +35,28 @@ import { body_part } from './insight.js';
 import { makeplural } from './objnam.js';
 import { recalc_block_point, unblock_point } from './vision.js';
 import { cvt_sdoor_to_door } from './detect.js';
+import { Is_container, weight, obj_extract_self } from './mkobj.js';
+import { Has_contents, WEB, STATUE_TRAP, is_pit, STONE_RES, FUMBLING, ZAP_POS, LOW_PM } from './const.js';
+import { BAG_OF_HOLDING, BAG_OF_TRICKS, objects, GLASS, GEM_CLASS, EGG, MIRROR, CORPSE, COIN_CLASS, LARGE_BOX, CHEST } from './objects.js';
+import { shop_keeper, costly_spot, onshopbill, costly_adjacent } from './shk.js';
+import { obj_resists } from './dogmove.js';
+import { change_luck } from './attrib.js';
+import { You_hear } from './sounds.js';
+import { useup, obfree } from './invent.js';
+import { killer_xname } from './mthrowu.js';
+import { breaktest } from './dothrow.js';
+import { t_at, chest_trap } from './trap.js';
+import { PM_COCKATRICE, PM_CHICKATRICE } from './monsters.js';
+import { is_ice } from './dig.js';
+import { ART_MJOLLNIR } from './artilist.js';
+import { closed_door } from './makemon.js';
+import { Norep, Your, pline_The } from './display.js';
+import { singular, doname, The, distant_name, xname, otense } from './objnam.js';
+import { breakchestlock } from './lock.js';
+import { addtobill } from './shk.js';
+import { flooreffects, impact_disturbs_zombies } from './do.js';
+import { place_object } from './mkobj.js';
+import { stackobj } from './invent.js';
 
 /* C ref: youprop.h -- the hero's properties used by the kick code */
 function uprop(p) {
@@ -419,7 +441,16 @@ export async function dokick() {
 
     if (OBJ_AT(x, y) && (!Levitation() || Is_airlevel(u.uz)
                          || Is_waterlevel(u.uz) || sobj_at(BOULDER, x, y))) {
-        throw new Error('dokick(): kick_object() not ported yet');
+        const kickobjnam = { val: '' };
+
+        if (await kick_object(x, y, kickobjnam)) {
+            if (Is_airlevel(u.uz))
+                throw new Error('dokick(): hurtle() not ported yet'); /* assume it's light */
+            return ECMD_TIME;
+        }
+        /* goto ouch; */
+        await kick_ouch(x, y, kickobjnam.val);
+        return ECMD_TIME;
     }
 
     if (IS_DOOR(g.maploc.typ))
@@ -427,4 +458,289 @@ export async function dokick() {
     else
         return await kick_nondoor(x, y, avrg_attrib);
     return ECMD_TIME;
+}
+
+// C ref: dokick.c container_impact_dmg()
+export async function container_impact_dmg(obj,
+                                           x, /* coordinates where object was */
+                                           y) { /* before the impact, not after */
+    const u = game.u;
+    let shkp;
+    const loss = 0;
+    let costly, wchange = false;
+
+    /* only consider normal containers */
+    if (!Is_container(obj) || !Has_contents(obj)
+        || obj.otyp === BAG_OF_HOLDING || obj.otyp === BAG_OF_TRICKS) /* Is_mbag */
+        return;
+
+    const rooms = in_rooms(x, y, SHOPBASE);
+    costly = !!((shkp = shop_keeper(rooms.length ? rooms.charCodeAt(0) : 0))
+                && costly_spot(x, y));
+    /* if dropped or thrown, shop ownership flags are set on this obj */
+    void u;
+
+    for (const otmp of obj.cobj.slice()) {
+        let result = null;
+
+        if (objects[otmp.otyp].oc_material === GLASS
+            && otmp.oclass !== GEM_CLASS && !obj_resists(otmp, 33, 100)) {
+            result = "shatter";
+        } else if (otmp.otyp === EGG && !rn2(3)) {
+            result = "cracking";
+        }
+        if (result) {
+            if (otmp.otyp === MIRROR)
+                change_luck(-2);
+
+            /* eggs laid by you.  penalty is -1 per egg, max 5,
+             * but it's always exactly 1 that breaks */
+            if (otmp.otyp === EGG && otmp.spe && otmp.corpsenm >= LOW_PM)
+                change_luck(-1);
+            await You_hear(`a muffled ${result}.`);
+            if (costly)
+                throw new Error('container_impact_dmg(): stolen_value() not ported yet');
+            if (otmp.quan > 1) {
+                useup(otmp);
+            } else {
+                obj_extract_self(otmp);
+                obfree(otmp, null);
+            }
+            /* contents of this container are no longer known */
+            obj.cknown = 0;
+            wchange = true;
+        }
+    }
+    if (wchange)
+        obj.owt = weight(obj);
+    void loss;
+}
+
+// C ref: dokick.c kick_object() -- jacket around really_kick_object;
+// 'kickobjnam' is a { val } holder for C's char buffer
+async function kick_object(x, y, kickobjnam) {
+    let res = 0;
+
+    kickobjnam.val = '';
+    /* if a pile, the "top" object gets kicked */
+    game.kickedobj = objects_at_top(x, y);
+    if (game.kickedobj) {
+        /* formatted object name matters iff res==0 */
+        kickobjnam.val = killer_xname(game.kickedobj);
+        /* kick object; if fatal, done() will clean up kickedobj */
+        res = await really_kick_object(x, y);
+        game.kickedobj = null;
+    }
+    return res;
+}
+
+/* C ref: display.h level.objects[x][y] -- the top object of the pile */
+function objects_at_top(x, y) {
+    for (const o of game.level?.objects || [])
+        if (o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR')
+            return o;
+    return null;
+}
+
+// C ref: shk.c find_objowner()
+function find_objowner(obj, x, y) {
+    let shkp, deflt_shkp = null;
+
+    if (obj.where === 'OBJ_ONBILL')
+        throw new Error('find_objowner(): used-up bill object not ported yet');
+    const where = in_rooms(x, y, SHOPBASE);
+
+    /* conceptually object could be inside up to 4 rooms simultaneously;
+       in practice it will usually be one room but can sometimes be two;
+       check shk and bill for each room rather than just the first;
+       fallback to the first shk if obj isn't on the relevant bill(s) */
+    for (let i = 0; i < where.length; i++)
+        if ((shkp = shop_keeper(where.charCodeAt(i))) != null) {
+            if (onshopbill(obj, shkp, true))
+                return shkp;
+            if (!deflt_shkp)
+                deflt_shkp = shkp;
+        }
+    return deflt_shkp;
+}
+
+// C ref: dothrow.c hero_breaks() -- the "doesn't break" outcome; breaking
+// (breakmsg(), breakobj()) is not ported yet
+async function hero_breaks(obj, x, y, breakflags) {
+    void x; void y; void breakflags;
+    /* only call breaktest if caller hasn't already specified the outcome */
+    if (!breaktest(obj))
+        return false;
+    throw new Error('hero_breaks(): breakmsg()/breakobj() not ported yet');
+}
+
+// C ref: dokick.c really_kick_object() -- guts of kick_object
+async function really_kick_object(x, y) {
+    const u = game.u;
+    let range;
+    let shkp = null;
+    let trap;
+    let costly, isgold, slide = false;
+    const kobj = game.kickedobj;
+
+    /* gk.kickedobj should always be set due to conditions of call */
+    if (!kobj || kobj.otyp === BOULDER
+        || kobj === game.uball || kobj === game.uchain)
+        return 0;
+
+    if ((trap = t_at(x, y)) != null) {
+        if ((is_pit(trap.ttyp) && !Passes_walls()) || trap.ttyp === WEB)
+            throw new Error('really_kick_object(): object in a pit or web not ported yet');
+        if (trap.ttyp === STATUE_TRAP)
+            throw new Error('really_kick_object(): activate_statue_trap() not ported yet');
+    }
+
+    if (uhave(FUMBLING) && !rn2(3)) {
+        await Your("clumsy kick missed.");
+        return 1;
+    }
+
+    if (!game.uarmf && kobj.otyp === CORPSE
+        && (kobj.corpsenm === PM_COCKATRICE || kobj.corpsenm === PM_CHICKATRICE)
+        && !uhave(STONE_RES))
+        throw new Error('really_kick_object(): kicking a cockatrice corpse barefoot not ported yet');
+
+    isgold = (kobj.oclass === COIN_CLASS);
+    {
+        let k_owt = kobj.owt;
+
+        /* for non-gold stack, 1 item will be split off below (unless an
+           early return occurs, so we aren't moving the split to here);
+           calculate the range for that 1 rather than for the whole stack */
+        if (kobj.quan > 1 && !isgold) {
+            const save_quan = kobj.quan;
+
+            kobj.quan = 1;
+            k_owt = weight(kobj);
+            kobj.quan = save_quan;
+        }
+
+        /* range < 2 means the object will not move
+           (maybe dexterity should also figure here) */
+        range = Math.trunc(acurrstr() / 2) - Math.trunc(k_owt / 40);
+    }
+
+    if (martial())
+        range += rnd(3);
+
+    if (is_pool(x, y)) {
+        /* you're in the water too; significantly reduce range */
+        range = Math.trunc(range / 3) + 1; /* {1,2}=>1, {3,4,5}=>2, {6,7,8}=>3 */
+    } else if (Is_airlevel(u.uz) || Is_waterlevel(u.uz)) {
+        /* you're in air, since is_pool did not match */
+        range += rnd(3);
+    } else {
+        if (is_ice(x, y))
+            range += rnd(3), slide = true;
+        if (kobj.greased)
+            range += rnd(3), slide = true;
+    }
+
+    /* Mjollnir is magically too heavy to kick */
+    if (kobj.oartifact === ART_MJOLLNIR)
+        range = 1;
+
+    /* see if the object has a place to move into */
+    if (!isok(x + u.dx, y + u.dy)
+        || !ZAP_POS(game.level.at(x + u.dx, y + u.dy).typ)
+        || closed_door(x + u.dx, y + u.dy))
+        range = 1;
+
+    /* 5.0: this used to skip 'costly' handling if kickedobj->no_charge
+       was set but that optimization could result in no_charge staying set
+       for objects kicked out of the shop */
+    shkp = find_objowner(kobj, x, y);
+    costly = !!(shkp && (costly_spot(x, y) || (costly_adjacent(shkp, x, y)
+                                                && kobj.unpaid)));
+    /* 5.0: give feedback about the item being kicked; some follow-on
+       messages refer to "it" */
+    await Norep(`You kick ${!isgold ? singular(kobj, doname) : doname(kobj)}.`);
+
+    if (IS_OBSTRUCTED(game.level.at(x, y).typ) || closed_door(x, y)) {
+        if ((!martial() && rn2(20) > ACURR(A_DEX))
+            || IS_OBSTRUCTED(game.level.at(u.ux, u.uy).typ)
+            || closed_door(u.ux, u.uy)) {
+            if (Blind())
+                await pline("It doesn't come loose.");
+            else
+                await pline(`${The(distant_name(kobj, xname))} ${otense(kobj, "do")}n't come loose.`);
+            return (!rn2(3) || martial()) ? 1 : 0;
+        }
+        if (Blind())
+            await pline("It comes loose.");
+        else
+            await pline(`${The(distant_name(kobj, xname))} ${otense(kobj, "come")} loose.`);
+        obj_extract_self(kobj);
+        newsym(x, y);
+        /* strchr(u.urooms, '\0') finds the terminator, so an empty
+           in_rooms() result counts as found */
+        const r0 = in_rooms(x, y, SHOPBASE).charAt(0);
+        if (costly && (!costly_spot(u.ux, u.uy)
+                       || !(r0 === '' || (u.urooms || '').includes(r0)))) {
+            if (!kobj.no_charge)
+                await addtobill(kobj, false, false, false);
+            else /* don't leave no_charge set when outside shop */
+                kobj.no_charge = 0;
+        }
+        if (!(await flooreffects(kobj, u.ux, u.uy, "fall"))) {
+            place_object(kobj, u.ux, u.uy);
+            impact_disturbs_zombies(kobj, true);
+            stackobj(kobj);
+            newsym(u.ux, u.uy);
+        }
+        return 1;
+    }
+
+    /* a box gets a chance of breaking open here */
+    if (kobj.otyp === LARGE_BOX || kobj.otyp === CHEST) { /* Is_box */
+        const otrp = kobj.otrapped;
+
+        if (range < 2)
+            await pline("THUD!");
+        await container_impact_dmg(kobj, x, y);
+        if (kobj.olocked) {
+            if (!rn2(5) || (martial() && !rn2(2))) {
+                await You("break open the lock!");
+                await breakchestlock(kobj, false);
+                if (otrp)
+                    await chest_trap(kobj, LEG, false);
+                return 1;
+            }
+        } else {
+            if (!rn2(3) || (martial() && !rn2(2))) {
+                await pline_The("lid slams open, then falls shut.");
+                kobj.lknown = 1;
+                if (otrp)
+                    await chest_trap(kobj, LEG, false);
+                return 1;
+            }
+        }
+        if (range < 2)
+            return 1;
+        /* else let it fall through to the next cases... */
+    }
+
+    /* fragile objects should not be kicked */
+    if (await hero_breaks(kobj, kobj.ox, kobj.oy, 0))
+        return 1;
+
+    /* too heavy to move.  range is calculated as potential distance from
+     * player, so range == 2 means the object may move up to one square
+     * from its current position
+     */
+    if (range < 2) {
+        if (!(kobj.otyp === LARGE_BOX || kobj.otyp === CHEST))
+            await pline("Thump!");
+        return (!rn2(3) || martial()) ? 1 : 0;
+    }
+
+    if (kobj.quan > 1 && isgold)
+        throw new Error('really_kick_object(): kicking a stack of coins (scatter()) not ported yet');
+    void slide; void costly;
+    throw new Error('really_kick_object(): kicked object flight (bhit(KICKED_WEAPON)) not ported yet');
 }

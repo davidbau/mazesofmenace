@@ -8,7 +8,7 @@
 // u.weapon_skills[] (you.h) lives on game.u.weapon_skills.
 
 import { game } from './gstate.js';
-import { rnd, d } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 import {
     P_NONE, P_NUM_SKILLS, P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_EXPERT,
     P_HEALING_SPELL, P_CLERIC_SPELL, P_ATTACK_SPELL, P_ENCHANTMENT_SPELL,
@@ -24,7 +24,7 @@ import * as O from './objects.js';
 import * as M from './monsters.js';
 import { spell_skilltype, skill_based_spellbook_id } from './spell.js';
 import { ART_SUNSWORD, ART_SNICKERSNEE } from './artilist.js';
-import { touch_artifact } from './artifact.js';
+import { touch_artifact_mon } from './artifact.js';
 import { is_weptool } from './mkobj.js';
 import { is_pool } from './makemon.js';
 import { is_swimmer, passes_walls, is_undead, is_demon, is_were,
@@ -569,7 +569,7 @@ function can_touch_safely(mtmp, otmp) {
     if (objects[otyp].oc_material === O.SILVER && mon_hates_silver(mtmp)
         && (otyp !== O.BELL_OF_OPENING || !is_covetous(mdat)))
         return false;
-    if (!touch_artifact(otmp, mtmp))
+    if (!touch_artifact_mon(otmp, mtmp))
         return false;
     return true;
 }
@@ -837,7 +837,7 @@ export function select_hwep(mtmp) {
     /* prefer artifacts to everything else */
     for (const o of minv(mtmp)) {
         if (o.oclass === WEAPON_CLASS && o.oartifact
-            && touch_artifact(o, mtmp)
+            && touch_artifact_mon(o, mtmp)
             && ((strong && !wearing_shield)
                 || !objects[o.otyp].oc_bimanual))
             return o;
@@ -1156,6 +1156,45 @@ export function lose_weapon_skill(n) /* number of slots to lose; normally one */
                to that effect would seem pretty confusing.... */
         }
     }
+}
+
+// C ref: weapon.c drain_weapon_skill()
+export async function drain_weapon_skill(n) { /* number of skills to drain */
+    const u = game.u;
+    let skill;
+    let i;
+    let curradv;
+    let prevadv;
+    const tmpskills = new Array(P_NUM_SKILLS).fill(0);
+
+    while (--n >= 0) {
+        if (u.skills_advanced) {
+            /* Pick a random skill, deleting it from the list. */
+            i = rn2(u.skills_advanced);
+            skill = u.skill_record[i];
+            tmpskills[skill] = 1;
+            for (; i < u.skills_advanced - 1; i++) {
+                u.skill_record[i] = u.skill_record[i + 1];
+            }
+            u.skills_advanced--;
+            if (P_SKILL(skill) <= P_UNSKILLED)
+                throw new Error(`drain_weapon_skill (${skill})`); /* panic() */
+            set_P_SKILL(skill, P_SKILL(skill) - 1); /* drop skill one level */
+            /* refund slots used for skill */
+            u.weapon_slots = (u.weapon_slots || 0) + slots_required(skill);
+            /* drain skill training to a value appropriate for new level */
+            curradv = practice_needed_to_advance(P_SKILL(skill));
+            prevadv = practice_needed_to_advance(P_SKILL(skill) - 1);
+            if (P_ADVANCE(skill) >= curradv)
+                set_P_ADVANCE(skill, prevadv + rn2(curradv - prevadv));
+        }
+    }
+
+    for (skill = 0; skill < P_NUM_SKILLS; skill++)
+        if (tmpskills[skill]) {
+            await pline(`You forget ${P_SKILL(skill) >= P_BASIC ? "some of " : ""}your training in ${
+                P_NAME(skill)}.`);
+        }
 }
 
 // C ref: weapon.c could_advance()

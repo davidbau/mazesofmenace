@@ -5,6 +5,8 @@
 // monnear(), mon_allowflags().
 
 import { game } from './gstate.js';
+import { remove_worm, wormgone, worm_known, worm_cross, count_wsegs, get_wormno,
+         initworm, place_worm_tail_randomly } from './worm.js';
 import { healup_nocure } from './potion.js';
 import { mcureblindness } from './muse.js';
 import { clear_bypasses, bypass_obj } from './worn.js';
@@ -72,7 +74,8 @@ import { attacktype_fordmg, resists_poison } from './mondata.js';
 import { visible_region_at, cmap_to_glyph, S_poisoncloud, create_gas_cloud } from './region.js';
 import { corpse_intrinsic, should_givit } from './eat.js';
 import { delobj } from './invent.js';
-import { grow_up, goodpos } from './makemon.js';
+import { unpunish } from './read.js';
+import { grow_up, goodpos, place_monster } from './makemon.js';
 import { enexto, rloc_to_core } from './teleport.js';
 import { PICK_AXE, DWARVISH_MATTOCK, AXE, BATTLE_AXE, WEAPON_CLASS,
          TOOL_CLASS } from './objects.js';
@@ -114,10 +117,14 @@ import { flooreffects } from './do.js';
 import { s_suffix } from './hacklib.js';
 import { change_luck, adjalign } from './attrib.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
-import { You_hear, growl } from './sounds.js';
+import { You_hear, growl, maybe_gasp } from './sounds.js';
+import { PLNMSG_GROWL, DEAF } from './const.js';
+import { little_to_big } from './mondata.js';
+import { quest_info } from './questpgr.js';
 import { is_lightblocker_mappear, does_block, unblock_point,
          couldsee } from './vision.js';
 import { M1_HUMANOID } from './monsters.js';
+import { vtense } from './objnam.js';
 import { sengr_at } from './makemon.js';
 import { del_engr_at } from './engrave.js';
 import { m_canseeu } from './monmove.js';
@@ -248,9 +255,9 @@ function mon_leaving_level(mon) {
 
     if (onmap) {
         if (mon.wormno)
-            throw new Error('mon_leaving_level(): remove_worm() not ported yet');
-        /* remove_monster(mx, my) */
-        lst.splice(i, 1);
+            remove_worm(mon);
+        else
+            lst.splice(i, 1); /* remove_monster(mx, my) */
     }
     if (onmap) {
         mon.mundetected = 0; /* for migration; doesn't matter for death */
@@ -368,7 +375,7 @@ function m_detach(mtmp, mptr, due_to_death) {
         if (mtmp.isshk)
             throw new Error('m_detach(): shkgone() not ported yet');
         if (mtmp.wormno)
-            throw new Error('m_detach(): wormgone() not ported yet');
+            wormgone(mtmp);
         /* In_endgame(&u.uz): MON_ENDGAME_FREE -- the endgame isn't reached */
 
         mtmp.mstate = (mtmp.mstate || 0) | MON_DETACH;
@@ -1003,6 +1010,8 @@ function finish_meating(mtmp) {
 // C ref: mon.c peacefuls_respond()
 /* make other peaceful monsters react */
 async function peacefuls_respond(mtmp) {
+    const mndx = monsndx(mtmp.data);
+
     for (let mon = game.fmon; mon; mon = mon.nmon) {
         if (DEADMONSTER(mon))
             continue;
@@ -1011,9 +1020,112 @@ async function peacefuls_respond(mtmp) {
 
         if (!(mon.data.mflags1 & M1_MINDLESS) && mon.mpeaceful
             && couldsee(mon.mx, mon.my) && !mon.msleeping
-            && mon.mcansee && m_canseeu(mon))
-            throw new Error('peacefuls_respond(): peaceful monster reactions not ported yet');
+            && mon.mcansee && m_canseeu(mon)) {
+            let buf = '';
+            let exclaimed = false, needpunct = false, alreadyfleeing;
+            const is_watch = ptr => ptr === MM.mons[MM.PM_WATCHMAN]
+                                    || ptr === MM.mons[MM.PM_WATCH_CAPTAIN];
+            const Deaf = () => !!(game.u.uprops[DEAF]?.intrinsic
+                                  || game.u.uprops[DEAF]?.extrinsic);
+
+            if (humanoid(mon.data) || mon.isshk || mon.ispriest) {
+                if (is_watch(mon.data)) {
+                    /* SetVoice(mon, 0, 80, 0); verbalize() */
+                    if (!Deaf())
+                        await pline('"Halt!  You\'re under arrest!"');
+                    await angry_guards(Deaf());
+                } else {
+                    if (!Deaf() && !rn2(5)) {
+                        const gasp = maybe_gasp(mon);
+
+                        if (gasp) {
+                            if (gasp.slice(0, 4).toLowerCase() === "gasp") {
+                                buf = `${Monnam(mon)} gasps`;
+                                needpunct = true;
+                            } else {
+                                buf = `${Monnam(mon)} exclaims "${gasp}"`;
+                            }
+                            exclaimed = true;
+                        }
+                    }
+                    /* shopkeepers and temple priests might gasp in
+                       surprise, but they won't become angry here;
+                       quest leader will only get angry if hero attacks
+                       own quest guardians */
+                    if (mon.isshk || mon.ispriest
+                        || (mon.data === MM.mons[quest_info(MM.MS_LEADER)]
+                            && mtmp.data !== MM.mons[game.urole.guardnum])) {
+                        if (exclaimed)
+                            await pline(`${buf} then shrugs.`); /* pline_mon() */
+                        continue;
+                    }
+
+                    if (mon.data.mlevel < rn2(10)
+                        /* don't have quest guardians turn to flee */
+                        && (mon.data !== MM.mons[game.urole.guardnum])) {
+                        alreadyfleeing = (mon.mflee || mon.mfleetim);
+                        await monflee(mon, rn2(50) + 25, true, !exclaimed);
+                        if (exclaimed) {
+                            if (game.flags.verbose && !alreadyfleeing) {
+                                buf += " and then turns to flee.";
+                                needpunct = false;
+                            }
+                        } else
+                            exclaimed = true; /* got msg from monflee() */
+                    }
+                    if (buf)
+                        await pline(`${buf}${needpunct ? "." : ""}`); /* pline_mon() */
+                    if (mon.mtame) {
+                        ; /* mustn't set mpeaceful to 0 as below;
+                           * perhaps reduce tameness? */
+                    } else {
+                        mon.mpeaceful = 0;
+                        mon.mstrategy &= ~STRAT_WAITMASK;
+                        adjalign(-1);
+                        if (!exclaimed)
+                            await pline(`${Monnam(mon)} gets angry!`); /* pline_mon() */
+                    }
+                }
+            } else if (mon.data.mlet === mtmp.data.mlet
+                       && big_little_match(mndx, monsndx(mon.data))
+                       && !rn2(3)) {
+                if (!rn2(4)) {
+                    await growl(mon);
+                    exclaimed = (game.iflags.last_msg === PLNMSG_GROWL);
+                }
+                if (rn2(6)) {
+                    alreadyfleeing = (mon.mflee || mon.mfleetim);
+                    await monflee(mon, rn2(25) + 15, true, !exclaimed);
+                    if (exclaimed && !alreadyfleeing)
+                        /* word like a separate sentence so that we
+                           don't have to poke around inside growl() */
+                        await pline("And then starts to flee.");
+                }
+            }
+        }
     }
+}
+
+// C ref: mondata.c big_little_match()
+function big_little_match(montyp1, montyp2) {
+    let l, b;
+
+    /* simplest case: both are same pm */
+    if (montyp1 === montyp2)
+        return true;
+    /* assume it isn't possible to grow from one class letter to another */
+    if (MM.mons[montyp1].mlet !== MM.mons[montyp2].mlet)
+        return false;
+    /* check whether montyp1 can grow up into montyp2 */
+    for (l = montyp1; (b = little_to_big(l)) !== l; l = b)
+        if (b === montyp2)
+            return true;
+    /* check whether montyp2 can grow up into montyp1 */
+    for (l = montyp2; (b = little_to_big(l)) !== l; l = b)
+        if (b === montyp1)
+            return true;
+    /* neither grows up to become the other; no match */
+    return false;
 }
 
 // C ref: mon.c setmangry()
@@ -1108,17 +1220,12 @@ export async function wakeup(mtmp, via_attack) {
 }
 
 /* C ref: mondata.h completelyburns(), completelyrusts(), completelyrots() */
-function completelyburns(ptr) {
+export function completelyburns(ptr) {
     return ptr === mons[PM_PAPER_GOLEM] || ptr === mons[PM_STRAW_GOLEM];
 }
-function completelyrusts(ptr) { return ptr === mons[PM_IRON_GOLEM]; }
-function completelyrots(ptr) {
+export function completelyrusts(ptr) { return ptr === mons[PM_IRON_GOLEM]; }
+export function completelyrots(ptr) {
     return ptr === mons[PM_WOOD_GOLEM] || ptr === mons[PM_LEATHER_GOLEM];
-}
-// C ref: worm.c worm_known()
-function worm_known(worm) {
-    void worm;
-    throw new Error('worm_known() not ported yet');
 }
 
 /* C ref: mondata.h is_clinger() */
@@ -1765,8 +1872,13 @@ function* newcham_g(mtmp, mdat, ncflags) {
     if (In_endgame(game.u.uz) && is_mplayer(olddata) && mtmp.mgivenname)
         throw new Error('newcham(): endgame mplayer names not ported yet');
 
-    if (mtmp.wormno) /* throw tail away */
-        throw new Error('newcham(): wormgone() not ported yet');
+    if (mtmp.wormno) { /* throw tail away */
+        const mx = mtmp.mx, my = mtmp.my;
+
+        wormgone(mtmp); /* discards tail segments, takes head off the map */
+        /* put the head back; it will morph into mtmp's new form */
+        place_monster(mtmp, mx, my);
+    }
     if ((mtmp.m_ap_type || 0) && mdat.mlet !== MM.S_MIMIC)
         seemimic(mtmp); /* revert to normal monster */
 
@@ -1804,8 +1916,10 @@ function* newcham_g(mtmp, mdat, ncflags) {
     if (game.u.ustuck === mtmp)
         throw new Error('newcham(): engulfing/sticky hero not ported yet');
 
-    if (mdat === mons[MM.PM_LONG_WORM])
-        throw new Error('newcham(): get_wormno()/initworm() not ported yet');
+    if (mdat === mons[MM.PM_LONG_WORM] && (mtmp.wormno = get_wormno()) !== 0) {
+        initworm(mtmp, rn2(5));
+        place_worm_tail_randomly(mtmp, mtmp.mx, mtmp.my);
+    }
 
     mtmp.meverseen = 0; /* never seen mon in present shape; newsym() ->
                          * display_monster() may change it right back */
@@ -2320,9 +2434,8 @@ function mm_displacement(magr, mdef) {
         /* no displacing grid bugs diagonally */
         && !(magr.mx !== mdef.mx && magr.my !== mdef.my
              && NODIAG(monsndx(pd)))
-        /* no displacing trapped monsters or multi-location longworms
-           (long worms aren't ported yet) */
-        && !mdef.mtrapped && !mdef.wormno
+        /* no displacing trapped monsters or multi-location longworms */
+        && !mdef.mtrapped && (!mdef.wormno || !count_wsegs(mdef))
         /* riders can move anything; others, same size or smaller only */
         && (is_rider(pa) || pa.msize >= pd.msize))
         return ALLOW_MDISP;
@@ -2439,9 +2552,12 @@ export function mfndpos(mon, data, flag) {
                     && (nodiag
                         || (IS_DOOR(nowtyp) && ((lev.at(x, y).doormask ?? 0) & ~D_BROKEN))
                         || (IS_DOOR(ntyp) && ((nloc.doormask ?? 0) & ~D_BROKEN))
-                        /* Is_rogue_level() and long worm segment crossing:
-                           not ported yet */
-                        ))
+                        || ((IS_DOOR(nowtyp) || IS_DOOR(ntyp))
+                            && Is_rogue_level(game.u.uz))
+                        /* mustn't pass between adjacent long worm segments,
+                           but can attack that way */
+                        || (m_at(x, ny) && m_at(nx, y) && worm_cross(x, y, nx, ny)
+                            && !m_at(nx, ny) && (nx !== game.u.ux || ny !== game.u.uy))))
                     continue;
                 if ((!lavaok || !(flag & ALLOW_WALL)) && ntyp === LAVAWALL)
                     continue;
@@ -2691,8 +2807,11 @@ export async function m_consume_obj(mtmp, otmp) {
     }
     if (otmp.cobj && otmp.cobj.length) /* Has_contents(otmp) */
         throw new Error('m_consume_obj(): meatbox() not ported yet');
-    if (otmp === game.uball || otmp === game.uchain) {
-        throw new Error('m_consume_obj(): unpunish() not ported yet');
+    if (otmp === game.uball) {
+        await unpunish();
+        delobj(otmp);
+    } else if (otmp === game.uchain) {
+        await unpunish(); /* frees uchain */
     } else {
         const vis = canseemon(mtmp);
         const corpsenm = (otmp.otyp === CORPSE ? otmp.corpsenm : NON_PM);
@@ -2928,4 +3047,58 @@ export function maybe_unhide_at(x, y) {
                  || !can_hide_under_obj(vobj_at(x, y)))) /* level.objects[x][y] */
             || (mtmp.data.mlet === S_EEL && !is_pool(x, y))))
         hideunder(mtmp);
+}
+
+// C ref: mon.c angry_guards() -- the town watch turns hostile
+export async function angry_guards(silent) {
+    const is_watch = ptr => ptr === MM.mons[MM.PM_WATCHMAN]
+                            || ptr === MM.mons[MM.PM_WATCH_CAPTAIN];
+    /* C ref: hack.h m_next2u() */
+    const m_next2u = m => dist2(m.mx, m.my, game.u.ux, game.u.uy) < 3;
+    const plur = n => (n === 1 ? "" : "s");
+    let ct = 0, nct = 0, sct = 0, slct = 0;
+
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        if (DEADMONSTER(mtmp))
+            continue;
+        if (is_watch(mtmp.data) && mtmp.mpeaceful) {
+            ct++;
+            if (canspotmon(mtmp) && mtmp.mcanmove) {
+                if (m_next2u(mtmp))
+                    nct++;
+                else
+                    sct++;
+            }
+            if (mtmp.msleeping || mtmp.mfrozen) {
+                slct++;
+                mtmp.msleeping = mtmp.mfrozen = 0;
+            }
+            mtmp.mpeaceful = 0;
+        }
+    }
+    if (ct) {
+        if (!silent) { /* do we want pline msgs? */
+            let buf;
+
+            if (slct) { /* sleeping guard(s) */
+                buf = `guard${plur(slct)}`;
+                await pline(`The ${buf} ${vtense(buf, "wake")} up.`);
+            }
+
+            if (nct) { /* seen/sensed adjacent guard(s) */
+                buf = `guard${plur(nct)}`;
+                await pline(`The ${buf} ${vtense(buf, "get")} angry!`);
+            } else if (sct) { /* seen/sensed non-adjacent guard(s) */
+                buf = `guard${plur(sct)}`;
+                await pline(`${(sct === 1) ? "An angry" : "Angry"} ${buf} ${
+                    vtense(buf, "are")} approaching!`);
+            } else {
+                buf = (ct === 1) ? "a guard's" : "guards'";
+                /* Soundeffect(se_shrill_whistle, 100) */
+                await You_hear(`the shrill sound of ${buf} whistle${plur(ct)}.`);
+            }
+        }
+        return true;
+    }
+    return false;
 }

@@ -875,7 +875,7 @@ export async function look_all(nearby, doMons, state = game) {
             }
             if (!description) continue;
 
-            const configured = state.iflags?.getpos_coords ?? GPCOORDS_NONE;
+            const configured = state.iflags?.getpos_coords;
             const mode = configured !== GPCOORDS_NONE ? configured : GPCOORDS_MAP;
             if (count === 1) {
                 const which = doMons ? 'monsters' : 'objects';
@@ -1029,7 +1029,7 @@ function displayedGlyphCharacter(glyph, x, y, state) {
 // C ref: pager.c look_traps(). The scan is y-major, then x-minor.
 export async function look_traps(nearby, state = game) {
     const { loX, loY, hiX, hiY } = look_region_nearby(nearby, state);
-    const configured = state.iflags?.getpos_coords ?? GPCOORDS_NONE;
+    const configured = state.iflags?.getpos_coords;
     const mode = configured !== GPCOORDS_NONE
         ? configured : GPCOORDS_MAP;
     const lines = [];
@@ -1099,7 +1099,7 @@ function isCmapEngraving(index) {
 // C ref: pager.c look_engrs() (2143-2228). The scan is y-major, then x-minor.
 export async function look_engrs(nearby, state = game) {
     const { loX, loY, hiX, hiY } = look_region_nearby(nearby, state);
-    const configured = state.iflags?.getpos_coords ?? GPCOORDS_NONE;
+    const configured = state.iflags?.getpos_coords;
     const mode = configured !== GPCOORDS_NONE
         ? configured : GPCOORDS_MAP;
     const lines = [];
@@ -1789,7 +1789,9 @@ export function do_screen_description(cc, looked, sym, state = game) {
             // ends there with nothing printed; a Linux build overflows and
             // carries on. Every caller passes `aborted` to end.js NH_abort();
             // scripts/pager-engraving-look-abort.test.mjs pins the boundary
-            // and checks the callers.
+            // and checks the callers, and the macOS recording
+            // recordings/pager.c/do_screen_description-engraving-text-226-aborts
+            // ends a segment at getpos.js auto_describe().
             let tempBuf = ` (${firstmatch}`;
             if (tempBuf.length > BUFSZ - 1)
                 return { found, out, firstmatch, aborted: true };

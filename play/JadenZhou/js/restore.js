@@ -23,10 +23,11 @@ import { savelev, rest_adjust_levelflags, relative_time_to_moves,
 import { GameMap, makeLocation } from './game.js';
 import { mons, M1_CONCEAL } from './monsters.js';
 import { objects, NUM_OBJECTS, PICK_AXE, GRAPPLING_HOOK } from './objects.js';
-import { ledger_no, assign_level } from './dungeon.js';
+import { ledger_no, assign_level, load_mapseen } from './dungeon.js';
 import { stairway_add } from './mklev.js';
 import { stairway_at } from './display.js';
 import { place_monster, pm_to_cham, hideunder } from './makemon.js';
+import { rest_worm, place_wsegs } from './worm.js';
 import { set_ustuck } from './uhitm.js';
 import { monsndx } from './mondata.js';
 import { rnd } from './rng.js';
@@ -49,7 +50,32 @@ import { check_special_room } from './hack.js';
 import { l_nhcore_init } from './nhlua.js';
 import { NHF_BONESFILE, REST_GSTATE, REST_LEVELS, REST_CURRENT_LEVEL, WRITING,
          FREEING, W_WEP, W_BALL, W_CHAIN, NON_PM,
-         PROT_FROM_SHAPE_CHANGERS, ismnum } from './const.js';
+         PROT_FROM_SHAPE_CHANGERS, ismnum, DEFUNCT_MONSTER, MAGIC_PORTAL,
+         TRICKED } from './const.js';
+import { next_ident } from './mkobj.js';
+import { propagate, peace_minded, set_malign } from './makemon.js';
+import { Is_branchlev } from './dungeon.js';
+import { restshk, set_residency } from './shk.js';
+import { restpriest } from './priest.js';
+import { deltrap } from './trap.js';
+import { killer } from './topten.js';
+import { done } from './end.js';
+import { fruitadd } from './options.js';
+import { SLIME_MOLD, BRASS_LANTERN, OIL_LAMP, CANDELABRUM_OF_INVOCATION,
+         TALLOW_CANDLE, WAX_CANDLE, POT_OIL } from './objects.js';
+import { S_UNICORN, M2_JEWELS } from './monsters.js';
+
+/* obj.h age_is_relative() */
+function age_is_relative(otmp) {
+    return (otmp.otyp === BRASS_LANTERN || otmp.otyp === OIL_LAMP
+            || otmp.otyp === CANDELABRUM_OF_INVOCATION
+            || otmp.otyp === TALLOW_CANDLE || otmp.otyp === WAX_CANDLE
+            || otmp.otyp === POT_OIL);
+}
+/* mondata.h is_unicorn() */
+function is_unicorn(ptr) {
+    return ptr.mlet === S_UNICORN && (ptr.mflags2 & M2_JEWELS) !== 0;
+}
 
 // ---------------------------------------------------------------------
 // id links
@@ -86,13 +112,21 @@ function saved_id_maps() {
     return { objs, mons: mons_ };
 }
 
-/* point the links read since fixups[from] at what they name */
+/* point the links read since fixups[from] at what they name; links read
+   from a bones file hold the old game's ids, which getlev() renumbered
+   (the id mapping) */
 function resolve_saved_ids(nhfp, from = 0) {
     const fixups = nhfp.fixups.splice(from);
     if (!fixups.length) return;
+    const ghostly = (nhfp.ftype === NHF_BONESFILE);
     const { objs, mons: monmap } = saved_id_maps();
     for (const f of fixups) {
-        const v = (f.kind === 'O' ? objs.get(f.id) : monmap.get(f.id)) || null;
+        let id = f.id;
+        if (ghostly) {
+            const nid = { v: 0 };
+            id = lookup_id_mapping(id, nid) ? nid.v : -1;
+        }
+        const v = (f.kind === 'O' ? objs.get(id) : monmap.get(id)) || null;
         if (f.holder instanceof Map)
             f.holder.set(f.key, v);
         else
@@ -153,9 +187,18 @@ function restlevchn(nhfp) {
 
 // C ref: restore.c restdamage()
 function restdamage(nhfp) {
+    const ghostly = (nhfp.ftype === NHF_BONESFILE);
     const dl = Sfi(nhfp, "damage");
-    if (dl !== null && dl !== undefined)
+    if (dl !== null && dl !== undefined) {
+        if (ghostly) {
+            const list = Array.isArray(dl) ? dl : [];
+            if (!Array.isArray(dl))
+                for (let d = dl; d; d = d.next) list.push(d);
+            for (const tmp_dam of list)
+                tmp_dam.when += (game.moves - game.omoves);
+        }
         game.level.damagelist = dl;
+    }
 }
 
 // C ref: restore.c restobj()
@@ -174,7 +217,10 @@ function restobj(nhfp) {
         const buflen = Sfi(nhfp, "obj-omonst_length");
         if (buflen > 0) {
             /* this is actually a monst struct, so we
-               can just defer to restmon() here */
+               can just defer to restmon() here; savemon() wrote its own
+               "monst-monst_length" record ahead of the monst (C's binary
+               save reads that int as the omonst length) */
+            Sfi(nhfp, "monst-monst_length");
             otmp.oextra.omonst = restmon(nhfp);
         }
     } else
@@ -199,7 +245,6 @@ function restobjchn(nhfp, frozen) {
     const shape = Sfi(nhfp, "obj-chain_shape");
     const list = [];
 
-    void frozen;
     while (1) {
         const buflen = Sfi(nhfp, "obj-obj_length");
         if (buflen === -1)
@@ -208,8 +253,20 @@ function restobjchn(nhfp, frozen) {
         const otmp = restobj(nhfp);
         list.push(otmp);
 
-        if (ghostly)
-            throw new Error('restobjchn(): bones files not ported yet');
+        if (ghostly) {
+            const nid = next_ident();
+
+            add_id_mapping(otmp.o_id, nid);
+            otmp.o_id = nid;
+        }
+        if (ghostly && otmp.otyp === SLIME_MOLD)
+            ghostfruit(otmp);
+        /* Ghost levels get object age shifted from old player's clock
+         * to new player's clock.  Assumption: new player arrived
+         * immediately after old player died.
+         */
+        if (ghostly && !frozen && !age_is_relative(otmp))
+            otmp.age = g.moves - g.omoves + otmp.age;
 
         /* get contents of a container or statue */
         if (otmp.cobj) { /* Has_contents(otmp) */
@@ -274,10 +331,23 @@ function restmonchn(nhfp) {
         const mtmp = restmon(nhfp);
         list.push(mtmp);
 
-        if (ghostly)
-            throw new Error('restmonchn(): bones files not ported yet');
+        if (ghostly) {
+            const nid = next_ident();
+
+            add_id_mapping(mtmp.m_id, nid);
+            mtmp.m_id = nid;
+        }
         const offset = mtmp.mnum;
         mtmp.data = mons[offset];
+        if (ghostly) {
+            const mndx = (mtmp.cham === NON_PM) ? monsndx(mtmp.data)
+                                                : mtmp.cham;
+
+            if (!propagate(mndx, true, ghostly)) {
+                /* cookie to trigger purge in getbones() */
+                mtmp.mhpmax = DEFUNCT_MONSTER;
+            }
+        }
 
         if (mtmp.minvent) {
             mtmp.minvent = restobjchn(nhfp, false);
@@ -308,9 +378,9 @@ function restmonchn(nhfp) {
         }
 
         if (mtmp.isshk)
-            throw new Error('restmonchn(): restshk() not ported yet');
+            restshk(mtmp, ghostly);
         if (mtmp.ispriest)
-            throw new Error('restmonchn(): restpriest() not ported yet');
+            restpriest(mtmp, ghostly);
 
         if (!ghostly) {
             const pa = g.context?.polearm;
@@ -518,8 +588,18 @@ function restore_dungeon(nhfp) {
     if (li) g.level_info = li; else delete g.level_info;
     const ip = Sfi(nhfp, "svi.inv_pos");
     if (ip) g.inv_pos = ip;
-    const ms = Sfi(nhfp, "mapseen");
-    if (ms) g.mapseenchn = ms;
+    const count = Sfi(nhfp, "mapseen_count");
+    let curr_ms, last_ms = null;
+    g.mapseenchn = null;
+    for (let i = 0; i < count; i++) {
+        curr_ms = load_mapseen(nhfp);
+        curr_ms.next = null;
+        if (last_ms)
+            last_ms.next = curr_ms;
+        else
+            g.mapseenchn = curr_ms;
+        last_ms = curr_ms;
+    }
 }
 
 // C ref: artifact.c restore_artifacts()
@@ -804,7 +884,13 @@ export async function getlev(nhfp, pid, lev, fixups_from) {
     g.program_state.in_getlev = true;
 
     if (ghostly)
-        throw new Error('getlev(): bones files not ported yet');
+        clear_id_mapping();
+
+    /* Load the old fruit info.  We have to do it first, so the
+     * information is available when restoring the objects.
+     */
+    if (ghostly)
+        g.oldfruit = loadfruitchn(nhfp);
 
     /* First some sanity checks */
     const hpid = Sfi(nhfp, "gamestate-hackpid");
@@ -818,7 +904,7 @@ export async function getlev(nhfp, pid, lev, fixups_from) {
             trickbuf = `This is level ${dlvl}, not ${lev}!`;
         if (g.flags.debug)
             await pline(trickbuf);
-        throw new Error(`getlev(): trickery() not ported yet: ${trickbuf}`);
+        await trickery(trickbuf);
     }
     /* svl.level is overwritten from the file */
     g.level = new GameMap();
@@ -879,9 +965,10 @@ export async function getlev(nhfp, pid, lev, fixups_from) {
 
     /* reset level.monsters for new level */
     L.monsters = [];
+    L.wsegs = new Map(); /* worm tail cells, placed by place_wsegs() */
     for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
         if (mtmp.isshk)
-            throw new Error('getlev(): set_residency() not ported yet');
+            set_residency(mtmp, false);
         if (u.usteed_mid && mtmp.m_id === u.usteed_mid) {
             /* steed is kept on fmon list but off the map */
             u.usteed = mtmp;
@@ -893,7 +980,7 @@ export async function getlev(nhfp, pid, lev, fixups_from) {
             }
             place_monster(mtmp, mtmp.mx, mtmp.my);
             if (mtmp.wormno)
-                throw new Error('getlev(): place_wsegs() not ported yet');
+                place_wsegs(mtmp, null);
             if ((mtmp.data.mflags1 & M1_CONCEAL) && mtmp.mundetected) /* hides_under() */
                 hideunder(mtmp);
         }
@@ -901,8 +988,16 @@ export async function getlev(nhfp, pid, lev, fixups_from) {
         /* regenerate monsters while on another level */
         if (!u.uz?.dlevel || g.program_state.restoring === REST_LEVELS)
             continue;
-        /* if (ghostly): bones files throw above */
-        if (elapsed > 0) {
+        if (ghostly) {
+            /* reset peaceful/malign relative to new character;
+               shopkeepers will reset based on name */
+            if (!mtmp.isshk)
+                mtmp.mpeaceful = (is_unicorn(mtmp.data)
+                                  && (Math.sign(u.ualign.type)
+                                      === Math.sign(mtmp.data.maligntyp))) ? 1
+                                 : (peace_minded(mtmp.data) ? 1 : 0);
+            set_malign(mtmp);
+        } else if (elapsed > 0) {
             mon_catchup_elapsed_time(mtmp, elapsed);
         }
         /* update shape-changers in case protection against
@@ -919,12 +1014,118 @@ export async function getlev(nhfp, pid, lev, fixups_from) {
     load_exclusions(nhfp);
     rest_track(nhfp);
 
-    /* must come after all mons & objs are restored:
-       relink_timers(ghostly), relink_light_sources(ghostly),
-       reset_oattached_mids(ghostly) -- no separate timer or light lists */
-    resolve_saved_ids(nhfp, from);
+    if (ghostly) {
+        let stway = g.stairs;
+        while (stway) {
+            if (!stway.isladder && !stway.up
+                && stway.tolev.dnum === u.uz.dnum)
+                break;
+            stway = stway.next;
+        }
 
+        /* Now get rid of all the temp fruits... */
+        freefruitchn(g.oldfruit), g.oldfruit = null;
+
+        if (lev > ledger_no(g.dungeon_topology.d_medusa_level)
+            && lev < ledger_no(g.dungeon_topology.d_stronghold_level) && !stway) {
+            throw new Error('getlev(): adding missing down stairs to a bones level not ported yet');
+        }
+
+        const br = Is_branchlev(u.uz);
+        if (br && u.uz.dlevel === 1) {
+            throw new Error('getlev(): bones branch level fixup not ported yet');
+        } else if (!br) {
+            /* Remove any dangling portals. */
+            for (const trap of (L.traps || []).slice())
+                if (trap.ttyp === MAGIC_PORTAL)
+                    deltrap(trap);
+        }
+    }
+    /* must come after all mons & objs are restored:
+       relink_timers(ghostly), relink_light_sources(ghostly) -- no
+       separate timer or light lists (object timers are kept on the
+       objects, light sources aren't ported) */
+    resolve_saved_ids(nhfp, from);
+    reset_oattached_mids(ghostly);
+
+    if (ghostly)
+        clear_id_mapping();
     g.program_state.in_getlev = false;
+}
+
+// C ref: restore.c clear_id_mapping()
+/* Clear all structures for object and monster ID mapping. */
+function clear_id_mapping() {
+    game.id_map = new Map();
+}
+
+// C ref: restore.c add_id_mapping()
+/* Add a mapping to the ID map. */
+function add_id_mapping(gid, nid) {
+    if (!game.id_map)
+        game.id_map = new Map();
+    /* C searches the newest bucket first; keep the first mapping added
+       for an id only if it isn't replaced, same lookup result */
+    game.id_map.set(gid, nid);
+}
+
+// C ref: restore.c lookup_id_mapping()
+/*
+ * Global routine to look up a mapping.  If found, return TRUE and fill
+ * in the new ID value.  Otherwise, return false and return -1 in the new
+ * ID.
+ */
+export function lookup_id_mapping(gid, nidp) {
+    const m = game.id_map;
+    if (m && m.has(gid)) {
+        nidp.v = m.get(gid);
+        return true;
+    }
+    return false;
+}
+
+// C ref: restore.c reset_oattached_mids()
+function reset_oattached_mids(ghostly) {
+    const nid = { v: 0 };
+
+    for (const otmp of (game.level.objects || [])) {
+        if (ghostly && otmp.oextra?.omonst) { /* has_omonst() */
+            const mtmp = otmp.oextra.omonst;
+
+            mtmp.m_id = 0;
+            mtmp.mpeaceful = mtmp.mtame = 0; /* pet's owner died! */
+        }
+        if (ghostly && otmp.oextra?.omid) { /* has_omid() */
+            const oldid = otmp.oextra.omid;
+            if (lookup_id_mapping(oldid, nid))
+                otmp.oextra.omid = nid.v;
+            else
+                delete otmp.oextra.omid; /* free_omid() */
+        }
+    }
+}
+
+// C ref: restore.c ghostfruit()
+function ghostfruit(otmp) {
+    let oldf;
+
+    for (oldf = game.oldfruit; oldf; oldf = oldf.nextf)
+        if (oldf.fid === otmp.spe)
+            break;
+
+    if (!oldf)
+        console.error('impossible: no old fruit?');
+    else
+        otmp.spe = fruitadd(oldf.fname, null);
+}
+
+// C ref: restore.c trickery()
+export async function trickery(reason) {
+    await pline("Strange, this map is not as I remember it.");
+    await pline("Somebody is trying some trickery here...");
+    await pline("This game is void.");
+    killer().name = reason ? reason : "";
+    await done(TRICKED);
 }
 
 // C ref: mon.c restore_cham()
@@ -940,12 +1141,6 @@ export function restore_cham(mon) {
         /* chameleon doesn't change shape here, just gets allowed to do so */
         mon.cham = pm_to_cham(monsndx(mon.data));
     }
-}
-
-// C ref: worm.c rest_worm()
-function rest_worm(nhfp) {
-    const w = Sfi(nhfp, "worm");
-    if (w !== null && w !== undefined) game.level.worms = w;
 }
 
 // C ref: engrave.c rest_engravings()

@@ -3,6 +3,7 @@
 // invent.c carry_obj_effects(); worn.c extract_from_minvent()
 
 import { game } from './gstate.js';
+import { unpunish } from './read.js';
 import { add_to_minv, obj_extract_self, place_object, unknow_object } from './mkobj.js';
 import { canseemon } from './display.js';
 import * as O from './objects.js';
@@ -27,6 +28,32 @@ import { donning, cancel_don, Armor_off, Cloak_off, Boots_off, Gloves_off,
          Helmet_off, Shield_off, Shirt_off, Amulet_off,
          Blindf_off } from './do_wear.js';
 import { setworn } from './worn.js';
+import { rn1 } from './rng.js';
+
+/* C ref: global.h LARGEST_INT */
+const LARGEST_INT = 32767;
+
+// C ref: steal.c somegold()
+export function somegold(lmoney) {
+    let igold = (lmoney >= LARGEST_INT) ? LARGEST_INT : lmoney;
+
+    if (igold < 50)
+        ; /* all gold */
+    else if (igold < 100)
+        igold = rn1(igold - 25 + 1, 25);
+    else if (igold < 500)
+        igold = rn1(igold - 50 + 1, 50);
+    else if (igold < 1000)
+        igold = rn1(igold - 100 + 1, 100);
+    else if (igold < 5000)
+        igold = rn1(igold - 500 + 1, 500);
+    else if (igold < 10000)
+        igold = rn1(igold - 1000 + 1, 1000);
+    else
+        igold = rn1(igold - 5000 + 1, 5000);
+
+    return igold;
+}
 
 // C ref: steal.c remove_worn_item() -- rings (Ring_gone()), the ball and
 // chain and setnotworn() aren't ported yet
@@ -84,7 +111,7 @@ export async function remove_worn_item(obj,
 
     if (obj.owornmask & (W_BALL | W_CHAIN)) {
         if (unchain_ball)
-            throw new Error('remove_worn_item(): unpunish() not ported yet');
+            await unpunish();
     } else if (obj.owornmask) {
         /* catchall */
         throw new Error('remove_worn_item(): setnotworn() not ported yet');
