@@ -2602,8 +2602,13 @@ export async function dokick() {
         }
         /* C topl.c:544-548 leaves this one-line prompt painted on return.
          * A declined kick prints nothing; retain TOPLINE_NON_EMPTY until
-         * the next input read, without joining subsequent plines to it. */
-        g._topl_sticky = 'Kick your steed? [yn] (y)';
+         * the next input read, without joining subsequent plines to it.
+         * Under OPTIONS=query_menu the prompt goes through the PICK_ONE menu
+         * arm instead (resp is C's own ynchars, menuable per cmd.c:5394-5399):
+         * it answers with pline("%s %s") then clear_nhwindow(WIN_MESSAGE)
+         * (cmd.c:5458-5459), so the topline ends EMPTY — no residue. */
+        if (!g.iflags?.query_menu)
+            g._topl_sticky = 'Kick your steed? [yn] (y)';
         return ECMD_OK;
     } else if (_st_Wounded_legs()) {
         await legs_in_no_shape("kicking", false);

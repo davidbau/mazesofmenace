@@ -982,6 +982,13 @@ function monster_symbol(mlet) {
     return blank_symbols() ? ' ' : (DEF_MONSYM_CHARS[mlet] ?? '@');
 }
 function engraving_symbol(corridor) {
+    /* C symbols.c:236-239 / display.c:2934 reads the active showsyms,
+     * so an explicit engraving symbol also overrides a named symbol set. */
+    const index = corridor ? 24 : 21; /* S_engrcorr / S_engroom */
+    const override = rogue_graphics() ? game.go?.ov_rogue_syms?.[index]
+        : game.go?.ov_primary_syms?.[index];
+    if (override)
+        return symset_cell(override).ch;
     if (ibm_mode()) return corridor ? '0' : 'n';
     /* dat/symbols RogueEpyx S_engroom \xee ('n'), S_engrcorr \xb1 ('1');
      * RogueIBM sets only S_engrcorr \xb1, S_engroom stays '`'. */
@@ -1684,7 +1691,9 @@ function _epyx_terrain(loc, g) {
         case CORR: return { ch: g.color === CLR_WHITE ? '2' : '1', color: NO_COLOR, dec: false };
         case STAIRS: return g.color === CLR_YELLOW ? g
             : { ch: 'p', color: CLR_GREEN, dec: false };
-        default: return g;
+        default:
+            return Number.isInteger(g.cmap)
+                ? { ...g, color: _cmap_to_roguecolor(g.cmap) } : g;
     }
 }
 export function terrain_glyph(loc, x, y, assumeVisible = false) {
@@ -11698,8 +11707,11 @@ async function _topl_more(committed, dismissMore) {
     /* A caller that pre-rendered its own page (apply.js's getdir _showP sets
      * the topline to `<msg>--More--`) can have that text committed here when
      * a later pline joined it during the flush: topl.c more() writes ONE
-     * defmorestr, so the marker already present is this page's, not text. */
-    if (String(committed).endsWith(TOPL_MORE))
+     * defmorestr, so the marker already present is this page's, not text.
+     * Exception: rumors.fal carries three joke fortunes whose literal message
+     * text ends with "  --More--" (e.g. "You choke on the fortune cookie.  --More--"),
+     * which C's more() pages as "  --More----More--". */
+    if (String(committed).endsWith(TOPL_MORE) && !String(committed).endsWith('  ' + TOPL_MORE))
         committed = String(committed).slice(0, -TOPL_MORE.length);
     const _wrapped = _topl_wordwrap(committed, TOPL_CO - 1);
     const _lastFits = (_topl_visualLen(_wrapped[_wrapped.length - 1]) + TOPL_MORE.length)
@@ -15149,8 +15161,15 @@ function _rg_is_boulder(rg) {
 /* C's feel_location/unmap_object assign cmap glyphs, retaining their identity
  * even when a symset or !color makes two of them look the same. */
 function cmap_glyph(cmap) {
-    let cell = cmap_to_glyph_disp(cmap)
+    const resolved = cmap_to_glyph_disp(cmap);
+    let cell = resolved
         ?? { ch: defsym_char(cmap), color: _CMAP_COLORS[cmap] ?? NO_COLOR, dec: false };
+    if (!resolved && rogue_ibm_terrain()) {
+        const symbol = rogue_showsyms()[cmap | 0];
+        cell = { ...cell,
+                 ch: symbol ? String.fromCharCode(symbol & 0x7f) : cell.ch,
+                 color: _cmap_to_roguecolor(cmap | 0), dec: false };
+    }
     if (rogue_ibm_terrain()) {
         /* symbols RogueEpyx: S_ndoor = S_vodoor = S_hodoor = \xce ('N'); the
          * closed doors keep '+'. */
@@ -15255,6 +15274,13 @@ function _remembered_glyph_cell(rg) {
         return { ...rg, ...cell, color: rg.cmap === S_ALTAR_C ? rg.color : cell.color };
     }
     return rg;
+}
+
+/* C display.c:2004,2588: a stored glyph is rendered through the current
+ * glyphmap, including symbol overrides and the current tty attributes. */
+export function remembered_glyph_cell(rg) {
+    const glyph = _remembered_glyph_cell(rg);
+    return { ...glyph, attr: _glyph_attr(glyph) };
 }
 
 function _rg_is_cmap(rg, cmap) {

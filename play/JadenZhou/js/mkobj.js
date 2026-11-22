@@ -45,7 +45,7 @@ import { forget_temple_entry } from './priest.js';
 import { MON_DETACH } from './const.js';
 import { confers_luck } from './timeout.js';
 import { set_moreluck } from './attrib.js';
-import { eaten_stat } from './eat.js';
+import { eaten_stat, tin_variety, tintxt_fodder, vegetarian } from './eat.js';
 import { costly_spot } from './insight.js';
 
 function impossible(msg) { console.error(`impossible: ${msg}`); }
@@ -1100,16 +1100,23 @@ function nonrotting_corpse(mnum) {
 }
 
 // C ref: eat.c set_tin_variety()
-/* set a tin's variety; HEALTHY_TIN (tin_variety()) is not reached by
-   object creation and is not ported yet */
 export function set_tin_variety(obj, forcetype) {
     let r;
     const mnum = obj.corpsenm;
 
-    if (forcetype === SPINACH_TIN) {
+    if (forcetype === SPINACH_TIN
+        || (forcetype === HEALTHY_TIN
+            && (mnum === NON_PM /* empty or already spinach */
+                || !vegetarian(mons[mnum])))) { /* replace meat */
         obj.corpsenm = NON_PM; /* not based on any monster */
         obj.spe = 1;           /* spinach */
         return;
+    } else if (forcetype === HEALTHY_TIN) {
+        r = tin_variety(obj, false);
+        if (r < 0 || r >= TTSZ)
+            r = ROTTEN_TIN; /* shouldn't happen */
+        while ((r === ROTTEN_TIN && !obj.cursed) || !tintxt_fodder[r])
+            r = rn2(TTSZ - 1);
     } else if (forcetype >= 0 && forcetype < TTSZ - 1) {
         r = forcetype;
     } else {               /* RANDOM_TIN */
@@ -1223,6 +1230,7 @@ function mksobj_init(otmp, artif) {
             break;
         case O.SLIME_MOLD:
             otmp.spe = game.context?.current_fruit || 0;
+            game.flags.made_fruit = true;
             break;
         case O.KELP_FROND:
             otmp.quan = rnd(2);

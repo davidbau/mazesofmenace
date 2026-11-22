@@ -9,13 +9,13 @@ import { _blind_prop, _Blind, _BlindedTimeout, _set_HBlinded, _Halluc, M1_NOEYES
 import { explode, explode_oil } from './explode.js';
 import { spoteffects } from './hack.js';
 import { nothing_happens, nothing_seems_to_happen } from './const.js';
-import { cmdq_peek, cmdq_pop, cmdq_clear, SetVoice } from './cmd.js';
+import { cmdq_peek, cmdq_pop, cmdq_add_key, SetVoice } from './cmd.js';
 import { check_unpaid } from './shk.js';
 import { prinv, useup } from './invent.js';
 import { fire_damage } from './trap.js';
 import { enlightenment } from './insight.js';
 import { discover_artifact } from './artifact.js';
-import { CQ_CANNED, ECMD_FAIL, SHOPBASE, CMDQ_KEY, CMDQ_USER_INPUT } from './const.js';
+import { CQ_CANNED, CQ_REPEAT, ECMD_FAIL, SHOPBASE, CMDQ_USER_INPUT } from './const.js';
 import { EXPL_FIERY } from './const.js';
 import { RIGHT_HANDED, STRANGLED, A_STR, ismnum, BOLT_LIM, Upolyd } from './const.js';
 import { set_levltyp } from './mkmaze.js';
@@ -38,7 +38,6 @@ import { monstseesu as monstseesu_real } from './mcastu.js';
 import { burn_away_slime } from './timeout.js';
 import { aggravate } from './wizard.js';
 import { COLNO, ROWNO, INVIS } from './const.js';
-import { _topl_joins_snapshot, _topl_merge_result } from './display.js';
 import { set_bc } from './ball.js';
 import { topl_park_cursor, _topl_stash_result, putmsghistory, restore_command_topline } from './display.js';
 import { pair_of, yn_function } from './cmd.js';
@@ -316,17 +315,15 @@ async function y_n(question) {
      * act_on_act(MCMD_DIP)'s canned 'y', cmd.c:4776) answers without
      * prompting; a non-key entry clears CQ_CANNED and answers ESC, and a
      * reply outside "yn" falls back to the default 'n'. */
-    const cq = cmdq_pop();
-    if (cq && cq.typ !== CMDQ_USER_INPUT) {
-        let res = '\x1b';
-        if (cq.typ === CMDQ_KEY) res = String.fromCharCode(cq.key & 255);
-        else cmdq_clear(CQ_CANNED);
-        return (res === 'y' || res === 'n') ? res : 'n';
-    }
-    /* C cmd.c:5538 — query_menu answers the query with a PICK_ONE menu
-     * (yn_function_menu, cmd.c:5419-5465) before the tty topline reader. */
-    if (game.iflags?.query_menu && game.iflags?.window_inited)
+    if (game.iflags) game.iflags.last_msg = 0; // C cmd.c:5485
+    const cq = cmdq_peek(game.gi?.in_doagain ? CQ_REPEAT : CQ_CANNED);
+    /* C cmd.c:5505-5543 handles canned replies without a tty prompt, and
+     * records only fresh answers. Let the common reader own that path. */
+    if ((cq && cq.typ !== CMDQ_USER_INPUT)
+        || (game.iflags?.query_menu && game.iflags?.window_inited)
+        || game.iflags?.debug_fuzzer)
         return await yn_function(question, 'yn', 'n', true);
+    if (cq) cmdq_pop(); // C CMDQ_USER_INPUT requests an interactive answer.
     const prompt = question + ' [yn] (n)';
     /* C tty_yn_function() acknowledges a pending message before painting its
      * query.  First drain any width-driven pages; if their final message is
@@ -408,6 +405,9 @@ async function y_n(question) {
         game._pending_message = '';
         await flush_screen(1);
     }
+    // C cmd.c:5542-5543: remember interactive replies for do_repeat.
+    cmdq_add_key(CQ_REPEAT, answer);
+    (game.program_state ||= {}).input_state = 0; // cmd.c:5580-5581 otherInp
     return answer;
 }
 /* C detect.c:35-36 TER_DETECT / TER_MON (flag.h terrainmode bits). */
@@ -3652,23 +3652,15 @@ export async function make_blinded(xtime, talk) {
         if (talk) {
             /* C potion.c:277-282: pline/You finishes every overflow and STOP
              * prompt before the timeout and vision change at :326-329. */
-            const _priorResult = game._resultMessage;
+            /* C potion.c:277-282 prints onto the one standing tty topline.
+             * A pet swap may have copied the live prefix into the result
+             * channel (hack.c:2169). Restore it through the shared helper,
+             * which strips that snapshot instead of prepending it twice. */
+            restore_command_topline();
             if (_Halluc())
                 await pline("Far out!  Everything is all cosmic again!");
             else
                 await You("can see again.");
-            /* pline() now adopts an otherwise-idle result channel itself.
-             * Only fold the two channels here when that result is still
-             * separate; if pline() already consumed it, prepending the saved
-             * copy would print the food message twice. */
-            if (_priorResult && game._resultMessage === _priorResult
-                && game._pending_message) {
-                const _hint = _topl_joins_snapshot(_priorResult) || undefined;
-                const _merged = _topl_merge_result(_priorResult,
-                    game._pending_message, _hint);
-                game._resultMessage = null;
-                game._pending_message = _merged;
-            }
         }
     }
     /* C potion.c:283-297 — clearing temporary blindness without toggling.
@@ -3717,12 +3709,12 @@ export async function make_blinded(xtime, talk) {
     _set_HBlinded(xtime);               /* potion.c:326 */
 
     if (u_could_see !== can_see_now) {   /* potion.c:328 `u_could_see ^ can_see_now` */
-        toggle_blindness();
+        await toggle_blindness();
     }
 }
 
 
-export function toggle_blindness() {
+export async function toggle_blindness() {
     const up = game.u?.uprops;
     const Stinging = game.u?.uwep && ((up?.[WARN_OF_MON]?.extrinsic | 0) & W_WEP);
     SET_BOTL();                        /* potion.c:342; disp is initialized by gstate */
@@ -3739,7 +3731,7 @@ export function toggle_blindness() {
     }
     // C potion.c:359-360: keep the eventual stop message consistent with sight.
     if (Stinging)
-        Sting_effects(-1);
+        await Sting_effects(-1);
     /* C potion.c:362-363 — "update dknown flag for inventory picked up while
      * blind": `if (!Blind) learn_unseen_invent();`. */
     if (!_Blind())

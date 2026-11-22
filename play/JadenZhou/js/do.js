@@ -18,12 +18,18 @@ import * as O from './objects.js';
 import { is_pool, is_lava, u_at } from './makemon.js';
 import { t_at, is_pit, is_hole } from './trap.js';
 import { cansee } from './vision.js';
-import { PM_TOURIST } from './monsters.js';
+import { PM_TOURIST, PM_ROGUE } from './monsters.js';
+import { onquest, ok_to_quest } from './quest.js';
+import { com_pager, deliver_splev_message } from './questpgr.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { check_special_room } from './hack.js';
 import { pickup } from './pickup.js';
 import { keepdogs, losedogs } from './dog.js';
 import { kill_genocided_monsters } from './mon.js';
+import { savelev } from './save.js';
+import { create_levelfile, level_info } from './files.js';
+import { close_nhfile } from './sfbase.js';
+import { LFILE_EXISTS, VISITED, WRITING, FREEING } from './const.js';
 import { m_at } from './makemon.js';
 import { mklev, place_lregion } from './mklev.js';
 import { vision_reset } from './vision.js';
@@ -376,6 +382,29 @@ export async function deferred_goto() {
     game.dfr_post_msg = null;
 }
 
+// C ref: do.c currentlevel_rewrite()
+async function currentlevel_rewrite() {
+    /* since level change might be a bit slow, flush any buffered screen
+     *  output (like "you fall through a trap door") */
+    /* mark_synch(): the tty port writes output as it goes */
+
+    const whynot = { v: '' };
+    const nhfp = create_levelfile(ledger_no(game.u.uz), whynot);
+    if (!nhfp) {
+        /*
+         * This is not quite impossible: e.g., we may have
+         * exceeded our quota. If that is the case then we
+         * cannot leave this level, and cannot save either.
+         * Another possibility is that the directory was not
+         * writable.
+         */
+        await pline(whynot.v);
+        return null;
+    }
+
+    return nhfp;
+}
+
 // C ref: do.c goto_level()
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     const g = game;
@@ -418,8 +447,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
      */
     const qstart_level = g.dungeon_topology?.d_qstart_level;
     if (qstart_level && qstart_level.dlevel && on_level(u.uz, qstart_level)
-        && !newdungeon)
-        throw new Error('goto_level(): ok_to_quest() not ported yet');
+        && !newdungeon && !ok_to_quest()) {
+        await pline("A mysterious force prevents you from descending.");
+        return;
+    }
 
     if (on_level(newlevel, u.uz))
         return; /* this can happen */
@@ -430,8 +461,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* tethered movement makes level change while trapped feasible */
     /* u.utrap && u.utraptype == TT_BURIEDBALL: punishment not ported */
 
-    /* nhfp = currentlevel_rewrite(): the level "file" is kept in memory
-       (game.level_files), since js/ can't do file I/O */
+    const nhfp = await currentlevel_rewrite();
+    if (!nhfp)
+        return;
 
     /* maybe_reset_pick(), reset_trapset(): no lock-picking or trap-setting
        context is ported yet */
@@ -460,9 +492,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
        vision state is rebuilt by vision_reset() on arrival */
 
     /*
-     * Save the level we're leaving.  C does savelev() into a level file;
-     * js/ can't do file I/O, so the level is kept in memory instead
-     * (game.level_files[ledger]).
+     * Save the level we're leaving.  If we're entering the endgame,
+     * we can get rid of all existing levels because they cannot be
+     * reached any more.  We still need to use savelev()'s cleanup
+     * for the level being left, to recover dynamic memory in use and
+     * to avoid dangling timers and light sources.
+     * (The level "file" is an in-memory record list; see files.js.)
      */
     const cant_go_back = ((newdungeon && In_endgame(newlevel))
                           || leaving_tutorial);
@@ -471,13 +506,19 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         for (let m = g.fmon; m; m = m.nmon)
             if (!(m.mhp <= 0))
                 m.mlstmv = g.moves;
+        /* if (nhfp->structlevel) bufon(nhfp->fd): no buffering to do */
+    } else {
+        /* free_luathemes(): only reachable via the endgame/tutorial
+           entry, which throws above */
+        throw new Error('goto_level(): free_luathemes() not ported yet');
     }
-    /* savelev(nhfp, ledger_no(&u.uz)) -- in-memory stand-in */
-    if (!g.level_files) g.level_files = {};
-    g.level_files[ledger_no(u.uz)] = {
-        level: g.level, fmon: g.fmon, stairs: g.stairs,
-        rooms: g.level?.rooms,
-    };
+    const save_mode = nhfp.mode;
+    nhfp.mode = cant_go_back ? FREEING : (WRITING | FREEING);
+    savelev(nhfp, ledger_no(u.uz));
+    nhfp.mode = save_mode;
+    close_nhfile(nhfp);
+    /* if (cant_go_back): discarding unreachable levels is only reachable
+       via the endgame/tutorial entry, which throws above */
 
     /* Is_rogue_level(newlevel) || Is_rogue_level(&u.uz): assign_graphics():
        the rogue level isn't ported yet */
@@ -504,8 +545,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     g.updest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
     g.dndest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
 
-    if (!g.level_files[new_ledger]) {
+    if (!(level_info(new_ledger).flags & LFILE_EXISTS)) {
         /* entering this level for first time; make it now */
+        if (level_info(new_ledger).flags & VISITED) {
+            /* impossible("goto_level: returning to discarded level?") */
+            level_info(new_ledger).flags &= ~VISITED;
+        }
         await mklev();
         /* new = TRUE; familiar = bones_include_name(svp.plname) */
     } else {
@@ -630,7 +675,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await maybe_lvltport_feedback(); /* potentially called by Sting_effects() */
 
     /* special levels can have a custom arrival message */
-    deliver_splev_message();
+    await deliver_splev_message();
 
     /* Check whether we just entered Gehennom. */
     if (!In_hell(u.uz0) && In_hell(u.uz))
@@ -647,7 +692,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (In_endgame(u.uz)) {
         throw new Error('goto_level(): endgame arrival not ported yet');
     } else if (u.uz.dnum === topo.d_quest_dnum) { /* In_quest() */
-        throw new Error('goto_level(): onquest() not ported yet');
+        await onquest(); /* might be reaching locate|goal level */
     } else if (topo.d_knox_level?.dlevel && on_level(u.uz, topo.d_knox_level)) {
         /* Is_knox() */
         throw new Error('goto_level(): Fort Ludios arrival not ported yet');
@@ -667,9 +712,21 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         }
         /* main dungeon message from your quest leader */
         if (u.uz0.dnum !== topo.d_quest_dnum && at_dgn_entrance("The Quest")
-            && !(u.uevent?.qcompleted || u.uevent?.qexpelled
-                 || g.quest_status?.leader_is_dead))
-            throw new Error('goto_level(): quest portal message not ported yet');
+            && !(u.uevent.qcompleted || u.uevent.qexpelled
+                 || g.quest_status.leader_is_dead)) {
+            /* [TODO: copy of same TODO below; if an achievement for
+               receiving quest call from leader gets added, that should
+               come after logging new level entry] */
+            if (!u.uevent.qcalled) {
+                u.uevent.qcalled = 1;
+                /* main "leader needs help" message */
+                await com_pager("quest_portal");
+            } else { /* reminder message */
+                await com_pager((g.urole.mnum === PM_ROGUE) /* Role_if() */
+                                ? "quest_portal_demand"
+                                : "quest_portal_again");
+            }
+        }
     }
 
     temperature_change_msg(prev_temperature);
@@ -718,13 +775,6 @@ export async function maybe_lvltport_feedback() {
         await pline(g.dfr_post_msg);
         g.dfr_post_msg = null;
     }
-}
-
-// C ref: questpgr.c deliver_splev_message()
-function deliver_splev_message() {
-    /* there's no provision for delivering via window instead of pline */
-    if (game.lev_message)
-        throw new Error('deliver_splev_message(): deliver_by_pline() not ported yet');
 }
 
 // C ref: do.c temperature_change_msg()
@@ -1081,15 +1131,16 @@ export function impact_disturbs_zombies(obj, violent) {
 }
 
 // C ref: dokick.c down_gate()
-function down_gate(x, y) {
+export function down_gate(x, y) {
     const stway = stairway_at(x, y);
     let ttmp;
 
     game.gate_str = null;
     /* this matches the player restriction in goto_level() */
     const qstart_level = game.dungeon_topology?.d_qstart_level;
-    if (qstart_level && qstart_level.dlevel && on_level(game.u.uz, qstart_level))
-        throw new Error('down_gate(): ok_to_quest() not ported yet');
+    if (qstart_level && qstart_level.dlevel && on_level(game.u.uz, qstart_level)
+        && !ok_to_quest())
+        return 'MIGR_NOWHERE';
     if (stway && !stway.up && !stway.isladder) {
         game.gate_str = "down the stairs";
         return 'MIGR_STAIRS';

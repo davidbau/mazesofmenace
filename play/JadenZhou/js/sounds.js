@@ -25,8 +25,9 @@ import { M1_ANIMAL, M2_LORD, M2_PRINCE, M2_MERC, S_ANT, PM_ORACLE,
          MS_SILENT, MS_BARK, MS_MEW, MS_ROAR, MS_BELLOW, MS_GROWL, MS_SQEEK,
          MS_SQAWK, MS_CHIRP, MS_HISS, MS_BUZZ, MS_GRUNT, MS_NEIGH, MS_MOO,
          MS_WAIL, MS_GURGLE, MS_BURBLE, MS_ANIMAL, MS_LAUGH, MS_MUMBLE,
-         MS_IMITATE, MS_ORC, MS_LEADER, MS_GUARDIAN, MS_SELL,
+         MS_IMITATE, MS_ORC, MS_LEADER, MS_NEMESIS, MS_GUARDIAN, MS_SELL,
          MS_GROAN } from './monsters.js';
+import { quest_chat } from './quest.js';
 import { GOLD_PIECE, STATUE } from './objects.js';
 import { canspotmon, vobj_at } from './display.js';
 import { m_at } from './makemon.js';
@@ -183,7 +184,7 @@ async function get_iter_mons(bfunc) {
 }
 
 // C ref: mkroom.c search_special()
-function search_special(type) {
+export function search_special(type) {
     const rooms = game.level.rooms;
     let i;
 
@@ -553,6 +554,11 @@ async function domonnoise(mtmp) {
         throw new Error('domonnoise(): map_invisible() not ported yet');
 
     switch (msound) {
+    case MS_LEADER:
+    case MS_NEMESIS:
+    case MS_GUARDIAN:
+        await quest_chat(mtmp);
+        break;
     case MS_BARK:
         if (game.flags.moonphase === FULL_MOON && night()) {
             pline_msg = "howls.";

@@ -26,7 +26,7 @@ import {
 import { genl_player_setup } from './role.js';
 import { lowc } from './hacklib.js';
 import { row_refresh, bot, flush_screen, pline, docrt } from './display.js';
-import { extcmds_match } from './cmd.js';
+import { extcmds_match, readchar as core_readchar, key2txt } from './cmd.js';
 import { extcmdlist, ECM_NOFLAGS, ECM_IGNOREAC, ECM_EXACTMATCH } from './func_tab.js';
 
 // C ref: wintty.h TOPLINE_* states
@@ -850,9 +850,9 @@ export async function tty_player_selection() {
     throw new Error('tty_player_selection: player quit during role selection');
 }
 
-// C ref: cmd.c readchar() -- the plain-key case
+// C ref: cmd.c readchar() -- the core's readchar() (altmeta), as a char
 async function readchar() {
-    return String.fromCharCode(await nhgetch());
+    return String.fromCharCode(await core_readchar());
 }
 
 // C ref: topl.c tty_yn_function()
@@ -922,15 +922,15 @@ export async function tty_yn_function(query, resp, def) {
                 throw new Error('tty_yn_function: # count responses not ported yet');
             }
         } while (q === '\0');
-        /* clean_up: gt.toplines is rewritten to prompt + key2txt(q) */
-        game.toplines = prompt + q;
+        /* clean_up: */
     } else {
         /* no restriction on allowed response, so always preserve case */
         prompt = `${query} `;
         await update_topl(prompt); /* custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY) */
         q = await readchar();
     }
-    /* clean_up: */
+    /* clean_up: addtopl(rtmp); -- rewrite gt.toplines instead */
+    game.toplines = prompt + key2txt(q ? q.charCodeAt(0) : 0);
     t.inread--;
     t.toplin = TOPLINE_NON_EMPTY;
     if (wins()[game.WIN_MESSAGE].cury)

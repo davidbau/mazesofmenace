@@ -8,7 +8,8 @@ import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, You_cant, You } from './display.js';
 import { getpos } from './getpos.js';
 import { vision_recalc } from './vision.js';
-import { tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu } from './wintty.js';
+import { tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu,
+         add_menu_str } from './wintty.js';
 import { reveal_terrain } from './detect.js';
 import { NO_COLOR, ATR_NONE } from './terminal.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
@@ -16,32 +17,37 @@ import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SEL
 import { tty_clear_nhwindow, tty_get_ext_cmd, tty_yn_function, tty_create_nhwindow,
          tty_putstr, tty_display_nhwindow, tty_destroy_nhwindow } from './wintty.js';
 import { doride } from './steed.js';
-import { dopray } from './pray.js';
+import { dopray, doturn, dosacrifice } from './pray.js';
 import { dotalk } from './sounds.js';
 import { extcmdlist, CMD_NOT_AVAILABLE, INTERNALCMD, WIZMODECMD, AUTOCOMPLETE,
          ECM_IGNOREAC, ECM_EXACTMATCH, ECM_NO1CHARCMD, IFBURIED, PREFIXCMD,
-         MOVEMENTCMD, CMD_PARAM, CMD_M_PREFIX, CMD_gGF_PREFIX } from './func_tab.js';
-import { strcmpi, strncmpi, highc } from './hacklib.js';
+         MOVEMENTCMD, CMD_PARAM, CMD_M_PREFIX, CMD_gGF_PREFIX,
+         GENERALCMD } from './func_tab.js';
+import { strcmpi, strncmpi, highc, visctrl, strstri } from './hacklib.js';
 import { dosearch } from './detect.js';
 import { level_tele, dotelecmd } from './teleport.js';
 import { wiz_level_change, wiz_wish } from './wizcmds.js';
 import { ddoinv, dolook, doprgold, doprwep, doprarm, doprring, dopramulet,
-         doprtool } from './invent.js';
+         doprtool, add_menu_heading } from './invent.js';
 import { cmd_safety_prevention, nomul, domove, DOMOVE_WALK,
          DOMOVE_RUSH, confdir } from './hack.js';
 export { domove };
 import { IS_DOOR, IS_FURNITURE, NHW_TEXT, ECMD_OK, ECMD_TIME, ECMD_CANCEL,
          ECMD_FAIL } from './const.js';
 import { dovspell, docast } from './spell.js';
+import { dosit } from './sit.js';
+import { doinvoke } from './artifact.js';
+import { donamelevel } from './dungeon.js';
+import { authorize_explore_mode } from './sys.js';
 import { dodiscovered } from './o_init.js';
-import { doattributes } from './insight.js';
+import { doattributes, dogenocided } from './insight.js';
 import { wiz_genesis } from './wizcmds.js';
 import { dodrop, doddrop, dodown, doup } from './do.js';
 import { dozap } from './zap.js';
 import { docallcmd } from './do_name.js';
 import { doloot } from './pickup.js';
 import { dopickup } from './hack.js';
-import { Never_mind, isok } from './const.js';
+import { Never_mind, isok, PARANOID_QUIT } from './const.js';
 import { dofire, dothrow } from './dothrow.js';
 import { dokick } from './dokick.js';
 import { doswapweapon, dowieldquiver, dowield, dotwoweapon } from './wield.js';
@@ -49,11 +55,11 @@ import { enhance_weapon_skill } from './weapon.js';
 import { doapply, dorub, dojump } from './apply.js';
 import { doeat } from './eat.js';
 import { dowear, doputon, dotakeoff, ia_dotakeoff } from './do_wear.js';
-import { dodrink } from './potion.js';
+import { dodrink, dodip } from './potion.js';
 import { dopay } from './shk.js';
 import { dotogglepickup, doset_simple, doset } from './options.js';
 import { doread } from './read.js';
-import { dohelp, dowhatis } from './pager.js';
+import { dohelp, dowhatis, dowhatdoes, dowhatdoes_core } from './pager.js';
 import { doopen } from './lock.js';
 import { dosave } from './save.js';
 
@@ -94,6 +100,7 @@ export function extcmds_match(findstr, ecmflags) {
 // extended commands both go through this table)
 const cmd_funcs = {
     doextcmd: () => doextcmd(),
+    doextlist: () => doextlist(),
     dosearch: () => dosearch(),
     dopray: () => dopray(),
     dotalk: () => dotalk(),
@@ -157,6 +164,15 @@ const cmd_funcs = {
     doprtool: () => doprtool(),
     doterrain: () => doterrain(),
     dowhatis: () => dowhatis(),
+    dowhatdoes: () => dowhatdoes(),
+    dosit: () => dosit(),
+    dodip: () => dodip(),
+    doinvoke: () => doinvoke(),
+    donamelevel: () => donamelevel(),
+    dogenocided: () => dogenocided(),
+    doturn: () => doturn(),
+    dosacrifice: () => dosacrifice(),
+    enter_explore_mode: () => enter_explore_mode(),
 };
 /* C ref: cmd.c do_move_<dir>(), do_run_<dir>(), do_rush_<dir>() */
 ["west", "northwest", "north", "northeast", "east", "southeast", "south",
@@ -203,6 +219,209 @@ async function doextcmd() {
     } while (func === "doextlist");
 
     return retval;
+}
+
+// C ref: cmd.c enter_explore_mode() -- #exploremode (M-X)
+export async function enter_explore_mode() {
+    const flags = game.flags;
+
+    if (flags.explore) {
+        await You("are already in explore mode.");
+    } else {
+        const oldmode = !flags.debug ? "normal game" : "debug mode";
+
+        if (!authorize_explore_mode()) {
+            if (!flags.debug) {
+                await You("cannot access explore mode.");
+                return ECMD_OK;
+            } else {
+                await pline("Note: normally you wouldn't be allowed into explore mode.");
+                /* keep going */
+            }
+        }
+        await pline(`Beware!  From explore mode there will be no return to ${oldmode},`);
+        if (await paranoid_query((flags.paranoia_bits & PARANOID_QUIT) !== 0, /* ParanoidQuit */
+                                 "Do you want to enter explore mode?")) {
+            flags.explore = true;
+            flags.debug = false;
+            tty_clear_nhwindow(game.WIN_MESSAGE);
+            await You("are now in non-scoring explore mode.");
+        } else {
+            tty_clear_nhwindow(game.WIN_MESSAGE);
+            await pline(`Continuing with ${oldmode}.`);
+        }
+    }
+    return ECMD_OK;
+}
+
+// C ref: cmd.c doc_extcmd_flagstr() -- format extended command flags for
+// display; efp null: add a footnote to the menu
+function doc_extcmd_flagstr(menuwin, efp) {
+    /* note: tag shown for menu prefix is 'm' even if m-prefix action
+       has been bound to some other key */
+    if (!efp) {
+        add_menu_str(menuwin, "[A] Command autocompletes");
+        add_menu_str(menuwin, `[m] Command accepts '${visctrl(cmd_from_func("do_reqmenu"))}' prefix`);
+        return null;
+    } else {
+        const mprefix = accept_menu_prefix(efp),
+            autocomplete = (efp.flags & AUTOCOMPLETE) !== 0;
+        let p = '';
+
+        /* "" or "[m]" or "[A]" or "[mA]" */
+        if (mprefix || autocomplete) {
+            p += '[';
+            if (mprefix)
+                p += 'm';
+            if (autocomplete)
+                p += 'A';
+            p += ']';
+        }
+        return p;
+    }
+}
+
+// C ref: cmd.c doextlist() -- here after #? - now list all full-word
+// commands and provide some navigation capability through the long list
+async function doextlist() {
+    let buf, cmd_desc;
+    let n, pass;
+    let menumode = 0, onelist = 0;
+    const menushown = [0, 0];
+    let redisplay = true, search = false;
+    let searchbuf = '';
+    const headings = ["Extended commands", "Debugging Extended Commands"];
+    const clr = NO_COLOR;
+    const wizard = !!game.flags?.debug, discover = !!game.flags?.explore;
+
+    const menuwin = tty_create_nhwindow(NHW_MENU);
+
+    while (redisplay) {
+        redisplay = false;
+        tty_start_menu(menuwin, MENU_BEHAVE_STANDARD);
+        add_menu_str(menuwin, "Extended Commands List");
+        add_menu_str(menuwin, "");
+
+        buf = `Switch to ${menumode ? "including" : "excluding"} commands that don't autocomplete`;
+        tty_add_menu(menuwin, null, 1, 'a', 0, ATR_NONE, clr, buf,
+                     MENU_ITEMFLAGS_NONE);
+
+        if (!searchbuf) {
+            /* was 's', but then using ':' handling within the interface
+               would only examine the two or three meta entries, not the
+               actual list of extended commands shown via separator lines;
+               having ':' as an explicit selector overrides the default
+               menu behavior for it; we retain 's' as a group accelerator */
+            tty_add_menu(menuwin, null, 2, ':', 's', ATR_NONE, clr,
+                         "Search extended commands", MENU_ITEMFLAGS_NONE);
+        } else {
+            buf = "Switch back from search";
+            if (buf.length + searchbuf.length + " (\"\")".length < 256 /* QBUFSZ */)
+                buf += ` ("${searchbuf}")`;
+            /* specifying ':' as a group accelerator here is mostly a
+               statement of intent (we'd like to accept it as a synonym but
+               also want to hide it from general menu use) because it won't
+               work for interfaces which support ':' to search; use as a
+               general menu command takes precedence over group accelerator */
+            tty_add_menu(menuwin, null, 3, 's', ':', ATR_NONE, clr, buf,
+                         MENU_ITEMFLAGS_NONE);
+        }
+        if (wizard) {
+            tty_add_menu(menuwin, null, 4, 'z', 0, ATR_NONE, clr,
+                         onelist ? "Switch to showing debugging commands in separate section"
+                         : "Switch to showing all alphabetically, including debugging commands",
+                         MENU_ITEMFLAGS_NONE);
+        }
+        add_menu_str(menuwin, "");
+        menushown[0] = menushown[1] = 0;
+        n = 0;
+        for (pass = 0; pass <= 1; ++pass) {
+            /* skip second pass if not in wizard mode or wizard mode
+               commands are being integrated into a single list */
+            if (pass === 1 && (onelist || !wizard))
+                break;
+            for (const efp of extcmdlist) {
+                if ((efp.flags & (CMD_NOT_AVAILABLE | INTERNALCMD)) !== 0)
+                    continue;
+                /* if hiding non-autocomplete commands, skip such */
+                if (menumode === 1 && (efp.flags & AUTOCOMPLETE) === 0)
+                    continue;
+                /* skip wizard mode commands if not in wizard mode;
+                   when showing two sections, skip wizard mode commands
+                   in pass==0 and skip other commands in pass==1 */
+                const wizc = (efp.flags & WIZMODECMD) !== 0 ? 1 : 0;
+                if (wizc && !wizard)
+                    continue;
+                if (!onelist && pass !== wizc)
+                    continue;
+                /* command description might get modified on the fly */
+                cmd_desc = efp.ef_desc;
+                /* suppress part of the description for #genocided if it
+                   doesn't apply during the current game */
+                if (!wizard && !discover
+                    && (efp.flags & GENERALCMD) !== 0 /* minor optimization */
+                    && strstri(cmd_desc, "extinct") >= 0)
+                    cmd_desc = cmd_desc.replace(" been genocided or become extinct",
+                                                " been genocided"); /* strsubst() */
+                /* if searching, skip this command if it doesn't match */
+                if (searchbuf)
+                    throw new Error('doextlist(): search (pmatchi()) not ported yet');
+
+                /* We're about to show an item, have we shown the menu yet?
+                   Doing menu in inner loop like this on demand avoids a
+                   heading with no subordinate entries on the search
+                   results menu. */
+                if (!menushown[pass]) {
+                    add_menu_heading(menuwin, headings[pass]);
+                    menushown[pass] = 1;
+                }
+                /* longest ef_txt at present is "wizrumorcheck" (13 chars);
+                   2nd field will be "    " or " [A]" or " [m]" or "[mA]" */
+                buf = ` ${efp.ef_txt.padEnd(14)} ${doc_extcmd_flagstr(menuwin, efp).padStart(4)} ${cmd_desc}`;
+                add_menu_str(menuwin, buf);
+                ++n;
+            }
+            if (n)
+                add_menu_str(menuwin, "");
+        }
+        if (searchbuf && !n)
+            add_menu_str(menuwin, "no matches");
+        else
+            doc_extcmd_flagstr(menuwin, null);
+
+        tty_end_menu(menuwin, null);
+        const res = await tty_select_menu(menuwin, PICK_ONE);
+        n = res.n;
+        if (n > 0) {
+            switch (res.selected[0].item) {
+            case 1: /* 'a': toggle show/hide non-autocomplete */
+                menumode = 1 - menumode; /* toggle 0 -> 1, 1 -> 0 */
+                redisplay = true;
+                break;
+            case 2: /* ':' when not searching yet: enable search */
+                search = true;
+                break;
+            case 3: /* 's' when already searching: disable search */
+                search = false;
+                searchbuf = '';
+                redisplay = true;
+                break;
+            case 4: /* 'z': toggle showing wizard mode commands separately */
+                search = false;
+                searchbuf = '';
+                onelist = 1 - onelist; /* toggle 0 -> 1, 1 -> 0 */
+                redisplay = true;
+                break;
+            }
+        } else {
+            search = false;
+            searchbuf = '';
+        }
+        if (search)
+            throw new Error('doextlist(): search phrase (getlin(), pmatchi()) not ported yet');
+    }
+    await tty_destroy_nhwindow(menuwin);
+    return ECMD_OK;
 }
 
 // C ref: cmd.c doterrain() -- the #terrain command: show map without
@@ -471,20 +690,6 @@ function cmdbind_get(key) {
     return game.Cmd.cmdbinds.get(key & 0xff) || null;
 }
 
-// C ref: hacklib.c visctrl()
-function visctrl(c) {
-    let ccc = '';
-    if (c & 0o200)
-        ccc += 'M-';
-    c &= 0o177;
-    if (c < 0o40)
-        ccc += '^' + String.fromCharCode(c | 0o100); /* letter */
-    else if (c === 0o177)
-        ccc += '^' + String.fromCharCode(c & ~0o100); /* '?' */
-    else
-        ccc += String.fromCharCode(c); /* printable character */
-    return ccc;
-}
 
 // C ref: cmd.c reset_cmd_vars()
 function reset_cmd_vars(reset_cmdq) {
@@ -762,6 +967,130 @@ const GC_NOFLAGS = 0, GC_SAVEHIST = 1, GC_CONDHIST = 2, GC_ECHOFIRST = 4;
 const LARGEST_INT = 32767;
 const LONG_MAX = Number.MAX_SAFE_INTEGER;
 
+/* C ref: hack.h program_state.input_state values, significant during
+   readchar(); get_count() expects digits then a command so parse() sets
+   it to commandInp */
+export const otherInp = 0, commandInp = 1, getposInp = 2, getdirInp = 3;
+
+function program_state() {
+    if (!game.program_state)
+        game.program_state = {};
+    return game.program_state;
+}
+
+// C ref: cmd.c pgetchar() -- courtesy of aeb@cwi.nl; the debug fuzzer
+// isn't ported
+async function pgetchar() {
+    return await nhgetch();
+}
+
+// C ref: cmd.c readchar_core() -- a key is 0..255; a meta key (M-c) is
+// the key with the 8th bit set; the readchar_queue, ^A do-again and
+// mouse clicks aren't ported (an EOF/NUL is read as ESC by nhgetch)
+async function readchar_core() {
+    let sym = await nhgetch(); /* nh_poskey() */
+
+    if (sym === 0x1b && game.iflags?.altmeta
+        && program_state().input_state !== otherInp) {
+        /* iflags.altmeta: treat two character ``ESC c'' as single `M-c' but
+           only when we're called by parse() [possibly via get_count()]
+           or getpos() [to support Alt+digit] or getdir() [for arrow keys
+           under curses] */
+        sym = await pgetchar();
+        if (sym === 0)
+            sym = 0x1b;
+        else if (sym !== 0x1b)
+            sym |= 0o200; /* force 8th bit on */
+    }
+
+    /* next readchar() will be for an ordinary char unless parse()
+       sets this back to non-zero */
+    program_state().input_state = otherInp;
+    return sym & 0xff;
+}
+
+// C ref: cmd.c readchar() -- get a character
+export async function readchar() {
+    return await readchar_core();
+}
+
+// C ref: cmd.c readchar_poskey() -- used by getpos() to accept mouse input
+// as well as keyboard input
+export async function readchar_poskey() {
+    program_state().input_state = getposInp;
+    return await readchar_core();
+}
+
+/* C ref: cmd.c misc_keys[] -- special keys that aren't commands; the
+   NHKF_COUNT ('n') entry is for number_pad only */
+const misc_keys = [
+    { key: 0x1b, desc: "cancel current prompt or pending prefix", numpad: false },
+];
+
+// C ref: cmd.c key2extcmddesc() -- the description of what a key does
+// (number_pad is off), or null
+export function key2extcmddesc(key) {
+    let key2cmdbuf = '';
+    let cmdbind, txt;
+
+    key &= 0xff;
+    /* need to check for movement commands before checking the extended
+       commands table because it contains entries for number_pad commands
+       that match !number_pad movement (like 'j' for "jump") */
+    if (movecmd_mode(key, MV_WALK))
+        key2cmdbuf = "move"; /* "move or attack"? */
+    else if (movecmd_mode(key, MV_RUSH))
+        key2cmdbuf = "rush";
+    else if (movecmd_mode(key, MV_RUN))
+        key2cmdbuf = "run";
+    if (key >= 0x30 && key <= 0x39) { /* digit(key); !Cmd.num_pad */
+        key2cmdbuf = "start of, or continuation of, a count";
+        return key2cmdbuf;
+    }
+    /* check prefixes before regular commands; includes ^A pseudo-command */
+    for (const mk of misc_keys) {
+        if (mk.numpad /* && !iflags.num_pad */)
+            continue;
+        if (key === mk.key)
+            return mk.desc;
+    }
+    /* finally, check whether 'key' is a command */
+    if ((cmdbind = cmdbind_get(key)) !== null
+        && (txt = cmdbind.ef_txt)) {
+        key2cmdbuf = `${cmdbind.ef_desc} (#${txt})`;
+
+        /* special case: for reqmenu prefix (normally 'm'), replace
+           "prefix: request menu or modify command (#reqmenu)"
+           with two-line "movement prefix:...\nnon-movement prefix:..." */
+        if (!strncmpi(key2cmdbuf, "prefix:", 7) && !strcmpi(txt, "reqmenu"))
+            key2cmdbuf = key2cmdbuf.replace("prefix:",
+                "movement prefix:"
+                + " move without autopickup and without attacking"
+                + "\n"
+                + "non-movement prefix:"); /* strsubst(); and rest of buf */
+
+        /* another special case: 'txt' for '#' is "#" and showing that as
+           "perform an extended command (##)" looks silly; strip "(##)" off */
+        return key2cmdbuf.replace(" (##)", ""); /* strsubst() */
+    }
+    return null;
+}
+
+// C ref: cmd.c key2txt()
+export function key2txt(c) {
+    /* should probably switch to "SPC", "ESC", "RET"
+       since nethack's documentation uses ESC for <escape> */
+    if (c === 0x20)
+        return "<space>";
+    else if (c === 0x1b)
+        return "<esc>"; /* "<escape>" won't fit */
+    else if (c === 0x0a)
+        return "<enter>"; /* "<return>" won't fit */
+    else if (c === 0o177)
+        return "<del>"; /* "<delete>" won't fit */
+    return visctrl(c);
+}
+
 // C ref: cmd.c get_count()
 /* read a count (digits) and return the next non-digit key; the count
    goes into game[countfield] (C's 'count' output pointer) */
@@ -785,6 +1114,7 @@ export async function get_count(allowchars, /* what comes after digits; if Null,
     /* this should be done in port code so that we have erase_char
        and kill_char available; we can at least fake erase_char */
     const STANDBY_erase_char = 0o177;
+    const save_input_state = program_state().input_state;
 
     game[countfield] = 0;
     for (;;) {
@@ -792,7 +1122,10 @@ export async function get_count(allowchars, /* what comes after digits; if Null,
             key = inkey;
             inkey = 0;
         } else {
-            key = await nhgetch(); /* readchar() */
+            /* if readchar() has already been called in this loop, it will
+               have reset input_state; put that back to its previous value */
+            program_state().input_state = save_input_state;
+            key = await readchar();
         }
 
         if (key >= 0x30 && key <= 0x39) { /* digit(key) */
@@ -852,10 +1185,27 @@ async function parse() {
     game.context.move = 1; /* assume next command will take game time */
     await flush_screen(1); /* Flush screen buffer. Put the cursor on the hero. */
 
-    /* program_state.input_state = commandInp: 'altmeta' isn't ported */
+    /* affects readchar() behavior for ESC iff 'altmeta' option is On;
+       is always reset to otherInp by readchar() */
+    program_state().input_state = commandInp;
 
-    /* !gc.Cmd.num_pad: number_pad is off */
-    foo = await get_count(null, 0, LARGEST_INT, 'command_count', GC_NOFLAGS);
+    /* gc.Cmd.num_pad: iflags.num_pad (reset_commands(FALSE) isn't ported) */
+    if (!game.iflags.num_pad
+        || (foo = await readchar()) === 0x6e) { /* Cmd.spkeys[NHKF_COUNT] */
+        /* if 'num_pad' is On then readchar() has just reset input_state;
+           set it back to commandInp, so that get_count() supports 'altmeta';
+           otherwise "n<count>ESC<character>" becomes "n<count>ESC" (with
+           <character> not read from keyboard yet) rather than intended count
+           and meta keystroke "n<count>M-<character>" */
+        program_state().input_state = commandInp;
+
+        foo = await get_count(null, 0, LARGEST_INT, 'command_count', GC_NOFLAGS);
+    }
+    /* the number_pad key bindings (reset_commands(FALSE): digit movement,
+       M-digit run keys, Cmd.swap_yz, Cmd.pcHack_compat M-0,
+       Cmd.phone_layout) aren't ported */
+    if (game.iflags.num_pad || game.iflags.num_pad_mode)
+        throw new Error('parse(): number_pad key bindings (reset_commands(FALSE)) not ported yet');
     game.last_command_count = game.command_count;
 
     if (foo === 0x1b) { /* esc cancels count (TH) */
@@ -1062,10 +1412,22 @@ async function help_dir(sym, spkey, msg) {
     if (!prefixhandling && sym && (/[@A-Za-z]/.test(String.fromCharCode(sym))
                                    || sym === '['.charCodeAt(0))) {
         /* '[': old 'cmdhelp' showed ESC as ^[ */
-        /* dowhatdoes_core(): key2extcmddesc() needs the command
-           descriptions, which aren't in func_tab.js yet */
-        void wiz_only_list;
-        throw new Error('help_dir(): dowhatdoes_core() not ported yet');
+        const hsym = highc(String.fromCharCode(sym)); /* @A-Z[ (note: letter() accepts '@') */
+        const ctrl = (hsym.charCodeAt(0) - 0x41) + 1; /* 0-27 (note: 28-31 aren't applicable) */
+        let explain;
+        if ((explain = dowhatdoes_core(ctrl)) !== null
+            && (!wiz_only_list.includes(hsym) || game.flags?.debug)) {
+            buf = `Are you trying to use ^${hsym}${wiz_only_list.includes(hsym) ? "" : " as specified in the Guidebook"}?`;
+            tty_putstr(win, 0, buf);
+            tty_putstr(win, 0, "");
+            tty_putstr(win, 0, explain);
+            tty_putstr(win, 0, "");
+            tty_putstr(win, 0,
+                       "To use that command, hold down the <Ctrl> key as a shift");
+            buf = `and press the <${hsym}> key.`;
+            tty_putstr(win, 0, buf);
+            tty_putstr(win, 0, "");
+        }
     }
 
     buf = `Valid direction keys${prefixhandling ? " to " : ""}${prefixhandling ? dothat : ""}${nodiag ? " in your current form" : ""} are:`;
@@ -1226,6 +1588,7 @@ export async function getdir(s) {
     let dirsym, is_mov;
 
     /* cmdq_pop(): queued directions aren't ported */
+    program_state().input_state = getdirInp;
     dirsym = await tty_yn_function((s && s[0] !== '^') ? s : "In what direction?",
                                    null, '\0');
     if (typeof dirsym === 'string')

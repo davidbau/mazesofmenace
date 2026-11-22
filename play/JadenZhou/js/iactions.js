@@ -6,7 +6,7 @@
 
 import { game } from './gstate.js';
 import * as O from './objects.js';
-import { objects, OBJ_DESCR, obj_descr } from './objects.js';
+import { objects, OBJ_NAME, OBJ_DESCR, obj_descr } from './objects.js';
 import {
     NHW_MENU, PICK_ONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
     W_ARMOR, W_ACCESSORY, W_AMUL, W_RING, W_TOOL, W_ARM, W_ARMC, W_ARMH,
@@ -293,6 +293,27 @@ export function simpleonames(obj) {
 
     if (obj.quan !== 1)
         simpleoname = makeplural(simpleoname);
+    return simpleoname;
+}
+
+/* C ref: objnam.c ansimpleoname() */
+/* "a scroll" or "scrolls"; "a silver bell" or "the Bell of Opening" */
+export function ansimpleoname(obj) {
+    let simpleoname = simpleonames(obj);
+    let otyp = obj.otyp;
+
+    /* prefix with "the" if a unique item, or a fake one imitating same,
+       has been formatted with its actual name (we let minimal_xname() handle
+       any `known' and `dknown' checking necessary) */
+    if (otyp === O.FAKE_AMULET_OF_YENDOR)
+        otyp = O.AMULET_OF_YENDOR;
+    if (objects[otyp].oc_unique && OBJ_NAME(objects[otyp])
+        && simpleoname === OBJ_NAME(objects[otyp])) {
+        simpleoname = the(simpleoname);
+    } else if (obj.quan === 1) {
+        /* simpleoname[] is singular if quan==1, plural otherwise */
+        simpleoname = an(simpleoname);
+    }
     return simpleoname;
 }
 

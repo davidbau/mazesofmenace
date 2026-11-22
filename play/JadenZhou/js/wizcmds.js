@@ -74,7 +74,7 @@ const thats_enough_tries = "That's enough tries!";
 // C ref: invent.c hold_another_object() -- only the plain "add it to
 // inventory" path is ported; addinv() is the simplified u_init.js one
 // (no merging, no inventory letters yet)
-async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
+export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     /* if (!Blind) observe_object(obj) -- not ported yet */
     if (obj.oartifact) {
         /* place_object may change these */

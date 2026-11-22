@@ -10,6 +10,7 @@ import { Blind } from './vision.js';
 import './read.js';
 import './cmd.js';
 import { observe_object } from './o_init.js';
+import { remembered_glyph_cell } from './display.js';
 import { m_at } from './uhitm.js';
 import { PM_LONG_WORM_TAIL } from './pm.generated.js';
 import { POOL, MOAT, WATER, LAVAPOOL, LAVAWALL } from './const.js';
@@ -307,7 +308,8 @@ function detect_obj_traps(objlist, show_them, how, ft) {
             }
             if (ft) {
                 foundone(xp.value, yp.value, GLYPHCLS_TRAP);
-                ft.num_traps++;
+                // C detect.c:56,946: found_things counters are uchar.
+                ft.num_traps = (ft.num_traps + 1) & 0xff;
             }
         }
         if (Has_contents(otmp))
@@ -373,7 +375,7 @@ function findone(zx, zy, found) {
         ttmp.tseen = 1;
         sense_trap(ttmp, zx, zy, 0);
         foundone(zx, zy, GLYPHCLS_TRAP);
-        found.num_traps++;
+        found.num_traps = (found.num_traps + 1) & 0xff;
     }
     /* C detect.c:1680-1687: a trapped CLOSED/LOCKED door counts as a trap. */
     if (lev.typ === DOOR
@@ -382,7 +384,7 @@ function findone(zx, zy, found) {
         flash_glyph_at(zx, zy, trap_to_glyph({ ttyp: TRAPPED_DOOR }), FOUND_FLASH_COUNT);
         sense_trap({ tx: zx, ty: zy, ttyp: TRAPPED_DOOR, tseen: 1 }, zx, zy, 0);
         foundone(zx, zy, GLYPHCLS_TRAP);
-        found.num_traps++;
+        found.num_traps = (found.num_traps + 1) & 0xff;
     }
 
     /* C detect.c:1687-1693: trapped chests. */
@@ -606,10 +608,10 @@ function reveal_terrain_getglyph(x, y, which_subset, swallowed = false) {
                      cls: GLYPHCLS_CMAP, cmap: tg.cmap };
         })()
         : loc.remembered_glyph
-        ? { ...loc.remembered_glyph,
-            attr: (loc.remembered_glyph.bwengr && game.iflags?.wc_inverse !== false) ? 1
-                : loc.remembered_glyph.objpile ? objpile_attr(true) /* MG_OBJPILE, paint-time hilite_pile */
-                : (loc.remembered_glyph.attr | 0) }
+        // C detect.c:2202-2218 retains the glyph ID, then show_glyph renders
+        // it through the current glyphmap. A cached character/attribute can
+        // differ from that glyph (custom engraving symbols, for example).
+        ? remembered_glyph_cell(loc.remembered_glyph)
         : null;
     /* C detect.c:2205 reads glyph identity, including objects, traps and
      * terrain whose configured symbol is blank.  The shared getter also

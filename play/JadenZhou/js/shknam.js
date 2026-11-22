@@ -14,18 +14,21 @@ import {
     ELVEN_CLOAK, POT_HEALING, POT_FULL_HEALING, SCR_FOOD_DETECTION,
     LUMP_OF_ROYAL_JELLY, WAX_CANDLE, TALLOW_CANDLE, BRASS_LANTERN, OIL_LAMP,
     MAGIC_LAMP, POT_OIL, WAN_LIGHT, SCR_LIGHT, SPE_LIGHT, SCR_CHARGING, TOUCHSTONE,
-    SPE_NOVEL,
+    SPE_NOVEL, NUM_OBJECTS, VEGGY, EGG, TIN, CORPSE, objects, OBJ_NAME,
 } from './objects.js';
-import { mons, PM_SHOPKEEPER, S_MIMIC } from './monsters.js';
-import { makemon, mkmonmoney, mongets, set_malign, m_at, mkclass } from './makemon.js';
-import { mkobj_at, mksobj_at } from './mkobj.js';
+import { mons, PM_SHOPKEEPER, S_MIMIC, PM_LICHEN } from './monsters.js';
+import { makemon, mkmonmoney, mongets, set_malign, m_at, MON_AT, mkclass } from './makemon.js';
+import { RLOC_NOMSG } from './const.js';
+import { mkobj_at, mksobj_at, set_tin_variety } from './mkobj.js';
+import { vegetarian } from './eat.js';
 import { distmin, highc } from './hacklib.js';
 import { mon_learns_traps } from './mondata.js';
-import { HALLUC, HALLUC_RES } from './const.js';
+import { HALLUC, HALLUC_RES, HEALTHY_TIN, NON_PM, ismnum } from './const.js';
 import { noit_mon_nam } from './do_name.js';
 import { ledger_no, Is_special, assign_level, on_level, depth } from './dungeon.js';
 import { newsym } from './display.js';
 import { cvt_sdoor_to_door } from './detect.js';
+import { rloc_mklev } from './teleport.js';
 
 // C ref: mkroom.h VEGETARIAN_CLASS
 const VEGETARIAN_CLASS = MAXOCLASSES + 1;
@@ -371,8 +374,8 @@ function shkinit(shp, sroom) {
         return -1;
     const sx = s.x, sy = s.y;
 
-    if (m_at(sx, sy))
-        throw new Error('shkinit(): rloc() of a monster on the shopkeeper spot not ported yet');
+    if (MON_AT(sx, sy))
+        rloc_mklev(m_at(sx, sy), RLOC_NOMSG); /* rloc(): insurance */
 
     /* now initialize the shopkeeper monster structure */
     const shk = makemon(mons[PM_SHOPKEEPER], sx, sy, MM_ESHK);
@@ -496,10 +499,74 @@ function stock_room_goodpos(sroom, rmno, sh, sx, sy) {
     return TRUE;
 }
 
+// C ref: shknam.c veggy_item()
+/* is 'obj' (or, if obj is null, 'otyp') vegetarian food? */
+export function veggy_item(obj, otyp /* used iff obj is null */) {
+    let corpsenm;
+    let oclass;
+
+    if (obj) {
+        /* actual object; will check tin content and corpse species */
+        otyp = obj.otyp;
+        oclass = obj.oclass;
+        corpsenm = obj.corpsenm;
+    } else {
+        /* just a type; caller will have to handle tins and corpses */
+        oclass = objects[otyp].oc_class;
+        corpsenm = PM_LICHEN; /* veggy standin */
+    }
+
+    if (oclass === FOOD_CLASS) {
+        if (objects[otyp].oc_material === VEGGY || otyp === EGG)
+            return TRUE;
+        if (otyp === TIN && corpsenm === NON_PM) /* implies obj is non-null */
+            return (obj.spe === 1); /* 0 = empty, 1 = spinach */
+        if (otyp === TIN || otyp === CORPSE)
+            return (ismnum(corpsenm) && vegetarian(mons[corpsenm]));
+    }
+    return FALSE;
+}
+
+// C ref: shknam.c shkveg()
+function shkveg() {
+    let i, j, maxprob, prob;
+    const oclass = FOOD_CLASS;
+    const ok = new Array(NUM_OBJECTS).fill(0);
+
+    j = maxprob = 0;
+    for (i = game.bases[oclass]; i < NUM_OBJECTS; ++i) {
+        if (objects[i].oc_class !== oclass)
+            break;
+
+        if (veggy_item(null, i)) {
+            ok[j++] = i;
+            maxprob += objects[i].oc_prob;
+        }
+    }
+    if (maxprob < 1)
+        throw new Error('panic: shkveg no veggy objects');
+    prob = rnd(maxprob);
+
+    j = 0;
+    i = ok[0];
+    while ((prob -= objects[i].oc_prob) > 0) {
+        j++;
+        i = ok[j];
+    }
+
+    if (objects[i].oc_class !== oclass || !OBJ_NAME(objects[i]))
+        throw new Error(`panic: shkveg probtype error, oclass=${oclass} i=${i}`);
+    return i;
+}
+
 // C ref: shknam.c mkveggy_at()
 /* make a random item for health food store */
 function mkveggy_at(sx, sy) {
-    throw new Error('mkveggy_at(): shkveg()/veggy_item() not ported yet');
+    const obj = mksobj_at(shkveg(), sx, sy, TRUE, TRUE);
+
+    if (obj && obj.otyp === TIN)
+        set_tin_variety(obj, HEALTHY_TIN);
+    return;
 }
 
 // C ref: shknam.c mkshobj_at()

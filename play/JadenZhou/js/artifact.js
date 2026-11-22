@@ -27,7 +27,9 @@ import { NROFARTIFACTS, ART_EXCALIBUR, ART_NONARTIFACT,
          AFTER_LAST_ARTIFACT } from './artilist.js';
 import { rn2 } from './rng.js';
 import { P_MAX_SKILL } from './weapon.js';
-import { P_SKILLED, P_BASIC, ONAME_NO_FLAGS } from './const.js';
+import { P_SKILLED, P_BASIC, ONAME_NO_FLAGS, GETOBJ_EXCLUDE, GETOBJ_SUGGEST,
+         GETOBJ_PROMPT, ECMD_CANCEL } from './const.js';
+import { getobj } from './invent.js';
 import { mksobj, permapoisoned } from './mkobj.js';
 import { oname } from './do_name.js';
 
@@ -868,4 +870,33 @@ export function what_gives(abil) {
         }
     }
     return null;
+}
+
+// C ref: artifact.c invoke_ok() -- getobj callback for #invoke
+function invoke_ok(obj) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+
+    /* artifacts and other special items */
+    if (obj.oartifact || O.objects[obj.otyp].oc_unique
+        || (obj.otyp === O.FAKE_AMULET_OF_YENDOR && !obj.known))
+        return GETOBJ_SUGGEST;
+
+    /* synonym for apply, though actually invoking it will do different things
+     * depending if it's a regular crystal ball, an artifact one that has an
+     * invoke power, and a (theoretical) artifact one that doesn't have an
+     * invoke power */
+    if (obj.otyp === O.CRYSTAL_BALL)
+        return GETOBJ_SUGGEST;
+
+    return GETOBJ_EXCLUDE;
+}
+
+// C ref: artifact.c doinvoke() -- the #invoke command (M-i); invoking
+// the chosen object (retouch_object(), arti_invoke()) isn't ported
+export async function doinvoke() {
+    const obj = await getobj("invoke", invoke_ok, GETOBJ_PROMPT);
+    if (!obj)
+        return ECMD_CANCEL;
+    throw new Error('doinvoke(): retouch_object(), arti_invoke() not ported yet');
 }

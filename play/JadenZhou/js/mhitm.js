@@ -9,7 +9,8 @@ import { rn2, rnd, rn1, d } from './rng.js';
 import { distmin, isok } from './hacklib.js';
 import { cansee } from './vision.js';
 import { m_at, grow_up } from './makemon.js';
-import { monkilled, zombie_maker } from './mon.js';
+import { monkilled, zombie_maker, monnear } from './mon.js';
+import { thrwmm, spitmm, breamm } from './mthrowu.js';
 import { canspotmon, newsym, pline, map_invisible } from './display.js';
 import { Monnam, mon_nam_too } from './do_name.js';
 import { is_elf, is_orc } from './mondata.js';
@@ -19,6 +20,7 @@ import { M_AP_TYPE, IS_DOOR, M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED,
          ERODE_RUST, ERODE_CORRODE, CONFLICT, BLINDED } from './const.js';
 import { mons, AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH,
          AT_STNG, AT_HUGS, AT_ENGL, AT_TENT, AT_WEAP, AT_EXPL, AT_BOOM,
+         AT_BREA, AT_SPIT,
          AD_PHYS, AD_SSEX, AD_DISE, AD_PEST, AD_FAMN, AD_DREN, AD_STCK,
          AD_POLY, AD_DGST, G_UNIQ } from './monsters.js';
 import * as M from './monsters.js';
@@ -271,9 +273,18 @@ export async function mattackm(magr, mdef) {
 
         switch (mattk.aatyp) {
         case AT_WEAP: /* "hand to hand" attacks */
-            if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1)
+            if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) {
                 /* D: Do a ranged attack here! */
-                throw new Error('mattackm(): thrwmm() not ported yet');
+                strike = (await thrwmm(magr, mdef) === M_ATTK_MISS) ? 0 : 1;
+                if (strike)
+                    /* don't really know if we hit or not; pretend we did */
+                    res[i] |= M_ATTK_HIT;
+                if (DEADMONSTER(mdef))
+                    res[i] = M_ATTK_DEF_DIED;
+                if (DEADMONSTER(magr))
+                    res[i] |= M_ATTK_AGR_DIED;
+                break;
+            }
             if (magr.weapon_check === NEED_WEAPON || !magr.mw) {
                 magr.weapon_check = NEED_HTH_WEAPON;
                 if (await mon_wield_item(magr) !== 0)
@@ -325,6 +336,34 @@ export async function mattackm(magr, mdef) {
                     throw new Error('mattackm(): clone_mon() not ported yet');
             } else
                 await missmm(magr, mdef, mattk);
+            break;
+
+        case AT_BREA:
+        case AT_SPIT:
+            /*
+             * Ranged attacks aren't allowed at point blank range.
+             *
+             * That impacts pet use of ranged attacks.  It's rather arbitrary
+             * but various parts of the code assume it to be the case, not to
+             * mention a part of player tactics when fighting dragons.
+             */
+            if (!monnear(magr, mdef.mx, mdef.my)) {
+                const mmtmp = ((mattk.aatyp === AT_BREA)
+                               ? await breamm(magr, mattk, mdef)
+                               : await spitmm(magr, mattk, mdef));
+
+                strike = (mmtmp === M_ATTK_MISS) ? 0 : 1;
+                /* We don't really know if we hit or not; pretend we did. */
+                if (strike)
+                    res[i] |= M_ATTK_HIT;
+                if (DEADMONSTER(mdef))
+                    res[i] = M_ATTK_DEF_DIED;
+                if (DEADMONSTER(magr))
+                    res[i] |= M_ATTK_AGR_DIED;
+            } else {
+                strike = 0;
+                attk = 0;
+            }
             break;
 
         case AT_NONE:

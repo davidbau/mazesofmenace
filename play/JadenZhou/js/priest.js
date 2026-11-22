@@ -1,9 +1,9 @@
 // priest.js -- temple priests.
 // C ref: priest.c -- priestini(), p_coaligned(), mon_aligntyp().
 //
-// Ported so far: what mktemple() needs at level creation, and the movement
-// of priests and shopkeepers (move_special(), pri_move()). Temple entry
-// (intemple) and donations are not ported yet.
+// Ported so far: what mktemple() needs at level creation, the movement
+// of priests and shopkeepers (move_special(), pri_move()), and temple
+// entry (findpriest(), intemple()). Donations are not ported yet.
 
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
@@ -18,8 +18,8 @@ import { makemon, mongets, set_malign, m_at, MON_AT } from './makemon.js';
 import { mkobj, curse, uncurse, SPBOOK_no_NOVEL } from './mkobj.js';
 import { mpickobj } from './steal.js';
 import { which_armor } from './worn.js';
+import { rloc_mklev } from './teleport.js';
 import { mon_learns_traps } from './mondata.js';
-import { rloc } from './teleport.js';
 import { pm_good_location } from './sp_lev.js';
 import { mfndpos } from './mon.js';
 import { mon_allowflags } from './mon.js';
@@ -38,7 +38,18 @@ import {
     INVIS, DISPLACED, CONFLICT, A_CHA, u_at,
 } from './const.js';
 import { ACURR } from './attrib.js';
-import { rnd } from './rng.js';
+import { rnd, d } from './rng.js';
+import { DEAF, HALLUC, SPINE, MM_NOMSG, In_endgame } from './const.js';
+import { PM_GHOST, PM_DEATH, PM_FAMINE, PM_PESTILENCE, M2_MINION }
+    from './monsters.js';
+import { canseemon, You } from './display.js';
+import { Monnam } from './do_name.js';
+import { body_part } from './insight.js';
+import { record_achievement } from './do.js';
+
+// C ref: priest.c ALGN_SINNED, ALGN_DEVOUT
+const ALGN_SINNED = (-4); /* worse than strayed (-1..-3) */
+const ALGN_DEVOUT = 14;   /* better than fervent (9..13) */
 
 // C ref: hack.c xdir[], ydir[]; DIR_CLAMP()
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1, 0, 0];
@@ -59,7 +70,10 @@ export function mon_aligntyp(mon) {
 
 // C ref: priest.c priestini()
 /* exclusively for mktemple() */
-export async function priestini(
+// Also called by sp_lev.c create_altar() for temple shrines, from the
+// synchronous level-script code, so this port is synchronous; see
+// rloc_mklev() for the "insurance" rloc().
+export function priestini(
     lvl,
     sroom,
     sx, sy,
@@ -82,7 +96,7 @@ export async function priestini(
         px = sx, py = sy;
 
     if (MON_AT(px, py))
-        await rloc(m_at(px, py), RLOC_NOMSG); /* insurance */
+        rloc_mklev(m_at(px, py), RLOC_NOMSG); /* rloc(): insurance */
 
     priest = makemon(prim, px, py, MM_EPRI);
     if (priest) {
@@ -336,4 +350,179 @@ function has_shrine(pri) {
     if (!IS_ALTAR(lev.typ) || !(lev.altarmask & AM_SHRINE))
         return false;
     return (epri_p.shralign === Amask2align(lev.altarmask & ~AM_SHRINE));
+}
+
+// C ref: priest.c findpriest()
+export function findpriest(roomno) {
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        if (mtmp.mhp <= 0) /* DEADMONSTER(mtmp) */
+            continue;
+        if (mtmp.ispriest && (String.fromCharCode(mtmp.epri.shroom) === roomno)
+            && histemple_at(mtmp, mtmp.mx, mtmp.my))
+            return mtmp;
+    }
+    return null;
+}
+
+/* C ref: youprop.h Deaf, Hallucination; monst.h helpless() */
+function Deaf() {
+    const p = game.u.uprops[DEAF];
+    return !!(p && (p.intrinsic || p.extrinsic) || game.u.uroleplay?.deaf);
+}
+function Hallucination() {
+    const p = game.u.uprops[HALLUC];
+    return !!(p && (p.intrinsic || p.extrinsic) && !p.blocked);
+}
+function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
+
+// C ref: priest.c intemple()
+/* called from check_special_room() when the player enters the temple room */
+export async function intemple(roomno) {
+    const u = game.u;
+    let priest, mtmp;
+    let msg1, msg2;
+
+    /* don't do anything if hero is already in the room */
+    if (temple_occupied(u.urooms0 || ''))
+        return;
+
+    if ((priest = findpriest(String.fromCharCode(roomno))) !== null) {
+        /* tended */
+        record_achievement('ACH_TMPL');
+
+        const epri_p = priest.epri;
+        const shrined = has_shrine(priest);
+        const topo = game.dungeon_topology;
+        const Is_sanctum = on_level(u.uz, topo.d_sanctum_level);
+        const sanctum = (priest.data === mons[PM_HIGH_CLERIC]
+                         && (Is_sanctum || In_endgame(u.uz)));
+        const can_speak = !helpless(priest);
+        if (can_speak && !Deaf() && game.moves >= (epri_p.intone_time || 0)) {
+            const save_priest = priest.ispriest;
+
+            /* don't reveal the altar's owner upon temple entry in
+               the endgame; for the Sanctum, the next message names
+               Moloch so suppress the "of Moloch" for him here too */
+            if (sanctum && !Hallucination())
+                priest.ispriest = 0;
+            await pline(`${canseemon(priest) ? Monnam(priest)
+                                             : "A nearby voice"} intones:`);
+            priest.ispriest = save_priest;
+            epri_p.intone_time = game.moves + d(10, 500); /* ~2505 */
+            /* make sure that we don't suppress entry message when
+               we've just given its "priest intones" introduction */
+            epri_p.enter_time = 0;
+        }
+        msg1 = msg2 = null;
+        if (sanctum && Is_sanctum) {
+            if (priest.mpeaceful) {
+                /* first time inside */
+                msg1 = "Infidel, you have entered Moloch's Sanctum!";
+                msg2 = "Be gone!";
+                priest.mpeaceful = 0;
+                /* became angry voluntarily; no penalty for attacking him */
+                set_malign(priest);
+            } else {
+                /* repeat visit, or attacked priest before entering */
+                msg1 = "You desecrate this place by your presence!";
+            }
+        } else if (game.moves >= (epri_p.enter_time || 0)) {
+            msg1 = `Pilgrim, you enter a ${!shrined ? "desecrated"
+                                                    : "sacred"} place!`;
+        }
+        if (msg1 && can_speak && !Deaf()) {
+            /* SetVoice(priest, 0, 80, 0): voice hooks only */
+            await pline(`"${msg1}"`); /* verbalize1() */
+            if (msg2)
+                await pline(`"${msg2}"`); /* verbalize1() */
+            epri_p.enter_time = game.moves + d(10, 100); /* ~505 */
+        }
+        if (!sanctum) {
+            let this_time, other_time;
+
+            if (!shrined || !p_coaligned(priest)
+                || u.ualign.record <= ALGN_SINNED) {
+                msg1 = (m2) => `have a${m2} forbidding feeling...`;
+                msg2 = (!shrined || !p_coaligned(priest)) ? "" : " strange";
+                this_time = 'hostile_time';
+                other_time = 'peaceful_time';
+            } else {
+                msg1 = (m2) => `experience ${m2} sense of peace.`;
+                msg2 = (u.ualign.record >= ALGN_DEVOUT) ? "a" : "an unusual";
+                this_time = 'peaceful_time';
+                other_time = 'hostile_time';
+            }
+            /* give message if we haven't seen it recently or
+               if alignment update has caused it to switch from
+               forbidding to sense-of-peace or vice versa */
+            if (game.moves >= (epri_p[this_time] || 0)
+                || (epri_p[other_time] || 0) >= (epri_p[this_time] || 0)) {
+                await You(msg1(msg2));
+                epri_p[this_time] = game.moves + d(10, 20); /* ~55 */
+                /* avoid being tricked by the RNG:  switch might have just
+                   happened and previous random threshold could be larger */
+                if (epri_p[this_time] <= (epri_p[other_time] || 0))
+                    epri_p[other_time] = epri_p[this_time] - 1;
+            }
+        }
+        /* recognize the Valley of the Dead and Moloch's Sanctum
+           once hero has encountered the temple priest on those levels:
+           mapseen_temple(priest) -- the dungeon overview isn't ported */
+    } else {
+        /* untended */
+
+        switch (rn2(4)) {
+        case 0:
+            await You("have an eerie feeling...");
+            break;
+        case 1:
+            await pline("You feel like you are being watched."); /* You_feel() */
+            break;
+        case 2:
+            await pline(`A shiver runs down your ${body_part(SPINE)}.`);
+            break;
+        default:
+            break; /* no message; unfortunately there's no
+                      EPRI(priest)->eerie_time available to
+                      make sure we give one the first time */
+        }
+        if (!rn2(5)
+            && (mtmp = await makemon(mons[PM_GHOST], u.ux, u.uy, MM_NOMSG))
+                   !== null) {
+            /* the ghost's appearance message, set_malign(), and the
+               nomul(-3) "being terrified of a ghost" paralysis */
+            throw new Error('intemple(): the temple ghost not ported yet');
+        }
+    }
+}
+
+/* C ref: mondata.h is_minion(), is_rider() */
+function is_minion(ptr) { return (ptr.mflags2 & M2_MINION) !== 0; }
+function is_rider(ptr) {
+    return ptr === mons[PM_DEATH] || ptr === mons[PM_FAMINE]
+           || ptr === mons[PM_PESTILENCE];
+}
+
+// C ref: priest.c in_your_sanctuary()
+export function in_your_sanctuary(
+    mon, /* if non-null, <mx,my> overrides <x,y> */
+    x, y)
+{
+    let roomno;
+    let priest;
+
+    if (mon) {
+        if (is_minion(mon.data) || is_rider(mon.data))
+            return false;
+        x = mon.mx, y = mon.my;
+    }
+    if (game.u.ualign.record <= ALGN_SINNED) /* sinned or worse */
+        return false;
+    if (!(roomno = temple_occupied(game.u.urooms || ''))
+        || roomno !== (in_rooms(x, y, TEMPLE)[0] || '\0'))
+        return false;
+    if ((priest = findpriest(roomno)) === null)
+        return false;
+    return !!(has_shrine(priest) && p_coaligned(priest)
+              && priest.mpeaceful);
 }

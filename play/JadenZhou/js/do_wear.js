@@ -2290,7 +2290,7 @@ export function reset_remarm() {
 // C ref: do_wear.c inaccessible_equipment()
 /* used by #dip, #grease, and getobj() callbacks for 'T' and 'R';
    some criteria are different than select_off()'s */
-function inaccessible_equipment(obj,
+export function inaccessible_equipment(obj,
                                       verb, /* "dip" or "grease", or null to avoid messages */
                                       only_if_known_cursed) /* ignore covering unless it is known to
                                                              * be cursed */ {

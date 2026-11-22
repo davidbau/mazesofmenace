@@ -40,6 +40,15 @@ import { carrying } from './invent.js';
 import { aligns } from './role.js';
 import { add_weapon_skill, lose_weapon_skill } from './weapon.js';
 import { losehp } from './trap.js';
+import { d } from './rng.js';
+import { strncmpi } from './hacklib.js';
+import { name_to_mon } from './mondata.js';
+import { KILLED_BY, KILLED_BY_AN } from './const.js';
+import { mons, G_UNIQ, M2_PNAME } from './monsters.js';
+import { the } from './iactions.js';
+import { encumber_msg } from './pickup.js';
+import { Unaware } from './eat.js';
+import { TOWEL } from './objects.js';
 
 // C ref: attrib.h ABASE(), ABON(), AMAX(), ATEMP()
 export function ABASE(x) { return game.u.acurr.a[x]; }
@@ -602,6 +611,177 @@ const plusattr = [ "strong", "smart", "wise",
                     "fragile", "repulsive" ];
 export const attrname = [ "strength", "intelligence", "wisdom",
                           "dexterity", "constitution", "charisma" ];
+
+/* C ref: attrib.c poiseff[] */
+const poiseff = [
+    ["You feel ", "weaker"],             /* A_STR */
+    ["Your ", "brain is on fire"],       /* A_INT */
+    ["Your ", "judgement is impaired"],  /* A_WIS */
+    ["Your ", "muscles won't obey you"], /* A_DEX */
+    ["You feel ", "very sick"],          /* A_CON */
+    ["You ", "break out in hives"]       /* A_CHA */
+];
+
+// C ref: attrib.c poisontell()
+/* feedback for attribute loss due to poisoning */
+export async function poisontell(typ,       /* which attribute */
+                                 exclaim) { /* emphasis */
+    const prefix = poiseff[typ][0];
+    let msg_txt = poiseff[typ][1];
+
+    /*
+     * "You feel weaker" or "you feel very sick" aren't appropriate when
+     * wearing or wielding something (gauntlets of power, Ogresmasher)
+     * which forces the attribute to maintain its maximum value.
+     */
+    if (typ === A_STR && ACURR(A_STR) === STR19(25))
+        msg_txt = "innately weaker";
+    else if (typ === A_CON && ACURR(A_CON) === 25)
+        msg_txt = "sick inside";
+
+    /* You_feel() becomes "You dream that you feel" when Unaware */
+    if (prefix === "You feel " && Unaware())
+        await pline(`You dream that you feel ${msg_txt}${exclaim ? '!' : '.'}`);
+    else
+        await pline(`${prefix}${msg_txt}${exclaim ? '!' : '.'}`);
+}
+
+// C ref: attrib.c poisoned()
+/* called when an attack or trap has poisoned hero (used to be in mon.c) */
+export async function poisoned(
+    reason,          /* controls what messages we display */
+    typ,
+    pkiller,         /* for score+log file if fatal */
+    fatal,           /* if fatal is 0, limit damage to adjattrib */
+    thrown_weapon) { /* thrown weapons are less deadly */
+    const u = game.u;
+    let i, loss, kprefix = KILLED_BY_AN;
+    const blast = (reason === "blast");
+
+    /* inform player about being poisoned unless that's already been done;
+       "blast" has given a "blast of poison gas" message; "poison arrow",
+       "poison dart", etc have implicitly given poison messages too... */
+    if (!blast && !strstri(reason, "poison")) {
+        const plural = (reason[reason.length - 1] === 's');
+
+        /* avoid "The" Orcus's sting was poisoned... */
+        await pline(`${(reason[0] >= 'A' && reason[0] <= 'Z') ? "" : "The "}${
+            reason} ${plural ? "were" : "was"} poisoned!`);
+    }
+    if (u.uprops[POISON_RES].intrinsic || u.uprops[POISON_RES].extrinsic) {
+        /* if (blast) shieldeff(u.ux, u.uy): transient display only */
+        await pline("The poison doesn't seem to affect you."); /* pline_The() */
+        return;
+    }
+
+    /* suppress killer prefix if it already has one */
+    i = name_to_mon(pkiller, null);
+    if (ismnum(i) && (mons[i].geno & G_UNIQ)) {
+        kprefix = KILLED_BY;
+        if (!(mons[i].mflags2 & M2_PNAME)) /* !type_is_pname() */
+            pkiller = the(pkiller);
+    } else if (!strncmpi(pkiller, "the ", 4) || !strncmpi(pkiller, "an ", 3)
+               || !strncmpi(pkiller, "a ", 2)) {
+        /*[ does this need a plural check too? ]*/
+        kprefix = KILLED_BY;
+    }
+
+    i = !fatal ? 1 : rn2(fatal + (thrown_weapon ? 20 : 0));
+    if (i === 0 && typ !== A_CHA) {
+        /* sometimes survivable instant kill */
+        loss = 6 + d(4, 6); /* 6 + 4d6 => 10..34 */
+        if (u.uhp <= loss) {
+            u.uhp = -1;
+            game.disp_botl = true;
+            await pline("The poison was deadly..."); /* pline_The() */
+        } else {
+            /* survived, but with severe reaction */
+            const olduhp = u.uhp,
+                newuhpmax = u.uhpmax - Math.trunc(loss / 2);
+
+            setuhpmax(Math.max(newuhpmax, minuhpmax(3)), true); /*True: see FIXME*/
+            loss = adjuhploss(loss, olduhp);
+
+            await losehp(loss, pkiller, kprefix); /* poison damage */
+            if (await adjattrib(A_CON, (typ !== A_CON) ? -1 : -3, 1))
+                await poisontell(A_CON, true);
+            if (typ !== A_CON && await adjattrib(typ, -3, 1))
+                await poisontell(typ, true);
+        }
+    } else if (i > 5) {
+        const cloud = (reason === "gas cloud");
+
+        /* HP damage; more likely--but less severe--with missiles */
+        loss = thrown_weapon ? rnd(6) : rn1(10, 6);
+        if ((blast || cloud) && Half_gas_damage()) /* worn towel */
+            loss = Math.trunc((loss + 1) / 2);
+        await losehp(loss, pkiller, kprefix); /* poison damage */
+    } else {
+        /* attribute loss; if typ is A_STR, reduction in current and
+           maximum HP will occur once strength has dropped down to 3 */
+        loss = (thrown_weapon || !fatal) ? 1 : d(2, 2); /* was rn1(3,3) */
+        /* check that a stat change was made */
+        if (await adjattrib(typ, -loss, 1))
+            await poisontell(typ, true);
+    }
+
+    if (u.uhp < 1)
+        /* svk.killer = { kprefix, pkiller }; done(POISONING or DIED) */
+        throw new Error('poisoned(): death (done()) not ported yet');
+    await encumber_msg();
+}
+/* C ref: youprop.h Half_gas_damage -- a worn towel (ublindf) */
+function Half_gas_damage() {
+    return !!(game.ublindf && game.ublindf.otyp === TOWEL);
+}
+
+// C ref: attrib.c minuhpmax()
+/* minimum value for uhpmax is ulevel but for life-saving it is always at
+   least 10 if ulevel is less than that */
+export function minuhpmax(altmin) {
+    if (altmin < 1)
+        altmin = 1;
+    return Math.max(game.u.ulevel, altmin);
+}
+
+// C ref: attrib.c setuhpmax()
+/* update u.uhpmax or u.mhmax and values of other things that depend upon
+   whichever of them is relevant */
+export function setuhpmax(newmax, even_when_polyd) {
+    const u = game.u;
+    if (u.umonnum === u.umonster || even_when_polyd) { /* !Upolyd */
+        if (newmax !== u.uhpmax) {
+            u.uhpmax = newmax;
+            if (u.uhpmax > (u.uhppeak || 0))
+                u.uhppeak = u.uhpmax;
+            game.disp_botl = true;
+        }
+        if (u.uhp > u.uhpmax)
+            u.uhp = u.uhpmax, game.disp_botl = true;
+    } else { /* Upolyd */
+        if (newmax !== u.mhmax) {
+            u.mhmax = newmax;
+            game.disp_botl = true;
+        }
+        if (u.mh > u.mhmax)
+            u.mh = u.mhmax, game.disp_botl = true;
+    }
+}
+
+// C ref: attrib.c adjuhploss()
+/* called after setuhpmax() when damage is pending */
+export function adjuhploss(loss, /* pending hp loss */
+                           olduhp) { /* does double duty as oldmh when Upolyd */
+    const u = game.u;
+    if (u.umonnum === u.umonster) { /* !Upolyd */
+        if (u.uhp < olduhp)
+            loss -= (olduhp - u.uhp);
+    } else {
+        if (u.mh < olduhp)
+            loss -= (olduhp - u.mh);
+    }
+    return Math.max(loss, 1);
+}
 
 // C ref: attrib.c adjattrib()
 /* adjust an attribute; return True if change is made, False otherwise */

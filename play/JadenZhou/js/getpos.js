@@ -11,9 +11,10 @@
 import { game } from './gstate.js';
 import { pline, newsym, flush_screen } from './display.js';
 import { tty_putstr, tty_clear_nhwindow } from './wintty.js';
-import { nhgetch } from './input.js';
+import { visctrl } from './hacklib.js';
 import { handle_tip, is_valid_travelpt } from './hack.js';
-import { movecmd_mode, MV_WALK, MV_RUSH, MV_RUN, cmd_from_func } from './cmd.js';
+import { movecmd_mode, MV_WALK, MV_RUSH, MV_RUN, cmd_from_func,
+         readchar_poskey as cmd_readchar_poskey } from './cmd.js';
 import { do_screen_description } from './pager.js';
 import { COLNO, ROWNO, TIP_GETPOS, TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY } from './const.js';
 
@@ -43,12 +44,6 @@ const S_trwall = 11, S_ndoor = 12, S_vodoor = 13, S_hcdoor = 16,
     S_engrcorr = 24, S_arrow_trap = 49, S_trapped_chest = 73, S_vbeam = 74,
     S_poisoncloud = 86;
 
-/* C ref: hacklib.c visctrl() */
-function visctrl(c) {
-    if (c < 0x20) return `^${String.fromCharCode(c + 0x40)}`;
-    if (c === 0x7f) return "^?";
-    return String.fromCharCode(c);
-}
 
 function gp() {
     if (!game.getpos_state)
@@ -173,7 +168,7 @@ function truncate_to_map(cx, cy, dx, dy) {
 // C ref: cmd.c readchar_poskey() -> tty_nh_poskey()/tty_nhgetch(); the
 // tty marks a --More--able top line as seen once a key is read
 async function readchar_poskey() {
-    const c = await nhgetch();
+    const c = await cmd_readchar_poskey();
     const t = game.ttyDisplay;
     if (t && t.toplin === TOPLINE_NEED_MORE)
         t.toplin = TOPLINE_NON_EMPTY;

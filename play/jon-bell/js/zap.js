@@ -7256,6 +7256,15 @@ async function _wish_encumber_msg(paintedCap, prinvLine) {
     if (!msg) return;
     const _botlOwed = !!(g.disp && (g.disp.botl || g.disp.botlx)) || g._wishBotlOwedAtPrinv === true;
     g._wishBotlOwedAtPrinv = false;
+    /* C pline.c:253-257 suppresses NOSHOW/repeated NOREP before update_topl
+     * can join or page prinv.  Still run vpline's bookkeeping, and retain
+     * encumber_msg's later SET_BOTL (pickup.c:1999,2016). */
+    const msgtype = msgtype_type(msg);
+    if (msgtype === 'hide' || (msgtype === 'norep' && msg === g._prevmsg)) {
+        await pline(msg);
+        if (g.disp) g.disp.botl = true;
+        return;
+    }
     let prev = g._resultMessage;
     if (g._topl_win_stop) {
         /* topl.c:257 skip: the pline is buffered in gt.toplines, never painted

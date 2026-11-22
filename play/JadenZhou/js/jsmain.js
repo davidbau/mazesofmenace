@@ -14,7 +14,7 @@ import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
 import { early_init, newgame, moveloop_preamble, moveloop_core, maybe_do_tutorial } from './allmain.js';
 import { parseNethackrc, set_playmode, parsebindings,
-         initoptions_init_defaults } from './options.js';
+         initoptions_init_defaults, fruitadd } from './options.js';
 import { reset_commands } from './cmd.js';
 import { wd_message } from './sys.js';
 import { plnamesuffix } from './role.js';
@@ -24,7 +24,6 @@ import { init_vision_globals } from './vision.js';
 import { getlock, restore_saved_game, delete_savefile } from './files.js';
 import { dorecover } from './restore.js';
 import { GameDisplay } from './game_display.js';
-import { fruitadd } from './objnam.js';
 import { objects, OBJ_NAME, SLIME_MOLD } from './objects.js';
 
 // ── NethackGame ──

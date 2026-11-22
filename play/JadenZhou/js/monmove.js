@@ -7,20 +7,34 @@
 // 'not ported yet' error instead of skipping their rolls.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 import { dist2, distmin } from './hacklib.js';
 import { cansee, couldsee, clear_path, vision_recalc,
          recalc_block_point } from './vision.js';
-import { newsym, pline, canseemon, canspotmon } from './display.js';
+import { newsym, pline, canseemon, canspotmon, vobj_at } from './display.js';
+import { can_hide_under_obj, nonliving } from './makemon.js';
 import { Monnam, Adjmonnam } from './do_name.js';
 import { mintrap, Trap_Caught_Mon, Trap_Killed_Mon,
-         Trap_Moved_Mon } from './trap.js';
+         Trap_Moved_Mon, t_at } from './trap.js';
+import { mon_knows_traps, get_atkdam_type,
+         cvt_adtyp_to_mseenres } from './mondata.js';
+import { mdig_tunnel, may_dig } from './dig.js';
+import { mwelded } from './weapon.js';
+import { maketrap } from './trap.js';
+import { y_monnam } from './do_name.js';
+import { stairway_at } from './display.js';
+import { stairway_find_dir } from './mklev.js';
+import { hideunder_async } from './makemon.js';
+import { Is_candle, Is_container } from './mkobj.js';
+import { STAIRS, LADDER, WEB, IS_WATERWALL, LAVAWALL } from './const.js';
+import { IS_TREE, IS_STWALL, NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
+         P_AXE } from './const.js';
 import { splitobj, obj_extract_self } from './mkobj.js';
 import { distant_name, doname } from './objnam.js';
 import { mpickobj } from './steal.js';
 import { You_hear } from './sounds.js';
 import { find_defensive, find_offensive, find_misc,
-         cures_stoning } from './muse.js';
+         cures_stoning, mcould_eat_tin } from './muse.js';
 import { mattacku } from './mhitu.js';
 import { mon_wield_item, select_rwep, autoreturn_weapon,
          m_has_launcher_and_ammo } from './weapon.js';
@@ -34,7 +48,8 @@ import {
 import { monsndx, is_flyer, is_floater, is_swimmer, passes_walls, haseyes,
          perceives, can_teleport, is_undead, is_human, is_vampshifter,
          dmgtype, Resists_Elem } from './mondata.js';
-import { mfndpos, monnear, mon_allowflags, check_gear_next_turn } from './mon.js';
+import { mfndpos, monnear, mon_allowflags, check_gear_next_turn,
+         maybe_unhide_at } from './mon.js';
 import { gettrack } from './track.js';
 import { dog_move, can_carry, can_touch_safely, curr_mon_load,
          max_mon_load } from './dogmove.js';
@@ -65,7 +80,8 @@ import { In_hell } from './dungeon.js';
 import { stop_occupation } from './allmain.js';
 import { shk_move, costly_spot, after_shk_move, inhishop } from './shk.js';
 import { in_rooms } from './hack.js';
-import { pri_move } from './priest.js';
+import { pri_move, in_your_sanctuary } from './priest.js';
+import { quest_stat_check, quest_talk } from './quest.js';
 
 /* monster inventory: makemon.js keeps mon->minvent as an array in pickup
    order; C prepends, so walk it newest first */
@@ -456,11 +472,8 @@ async function distfleeck(mtmp, out) {
         out.scared = 0;
 }
 
-// C ref: priest.c in_your_sanctuary()
-export function in_your_sanctuary(mon, x, y) {
-    if (!game.level.flags?.has_temple) return false;
-    throw new Error('in_your_sanctuary(): temples not ported yet');
-}
+// C ref: priest.c in_your_sanctuary() -- ported in priest.js
+export { in_your_sanctuary };
 
 // ── C ref: monmove.c set_apparxy() ──
 export function set_apparxy(mtmp) {
@@ -537,9 +550,54 @@ function money_cnt(otmp) {
 }
 // C ref: monmove.c can_ooze()
 function can_ooze(mtmp) {
-    if (!amorphous(mtmp.data) || minv(mtmp).length /* stuff_prevents_passage */)
-        throw new Error('can_ooze(): stuff_prevents_passage() not ported yet');
+    if (!amorphous(mtmp.data) || stuff_prevents_passage(mtmp))
+        return false;
     return true;
+}
+// C ref: monmove.c stuff_prevents_passage()
+/* does monster (or hero) carry stuff that won't fit under a door? */
+function stuff_prevents_passage(mtmp) {
+    let chain;
+
+    if (mtmp === game.youmonst) {
+        chain = [];
+        for (let o = game.invent; o; o = o.nobj)
+            chain.push(o);
+    } else {
+        chain = minv(mtmp);
+    }
+    const armcat = (obj, cat) => (obj.oclass === OBJ.ARMOR_CLASS
+                                  && objects[obj.otyp].oc_armcat === cat);
+    for (const obj of chain) {
+        const typ = obj.otyp;
+
+        if (typ === OBJ.COIN_CLASS && obj.quan > 100)
+            return true;
+        if (obj.oclass !== OBJ.GEM_CLASS && !(typ >= OBJ.ARROW && typ <= OBJ.BOOMERANG)
+            && !(typ >= OBJ.DAGGER && typ <= OBJ.CRYSKNIFE) && typ !== OBJ.SLING
+            && !armcat(obj, OBJ.ARM_CLOAK) /* is_cloak() */
+            && typ !== OBJ.FEDORA
+            && !armcat(obj, OBJ.ARM_GLOVES) /* is_gloves() */
+            && typ !== OBJ.LEATHER_JACKET && typ !== OBJ.CREDIT_CARD
+            && !armcat(obj, OBJ.ARM_SHIRT) /* is_shirt() */
+            && !(typ === OBJ.CORPSE && verysmall(mons[obj.corpsenm]))
+            && typ !== OBJ.FORTUNE_COOKIE && typ !== OBJ.CANDY_BAR
+            && typ !== OBJ.PANCAKE
+            && typ !== OBJ.LEMBAS_WAFER && typ !== OBJ.LUMP_OF_ROYAL_JELLY
+            && obj.oclass !== OBJ.AMULET_CLASS && obj.oclass !== OBJ.RING_CLASS
+            && obj.oclass !== OBJ.VENOM_CLASS && typ !== OBJ.SACK
+            && typ !== OBJ.BAG_OF_HOLDING && typ !== OBJ.BAG_OF_TRICKS
+            && !Is_candle(obj) && typ !== OBJ.OILSKIN_SACK && typ !== OBJ.LEASH
+            && typ !== OBJ.STETHOSCOPE && typ !== OBJ.BLINDFOLD && typ !== OBJ.TOWEL
+            && typ !== OBJ.TIN_WHISTLE && typ !== OBJ.MAGIC_WHISTLE
+            && typ !== OBJ.MAGIC_MARKER && typ !== OBJ.TIN_OPENER
+            && typ !== OBJ.SKELETON_KEY
+            && typ !== OBJ.LOCK_PICK)
+            return true;
+        if (Is_container(obj) && obj.cobj && obj.cobj.length !== 0)
+            return true;
+    }
+    return false;
 }
 // C ref: monmove.c can_fog()
 function can_fog(mtmp) {
@@ -550,10 +608,16 @@ function can_fog(mtmp) {
 
 // ── C ref: mhitu.c ranged_attk_available() ──
 function ranged_attk_available(mtmp) {
-    for (const a of mtmp.data.mattk) {
-        if (a.aatyp === M.AT_SPIT || a.aatyp === M.AT_BREA
-            || a.aatyp === M.AT_MAGC || a.aatyp === M.AT_GAZE)
-            throw new Error('ranged_attk_available(): m_seenres() not ported yet');
+    let typ = -1;
+    const ptr = mtmp.data;
+
+    for (const a of ptr.mattk) {
+        if ((a.aatyp === M.AT_SPIT || a.aatyp === M.AT_BREA /* DISTANCE_ATTK_TYPE() */
+             || a.aatyp === M.AT_MAGC || a.aatyp === M.AT_GAZE)
+            && (typ = get_atkdam_type(a.adtyp)) >= 0
+            && ((mtmp.seen_resistance || 0)
+                & cvt_adtyp_to_mseenres(typ)) === 0) /* m_seenres() */
+            return true;
     }
     return false;
 }
@@ -603,15 +667,14 @@ export async function dochug(mtmp) {
         mtmp.mstrategy &= ~STRAT_WAITFORU;
 
     /* update quest status flags */
-    if (mdat.msound === M.MS_NEMESIS)
-        throw new Error('quest_stat_check() not ported yet');
+    quest_stat_check(mtmp);
 
     if (!mtmp.mcanmove || (mtmp.mstrategy & STRAT_WAITMASK)) {
         if (Hallucination())
             newsym(mtmp.mx, mtmp.my);
         if (mtmp.mcanmove && (mtmp.mstrategy & STRAT_CLOSE)
             && !mtmp.msleeping && monnear(mtmp, u.ux, u.uy))
-            throw new Error('quest_talk() not ported yet');
+            await quest_talk(mtmp); /* give the leaders a chance to speak */
         return 0; /* other frozen monsters can't do anything */
     }
 
@@ -798,10 +861,8 @@ export async function dochug(mtmp) {
             throw new Error('dochug(): wormhitu() not ported yet');
     }
     /* special speeches for quest monsters */
-    if (!helpless(mtmp) && d.nearby
-        && (mdat.msound === M.MS_LEADER || mdat.msound === M.MS_NEMESIS
-            || mdat.msound === M.MS_GUARDIAN))
-        throw new Error('quest_talk() not ported yet');
+    if (!helpless(mtmp) && d.nearby)
+        await quest_talk(mtmp);
     /* extra emotional attack for vile monsters */
     if (d.inrange && mtmp.data.msound === M.MS_CUSS && !mtmp.mpeaceful
         && couldsee(mtmp.mx, mtmp.my) && !mtmp.minvis && !rn2(5))
@@ -917,8 +978,10 @@ export function linedup(ax, ay, bx, by, boulderhandling) {
 }
 // C ref: mthrowu.c blocking_terrain()
 function blocking_terrain(x, y) {
-    const loc = game.level.at(x, y);
-    if (!isok(x, y) || IS_OBSTRUCTED(loc.typ) || closed_door(x, y))
+    if (!isok(x, y) || IS_OBSTRUCTED(game.level.at(x, y).typ)
+        || closed_door(x, y)
+        || IS_WATERWALL(game.level.at(x, y).typ) /* is_waterwall(x, y) */
+        || game.level.at(x, y).typ === LAVAWALL)
         return true;
     return false;
 }
@@ -1080,7 +1143,7 @@ function searches_for_item(mon, obj) {
         break;
     case O.AMULET_CLASS:
         if (typ === O.AMULET_OF_LIFE_SAVING)
-            throw new Error('searches_for_item(): nonliving() not ported yet');
+            return !(nonliving(mon.data) || is_vampshifter(mon));
         if (typ === O.AMULET_OF_REFLECTION || typ === O.AMULET_OF_GUARDING)
             return true;
         break;
@@ -1108,7 +1171,9 @@ function searches_for_item(mon, obj) {
                 || (!Resists_Elem(mon, STONE_RES) /* resists_ston() */
                     && cures_stoning(mon, obj, false));
         if (typ === O.TIN)
-            throw new Error('searches_for_item(): mcould_eat_tin() not ported yet');
+            return (mcould_eat_tin(mon)
+                    && (!Resists_Elem(mon, STONE_RES) /* resists_ston() */
+                        && cures_stoning(mon, obj, true)));
         if (typ === O.EGG && obj.corpsenm >= 0)
             return (obj.corpsenm === M.PM_COCKATRICE
                     || obj.corpsenm === M.PM_CHICKATRICE); /* touch_petrifies */
@@ -1185,9 +1250,14 @@ function m_search_items(mtmp, st) {
                 if (onscary(xx, yy, mtmp))
                     continue;
                 /* ignore obj if there's a trap and monster knows it */
-                if (game.level.traps?.some?.(t => t.tx === xx && t.ty === yy)
-                    && mtmp.mtrapseen)
-                    throw new Error('m_search_items(): mon_knows_traps() not ported yet');
+                const ttmp = t_at(xx, yy);
+                if (ttmp && mon_knows_traps(mtmp, ttmp.ttyp)) {
+                    if (st.ggx === xx && st.ggy === yy) {
+                        st.ggx = mtmp.mux;
+                        st.ggy = mtmp.muy;
+                    }
+                    continue;
+                }
                 /* avoid getting stuck on eg. items in niches */
                 if (!clear_path(mtmp.mx, mtmp.my, xx, yy)) /* m_cansee() */
                     continue;
@@ -1236,6 +1306,114 @@ function m_search_items(mtmp, st) {
     return false;
 }
 
+// ── C ref: monmove.c holds_up_web() ──
+/* can a web be anchored at x,y? */
+function holds_up_web(x, y) {
+    let sway;
+    const lev = isok(x, y) ? game.level.at(x, y) : null;
+
+    if (!isok(x, y)
+        || IS_OBSTRUCTED(lev.typ)
+        || ((lev.typ === STAIRS || lev.typ === LADDER)
+            && (sway = stairway_at(x, y)) != null && sway.up)
+        || lev.typ === IRONBARS)
+        return true;
+
+    return false;
+}
+
+// ── C ref: monmove.c count_webbing_walls() ──
+/* returns the number of walls in the four cardinal directions that could
+   hold up a web */
+function count_webbing_walls(x, y) {
+    return ((holds_up_web(x, y - 1) ? 1 : 0) + (holds_up_web(x + 1, y) ? 1 : 0)
+            + (holds_up_web(x, y + 1) ? 1 : 0) + (holds_up_web(x - 1, y) ? 1 : 0));
+}
+
+// ── C ref: monmove.c soko_allow_web() ──
+/* reject webs which interfere with solving Sokoban */
+function soko_allow_web(mon) {
+    /* for a non-Sokoban level or a solved Sokoban level, no restriction */
+    if (!game.level.flags?.sokoban_rules) /* Sokoban */
+        return true;
+    /* not-yet-solved Sokoban level:  allow web only when spinner can see
+       the stairs up [we really want 'is in same chamber as stairs up'] */
+    const stway = stairway_find_dir(true); /* stairs up */
+    if (stway && clear_path(mon.mx, mon.my, stway.sx, stway.sy)) /* m_cansee() */
+        return true;
+    return false;
+}
+
+// ── C ref: trap.c count_traps() ──
+function count_traps(ttyp) {
+    let ret = 0;
+    for (const trap of game.level.traps || [])
+        if (trap.ttyp === ttyp)
+            ret++;
+    return ret;
+}
+
+// ── C ref: monmove.c maybe_spin_web() ──
+/* monster might spin a web */
+async function maybe_spin_web(mtmp) {
+    if (webmaker(mtmp.data)
+        && !helpless(mtmp) && !mtmp.mspec_used
+        && !t_at(mtmp.mx, mtmp.my) && soko_allow_web(mtmp)) {
+        let trap;
+        const prob = ((((mtmp.data === mons[M.PM_GIANT_SPIDER]) ? 15 : 5)
+                       * (count_webbing_walls(mtmp.mx, mtmp.my) + 1))
+                      - (3 * count_traps(WEB)));
+
+        if (rn2(1000) < prob
+            && (trap = maketrap(mtmp.mx, mtmp.my, WEB)) != null) {
+            mtmp.mspec_used = d(4, 4); /* 4..16 */
+            if (cansee(mtmp.mx, mtmp.my)) {
+                const mbuf = canspotmon(mtmp) ? y_monnam(mtmp) : "something";
+                await pline(`${mbuf.charAt(0).toUpperCase()}${mbuf.slice(1)} spins a web.`); /* pline_mon(), upstart() */
+                trap.tseen = 1;
+            }
+            if (in_shop(mtmp.mx, mtmp.my))
+                throw new Error('maybe_spin_web(): add_damage() not ported yet');
+        }
+    }
+}
+
+// ── C ref: monmove.c m_digweapon_check() ──
+/* monster can tunnel and wants to; maybe wield a digging tool;
+   return True if it spends this move wielding one, False otherwise */
+export async function m_digweapon_check(mtmp, nix, niy) {
+    let can_tunnel = false;
+    const mw_tmp = mtmp.mw; /* MON_WEP(mtmp) */
+
+    /* if (!Is_rogue_level(&u.uz)): the rogue level isn't ported yet */
+    can_tunnel = tunnels(mtmp.data);
+
+    if (can_tunnel && needspick(mtmp.data) && !mwelded(mw_tmp)
+        && (may_dig(nix, niy) || closed_door(nix, niy))) {
+        const typ = game.level.at(nix, niy).typ;
+        /* may_dig() is either IS_STWALL or IS_TREE */
+        if (closed_door(nix, niy)) {
+            if (!mw_tmp || !is_pick(mw_tmp) || !is_axe(mw_tmp))
+                mtmp.weapon_check = NEED_PICK_OR_AXE;
+        } else if (IS_TREE(typ)) {
+            if (!mw_tmp || !is_axe(mw_tmp))
+                mtmp.weapon_check = NEED_AXE;
+        } else if (IS_STWALL(typ)) {
+            if (!mw_tmp || !is_pick(mw_tmp))
+                mtmp.weapon_check = NEED_PICK_AXE;
+        }
+        if (mtmp.weapon_check >= NEED_PICK_AXE && await mon_wield_item(mtmp))
+            return true;
+    }
+    return false;
+}
+
+/* C ref: obj.h is_axe() */
+function is_axe(otmp) {
+    return (otmp.oclass === OBJ.WEAPON_CLASS || otmp.oclass === OBJ.TOOL_CLASS)
+           && objects[otmp.otyp].oc_skill === P_AXE;
+}
+
 // ── C ref: monmove.c m_move() ──
 export async function m_move(mtmp, after) {
     const u = game.u;
@@ -1273,8 +1451,10 @@ export async function m_move(mtmp, after) {
             finish_meating(mtmp);
         return MMOVE_DONE; /* still eating */
     }
-    if (hides_under(ptr) && OBJ_AT(mtmp.mx, mtmp.my))
-        throw new Error('m_move(): can_hide_under_obj() not ported yet');
+    if (hides_under(ptr) && OBJ_AT(mtmp.mx, mtmp.my)
+        && can_hide_under_obj(vobj_at(mtmp.mx, mtmp.my)) /* level.objects[x][y] */
+        && rn2(10))
+        return MMOVE_NOTHING; /* do not leave hiding place */
 
     /* set up pre-move visibility flags */
     const seenflgs = (canseemon(mtmp) ? 1 : 0) | (canspotmon(mtmp) ? 2 : 0);
@@ -1473,8 +1653,8 @@ export async function m_move(mtmp, after) {
         if (mmoved === MMOVE_MOVED && !u_at(nix, niy) && u.ustuck === mtmp)
             throw new Error('m_move(): itsstuck() not ported yet');
 
-        if (mmoved === MMOVE_MOVED && can_tunnel && needspick(ptr))
-            throw new Error('m_move(): m_digweapon_check() not ported yet');
+        if (mmoved === MMOVE_MOVED && await m_digweapon_check(mtmp, nix, niy))
+            return MMOVE_DONE;
 
         /* If ALLOW_U is set, either it's trying to attack you, or it
          * thinks it is.  In either case, attack this spot in preference to
@@ -1515,10 +1695,7 @@ export async function m_move(mtmp, after) {
         place_monster(mtmp, nix, niy);
         /* msg_mon_movement(): a11y.mon_movement is off by default */
 
-        /* maybe_unhide_at(mtmp->mx, mtmp->my): no hidden monsters yet */
-        if (mtmp.mundetected || game.level.monsters?.some?.(m => m !== mtmp
-                                     && m.mx === nix && m.my === niy && m.mundetected))
-            throw new Error('m_move(): maybe_unhide_at() not ported yet');
+        maybe_unhide_at(mtmp.mx, mtmp.my);
 
         mon_track_add(mtmp, omx, omy);
     } else {
@@ -1669,8 +1846,9 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
         } /* doors and bars */
 
         /* possibly dig */
-        if (can_tunnel)
-            throw new Error('postmov(): mdig_tunnel() not ported yet');
+        if (can_tunnel && may_dig(mtmp.mx, mtmp.my)
+            && await mdig_tunnel(mtmp))
+            return MMOVE_DIED; /* mon died (position already updated) */
 
         /* set also in domove(), hack.c */
         if (game.u.uswallow && mtmp === game.u.ustuck) {
@@ -1699,12 +1877,16 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
                 newsym(mtmp.mx, mtmp.my);
         }
 
-        /* maybe_spin_web(mtmp) */
-        if (webmaker(ptr))
-            throw new Error('postmov(): maybe_spin_web() not ported yet');
+        await maybe_spin_web(mtmp);
 
-        if (hides_under(ptr) || ptr.mlet === M.S_EEL)
-            throw new Error('postmov(): hideunder() not ported yet');
+        if (hides_under(ptr) || ptr.mlet === M.S_EEL) {
+            /* Always set--or reset--mundetected if it's already hidden
+               (just in case the object it was hiding under went away);
+               usually set mundetected unless monster can't move. */
+            if (mtmp.mundetected || (!helpless(mtmp) && rn2(5)))
+                await hideunder_async(mtmp);
+            newsym(mtmp.mx, mtmp.my);
+        }
         if (mtmp.isshk) {
             await after_shk_move(mtmp);
         }

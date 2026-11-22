@@ -7,7 +7,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d, AC_VALUE } from './rng.js';
 import { cansee } from './vision.js';
-import { pline, bot, mon_visible } from './display.js';
+import { pline, bot, mon_visible, sensemon, You_feel } from './display.js';
 import { nomul } from './hack.js';
 import { Monnam, pronoun_gender, PRONOUN_HALLU } from './do_name.js';
 import { monnear } from './mon.js';
@@ -33,7 +33,7 @@ import { u_at } from './makemon.js';
 import { objects, AMULET_OF_GUARDING, WEAPON_CLASS, TOOL_CLASS, TOWEL,
          PIERCE } from './objects.js';
 import { mon_wield_item, hitval } from './weapon.js';
-import { thrwmu } from './mthrowu.js';
+import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { Is_rogue_level } from './const.js';
 import { ART_SNICKERSNEE } from './artilist.js';
 import { genders } from './role.js';
@@ -152,6 +152,21 @@ function stop_occupation() {
         nomul(0);
     }
     /* cmdq_clear(CQ_CANNED): the command queue isn't ported yet */
+}
+
+// C ref: mhitu.c mpoisons_subj()
+/* return how a poison attack was delivered */
+export function mpoisons_subj(mtmp, mattk) {
+    if (mattk.aatyp === AT_WEAP) {
+        const mwep = (mtmp === game.youmonst) ? game.uwep : (mtmp.mw || null);
+        /* "Foo's attack was poisoned." is pretty lame, but at least
+           it's better than "sting" when not a stinging attack... */
+        return (!mwep || !mwep.opoisoned) ? "attack" : "weapon";
+    } else {
+        return (mattk.aatyp === AT_TUCH) ? "contact"
+               : (mattk.aatyp === AT_GAZE) ? "gaze"
+                 : (mattk.aatyp === AT_BITE) ? "bite" : "sting";
+    }
 }
 
 // C ref: mhitu.c hitmsg()
@@ -395,8 +410,18 @@ export async function mattacku(mtmp) {
         && (is_demon(mdat) || is_were(mdat)))
         throw new Error('mattacku(): summonmu() not ported yet');
 
-    if (u.uinvulnerable) /* in the midst of successful prayer */
-        throw new Error('mattacku(): invulnerable hero not ported yet');
+    if (u.uinvulnerable) { /* in the midst of successful prayer */
+        /* monsters won't attack you */
+        if (mtmp === u.ustuck) {
+            await pline(`${Monnam(mtmp)} loosens its grip slightly.`); /* pline_mon() */
+        } else if (!v.range2) {
+            if (v.youseeit || sensemon(mtmp))
+                await pline(`${Monnam(mtmp)} starts to attack you, but pulls back.`);
+            else
+                await You_feel("something move nearby."); /* something */
+        }
+        return 0;
+    }
 
     /* Unlike defensive stuff, don't let them use item _and_ attack. */
     if (find_offensive(mtmp)) {
@@ -485,12 +510,12 @@ export async function mattacku(mtmp) {
             break;
         case AT_BREA:
             if (v.range2)
-                throw new Error('mattacku(): breamu() not ported yet');
+                sum[i] = await breamu(mtmp, mattk);
             /* Note: breamu takes care of displacement */
             break;
         case AT_SPIT:
             if (v.range2)
-                throw new Error('mattacku(): spitmu() not ported yet');
+                sum[i] = await spitmu(mtmp, mattk);
             /* Note: spitmu takes care of displacement */
             break;
         case AT_WEAP:

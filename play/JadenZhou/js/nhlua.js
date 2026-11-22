@@ -32,7 +32,7 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { TRUE, FALSE, NHL_SB_SAFE } from './const.js';
+import { TRUE, FALSE, NHL_SB_SAFE, NON_PM, G_GENOD } from './const.js';
 import * as C from './const.js';
 import { nhlib_lua } from './nhlib_lua.js';
 import { dungeon_lua } from './dungeon_lua.js';
@@ -45,10 +45,13 @@ import { oracle_lua } from './oracle_lua.js';
 import { bigrm_lua_files } from './bigrm_lua.js';
 import { quest_level_lua_files } from './questlev_lua.js';
 import { soko_lua_files } from './soko_lua.js';
+import { tower_lua_files } from './tower_lua.js';
+import { mines_lua_files } from './mines_lua.js';
+import { name_to_mon } from './mondata.js';
 import { l_register_des, get_coord, cvt_to_abscoord } from './sp_lev.js';
 import { l_selection_register } from './selvar.js';
 import { l_obj_register, nhl_get_timertype } from './nhlobj.js';
-import { level_difficulty } from './dungeon.js';
+import { level_difficulty, depth } from './dungeon.js';
 
 // C's impossible() (pline.c) is not ported yet.
 function impossible(msg) { console.error(`impossible: ${msg}`); }
@@ -448,9 +451,26 @@ async function nhl_text(...args) {
     return 0;
 }
 
+// C ref: nhlua.c nhl_is_genocided()
+/* local is_genocided = nh.is_genocided("vampire"); */
+function nhl_is_genocided(...args) {
+    if (args.length === 1) {
+        const paramstr = luaL_checkstring(args[0]);
+        const mgend = { v: 0 };
+        const i = name_to_mon(paramstr, mgend);
+
+        return ((i !== NON_PM)
+                && (game.mvitals[i].mvflags & G_GENOD)) ? TRUE : FALSE;
+    } else {
+        nhl_error(null, 'Wrong args');
+    }
+    return undefined;
+}
+
 // C ref: nhlua.c nhl_functions[] — the "nh" table. Only some functions
 // are ported so far.
 const nhl_functions = {
+    is_genocided: nhl_is_genocided,
     impossible: nhl_impossible,
     rn2: nhl_rn2,
     random: nhl_random,
@@ -482,7 +502,67 @@ function nhl_lua_file(fname) {
         return quest_level_lua_files[fname];
     if (Object.hasOwn(soko_lua_files, fname))
         return soko_lua_files[fname];
+    if (Object.hasOwn(tower_lua_files, fname))
+        return tower_lua_files[fname];
+    if (Object.hasOwn(mines_lua_files, fname))
+        return mines_lua_files[fname];
     return null;
+}
+
+// C ref: nhlua.c nhl_meta_u_index()
+/* the u table's __index: read a hero field. Only the non-struct keys
+   and the plain ustruct fields are ported; the rest of ustruct[] (u.ux,
+   u.uhunger, ...) stops explicitly. */
+function nhl_meta_u_index(tkey) {
+    const u = game.u;
+    const ustruct = {
+        ulevel: () => u.ulevel,
+        ulevelmax: () => u.ulevelmax,
+        dlevel: () => u.uz.dlevel,
+        dnum: () => u.uz.dnum,
+        uluck: () => u.uluck,
+        uhp: () => u.uhp,
+        uhpmax: () => u.uhpmax,
+        uen: () => u.uen,
+        uenmax: () => u.uenmax,
+    };
+    if (Object.hasOwn(ustruct, tkey))
+        return ustruct[tkey]();
+
+    if (tkey === 'role') {
+        return game.urole.name.m;
+    } else if (tkey === 'moves') {
+        return game.moves;
+    } else if (tkey === 'depth') {
+        return depth(u.uz);
+    }
+    if (['ux', 'uy', 'dx', 'dy', 'dz', 'tx', 'ty', 'uhunger', 'nv_range',
+         'xray_range', 'umonster', 'umonnum', 'mh', 'mhmax', 'mtimedone',
+         'inventory', 'uhave_amulet', 'invocation_level'].includes(tkey))
+        nhl_error(null, `u.${tkey} is not ported yet`);
+
+    nhl_error(null, 'Unknown u table index');
+    /*NOTREACHED*/
+    return undefined;
+}
+
+// C ref: nhlua.c init_u_data()
+/* the global 'u' table; its metatable reads hero fields on access and
+   refuses writes. The u.clear_inventory/u.giveobj functions are not
+   ported yet. */
+function init_u_data(L) {
+    L.globals.u = new Proxy({}, {
+        get(_t, k) {
+            if (typeof k !== 'string') return undefined;
+            if (k === 'clear_inventory' || k === 'giveobj')
+                nhl_error(null, `u.${k} is not ported yet`);
+            return nhl_meta_u_index(k);
+        },
+        set() {
+            nhl_error(null, 'Cannot set u table values');
+            return false;
+        },
+    });
 }
 
 // C ref: nhlua.c nhlL_newstate()
@@ -533,7 +613,8 @@ export function nhl_init(sbi) {
     /* register nh -table, and functions for it */
     L.globals.nh = { ...nhl_functions };
 
-    /* init_nhc_data(L), init_u_data(L): not ported yet */
+    /* init_nhc_data(L): not ported yet */
+    init_u_data(L);
     l_selection_register(L);
     l_register_des(L);
     l_obj_register(L);

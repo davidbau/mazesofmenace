@@ -10,7 +10,7 @@ import { clear_bypasses } from './worn.js';
 import { rn2, rnd } from './rng.js';
 import { mklev, u_on_upstairs } from './mklev.js';
 import { l_nhcore_init } from './nhlua.js';
-import { rhack, domove } from './cmd.js';
+import { rhack, domove, enter_explore_mode } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, see_monsters } from './display.js';
 import { read_engr_at } from './engrave.js';
 import { encumber_msg, pickup } from './pickup.js';
@@ -721,7 +721,7 @@ export async function moveloop_preamble(resuming) {
        explore mode, treat it as normal restore followed by 'X' command
        to use up the save file and require confirmation for explore mode */
     if (resuming && g.iflags.deferred_X)
-        throw new Error('moveloop_preamble(): enter_explore_mode() not ported yet');
+        await enter_explore_mode();
 
     /* side-effects from the real world */
     g.flags.moonphase = phase_of_the_moon();

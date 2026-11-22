@@ -45,7 +45,8 @@ import {
     luaL_checkoption, get_table_int, get_table_int_opt, get_table_str,
     get_table_str_opt, get_table_option, LUA_TTABLE, LUA_TSTRING, LUA_TNIL,
 } from './nhlua.js';
-import { strcmpi, strncmpi } from './hacklib.js';
+import { strcmpi, strncmpi, mungspaces } from './hacklib.js';
+import { tty_getlin } from './wintty.js';
 
 // C's panic() (end.c) and impossible() (pline.c) are not ported yet.
 function panic(msg) { throw new Error(`panic: ${msg}`); }
@@ -1121,6 +1122,12 @@ export function deepest_lev_reached(noquest) {
     return ret;
 }
 
+// C ref: dungeon.c find_hell()
+export function find_hell(lev) {
+    lev.dnum = game.dungeon_topology.d_valley_level.dnum;
+    lev.dlevel = 1;
+}
+
 // C ref: dungeon.c get_level()
 export function get_level(newlevel, levnum) {
     let br;
@@ -1417,3 +1424,69 @@ export async function print_dungeon(bymenu) {
 
 // C ref: flag.h wizard macro
 export function is_wizard_mode() { return wizard(); }
+
+// C ref: dungeon.c find_mapseen() -- the level's overview record; C's
+// init_mapseen() makes one for every level the hero reaches.  Only the
+// 'custom' annotation field is kept here: the rest of struct mapseen
+// (features, rooms, flags; recalc_mapseen()) and the overview aren't ported
+function find_mapseen(lev) {
+    if (!game.mapseen)
+        game.mapseen = new Map();
+    const key = ledger_no(lev);
+    if (!game.mapseen.has(key))
+        game.mapseen.set(key, { lev: { dnum: lev.dnum, dlevel: lev.dlevel },
+                                custom: null, custom_lth: 0 });
+    return game.mapseen.get(key);
+}
+
+// C ref: dungeon.c query_annotation() -- lev null: the current level
+// (the !EDIT_GETLIN build)
+async function query_annotation(lev) {
+    const mptr = find_mapseen(lev ? lev : game.u.uz);
+    let nbuf;
+
+    if (!mptr)
+        return;
+
+    if (mptr.custom) {
+        const tmpbuf = `Replace annotation "${mptr.custom.slice(0, 30)}${(mptr.custom.length > 30) ? "..." : ""}" with?`;
+        nbuf = await tty_getlin(tmpbuf);
+    } else {
+        let lbuf; /* level description */
+
+        if (!lev || on_level(game.u.uz, lev))
+            lbuf = "this dungeon level";
+        else
+            throw new Error('query_annotation(): describe_level() for another level not ported yet');
+        nbuf = await tty_getlin(`What do you want to call ${lbuf}?`);
+    }
+
+    /* empty input or ESC means don't add or change annotation;
+       space-only means discard current annotation without adding new one */
+    if (!nbuf || nbuf[0] === '\x1b')
+        return;
+    /* strip leading and trailing spaces, compress out consecutive spaces */
+    nbuf = mungspaces(nbuf);
+
+    /* discard old annotation, if any */
+    if (mptr.custom) {
+        mptr.custom = null;
+        mptr.custom_lth = 0;
+    }
+    /* add new annotation, unless it's all spaces (which will be an
+       empty string after mungspaces() above) */
+    if (nbuf && nbuf !== " ") {
+        mptr.custom = nbuf;
+        /* _lth field does not include trailing '\0' in the count */
+        mptr.custom_lth = nbuf.length;
+    }
+}
+
+// C ref: dungeon.c donamelevel() -- #annotate command (M-A): add a custom
+// name to the current level
+export async function donamelevel() {
+    if (game.iflags.menu_requested)
+        throw new Error('donamelevel(): dooverview() not ported yet');
+    await query_annotation(null);
+    return 0; /* ECMD_OK */
+}

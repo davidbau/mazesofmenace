@@ -6,15 +6,23 @@
 
 import * as M from './monsters.js';
 import { game } from './gstate.js';
+import { ROLL_FROM } from './rng.js';
+import { M_SEEN_NOTHING, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD,
+         M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON,
+         M_SEEN_ACID } from './const.js';
 import { strncmpi, strcmpi, strstri } from './hacklib.js';
 import { NON_PM, MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
          FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
          ACID_RES, STONE_RES, DRAIN_RES, ANTIMAGIC, BLND_RES, ALL_TRAPS,
          NO_TRAP, W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP, W_ARMC, W_ARM,
+         W_ARMH, BLINDED,
        } from './const.js';
 import { objects, ALCHEMY_SMOCK, WEAPON_CLASS, GRAY_DRAGON_SCALES,
          YELLOW_DRAGON_SCALES, GRAY_DRAGON_SCALE_MAIL,
-         YELLOW_DRAGON_SCALE_MAIL } from './objects.js';
+         YELLOW_DRAGON_SCALE_MAIL, LENSES, CREAM_PIE, BLINDING_VENOM,
+         POT_BLINDNESS } from './objects.js';
+import { objdescr_is } from './o_init.js';
+import { Unaware } from './eat.js';
 import { is_weptool } from './mkobj.js';
 import { which_armor } from './worn.js';
 import { title_to_mon } from './botl.js';
@@ -43,6 +51,153 @@ export function is_swimmer(ptr) { return (ptr.mflags1 & M1_SWIM) !== 0; }
 export function passes_walls(ptr) { return (ptr.mflags1 & M1_WALLWALK) !== 0; }
 // C ref: mondata.h haseyes()
 export function haseyes(ptr) { return (ptr.mflags1 & M1_NOEYES) === 0; }
+
+// C ref: mondata.c resists_blnd()
+/* TRUE if monster is resistant to light-induced blindness */
+export function resists_blnd(mon) {
+    const g = game, u = g.u;
+    const ptr = mon.data;
+    const is_you = (mon === g.youmonst);
+
+    if (is_you ? (uBlind() || Unaware())
+               : (mon.mblinded || !mon.mcansee || !haseyes(ptr)
+                  /* BUG: temporary sleep sets mfrozen, but since
+                          paralysis does too, we can't check it */
+                  || mon.msleeping))
+        return true;
+    /* yellow light, Archon; !dust vortex, !cobra, !raven */
+    if (dmgtype_fromattack(ptr, M.AD_BLND, M.AT_EXPL)
+        || dmgtype_fromattack(ptr, M.AD_BLND, M.AT_GAZE))
+        return true;
+    /* Sunsword */
+    if (resists_blnd_by_arti(mon))
+        return true;
+    /* catchall */
+    if (is_you && (u.uprops[BLND_RES].intrinsic || u.uprops[BLND_RES].extrinsic)) {
+        /* impossible("'Blnd_resist' but not resists_blnd()?") */
+        return true;
+    }
+    return false;
+}
+/* C ref: youprop.h Blind */
+function uBlind() {
+    const p = game.u.uprops[BLINDED];
+    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
+}
+
+// C ref: mondata.c resists_blnd_by_arti()
+/* True iff monster is resistant to light-induced blindness due to worn
+   or wielded magical equipment */
+export function resists_blnd_by_arti(mon) {
+    const g = game;
+    const is_you = (mon === g.youmonst);
+
+    let o = is_you ? g.uwep : mon.mw;
+    if (o && o.oartifact)
+        throw new Error('resists_blnd_by_arti(): defends() not ported yet');
+    for (o of invent_chain(mon, is_you))
+        if (o.oartifact) /* defends_when_carried(AD_BLND, o) */
+            throw new Error('resists_blnd_by_arti(): defends_when_carried() not ported yet');
+    return false;
+}
+
+// C ref: mondata.c can_blnd()
+/* returns True if monster can be blinded by the given attack */
+export function can_blnd(
+    magr, /* NULL == no specific aggressor */
+    mdef,
+    aatyp,
+    obj) { /* aatyp == AT_WEAP, AT_SPIT */
+    const g = game, u = g.u;
+    const is_you = (mdef === g.youmonst);
+    let check_visor = false;
+    const ublindf = g.ublindf || null;
+    const Blindfolded = !!(ublindf && ublindf.otyp !== LENSES);
+
+    /* no eyes protect against all attacks for now */
+    if (!haseyes(mdef.data))
+        return false;
+
+    /* if monster has been permanently blinded, the deed is already done */
+    if (!is_you && !mdef.mcansee && !mdef.mblinded) /* mon_perma_blind() */
+        return false;
+
+    /* /corvus oculum corvi non eruit/ */
+    if (magr && magr.data === mons[M.PM_RAVEN] && mdef.data === mons[M.PM_RAVEN])
+        return false;
+
+    switch (aatyp) {
+    case M.AT_EXPL:
+    case M.AT_BOOM:
+    case M.AT_GAZE:
+    case M.AT_MAGC:
+    case M.AT_BREA: /* assumed to be lightning */
+        /* light-based attacks may be cancelled or resisted */
+        if (magr && magr.mcan)
+            return false;
+        return !resists_blnd(mdef);
+
+    case M.AT_WEAP:
+    case M.AT_SPIT:
+    case M.AT_NONE:
+        /* an object is used (thrown/spit/other) */
+        if (obj && (obj.otyp === CREAM_PIE)) {
+            if (is_you && Blindfolded)
+                return false;
+        } else if (obj && (obj.otyp === BLINDING_VENOM)) {
+            /* all ublindf, including LENSES, protect, cream-pies too */
+            if (is_you && (ublindf || u.ucreamed))
+                return false;
+            check_visor = true;
+        } else if (obj && (obj.otyp === POT_BLINDNESS)) {
+            return true; /* no defense */
+        } else
+            return false; /* other objects cannot cause blindness yet */
+        if ((magr === g.youmonst) && u.uswallow)
+            return false; /* can't affect eyes while inside monster */
+        break;
+
+    case M.AT_ENGL:
+        if (is_you && (Blindfolded || Unaware() || u.ucreamed))
+            return false;
+        if (!is_you && mdef.msleeping)
+            return false;
+        break;
+
+    case M.AT_CLAW:
+        /* e.g. raven: all ublindf, including LENSES, protect */
+        if (is_you && ublindf)
+            return false;
+        if ((magr === g.youmonst) && u.uswallow)
+            return false; /* can't affect eyes while inside monster */
+        check_visor = true;
+        break;
+
+    case M.AT_TUCH:
+    case M.AT_STNG:
+        /* some physical, blind-inducing attacks can be cancelled */
+        if (magr && magr.mcan)
+            return false;
+        break;
+
+    default:
+        break;
+    }
+
+    /* check if wearing a visor (only checked if visor might help) */
+    if (check_visor) {
+        const chain = is_you ? (() => {
+            const out = [];
+            for (let o = g.invent; o; o = o.nobj) out.push(o);
+            return out;
+        })() : (mdef.minvent || []).slice().reverse();
+        for (const o of chain)
+            if ((o.owornmask & W_ARMH) && objdescr_is(o, "visored helmet"))
+                return false;
+    }
+
+    return true;
+}
 // C ref: mondata.h regenerates()
 export function regenerates(ptr) { return (ptr.mflags1 & M1_REGEN) !== 0; }
 // C ref: mondata.h perceives()
@@ -222,7 +377,7 @@ export function Resists_Elem(mon, propindx) {
     case DRAIN_RES:
         return resists_drli(mon);
     case BLND_RES:
-        throw new Error('Resists_Elem(): resists_blnd() not ported yet');
+        return resists_blnd(mon);
 
     default:
         /* impossible("Resists_Elem(%d), unexpected property type") */
@@ -644,4 +799,33 @@ export function name_to_monplus(in_str, remainder_p, gender_name_var) {
             gender_name_var.v = matchgend;
     }
     return mntmp;
+}
+
+// C ref: mondata.c cvt_adtyp_to_mseenres()
+/* Convert attack damage type AD_foo to M_SEEN_bar */
+export function cvt_adtyp_to_mseenres(adtyp) {
+    switch (adtyp) {
+    case M.AD_MAGM: return M_SEEN_MAGR;
+    case M.AD_FIRE: return M_SEEN_FIRE;
+    case M.AD_COLD: return M_SEEN_COLD;
+    case M.AD_SLEE: return M_SEEN_SLEEP;
+    case M.AD_DISN: return M_SEEN_DISINT;
+    case M.AD_ELEC: return M_SEEN_ELEC;
+    case M.AD_DRST: return M_SEEN_POISON;
+    case M.AD_ACID: return M_SEEN_ACID;
+    /* M_SEEN_REFL has no corresponding AD_foo type */
+    default: return M_SEEN_NOTHING;
+    }
+}
+
+// C ref: mondata.c get_atkdam_type()
+/* Return the AD_ damage type for an attack; random breath picks one */
+export function get_atkdam_type(adtyp) {
+    if (adtyp === M.AD_RBRE) {
+        const rnd_breath_typ = [
+            M.AD_MAGM, M.AD_FIRE, M.AD_COLD, M.AD_SLEE,
+            M.AD_DISN, M.AD_ELEC, M.AD_DRST, M.AD_ACID ];
+        return ROLL_FROM(rnd_breath_typ);
+    }
+    return adtyp;
 }

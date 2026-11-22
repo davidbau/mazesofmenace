@@ -15,9 +15,9 @@
 // each call site below wraps its math.random call in withRngCaller() with
 // its own tag.
 //
-// Ported so far: math.random, shuffle, align, d, percent. Not ported yet
-// (they need u, selection, des or nh.pline, and their definitions roll no
-// dice): monkfoodshop, hell_tweaks, pline, nh_set_variables_string,
+// Ported so far: math.random, shuffle, align, d, monkfoodshop, percent. Not
+// ported yet (they need selection, des or nh.pline, and their definitions
+// roll no dice): hell_tweaks, pline, nh_set_variables_string,
 // nh_get_variables_string, table_stringify and the tutorial functions.
 
 import { withRngCaller } from './rng.js';
@@ -78,6 +78,14 @@ export function nhlib_lua(L) {
             }
             return sum;
         }
+    };
+
+    // function monkfoodshop()
+    G.monkfoodshop = function monkfoodshop() {
+        if (G.u.role === 'Monk') {
+            return 'health food shop';
+        }
+        return 'food shop';
     };
 
     // -- percent(20) returns true 20% of the time

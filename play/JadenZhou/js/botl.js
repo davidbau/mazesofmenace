@@ -2,12 +2,14 @@
 // C ref: botl.c
 //
 // Ported so far: xlev_to_rank(), rank_to_xlev(), rank_of(), rank(),
-// max_rank_sz(). The status-line rendering itself is still in display.js.
+// max_rank_sz(), describe_level(). The status-line rendering itself is
+// still in display.js.
 
 import { game } from './gstate.js';
 import { roles } from './role.js';
 import { str_start_is } from './hacklib.js';
-import { NON_PM } from './const.js';
+import { NON_PM, In_endgame } from './const.js';
+import { depth, dunlev, on_level } from './dungeon.js';
 
 // C ref: botl.c xlev_to_rank()
 /* convert experience level (1..30) to rank index (0..8) */
@@ -160,3 +162,41 @@ export const condtests = [
     { useropt: "woundedlegs", opt: opt_in,  enabled: false },
     { useropt: "holding",     opt: opt_in,  enabled: false },
 ];
+
+// C ref: botl.c describe_level()
+/* 'dflgs' 1: append trailing space; 2: include dungeon branch name;
+   returns [ret, buf] (C: fills buf, returns 1 for a special branch level) */
+export function describe_level(dflgs) {
+    const u = game.u;
+    const topo = game.dungeon_topology;
+    const addspace = (dflgs & 1) !== 0; /* (used to be unconditional) */
+    let addbranch = (dflgs & 2) !== 0;  /* False: status, True: livelog */
+    let ret = 1;
+    let buf;
+
+    if (topo.d_knox_level.dlevel && on_level(u.uz, topo.d_knox_level)) {
+        /* Is_knox(&u.uz) */
+        buf = `${game.dungeons[u.uz.dnum].dname}`;
+        addbranch = false;
+    } else if (u.uz.dnum === topo.d_quest_dnum) { /* In_quest(&u.uz) */
+        buf = `Home ${dunlev(u.uz)}`;
+    } else if (In_endgame(u.uz)) {
+        /* [3.6.2: this used to be "Astral Plane" or generic "End Game"] */
+        throw new Error('describe_level(): endgamelevelname() not ported yet');
+    } else {
+        /* ports with more room may expand this one */
+        if (!addbranch)
+            buf = `${(u.uz.dnum === topo.d_tutorial_dnum) /* In_tutorial() */
+                     ? "Tutorial" : "Dlvl"}:${String(depth(u.uz)).padEnd(2)}`;
+        else
+            buf = `level ${depth(u.uz)}`;
+        ret = 0;
+    }
+    if (addbranch) {
+        buf += `, ${game.dungeons[u.uz.dnum].dname}`;
+        buf = buf.replace("The ", "the "); /* strsubst() */
+    }
+    if (addspace)
+        buf += " ";
+    return [ret, buf];
+}

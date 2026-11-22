@@ -9,6 +9,7 @@
 // ported yet.
 
 import { game } from './gstate.js';
+import { in_town } from './hack.js';
 import { rn2, rnd, rn1, rnl } from './rng.js';
 import { pline, You, You_cant, newsym, unmap_invisible } from './display.js';
 import { getdir } from './cmd.js';
@@ -223,14 +224,6 @@ async function kick_door(x, y, avrg_attrib) {
     }
 }
 
-/* C ref: hack.c in_town() -- a town only exists on special levels
-   (has_town); the town room check isn't ported */
-function in_town(x, y) {
-    void x; void y;
-    if (!game.level.flags.has_town)
-        return false;
-    throw new Error('in_town(): town rooms not ported yet');
-}
 
 // C ref: dokick.c kick_nondoor()
 /* kick non-door terrain */

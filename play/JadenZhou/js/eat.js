@@ -118,7 +118,7 @@ function vegan(ptr) {
                 && ptr !== mons[M.PM_LEATHER_GOLEM])
             || ptr.mlet === M.S_GHOST /* noncorporeal() */);
 }
-function vegetarian(ptr) {
+export function vegetarian(ptr) {
     return vegan(ptr)
         || (ptr.mlet === M.S_PUDDING && ptr !== mons[M.PM_BLACK_PUDDING]);
 }
@@ -212,10 +212,20 @@ function is_fainted() {
 }
 
 // C ref: youprop.h Unaware -- (multi < 0 && (unconscious() || is_fainted()))
-function Unaware() {
-    /* unconscious() (asleep etc.) isn't ported yet; only fainting from
-       hunger is tracked here */
-    return game.multi < 0 && is_fainted();
+export function Unaware() {
+    return game.multi < 0 && (unconscious() || is_fainted());
+}
+
+// C ref: trap.c unconscious()
+function unconscious() {
+    const g = game;
+    if (g.multi >= 0)
+        return false;
+    return !!(g.u.usleep
+              || (g.nomovemsg
+                  && (g.nomovemsg.startsWith("You awake")
+                      || g.nomovemsg.startsWith("You regain con")
+                      || g.nomovemsg.startsWith("You are consci"))));
 }
 
 // C ref: eat.c gethungry()
@@ -1325,6 +1335,9 @@ async function violated_vegetarian() {
 const tintxt_nut = [ -50, 50, 20, 40, 40, 50, 50, 55, 60, 70, 80, 80, 95, 100,
                      500, 0 ];
 const tintxt_greasy = [ 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0 ];
+/* C ref: eat.c tintxts[].fodder -- suitable for vegetarians (eat.c's
+   set_tin_variety(), ported in mkobj.js, uses it) */
+export const tintxt_fodder = [ 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1, 1, 0 ];
 
 // C ref: eat.c costly_tin()
 /* common code to check and possibly charge for 1 context.tin.tin,

@@ -2673,7 +2673,11 @@ async function yn_count_tail(qbuf) {
             if (nv > 9223372036854775807n) { value = -1n; break; }
             value = nv;
             text += String.fromCharCode(key); n_len++;
-        } else if (key === 121 || key === 32 || key === 13 || key === 10) {
+        } else if (key === 121 || key === 89 || key === 32 || key === 13
+                   || key === 10) {
+            /* topl.c:492-494 `z = lowc(z)` before the terminator test:
+             * preserve_case is FALSE for the all-lowercase 'yn#aq' callers,
+             * so uppercase 'Y' ends the count like 'y' (df-xa32d62e11b). */
             break;
         } else if (key === 27) {
             value = -1n;

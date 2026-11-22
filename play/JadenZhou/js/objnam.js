@@ -422,10 +422,16 @@ export function fruit_from_indx(indx) {
     return f || null;
 }
 
-// C ref: objnam.c fruit_from_name() -- exact (strcmp) match part only;
-// the prefix/singular/plural fallbacks for !exact are not ported yet
+// C ref: objnam.c fruit_from_name()
+/* look up a named fruit by name; 'highest_fid' is an optional output
+   holder ({ v }), only valid if 'fname' isn't found */
 export function fruit_from_name(fname, exact, highest_fid) {
-    let f;
+    let f, tentativef;
+    let altfname;
+    let k;
+    /*
+     * note: named fruits are case-sensitive...
+     */
 
     if (highest_fid)
         highest_fid.v = 0;
@@ -436,70 +442,62 @@ export function fruit_from_name(fname, exact, highest_fid) {
         else if (highest_fid && f.fid > highest_fid.v)
             highest_fid.v = f.fid;
 
-    if (!exact && game.ffruit)
-        throw new Error('fruit_from_name(): inexact matching is not ported yet');
-    return null;
-}
-
-// C ref: options.c fruitadd() -- the user-specified (pl_fruit) case
-export function fruitadd(str, replace_fruit) {
-    const user_specified = (str === game.pl_fruit);
-    let f;
-
-    if (!user_specified || replace_fruit)
-        throw new Error('fruitadd(): bones/orctown fruit and replace_fruit are not ported yet');
-
-    /* force fruit to be singular */
-    game.pl_fruit = makesingular(str);
-    const pl_fruit = game.pl_fruit;
-
-    /* disallow naming after other foods (since it'd be impossible
-     * to tell the difference); globs might have a size prefix which
-     * needs to be skipped in order to match the object type name
-     */
-    const globpfx = (pl_fruit.startsWith("small ")
-                     || pl_fruit.startsWith("large ")) ? 6
-        : pl_fruit.startsWith("medium ") ? 7
-            : pl_fruit.startsWith("very large ") ? 11
-                : 0;
-    let found = false, numeric = false;
-    /* svb.bases[] is still zero when initoptions() runs before o_init() */
-    for (let i = game.bases?.[O.FOOD_CLASS] ?? 0;
-         objects[i] && objects[i].oc_class === O.FOOD_CLASS; i++) {
-        if (OBJ_NAME(objects[i]) === pl_fruit
-            || (globpfx > 0 && OBJ_NAME(objects[i]) === pl_fruit.slice(globpfx))) {
-            found = true;
-            break;
+    /* didn't match as-is; if caller is willing to accept a prefix
+       match, try to find one; we want to find the longest prefix that
+       matches, not the first */
+    if (!exact) {
+        tentativef = null;
+        for (f = game.ffruit; f; f = f.nextf) {
+            k = f.fname.length;
+            if (fname.slice(0, k) === f.fname
+                && (k >= fname.length || fname[k] === ' ')
+                && (!tentativef || k > tentativef.fname.length))
+                tentativef = f;
         }
+        f = tentativef;
     }
-    if (!found) {
-        const c = pl_fruit.replace(/^[0-9]*/, '');
-        if (!c || c[0] === ' ')
-            numeric = true;
-    }
-    if (found || numeric
-        || pl_fruit.startsWith("cursed ") || pl_fruit.startsWith("uncursed ")
-        || pl_fruit.startsWith("blessed ") || pl_fruit.startsWith("partly eaten ")
-        || pl_fruit.startsWith("tin of ") || pl_fruit === "empty tin"
-        || pl_fruit === "glob" || / corpse$| egg$/.test(pl_fruit))
-        throw new Error('fruitadd(): candied/food-named fruit is not ported yet');
-
-    /* This flag indicates that a fruit has been made since the
-     * last time the user set the fruit. */
-    game.flags.made_fruit = false;
-
-    const hf = { v: 0 };
-    f = fruit_from_name(pl_fruit, false, hf); /* str aliases pl_fruit */
+    /* if we still don't have a match, try singularizing the target;
+       for exact match, that's trivial, but for prefix, it's hard */
     if (!f) {
-        if (hf.v >= 127)
-            throw new Error('fruitadd(): fruit overflow is not ported yet');
-        f = { fname: pl_fruit, fid: ++hf.v, nextf: game.ffruit };
-        /* simple insertion at start */
-        game.ffruit = f;
+        altfname = makesingular(fname);
+        for (f = game.ffruit; f; f = f.nextf) {
+            if (f.fname === altfname)
+                break;
+        }
+        /* releaseobuf(altfname) */
     }
-    /* nonew: */
-    game.context.current_fruit = f.fid;
-    return f.fid;
+    if (!f && !exact) {
+        let fnamebuf, p;
+        const fname_k = fname.length; /* length of assumed plural fname */
+
+        tentativef = null;
+        for (f = game.ffruit; f; f = f.nextf) {
+            k = f.fname.length;
+            /* reload fnamebuf[] each iteration in case it gets modified;
+               there's no need to recalculate fname_k */
+            fnamebuf = fname;
+            /* bug? if singular of fname is longer than plural,
+               failing the 'fname_k > k' test could skip a viable
+               candidate; unfortunately, we can't singularize until
+               after stripping off trailing stuff and we can't get
+               accurate fname_k until fname has been singularized;
+               compromise and use 'fname_k >= k' instead of '>',
+               accepting 1 char length discrepancy without risking
+               false match (I hope...) */
+            if (fname_k >= k && (p = fnamebuf.indexOf(' ', k)) >= 0) {
+                /* truncate at 1st space past length of f->fname */
+                fnamebuf = fnamebuf.slice(0, p);
+                altfname = makesingular(fnamebuf);
+                k = altfname.length; /* actually revised 'fname_k' */
+                if (f.fname === altfname
+                    && (!tentativef || k > tentativef.fname.length))
+                    tentativef = f;
+                /* releaseobuf(altfname): avoid churning through all obufs */
+            }
+        }
+        f = tentativef;
+    }
+    return f || null;
 }
 
 // C ref: hacklib.c letter()

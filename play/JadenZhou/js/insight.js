@@ -337,7 +337,7 @@ function temp_resist(propidx) {
 }
 
 /* C ref: dungeon.c has_ceiling() */
-function has_ceiling(lev) {
+export function has_ceiling(lev) {
     /* FIXME: some (most? all?) of the quest home levels are conceptually
        above ground and don't have ceilings outside of their buildings
        but we don't presently check for that */
@@ -2247,4 +2247,66 @@ export async function ustatusline() {
                 + `Level ${Upolyd ? M.mons[u.umonnum].mlevel : u.ulevel}  `
                 + `HP ${Upolyd ? u.mh : u.uhp}(${Upolyd ? u.mhmax : u.uhpmax})  `
                 + `AC ${u.uac}${info}.`);
+}
+
+/* C ref: insight.c UniqCritterIndx() -- high priests aren't unique but
+   are flagged as such to simplify something */
+function UniqCritterIndx(mndx) {
+    return (M.mons[mndx].geno & M.G_UNIQ) !== 0 && mndx !== M.PM_HIGH_CLERIC;
+}
+
+// C ref: insight.c num_gone() -- the indices of the monster types whose
+// mvitals flags match mvflags
+function num_gone(mvflags) {
+    const mflg = mvflags & 0xff;
+    const mindx = [];
+
+    for (let i = M.LOW_PM; i < M.NUMMONS; ++i) {
+        /* uniques can't be genocided but can become extinct;
+           however, they're never reported as extinct, so skip them */
+        if (UniqCritterIndx(i))
+            continue;
+
+        if ((game.mvitals[i].mvflags & mflg) !== 0)
+            mindx.push(i);
+    }
+    return mindx;
+}
+
+// C ref: insight.c list_genocided() -- the #genocided command case
+// (ask FALSE); the species list itself isn't ported
+async function list_genocided(defquery, ask) {
+    const G_GENOD = 0x02, G_EXTINCT = 0x01; /* C ref: monflag.h */
+    let both = !!(game.program_state?.gameover || game.flags.debug
+                  || game.flags.explore);
+    const dumping = (defquery === 'd');
+    const genoing = (defquery === 'g');
+
+    if (dumping || genoing)
+        defquery = 'y';
+    if (genoing)
+        both = false; /* genocides only, not extinctions */
+
+    /* num_genocides() and num_extinct() only matter for the list */
+    const mvflags = G_GENOD | (both ? G_EXTINCT : 0);
+    const ngone = num_gone(mvflags).length;
+
+    /* genocided or extinct species list */
+    if (ngone > 0) {
+        void ask;
+        throw new Error('list_genocided(): the species list not ported yet');
+    /* See the comment for similar code near the end of list_vanquished(). */
+    } else if (!game.program_state?.gameover) {
+        /* #genocided rather than final disclosure, so pline() is ok and
+           extinction has been ignored */
+        await pline(`No creatures have been genocided${genoing ? " yet" : ""}.`);
+    } else if (dumping) { /* 'gameover' is True if we make it here */
+        throw new Error('list_genocided(): DUMPLOG not ported yet');
+    }
+}
+
+// C ref: insight.c dogenocided() -- M-g - #genocided command
+export async function dogenocided() {
+    await list_genocided(game.iflags.menu_requested ? 'a' : 'y', false);
+    return 0; /* ECMD_OK */
 }

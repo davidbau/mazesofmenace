@@ -3,7 +3,35 @@
 // throw a 'not ported yet' error instead of skipping their rolls.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd, rn1, d } from './rng.js';
+import { distmin } from './hacklib.js';
+import { cansee, couldsee } from './vision.js';
+import { pline, pline_The, canseemon, canspotmon, map_invisible,
+         Hallucination } from './display.js';
+import { You_hear } from './sounds.js';
+import { Monnam } from './do_name.js';
+import { an, xname, doname, singular } from './objnam.js';
+import { simpleonames } from './iactions.js';
+import { observe_object, discover_object, objdescr_is } from './o_init.js';
+import { unknow_object } from './mkobj.js';
+import { stop_occupation } from './allmain.js';
+import { nomul } from './hack.js';
+import { seemimic } from './mon.js';
+import { monstseesu, monstunseesu } from './uhitm.js';
+import { losehp } from './trap.js';
+import { find_mac } from './worn.js';
+import { resists_magm } from './mondata.js';
+import { hit, miss, exclam, buzz, dobuzz, bhito,
+         find_drawbridge } from './zap.js';
+import { m_throw } from './mthrowu.js';
+import { POTION_CLASS, WAND_CLASS, WAN_OPENING, WAN_LOCKING,
+         WAN_CANCELLATION, SPE_CANCELLATION } from './objects.js';
+import { BOLT_LIM, G_GONE, ANTIMAGIC, HALF_SPDAM, KILLED_BY_AN,
+         DRAWBRIDGE_UP, SDOOR, D_LOCKED, D_CLOSED, IS_DOOR,
+         ZAP_POS } from './const.js';
+
+const WAND_BACKFIRE_CHANCE = 100; /* hack.h */
+const QBUFSZ = 128; /* global.h */
 import { dist2, isok } from './hacklib.js';
 import { m_at, sobj_at, u_at } from './makemon.js';
 import { t_at } from './trap.js';
@@ -24,6 +52,9 @@ import { BOULDER, BUGLE, UNICORN_HORN, CORPSE, TIN, POT_FULL_HEALING,
          POT_INVISIBILITY, WAN_SPEED_MONSTER, POT_SPEED, WAN_POLYMORPH,
          POT_POLYMORPH, BAG_OF_TRICKS, LARGE_BOX,
          GLOB_OF_GREEN_SLIME } from './objects.js';
+import { TIN_OPENER, WEAPON_CLASS, objects } from './objects.js';
+import { P_DAGGER, P_KNIFE } from './const.js';
+import { mwelded } from './weapon.js';
 import { Is_container } from './mkobj.js';
 import { STAIRS, LADDER, TELEP_TRAP, WEB, BEAR_TRAP, is_hole, is_pit,
          M_SEEN_REFL, M_SEEN_MAGR, M_SEEN_SLEEP, M_SEEN_FIRE, M_SEEN_COLD,
@@ -100,7 +131,7 @@ function attacktype(ptr, atyp) {
     return ptr.mattk.some(a => a.aatyp === atyp);
 }
 /* C ref: monst.h m_seenres() */
-function m_seenres(mon, mask) { return (mon.seen_resistance || 0) & mask; }
+export function m_seenres(mon, mask) { return (mon.seen_resistance || 0) & mask; }
 /* C ref: hack.h m_next2u() */
 function m_next2u(mon) {
     return Math.abs(mon.mx - game.u.ux) <= 1 && Math.abs(mon.my - game.u.uy) <= 1;
@@ -175,6 +206,33 @@ export function cures_stoning(mon, obj, tinok) {
             || (mons[obj.corpsenm].mflags1 & M.M1_ACID) !== 0); /* acidic() */
 }
 
+
+// C ref: muse.c mcould_eat_tin()
+/* can monster open a tin? */
+export function mcould_eat_tin(mon) {
+    /* monkeys who manage to steal tins can't open and eat them
+       even if they happen to also have the appropriate tool */
+    if (is_animal(mon.data))
+        return false;
+
+    const mwep = mon.mw; /* MON_WEP(mon) */
+    const welded_wep = mwep && mwelded(mwep);
+    /* this is different from the player; tin opener or dagger doesn't
+       have to be wielded, and knife can be used instead of dagger */
+    for (const obj of minv(mon)) {
+        /* if stuck with a cursed weapon, don't check rest of inventory */
+        if (welded_wep && obj !== mwep)
+            continue;
+
+        if (obj.otyp === TIN_OPENER
+            || (obj.oclass === WEAPON_CLASS
+                && (objects[obj.otyp].oc_skill === P_DAGGER
+                    || objects[obj.otyp].oc_skill === P_KNIFE)))
+            return true;
+    }
+    return false;
+}
+
 // C ref: muse.c find_defensive()
 /* Select a defensive item/action for a monster.  Returns TRUE iff one is
    found. */
@@ -227,8 +285,12 @@ export function find_defensive(mtmp, tryescape) {
             }
         }
         /* confused or stunned monster might not be able to open tin */
-        if (liztin)
-            throw new Error('find_defensive(): mcould_eat_tin() not ported yet');
+        if (liztin && mcould_eat_tin(mtmp) && rn2(3)) {
+            game.m_defensive = liztin;
+            /* tin and corpse ultimately end up being handled the same */
+            game.m_has_defense = MUSE_LIZARD_CORPSE;
+            return true;
+        }
     }
 
     /* check specifically for healing alone when blind (healing cures
@@ -681,10 +743,385 @@ export async function use_misc(mtmp) {
     throw new Error('use_misc() not ported yet');
 }
 
+// C ref: muse.c precheck()
+/* Any preliminary checks which may result in the monster being unable to use
+ * the item.  Returns 0 if nothing happened, 2 if the monster can't do
+ * anything (i.e. it teleported) and 1 if it's dead.
+ */
+async function precheck(mon, obj) {
+    if (!obj)
+        return 0;
+    const vis = cansee(mon.mx, mon.my);
+
+    if (obj.oclass === POTION_CLASS) {
+        const mvitals = game.mvitals || [];
+        if (objdescr_is(obj, "milky")) {
+            if (!((mvitals[M.PM_GHOST]?.mvflags || 0) & G_GONE))
+                /* !rn2(POTION_OCCUPANT_CHANCE(born)): ghost from the bottle */
+                throw new Error('precheck(): milky potion ghost not ported yet');
+        }
+        if (objdescr_is(obj, "smoky")
+            && !((mvitals[M.PM_DJINNI]?.mvflags || 0) & G_GONE))
+            /* !rn2(POTION_OCCUPANT_CHANCE(born)): djinni from the bottle */
+            throw new Error('precheck(): smoky potion djinni not ported yet');
+    }
+    if (obj.oclass === WAND_CLASS && obj.cursed
+        && !rn2(WAND_BACKFIRE_CHANCE)) {
+        /* d(obj->spe + 2, 6), "<Mon> zaps <wand>, which suddenly explodes!" */
+        void vis;
+        throw new Error('precheck(): exploding cursed wand not ported yet');
+    }
+    return 0;
+}
+
+/* C ref: hack.h mdistu() */
+function mdistu(mon) {
+    const dx = mon.mx - game.u.ux, dy = mon.my - game.u.uy;
+    return dx * dx + dy * dy;
+}
+/* C ref: hacklib.c sgn() */
+function sgn(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
+/* C ref: obj.h makeknown() */
+function makeknown(otyp) { discover_object(otyp, true, true, true); }
+/* C ref: youprop.h */
+function uhave(prop) {
+    const p = game.u.uprops[prop];
+    return !!(p.intrinsic || p.extrinsic);
+}
+
+// C ref: muse.c mzapwand()
+/* when a monster zaps a wand give a message, deduct a charge, and if it
+   isn't directly seen, remove hero's memory of the number of charges */
+async function mzapwand(mtmp, otmp, self) {
+    if (otmp.spe < 1) {
+        /* impossible("Mon zapping wand with %d charges?", otmp->spe) */
+        return;
+    }
+    if (!canseemon(mtmp)) {
+        const range = couldsee(mtmp.mx, mtmp.my) /* 9 or 5 */
+                      ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+
+        /* Soundeffect(se_zap, 100) */
+        await You_hear(`a ${(mdistu(mtmp) <= range * range)
+                            ? "nearby" : "distant"} zap.`);
+        unknow_object(otmp); /* hero loses info when unseen obj is used */
+    } else if (self) {
+        /* pline("%s with %s!", monverbself(mtmp, Monnam(mtmp), "zap", 0),
+                 doname(otmp)) */
+        throw new Error('mzapwand(): monverbself() not ported yet');
+    } else {
+        /* pline_mon(): tty ignores the position */
+        await pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
+        await stop_occupation();
+    }
+    otmp.spe -= 1;
+}
+
+// C ref: muse.c mplayhorn()
+/* similar to mzapwand() but for magical horns (only instrument mons play) */
+async function mplayhorn(mtmp, otmp, self) {
+    let objnamp;
+
+    if (!canseemon(mtmp)) {
+        const range = couldsee(mtmp.mx, mtmp.my) /* 9 or 5 */
+                      ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+
+        /* Soundeffect(se_horn_being_played, 50) */
+        await You_hear(`a horn being played ${(mdistu(mtmp) <= range * range)
+                                              ? "nearby" : "in the distance"}.`);
+        unknow_object(otmp); /* hero loses info when unseen obj is used */
+    } else if (self) {
+        throw new Error('mplayhorn(): monverbself() not ported yet');
+    } else {
+        observe_object(otmp, Hallucination());
+        objnamp = xname(otmp);
+        if (objnamp.length >= QBUFSZ)
+            objnamp = simpleonames(otmp);
+        await pline(`${Monnam(mtmp)} plays ${an(objnamp)} directed at you!`);
+        makeknown(otmp.otyp);
+        await stop_occupation();
+    }
+    otmp.spe -= 1; /* use a charge */
+}
+
+// C ref: muse.c mbhitm()
+/* Perform an offensive action for a monster.  Must be called immediately
+ * after find_offensive().  Return values are same as use_defensive().
+ */
+async function mbhitm(mtmp, otmp) {
+    const u = game.u;
+    let tmp;
+    let reveal_invis = false, learnit = false;
+    const hits_you = (mtmp === game.youmonst);
+
+    if (!hits_you && otmp.otyp !== WAN_UNDEAD_TURNING) {
+        mtmp.msleeping = 0;
+        if (mtmp.m_ap_type)
+            seemimic(mtmp);
+    }
+    switch (otmp.otyp) {
+    case WAN_STRIKING:
+        reveal_invis = true;
+        if (hits_you) {
+            if (uhave(ANTIMAGIC)) {
+                monstseesu(M_SEEN_MAGR); /* monsters notice hero resisting */
+                /* shieldeff(u.ux, u.uy): transient display only */
+                /* Soundeffect(se_boing, 40) */
+                await pline("Boing!");
+                learnit = true;
+            } else if (rnd(20) < 10 + u.uac
+                       && !(game.buzzer && !game.buzzer.mwandexp)) {
+                monstunseesu(M_SEEN_MAGR); /* mons see hero not resisting */
+                await pline_The("wand hits you!");
+                tmp = d(2, 12);
+                if (uhave(HALF_SPDAM))
+                    tmp = Math.trunc((tmp + 1) / 2);
+                await losehp(tmp, "wand", KILLED_BY_AN);
+                learnit = true;
+            } else {
+                await pline_The("wand misses you.");
+            }
+            await stop_occupation();
+            nomul(0);
+        } else if (resists_magm(mtmp)) {
+            /* shieldeff(mtmp->mx, mtmp->my): transient display only */
+            /* Soundeffect(se_boing, 40) */
+            await pline("Boing!");
+            learnit = true;
+        } else if (rnd(20) < 10 + find_mac(mtmp)) {
+            tmp = d(2, 12);
+            await hit("wand", mtmp, exclam(tmp));
+            /* (void) resist(mtmp, otmp->oclass, tmp, TELL) */
+            throw new Error('mbhitm(): resist() not ported yet');
+        } else {
+            await miss("wand", mtmp);
+        }
+        /* need to see the wand being zapped and also the spot where the
+           target is hit; don't have to see the target itself though */
+        if (learnit && game.zap_oseen && (hits_you
+                                          || cansee(mtmp.mx, mtmp.my)))
+            makeknown(WAN_STRIKING);
+        break;
+    case WAN_TELEPORTATION:
+        if (hits_you)
+            throw new Error('mbhitm(): tele() not ported yet');
+        else
+            throw new Error('mbhitm(): teleporting a monster (rloc()) not ported yet');
+    case WAN_CANCELLATION:
+    case SPE_CANCELLATION:
+        throw new Error('mbhitm(): cancel_monst() not ported yet');
+    case WAN_UNDEAD_TURNING:
+        throw new Error('mbhitm(): undead turning not ported yet');
+    default:
+        break;
+    }
+    if (reveal_invis && !(mtmp.mhp < 1)
+        && cansee(game.bhitpos.x, game.bhitpos.y) && !canspotmon(mtmp))
+        map_invisible(game.bhitpos.x, game.bhitpos.y);
+
+    return 0;
+}
+
+// C ref: muse.c fhito_loc()
+/* hit all objects at x,y with fhito function */
+async function fhito_loc(obj, tx, ty, fhito) {
+    let hitanything = 0;
+    /* svl.level.objects[tx][ty] chain, top of the pile first */
+    const pile = (game.level.objects || []).filter(o => o.ox === tx
+                                                    && o.oy === ty
+                                                    && o.where === 'OBJ_FLOOR');
+
+    if (!fhito || !pile.length)
+        return false;
+
+    /* next_obj = otmp->nexthere is taken before each call, so iterate
+       over a snapshot of the pile */
+    for (const otmp of pile) {
+        if (otmp.where !== 'OBJ_FLOOR' || otmp.ox !== tx || otmp.oy !== ty)
+            continue;
+        hitanything += await fhito(otmp, obj);
+    }
+
+    return hitanything ? true : false;
+}
+
+// C ref: muse.c mbhit()
+/* A modified bhit() for monsters.  Based on bhit() in zap.c.  Unlike
+ * buzz(), bhit() doesn't take into account the possibility of a monster
+ * zapping you, so we need a special function for it.
+ */
+async function mbhit(
+    mon,      /* monster shooting the wand */
+    range,    /* direction and range */
+    fhitm,    /* must be non-Null */
+    fhito,    /* fns called when mon/obj hit */
+    obj) {    /* 2nd arg to fhitm/fhito */
+    let mtmp;
+    let ltyp;
+    const otyp = obj.otyp;
+
+    game.bhitpos = { x: mon.mx, y: mon.my };
+    const ddx = sgn(mon.mux - mon.mx);
+    const ddy = sgn(mon.muy - mon.my);
+
+    while (range-- > 0) {
+        game.bhitpos.x += ddx;
+        game.bhitpos.y += ddy;
+        const x = game.bhitpos.x;
+        const y = game.bhitpos.y;
+
+        if (!isok(x, y)) {
+            game.bhitpos.x -= ddx;
+            game.bhitpos.y -= ddy;
+            break;
+        }
+        if (u_at(game.bhitpos.x, game.bhitpos.y)) {
+            await fhitm(game.youmonst, obj);
+            range -= 3;
+        } else if ((mtmp = m_at(game.bhitpos.x, game.bhitpos.y)) != null) {
+            if (cansee(game.bhitpos.x, game.bhitpos.y) && !canspotmon(mtmp))
+                map_invisible(game.bhitpos.x, game.bhitpos.y);
+            await fhitm(mtmp, obj);
+            range -= 3;
+        }
+        if (await fhito_loc(obj, game.bhitpos.x, game.bhitpos.y, fhito))
+            range--;
+        ltyp = game.level.at(game.bhitpos.x, game.bhitpos.y).typ;
+        if (otyp === WAN_STRIKING
+            /* if levl[x][y].typ is DRAWBRIDGE_UP then the zap is passing
+               over the moat in front of a closed drawbridge and doesn't
+               hit any part of the bridge's mechanism (yet; it might be
+               about to hit the closed portcullis on the next iteration) */
+            && ltyp !== DRAWBRIDGE_UP && find_drawbridge(x, y)) {
+            throw new Error('mbhit(): destroy_drawbridge() not ported yet');
+        } else if (IS_DOOR(ltyp) || ltyp === SDOOR) {
+            switch (otyp) {
+            /* note: monsters don't use opening or locking magic
+               at present, but keep these as placeholders */
+            case WAN_OPENING:
+            case WAN_LOCKING:
+            case WAN_STRIKING:
+                /* doorlock(obj, bhitpos.x, bhitpos.y) */
+                throw new Error('mbhit(): doorlock() not ported yet');
+            }
+        }
+        if (!ZAP_POS(ltyp)
+            || (IS_DOOR(ltyp)
+                && ((game.level.at(game.bhitpos.x, game.bhitpos.y).doormask || 0)
+                    & (D_LOCKED | D_CLOSED)))) {
+            game.bhitpos.x -= ddx;
+            game.bhitpos.y -= ddy;
+            break;
+        }
+    }
+}
+
+// C ref: muse.c buzz_force_miss()
+async function buzz_force_miss(type, nd, sx, sy, dx, dy) {
+    await dobuzz(type, nd, sx, sy, dx, dy, true, false, true);
+}
+
 // C ref: muse.c use_offensive()
+/* Perform an offensive action for a monster.  Must be called immediately
+ * after find_offensive().  Return values are same as use_defensive().
+ */
 export async function use_offensive(mtmp) {
-    void mtmp;
-    throw new Error('use_offensive() not ported yet');
+    let i;
+    const otmp = game.m_offensive;
+
+    /* if a monster has never used an attack wand before, it takes them some
+       time to get used to holding that much power, so the first shot always
+       misses */
+    const buzzfn = mtmp.mwandexp ? buzz : buzz_force_miss;
+
+    /* offensive potions are not drunk, they're thrown */
+    if (otmp.oclass !== POTION_CLASS && (i = await precheck(mtmp, otmp)) !== 0)
+        return i;
+    const oseen = canseemon(mtmp);
+
+    switch (game.m_has_offense) {
+    case MUSE_WAN_DEATH:
+    case MUSE_WAN_SLEEP:
+    case MUSE_WAN_FIRE:
+    case MUSE_WAN_COLD:
+    case MUSE_WAN_LIGHTNING:
+    case MUSE_WAN_MAGIC_MISSILE:
+        await mzapwand(mtmp, otmp, false);
+        if (oseen)
+            makeknown(otmp.otyp);
+        game.m_using = true;
+        game.current_wand = otmp;
+        game.buzzer = mtmp;
+        /* BZ_M_WAND(BZ_OFS_WAN(otmp->otyp)) */
+        await buzzfn(-30 - (Math.abs(otmp.otyp - WAN_MAGIC_MISSILE) % 10),
+                     (otmp.otyp === WAN_MAGIC_MISSILE) ? 2 : 6, mtmp.mx, mtmp.my,
+                     sgn(mtmp.mux - mtmp.mx), sgn(mtmp.muy - mtmp.my));
+        game.buzzer = null;
+        game.current_wand = null;
+        game.m_using = false;
+        mtmp.mwandexp = true;
+        return (mtmp.mhp < 1) ? 1 : 2;
+    case MUSE_FIRE_HORN:
+    case MUSE_FROST_HORN:
+        await mplayhorn(mtmp, otmp, false);
+        game.m_using = true;
+        game.buzzer = mtmp;
+        game.current_wand = otmp; /* needed by zhitu() */
+        /* BZ_M_WAND(BZ_OFS_AD(AD_COLD or AD_FIRE)) */
+        await buzzfn(-30 - (Math.abs(((otmp.otyp === FROST_HORN) ? M.AD_COLD
+                                                                 : M.AD_FIRE)
+                                     - M.AD_MAGM) % 10),
+                     rn1(6, 6), mtmp.mx, mtmp.my, sgn(mtmp.mux - mtmp.mx),
+                     sgn(mtmp.muy - mtmp.my));
+        game.buzzer = null;
+        game.current_wand = null;
+        game.m_using = false;
+        mtmp.mwandexp = true;
+        return (mtmp.mhp < 1) ? 1 : 2;
+    case MUSE_WAN_TELEPORTATION:
+    case MUSE_WAN_UNDEAD_TURNING:
+    case MUSE_WAN_STRIKING:
+        game.zap_oseen = oseen;
+        await mzapwand(mtmp, otmp, false);
+        game.m_using = true;
+        game.buzzer = mtmp;
+        await mbhit(mtmp, rn1(8, 6), mbhitm, bhito, otmp);
+        game.buzzer = null;
+        /* note: 'otmp' might have been destroyed (drawbridge destruction) */
+        game.m_using = false;
+        if (game.m_has_offense === MUSE_WAN_STRIKING)
+            mtmp.mwandexp = true;
+        return 2;
+    case MUSE_SCR_EARTH:
+        throw new Error('use_offensive(): scroll of earth not ported yet');
+    case MUSE_CAMERA:
+        throw new Error('use_offensive(): expensive camera not ported yet');
+    case MUSE_POT_PARALYSIS:
+    case MUSE_POT_BLINDNESS:
+    case MUSE_POT_CONFUSION:
+    case MUSE_POT_SLEEPING:
+    case MUSE_POT_ACID:
+        /* Note: this setting of dknown doesn't suffice.  A monster
+         * which is out of sight might throw and it hits something _in_
+         * sight, a problem not existing with wands because wand rays
+         * are not objects.  Also set dknown in mthrowu.c.
+         */
+        if (cansee(mtmp.mx, mtmp.my)) {
+            observe_object(otmp, Hallucination());
+            /* pline_mon(): tty ignores the position */
+            await pline(`${Monnam(mtmp)} hurls ${singular(otmp, doname)}!`);
+        }
+        await m_throw(mtmp, mtmp.mx, mtmp.my, sgn(mtmp.mux - mtmp.mx),
+                      sgn(mtmp.muy - mtmp.my),
+                      distmin(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy), otmp);
+        return 2;
+    case 0:
+        return 0; /* i.e. an exploded wand */
+    default:
+        /* impossible("%s wanted to perform action %d?") */
+        break;
+    }
+    return 0;
 }
 
 void m_next2u; void mon_knows_traps;

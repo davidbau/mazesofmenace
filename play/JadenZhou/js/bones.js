@@ -14,6 +14,35 @@ import {
 } from './dungeon.js';
 import { open_bonesfile } from './files.js';
 
+// C ref: bones.c sanitize_name()
+/* while loading bones, strip out text possibly supplied by old player
+   that might accidentally or maliciously disrupt new player's display
+   (C modifies 'namebuf' in place; JS returns the sanitized copy) */
+export function sanitize_name(namebuf) {
+    /* WINDOWPORT(tty) && !iflags.wc_eight_bit_input */
+    const strip_8th_bit = !game.iflags?.wc_eight_bit_input;
+    let out = '';
+
+    /* it's tempting to skip this for single-user platforms, since
+       only the current player could have left these bones--except
+       things like "hearse" and other bones exchange schemes make
+       that assumption false */
+    for (const ch of namebuf) {
+        const code = ch.charCodeAt(0);
+        const c = code & 0o177;
+        if (c < 0x20 || c === 0o177) {
+            /* non-printable or undesirable */
+            out += '.';
+        } else if (c !== code) {
+            /* expected to be printable if user wants such things */
+            out += strip_8th_bit ? '_' : ch;
+        } else {
+            out += ch;
+        }
+    }
+    return out;
+}
+
 // C ref: bones.c no_bones_level()
 function no_bones_level(lev) {
     const g = game;

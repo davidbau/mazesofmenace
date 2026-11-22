@@ -3,7 +3,7 @@ import './allmain.js';
 import { pooleffects_is_flyer } from './cmd.js';
 import { set_msg_xy } from './pline.js';
 import { BLINDED, CORR, FIRE_RES, FLYING, ICE, IS_AIR, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_WATERWALL, LAVAWALL, LEVITATION, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, ROOM, STONE, VIBRATING_SQUARE, W_NONDIGGABLE, isok, u_at } from './const.js';
-import { mon_visible, time_botl_run_ended, pline_flush_point } from './display.js';
+import { mon_visible, time_botl_run_ended, pline_flush_point, docorner_blank_utf8_captures, docorner_status_rows, _threeStatusLines } from './display.js';
 import { game } from './gstate.js';
 import { dist2 } from './hacklib.js';
 import { ENV } from './hostenv.js';
@@ -842,7 +842,11 @@ export function movobj(obj, ox, oy) {
     remove_object(obj);
     maybe_unhide_at(obj.ox | 0, obj.oy | 0);
     newsym(obj.ox | 0, obj.oy | 0);
-    place_object(obj, ox, oy);
+    // C hack.c:831-832 finishes placement before updating the glyph. The
+    // shop-boundary no_charge lookup can suspend in the port.
+    const pending = place_object(obj, ox, oy);
+    if (pending)
+        return pending.then(() => newsym(ox, oy));
     newsym(ox, oy);
 }
 
@@ -2264,6 +2268,31 @@ async function _pickup_menu(atTile, count = 0) {
         g._r1botAfterMap = g.level;
         g._r1textOver = true;
         g._statusBlankAfterDocrt = true;
+        g._gm_corner = undefined;
+    } else {
+        if (g._topl_empty_sticky && g._topl_sticky === g._topl_empty_sticky) {
+            g._topl_sticky = g._topl_sticky.slice(0, Math.max(0, WIN_COL - 2)).trimEnd();
+            g._topl_empty_sticky = g._topl_sticky;
+        }
+        const prev = g._gm_corner;
+        g._gm_corner = { col: Math.min(WIN_COL, prev?.col ?? Infinity),
+                         rows: Math.max(initial.length, prev?.rows ?? 0),
+                         /* union of dismissed rectangles (docorner repaints each separately) */
+                         rects: [...(prev?.rects ?? (prev ? [prev] : [])),
+                                 { col: WIN_COL, rows: initial.length }] };
+        docorner_blank_utf8_captures(WIN_COL - 1, initial.length + 1);
+        docorner_status_rows(WIN_COL - 1, initial.length + 1);
+        /* wintty.c:3715-3719 docorner(): a window tall enough to reach the
+         * status rows "wrecked the bottom line" and sets disp.botlx; the
+         * bot() beside it is a no-op because core select_menu()
+         * (windows.c:1861) holds gb.bot_disabled, so botlx stays pending. */
+        if (initial.length + 1 >= TTY_MENU_ROWS - (_threeStatusLines() ? 3 : 2)
+            && g.disp)
+            g.disp.botlx = 1;
+        /* erase_menu_or_text repaints the rows the window covered
+         * (wintty.c:966-983) with the symset handling live at dismissal. */
+        if (g._decStaleFrom != null)
+            g._decStaleFrom = Math.max(g._decStaleFrom, initial.length + 1);
     }
     await flush_screen(1);
     if (cancelled) return null;
@@ -3350,7 +3379,7 @@ async function dopush(sx, sy, rx, ry, otmp, costly) {
     if (_bldr_glyph_is_invisible(rx, ry))
         unmap_object(rx, ry);
     otmp.next_boulder = 0;
-    movobj(otmp, rx, ry); /* does newsym(rx,ry) */
+    await movobj(otmp, rx, ry); /* does newsym(rx,ry) */
     if (_bldr_Blind()) {
         feel_location(rx, ry);
         feel_location(sx, sy);
@@ -3465,7 +3494,7 @@ async function moverock_core(sx, sy, dx, dy) {
 
         /* make sure that this boulder is visible as the top object */
         if (otmp !== game.level?.levelObjects?.[sx]?.[sy])
-            movobj(otmp, sx, sy);
+            await movobj(otmp, sx, sy);
 
         const rx = (u.ux | 0) + 2 * dx; /* boulder destination position */
         const ry = (u.uy | 0) + 2 * dy;

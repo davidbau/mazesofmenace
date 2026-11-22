@@ -9,9 +9,14 @@
 // this parser is still the skeleton's simplified version.
 
 import { game } from './gstate.js';
-import { ROLE_NONE, ROLE_RANDOM, RS_ROLE, RS_RACE, RS_GENDER, RS_ALGNMNT, PL_NSIZ } from './const.js';
+import { ROLE_NONE, ROLE_RANDOM, RS_ROLE, RS_RACE, RS_GENDER, RS_ALGNMNT, PL_NSIZ,
+         PL_FSIZ, ismnum } from './const.js';
 
-import { strncmpi, strcmpi } from './hacklib.js';
+import { strncmpi, strcmpi, mungspaces, str_end_is, copynchars } from './hacklib.js';
+import { makesingular, fruit_from_name } from './objnam.js';
+import { name_to_mon } from './mondata.js';
+import { sanitize_name } from './bones.js';
+import { rnd } from './rng.js';
 import { authorize_wizard_mode, authorize_explore_mode } from './sys.js';
 import { bind_key } from './cmd.js';
 import { def_char_to_objclass, def_oc_syms, def_oc_explain } from './drawing.js';
@@ -23,7 +28,7 @@ import { count_bind_keys } from './cmd.js';
 import { allopt, BoolOpt, CompOpt, OthrOpt, OptS_General, OptS_Advanced,
          Term_False, num_terms, set_in_config, set_gameview, set_in_game,
          set_wizonly, set_wiznofuz } from './optlist.js';
-import { MAXOCLASSES, ROCK_CLASS, VENOM_SYM } from './objects.js';
+import { MAXOCLASSES, ROCK_CLASS, VENOM_SYM, FOOD_CLASS, objects, OBJ_NAME } from './objects.js';
 import {
     str2role, str2race, str2gend, str2align, setrolefilter, clearrolefilter,
     RS_filter, roles, races, genders, aligns,
@@ -40,11 +45,6 @@ import {
     tty_create_nhwindow, tty_start_menu, tty_add_menu, add_menu_str,
     tty_end_menu, tty_select_menu, tty_destroy_nhwindow, tty_getlin,
 } from './wintty.js';
-
-// C ref: hacklib.c mungspaces() -- collapse runs of whitespace, trim ends
-function mungspaces(bp) {
-    return bp.replace(/[ \t]+/g, ' ').trim();
-}
 
 // C ref: options.c parse_role_opt()
 /* parse 'role' or 'race' or 'gender' or 'alignment';
@@ -353,6 +353,43 @@ function optfn_msg_window(result, negated, op) {
 }
 
 // C ref: options.c optfn_runmode() (do_set)
+// C ref: options.c optfn_number_pad() -- do_set from the config file
+// (go.opt_initial); only number_pad:0 (off, the default) is ported:
+// num_pad, swap_yz (-1), MSDOS and phone layouts need reset_commands(FALSE)
+// to rebind the movement keys (digits, M-digit run keys, M-0), so parse()
+// stops when they are set
+function optfn_number_pad(result, negated, op) {
+    let num_pad, num_pad_mode;
+
+    if (!op) {
+        num_pad = !negated;
+        num_pad_mode = 0;
+    } else if (negated) {
+        throw new Error('optfn_number_pad(): bad_negation() not ported yet');
+    } else {
+        const mode = parseInt(op, 10) || 0; /* atoi() */
+
+        if (mode < -1 || mode > 4 || (mode === 0 && op[0] !== '0'))
+            throw new Error('optfn_number_pad(): config_error_add() not ported yet');
+        else if (mode <= 0) {
+            num_pad = false;
+            /* German keyboard; y and z keys swapped */
+            num_pad_mode = (mode < 0) ? 1 : 0; /* 0 or 1 */
+        } else { /* number_pad on */
+            num_pad = true;
+            num_pad_mode = 0;
+            if (mode === 3 || mode === 4) /* MSDOS compatible */
+                num_pad_mode |= 1;
+            if (mode === 2 || mode === 4) /* phone keypad layout */
+                num_pad_mode |= 2;
+        }
+    }
+    result.iflags.num_pad = num_pad;
+    result.iflags.num_pad_mode = num_pad_mode;
+    /* reset_commands(FALSE); number_pad(iflags.num_pad ? 1 : 0): the
+       rebinding isn't ported; parse() stops on the first command */
+}
+
 function optfn_runmode(result, negated, op) {
     const str_start_is = (full, part) =>
         part.length > 0 && full.toLowerCase().startsWith(part.toLowerCase());
@@ -446,6 +483,7 @@ export function parseNethackrc(rc) {
                 else if (key === 'suppress_alert') optfn_suppress_alert(result, negated, val);
                 else if (key === 'msg_window') optfn_msg_window(result, negated, val);
                 else if (key === 'runmode') optfn_runmode(result, negated, val);
+                else if (key === 'number_pad') optfn_number_pad(result, negated, val);
                 else if (key === 'horsename') result.horsename = val; /* petname_optfn() */
                 else result.flags[key] = val;
             } else {
@@ -466,6 +504,7 @@ export function parseNethackrc(rc) {
                 else if (lname === 'autoopen') result.flags.autoopen = value;
                 else if (lname === 'mention_walls') result.flags.mention_walls = value;
                 else if (lname === 'autounlock') optfn_autounlock(result, negated, '');
+                else if (lname === 'number_pad') optfn_number_pad(result, negated, '');
                 // C ref: options.c boolean option case opt_female ("female",
                 // alias "male"); go.opt_initial is TRUE while reading the rc
                 else if (lname.length >= 3 && !strncmpi(lname, "female", Math.max(lname.length, 3)))
@@ -492,6 +531,78 @@ export function parseNethackrc(rc) {
     return result;
 }
 
+// C ref: options.c escapes() -- the result string (C fills 'tp'); a
+// result char is a key code 0..255 (\mX sets the meta bit)
+function escapes(cp) {
+    const oct = "01234567", dec = "0123456789";
+    const hexdd = "00112233445566778899aAbBcCdDeEfF"; /* decl.c hexdd[] */
+    let tp = '';
+    let i = 0, cval, meta, dcount, dp;
+    const at = (k) => (k < cp.length ? cp[k] : '');
+
+    while (i < cp.length) {
+        /* \M has to be followed by something to do meta conversion,
+           otherwise it will just be \M which ultimately yields 'M' */
+        meta = (at(i) === '\\' && (at(i + 1) === 'm' || at(i + 1) === 'M') && at(i + 2) !== '');
+        if (meta)
+            i += 2;
+
+        cval = dcount = 0; /* for decimal, octal, hexadecimal cases */
+        if ((at(i) !== '\\' && at(i) !== '^') || at(i + 1) === '') {
+            /* simple character, or nothing left for \ or ^ to escape */
+            cval = cp.charCodeAt(i++);
+        } else if (at(i) === '^') { /* expand control-character syntax */
+            cval = (cp.charCodeAt(++i) & 0x1f);
+            ++i;
+
+        /* remaining cases are all for backslash; we know cp[1] is not \0 */
+        } else if (dec.includes(at(i + 1))) {
+            ++i; /* move past backslash to first digit */
+            do {
+                cval = (cval * 10) + (cp.charCodeAt(i) - 0x30);
+            } while (at(++i) !== '' && dec.includes(at(i)) && ++dcount < 3);
+        } else if ((at(i + 1) === 'o' || at(i + 1) === 'O') && at(i + 2) !== ''
+                   && oct.includes(at(i + 2))) {
+            i += 2; /* move past backslash and 'O' */
+            do {
+                cval = (cval * 8) + (cp.charCodeAt(i) - 0x30);
+            } while (at(++i) !== '' && oct.includes(at(i)) && ++dcount < 3);
+        } else if ((at(i + 1) === 'x' || at(i + 1) === 'X') && at(i + 2) !== ''
+                   && (dp = hexdd.indexOf(at(i + 2))) >= 0) {
+            i += 2; /* move past backslash and 'X' */
+            do {
+                cval = (cval * 16) + Math.trunc(dp / 2);
+            } while (at(++i) !== '' && (dp = hexdd.indexOf(at(i))) >= 0 && ++dcount < 2);
+        } else { /* C-style character escapes */
+            switch (at(++i)) {
+            case '\\':
+                cval = 0x5c;
+                break;
+            case 'n':
+                cval = 0x0a;
+                break;
+            case 't':
+                cval = 0x09;
+                break;
+            case 'b':
+                cval = 0x08;
+                break;
+            case 'r':
+                cval = 0x0d;
+                break;
+            default:
+                cval = cp.charCodeAt(i);
+            }
+            ++i;
+        }
+
+        if (meta)
+            cval |= 0x80;
+        tp += String.fromCharCode(cval & 0xff); /* (char) cval */
+    }
+    return tp;
+}
+
 // C ref: options.c txt2key()
 function txt2key(txt) {
     let uc;
@@ -516,8 +627,12 @@ function txt2key(txt) {
         return 0x1b;
 
     /* handle things like \b and \7 and \mX */
-    if (txt[0] === '\\')
-        throw new Error('txt2key(): escapes() not ported yet');
+    if (txt[0] === '\\') {
+        if (txt.length >= 256) /* QBUFSZ */
+            txt = txt.slice(0, 256 - 1);
+        const tbuf = escapes(txt);
+        return tbuf.length ? (tbuf.charCodeAt(0) & 0xff) : 0;
+    }
 
     /* control and meta keys */
     if (txt[0].toUpperCase() === 'M') { /* highc() */
@@ -1732,10 +1847,238 @@ async function parseoptions(opts, tinitial, tfrom_file) {
         optresult = await optfn_boolean(o, do_set, negated, opts, op);
     else if (o.optfn === "optfn_pickup_types")
         optresult = await optfn_pickup_types_set(o, negated, opts, op);
+    else if (o.optfn === "optfn_fruit")
+        optresult = optfn_fruit(o, do_set, negated, opts, op);
     else
         throw new Error(`${o.optfn}(): do_set not ported yet`);
 
     return optresult === optn_ok;
+}
+
+/* C ref: options.c empty_optstr -- string_for_opt()'s "no value" result */
+const empty_optstr = '';
+
+// C ref: options.c string_for_opt()
+/* the value part of "name:value" or "name=value" (C returns a pointer
+   into 'opts'); empty_optstr if there isn't one */
+function string_for_opt(opts, val_optional) {
+    let colon = opts.indexOf(':');
+    const equals = opts.indexOf('=');
+    if (colon < 0 || (equals >= 0 && equals < colon))
+        colon = equals;
+
+    if (colon < 0 || colon + 1 >= opts.length) {
+        if (!val_optional)
+            throw new Error('string_for_opt(): config_error_add() not ported yet');
+        return empty_optstr;
+    }
+    return opts.slice(colon + 1);
+}
+
+// C ref: options.c nmcpy()
+/* copy up to maxlen-1 characters; treat comma as alternate end of 'src'
+   (C copies into 'dest'; JS returns the copy) */
+function nmcpy(src, maxlen) {
+    let count, i = 0;
+
+    for (count = 1; count < maxlen; count++) {
+        if (i >= src.length || src[i] === ',')
+            break; /*exit on \0 terminator*/
+        i++;
+    }
+    return src.slice(0, i);
+}
+
+// C ref: options.c optfn_fruit()
+function optfn_fruit(o, req, negated, opts, op) {
+    let forig = null;
+
+    if (req === do_init) {
+        return optn_ok;
+    }
+    if (req === do_set) {
+        op = string_for_opt(opts, negated || !game.opt_initial);
+        if (negated) {
+            if (op !== empty_optstr) {
+                throw new Error('optfn_fruit(): bad_negation() not ported yet');
+            }
+            op = empty_optstr;
+        } else {
+            if (op === empty_optstr)
+                return optn_err;
+            /* strip leading/trailing spaces, condense internal ones (3.6.2) */
+            op = mungspaces(op);
+            if (!game.opt_initial) {
+                let f;
+                const fnum = { v: 0 };
+
+                /* count number of named fruits; if 'op' is found among them,
+                   then the count doesn't matter because we won't be adding it */
+                f = fruit_from_name(op, false, fnum);
+                if (!f) {
+                    if (!game.flags.made_fruit)
+                        forig = fruit_from_name(game.pl_fruit, false, null);
+
+                    if (!forig && fnum.v >= 100) {
+                        throw new Error('optfn_fruit(): config_error_add() not ported yet');
+                    }
+                }
+            }
+        }
+        /* goodfruit: */
+        game.pl_fruit = nmcpy(op, PL_FSIZ);
+        game.pl_fruit = sanitize_name(game.pl_fruit);
+        /* OBJ_NAME(objects[SLIME_MOLD]) won't work for this after
+           initialization; it gets changed to generic "fruit" */
+        if (!game.pl_fruit)
+            game.pl_fruit = nmcpy("slime mold", PL_FSIZ);
+        if (!game.opt_initial) {
+            /* if 'forig' is nonNull, we replace it rather than add
+               a new fruit; it can only be nonNull if no fruits have
+               been created since the previous name was put in place */
+            fruitadd(game.pl_fruit, forig);
+            if (game.give_opt_msg)
+                pline(`Fruit is now "${game.pl_fruit}".`);
+        }
+        /* If initial, then initoptions is allowed to do it instead
+         * of here (initoptions always has to do it even if there's
+         * no fruit option at all.  Also, we don't want people
+         * setting multiple fruits in their options.)
+         */
+        return optn_ok;
+    }
+    return optn_ok;
+}
+
+// C ref: options.c fruitadd()
+/* Returns the fid of the fruit type; if that type already exists, it
+ * returns the fid of that one; if it does not exist, it adds a new fruit
+ * type to the chain and returns the new one.
+ * If replace_fruit is sent in, replace the fruit in the chain rather than
+ * adding a new entry--for user specified fruits only.
+ */
+export function fruitadd(str, replace_fruit) {
+    let i;
+    let f;
+    let globpfx;
+    const highest_fruit_id = { v: 0 };
+    let altname;
+    /* C: str == svp.pl_fruit (the same buffer); JS strings have no
+       identity, so the user-specified callers pass game.pl_fruit itself */
+    const user_specified = (str === game.pl_fruit);
+    /* if not user-specified, then it's a fruit name for a fruit on
+     * a bones level or from orctown raider's loot...
+     */
+
+    /* Note: every fruit has an id (kept in obj->spe) of at least 1;
+     * 0 is an error.
+     */
+    if (user_specified) {
+        let found = false, numeric = false;
+
+        /* force fruit to be singular; this handling is not
+           needed--or wanted--for fruits from bones because
+           they already received it in their original game;
+           str==pl_fruit but makesingular() creates a copy
+           so we need to copy that back into pl_fruit */
+        game.pl_fruit = nmcpy(makesingular(str), PL_FSIZ);
+        const pl_fruit = game.pl_fruit;
+
+        /* disallow naming after other foods (since it'd be impossible
+         * to tell the difference); globs might have a size prefix which
+         * needs to be skipped in order to match the object type name
+         */
+        globpfx = (pl_fruit.startsWith("small ")
+                   || pl_fruit.startsWith("large ")) ? 6
+                  : (pl_fruit.startsWith("medium ")) ? 7
+                    : (pl_fruit.startsWith("very large ")) ? 11
+                      : 0;
+        /* svb.bases[] is still zero when initoptions() runs before
+           o_init() */
+        for (i = game.bases?.[FOOD_CLASS] ?? 0;
+             objects[i] && objects[i].oc_class === FOOD_CLASS; i++) {
+            if (OBJ_NAME(objects[i]) === pl_fruit
+                || (globpfx > 0 && OBJ_NAME(objects[i])
+                                   === pl_fruit.slice(globpfx))) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            let c = 0;
+
+            while (c < pl_fruit.length
+                   && pl_fruit[c] >= '0' && pl_fruit[c] <= '9')
+                c++;
+            if (c >= pl_fruit.length || /\s/.test(pl_fruit[c]))
+                numeric = true;
+        }
+        if (found || numeric
+            /* these checks for applying food attributes to actual items
+               are case sensitive; "glob of foo" is caught by 'found'
+               if 'foo' is a valid glob; when not valid, allow it as-is */
+            || pl_fruit.startsWith("cursed ")
+            || pl_fruit.startsWith("uncursed ")
+            || pl_fruit.startsWith("blessed ")
+            || pl_fruit.startsWith("partly eaten ")
+            || (pl_fruit.startsWith("tin of ")
+                && (pl_fruit.slice(7) === "spinach"
+                    || ismnum(name_to_mon(pl_fruit.slice(7), null))))
+            || pl_fruit === "empty tin"
+            || (pl_fruit === "glob"
+                || (globpfx > 0 && "glob" === pl_fruit.slice(globpfx)))
+            || ((str_end_is(pl_fruit, " corpse")
+                 || str_end_is(pl_fruit, " egg"))
+                && ismnum(name_to_mon(pl_fruit, null)))) {
+            const buf = pl_fruit;
+            game.pl_fruit = "candied " + nmcpy(buf, PL_FSIZ - 8);
+        }
+        altname = '';
+        /* This flag indicates that a fruit has been made since the
+         * last time the user set the fruit.  If it hasn't, we can
+         * safely overwrite the current fruit, preventing the user from
+         * setting many fruits in a row and overflowing.
+         * Possible expansion: check for specific fruit IDs, not for
+         * any fruit.
+         */
+        game.flags.made_fruit = false;
+        if (replace_fruit) {
+            /* replace_fruit is already part of the fruit chain;
+               update it in place rather than looking it up again */
+            f = replace_fruit;
+            f.fname = copynchars(game.pl_fruit, PL_FSIZ - 1);
+            /* goto nonew */
+            game.context.current_fruit = f.fid;
+            return f.fid;
+        }
+        str = game.pl_fruit;
+    } else {
+        /* not user_supplied, so assumed to be from bones (or orc gang) */
+        altname = copynchars(str, PL_FSIZ - 1);
+        altname = sanitize_name(altname);
+        game.flags.made_fruit = true; /* for safety.  Any fruit name added from a
+                                       * bones level should exist anyway. */
+    }
+    f = fruit_from_name(altname ? altname : str, false, highest_fruit_id);
+    if (!f) {
+        /* Maximum number of named fruits is 127, even if obj->spe can
+           handle bigger values.  If adding another fruit would overflow,
+           use a random fruit instead... we've got a lot to choose from.
+           current_fruit remains as is. */
+        if (highest_fruit_id.v >= 127)
+            return rnd(127);
+
+        f = { fname: copynchars(altname ? altname : str, PL_FSIZ - 1),
+              fid: ++highest_fruit_id.v, nextf: null };
+        /* we used to go out of our way to add it at the end of the list,
+           but the order is arbitrary so use simpler insertion at start */
+        f.nextf = game.ffruit;
+        game.ffruit = f;
+    }
+    /* nonew: */
+    if (user_specified)
+        game.context.current_fruit = f.fid;
+    return f.fid;
 }
 
 // C ref: options.c optfn_boolean() -- do_set, from the options menus

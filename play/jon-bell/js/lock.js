@@ -46,7 +46,7 @@ import { capture_pre_movemon_botl, _topl_joins_snapshot, commit_force_messages }
 import { topl_park_cursor, pline_flush_point, putmsghistory, feel_location, flush_pending_messages, _topl_stash_result } from './display.js';
 import { block_point, recalc_block_point, vision_recalc, unblock_point } from './vision.js';
 import { nhgetch } from './input.js';
-import { yn_function } from './cmd.js';
+import { yn_function, doprev_message } from './cmd.js';
 import { display_text_window } from './com_pager.js';
 import { acurr, exercise } from './attrib.js';
 import { rn2, rnl, rnd } from './rnd.js';
@@ -581,7 +581,11 @@ async function _ynq(query) {
      * reader treated '+' (or any other invalid key) as an implicit q, which
      * advanced the lock action and reset the cursor while C kept the prompt
      * parked on the topline. */
+    let doprev = false;
     for (;;) {
+    /* topl.c:452-459: while doprev is latched the recalled line stays up; the
+     * prompt is re-added only when the NEXT key arrives. */
+    if (!doprev) {
         g._pending_message = prompt;
         /* C topl.c:394 tty_yn_function sets TOPLINE_SPECIAL_PROMPT before
          * custompline, so a prompt wider than the row hard-wraps onto row 1
@@ -596,14 +600,38 @@ async function _ynq(query) {
         finally { g._topl_prompt_echo = savedEcho; g._topl_prompt_written = savedWritten; }
         const disp = g.nhDisplay;
         if (disp) topl_park_cursor(disp, prompt + ' ');
-        /* C topl.c:537-539 files prompt + key2txt(q) in the history, not the bare
-         * prompt nhgetch() would commit. */
-        const _sh = g._topl_suppress_history;
-        g._topl_suppress_history = true;
-        let key;
-        try { key = await nhgetch(); } finally { g._topl_suppress_history = _sh; }
-        const ch = (typeof key === 'number') ? String.fromCharCode(key).toLowerCase() : '';
-        const _filed = (a) => putmsghistory(prompt + ' ' + a);
+    }
+    /* C topl.c:537-539 files prompt + key2txt(q) in the history, not the bare
+     * prompt nhgetch() would commit. */
+    const _sh = g._topl_suppress_history;
+    g._topl_suppress_history = true;
+    let key;
+    try { key = await nhgetch(); } finally { g._topl_suppress_history = _sh; }
+    const ch = (typeof key === 'number') ? String.fromCharCode(key).toLowerCase() : '';
+    const _filed = (a) => putmsghistory(prompt + ' ' + a);
+    /* C topl.c:432-460 — ^P recalls history: the SUPPRESS_HISTORY prompt left
+     * gt.toplines empty (nhgetch above armed _toplEmptyAfterSuppress reading
+     * under _topl_suppress_history), so single mode needs two recalls ("need
+     * two initially", topl.c:445-447) — the first re-shows the blank standing
+     * line, the second the last remembered message; window modes show the
+     * history once and re-add the prompt right away (topl.c:436-442). */
+    if (key === 16) {
+        if ((g.iflags?.prevmsg_window || 's')[0] !== 's') {
+            await doprev_message();
+            g._prevmsg_combo = 0; /* topl.c:440 cw->maxcol = cw->maxrow */
+            g._prevmsg_next = null;
+            continue; /* loop top re-adds the prompt */
+        }
+        if (!doprev) await doprev_message();
+        await doprev_message();
+        if (g.nhDisplay) topl_park_cursor(g.nhDisplay, g._topl_history_recall || '');
+        doprev = true;
+        continue; /* recalled line stays standing (topl.c:447-450) */
+    } else if (doprev) {
+        doprev = false;
+        g._prevmsg_next = null; /* topl.c:456 cw->maxcol = cw->maxrow */
+        continue; /* reprompt; the key is swallowed (topl.c:449 BUG[?]) */
+    }
         /* C ynq: only y/n/q are accepted; ESC/space/CR/LF → default 'q'. */
         if (key === 27 || key === 32 || key === 13 || key === 10) {
             g._pending_message = '';

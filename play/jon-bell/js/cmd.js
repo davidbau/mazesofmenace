@@ -1030,6 +1030,7 @@ async function tty_menu_pick_one_ext(entries, title, statusClipCol) {
         }
     };
     let pageIdx = 0, row0Erased = false;
+    let counting = false, count = 0, reset_count = true;
     /* A single-page menu is an overlay at offx = cols - maxcol - 1 with
      * maxcol = longest stored str ("%c - " + padded text), trailing blanks
      * included (tty_end_menu); multi-page menus are full-width. */
@@ -1079,9 +1080,22 @@ async function tty_menu_pick_one_ext(entries, title, statusClipCol) {
         if (overlayLines) set_cursor(overlayCol + '(end)'.length + 1, indicatorRow);
         else set_cursor(indicator.length + (npages === 1 ? 1 : 0), indicatorRow);
         g._pending_message = '';
-        const key = await nhgetch();
+        const raw = await nhgetch();
+        const rawCh = (raw >= 32 && raw < 127) ? String.fromCharCode(raw) : '';
+        const explicit = rawCh !== '' && pageHasLetter(pageIdx, rawCh);
+        const resp = ' 0123456789\x1b\n\r' + (g.mapped_menu_cmds || '') + DEFAULT_MENU_CMDS;
+        if (!explicit && raw !== 0 && raw !== (g._ttyDismissMore | 0) && !resp.includes(String.fromCharCode(raw))) continue;
+        if (raw === 27) g._ttyDismissMore = 1;
+        const key = explicit ? raw : map_menu_cmd(raw);
         const ch = (key >= 32 && key < 127) ? String.fromCharCode(key) : '';
-        if (key === 27 || key === 10 || key === 13) { await _dismiss(); return null; }
+        if (reset_count) { counting = false; count = 0; } else reset_count = true;
+        if (!explicit && key >= 48 && key <= 57) {
+            count = count * 10 + (key - 48);
+            if (count !== 0) { counting = true; reset_count = false; }
+            continue;
+        }
+        if (key === 27) { if (counting) continue; await _dismiss(); return null; }
+        if (key === 0 || key === 10 || key === 13) { await _dismiss(); return null; }
         if (key === 32 || ch === '>') {
             if (pageIdx !== npages - 1) { pageIdx++; row0Erased = false; continue; }
             if (key === 32) { await _dismiss(); return null; }
@@ -1090,7 +1104,7 @@ async function tty_menu_pick_one_ext(entries, title, statusClipCol) {
         if (ch === '<') { if (pageIdx !== 0) { pageIdx--; row0Erased = false; } continue; }
         if (ch === '^') { if (pageIdx !== 0) { pageIdx = 0; row0Erased = false; } continue; }
         if (ch === '|') { if (pageIdx !== npages - 1) { pageIdx = npages - 1; row0Erased = false; } continue; }
-        if (ch && pageHasLetter(pageIdx, ch)) { await _dismiss(); return ch; }
+        if (explicit) { await _dismiss(); return rawCh; }
         if (key === 0x3a /* ':' MENU_SEARCH */) {
             let picked = null;
             const finished = await menu_search_case('ONE', mlist,
@@ -17357,6 +17371,14 @@ async function doherecmdmenu() {
             if (finished && picked >= 0) { pick = picked; break; }
         }
         await _show();
+    }
+    const noOverlay = WIN_COL <= 1 || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
+    if (!noOverlay) {
+        docorner_blank_utf8_captures(WIN_COL - 1, windowLines.length + 1);
+        if (windowLines.length + 1 >= 24 - (_threeStatusLines() ? 3 : 2) && g.disp)
+            g.disp.botlx = 1;
+    } else {
+        await docrt();
     }
     if (pick >= 0 && items[pick].act === 'QUAFF') {
         // C cmd.c:4770-4773 act_on_act(MCMD_QUAFF).

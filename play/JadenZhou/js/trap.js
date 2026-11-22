@@ -8,6 +8,11 @@
 // recalc_block_point(), Sokoban bookkeeping.
 
 import { game } from './gstate.js';
+import { thitu } from './mthrowu.js';
+import { obfree } from './invent.js';
+import { observe_object } from './o_init.js';
+import { poisoned } from './attrib.js';
+import { A_CON } from './const.js';
 import { rn2, rnl } from './rng.js';
 import { dunlev, dunlevs_in_dungeon, In_hell } from './dungeon.js';
 import {
@@ -605,7 +610,7 @@ export function u_locomotion(def) {
 }
 
 // C ref: mondata.c locomotion()
-function locomotion(ptr, def) {
+export function locomotion(ptr, def) {
     const capitalize = (def[0] === def[0].toUpperCase());
     const levitate = ["float", "Float", "wobble", "Wobble"];
     const flys = ["fly", "Fly", "flutter", "Flutter"];
@@ -905,7 +910,34 @@ async function trapeffect_arrow_trap(mtmp, trap, trflags) {
     let otmp;
 
     if (mtmp === game.youmonst) {
-        throw new Error('trapeffect_arrow_trap(): hero branch not ported yet');
+        const u = game.u;
+        if (trap.once && trap.tseen && !rn2(15)) {
+            /* Soundeffect(se_loud_click, 100) */
+            await You_hear("a loud click!");
+            deltrap(trap);
+            newsym(u.ux, u.uy);
+            return Trap_Is_Gone;
+        }
+        trap.once = 1;
+        seetrap(trap);
+        await pline("An arrow shoots out at you!");
+        otmp = t_missile(ARROW, trap);
+        const dam = dmgval(otmp, game.youmonst);
+        const oref = { obj: otmp };
+        if (u.usteed && !rn2(2) && await steedintrap(trap, otmp)) {
+            ; /* nothing */
+        } else if (await thitu(8, Maybe_Half_Phys(dam), oref, "arrow")) {
+            otmp = oref.obj;
+            if (otmp)
+                obfree(otmp, null);
+        } else {
+            otmp = oref.obj;
+            place_object(otmp, u.ux, u.uy);
+            if (!Blind())
+                observe_object(otmp, Hallucination());
+            stackobj(otmp);
+            newsym(u.ux, u.uy);
+        }
     } else {
         const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
         const see_it = cansee(mtmp.mx, mtmp.my);
@@ -935,7 +967,45 @@ async function trapeffect_dart_trap(mtmp, trap, trflags) {
     let otmp;
 
     if (mtmp === game.youmonst) {
-        throw new Error('trapeffect_dart_trap(): hero branch not ported yet');
+        const u = game.u;
+        const oldumort = u.umortality || 0;
+
+        if (trap.once && trap.tseen && !rn2(15)) {
+            /* Soundeffect(se_soft_click, 30) */
+            await You_hear("a soft click.");
+            deltrap(trap);
+            newsym(u.ux, u.uy);
+            return Trap_Is_Gone;
+        }
+        trap.once = 1;
+        seetrap(trap);
+        await pline("A little dart shoots out at you!");
+        otmp = t_missile(DART, trap);
+        if (!rn2(6))
+            otmp.opoisoned = 1;
+        const dam = dmgval(otmp, game.youmonst);
+        const oref = { obj: otmp };
+        if (u.usteed && !rn2(2) && await steedintrap(trap, otmp)) {
+            ; /* nothing */
+        } else if (await thitu(7, Maybe_Half_Phys(dam), oref, "little dart")) {
+            otmp = oref.obj;
+            if (otmp) {
+                if (otmp.opoisoned)
+                    await poisoned("dart", A_CON, "little dart",
+                                   /* if damage triggered life-saving,
+                                      poison is limited to attrib loss */
+                                   ((u.umortality || 0) > oldumort) ? 0 : 10,
+                                   true);
+                obfree(otmp, null);
+            }
+        } else {
+            otmp = oref.obj;
+            place_object(otmp, u.ux, u.uy);
+            if (!Blind())
+                observe_object(otmp, Hallucination());
+            stackobj(otmp);
+            newsym(u.ux, u.uy);
+        }
     } else {
         const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
         const see_it = cansee(mtmp.mx, mtmp.my);

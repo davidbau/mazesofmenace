@@ -17,9 +17,10 @@ import { mattackm, max_passive_dmg } from './mhitm.js';
 import { mfndpos, monnear, mon_allowflags, check_gear_next_turn,
          m_consume_obj, mondied } from './mon.js';
 import { gettrack } from './track.js';
-import { onscary, should_displace, m_avoid_kicked_loc, mon_track_add } from './monmove.js';
+import { onscary, should_displace, m_avoid_kicked_loc, mon_track_add,
+         m_digweapon_check } from './monmove.js';
 import { monsndx, is_swimmer, passes_walls, haseyes, perceives, is_undead,
-         is_elf, is_vampshifter, mon_hates_silver } from './mondata.js';
+         is_elf, is_vampshifter, mon_hates_silver, is_flyer, is_floater } from './mondata.js';
 import * as M from './monsters.js';
 import { mons } from './monsters.js';
 import * as O from './objects.js';
@@ -27,7 +28,10 @@ import { objects } from './objects.js';
 import { splitobj, obj_extract_self } from './mkobj.js';
 import { mpickobj, relobj } from './steal.js';
 import { distant_name, doname } from './objnam.js';
-import { newsym, pline, canseemon, mon_visible, canspotmon } from './display.js';
+import { newsym, pline, canseemon, mon_visible, canspotmon, Hallucination,
+         glyph_kind, vobj_at } from './display.js';
+import { vtense } from './objnam.js';
+import { locomotion } from './trap.js';
 import { Monnam, noit_Monnam } from './do_name.js';
 import {
     MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE, MTSZ,
@@ -1514,16 +1518,30 @@ export async function dog_move(mtmp, after) {
         }
         /* if (!m_in_out_region(mtmp, nix, niy)) return MMOVE_MOVED:
            regions aren't ported yet (none exist) */
-        /* m_digweapon_check(): only for tunnelling pets */
-        if (tunnels(mtmp.data))
-            throw new Error('dog_move(): m_digweapon_check() not ported yet');
+        if (await m_digweapon_check(mtmp, nix, niy))
+            return MMOVE_NOTHING;
 
         /* insert a worm_move() if worms ever begin to eat things */
-        /* wasseen = canseemon(mtmp); remove_monster(omx, omy): the
-           monster list is keyed by mx/my, so place_monster() is enough */
+        const wasseen = canseemon(mtmp);
+        /* remove_monster(omx, omy): the monster list is keyed by mx/my,
+           so place_monster() is enough */
         place_monster(mtmp, nix, niy);
-        if (cursemsg[chi] && canseemon(mtmp))
-            throw new Error('dog_move(): reluctant step message not ported yet');
+        if (cursemsg[chi] && (wasseen || canseemon(mtmp))) {
+            /* describe top item of pile, not necessarily cursed item itself;
+               don't use glyph_at() here--it would return the pet but we want
+               to know whether an object is remembered at this map location */
+            const o = (!Hallucination() && game.level.flags?.hero_memory
+                       /* glyph_is_object(levl[nix][niy].glyph) */
+                       && glyph_kind(game.level.at(nix, niy).remembered_glyph) === 'obj')
+                          ? vobj_at(nix, niy) : null;
+            const what = o ? distant_name(o, doname) : "something";
+
+            await pline(`${noit_Monnam(mtmp)} ${
+                vtense(null, locomotion(mtmp.data, "step"))} reluctantly ${
+                (is_flyer(mtmp.data) || is_floater(mtmp.data)) ? "over"
+                                                               : "onto"} ${
+                what}.`); /* pline_mon() */
+        }
         mon_track_add(mtmp, omx, omy);
         /* We have to know if the pet's going to do a combined eat and
          * move before moving it, but it can't eat until after being

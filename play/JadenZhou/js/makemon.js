@@ -10,7 +10,8 @@
 // Not ported yet: newcham (shapechangers),
 // set_mimic_sym, rndghostname, worm tail segments.
 
-import { christen_monst, rndghostname, Amonnam } from './do_name.js';
+import { christen_monst, rndghostname, Amonnam, y_monnam } from './do_name.js';
+import { in_town } from './hack.js';
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { level_difficulty, Is_special, In_hell } from './dungeon.js';
@@ -43,7 +44,8 @@ import {
 import { ROLL_FROM } from './rng.js';
 import { depth } from './dungeon.js';
 import { mkobj, rndmonnum, can_be_hatched } from './mkobj.js';
-import { t_at } from './trap.js';
+import { t_at, locomotion } from './trap.js';
+import { ansimpleoname } from './iactions.js';
 import { get_shop_item } from './shknam.js';
 import { mksobj, mkobj_at, curse, bless, next_ident, set_corpsenm } from './mkobj.js';
 import {
@@ -58,10 +60,10 @@ import { M_AP_NOTHING, M_AP_MONSTER, HALLUC, TELEPAT,
          DETECT_MONSTERS } from './const.js';
 import { dist2 } from './hacklib.js';
 import { an, vtense } from './objnam.js';
-import { newsym, pline, canseemon } from './display.js';
+import { newsym, pline, canseemon, You_see } from './display.js';
 import { does_block, block_point, cansee, couldsee } from './vision.js';
 import { Resists_Elem } from './mondata.js';
-import { PIT, SPIKED_PIT, STONE_RES } from './const.js';
+import { PIT, SPIKED_PIT, STONE_RES, PLNMSG_HIDE_UNDER } from './const.js';
 import { set_apparxy, dochugw } from './monmove.js';
 import { noteleport_level } from './teleport.js';
 import { newcham } from './mon.js';
@@ -494,8 +496,8 @@ function attacktype(ptr, atyp) {
 function is_armed(ptr) { return attacktype(ptr, M.AT_WEAP); }
 function is_mercenary(ptr) { return (ptr.mflags2 & M.M2_MERC) !== 0; }
 function strongmonst(ptr) { return (ptr.mflags2 & M.M2_STRONG) !== 0; }
-function is_lord(ptr) { return (ptr.mflags2 & M.M2_LORD) !== 0; }
-function is_prince(ptr) { return (ptr.mflags2 & M.M2_PRINCE) !== 0; }
+export function is_lord(ptr) { return (ptr.mflags2 & M.M2_LORD) !== 0; }
+export function is_prince(ptr) { return (ptr.mflags2 & M.M2_PRINCE) !== 0; }
 function extra_nasty(ptr) { return (ptr.mflags2 & M.M2_NASTY) !== 0; }
 function is_giant(ptr) { return (ptr.mflags2 & M.M2_GIANT) !== 0; }
 function throws_rocks(ptr) { return (ptr.mflags2 & M.M2_ROCKTHROW) !== 0; }
@@ -1755,7 +1757,8 @@ export function makemon(ptr, x, y, mmflags) {
     game.fmon = mtmp;
     mtmp.m_id = next_ident();
     set_mon_data(mtmp, ptr); /* mtmp->data = ptr; */
-    /* quest_status.leader_m_id: the quest isn't ported yet */
+    if (ptr.msound === M.MS_LEADER && game.urole.ldrnum === mndx) /* quest_info(MS_LEADER) */
+        game.quest_status.leader_m_id = mtmp.m_id;
     mtmp.mnum = mndx;
 
     /* set up level and hit points */
@@ -1767,8 +1770,17 @@ export function makemon(ptr, x, y, mmflags) {
         mtmp.female = 1;
     else if (is_male(ptr) || ((mmflags & MM_MALE) !== 0 && maleok))
         mtmp.female = 0;
-    /* leader and nemesis gender (quest_status.ldrgend/nemgend) would go
-       here; the quest isn't ported yet */
+    /* leader and nemesis gender is usually hardcoded in mons[],
+       but for ones which can be random, it has already been chosen
+       (in role_init(), for possible use by the quest pager code) */
+    else if (ptr.msound === M.MS_LEADER && game.urole.ldrnum === mndx) /* quest_info(MS_LEADER) */
+        mtmp.female = game.quest_status.ldrgend;
+    else if (ptr.msound === M.MS_NEMESIS && game.urole.neminum === mndx) /* quest_info(MS_NEMESIS) */
+        mtmp.female = game.quest_status.nemgend;
+
+    /* female used to be set randomly here even for neuters on the
+       grounds that it was ignored, but after corpses were changed to
+       retain gender it matters because it affects stacking of corpses */
     else
         mtmp.female = femaleok ? rn2(2) : 0;
 
@@ -2132,8 +2144,7 @@ export function set_mimic_sym(mtmp) {
         else
             appear = Is_rogue_level(game.u.uz) ? S_vwall : S_vcdoor;
     } else if (game.level.flags.is_maze_lev
-               && !(In_mines(game.u.uz)
-                    && (() => { throw new Error('set_mimic_sym(): in_town() not ported yet'); })())
+               && !(In_mines(game.u.uz) && in_town(game.u.ux, game.u.uy))
                && !In_sokoban(game.u.uz) && rn2(2)) {
         ap_type = M_AP_OBJECT;
         appear = O.STATUE;
@@ -2249,7 +2260,8 @@ export function set_mimic_sym(mtmp) {
         block_point(mx, my);
 }
 // C ref: monmove.c can_hide_under_obj()
-function can_hide_under_obj(obj) {
+/* returns TRUE if a mon can hide under the obj */
+export function can_hide_under_obj(obj) {
     let t;
 
     if (!obj || obj.where !== 'OBJ_FLOOR')
@@ -2285,12 +2297,37 @@ function floor_pile(x, y) {
 }
 
 // C ref: mon.c hideunder()
+// The "You see <mon> <locomo> under <obj>." message makes this async, but
+// it has synchronous callers (makemon() during level creation, newcham(),
+// maybe_unhide_at(), getlev()) where C can't print it: 'seeit' is 0 in
+// mklev, and a monster that is already hidden or is losing its cover
+// doesn't give it.  The body is a generator that yields the message where
+// C calls You_see(): hideunder_async() prints it, hideunder() is the
+// synchronous entry point.
 /* monster/hero tries to hide under something at the current location;
    if used by monster creation, should only happen during level
    creation, otherwise there will be message sequencing issues */
 export function hideunder(mtmp) {
+    const gen = hideunder_core(mtmp);
+    for (let r = gen.next(); ; r = gen.next()) {
+        if (r.done)
+            return r.value;
+        throw new Error(`hideunder(): message in a synchronous caller not ported yet: ${r.value}`);
+    }
+}
+
+export async function hideunder_async(mtmp) {
+    const gen = hideunder_core(mtmp);
+    for (let r = gen.next(); ; r = gen.next()) {
+        if (r.done)
+            return r.value;
+        await You_see(r.value);
+    }
+}
+
+function* hideunder_core(mtmp) {
     let t, otmp;
-    let seenobj = null;
+    let seenmon = null, seenobj = null, locomo = null;
     const seeit = game.in_mklev ? false : canseemon(mtmp);
     let oldundetctd, undetected = false;
     const is_u = (mtmp === game.youmonst);
@@ -2311,8 +2348,10 @@ export function hideunder(mtmp) {
            under water unless some obstacle blocks line-of-sight */
         undetected = (is_pool(x, y) && !Is_waterlevel(game.u.uz)
                       && (!game.u.uinwater || !couldsee(x, y)));
-        if (seeit)
-            seenobj = 'the water';
+        if (seeit) {
+            seenobj = "the water";
+            locomo = "dive";
+        }
     } else if ((mtmp.data.mflags1 & M.M1_CONCEAL) /* hides_under() */
                /* hider-underers only hide under objects */
                && (otmp = floor_pile(x, y)[0] || null) !== null
@@ -2324,8 +2363,8 @@ export function hideunder(mtmp) {
                /* aquatic creatures don't reach here; other swimmers
                   shouldn't hide beneath underwater objects */
                && !(is_pool(x, y) || is_lava(x, y))) {
-        if (seeit)
-            seenobj = otmp;
+        if (seeit) /*&& (!is_pool(x, y) || (Underwater && distu(x, y) <= 2))*/
+            seenobj = ansimpleoname(otmp);
         /* most monsters won't hide under a cockatrice corpse but they
            can hide under a pile containing more than just such corpses */
         if (!Resists_Elem(mtmp, STONE_RES)) {
@@ -2340,12 +2379,21 @@ export function hideunder(mtmp) {
             undetected = true;
     }
 
+    if (seeit)
+        seenmon = y_monnam(mtmp);
     oldundetctd = mtmp.mundetected !== 0;
     mtmp.mundetected = undetected ? 1 : 0;
     /* the "you see" message won't be shown for monster hiding during
-       level creation because 'seeit' will be 0 */
-    if (undetected && seeit && seenobj)
-        throw new Error('hideunder(): "You see <mon> hide under <obj>" not ported yet');
+       level creation because 'seeit' will be 0 so 'seenmon' and 'seenobj'
+       will be Null */
+    if (undetected && seenmon && seenobj) {
+        if (!locomo)
+            locomo = locomotion(mtmp.data, "hide");
+        /* set_msg_xy(mtmp->mx, mtmp->my): accessibility only */
+        yield `${seenmon} ${locomo} under ${seenobj}.`; /* You_see() */
+        game.iflags.last_msg = PLNMSG_HIDE_UNDER;
+        game.last_hider = mtmp.m_id;
+    }
     if (undetected !== oldundetctd)
         newsym(x, y);
     return undetected;

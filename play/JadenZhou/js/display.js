@@ -5,12 +5,13 @@ import { game } from './gstate.js';
 import { money_cnt } from './u_init.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
 import { tty_putstr, tty_display_nhwindow } from './wintty.js';
-import { rank, condtests } from './botl.js';
+import { rank, condtests, describe_level } from './botl.js';
 import { near_capacity } from './hack.js';
 import { NOT_HUNGRY, UNENCUMBERED, SICK, SICK_VOMITABLE, SICK_NONVOMITABLE, TT_LAVA,
          TT_BURIEDBALL, CONFUSION, DEAF, FLYING, HALLUC_RES, LEVITATION, SLIMED,
          STONED, STRANGLED, STUNNED, GLIB } from './const.js';
 import { ACURR } from './attrib.js';
+import { Unaware } from './eat.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, SDOOR, SCORR,
     IRONBARS, TREE, POOL, MOAT, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE,
@@ -23,7 +24,9 @@ import {
     NO_TRAP, BEAR_TRAP, PIT, SPIKED_PIT, WEB,
 } from './const.js';
 import { HALLUC, Is_waterlevel, isok, IS_STWALL, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT,
-         M_AP_FURNITURE, WARNCOUNT, def_warnsyms } from './const.js';
+         M_AP_FURNITURE, WARNCOUNT, def_warnsyms, In_mines, In_sokoban,
+         Is_knox_level } from './const.js';
+import { In_hell } from './dungeon.js';
 import { rn2_on_display_rng } from './rng.js';
 import {
     objects, BOULDER, STATUE, CORPSE, POTION_CLASS, FIRST_REAL_GEM,
@@ -78,7 +81,9 @@ const DEF_CMAP_FOR_DEC = {
 function terrain_glyph(loc, x, y) {
     const tg = terrain_glyph_dec(loc, x, y);
     if (tg.dec && !/^decgraphics$/i.test(game.symset_name || ''))
-        return { ch: tg.asc ?? DEF_CMAP_FOR_DEC[tg.ch] ?? tg.ch, color: tg.color, dec: false,
+        /* the default symset doesn't color the branch wall variants */
+        return { ch: tg.asc ?? DEF_CMAP_FOR_DEC[tg.ch] ?? tg.ch,
+                 color: tg.wall ? NO_COLOR : tg.color, dec: false,
                  cmap: tg.cmap };
     return { ch: tg.ch, color: tg.color, dec: tg.dec, cmap: tg.cmap };
 }
@@ -567,6 +572,21 @@ function wall_angle(lev) {
 const S_corr_g = { ch: '#', color: CLR_GRAY, dec: false, cmap: 'S_corr' };
 const S_litcorr_g = { ch: '#', color: CLR_WHITE, dec: false, cmap: 'S_litcorr' };
 
+// C ref: display.h cmap_walls_to_glyph() + display.c reset_glyphmap()
+// wall_color(): the color of the hero's branch's wall glyphs under the
+// DECgraphics symset, which gives the branch variants custom colors
+// (G_vwall_mines: /brown, ..._gehennom: /red, ..._knox: /yellow,
+// ..._sokoban: /blue); the main dungeon's walls keep the default.
+function dec_wall_color() {
+    const uz = game.u?.uz;
+    if (!uz || !game.dungeons) return NO_COLOR;
+    return In_mines(uz) ? CLR_BROWN
+        : In_hell(uz) ? CLR_RED
+          : Is_knox_level(uz) ? CLR_YELLOW
+            : In_sokoban(uz) ? CLR_BLUE
+              : NO_COLOR;
+}
+
 // C ref: display.c back_to_glyph() -- the background glyph of a spot,
 // as { ch, color, dec } with the DECgraphics symset's line-drawing
 // characters (dat/symbols "DECgraphics") where it overrides defsym.h;
@@ -602,19 +622,23 @@ function terrain_glyph_dec(loc, x, y) {
         /* idx = ptr->seenv ? wall_angle(ptr) : S_stone */
         if (!loc.seenv)
             return S_stone;
+        /* the wall glyph varies by dungeon branch (display.h
+           cmap_walls_to_glyph()); the DECgraphics symset colors the
+           branch variants (dat/symbols G_<wall>_mines: /brown etc.) */
+        const wc = dec_wall_color();
         switch (wall_angle(loc)) {
         case 'S_tree':   return S_tree;
-        case 'S_hwall':  return S_hwall;                                  // ─
-        case 'S_vwall':  return S_vwall;                                  // │
-        case 'S_tlcorn': return { ch: 'l', color: NO_COLOR, dec: true };  // ┌
-        case 'S_trcorn': return { ch: 'k', color: NO_COLOR, dec: true };  // ┐
-        case 'S_blcorn': return { ch: 'm', color: NO_COLOR, dec: true };  // └
-        case 'S_brcorn': return { ch: 'j', color: NO_COLOR, dec: true };  // ┘
-        case 'S_crwall': return { ch: 'n', color: NO_COLOR, dec: true };  // ┼
-        case 'S_tuwall': return { ch: 'v', color: NO_COLOR, dec: true };  // ┴
-        case 'S_tdwall': return { ch: 'w', color: NO_COLOR, dec: true };  // ┬
-        case 'S_tlwall': return { ch: 'u', color: NO_COLOR, dec: true };  // ┤
-        case 'S_trwall': return { ch: 't', color: NO_COLOR, dec: true };  // ├
+        case 'S_hwall':  return { ...S_hwall, color: wc, wall: true };    // ─
+        case 'S_vwall':  return { ...S_vwall, color: wc, wall: true };    // │
+        case 'S_tlcorn': return { ch: 'l', color: wc, dec: true, wall: true };  // ┌
+        case 'S_trcorn': return { ch: 'k', color: wc, dec: true, wall: true };  // ┐
+        case 'S_blcorn': return { ch: 'm', color: wc, dec: true, wall: true };  // └
+        case 'S_brcorn': return { ch: 'j', color: wc, dec: true, wall: true };  // ┘
+        case 'S_crwall': return { ch: 'n', color: wc, dec: true, wall: true };  // ┼
+        case 'S_tuwall': return { ch: 'v', color: wc, dec: true, wall: true };  // ┴
+        case 'S_tdwall': return { ch: 'w', color: wc, dec: true, wall: true };  // ┬
+        case 'S_tlwall': return { ch: 'u', color: wc, dec: true, wall: true };  // ┤
+        case 'S_trwall': return { ch: 't', color: wc, dec: true, wall: true };  // ├
         default:         return S_stone;
         }
     }
@@ -1005,7 +1029,7 @@ function obj_is_generic(obj) {
 // SYM_BOULDER, which defaults to the rock class symbol. Pile-top glyphs
 // (the *_PILETOP_OFF ranges) are marked 'piletop': they map like the plain
 // ones but with MG_OBJPILE, which tty shows only with hilite_pile.
-function obj_to_glyph(obj, rng) {
+export function obj_to_glyph(obj, rng) {
     if (obj.otyp === STATUE) {
         if (Hallucination()) rng(2);
         return { ch: def_monsyms[mons[obj.corpsenm].mlet] ?? '?',
@@ -1306,6 +1330,81 @@ export function newsym_force(x, y) {
         loc.gnew = 1;
 }
 
+/* C ref: display.h tmp_at() styles */
+export const DISP_BEAM = -1, DISP_ALL = -2, DISP_TETHER = -3, DISP_FLASH = -4,
+    DISP_ALWAYS = -5, DISP_CHANGE = -6, DISP_END = -7, DISP_FREEMEM = -8;
+const TMP_AT_MAX_GLYPHS = 80 * 2; /* COLNO * 2 */
+let tmp_at_glyph = null; /* static struct tmp_glyph *tglyph */
+
+// C ref: display.c tmp_at() -- DISP_BEAM, DISP_ALL, DISP_FLASH and
+// DISP_ALWAYS (DISP_TETHER isn't ported yet).  The transient beam glyphs
+// aren't drawn (no screen is captured while they show), but the spots the
+// beam covered are remembered and newsym()'d by DISP_END, which redraws
+// terrain the beam changed (e.g. a wall dug by a zap).  A flashed glyph
+// (a missile in flight) is drawn at its one spot; the next pline()'s
+// flush_screen(1) shows it, as C's flush_screen(0) here would.
+export function tmp_at(x, y) {
+    switch (x) {
+    case DISP_BEAM:
+    case DISP_ALL:
+    case DISP_FLASH:
+    case DISP_ALWAYS:
+        tmp_at_glyph = { prev: tmp_at_glyph, saved: [], style: x, glyph: y };
+        /* flush_screen(0): buffered glyphs are flushed at the next input */
+        return;
+    case DISP_TETHER:
+        throw new Error('tmp_at(): tether style not ported yet');
+    case DISP_FREEMEM:
+        tmp_at_glyph = null;
+        return;
+    default:
+        break;
+    }
+
+    const tglyph = tmp_at_glyph;
+    if (!tglyph)
+        throw new Error('tmp_at: tglyph not initialized'); /* panic() */
+    switch (x) {
+    case DISP_CHANGE:
+        tglyph.glyph = y;
+        break;
+    case DISP_END:
+        if (tglyph.style === DISP_BEAM || tglyph.style === DISP_ALL) {
+            /* Erase (reset) from source to end */
+            for (const p of tglyph.saved)
+                newsym(p.x, p.y);
+        } else { /* DISP_FLASH or DISP_ALWAYS */
+            if (tglyph.saved.length) /* been called at least once */
+                newsym(tglyph.saved[0].x, tglyph.saved[0].y);
+        }
+        tmp_at_glyph = tglyph.prev;
+        break;
+    default: /* do it */
+        if (!isok(x, y))
+            break;
+        if (tglyph.style === DISP_BEAM || tglyph.style === DISP_ALL) {
+            if (tglyph.style !== DISP_ALL && !cansee(x, y))
+                break;
+            if (tglyph.saved.length >= TMP_AT_MAX_GLYPHS)
+                break; /* too many locations */
+            /* save pos for later erasing */
+            tglyph.saved.push({ x, y });
+            /* show_glyph(x, y, tglyph->glyph): transient, not drawn */
+        } else { /* DISP_FLASH/ALWAYS */
+            if (tglyph.saved.length) { /* not first call, so reset previous pos */
+                newsym(tglyph.saved[0].x, tglyph.saved[0].y);
+                tglyph.saved = []; /* display is presently up to date */
+            }
+            if (!cansee(x, y) && tglyph.style !== DISP_ALWAYS)
+                break;
+            tglyph.saved = [{ x, y }];
+            show_glyph(x, y, tglyph.glyph); /* show it */
+            /* flush_screen(0): shown by the next flush */
+        }
+        break;
+    }
+}
+
 // ── newsym ──
 export function newsym(x, y) {
     /* don't try to produce map output when level is in a state of flux
@@ -1545,9 +1644,20 @@ export function row_refresh(start, stop, y) {
     for (let x = Math.max(start, 1); x <= stop && x < COLNO; x++) {
         const loc = game.level.at(x, y);
         if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
-        const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch;
+        const ch = loc.disp_decgfx ? dec_cell_char(loc.disp_ch) : loc.disp_ch;
         display.setCell(x - 1, y + 1, ch, tty_color(loc.disp_color), tty_glyph_attr(loc));
     }
+}
+
+// A DEC special-graphics character as the terminal grid holds it. The tty
+// recordings decode only the VT100 line-drawing set (box corners and
+// rules, checkerboard, centered dot) to Unicode; the other alternate
+// charset letters ('g' plus-minus for S_tree, '`' diamond, 'f' degree,
+// '|' not-equal, ...) stay as their ASCII letters (frozen/screen-decode.mjs
+// DEC_MAP), so only that subset is converted.
+const DEC_LINE_DRAWING = 'lqkxmjtuwvna~';
+function dec_cell_char(ch) {
+    return DEC_LINE_DRAWING.includes(ch) ? (DEC_TO_UNICODE[ch] || ch) : ch;
 }
 
 // ── Serialize a map row with DEC line-drawing and ANSI colors ──
@@ -1661,7 +1771,10 @@ function _statusLine2() {
         ? ` ${STAT_HU[u.uhs].replace(/ +$/, '')}` : '';
     const cap = near_capacity();
     const capstr = (cap > UNENCUMBERED) ? ` ${STAT_ENC[cap]}` : '';
-    const line = `Dlvl:${u.uz?.dlevel || 1} $:${Math.min(money_cnt(game.invent), 999999)} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${expr}${tmmv}${hunger}${capstr}${status_conditions()}`;
+    /* BL_LEVELDESC: describe_level(buf, 1), with wintty.c's
+       tty_status_update() suppressing its trailing blanks */
+    const leveldesc = describe_level(1)[1].replace(/ +$/, '');
+    const line = `${leveldesc} $:${Math.min(money_cnt(game.invent), 999999)} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${expr}${tmmv}${hunger}${capstr}${status_conditions()}`;
     /* make_things_fit(): shrinking or truncating an overlong line */
     if (line.length > 79)
         throw new Error('_statusLine2(): make_things_fit() shrinking not ported yet');
@@ -1829,7 +1942,7 @@ function _buildScreenOutput(cursor_on_u) {
                     display.setCell(x - 1, y + 1, ' ', NO_COLOR, 0);
                     continue;
                 }
-                const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch;
+                const ch = loc.disp_decgfx ? dec_cell_char(loc.disp_ch) : loc.disp_ch;
                 display.setCell(x - 1, y + 1, ch, tty_color(loc.disp_color), tty_glyph_attr(loc));
             }
         }
@@ -1939,3 +2052,21 @@ export async function Your(line) { await pline(`Your ${line}`); }
 export async function You_cant(line) { await pline(`You can't ${line}`); }
 export async function pline_The(line) { await pline(`The ${line}`); }
 export async function There(line) { await pline(`There ${line}`); }
+
+// C ref: pline.c You_feel()
+export async function You_feel(line) {
+    if (Unaware())
+        await pline(`You dream that you feel ${line}`);
+    else
+        await pline(`You feel ${line}`);
+}
+
+// C ref: pline.c You_see()
+export async function You_see(line) {
+    if (Unaware())
+        await pline(`You dream that you see ${line}`);
+    else if (Blind()) /* caller should have caught this... */
+        await pline(`You sense ${line}`);
+    else
+        await pline(`You see ${line}`);
+}

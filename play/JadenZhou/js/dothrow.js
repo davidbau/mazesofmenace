@@ -12,9 +12,11 @@ import { check_capacity } from './hack.js';
 import { getdir } from './cmd.js';
 import { is_ammo, is_pole, ammo_and_launcher, doquiver_core } from './wield.js';
 import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, W_WEP } from './const.js';
-import { BULLWHIP, BOOMERANG, AKLYS } from './objects.js';
+import { BULLWHIP, BOOMERANG, AKLYS, WAN_PROBING, WAN_OPENING, WAN_LOCKING,
+         WAN_STRIKING } from './objects.js';
+import { zap_map, bhitpile } from './zap.js';
 import { M1_NOHANDS, M1_NOTAKE, S_COCKATRICE, PM_CHICKATRICE, PM_COCKATRICE,
-         PM_MEDUSA, mons } from './monsters.js';
+         PM_MEDUSA, MZ_MEDIUM, mons } from './monsters.js';
 import { pline, newsym, flush_screen, canspotmon, canseemon } from './display.js';
 import { vision_recalc } from './vision.js';
 import { u_on_newpos } from './mklev.js';
@@ -32,6 +34,7 @@ import { CONFUSION, STUNNED, FUMBLING, BLINDED, HALLUC, HALLUC_RES, STONE_RES, D
          P_DAGGER, P_KNIFE, P_DART, P_CROSSBOW, P_SABER, P_SHORT_SWORD,
          P_SKILLED, P_EXPERT, SLT_ENCUMBER, LOST_THROWN, BOLT_LIM, TT_INFLOOR,
          THROWN_WEAPON, THROWN_TETHERED_WEAPON, WATER, LAVAWALL, ZAP_POS,
+         ZAPPED_WAND, SDOOR,
          IS_SINK, IS_SOFT, M_AP_OBJECT, HAND, Is_airlevel, GETOBJ_EXCLUDE,
          GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_PROMPT,
          GETOBJ_ALLOWCNT } from './const.js';
@@ -56,7 +59,8 @@ import { u_wipe_engr } from './engrave.js';
 import { splitobj, place_object, is_flammable, weight } from './mkobj.js';
 import { encumber_msg } from './pickup.js';
 import { remove_worn_item } from './steal.js';
-import { weapon_type, P_SKILL } from './weapon.js';
+import { weapon_type, P_SKILL, hitval } from './weapon.js';
+import { is_weptool } from './mkobj.js';
 import { weapon_descr, skill_name, inside_shop, body_part } from './insight.js';
 import { xname, an, singular, The, Tobjnam } from './objnam.js';
 import { the } from './iactions.js';
@@ -664,6 +668,43 @@ async function throwit(obj,
     throwit_return(false);
 }
 
+// C ref: dothrow.c omon_adj()
+/* an object may hit a monster; various factors adjust chance of hitting */
+export function omon_adj(mon, obj, mon_notices) {
+    let tmp = 0;
+
+    /* size of target affects the chance of hitting */
+    tmp += (mon.data.msize - MZ_MEDIUM); /* -2..+5 */
+    /* sleeping target is more likely to be hit */
+    if (mon.msleeping) {
+        tmp += 2;
+    }
+    /* ditto for immobilized target */
+    if (!mon.mcanmove || !mon.data.mmove) {
+        tmp += 4;
+        if (mon_notices && mon.data.mmove && !rn2(10)) {
+            mon.mcanmove = 1;
+            mon.mfrozen = 0;
+        }
+    }
+    /* some objects are more likely to hit than others */
+    switch (obj.otyp) {
+    case HEAVY_IRON_BALL:
+        if (obj !== game.uball)
+            tmp += 2;
+        break;
+    case BOULDER:
+        tmp += 6;
+        break;
+    default:
+        if (obj.oclass === WEAPON_CLASS || is_weptool(obj)
+            || obj.oclass === GEM_CLASS)
+            tmp += hitval(obj, mon);
+        break;
+    }
+    return tmp;
+}
+
 // C ref: dothrow.c breaktest()
 /*
  * Check to see if obj (which has just hit hard something at speed, e.g.
@@ -698,8 +739,9 @@ export function breaktest(obj) {
     }
 }
 
-// C ref: zap.c bhit() -- thrown objects (THROWN_WEAPON); kicked objects,
-// zapped wands, flashed light and invisible beams are not ported yet
+// C ref: zap.c bhit() -- thrown objects (THROWN_WEAPON) and IMMEDIATE wands
+// (ZAPPED_WAND); kicked objects, flashed light and invisible beams are not
+// ported yet
 /*
  *  Called for the following distance effects:
  *      when a weapon is thrown (weapon == THROWN_WEAPON)
@@ -730,12 +772,11 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
     const skip = { start: 0, end: 0 };
     let skipcount = 0;
     const was_returning = (g.iflags.returning_missile === obj) ? obj : null;
-    void fhitm; void point_blank;
+    void point_blank;
 
-    if (weapon !== THROWN_WEAPON && weapon !== THROWN_TETHERED_WEAPON)
-        throw new Error('bhit(): kicked objects, wands and beams not ported yet');
-    if (fhito)
-        throw new Error('bhit(): bhitpile() not ported yet');
+    if (weapon !== THROWN_WEAPON && weapon !== THROWN_TETHERED_WEAPON
+        && weapon !== ZAPPED_WAND)
+        throw new Error('bhit(): kicked objects, flashed light and beams not ported yet');
 
     g.bhitpos = { x: u.ux, y: u.uy };
 
@@ -768,18 +809,30 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
         typ = g.level.at(x, y).typ;
 
         /* WATER aka "wall of water" stops items */
-        if (typ === WATER || typ === LAVAWALL) /* IS_WATERWALL(typ) */
-            break;
+        if (typ === WATER || typ === LAVAWALL) { /* IS_WATERWALL(typ) */
+            if (weapon === THROWN_WEAPON)
+                break;
+        }
 
         /* iron bars will block anything big enough and break some things */
-        if (obj.lamplit && !Blind())
-            throw new Error('bhit(): show_transient_light() not ported yet');
-        if (typ === IRONBARS)
-            throw new Error('bhit(): hits_bars() not ported yet');
+        if (weapon === THROWN_WEAPON) {
+            if (obj.lamplit && !Blind())
+                throw new Error('bhit(): show_transient_light() not ported yet');
+            if (typ === IRONBARS)
+                throw new Error('bhit(): hits_bars() not ported yet');
+        }
+
+        if (weapon === ZAPPED_WAND) {
+            /* cancellation/opening/locking/striking/probing */
+            await zap_map(x, y, obj);
+            /* terrain might have changed (exposed secret door|corridor) */
+            typ = g.level.at(x, y).typ;
+        }
 
         mtmp = m_at(x, y);
         ttmp = t_at(x, y);
-        if (!mtmp && ttmp && (ttmp.ttyp === WEB) && !rn2(3)) {
+        if (!mtmp && ttmp && (ttmp.ttyp === WEB)
+            && weapon === THROWN_WEAPON && !rn2(3)) {
             throw new Error('bhit(): stuck in a web not ported yet');
         }
 
@@ -802,35 +855,66 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
         /* if mtmp is a shade and missile passes harmlessly through it,
            give message and skip it in order to keep going;
            thrown objects don't hit mimics pretending to be objects */
-        if (mtmp && (mtmp.data === mons[PM_SHADE]
-                     || mtmp.m_ap_type === M_AP_OBJECT))
+        if (mtmp && weapon === THROWN_WEAPON
+            && (mtmp.data === mons[PM_SHADE] || mtmp.m_ap_type === M_AP_OBJECT))
             throw new Error('bhit(): shade_miss()/hidden mimic not ported yet');
 
         if (mtmp) {
             g.notonhead = (x !== mtmp.mx || y !== mtmp.my);
-            /* THROWN_WEAPON, KICKED_WEAPON */
-            /* if (!tethered_weapon) tmp_at(DISP_END, 0): display only */
-            if (cansee(x, y) && !canspotmon(mtmp))
-                map_invisible(x, y);
-            result = mtmp;
-            break; /* goto bhit_done */
+            if (weapon !== ZAPPED_WAND) {
+                /* THROWN_WEAPON, KICKED_WEAPON */
+                /* if (!tethered_weapon) tmp_at(DISP_END, 0): display only */
+                if (cansee(x, y) && !canspotmon(mtmp))
+                    map_invisible(x, y);
+                result = mtmp;
+                break; /* goto bhit_done */
+            } else {
+                /* ZAPPED_WAND */
+                if (await fhitm(mtmp, obj)) {
+                    result = mtmp;
+                    break; /* goto bhit_done */
+                }
+                range -= 3;
+            }
+        } else {
+            if (weapon === ZAPPED_WAND && obj.otyp === WAN_PROBING
+                && glyph_is_invisible(g.level.at(x, y).glyph)) {
+                unmap_object(x, y);
+                newsym(x, y);
+            }
+        }
+        if (fhito) {
+            if (await bhitpile(obj, fhito, x, y, 0))
+                range--;
+        }
+        if (weapon === ZAPPED_WAND && (IS_DOOR(typ) || typ === SDOOR)) {
+            switch (obj.otyp) {
+            case WAN_OPENING:
+            case WAN_LOCKING:
+            case WAN_STRIKING:
+                throw new Error('bhit(): doorlock() for zapped wand not ported yet');
+            }
         }
         if (!ZAP_POS(typ) || closed_door(x, y)) {
             g.bhitpos.x -= ddx;
             g.bhitpos.y -= ddy;
             break;
         }
-        /* 'I' present but no monster: erase; do this before tmp_at() */
-        if (g.level.at(x, y).glyph !== undefined && glyph_is_invisible(g.level.at(x, y).glyph)
-            && cansee(x, y)) {
-            unmap_object(x, y);
-            newsym(x, y);
+        if (weapon !== ZAPPED_WAND) {
+            /* 'I' present but no monster: erase; do this before tmp_at() */
+            if (g.level.at(x, y).glyph !== undefined
+                && glyph_is_invisible(g.level.at(x, y).glyph)
+                && cansee(x, y)) {
+                unmap_object(x, y);
+                newsym(x, y);
+            }
+            /* tmp_at(x, y); nh_delay_output(): transient display only */
+            if (IS_SINK(typ))
+                break; /* physical objects fall onto sink */
         }
-        /* tmp_at(x, y); nh_delay_output(): transient display only */
-        if (IS_SINK(typ))
-            break; /* physical objects fall onto sink */
         /* limit range of ball so hero won't make an invalid move */
-        if (range > 0 && obj.otyp === HEAVY_IRON_BALL)
+        if (weapon === THROWN_WEAPON && range > 0
+            && obj.otyp === HEAVY_IRON_BALL)
             throw new Error('bhit(): thrown heavy iron ball not ported yet');
 
         /* thrown/kicked missile has moved away from its starting spot */

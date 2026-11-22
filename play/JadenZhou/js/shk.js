@@ -150,7 +150,7 @@ function noit_mhe(mtmp) {
     return genders[pronoun_gender(mtmp, PRONOUN_NO_IT | PRONOUN_HALLU)].he;
 }
 /* C ref: polyself.c mbodypart() -- humanoid monsters (shopkeepers) only */
-function mbodypart(mon, part) {
+export function mbodypart(mon, part) {
     const mptr = mon.data;
     if (!(mptr.mflags1 & M1_HUMANOID) || mptr.mlet === S_DOG
         || mptr.mlet === S_FELINE || mptr.mlet === S_RODENT

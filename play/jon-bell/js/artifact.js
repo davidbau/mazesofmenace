@@ -1798,8 +1798,10 @@ export function Sting_effects(cnt) {
 
     if (cnt === -1 && oldCount > 0) {
         /* Blindness toggled: continue the existing glow, with quiver while
-         * blind, so the eventual stop message has the matching verb. */
-        void pline(`${name} is ${glow_verb(_disp_Blind() ? 0 : oldCount, true)}.`);
+         * blind, so the eventual stop message has the matching verb.
+         * C artifact.c:2479-2480 finishes pline before returning. Return its
+         * promise so toggle_blindness can preserve that blocking order. */
+        return pline(`${name} is ${glow_verb(_disp_Blind() ? 0 : oldCount, true)}.`);
     } else if (newStrength > 0 && newStrength !== oldStrength) {
         /* C artifact.c:2482 — goto_level() -> docrt() -> see_monsters() ->
          * Sting_effects(): deliver a pending "You materialize on a different

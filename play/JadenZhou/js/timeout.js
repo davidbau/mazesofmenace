@@ -21,6 +21,7 @@ import { stone_luck } from './attrib.js';
 import { carrying } from './invent.js';
 import { heal_legs } from './trap.js';
 import { stop_occupation } from './allmain.js';
+import { nomul } from './hack.js';
 import { spec_ability, SPFX_LUCK } from './artifact.js';
 
 /* C ref: role.h Role_if() */
@@ -142,6 +143,17 @@ export async function nh_timeout() {
     /* run_timers(): the timer queue isn't ported yet; no timer set by
        level creation (corpse rot, revival, melting ice) comes due within
        the turns the sessions reach so far */
+}
+
+// C ref: timeout.c fall_asleep()
+export async function fall_asleep(how_long, wakeup_msg) {
+    await stop_occupation();
+    nomul(how_long);
+    game.multi_reason = "sleeping";
+    /* (#if 0 in C: the Deaf/Hear_again handling is disabled) */
+    /* early wakeup from combat won't be possible until next monster turn */
+    game.u.usleep = game.moves;
+    game.nomovemsg = wakeup_msg ? "You wake up." : "You can move again.";
 }
 
 // C ref: timeout.c attach_egg_hatch_timeout()

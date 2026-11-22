@@ -19,13 +19,15 @@
 
 import { game } from './gstate.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
-         tty_select_menu, tty_destroy_nhwindow, add_menu_str } from './wintty.js';
+         tty_select_menu, tty_destroy_nhwindow, add_menu_str,
+         tty_yn_function } from './wintty.js';
 import { getpos } from './getpos.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ONE,
          ECMD_OK } from './const.js';
 import { NO_COLOR, ATR_NONE } from './terminal.js';
 import { extcmdlist } from './func_tab.js';
-import { cmd_from_func } from './cmd.js';
+import { cmd_from_func, key2extcmddesc, key2txt } from './cmd.js';
+import { visctrl } from './hacklib.js';
 import { canspotmon, vobj_at, pline, Hallucination } from './display.js';
 import { cansee } from './vision.js';
 import { m_at, closed_door, is_pool, is_lava } from './makemon.js';
@@ -372,21 +374,6 @@ const help_menu_items = [
     { f: 'dispfile_debughelp', text: "List of wizard-mode commands." },
 ];
 
-// C ref: hacklib.c visctrl()
-function visctrl(c) {
-    let ccc = '';
-    if (c & 0o200)
-        ccc += 'M-';
-    c &= 0o177;
-    if (c < 0o40)
-        ccc += '^' + String.fromCharCode(c | 0o100);
-    else if (c === 0o177)
-        ccc += '^?';
-    else
-        ccc += String.fromCharCode(c);
-    return ccc;
-}
-
 // C ref: cmd.c cmdname_from_func() -- the fullname case
 function cmdname_from_func(fn) {
     const extcmd = extcmdlist.find(e => e.ef_funct === fn);
@@ -632,6 +619,64 @@ export async function do_look(mode, click_cc) {
 // C ref: pager.c dowhatis() -- the #whatis command
 export async function dowhatis() {
     return await do_look(0, null);
+}
+
+// C ref: pager.c dowhatdoes_core() -- the description of a key, from the
+// command table (C's cmdhelp-file lookup is #if 0)
+export function dowhatdoes_core(q) {
+    let ec_desc;
+
+    if ((ec_desc = key2extcmddesc(q)) !== null) {
+        /* note: if "%-8s" gets changed, the "%8.8s" in dowhatdoes() will
+           need a comparable change */
+        return `${key2txt(q).padEnd(8)}${ec_desc}.`;
+    }
+    return null;
+}
+
+// C ref: pager.c dowhatdoes() -- the whatdoes command
+export async function dowhatdoes() {
+    let q, reslt;
+
+    if (!game.whatdoes_once) { /* static boolean once */
+        await pline(`Ask about '&' or '?' to get more info.${game.iflags.altmeta ? "  (For ESC, type it twice.)" : ""}`);
+        game.whatdoes_once = true;
+    }
+    /* introff(): disables ^C but not ^\ */
+    q = (await tty_yn_function("What command?", null, '\0')).charCodeAt(0);
+    if (q === 0x1b && game.iflags.altmeta) {
+        /* in an ideal world, we would know whether another keystroke
+           was already pending, but this is not an ideal world...
+           if user typed ESC, we'll essentially hang until another
+           character is typed */
+        q = (await tty_yn_function("]", null, '\0')).charCodeAt(0);
+        if (q !== 0x1b)
+            q = (q | 0o200) & 0xff;
+    }
+    /* intron(): reenables ^C */
+    reslt = dowhatdoes_core(q);
+    if (reslt) {
+        const p = reslt.indexOf('\n'); /* 'm' prefix has two lines of output */
+
+        if (q === 0x26 || q === 0x3f) /* '&' or '?' */
+            throw new Error('dowhatdoes(): whatdoes_help() (keyhelp file) not ported yet');
+        if (p < 0) {
+            /* normal usage; 'reslt' starts with key, some indentation, and
+               then explanation followed by '.' for sentence punctuation */
+            await pline(reslt);
+        } else {
+            /* for 'm' prefix, where 'reslt' has an embedded newline to
+               indicate and separate two lines of output; we add a comma to
+               first line so that the combination is a complete sentence */
+            await pline(`${reslt.slice(0, p)},`);
+            /* cheat by knowing how dowhatdoes_core() handles key portion */
+            await pline(`${reslt.slice(0, 8).padStart(8)}${reslt.slice(p + 1)}`);
+        }
+    } else {
+        const oct = q.toString(8).padStart(3, '0'), hex = q.toString(16).padStart(2, '0');
+        await pline(`No such command '${visctrl(q)}', char code ${q} (0${oct} or 0x${hex}).`);
+    }
+    return ECMD_OK;
 }
 
 // C ref: pager.c hmenu_dowhatis()

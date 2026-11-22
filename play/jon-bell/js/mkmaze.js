@@ -840,8 +840,10 @@ let _hero_bubble = null;
 
 export function bubbles_clear_level() {
     _bbubbles = _ebubbles = null;
-    _wportal = null;
     _hero_bubble = null;
+    /* C mkmaze.c:1860-1870 frees the bubbles without clearing gw.wportal.
+     * movebubbles (1554) only tests that cache for null; it never dereferences
+     * it. Preserve even a removed portal across #wizloaddes, as C does. */
     /* `up` is a C function-scope static, NOT level state — it deliberately
      * survives level changes so successive traversals alternate direction.
      * Left alone. */
@@ -849,6 +851,7 @@ export function bubbles_clear_level() {
 
 export function bubbles_reset_process_state() {
     bubbles_clear_level();
+    _wportal = null;
     _bubbles_up = false;
     _wl_xmin = 3; _wl_ymin = 1; _wl_xmax = 78; _wl_ymax = 20;
 }

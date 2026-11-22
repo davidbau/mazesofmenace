@@ -65,6 +65,15 @@ import { NO_NC_FLAGS, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES,
 import { corpse_intrinsic, should_givit } from './eat.js';
 import { delobj } from './invent.js';
 import { grow_up } from './makemon.js';
+import { PICK_AXE, DWARVISH_MATTOCK, AXE, BATTLE_AXE, WEAPON_CLASS,
+         TOOL_CLASS } from './objects.js';
+import { NO_WEAPON_WANTED, W_ARMS, SHOPBASE, P_AXE, P_PICK_AXE, WT_TOOMUCH_DIAGONAL } from './const.js';
+import { curr_mon_load } from './dogmove.js';
+import { can_hide_under_obj, set_mimic_sym } from './makemon.js';
+import { vobj_at } from './display.js';
+import { ceiling_hider } from './engrave.js';
+import { has_ceiling } from './insight.js';
+import { M_AP_FURNITURE, M_AP_OBJECT, ROOM } from './const.js';
 import { dead_species } from './mkobj.js';
 import { kill_egg } from './timeout.js';
 import { relobj } from './steal.js';
@@ -99,6 +108,9 @@ import { sengr_at } from './makemon.js';
 import { del_engr_at } from './engrave.js';
 import { m_canseeu } from './monmove.js';
 import { in_rooms } from './hack.js';
+import { in_your_sanctuary } from './priest.js';
+import { nemdead, leaddead, nemesis_stinks } from './quest.js';
+import { stinky_nemesis } from './questpgr.js';
 
 /* monster inventory: makemon.js keeps mon->minvent as an array in pickup
    order; C prepends, so walk it newest first */
@@ -241,6 +253,8 @@ function mon_leaving_level(mon) {
 // mondead() awaits; mongone() (due_to_death FALSE, called from level
 // creation) runs synchronously.
 function m_detach(mtmp, mptr, due_to_death) {
+    const mx = mtmp.mx, my = mtmp.my;
+
     if (mtmp.mleashed)
         throw new Error('m_detach(): m_unleash() not ported yet');
 
@@ -270,14 +284,26 @@ function m_detach(mtmp, mptr, due_to_death) {
             throw new Error('m_detach(): dismount_steed() not ported yet');
     };
 
+    /* foodead() might give quest feedback for foo having died; skip that
+       if we're called for mongone() rather than mondead(); saving bones
+       or wizard mode genocide of "*" can result in special monsters going
+       away without having been killed */
     if (due_to_death) {
-        if (mtmp.data.msound === MS_NEMESIS)
-            throw new Error('m_detach(): nemdead() not ported yet');
-        if (mtmp.data.msound === MS_LEADER)
-            throw new Error('m_detach(): leaddead() not ported yet');
-        /* release (drop onto map) all objects carried by mtmp */
-        return relobj(mtmp, 1, false) /* drop mtmp->minvent, issue newsym(mx,my) */
-            .then(after_relobj);
+        return (async () => {
+            if (mtmp.data.msound === MS_NEMESIS) {
+                await nemdead();
+                /* The Archeologist, Caveman, and Priest quest texts describe
+                   the nemesis's body creating noxious fumes/gas when killed. */
+                if (await stinky_nemesis(mtmp))
+                    nemesis_stinks(mx, my);
+            }
+            if (mtmp.data.msound === MS_LEADER)
+                leaddead();
+            /* release (drop onto map) all objects carried by mtmp; assumes
+               that mtmp->mx,my contains the appropriate location */
+            await relobj(mtmp, 1, false); /* drop mtmp->minvent, issue newsym(mx,my) */
+            after_relobj();
+        })();
     }
     after_relobj();
     return undefined;
@@ -1067,7 +1093,14 @@ async function movemon_singlemon(mtmp) {
     }
 
     if ((mtmp.data.mflags1 & M1_HIDE) !== 0) { /* is_hider() */
-        throw new Error('movemon_singlemon(): restrap() not ported yet');
+        /* unwatched mimics and piercers may hide again  [MRS] */
+        if (restrap(mtmp))
+            return false;
+        if (mtmp.m_ap_type === M_AP_FURNITURE
+            || mtmp.m_ap_type === M_AP_OBJECT)
+            return false;
+        if (mtmp.mundetected)
+            return false;
     } else if (mtmp.data.mlet === S_EEL && !mtmp.mundetected) {
         throw new Error('movemon_singlemon(): eel hideunder() not ported yet');
     }
@@ -1510,7 +1543,7 @@ export function check_gear_next_turn(mon) {
 }
 
 // C ref: mon.c wake_msg()
-async function wake_msg(mtmp, interesting) {
+export async function wake_msg(mtmp, interesting) {
     if (mtmp.msleeping && canseemon(mtmp)) {
         await pline(`${Monnam(mtmp)} wakes up${interesting ? "!" : "."}${
             mtmp.data === mons[PM_FLESH_GOLEM] ? " It's alive!" : ""}`);
@@ -1705,6 +1738,16 @@ function monlineu(mon, nx, ny) {
     return online2(nx, ny, mon.mux, mon.muy);
 }
 
+/* C ref: obj.h is_pick() */
+function is_pick(otmp) {
+    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
+            && objects[otmp.otyp].oc_skill === P_PICK_AXE);
+}
+/* C ref: obj.h is_axe() */
+function is_axe(otmp) {
+    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
+            && objects[otmp.otyp].oc_skill === P_AXE);
+}
 /* C ref: hack.c may_dig() */
 function may_dig(x, y) {
     const lev = game.level.at(x, y);
@@ -1731,9 +1774,10 @@ function cant_squeeze_thru(mon) {
              || slithy(ptr) /* || can_fog(mon) */))
         return 1;
 
-    /* lugging too much junk? curr_mon_load() */
-    if (minv(mon).length)
-        throw new Error('cant_squeeze_thru(): curr_mon_load() not ported yet');
+    /* lugging too much junk? */
+    const amt = curr_mon_load(mon);
+    if (amt > WT_TOOMUCH_DIAGONAL)
+        return 2;
 
     /* can squeeze through */
     return 0;
@@ -1857,7 +1901,7 @@ export function mfndpos(mon, data, flag) {
     const lev = game.level;
     const mdat = mon.data;
     let cnt = 0;
-    const rockok = false, treeok = false;
+    let rockok = false, treeok = false;
 
     const x = mon.mx;
     const y = mon.my;
@@ -1875,13 +1919,31 @@ export function mfndpos(mon, data, flag) {
                   || mdat === mons[PM_SALAMANDER]); /* likes_lava() */
     if (mdat === mons[PM_FLOATING_EYE]) /* prefers to avoid heat */
         lavaok = false;
-    const thrudoor = ((flag & (ALLOW_WALL | BUSTDOOR)) !== 0);
+    let thrudoor = ((flag & (ALLOW_WALL | BUSTDOOR)) !== 0);
     /* poison gas regions: visible_region_at() is not ported yet; the
        only regions so far are harmless clouds (S_cloud), which mfndpos()
        does not avoid */
 
-    if (flag & ALLOW_DIG)
-        throw new Error('mfndpos(): ALLOW_DIG not ported yet');
+    if (flag & ALLOW_DIG) {
+        let mw_tmp;
+
+        /* need to be specific about what can currently be dug */
+        if (!needspick(mdat)) {
+            rockok = treeok = true;
+        } else if ((mw_tmp = mon.mw) /* MON_WEP(mon) */ && mw_tmp.cursed
+                   && mon.weapon_check === NO_WEAPON_WANTED) {
+            rockok = is_pick(mw_tmp);
+            treeok = is_axe(mw_tmp);
+        } else {
+            rockok = !!(m_carrying(mon, PICK_AXE)
+                        || (m_carrying(mon, DWARVISH_MATTOCK)
+                            && !which_armor(mon, W_ARMS)));
+            treeok = !!(m_carrying(mon, AXE) || (m_carrying(mon, BATTLE_AXE)
+                                                 && !which_armor(mon, W_ARMS)));
+        }
+        if (rockok || treeok)
+            thrudoor = true;
+    }
 
     for (;;) { /* nexttry: eels prefer the water, but if there is no water
                   nearby, they will crawl over land */
@@ -1903,8 +1965,15 @@ export function mfndpos(mon, data, flag) {
                     && !((flag & ALLOW_WALL) && may_passwall(nx, ny))
                     && !((IS_TREE(ntyp) ? treeok : rockok) && may_dig(nx, ny)))
                     continue;
-                /* intelligent peacefuls avoid digging shop/temple walls:
-                   only reachable with rockok (ALLOW_DIG, above) */
+                /* intelligent peacefuls avoid digging shop/temple walls */
+                if (IS_OBSTRUCTED(ntyp) && rockok
+                    && !((mdat.mflags1 & M1_MINDLESS) !== 0) /* mindless() */
+                    && (mon.mpeaceful || mon.mtame)
+                    && (in_rooms(nx, ny, TEMPLE).length
+                        || in_rooms(nx, ny, SHOPBASE).length)
+                    && !(in_rooms(x, y, TEMPLE).length
+                         || in_rooms(x, y, SHOPBASE).length))
+                    continue;
                 if (IS_WATERWALL(ntyp) && !is_swimmer(mdat))
                     continue;
                 /* KMH -- Added iron bars */
@@ -2002,8 +2071,14 @@ export function mfndpos(mon, data, flag) {
                         }
                         /* Note: ALLOW_SANCT only prevents movement, not
                            attack, into a temple. */
-                        if (lev.flags?.has_temple)
-                            throw new Error('mfndpos(): temples not ported yet');
+                        if (lev.flags?.has_temple
+                            && in_rooms(nx, ny, TEMPLE).length
+                            && !in_rooms(x, y, TEMPLE).length
+                            && in_your_sanctuary(null, nx, ny)) {
+                            if (!(flag & ALLOW_SANCT))
+                                continue;
+                            info |= ALLOW_SANCT;
+                        }
                     }
                     if (checkobj && sobj_at(CLOVE_OF_GARLIC, nx, ny)) {
                         if (flag & NOGARLIC)
@@ -2282,6 +2357,45 @@ export async function mon_givit(mtmp, ptr) {
     await mon_give_prop(mtmp, prop);
 }
 
+// C ref: mon.c restrap()
+/* unwatched hiders may hide again; if so, returns True */
+function restrap(mtmp) {
+    let t;
+
+    if (mtmp.mcan || mtmp.m_ap_type || cansee(mtmp.mx, mtmp.my)
+        || rn2(3) || mtmp === game.u.ustuck
+        /* can't hide while trapped except in pits */
+        || (mtmp.mtrapped && (t = t_at(mtmp.mx, mtmp.my)) != null
+            && !is_pit(t.ttyp))
+        /* can't hide on ceiling if there isn't one */
+        || (ceiling_hider(mtmp.data) && !has_ceiling(game.u.uz))
+        /* won't hide when adjacent to hero */
+        || (sensemon(mtmp) && m_next2u(mtmp)))
+        return false;
+
+    if (mtmp.data.mlet === MM.S_MIMIC) {
+        if (mtmp.msleeping || mtmp.mfrozen) {
+        /*
+         * The mimic needs to be awake to disguise itself
+         * as something else.
+         */
+            return false;
+        }
+        set_mimic_sym(mtmp);
+        return true;
+    } else if (game.level.at(mtmp.mx, mtmp.my).typ === ROOM) {
+        mtmp.mundetected = 1;
+        return true;
+    }
+
+    return false;
+}
+
+/* C ref: hack.h m_next2u() */
+function m_next2u(mtmp) {
+    return dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) < 3;
+}
+
 // C ref: mon.c maybe_unhide_at()
 /* force a hidden monster or hero out of hiding when its cover goes away */
 export function maybe_unhide_at(x, y) {
@@ -2299,13 +2413,10 @@ export function maybe_unhide_at(x, y) {
         return;
     }
 
-    if (undetected) {
-        const hides_under = (mtmp.data.mflags1 & MM.M1_CONCEAL) !== 0;
-
-        if (hides_under && OBJ_AT(x, y) && !trapped)
-            throw new Error('maybe_unhide_at(): can_hide_under_obj() not ported yet');
-        if ((hides_under && (!OBJ_AT(x, y) || trapped))
-            || (mtmp.data.mlet === S_EEL && !is_pool(x, y)))
-            throw new Error('maybe_unhide_at(): hideunder() not ported yet');
-    }
+    if (undetected
+        && ((((mtmp.data.mflags1 & MM.M1_CONCEAL) !== 0) /* hides_under() */
+             && (!OBJ_AT(x, y) || trapped
+                 || !can_hide_under_obj(vobj_at(x, y)))) /* level.objects[x][y] */
+            || (mtmp.data.mlet === S_EEL && !is_pool(x, y))))
+        hideunder(mtmp);
 }

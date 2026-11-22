@@ -10,7 +10,7 @@ import { rn2, rnl } from './rng.js';
 import { pline } from './display.js';
 import { tty_getlin } from './wintty.js';
 import { In_endgame, In_quest, In_mines, TELEPORT_CONTROL, STUNNED, CONFUSION } from './const.js';
-import { dunlevs_in_dungeon, In_hell, depth, get_level, on_level,
+import { dunlevs_in_dungeon, In_hell, depth, get_level, on_level, find_hell,
          print_dungeon } from './dungeon.js';
 import { schedule_goto, UTOTYPE_NONE } from './do.js';
 import {
@@ -879,7 +879,7 @@ export async function level_tele() {
     } else if (u.uz.dnum === topo.d_medusa_level.dnum
         && newlev >= g.dungeons[u.uz.dnum].depth_start
                      + dunlevs_in_dungeon(u.uz)) {
-        throw new Error('level_tele(): find_hell() not ported yet');
+        find_hell(newlevel);
     } else {
         /* FIXME: we should avoid using hard-coded knowledge of
            which branches don't connect to anything deeper;
@@ -1122,6 +1122,24 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
     /* trapped monster teleported away */
     if (mtmp.mtrapped && !mtmp.wormno)
         await mintrap(mtmp, NO_TRAP_FLAGS);
+}
+
+// C ref: teleport.c rloc(), called from level creation: shknam.c shkinit()
+// and priest.c priestini() move a monster off the shopkeeper's or priest's
+// spot from synchronous level-creation code. rloc() is async in this port
+// only for its messages, the occupation interrupt and mintrap(); none of
+// them can happen here (RLOC_NOMSG while making a level, a monster that
+// isn't trapped), so it completes before returning. Its not-ported stops
+// are checked first: an async function would only report them through
+// its promise.
+export function rloc_mklev(mtmp, rlocflags) {
+    const u = game.u;
+    if (!(rlocflags & RLOC_NOMSG) || game.occupation || mtmp.mtrapped
+        || mtmp === u.usteed || mtmp.iswiz || mtmp.isshk || mtmp.ispriest
+        || mtmp.wormno || !mtmp.mx
+        || u.ustuck === mtmp)
+        throw new Error('rloc(): relocating this monster during level creation not ported yet');
+    void rloc(mtmp, rlocflags);
 }
 
 // C ref: teleport.c rloc()

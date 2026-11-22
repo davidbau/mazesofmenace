@@ -1113,8 +1113,16 @@ export async function do_death_sequence(opts) {
     if (g._topl_win_stop) {
         /* The prompt goes out with ATR_NOHISTORY, so tty_putstr (wintty.c:2290-2295)
          * remember_topl()s the line still standing in gt.toplines first: the
-         * owner an ESC'd page left drawn (topl.c:300) still reaches ^P history. */
-        const _stand = String(g._pending_message || '');
+         * owner an ESC'd page left drawn (topl.c:300) still reaches ^P history.
+         * remember_topl files gt.toplines — under live WIN_STOP that is the
+         * suppressed buffer (_topl_win_stop_buf), which this port files at the
+         * pline that parked it there, so the push only fires when that line is
+         * NOT already history's last entry; an EMPTY buffer is topl.c:176's
+         * `!*gt.toplines` early return.  `_pending_message` is the PAINTED
+         * owner, a different line once a suppressed message replaced
+         * gt.toplines (df-x3143411b53: "…123 bites!" re-filed after
+         * "Farvel level 1.", sending the Die? ^P walk one entry too deep). */
+        const _stand = String(g._topl_win_stop_buf ?? (g._pending_message || ''));
         if (_stand && !_youDieFiled && g._msg_history?.at(-1) !== _stand)
             (g._msg_history ||= []).push(_stand);
         g._pending_message = '';
@@ -1390,6 +1398,7 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
             const _answered = (c) => {
                 g._toplEmptyAfterSuppress = false;
                 putmsghistory(qbuf + ' ' + key2txt(c.charCodeAt(0)));
+                g._topl_prompt_filed = qbuf;
                 // C topl.c:537-548 leaves a cancelled, unwrapped prompt
                 // painted. A NUL default has no following result message;
                 // nhgetch already cleared _pending_message, so the finally

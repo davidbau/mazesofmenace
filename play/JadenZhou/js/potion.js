@@ -13,8 +13,11 @@ import { getobj } from './invent.js';
 import { can_reach_floor } from './engrave.js';
 import { GETOBJ_SUGGEST, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_NONINVENT,
          GETOBJ_NOFLAGS, ECMD_OK, ECMD_CANCEL, STRANGLED, IS_FOUNTAIN,
-         IS_SINK } from './const.js';
-import { POTION_CLASS } from './objects.js';
+         IS_SINK, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE_INACCESS, GETOBJ_PROMPT,
+         GLIB } from './const.js';
+import { inaccessible_equipment } from './do_wear.js';
+import { is_pool } from './makemon.js';
+import { POTION_CLASS, COIN_CLASS } from './objects.js';
 import { TIMEOUT, CONFUSION, STUNNED, VOMITING, BLINDED, DEAF, HALLUC,
          HALLUC_RES, FROMOUTSIDE, FAINTED } from './const.js';
 import { toggle_blindness } from './do_wear.js';
@@ -259,4 +262,48 @@ export async function dodrink() {
     if (!otmp)
         return ECMD_CANCEL;
     throw new Error('dodrink(): drinking a potion not ported yet');
+}
+
+// C ref: potion.c dip_ok() -- getobj callback for object to be dipped
+function dip_ok(obj) {
+    if (!obj)
+        return GETOBJ_DOWNPLAY;
+
+    /* dipping gold isn't currently implemented */
+    if (obj.oclass === COIN_CLASS)
+        return GETOBJ_EXCLUDE;
+
+    if (inaccessible_equipment(obj, null, false))
+        return GETOBJ_EXCLUDE_INACCESS;
+
+    return GETOBJ_SUGGEST;
+}
+
+// C ref: potion.c dip_hands_ok() -- getobj callback for object to be
+// dipped when hero has slippery hands
+function dip_hands_ok(obj) {
+    const glib = game.u.uprops[GLIB] || {};
+    if (!obj && ((glib.intrinsic || glib.extrinsic) && can_reach_floor(false))) /* Glib */
+        return GETOBJ_SUGGEST;
+
+    return dip_ok(obj);
+}
+
+// C ref: potion.c dodip() -- #dip command (M-d): get item to dip, then get
+// potion to dip it into; precede with 'm' to bypass fountain, pool, or
+// sink at hero's spot; only the first prompt is ported
+export async function dodip() {
+    const u = game.u;
+    const here = game.level.at(u.ux, u.uy).typ;
+    const at_pool = is_pool(u.ux, u.uy), at_fountain = IS_FOUNTAIN(here),
+        at_sink = IS_SINK(here),
+        at_here = (!game.iflags.menu_requested
+                   && (at_pool || at_fountain || at_sink));
+
+    const obj = await getobj("dip", at_here ? dip_hands_ok : dip_ok, GETOBJ_PROMPT);
+    if (!obj)
+        return ECMD_CANCEL;
+    if (inaccessible_equipment(obj, "dip", false))
+        return ECMD_OK;
+    throw new Error('dodip(): dipping (the potion/fountain/pool/sink prompts) not ported yet');
 }

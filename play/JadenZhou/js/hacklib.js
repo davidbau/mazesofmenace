@@ -29,6 +29,23 @@ export function lowc(c) {
     return ('A' <= c && c <= 'Z') ? String.fromCharCode(c.charCodeAt(0) | 0o40) : c;
 }
 
+// C ref: hacklib.c visctrl()
+/* make a displayable string from a character; c is the key code
+   (0..255): a meta key (8th bit set) shows as "M-" plus the rest */
+export function visctrl(c) {
+    let ccc = '';
+    if (c & 0o200)
+        ccc += 'M-';
+    c &= 0o177;
+    if (c < 0o40)
+        ccc += '^' + String.fromCharCode(c | 0o100); /* letter */
+    else if (c === 0o177)
+        ccc += '^' + String.fromCharCode(c & ~0o100); /* '?' */
+    else
+        ccc += String.fromCharCode(c); /* printable character */
+    return ccc;
+}
+
 // C ref: hacklib.c strncmpi()
 /* case-insensitive counted string comparison */
 export function strncmpi(s1, s2, n) {
@@ -167,6 +184,30 @@ export function str_start_is(str, chkstr, caseblind) {
         if (t1 !== t2)
             return false;
     }
+}
+
+// C ref: hacklib.c str_end_is()
+/* determine whether 'str' ends with 'chkstr' (case sensitive) */
+export function str_end_is(str, chkstr) {
+    const clen = chkstr.length;
+
+    if (str.length >= clen)
+        return str.slice(str.length - clen) === chkstr;
+    return false;
+}
+
+// C ref: hacklib.c copynchars()
+/* copies at most n characters, stopping sooner if terminator reached;
+   treats newline as input terminator (C copies into 'dst'; JS returns
+   the copy) */
+export function copynchars(src, n) {
+    let i = 0;
+
+    while (n > 0 && i < src.length && src[i] !== '\n') {
+        i++;
+        --n;
+    }
+    return src.slice(0, i);
 }
 
 // C ref: hacklib.c strstri()

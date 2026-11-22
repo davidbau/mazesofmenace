@@ -232,7 +232,7 @@ export function skill_based_spellbook_id() {
 }
 
 // C ref: spell.c spelleffects() -- not ported yet
-async function spelleffects(spell_otyp, atme, force) {
+export async function spelleffects(spell_otyp, atme, force) {
     void spell_otyp, atme, force;
     throw new Error('spelleffects() not ported yet');
 }

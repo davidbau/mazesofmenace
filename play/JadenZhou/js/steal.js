@@ -145,7 +145,7 @@ export function mpickobj(mtmp, otmp) {
 // C ref: worn.c extract_from_minvent() -- removing worn or wielded gear
 // (update_mon_extrinsics(), mwepgone()) is not ported yet
 /* Remove an object from a monster's inventory. */
-function extract_from_minvent(
+export function extract_from_minvent(
     mon,
     obj,
     do_extrinsics, /* whether to call update_mon_extrinsics */

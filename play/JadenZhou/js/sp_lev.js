@@ -26,6 +26,7 @@ import {
     STONE, MAX_TYPE, INVALID_TYPE, NO_ROOM, HWALL, IRONBARS, CLOUD, D_CLOSED,
     IS_WALL, MAXNROFROOMS, ROOM, ALTAR, SPACE_POS, IS_OBSTRUCTED,
     IS_POOL, IS_LAVA, AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, AM_MASK,
+    AM_SHRINE, AM_SANCTUM,
     Align2amask, A_ORIGINAL, STAIRS, LADDER,
     NO_TRAP, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT,
@@ -36,7 +37,7 @@ import {
     W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, W_RANDOM,
     IS_FURNITURE, FOUNTAIN, SINK, POOL, THRONE, TREE,
     F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED,
-    TREE_LOOTED, TREE_SWARM, MATCH_WALL, IS_STWALL,
+    TREE_LOOTED, TREE_SWARM, MATCH_WALL, IS_STWALL, ACCESSIBLE, SCORR,
 } from './const.js';
 import { splev_chr2typ, luaL_checkstring, check_mapchr, get_table_mapchr, get_table_mapchr_opt } from './nhlua.js';
 import { set_levltyp, set_levltyp_lit, SET_LIT_NOCHANGE } from './mkmaze.js';
@@ -44,7 +45,8 @@ import { flood_fill_rm, litstate_rnd } from './mkmap.js';
 import {
     selection_new, selection_setpoint, selection_getpoint, selection_getbounds,
     selection_clear, selection_iterate, l_selection_check, match_maptyps,
-    selection_clone, selection_do_grow,
+    selection_clone, selection_do_grow, selection_free, selection_rndcoord,
+    selection_floodfill, set_selection_floodfillchk,
 } from './selvar.js';
 import {
     get_table_int_opt, get_table_str, get_table_str_opt, get_table_option, nhl_error,
@@ -71,7 +73,8 @@ import {
     objects, OBJ_NAME, OBJ_DESCR, NUM_OBJECTS, STRANGE_OBJECT, STATUE, EGG,
     CORPSE, TIN, FIGURINE, RANDOM_CLASS, COIN_CLASS, RING_CLASS,
     POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS, MAXOCLASSES,
-    BOULDER,
+    BOULDER, PICK_AXE, DWARVISH_MATTOCK, WAN_DIGGING, WAN_TELEPORTATION,
+    SCR_TELEPORTATION, RIN_TELEPORTATION,
 } from './objects.js';
 import {
     name_to_monplus, is_male, is_female, monsndx, is_vampshifter, is_vampire, is_swimmer, is_flyer,
@@ -89,6 +92,7 @@ import { induced_align } from './dungeon.js';
 import { nhl_push_obj } from './nhlobj.js';
 import { bury_an_obj } from './dig.js';
 import { stock_room } from './shknam.js';
+import { priestini } from './priest.js';
 import { make_engr_at, engr_at, del_engr_at } from './engrave.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, Is_waterlevel } from './const.js';
 import {
@@ -98,7 +102,7 @@ import {
 } from './const.js';
 import {
     wallification, fix_wall_spines, makecorridors, mkstairs, stairway_add,
-    get_level_extends, Can_dig_down,
+    get_level_extends, Can_dig_down, Can_fall_thru,
 } from './mklev.js';
 import { fixup_special, create_maze, walkfrom } from './mkmaze.js';
 import { deltrap, maketrap, is_pit, is_hole } from './trap.js';
@@ -113,6 +117,9 @@ import { m_dowear } from './worn.js';
 import { can_saddle, put_saddle_on_mon } from './makemon.js';
 import { in_rooms } from './hack.js';
 import { premap_detect } from './detect.js';
+import { christen_monst } from './do_name.js';
+import { newcham } from './mon.js';
+import { mkmap } from './mkmap.js';
 
 // C ref: dungeon.h In_mines()
 function In_mines(lev) { return lev.dnum === game.dungeon_topology.d_mines_dnum; }
@@ -1914,8 +1921,13 @@ function create_altar(a, croom) {
     if (!croom_is_temple || !a.shrine)
         return;
 
-    /* priestini() for shrines in temples is not ported yet */
-    nhl_error(null, 'create_altar: temple shrines are not ported yet');
+    if (a.shrine) { /* Is it a shrine  or sanctum? */
+        priestini(game.u.uz, croom, c.x, c.y, (a.shrine > 1));
+        game.level.at(c.x, c.y).altarmask |= AM_SHRINE;
+        if (a.shrine === 2) /* high altar or sanctum */
+            game.level.at(c.x, c.y).altarmask |= AM_SANCTUM;
+        game.level.flags.has_temple = TRUE;
+    }
 }
 
 // C ref: sp_lev.c lspo_altar()
@@ -2108,7 +2120,7 @@ function create_monster(m, croom) {
         m.x = x, m.y = y;
         /* handle specific attributes for some special monsters */
         if (m.name)
-            nhl_error(null, 'create_monster: christen_monst() is not ported yet');
+            mtmp = christen_monst(mtmp, m.name);
 
         /*
          * This doesn't complain if an attempt is made to give a
@@ -2210,7 +2222,7 @@ function create_monster(m, croom) {
                explicitly request that, shift back to vampire */
             if (is_vampshifter(mtmp) && !is_vampire(mtmp.data)
                 && m.appear !== M_AP_MONSTER) /* vampshifted() */
-                nhl_error(null, 'create_monster: newcham() is not ported yet');
+                newcham(mtmp, mons[mtmp.cham], 0 /* NO_NC_FLAGS */);
         }
         if (m.m_lev_adj) {
             if (mtmp.m_lev + m.m_lev_adj > 49)
@@ -3947,7 +3959,13 @@ function splev_initlev(linit) {
     case LVLINIT_ROGUE:
         throw new Error('splev_initlev(): makeroguerooms() not ported yet');
     case LVLINIT_MINES:
-        throw new Error('splev_initlev(): mkmap() (mines style) not ported yet');
+        if (linit.lit === BOOL_RANDOM)
+            linit.lit = rn2(2);
+        if (linit.filling > -1)
+            lvlfill_solid(linit.filling, 0);
+        linit.icedpools = game.icedpools;
+        mkmap(linit);
+        break;
     case LVLINIT_SWAMP:
         if (linit.lit === BOOL_RANDOM)
             linit.lit = rn2(2);
@@ -4498,6 +4516,123 @@ function count_level_features() {
         }
 }
 
+// C ref: sp_lev.c floodfillchk_match_accessible()
+function floodfillchk_match_accessible(x, y) {
+    return (ACCESSIBLE(game.level.at(x, y).typ)
+            || game.level.at(x, y).typ === SDOOR
+            || game.level.at(x, y).typ === SCORR);
+}
+
+// C ref: sp_lev.c generate_way_out_method()
+/* give a hero a way out of an inaccessible area: a secret door into the
+   reachable part, a hole or trapdoor, or an escape item */
+function generate_way_out_method(nx, ny, ov) {
+    const escapeitems = [
+        PICK_AXE, DWARVISH_MATTOCK, WAN_DIGGING,
+        WAN_TELEPORTATION, SCR_TELEPORTATION, RIN_TELEPORTATION,
+    ];
+    const ov2 = selection_new();
+    let ov3;
+    const c = { x: 0, y: 0 };
+    let res = TRUE;
+    const lv = (x, y) => game.level.at(x, y);
+
+    selection_floodfill(ov2, nx, ny, TRUE);
+    ov3 = selection_clone(ov2);
+
+    gotitdone: {
+        /* try to make a secret door */
+        while (selection_rndcoord(ov3, c, TRUE)) {
+            const x = c.x, y = c.y;
+            if (isok(x + 1, y) && !selection_getpoint(x + 1, y, ov)
+                && IS_WALL(lv(x + 1, y).typ)
+                && isok(x + 2, y) && selection_getpoint(x + 2, y, ov)
+                && ACCESSIBLE(lv(x + 2, y).typ)) {
+                lv(x + 1, y).typ = SDOOR;
+                break gotitdone;
+            }
+            if (isok(x - 1, y) && !selection_getpoint(x - 1, y, ov)
+                && IS_WALL(lv(x - 1, y).typ)
+                && isok(x - 2, y) && selection_getpoint(x - 2, y, ov)
+                && ACCESSIBLE(lv(x - 2, y).typ)) {
+                lv(x - 1, y).typ = SDOOR;
+                break gotitdone;
+            }
+            if (isok(x, y + 1) && !selection_getpoint(x, y + 1, ov)
+                && IS_WALL(lv(x, y + 1).typ)
+                && isok(x, y + 2) && selection_getpoint(x, y + 2, ov)
+                && ACCESSIBLE(lv(x, y + 2).typ)) {
+                lv(x, y + 1).typ = SDOOR;
+                break gotitdone;
+            }
+            if (isok(x, y - 1) && !selection_getpoint(x, y - 1, ov)
+                && IS_WALL(lv(x, y - 1).typ)
+                && isok(x, y - 2) && selection_getpoint(x, y - 2, ov)
+                && ACCESSIBLE(lv(x, y - 2).typ)) {
+                lv(x, y - 1).typ = SDOOR;
+                break gotitdone;
+            }
+        }
+
+        /* try to make a hole or a trapdoor */
+        if (Can_fall_thru(game.u.uz)) {
+            selection_free(ov3, TRUE);
+            ov3 = selection_clone(ov2);
+            while (selection_rndcoord(ov3, c, TRUE)) {
+                if (maketrap(c.x, c.y, rn2(2) ? HOLE : TRAPDOOR))
+                    break gotitdone;
+            }
+        }
+
+        /* generate one of the escape items */
+        if (selection_rndcoord(ov2, c, FALSE)) {
+            mksobj_at(ROLL_FROM(escapeitems), c.x, c.y, TRUE, FALSE);
+            break gotitdone;
+        }
+
+        res = FALSE;
+    }
+    /* gotitdone: */
+    selection_free(ov2, TRUE);
+    selection_free(ov3, TRUE);
+    return res;
+}
+
+// C ref: sp_lev.c ensure_way_out()
+function ensure_way_out() {
+    const ov = selection_new();
+    let ret = TRUE;
+
+    set_selection_floodfillchk(floodfillchk_match_accessible);
+
+    for (let stway = game.stairs; stway; stway = stway.next) {
+        if (stway.tolev.dnum === game.u.uz.dnum)
+            selection_floodfill(ov, stway.sx, stway.sy, TRUE);
+    }
+
+    for (const ttmp of game.level.traps || []) {
+        if ((undestroyable_trap(ttmp.ttyp) || is_hole(ttmp.ttyp))
+            && !selection_getpoint(ttmp.tx, ttmp.ty, ov))
+            selection_floodfill(ov, ttmp.tx, ttmp.ty, TRUE);
+    }
+
+    do {
+        ret = TRUE;
+        outhere:
+        for (let x = 1; x < COLNO; x++)
+            for (let y = 0; y < ROWNO; y++)
+                if (ACCESSIBLE(game.level.at(x, y).typ)
+                    && !selection_getpoint(x, y, ov)) {
+                    if (generate_way_out_method(x, y, ov))
+                        selection_floodfill(ov, x, y, TRUE);
+                    ret = FALSE;
+                    break outhere;
+                }
+        /* outhere: */
+    } while (!ret);
+    selection_free(ov, TRUE);
+}
+
 // C ref: sp_lev.c load_special()
 export function load_special(name) {
     let result = FALSE;
@@ -4515,7 +4650,7 @@ export function load_special(name) {
 
         /* TODO: ensure_way_out() needs rewrite */
         if (game.coder.check_inaccessibles)
-            throw new Error('load_special(): ensure_way_out() not ported yet');
+            ensure_way_out();
 
         map_cleanup();
 

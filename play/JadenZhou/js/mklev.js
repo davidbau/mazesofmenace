@@ -1252,7 +1252,7 @@ async function mktemple() {
     lev = game.level.at(shrine_spot.x, shrine_spot.y);
     lev.typ = ALTAR;
     lev.altarmask = induced_align(80);
-    await priestini(game.u.uz, sroom, shrine_spot.x, shrine_spot.y, false);
+    priestini(game.u.uz, sroom, shrine_spot.x, shrine_spot.y, false);
     lev.altarmask |= AM_SHRINE;
     game.level.flags.has_temple = 1;
 }
@@ -1848,7 +1848,7 @@ function maybe_sdoor(chance) {
 }
 
 // C ref: sp_lev.c dig_corridor()
-function dig_corridor(org, dest, npoints_out, nxcor, ftyp, btyp) {
+export function dig_corridor(org, dest, npoints_out, nxcor, ftyp, btyp) {
     const map = game.level;
     let dx = 0, dy = 0;
     let xx = org.x, yy = org.y;

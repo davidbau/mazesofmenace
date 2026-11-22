@@ -146,7 +146,12 @@ export function del_light_source(type, id) {
  * object light attached to the source when a stack is split. */
 export function obj_split_light_source(src, dest) {
     for (let ls = light_base; ls; ls = ls.next) {
-        if (ls.type !== LS_OBJECT || ls.id?.a_obj !== src)
+        // C light.c:784 compares allocation addresses. A stale oil light
+        // can still name this chunk after newobj() has reused it for src.
+        let sourceObj = ls.type === LS_OBJECT ? ls.id?.a_obj : null;
+        while (sourceObj?.freed_chunk && sourceObj.occupant)
+            sourceObj = sourceObj.occupant;
+        if (ls.type !== LS_OBJECT || sourceObj !== src)
             continue;
         const copy = { ...ls, id: { ...ls.id, a_obj: dest, a_monst: dest }, next: light_base };
         if (Is_candle(src)) {

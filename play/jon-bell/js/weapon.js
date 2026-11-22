@@ -4,7 +4,7 @@ import { menucolor_row } from './coloratt.js';
 import { is_ammo } from './cmd.js';
 import { build_window_screen, menu_search_case, menu_search_docorner } from './com_pager.js';
 import { ECMD_OK, OBJ_INVENT, OBJ_MINVENT, P_ATTACK_SPELL, P_BARE_HANDED_COMBAT, P_BASIC, P_CLERIC_SPELL, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL, P_ESCAPE_SPELL, P_EXPERT, P_FIRST_H_TO_H, P_FIRST_SPELL, P_FIRST_WEAPON, P_HEALING_SPELL, P_ISRESTRICTED, P_LAST_H_TO_H, P_LAST_SPELL, P_LAST_WEAPON, P_MATTER_SPELL, P_NONE, P_NUM_SKILLS, P_RIDING, P_SKILL_LIMIT, P_UNSKILLED } from './const.js';
-import { docorner_blank_utf8_captures, docrt, flush_screen, menu_entry_page, status_r1_menu_docrt } from './display.js';
+import { docorner_blank_utf8_captures, docorner_status_rows, docrt, flush_screen, menu_entry_page, status_r1_docorner, status_r1_menu_docrt, _threeStatusLines } from './display.js';
 import { yn_function } from './cmd.js';
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -521,8 +521,40 @@ export async function enhance_weapon_skill() {
              * docrt(): wintty.c:982,3684 clears and repaints only from offx
              * on, so cells left of it (warning glyphs, never remembered)
              * stay on the physical screen. */
+            /* windows.c:1859-1863: core select_menu() holds gb.bot_disabled
+             * over the whole tty_select_menu — this dismissal included, so
+             * the bot() docorner() raises stays a no-op (botl.c:255-256). */
+            const savedBotDisabled = g._bot_disabled;
+            g._bot_disabled = true;
+            try {
+            /* wintty.c:982,3684-3687: clear the corner before row_refresh(). */
             docorner_blank_utf8_captures(enhance_overlay.col - 1, enhance_overlay.rows + 1);
+            /* row_refresh() reprinted map y=20 over status row 1 from offx;
+             * render_status cl_end()s only if finalx shrank, so the map tail
+             * survives (wintty.c:3684-3702, 5251-5256) — same dismissal
+             * modeling as cmd.js's inventory menus. */
+            if (enhance_overlay.rows >= 22 && _threeStatusLines())
+                status_r1_docorner(Math.max(1, enhance_overlay.col - 1), true);
+            /* C wintty.c:3715-3719 docorner() tail: the dismissed window's
+             * ymax = cw->maxrow + 1 (tty_end_menu, wintty.c:2769-2772, sets
+             * maxrow = nitems + 1, so ymax = rows + 1 here) reached
+             * WIN_STATUS->offy (21 under statuslines:3, wintty.c:907-912) —
+             * "we have wrecked the bottom line": disp.botlx = TRUE; bot().
+             * select_menu's bot_disabled suppresses that bot(), so the
+             * rewrite stays pending for the next enabled bot():
+             * skill_advance()'s You() pline flushes it (pline.c:273-274 ->
+             * display.c:2237) and repaints status row 1 over the map y=20
+             * docorner just reprinted.  df-xdd92ecfc59 step 34. */
+            if (enhance_overlay.rows + 1 >= (_threeStatusLines() ? 21 : 22)) {
+                g.disp ??= {};
+                g.disp.botlx = 1;
+            }
             await flush_screen(1);
+            /* wintty.c:3684-3687: docorner's cl_end also erases the status
+             * rows it reached; they stay clipped until the pending botlx
+             * bot() paint. */
+            docorner_status_rows(enhance_overlay.col - 1, enhance_overlay.rows + 1);
+            } finally { g._bot_disabled = savedBotDisabled; }
         } else {
             /* windows.c:1861 select_menu runs with bot_disabled, and
              * tty_select_menu's tty_dismiss_nhwindow -> erase_menu_or_text

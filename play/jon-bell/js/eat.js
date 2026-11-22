@@ -4806,14 +4806,19 @@ export async function floorfood(verb, corpsecheck) {
             else if (c === 'q') {
                 /* topl.c:547-548 clears multi-row prompts on return.  The
                  * answered prompt was already filed in the history ring as
-                 * prompt + key2txt(q) (topl.c:537-539); the painted stale copy
-                 * must not be filed a second time. */
+                 * prompt + key2txt(q) (topl.c:537-539) and _yn_prompt's
+                 * _answered marked the bare prompt filed (js/end.js), so the
+                 * painted stale copy cannot be filed a second time.  Do NOT
+                 * arm _topl_suppress_once here: that made the next nhgetch
+                 * (js/input.js:114-119) model gt.toplines as EMPTY when
+                 * topl.c:539 has just rewritten it to the ANSWERED prompt, so
+                 * a top-level ^P recalled a blank first line where C's
+                 * redotoplin(gt.toplines) repaints "… [ynq] (n) q"
+                 * (topl.c:105-107; df-x8b34233810 frame 20). */
                 const prompt = qbuf + " [ynq] (n)";
                 if (!g.iflags?.query_menu
-                    && topl_park_cursor(null, prompt + ' ')[1] === 0) {
+                    && topl_park_cursor(null, prompt + ' ')[1] === 0)
                     g._resultMessage = g._ynStaleTopline = prompt;
-                    g._topl_suppress_once = true;
-                }
                 return null;
             }
             ++g.getobj_else;
