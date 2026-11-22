@@ -18,7 +18,7 @@ import {
     TELEPAT, STEALTH, REGENERATION, TELEPORT_CONTROL, WARN_OF_MON, WARNING,
     ENERGY_REGENERATION, HALF_SPDAM, HALF_PHDAM, REFLECTING, BLND_RES,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_RINGL,
-    W_RINGR, W_TOOL, W_ART, W_ARTI, W_SWAPWEP, W_WEP,
+    W_RINGR, W_TOOL, W_ART, W_ARTI, W_SWAPWEP, W_WEP, W_QUIVER, W_BALL, W_SADDLE,
     ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT, ONAME_VIA_DIP,
     ONAME_LEVEL_DEF, ONAME_BONES, ONAME_RANDOM, ONAME_KNOW_ARTI,
 } from './const.js';
@@ -30,20 +30,21 @@ import { P_MAX_SKILL } from './weapon.js';
 import { P_SKILLED, P_BASIC, ONAME_NO_FLAGS, GETOBJ_EXCLUDE, GETOBJ_SUGGEST,
          GETOBJ_PROMPT, ECMD_CANCEL } from './const.js';
 import { getobj } from './invent.js';
-import { mksobj, permapoisoned } from './mkobj.js';
+import { mksobj, permapoisoned, Is_container } from './mkobj.js';
 import { oname } from './do_name.js';
 import { obj_shuffle_range } from './o_init.js';
 import { ART_SUNSWORD } from './artilist.js';
 import { HALLUC, PROTECTION } from './const.js';
 import { see_monsters } from './display.js';
-import { recalc_telepat_range } from './worn.js';
+import { recalc_telepat_range, clear_bypasses, bypass_obj, nxt_unbypassed_obj,
+         which_armor } from './worn.js';
 import { make_hallucinated } from './potion.js';
 import { invocation_pos } from './mklev.js';
 import { Hate_silver } from './wield.js';
 import { You_cant } from './display.js';
 import { yname } from './objnam.js';
 import { killer_xname } from './mthrowu.js';
-import { Maybe_Half_Phys, losehp } from './trap.js';
+import { Maybe_Half_Phys, losehp, selftouch } from './trap.js';
 import { exercise } from './attrib.js';
 import { rnd, d } from './rng.js';
 import { You } from './display.js';
@@ -53,7 +54,7 @@ import { xname } from './objnam.js';
 import { is_mplayer } from './makemon.js';
 import { mon_aligntyp } from './priest.js';
 import { A_WIS } from './const.js';
-import { KILLED_BY, A_CON, ECMD_OK, ECMD_TIME } from './const.js';
+import { KILLED_BY, A_CON, ECMD_OK, ECMD_TIME, nothing_happens } from './const.js';
 import { getrumor } from './rumors.js';
 import { bcsign } from './mkobj.js';
 import { pline } from './display.js';
@@ -769,6 +770,59 @@ export function get_artifact(obj) {
     return arts[ART_NONARTIFACT];
 }
 
+// C ref: artifact.c defends()
+/* used to check whether a monster is getting reflection/magic resistance
+   from its wielded weapon or worn dragon scales */
+export function defends(adtyp, otmp) {
+    let weap;
+
+    if (!otmp)
+        return false;
+    if ((weap = get_artifact(otmp)) !== artilist()[ART_NONARTIFACT])
+        return weap.defn.adtyp === adtyp;
+    if ((otmp.otyp >= O.GRAY_DRAGON_SCALES && otmp.otyp <= O.YELLOW_DRAGON_SCALES)
+        || (otmp.otyp >= O.GRAY_DRAGON_SCALE_MAIL
+            && otmp.otyp <= O.YELLOW_DRAGON_SCALE_MAIL)) { /* Is_dragon_armor() */
+        let otyp = otmp.otyp;
+
+        /* convert mail to scales to simplify testing */
+        if (otyp >= O.GRAY_DRAGON_SCALE_MAIL && otyp <= O.YELLOW_DRAGON_SCALE_MAIL)
+            otyp += O.GRAY_DRAGON_SCALES - O.GRAY_DRAGON_SCALE_MAIL;
+
+        switch (adtyp) {
+        case M.AD_MAGM: /* magic missiles => general magic resistance */
+            return (otyp === O.GRAY_DRAGON_SCALES);
+        case M.AD_HALU: /* confers hallucination resistance */
+            return (otyp === O.GOLD_DRAGON_SCALES);
+        case M.AD_FIRE:
+      /*case AD_BLND: -- gives infravision but does not prevent blindness */
+            return (otyp === O.RED_DRAGON_SCALES); /* red but not gold */
+        case M.AD_COLD:
+      /*case AD_FAMN: -- slows digestion but does not override Famine */
+            return (otyp === O.WHITE_DRAGON_SCALES); /* white but not silver */
+        case M.AD_DRST: /* drain strength => poison */
+        case M.AD_DISE: /* blocks disease but not slime */
+            return (otyp === O.GREEN_DRAGON_SCALES);
+        case M.AD_SLEE: /* sleep */
+        case M.AD_PLYS: /* paralysis => free action */
+            return (otyp === O.ORANGE_DRAGON_SCALES);
+        case M.AD_DISN: /* disintegration */
+        case M.AD_DRLI: /* level drain resistance */
+            return (otyp === O.BLACK_DRAGON_SCALES);
+        case M.AD_ELEC: /* electricity == lightning */
+        case M.AD_SLOW: /* confers speed so blocks speed removal */
+            return (otyp === O.BLUE_DRAGON_SCALES);
+        case M.AD_ACID:
+        case M.AD_STON: /* petrification resistance */
+            return (otyp === O.YELLOW_DRAGON_SCALES);
+        default:
+            /* SILVER_DRAGON_SCALES don't resist any particular attack type */
+            break;
+        }
+    }
+    return false;
+}
+
 // C ref: artifact.c spec_m2()
 /* return the M2 flags of monster that an artifact's special attacks apply
  * against */
@@ -1256,6 +1310,110 @@ export async function retouch_object(obj,
     return 0;
 }
 
+// C ref: artifact.c untouchable()
+/* an item is "untouchable" if it can't be handled by the hero; returns
+   True if the hero loses it (or its use) */
+async function untouchable(
+    obj, /* object to test; in invent or is steed's saddle */
+    drop_untouchable) /* whether to drop it if it can't be touched */ {
+    const u = game.u;
+    let art;
+    let carryeffect, invoked;
+    const wearmask = ~(W_QUIVER | (u.twoweap ? 0 : W_SWAPWEP) | W_BALL);
+
+    const beingworn = (obj /* never Null; this pacifies static analysis when
+                            * the get_artifact() macro tests 'obj' for Null */
+                       && ((obj.owornmask & wearmask) !== 0
+                           /* some items in use don't have any wornmask setting */
+                           || (obj.oclass === O.TOOL_CLASS
+                               && (obj.lamplit
+                                   || (obj.otyp === O.LEASH && obj.leashmon)
+                                   || (Is_container(obj)
+                                       && obj.cobj && obj.cobj.length)))));
+
+    if ((art = get_artifact(obj)) !== artilist()[ART_NONARTIFACT]) {
+        carryeffect = !!(art.cary.adtyp || art.cspfx);
+        invoked = (art.inv_prop > 0 && art.inv_prop <= LAST_PROP
+                   && (u.uprops[art.inv_prop].extrinsic & W_ARTI) !== 0);
+    } else {
+        carryeffect = invoked = false;
+    }
+
+    if (beingworn || carryeffect || invoked) {
+        if (!await retouch_object(obj, drop_untouchable)) {
+            /* "<artifact> is beyond your control" or "you can't handle
+               <object>" has been given and it is now unworn/unwielded
+               and possibly dropped (depending upon caller); if dropped,
+               carried effect was turned off, else we leave that alone;
+               we turn off invocation property here if still carried */
+            if (invoked && obj)
+                throw new Error('untouchable(): arti_invoke() not ported yet');
+            return true;
+        }
+    }
+    return false;
+}
+
+// C ref: artifact.c retouch_equipment()
+/* check all items currently in use (mostly worn) for touchability */
+let retouch_nesting = 0; /* recursion control */
+export async function retouch_equipment(
+    dropflag) /* 0==don't drop, 1==drop all, 2==drop weapon */ {
+    const g = game;
+    const u = g.u;
+    let obj;
+    let dropit;
+    const had_gloves = (g.uarmg != null);
+    const had_rings = ((g.uleft ? 1 : 0) + (g.uright ? 1 : 0));
+
+    /*
+     * We can potentially be called recursively if losing/unwearing
+     * an item causes worn helm of opposite alignment to come off or
+     * be destroyed.
+     */
+    if (!retouch_nesting++)
+        clear_bypasses(); /* init upon initial entry */
+
+    dropit = (dropflag > 0); /* drop all or drop weapon */
+    /* check secondary weapon first, before possibly unwielding primary */
+    if (u.twoweap) {
+        bypass_obj(g.uswapwep); /* so loop below won't process it again */
+        await untouchable(g.uswapwep, dropit);
+    }
+    /* check primary weapon next so that they're handled together */
+    if (g.uwep) {
+        bypass_obj(g.uwep); /* so loop below won't process it again */
+        await untouchable(g.uwep, dropit);
+    }
+
+    /* in case someone is daft enough to add artifact or silver saddle */
+    if (u.usteed && (obj = which_armor(u.usteed, W_SADDLE)) != null) {
+        /* untouchable() calls retouch_object() which expects an object in
+           hero's inventory, but remove_worn_item() will be harmless for
+           saddle and we're suppressing drop, so this works as intended */
+        if (await untouchable(obj, false))
+            throw new Error('retouch_equipment(): dismount_steed(DISMOUNT_THROWN) not ported yet');
+    }
+
+    dropit = (dropflag === 1); /* all untouchable items */
+    /* loss of levitation (silver ring, or Heart of Ahriman invocation)
+       might cause hero to lose inventory items (by dropping into lava,
+       for instance), so inventory traversal needs to rescan the whole
+       inventory chain each time it moves on to another object; we use
+       bypass handling to keep track of which items have been processed */
+    while ((obj = nxt_unbypassed_obj(g.invent)) != null)
+        await untouchable(obj, dropit);
+
+    if (had_rings !== ((g.uleft ? 1 : 0) + (g.uright ? 1 : 0))
+        && g.uarmg && g.uarmg.cursed)
+        throw new Error('retouch_equipment(): uncurse(uarmg) not ported yet');
+    if (had_gloves && !g.uarmg)
+        await selftouch("After losing your gloves, you");
+
+    if (!--retouch_nesting)
+        clear_bypasses(); /* reset upon final exit */
+}
+
 // C ref: artifact.c arti_speak()
 /* Artifacts that are speaking */
 export async function arti_speak(obj) {
@@ -1403,11 +1561,30 @@ function invoke_ok(obj) {
     return GETOBJ_EXCLUDE;
 }
 
-// C ref: artifact.c doinvoke() -- the #invoke command (M-i); invoking
-// the chosen object (retouch_object(), arti_invoke()) isn't ported
+// C ref: artifact.c doinvoke() -- the #invoke command (M-i)
 export async function doinvoke() {
     const obj = await getobj("invoke", invoke_ok, GETOBJ_PROMPT);
     if (!obj)
         return ECMD_CANCEL;
-    throw new Error('doinvoke(): retouch_object(), arti_invoke() not ported yet');
+    if (!await retouch_object(obj, false))
+        return ECMD_TIME;
+    return await arti_invoke(obj);
+}
+
+// C ref: artifact.c arti_invoke() -- objects without an invoke power;
+// the invoke powers themselves aren't ported yet
+async function arti_invoke(obj) {
+    if (!obj)
+        throw new Error('arti_invoke without obj'); /* impossible() */
+    const oart = get_artifact(obj);
+    if (oart === artilist()[ART_NONARTIFACT] || !oart.inv_prop) {
+        if (obj.otyp === O.CRYSTAL_BALL)
+            throw new Error('arti_invoke(): use_crystal_ball() not ported yet');
+        else
+            await pline(nothing_happens);
+        return ECMD_TIME;
+    }
+
+    /* It's a special power, not "just" a property */
+    throw new Error('arti_invoke(): artifact invoke powers (arti_invoke_cost(), invoke_*()) not ported yet');
 }

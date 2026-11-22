@@ -1545,8 +1545,33 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
     if (dfeature && dfeature === "pool of water" && u.uinwater)
         dfeature = null;
 
-    if (Blind)
-        throw new Error('look_here(): feeling what is here while blind not ported yet');
+    if (Blind) {
+        const drift = Is_airlevel_iv(u.uz) || Is_waterlevel_iv(u.uz);
+
+        if (dfeature && dfeature.startsWith("altar ")) {
+            /* don't say "altar" twice, dfeature has more info */
+            await You("try to feel what is here.");
+        } else if (SURFACE_AT_iv(u.ux, u.uy) === ICE_IV) {
+            throw new Error('look_here(): feeling for objects on ice (force_decor()) not ported yet');
+        } else {
+            const cant_reach = !can_reach_floor_iv(true);
+            const surf = surface_iv(u.ux, u.uy),
+                  where = cant_reach ? "lying beneath you"
+                                     : "lying here on the ",
+                  onwhat = cant_reach ? "" : surf;
+
+            await You(`try to feel what is ${drift ? "floating here" : where}${
+                drift ? "" : onwhat}.`);
+
+            if (dfeature && !drift && dfeature === surf)
+                skip_dfeature = true; /* terrain feature already identified */
+        }
+        const trap = t_at(u.ux, u.uy);
+        if (!can_reach_floor_iv(trap && is_pit_iv(trap.ttyp))) {
+            await pline("But you can't reach it!");
+            return ECMD_OK;
+        }
+    }
 
     if (dfeature && !skip_dfeature) {
         let article = 1; /* 0 => none, 1 => a/an */
@@ -1567,7 +1592,7 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
         await read_engr_at(u.ux, u.uy); /* Eric Backus */
         if (!skip_objects && (Blind || !dfeature))
             await You(`${verb} no objects here.`);
-        return ECMD_OK;
+        return (Blind ? ECMD_TIME_IV : ECMD_OK);
     }
     /* we know there is something here */
 
@@ -1612,7 +1637,7 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
         await tty_destroy_nhwindow(tmpwin);
         await read_engr_at(u.ux, u.uy); /* Eric Backus */
     }
-    return ECMD_OK;
+    return (Blind ? ECMD_TIME_IV : ECMD_OK);
 }
 
 // C ref: invent.c dolook() -- the ':' command; the MSGTYPE hiding has
@@ -2333,6 +2358,19 @@ import { MV_KNOWS_EGG, SIGNAL_NOMENU, SIGNAL_ESCAPE, USE_INVLET,
 
 import { inv_cnt as inv_cnt_iv } from './hack.js';
 import { ECMD_CANCEL as ECMD_CANCEL_IV, ECMD_FAIL as ECMD_FAIL_IV } from './const.js';
+import { ECMD_TIME as ECMD_TIME_IV, ICE as ICE_IV, is_pit as is_pit_iv,
+         Is_airlevel as Is_airlevel_iv,
+         Is_waterlevel as Is_waterlevel_iv } from './const.js';
+import { can_reach_floor as can_reach_floor_iv } from './engrave.js';
+import { surface as surface_iv } from './iactions.js';
+/* C ref: rm.h SURFACE_AT() */
+function SURFACE_AT_iv(x, y) {
+    const lev = game.level.at(x, y);
+    if (lev.typ === DRAWBRIDGE_UP_IV)
+        throw new Error('SURFACE_AT(): drawbridge underside (db_under_typ()) not ported yet');
+    return lev.typ;
+}
+import { DRAWBRIDGE_UP as DRAWBRIDGE_UP_IV } from './const.js';
 
 // C ref: hacklib.c letter()
 function letter_iv(c) {

@@ -203,6 +203,12 @@ export function an(str) {
     return just_an(str) + str;
 }
 
+// C ref: objnam.c An()
+export function An(str) {
+    const tmp = an(str);
+    return highc(tmp[0]) + tmp.slice(1);
+}
+
 // C ref: objnam.c BSTRCMPI(), BSTRNCMPI() — 'off' is the offset of C's
 // 'ptr' within 'base' (negative when ptr would precede base)
 function BSTRCMPI(base, off, str) {
@@ -3468,6 +3474,52 @@ export function doname(obj) {
     return doname_base(obj, 0);
 }
 
+// C ref: objnam.c paydoname()
+/* doname() for itemized buying of 'obj' from a shop */
+export function paydoname(obj) {
+    const and_contents = " and its contents";
+    let p;
+    const save_cknown = obj.cknown;
+    const iflags = game.iflags || (game.iflags = {});
+    const save_wizweight = iflags.wizweight;
+    const has_contents = !!(obj.cobj && obj.cobj.length); /* Has_contents() */
+
+    if (has_contents)
+        obj.cknown = 0;
+    /* avoid showing item weights to unclutter billing's pay-menu a bit */
+    iflags.wizweight = false;
+    /* suppress invent-style price; caller will add billing-style price */
+    iflags.suppress_price = (iflags.suppress_price || 0) + 1;
+    p = doname_base(obj, 0);
+    iflags.suppress_price--;
+    iflags.wizweight = save_wizweight;
+
+    if (has_contents) {
+        /* buy_container() sets no_charge for a container that has just
+           been purchased so that when paydoname() is called by
+           shk_names_obj(), we'll provide "a/an <container>" instead of
+           "your <container>" */
+        if (!obj.no_charge) {
+            if (p.startsWith("a "))
+                p = p.slice(2);
+            else if (p.startsWith("an "))
+                p = p.slice(3);
+            p = (obj.unpaid ? "an unpaid " : "your ") + p; /* strprepend() */
+        }
+
+        if (!obj.cknown) {
+            if (obj.unpaid) {
+                if (p.length + and_contents.length < 256 /* BUFSZ */ - 4 /* PREFIX */)
+                    p += and_contents;
+            } else {
+                p = "the contents of " + p;
+            }
+        }
+    }
+    obj.cknown = save_cknown;
+    return p;
+}
+
 // C ref: objnam.c doname_with_price()
 /* Name of object including price. */
 export function doname_with_price(obj) {
@@ -3604,8 +3656,15 @@ function doname_base(obj, doname_flags) {
             xn_not_ported('candelabrum suffix');
         } else if (obj.otyp === O.OIL_LAMP || obj.otyp === O.MAGIC_LAMP
                    || obj.otyp === O.BRASS_LANTERN || Is_candle_x(obj)) {
-            if (Is_candle_x(obj))
-                xn_not_ported('partly used candles');
+            if (Is_candle_x(obj)) {
+                const full_burn_time = 20 * objects[obj.otyp].oc_cost;
+                const turns_left = obj.age;
+
+                if (obj.lamplit)
+                    xn_not_ported('partly used lit candles (peek_timer(BURN_OBJECT))');
+                if (turns_left < full_burn_time)
+                    prefix += "partly used ";
+            }
             if (obj.lamplit)
                 bp += " (lit)";
             break;
@@ -3690,8 +3749,8 @@ function doname_base(obj, doname_flags) {
         }
     }
     if (obj.owornmask & W_SWAPWEP) {
-        if (game.u?.twoweap)
-            xn_not_ported('twoweapon swap weapon suffix');
+        if (game.u?.twoweap) /* URIGHTY; body_part(HAND) for an unpolymorphed hero */
+            bp += ` (wielded in ${(game.u?.uhandedness ?? 0) === 0 ? "left" : "right"} hand)`;
         else
             bp += ` (alternate weapon${obj.quan === 1 ? "" : "s"}; not wielded)`;
     }
@@ -3777,4 +3836,75 @@ function GemStone_x(typ) {
             && typ !== O.DIAMOND && typ !== O.SAPPHIRE
             && typ !== O.BLACK_OPAL && typ !== O.EMERALD
             && typ !== O.OPAL);
+}
+
+// C ref: objnam.c short_oname()
+/* used by safe_qbuf() and dodip() to shorten an object's formatted name */
+export function short_oname(obj,
+                            func,     /* main formatting routine */
+                            altfunc,  /* alternate for shortest result */
+                            lenlimit) {
+    const UNAMEBUFSZ = 12, ONAMEBUFSZ = 12; /* sizeof unamebuf, onamebuf */
+    let unamebuf = null, onamebuf = null;
+
+    let outbuf = func(obj);
+    if (outbuf.length <= lenlimit)
+        return outbuf;
+
+    /* shorten called string to fairly small amount */
+    const save_uname = objects[obj.otyp].oc_uname;
+    if (save_uname && save_uname.length >= UNAMEBUFSZ) {
+        unamebuf = save_uname.slice(0, UNAMEBUFSZ - 4) + "...";
+        objects[obj.otyp].oc_uname = unamebuf;
+        outbuf = func(obj);
+        objects[obj.otyp].oc_uname = save_uname; /* restore called string */
+        if (outbuf.length <= lenlimit)
+            return outbuf;
+    }
+
+    /* shorten named string to fairly small amount */
+    const save_oname = has_oname(obj) ? ONAME(obj) : null;
+    if (save_oname && save_oname.length >= ONAMEBUFSZ) {
+        onamebuf = save_oname.slice(0, ONAMEBUFSZ - 4) + "...";
+        obj.oextra.oname = onamebuf;
+        outbuf = func(obj);
+        obj.oextra.oname = save_oname; /* restore named string */
+        if (outbuf.length <= lenlimit)
+            return outbuf;
+    }
+
+    /* shorten both called and named strings;
+       unamebuf and onamebuf have both already been populated */
+    if (save_uname && save_uname.length >= UNAMEBUFSZ && save_oname
+        && save_oname.length >= ONAMEBUFSZ) {
+        objects[obj.otyp].oc_uname = unamebuf;
+        obj.oextra.oname = onamebuf;
+        outbuf = func(obj);
+        if (outbuf.length <= lenlimit) {
+            objects[obj.otyp].oc_uname = save_uname;
+            obj.oextra.oname = save_oname;
+            return outbuf;
+        }
+    }
+
+    /* still long; strip several name-lengthening attributes;
+       called and named strings are still in truncated form */
+    const save_obj = { ...obj };
+    obj.bknown = obj.rknown = obj.greased = 0;
+    obj.oeroded = obj.oeroded2 = 0;
+    outbuf = func(obj);
+    if (altfunc && outbuf.length > lenlimit) {
+        /* still long; use the alternate function (usually one of
+           the jackets around minimal_xname()) */
+        outbuf = altfunc(obj);
+    }
+    /* restore the object */
+    Object.assign(obj, save_obj);
+    if (save_oname)
+        obj.oextra.oname = save_oname;
+    if (save_uname)
+        objects[obj.otyp].oc_uname = save_uname;
+
+    /* use whatever we've got, whether it's too long or not */
+    return outbuf;
 }

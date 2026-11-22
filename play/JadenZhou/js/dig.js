@@ -32,6 +32,13 @@ import { SDOOR, DOOR, CORR, ROOM, FOUNTAIN, SHOPBASE, W_NONDIGGABLE, D_NODOOR,
 import { in_rooms } from './hack.js';
 import { cansee, recalc_block_point, unblock_point } from './vision.js';
 import { pline_The, tmp_at, DISP_BEAM, DISP_END } from './display.js';
+import { COLNO, TT_BURIEDBALL } from './const.js';
+import { HEAVY_IRON_BALL } from './objects.js';
+import { dist2 } from './hacklib.js';
+import { reset_utrap } from './trap.js';
+import { del_engr_at } from './engrave.js';
+import { punish } from './read.js';
+import { obj_extract_self as mkobj_obj_extract_self } from './mkobj.js';
 
 /* C ref: obj.h is_pick(), is_axe() */
 function is_pick(otmp) {
@@ -443,4 +450,57 @@ export async function zap_dig() {
 
     if (shopdoor || shopwall)
         throw new Error('zap_dig(): pay_for_damage() not ported yet');
+}
+
+// C ref: dig.c buried_ball()
+/* cc is {x, y}; updated to the ball's spot when found nearby */
+export function buried_ball(cc) {
+    const u = game.u;
+    let odist, bdist = COLNO;
+    let ball = null;
+
+    /* u.utrap might have already been cleared, in which case the value
+       of u.utraptype is no longer meaningful; if u.utrap is still set
+       then u.utraptype needs to be for buried ball */
+    if (!u.utrap || u.utraptype === TT_BURIEDBALL) {
+        for (const otmp of game.level.buriedobjlist || []) {
+            if (otmp.otyp !== HEAVY_IRON_BALL)
+                continue;
+            /* if found at the target spot, we're done */
+            if (otmp.ox === cc.x && otmp.oy === cc.y)
+                return otmp;
+            /* find nearest within allowable vicinity: +/-2
+             *  4 5 8
+             *  1 2 5
+             *  0 1 4
+             */
+            odist = dist2(otmp.ox, otmp.oy, cc.x, cc.y);
+            if (odist <= 8 && (!ball || odist < bdist)) {
+                /* remember nearest buried ball but keep checking others */
+                ball = otmp;
+                bdist = odist;
+            }
+        }
+    }
+    if (ball) {
+        /* found, but not at < cc->x, cc->y > */
+        cc.x = ball.ox;
+        cc.y = ball.oy;
+    }
+    return ball;
+}
+
+// C ref: dig.c buried_ball_to_punishment()
+export async function buried_ball_to_punishment() {
+    const u = game.u;
+    const cc = { x: u.ux, y: u.uy };
+    const ball = buried_ball(cc);
+
+    if (ball) {
+        mkobj_obj_extract_self(ball);
+        await punish(ball); /* use ball as flag for unearthed buried ball */
+        await reset_utrap(false);
+        del_engr_at(cc.x, cc.y);
+        newsym(cc.x, cc.y);
+    }
 }

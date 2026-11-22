@@ -490,6 +490,23 @@ export function tty_putstr(window, attr, str) {
         return;
     switch (cw.type) {
     case NHW_MESSAGE:
+        /* if message is designated 'urgent' (ATR_URGENT, 16) don't
+           suppress it if user has typed ESC at --More-- prompt when
+           dismissing an earlier message; besides turning off WIN_STOP, we
+           need to prevent current message from provoking --More-- and
+           giving the user another chance at using ESC to suppress,
+           otherwise this message wouldn't get shown */
+        if (attr & 16) {
+            if ((cw.flags & WIN_STOP) !== 0) {
+                tty_clear_nhwindow(window);
+                cw.flags &= ~WIN_STOP;
+            }
+            cw.flags |= WIN_NOSTOP;
+            /* update_topl() may wait at --More--, so callers await this */
+            return update_topl(str).then(() => {
+                cw.flags &= ~WIN_NOSTOP; /* NOSTOP is a one-shot operation */
+            });
+        }
         /* update_topl() may wait at --More--, so callers await this */
         return update_topl(str);
     case NHW_BASE:

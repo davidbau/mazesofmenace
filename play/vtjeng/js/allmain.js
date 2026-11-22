@@ -115,6 +115,7 @@ import {
     timebot,
     status_eval_next_unhilite,
 } from './display.js';
+import { reset_glyphmap } from './display_glyphmap.js';
 import {
     displayPendingTtyMessageWindow,
     ttyNorep,
@@ -173,8 +174,10 @@ import {
 } from './youprop.js';
 
 // PRNG-owning initializer seam corresponding to the point immediately before
-// allmain.c:newgame() calls mklev(). Asynchronous only because u_init_misc()
-// is; nothing it awaits can suspend before mklev().
+// allmain.c:newgame() calls mklev(). Asynchronous because role_init() and
+// u_init_misc() are. role_init()'s plnamesuffix() asks "Who are you?" again
+// when the hero's name is a generic user name; nothing else it awaits can
+// suspend before mklev().
 export async function newgame_pre_mklev(g = game) {
     g.disp ??= {};
     g.disp.botlx = true;
@@ -191,11 +194,13 @@ export async function newgame_pre_mklev(g = game) {
     reset_mvitals(g);
     init_objects(g);
     g.flags.pantheon = -1;
-    role_init(g);
+    await role_init(g);
     init_dungeons(g);
     init_artifacts(g);
     await u_init_misc(g);
     l_nhcore_init(g);
+    // allmain.c:797 reset_glyphmap(gm_newgame).
+    reset_glyphmap(g);
     return g;
 }
 

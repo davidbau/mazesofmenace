@@ -33,6 +33,106 @@ import { poly_when_stoned } from './mondata.js';
 import { mons, PM_MINOTAUR, PM_CLERIC, MR_STONE } from './monsters.js';
 import { GEM_CLASS, RANDOM_CLASS, BOULDER, STATUE } from './objects.js';
 import { dmonsfree } from './mon.js';
+import { bughack } from './mklev.js';
+import { COLNO, ROWNO, W_NONDIGGABLE, POOL, IRONBARS, TLWALL, TRWALL, TUWALL,
+         TDWALL, BRCORNER, BLCORNER, TRCORNER, TLCORNER, RLOC_ERR,
+         RLOC_NOMSG } from './const.js';
+import { m_at } from './makemon.js';
+import { rloc_mklev } from './teleport.js';
+
+// C ref: mkmaze.c baalz_fixup()
+/* wallification of the baalz level's "insect" leaves wall stubs which
+   classifies them as superfluous and gets rid of them */
+function baalz_fixup() {
+    const levl = (x, y) => game.level.at(x, y);
+    const bh = bughack();
+    let mtmp, x, y, lastx, lasty;
+
+    /*
+     * baalz level's nondiggable region surrounds the "insect" and rooms.
+     * The outermost perimeter of that region is subject to wall cleanup
+     * (hence 'x + 1' and 'y + 1' for starting don't-clean column and row,
+     * 'lastx - 1' and 'lasty - 1' for ending don't-clean column and row)
+     * and the interior is protected against that (in wall_cleanup()).
+     */
+
+    /* find low and high x for to-be-wallified portion of level */
+    y = Math.trunc(ROWNO / 2);
+    for (lastx = x = 0; x < COLNO; ++x)
+        if ((levl(x, y).wall_info & W_NONDIGGABLE) !== 0) {
+            if (!lastx)
+                bh.inarea.x1 = x + 1;
+            lastx = x;
+        }
+    bh.inarea.x2 = ((lastx > bh.inarea.x1) ? lastx : x) - 1;
+    /* find low and high y for to-be-wallified portion of level */
+    x = bh.inarea.x1;
+    for (lasty = y = 0; y < ROWNO; ++y)
+        if ((levl(x, y).wall_info & W_NONDIGGABLE) !== 0) {
+            if (!lasty)
+                bh.inarea.y1 = y + 1;
+            lasty = y;
+        }
+    bh.inarea.y2 = ((lasty > bh.inarea.y1) ? lasty : y) - 1;
+    /* two pools mark where special post-wallify fix-ups are needed */
+    for (x = bh.inarea.x1; x <= bh.inarea.x2; ++x)
+        for (y = bh.inarea.y1; y <= bh.inarea.y2; ++y)
+            if (levl(x, y).typ === POOL) {
+                levl(x, y).typ = HWALL;
+                if (bh.delarea.x1 === COLNO) {
+                    bh.delarea.x1 = x; bh.delarea.y1 = y;
+                } else {
+                    bh.delarea.x2 = x; bh.delarea.y2 = y;
+                }
+            } else if (levl(x, y).typ === IRONBARS) {
+                /* novelty effect; allowing digging in front of 'eyes' */
+                if (isok(x - 1, y)
+                    && (levl(x - 1, y).wall_info & W_NONDIGGABLE) !== 0) {
+                    levl(x - 1, y).wall_info &= ~W_NONDIGGABLE;
+                    if (isok(x - 2, y))
+                        levl(x - 2, y).wall_info &= ~W_NONDIGGABLE;
+                } else if (isok(x + 1, y)
+                    && (levl(x + 1, y).wall_info & W_NONDIGGABLE) !== 0) {
+                    levl(x + 1, y).wall_info &= ~W_NONDIGGABLE;
+                    if (isok(x + 2, y))
+                        levl(x + 2, y).wall_info &= ~W_NONDIGGABLE;
+                }
+            }
+
+    wallification(Math.max(bh.inarea.x1 - 2, 1),
+                  Math.max(bh.inarea.y1 - 2, 0),
+                  Math.min(bh.inarea.x2 + 2, COLNO - 1),
+                  Math.min(bh.inarea.y2 + 2, ROWNO - 1));
+
+    /* bughack hack for rear-most legs on baalz level; first joint on
+       both top and bottom gets a bogus extra connection to room area,
+       producing unwanted rectangles; change back to separated legs */
+    x = bh.delarea.x1; y = bh.delarea.y1;
+    if (isok(x, y) && (levl(x, y).typ === TLWALL || levl(x, y).typ === TRWALL)
+        && isok(x, y + 1) && levl(x, y + 1).typ === TUWALL) {
+        levl(x, y).typ = (levl(x, y).typ === TLWALL) ? BRCORNER : BLCORNER;
+        levl(x, y + 1).typ = HWALL;
+        if ((mtmp = m_at(x, y)) !== null && mtmp !== undefined) /* something at temporary pool... */
+            rloc_mklev(mtmp, RLOC_ERR | RLOC_NOMSG);
+    }
+
+    x = bh.delarea.x2; y = bh.delarea.y2;
+    if (isok(x, y) && (levl(x, y).typ === TLWALL || levl(x, y).typ === TRWALL)
+        && isok(x, y - 1) && levl(x, y - 1).typ === TDWALL) {
+        levl(x, y).typ = (levl(x, y).typ === TLWALL) ? TRCORNER : TLCORNER;
+        levl(x, y - 1).typ = HWALL;
+        if ((mtmp = m_at(x, y)) !== null && mtmp !== undefined) /* something at temporary pool... */
+            rloc_mklev(mtmp, RLOC_ERR | RLOC_NOMSG);
+    }
+
+    /* reset bughack region; set low end to <COLNO,ROWNO> so that
+       within_bounded_region() in fix_wall_spines() will fail
+       most quickly--on its first test--when loading other levels */
+    bh.inarea.x1 = bh.delarea.x1 = COLNO;
+    bh.inarea.y1 = bh.delarea.y1 = ROWNO;
+    bh.inarea.x2 = bh.delarea.x2 = 0;
+    bh.inarea.y2 = bh.delarea.y2 = 0;
+}
 
 // C ref: mondata.h pm_resistance()
 function pm_resistance(ptr, typ) { return (ptr.mresists & typ) !== 0; }
@@ -182,7 +282,7 @@ export function fixup_special() {
         game.level.flags.graveyard = 1;
     } else if (on_level(game.u.uz, game.dungeon_topology.d_baalzebub_level)) {
         /* custom wallify the "beetle" potion of the level */
-        throw new Error('fixup_special(): baalz_fixup() not ported yet');
+        baalz_fixup();
     } else if (game.u.uz.dnum === game.dungeon_topology.d_mines_dnum
                && game.ransacked) {
         throw new Error('fixup_special(): stolen_booty() not ported yet');

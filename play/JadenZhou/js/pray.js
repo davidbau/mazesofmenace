@@ -359,7 +359,8 @@ function blocked_boulder(dx, dy) {
         return true;
     }
 
-    /* (dx && dy && Sokoban): the Sokoban branch isn't ported */
+    if (dx && dy && game.level.flags.sokoban_rules) /* can't push boulder diagonally in Sokoban */
+        return true;
     if (!isok(nx, ny))
         return true;
     if (IS_OBSTRUCTED(game.level.at(nx, ny).typ))

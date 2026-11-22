@@ -19,6 +19,7 @@ import { nh_terminate } from './end.js';
 import { game } from './gstate.js';
 import {
     displayPendingTtyMessageWindow,
+    eraseTtyMessageWindow,
     TOPLINE_EMPTY,
     TOPLINE_NEED_MORE,
 } from './tty_message.js';
@@ -168,10 +169,11 @@ function winttyState(state) {
 // tty_curs(BASE_WINDOW, ...).  The port updates it only where a later
 // base-window write reads it: tty_init_nhwindows()'s banner, tty_askname(),
 // tty_putstr(BASE_WINDOW), erase_tty_screen() through tty_clear_nhwindow()
-// of the map or base window, and docorner()'s role-selection menu repair.
-// The other tty_curs(BASE_WINDOW) callers, such as topl.c addtopl() and
-// topl_putsym() and docorner() during play, are not modeled because no
-// base-window write follows them.
+// of the map or base window, docorner()'s role-selection menu repair, and
+// topl.c addtopl() (the pick-for-you prompt precedes role_init()'s
+// tty_askname()).  The other tty_curs(BASE_WINDOW) callers, such as topl.c
+// more() and topl_putsym() and docorner() during play, are not modeled
+// because no base-window write follows them.
 export function baseWindow(state = game) {
     const wt = state.wintty;
     const cw = wt?.wins?.[wt.BASE_WINDOW];
@@ -366,6 +368,9 @@ export function tty_clear_map_window(state = game) {
     const display = state.nhDisplay;
     if (!display?.grid) return;
     display.clearScreen();
+    // erase_tty_screen() clears every active window: the message window
+    // loses a pending --More-- here, and the status window its rows.
+    eraseTtyMessageWindow(state);
     erase_status_rows(state);
     // erase_tty_screen()'s tty_curs(BASE_WINDOW, 1, 0).
     const base = baseWindow(state);
@@ -380,6 +385,8 @@ export function tty_clear_base_window(state = game) {
     const display = state.nhDisplay;
     if (!display?.grid) return;
     display.clearScreen();
+    // erase_tty_screen() clears the message window too, once it exists.
+    eraseTtyMessageWindow(state);
     display.setCursor(0, 0);
     const base = baseWindow(state);
     base.curx = base.cury = 0;
@@ -446,10 +453,20 @@ export function new_status_window(state = game) {
     // (wintty.c:1868).
     if (state.nhDisplay?.nomuxRaw) state.nhDisplay.nomuxRaw.rawprint = 0;
     clear_status_window(state);
-    // tty_status_init() zeroes tty_status[][] and finalx[][], so the next
-    // render_status() pass redraws every field (display.js
-    // _renderStatusLastRow()).
-    state._statusLastRowTty = null;
+    // tty_status_init() zeroes tty_status[][], so the next render_status()
+    // pass redraws every field (display.js _renderStatusLastRow()), and
+    // tty_clear_nhwindow(WIN_STATUS) blanks cw->data.  Neither touches the
+    // file-static finalx[][] (wintty.c:4304; the reset at 1070 is commented
+    // out), so a rebuilt window still compares its last row's end column
+    // with the old one at wintty.c:5251-5256: the row's tail, where the
+    // indented conditions stand, is erased only if the row got shorter.
+    if (state._statusLastRowTty) {
+        state._statusLastRowTty = {
+            cells: { text: '', owners: [] },
+            before: new Map(),
+            finalx: state._statusLastRowTty.finalx,
+        };
+    }
     status_initialize(state, true);
 }
 

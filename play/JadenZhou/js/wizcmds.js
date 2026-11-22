@@ -37,7 +37,7 @@ import { property_by_index } from './timeout.js';
 import { make_blinded, make_deaf, make_hallucinated, make_sick, make_slimed,
          make_stoned, make_stunned, make_vomiting, make_glib,
          incr_itimeout } from './potion.js';
-import { float_vs_flight } from './polyself.js';
+import { float_vs_flight, polyself } from './polyself.js';
 import { pooleffects } from './hack.js';
 import { docrt } from './display.js';
 import { display_inventory } from './invent.js';
@@ -455,6 +455,13 @@ export async function wiz_map() {
     return 0; /* ECMD_OK */
 }
 
+// C ref: wizcmds.c wiz_polyself()
+/* #polyself command - change hero's form */
+export async function wiz_polyself() {
+    await polyself(POLY_CONTROLLED);
+    return 0; /* ECMD_OK */
+}
+
 // C ref: wizcmds.c wiz_detect() -- #wizdetect, ^E
 /* the #wizdetect command - detect secret doors, traps, hidden monsters */
 export async function wiz_detect() {
@@ -465,6 +472,6 @@ export async function wiz_detect() {
     return 0; /* ECMD_OK */
 }
 
-import { CONFUSION } from './const.js';
+import { CONFUSION, POLY_CONTROLLED } from './const.js';
 import { map_trap, map_engraving } from './display.js';
 import { do_mapping, findit } from './detect.js';

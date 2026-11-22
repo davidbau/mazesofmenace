@@ -61,6 +61,9 @@ import { FIRST_OBJECT, NUM_OBJECTS } from './objects.js';
 import { hellfill_lua_files } from './hellfill_lua.js';
 import { wizard_lua_files } from './wizard_lua.js';
 import { sanctum_lua_files } from './sanctum_lua.js';
+import { knox_lua_files } from './knox_lua.js';
+import { lairs_lua_files } from './lairs_lua.js';
+import { endgame_lua_files } from './endgame_lua.js';
 
 // C's impossible() (pline.c) is not ported yet.
 function impossible(msg) { console.error(`impossible: ${msg}`); }
@@ -134,12 +137,25 @@ function lua_arith_tm(a, b, event) {
     const tm = (a instanceof LuaUserdata && a.metatable?.[event])
         || (b instanceof LuaUserdata && b.metatable?.[event]);
     if (typeof tm !== 'function')
-        lua_error('attempt to perform bitwise operation on a '
+        lua_error((event === '__add' || event === '__sub'
+                   ? 'attempt to perform arithmetic on a '
+                   : 'attempt to perform bitwise operation on a ')
                   + `${lua_typename(a)} value`);
     return tm(a, b);
 }
 export function lua_bor(a, b) { return lua_arith_tm(a, b, '__bor'); }
 export function lua_band(a, b) { return lua_arith_tm(a, b, '__band'); }
+export function lua_bxor(a, b) { return lua_arith_tm(a, b, '__bxor'); }
+// Lua's binary + and - (lvm.c luaO_arith(), else luaT_trybinTM() with
+// __add / __sub)
+export function lua_add(a, b) {
+    if (typeof a === 'number' && typeof b === 'number') return a + b;
+    return lua_arith_tm(a, b, '__add');
+}
+export function lua_sub(a, b) {
+    if (typeof a === 'number' && typeof b === 'number') return a - b;
+    return lua_arith_tm(a, b, '__sub');
+}
 
 // lua.h lua_istable()
 export function lua_istable(v) {
@@ -527,6 +543,12 @@ function nhl_lua_file(fname) {
         return wizard_lua_files[fname];
     if (Object.hasOwn(sanctum_lua_files, fname))
         return sanctum_lua_files[fname];
+    if (Object.hasOwn(knox_lua_files, fname))
+        return knox_lua_files[fname];
+    if (Object.hasOwn(lairs_lua_files, fname))
+        return lairs_lua_files[fname];
+    if (Object.hasOwn(endgame_lua_files, fname))
+        return endgame_lua_files[fname];
     return null;
 }
 

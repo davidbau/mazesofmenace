@@ -38,6 +38,7 @@ import { W_RINGL, W_RINGR, W_WEP, W_SWAPWEP, W_QUIVER, W_BALL, W_CHAIN,
          M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC,
          M_SEEN_POISON, M_SEEN_ACID, M_SEEN_REFL } from './const.js';
 import { monstunseesu } from './uhitm.js';
+import { mhim, mhis } from './mhitu.js';
 import { learnwand } from './zap.js';
 import { cancel_doff } from './do_wear.js';
 import { is_weptool } from './wield.js';
@@ -918,6 +919,22 @@ function* m_dowear_type(
         }
     }
     void sawloc; /* used by the artifact light messages (begin_burn) */
+}
+
+// C ref: worn.c mon_break_armor()
+/* the monster's new form (mon->data) may break, slip out of or drop its
+   worn armor and saddle, or stop carrying the hero; only the pronouns the
+   messages use (worked out first, so rolled even when nothing is worn
+   while hallucinating) are ported */
+export function mon_break_armor(mon, polyspot) {
+    const pronoun = mhim(mon), ppronoun = mhis(mon);
+
+    void pronoun, ppronoun, polyspot;
+    if ((mon.misc_worn_check || 0) & ~I_SPECIAL)
+        throw new Error('mon_break_armor(): worn armor not ported yet');
+    if (mon === game.u?.usteed)
+        throw new Error('mon_break_armor(): steed not ported yet');
+    return;
 }
 
 // C ref: worn.c which_armor()

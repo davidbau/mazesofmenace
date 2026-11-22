@@ -785,7 +785,7 @@ export function vision_recalc(control = 0) {
         next_rmax[y] = 0;
     }
 
-    if (control !== 2) {
+    if (control !== 2 && !u.uswallow) { /* you see nothing if swallowed */
         view_from(u.uy, u.ux, next, next_rmin, next_rmax);
     }
 

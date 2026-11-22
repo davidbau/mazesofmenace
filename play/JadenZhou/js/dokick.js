@@ -57,6 +57,16 @@ import { addtobill } from './shk.js';
 import { flooreffects, impact_disturbs_zombies } from './do.js';
 import { place_object } from './mkobj.js';
 import { stackobj } from './invent.js';
+import { attack_checks } from './uhitm.js';
+import { overexertion } from './hack.js';
+import { canspotmon, canseemon } from './display.js';
+import { wakeup, setmangry } from './mon.js';
+import { mpickobj } from './steal.js';
+import { miss } from './zap.js';
+import { Monnam, mon_nam } from './do_name.js';
+import { cansee } from './vision.js';
+import { M2_GREEDY, M2_MERC, S_MIMIC } from './monsters.js';
+import { M_AP_NOTHING } from './const.js';
 
 /* C ref: youprop.h -- the hero's properties used by the kick code */
 function uprop(p) {
@@ -328,6 +338,80 @@ async function kick_nondoor(x, y, avrg_attrib) {
 
 // C ref: dokick.c dokick()
 /* the #kick command */
+// C ref: dokick.c ghitm()
+/*
+ *  Return TRUE if caught (the gold taken care of), FALSE otherwise.
+ *  The gold object is *not* attached to the fobj chain!
+ */
+export async function ghitm(mtmp, gold) {
+    let msg_given = false;
+
+    if (!likes_gold(mtmp.data) && !mtmp.isshk && !mtmp.ispriest
+        && !mtmp.isgd && !is_mercenary(mtmp.data)) {
+        await wakeup(mtmp, true);
+    } else if (!mtmp.mcanmove) {
+        /* too light to do real damage */
+        if (canseemon(mtmp)) {
+            await pline_The(`${xname(gold)} harmlessly ${otense(gold, "hit")} ${
+                             mon_nam(mtmp)}.`);
+            msg_given = true;
+        }
+    } else {
+        const was_sleeping = mtmp.msleeping;
+
+        mtmp.msleeping = 0; /* end indeterminate sleep */
+        finish_meating(mtmp);
+        if (!mtmp.isgd && !rn2(4)) /* not always pleasing */
+            await setmangry(mtmp, true);
+        /* greedy monsters catch gold */
+        if (cansee(mtmp.mx, mtmp.my))
+            await pline(`${Monnam(mtmp)} ${was_sleeping ? "awakens and " : ""
+                         }catches the gold.`);
+        if (mtmp.isshk || mtmp.ispriest || mtmp.isgd || is_mercenary(mtmp.data))
+            throw new Error('ghitm(): gold caught by a shopkeeper/priest/guard/mercenary not ported yet');
+        /* (void) */ mpickobj(mtmp, gold);
+        gold = null; /* obj has been freed */
+        return true;
+    }
+
+    if (!msg_given)
+        await miss(xname(gold), mtmp);
+    return false;
+}
+
+/* C ref: mondata.h likes_gold(), is_mercenary() */
+function likes_gold(ptr) { return (ptr.mflags2 & M2_GREEDY) !== 0; }
+function is_mercenary(ptr) { return (ptr.mflags2 & M2_MERC) !== 0; }
+
+// C ref: dogmove.c finish_meating()
+function finish_meating(mtmp) {
+    mtmp.meating = 0;
+    if ((mtmp.m_ap_type || 0) !== M_AP_NOTHING && mtmp.data.mlet !== S_MIMIC) {
+        /* was eating a mimic and now appearance needs resetting */
+        mtmp.m_ap_type = M_AP_NOTHING;
+        mtmp.mappearance = 0;
+        newsym(mtmp.mx, mtmp.my);
+    }
+}
+
+// C ref: dokick.c maybe_kick_monster()
+async function maybe_kick_monster(mon, x, y) {
+    if (mon) {
+        const save_forcefight = game.context.forcefight;
+
+        game.bhitpos = { x, y };
+        if (!mon.mpeaceful || !canspotmon(mon))
+            game.context.forcefight = true; /* attack even if invisible */
+        /* kicking might be halted by discovery of hidden monster,
+           by player declining to attack peaceful monster,
+           or by passing out due to encumbrance */
+        if (await attack_checks(mon, null) || await overexertion())
+            mon = null; /* don't kick after all */
+        game.context.forcefight = save_forcefight;
+    }
+    return mon != null;
+}
+
 export async function dokick() {
     const g = game;
     const u = g.u;
@@ -415,8 +499,9 @@ export async function dokick() {
        hero passes out due to encumbrance with low hp; svc.context.move
        will be 1 unless player declines to kick peaceful monster */
     if (mtmp) {
-        /* maybe_kick_monster() needs attack_checks() */
-        throw new Error('dokick(): maybe_kick_monster() not ported yet');
+        /* oldglyph = glyph_at(x, y): used after kick_monster() */
+        if (!await maybe_kick_monster(mtmp, x, y))
+            return (g.context.move ? ECMD_TIME : ECMD_OK);
     }
 
     await wake_nearby(false);
@@ -433,6 +518,11 @@ export async function dokick() {
      * The next five tests should stay in their present order:
      * monsters, pools, objects, non-doors, doors.
      */
+
+    if (mtmp) {
+        /* save mtmp->data (for recoil) in case mtmp gets killed */
+        throw new Error('dokick(): kick_monster() not ported yet');
+    }
 
     unmap_invisible(x, y);
     if ((is_pool(x, y) || g.maploc.typ === LAVAWALL) !== !!u.uinwater) {

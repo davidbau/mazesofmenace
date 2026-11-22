@@ -37,7 +37,7 @@ import { m_at, sobj_at, is_pool, is_lava, may_passwall, accessible,
 import { is_male, is_female, is_neuter, pm_invisible } from './mondata.js';
 import { set_mon_data } from './mondata.js';
 import { Monnam, noit_mon_nam } from './do_name.js';
-import { m_dowear, which_armor } from './worn.js';
+import { m_dowear, which_armor, mon_break_armor } from './worn.js';
 import {
     MS_NEMESIS, AT_BOOM, G_FREQ, AD_RBRE, AD_DCAY, AD_DGST, AD_FIRE,
     PM_LIZARD, PM_VLAD_THE_IMPALER, PM_WEREJACKAL, PM_HUMAN_WEREJACKAL,
@@ -88,11 +88,13 @@ import { has_ceiling } from './insight.js';
 import { M_AP_FURNITURE, M_AP_OBJECT, ROOM } from './const.js';
 import { dead_species } from './mkobj.js';
 import { kill_egg } from './timeout.js';
-import { relobj } from './steal.js';
+import { relobj, thiefdead, mdrop_special_objs, discard_minvent } from './steal.js';
 import { dochugw, onscary, mon_regen, m_everyturn_effect,
          mon_track_clear, monflee } from './monmove.js';
 import { tele_restrict, rloc } from './teleport.js';
-import { can_teleport } from './mondata.js';
+import { can_teleport, resists_fire } from './mondata.js';
+import { on_fire } from './uhitm.js';
+import { m_in_air } from './monmove.js';
 import { FOUNTAIN, FLYING, LEVITATION, RLOC_MSG } from './const.js';
 import { canseemon, sensemon } from './display.js';
 import { UNICORN_HORN, WORM_TOOTH } from './objects.js';
@@ -113,7 +115,7 @@ import { olfaction, is_orc } from './mondata.js';
 import { highc } from './hacklib.js';
 import { mkobj, place_object } from './mkobj.js';
 import { RANDOM_CLASS, FOOD_CLASS, FIGURINE } from './objects.js';
-import { flooreffects } from './do.js';
+import { flooreffects, deferred_goto } from './do.js';
 import { s_suffix } from './hacklib.js';
 import { change_luck, adjalign } from './attrib.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
@@ -224,19 +226,22 @@ async function m_calcdistress(mtmp) {
 /* C ref: monst.h DEADMONSTER() */
 function DEADMONSTER(mon) { return mon.mhp < 1; }
 
-// C ref: mon.c mongone() -- the parts reached so far (level creation):
-// unstuck(), mdrop_special_objs() and the vault guard case are not ported.
+// C ref: mon.c mongone() -- the vault guard case is not ported; unstuck()
+// is checked in mon_leaving_level().
 /* remove a monster from the game without leaving a corpse */
 export function mongone(mdef) {
     mdef.mhp = 0; /* can skip some inventory bookkeeping */
 
+    /* dead vault guard is actually kept at coordinate <0,0> until
+       his temporary corridor to/from the vault has been removed */
     if (mdef.isgd)
         throw new Error('mongone: vault guards are not ported yet');
+    /* stuck to you? release: unstuck(mdef) -- see mon_leaving_level() */
+    /* drop special items like the Amulet so that a dismissed Kop or nurse
+       can't remove them from the game */
+    mdrop_special_objs(mdef);
     /* release rest of monster's inventory--it is removed from game */
-    /* discard_minvent(mdef, FALSE): obfree() each; nothing to free in JS */
-    for (const o of mdef.minvent || [])
-        o.where = 'OBJ_DELETED';
-    mdef.minvent = null;
+    discard_minvent(mdef, false);
     m_detach(mdef, mdef.data, false);
 }
 
@@ -371,9 +376,9 @@ function m_detach(mtmp, mptr, due_to_death) {
 
     const after_relobj = () => {
         if (game.stealmid && mtmp.m_id === game.stealmid)
-            throw new Error('m_detach(): thiefdead() not ported yet');
+            thiefdead();
         if (mtmp.isshk)
-            throw new Error('m_detach(): shkgone() not ported yet');
+            shkgone(mtmp);
         if (mtmp.wormno)
             wormgone(mtmp);
         /* In_endgame(&u.uz): MON_ENDGAME_FREE -- the endgame isn't reached */
@@ -412,7 +417,7 @@ function m_detach(mtmp, mptr, due_to_death) {
 
 // C ref: mon.c mlifesaver()
 /* find the worn amulet of life saving which will save a monster */
-function mlifesaver(mon) {
+export function mlifesaver(mon) {
     if (!nonliving(mon.data) || is_vampshifter(mon)) {
         const otmp = which_armor(mon, W_AMUL);
 
@@ -491,8 +496,9 @@ export async function mondead(mtmp) {
 
 // C ref: mon.c corpse_chance()
 /* TRUE if corpse might be dropped, magr may die if mon was swallowed */
-export function corpse_chance(mon, magr, was_swallowed) {
+export async function corpse_chance(mon, magr, was_swallowed) {
     const mdat = mon.data;
+    let tmp;
 
     if (!magr && game.mswallower)
         throw new Error('corpse_chance(): engulfer explosions not ported yet');
@@ -502,10 +508,40 @@ export function corpse_chance(mon, magr, was_swallowed) {
 
     /* Gas spores always explode upon death */
     for (let i = 0; i < NATTK; i++) {
-        if (mdat.mattk[i].aatyp === AT_BOOM)
-            throw new Error('corpse_chance(): mon_explodes() not ported yet');
+        if (mdat.mattk[i].aatyp === AT_BOOM) {
+            if (mdat.mattk[i].damn)
+                tmp = d(mdat.mattk[i].damn, mdat.mattk[i].damd);
+            else if (mdat.mattk[i].damd)
+                tmp = d(mdat.mlevel + 1, mdat.mattk[i].damd);
+            else
+                tmp = 0;
+
+            if (was_swallowed && magr) {
+                /* mdef is a gas spore (AT_BOOM) that is exploding inside an
+                   engulfer; suppress usual explosion since it's contained */
+                if (magr === game.youmonst) {
+                    await There_mn(`is an explosion in your ${body_part_mn(STOMACH_MN)}!`);
+                    killer_mn().name = `${s_suffix(pmname(mdat, mon.female ? 1 : 0))} explosion`;
+                    await losehp_mn(Maybe_Half_Phys_mn(tmp), killer_mn().name,
+                                    KILLED_BY_AN_MN);
+                } else {
+                    await You_hear("an explosion.");
+                    magr.mhp -= tmp;
+                    if (DEADMONSTER(magr))
+                        await mondied(magr);
+                    if (DEADMONSTER(magr)) { /* maybe lifesaved */
+                        if (canspotmon(magr))
+                            await pline(`${Monnam(magr)} rips open!`);
+                    } else if (canseemon(magr))
+                        await pline(`${Monnam(magr)} seems to have indigestion.`);
+                }
+                return false;
+            }
+
+            await mon_explodes(mon, mdat.mattk[i]);
+            return false;
+        }
     }
-    void was_swallowed;
 
     /* must duplicate this below check in xkilled() since it results in
      * creating no objects as well as no corpse
@@ -519,7 +555,7 @@ export function corpse_chance(mon, magr, was_swallowed) {
     if (((bigmonst(mdat) || mdat === mons[PM_LIZARD]) && !mon.mcloned)
         || is_golem(mdat) || is_mplayer(mdat) || is_rider(mdat) || mon.isshk)
         return true;
-    const tmp = 2 + ((mdat.geno & G_FREQ) < 2 ? 1 : 0) + (verysmall(mdat) ? 1 : 0);
+    tmp = 2 + ((mdat.geno & G_FREQ) < 2 ? 1 : 0) + (verysmall(mdat) ? 1 : 0);
     return !rn2(tmp);
 }
 
@@ -703,7 +739,7 @@ export async function mondied(mdef) {
         return; /* lifesaved */
 
     /* this assumes that the dead monster's map coordinates remain accurate */
-    if (corpse_chance(mdef, null, false)
+    if (await corpse_chance(mdef, null, false)
         && (accessible(mdef.mx, mdef.my) || is_pool(mdef.mx, mdef.my)))
         make_corpse(mdef, CORPSTAT_NONE);
 }
@@ -888,7 +924,7 @@ export async function xkilled(
                 }
             }
             /* corpse--none if hero was inside the monster */
-            if (!wasinside && corpse_chance(mtmp, null, false)) {
+            if (!wasinside && await corpse_chance(mtmp, null, false)) {
                 game.zombify = (!game.thrownobj && !game.stoned && !game.uwep
                                 && zombie_maker(game.youmonst)
                                 && zombie_form(mtmp.data) !== NON_PM);
@@ -1304,8 +1340,50 @@ async function minliquid_core(mtmp) {
          */
         if (!is_clinger(ptr)
             && !(ptr === mons[PM_FIRE_ELEMENTAL] || ptr === mons[PM_SALAMANDER])) {
-            /* likes_lava() */
-            throw new Error('minliquid(): monster in lava not ported yet');
+            /* !likes_lava() */
+            /* not fair...?  hero doesn't automatically teleport away
+               from lava, just from water */
+            if (can_teleport(ptr) && !(await tele_restrict(mtmp))) {
+                if (await rloc(mtmp, RLOC_MSG))
+                    return 0;
+            }
+            if (!resists_fire(mtmp)) {
+                if (cansee(mtmp.mx, mtmp.my)) {
+                    const dummy = ptr.mattk[0];
+                    const how = on_fire(ptr, dummy);
+
+                    await pline(`${Monnam(mtmp)} ${how === "boiling" ? "boils away"
+                                 : how === "melting" ? "melts away"
+                                   : "burns to a crisp"}.`); /* pline_mon() */
+                }
+                /* unlike fire -> melt ice -> pool, there's no way for the
+                   hero to create lava beneath a monster, so the !mon_moving
+                   case is not expected to happen */
+                if (game.context.mon_moving)
+                    await mondead(mtmp); /* no corpse */
+                else
+                    await xkilled(mtmp, XKILL_NOMSG);
+            } else {
+                mtmp.mhp -= 1;
+                if (DEADMONSTER(mtmp)) {
+                    if (cansee(mtmp.mx, mtmp.my)) /* pline_mon() */
+                        await pline(`${Monnam(mtmp)} surrenders to the fire.`);
+                    await mondead(mtmp); /* no corpse */
+                } else if (cansee(mtmp.mx, mtmp.my)) {
+                    await pline(`${Monnam(mtmp)} burns slightly.`);
+                }
+            }
+            if (!DEADMONSTER(mtmp)) {
+                if (m_in_air(mtmp)) {
+                    ; /* vampshifter in wolf form can revert to vampire lord
+                       * and become a flyer so not need to teleport */
+                } else {
+                    /* (likes_lava case is hypothetical) */
+                    throw new Error('minliquid(): fire_damage_chain() not ported yet');
+                }
+                return 0;
+            }
+            return 1;
         }
     } else if (inpool || waterwall) {
         /* Most monsters drown in pools.  flooreffects() will take care of
@@ -1462,8 +1540,11 @@ export async function movemon() {
     dmonsfree();
 
     /* a monster may have levteleported player -dlc */
-    if (game.u.utotype)
-        throw new Error('movemon(): deferred_goto() not ported yet');
+    if (game.u.utotype) {
+        await deferred_goto();
+        /* changed levels, so these monsters are dormant */
+        game.somebody_can_move = false;
+    }
 
     return game.somebody_can_move;
 }
@@ -1949,11 +2030,12 @@ function* newcham_g(mtmp, mdat, ncflags) {
         /* && !Protection_from_shape_changers */)
         mtmp.cham = pm_to_cham(monsndx(mdat));
 
-    /* possibly_unwield(mtmp, polyspot), mon_break_armor(mtmp, polyspot),
-       mselftouch(): only matter for a monster with a wielded weapon or
-       worn armor */
-    if (mtmp.mw || ((mtmp.misc_worn_check || 0) & ~I_SPECIAL))
-        throw new Error('newcham(): possibly_unwield()/mon_break_armor() not ported yet');
+    /* possibly_unwield(mtmp, polyspot): might lose use of weapon */
+    if (mtmp.mw)
+        throw new Error('newcham(): possibly_unwield() not ported yet');
+    mon_break_armor(mtmp, polyspot);
+    /* mselftouch(): only matters for a monster wielding a cockatrice
+       corpse (no weapon here) */
     check_gear_next_turn(mtmp);
 
     /* former giants can't continue carrying boulders */
@@ -2305,8 +2387,8 @@ function may_dig(x, y) {
 }
 /* C ref: hack.c bad_rock() */
 export function bad_rock(mdat, x, y) {
-    return (/* (Sokoban && sobj_at(BOULDER, x, y)) || */
-            (IS_OBSTRUCTED(game.level.at(x, y).typ)
+    return ((game.level.flags.sokoban_rules && sobj_at(BOULDER, x, y))
+            || (IS_OBSTRUCTED(game.level.at(x, y).typ)
              && (!tunnels(mdat) || needspick(mdat) || !may_dig(x, y))
              && !(passes_walls(mdat) && may_passwall(x, y))));
 }
@@ -2775,12 +2857,45 @@ export function healmon(mtmp, amt, overheal) {
     }
 }
 
+// C ref: mon.c golemeffects()
+/* Called when a monster is hit by an elemental attack */
+export async function golemeffects(mon, damtype, dam) {
+    let heal = 0, slow = 0;
+
+    if (mon.data === mons[PM_FLESH_GOLEM]) {
+        if (damtype === AD_ELEC_MN)
+            heal = Math.trunc((dam + 5) / 6);
+        else if (damtype === AD_FIRE_MN || damtype === AD_COLD_MN)
+            slow = 1;
+    } else if (mon.data === mons[PM_IRON_GOLEM]) {
+        if (damtype === AD_ELEC_MN)
+            slow = 1;
+        else if (damtype === AD_FIRE_MN)
+            heal = dam;
+    } else {
+        return;
+    }
+    if (slow) {
+        if (mon.mspeed !== MSLOW)
+            await mon_adjust_speed_mn(mon, -1, null);
+    }
+    if (heal) {
+        if (healmon(mon, heal, 0)) {
+            if (cansee(mon.mx, mon.my))
+                await pline(`${Monnam(mon)} seems healthier.`);
+        }
+    }
+}
+import { AD_ELEC as AD_ELEC_MN, AD_FIRE as AD_FIRE_MN,
+         AD_COLD as AD_COLD_MN } from './monsters.js';
+import { mon_adjust_speed as mon_adjust_speed_mn } from './worn.js';
+
 /* C ref: obj.h ofood(), polyfood(), mlevelgain(), mhealup();
    mon.c mstoning(); mondata.h flesh_petrifies() */
 function ofood(o) {
     return o.otyp === CORPSE || o.otyp === EGG || o.otyp === TIN;
 }
-function polyfood(obj) {
+export function polyfood(obj) {
     return (ofood(obj) && obj.corpsenm >= LOW_PM
             && (pm_to_cham(obj.corpsenm) !== NON_PM
                 || dmgtype(mons[obj.corpsenm], MM.AD_POLY)));
@@ -2855,7 +2970,7 @@ export async function m_consume_obj(mtmp, otmp) {
 
 // C ref: mon.c mon_give_prop()
 /* give monster property prop */
-async function mon_give_prop(mtmp, prop) {
+export async function mon_give_prop(mtmp, prop) {
     let msg = null;
     let intrinsic = 0; /* MR_* constant */
 
@@ -3102,3 +3217,12 @@ export async function angry_guards(silent) {
     }
     return false;
 }
+import { d } from './rng.js';
+import { pmname } from './do_name.js';
+import { There as There_mn } from './display.js';
+import { body_part as body_part_mn } from './insight.js';
+import { STOMACH as STOMACH_MN, KILLED_BY_AN as KILLED_BY_AN_MN } from './const.js';
+import { killer as killer_mn } from './topten.js';
+import { losehp as losehp_mn, Maybe_Half_Phys as Maybe_Half_Phys_mn } from './trap.js';
+import { mon_explodes } from './explode.js';
+import { shkgone } from './shk.js';

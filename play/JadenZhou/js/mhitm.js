@@ -38,6 +38,14 @@ import { mon_visible } from './display.js';
 import { dmgtype, is_were, is_demon, is_vampshifter } from './mondata.js';
 import { completelyburns, completelyrots, completelyrusts } from './mon.js';
 import { resists_acid, resists_cold, resists_fire, resists_elec } from './mondata.js';
+import { x_monnam, ARTICLE_THE } from './do_name.js';
+import { extract_from_minvent } from './steal.js';
+import { add_to_minv } from './mkobj.js';
+import { doname } from './objnam.js';
+import { canseemon } from './display.js';
+import { mselftouch } from './trap.js';
+import { tele_restrict, rloc } from './teleport.js';
+import { RLOC_NOMSG } from './const.js';
 
 function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
 /* C ref: youprop.h Conflict, Blind */
@@ -547,12 +555,83 @@ async function mswingsm(
     }
 }
 
+// C ref: uhitm.c mhitm_ad_sedu(), monster-vs-monster part
+/* seduce and also steal item */
+async function mhitm_ad_sedu(magr, mattk, mdef, mhm) {
+    const pa = magr.data;
+    let obj = null;
+
+    void mattk;
+    if (magr.mcan)
+        return;
+    /* find an object to steal, non-cursed if magr is tame;
+       C walks mdef->minvent from its head, the newest object, and
+       JS minvent arrays are oldest first */
+    for (const o of (mdef.minvent || []).slice().reverse())
+        if (!magr.mtame || !o.cursed) {
+            obj = o;
+            break;
+        }
+
+    if (obj) {
+        let onambuf = '';
+
+        /* make a special x_monnam() call that never omits
+           the saddle, and save it for later messages */
+        const mdefnambuf = x_monnam(mdef, ARTICLE_THE, null, 0, false);
+
+        if (game.u.usteed === mdef && obj === which_armor(mdef, W_SADDLE))
+            /* "You can no longer ride <steed>." */
+            throw new Error('mhitm_ad_sedu(): dismount_steed() not ported yet');
+        extract_from_minvent(mdef, obj, true, false);
+        /* add_to_minv() might free 'obj' [if it merges] */
+        if (game.mhitm_vis)
+            onambuf = doname(obj);
+        add_to_minv(magr, obj);
+        const buf = Monnam(magr);
+        if (game.mhitm_vis && canseemon(mdef)) {
+            await pline(`${buf} steals ${onambuf} from ${mdefnambuf}!`);
+        }
+        await possibly_unwield(mdef, false);
+        mdef.mstrategy &= ~STRAT_WAITFORU;
+        await mselftouch(mdef, null, false);
+        if (DEADMONSTER(mdef)) {
+            mhm.hitflags = (M_ATTK_DEF_DIED
+                            | ((await grow_up(magr, mdef)) ? 0
+                               : M_ATTK_AGR_DIED));
+            mhm.done = true;
+            return;
+        }
+        if (pa.mlet === M.S_NYMPH && !await tele_restrict(magr)) {
+            const couldspot = canspotmon(magr);
+
+            mhm.hitflags = M_ATTK_AGR_DONE;
+            await rloc(magr, RLOC_NOMSG);
+            /* TODO: use RLOC_MSG instead? */
+            if (game.mhitm_vis && couldspot && !canspotmon(magr))
+                await pline(`${buf} suddenly disappears!`);
+        }
+    }
+    mhm.damage = 0;
+}
+
+// C ref: uhitm.c mhitm_ad_ssex(), monster-vs-monster part
+async function mhitm_ad_ssex(magr, mattk, mdef, mhm) {
+    /* mhitm */
+    await mhitm_ad_sedu(magr, mattk, mdef, mhm);
+    if (mhm.done)
+        return;
+}
+
 // C ref: uhitm.c mhitm_adtyping()
-function mhitm_adtyping(magr, mattk, mdef, mhm) {
+async function mhitm_adtyping(magr, mattk, mdef, mhm) {
     switch (mattk.adtyp) {
     case AD_PHYS:
         mhitm_ad_phys(magr, mattk, mdef, mhm);
         break;
+    case AD_SSEX: await mhitm_ad_ssex(magr, mattk, mdef, mhm); break;
+    case M.AD_SITM:
+    case M.AD_SEDU: await mhitm_ad_sedu(magr, mattk, mdef, mhm); break;
     default:
         throw new Error(`mhitm_adtyping(): damage type ${mattk.adtyp} not ported yet`);
     }
@@ -622,7 +701,7 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         || (mattk.adtyp === AD_DGST && pd === mons[M.PM_MEDUSA]))
         throw new Error('mdamagem(): petrification not ported yet');
 
-    mhitm_adtyping(magr, mattk, mdef, mhm);
+    await mhitm_adtyping(magr, mattk, mdef, mhm);
 
     if (mhitm_knockback(magr, mdef, mattk, mhm, !!magr.mw)
         && ((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0

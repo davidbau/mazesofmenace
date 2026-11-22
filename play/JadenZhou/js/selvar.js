@@ -19,7 +19,8 @@
 //
 // Not ported yet: the remaining selection methods (get, randline,
 // floodfill, circle, ellipse, gradient, describe_size) and the metatable
-// operators other than | and & (__bor, __band; see nhlua.js lua_bor());
+// operators other than |, &, ~, + and - (__bor, __band, __bxor, __add,
+// __sub; see nhlua.js lua_bor());
 // each method raises a Lua error until it is ported.
 
 import { game } from './gstate.js';
@@ -715,6 +716,55 @@ export function l_selection_or(...args) {
     return selr;
 }
 
+// C ref: nhlsel.c l_selection_xor()
+/* local sel = selection.area(4,5, 40,10) ~ selection.rect(7,8, 60,14); */
+export function l_selection_xor(...args) {
+    const sela = l_selection_check(args[0]);
+    const selb = l_selection_check(args[1]);
+    const selr = selection_new(); /* l_selection_push_new() */
+    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
+
+    rect_bounds(sela.bounds, selb.bounds, rect);
+
+    for (let x = rect.lx; x <= rect.hx; x++)
+        for (let y = rect.ly; y <= rect.hy; y++) {
+            const val = (selection_getpoint(x, y, sela)
+                         ^ selection_getpoint(x, y, selb));
+
+            selection_setpoint(x, y, selr, val);
+        }
+    /* this may have created a smaller or irregular selection with
+     * bounds_dirty set to true - update its boundaries */
+    selection_recalc_bounds(selr);
+
+    return selr;
+}
+
+// C ref: nhlsel.c l_selection_sub()
+/* local sel = selection.area(10,10, 20,20) - selection.area(14,14, 17,17)
+ *   - i.e. points that are in A but not in B */
+export function l_selection_sub(...args) {
+    const sela = l_selection_check(args[0]);
+    const selb = l_selection_check(args[1]);
+    const selr = selection_new(); /* l_selection_push_new() */
+    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
+
+    rect_bounds(sela.bounds, selb.bounds, rect);
+
+    for (let x = rect.lx; x <= rect.hx; x++)
+        for (let y = rect.ly; y <= rect.hy; y++) {
+            const a_pt = selection_getpoint(x, y, sela);
+            const b_pt = selection_getpoint(x, y, selb);
+            const val = (a_pt ^ b_pt) & a_pt;
+            selection_setpoint(x, y, selr, val);
+        }
+    /* this may have created a smaller or irregular selection with
+     * bounds_dirty set to true - update its boundaries */
+    selection_recalc_bounds(selr);
+
+    return selr;
+}
+
 // C ref: nhlsel.c params_sel_2coords()
 /* function(selection, x1,y1, x2,y2) */
 /* selection:function(x1,y1, x2,y2) */
@@ -1094,6 +1144,9 @@ export function l_selection_register(L) {
     selection_metatable.__index = selection;
     selection_metatable.__band = l_selection_and;
     selection_metatable.__bor = l_selection_or;
+    selection_metatable.__bxor = l_selection_xor;
+    selection_metatable.__add = l_selection_or; /* this aliases + to be the same as | */
+    selection_metatable.__sub = l_selection_sub;
 
     /* metatable.__index points at the selection method table:
        sel:fn(...) is selection.fn(sel, ...) */

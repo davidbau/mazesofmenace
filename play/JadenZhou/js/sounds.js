@@ -736,6 +736,30 @@ async function domonnoise(mtmp) {
     case MS_MUMBLE:
         pline_msg = "mumbles incomprehensibly.";
         break;
+    case 31 /* MS_SEDUCE */: {
+        let swval;
+
+        if (true /* SYSOPT_SEDUCE: on in the recorded games */) {
+            if (ptr.mlet !== S_NYMPH_SN
+                && (could_seduce_sn(mtmp, game.youmonst, null) === 1)) {
+                await doseduce_sn(mtmp);
+                break;
+            }
+            swval = ((poly_gender_sn() !== (mtmp.female ? 1 : 0)) ? rn2(3) : 0);
+        } else
+            swval = ((poly_gender_sn() === 0) ? rn2(3) : 0);
+        switch (swval) {
+        case 2:
+            verbl_msg = "Hello, sailor.";
+            break;
+        case 1:
+            pline_msg = "comes on to you.";
+            break;
+        default:
+            pline_msg = "cajoles you.";
+        }
+        break;
+    }
     default:
         /* the talking monsters (MS_TRUMPET's wake_nearto(), MS_SHRIEK's
            aggravate(), MS_BONES, MS_HUMANOID, shopkeepers, priests, the
@@ -887,4 +911,18 @@ async function dochat() {
         return ECMD_OK;
     }
     return await domonnoise(mtmp);
+}
+
+import { S_NYMPH as S_NYMPH_SN } from './monsters.js';
+import { could_seduce as could_seduce_sn, doseduce as doseduce_sn } from './mhitu.js';
+import { is_neuter as is_neuter_sn } from './mondata.js';
+import { M1_HUMANOID as M1_HUMANOID_SN } from './monsters.js';
+/* C ref: mondata.h humanoid() */
+function humanoid_sn(ptr) { return (ptr.mflags1 & M1_HUMANOID_SN) !== 0; }
+/* C ref: polyself.c poly_gender() -- gender of polymorphed player;
+   0/1=same meaning as flags.female, 2=none */
+function poly_gender_sn() {
+    if (is_neuter_sn(game.youmonst.data) || !humanoid_sn(game.youmonst.data))
+        return 2;
+    return game.flags.female ? 1 : 0;
 }

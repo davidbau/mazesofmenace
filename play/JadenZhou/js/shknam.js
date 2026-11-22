@@ -29,6 +29,8 @@ import { ledger_no, Is_special, assign_level, on_level, depth } from './dungeon.
 import { newsym } from './display.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { rloc_mklev } from './teleport.js';
+import { shop_keeper } from './shk.js';
+import { mongone } from './mon.js';
 
 // C ref: mkroom.h VEGETARIAN_CLASS
 const VEGETARIAN_CLASS = MAXOCLASSES + 1;
@@ -469,8 +471,10 @@ export function stock_room(shp_indx, sroom) {
      */
 
     /* Hack for Orcus's level: it's a ghost town, get rid of shopkeepers */
-    if (on_level(game.u.uz, game.dungeon_topology.d_orcus_level))
-        throw new Error('stock_room(): mongone() of the Orcus town shopkeeper not ported yet');
+    if (on_level(game.u.uz, game.dungeon_topology.d_orcus_level)) {
+        const mtmp = shop_keeper(rmno);
+        mongone(mtmp);
+    }
 
     game.level.flags.has_shop = TRUE;
 }
@@ -501,6 +505,28 @@ function stock_room_goodpos(sroom, rmno, sh, sx, sy) {
 
 // C ref: shknam.c veggy_item()
 /* is 'obj' (or, if obj is null, 'otyp') vegetarian food? */
+// C ref: shknam.c saleable()
+/* does shkp's shop stock this kind of item? */
+export function saleable(shkp, obj) {
+    const shp_indx = shkp.mextra.eshk.shoptype - SHOPBASE;
+    const shp = shtypes[shp_indx];
+
+    if (shp.symb === RANDOM_CLASS)
+        return true;
+    for (let i = 0; i < shtypes[0].iprobs.length && shp.iprobs[i].iprob; i++) {
+        /* pseudo-class needs special handling */
+        if (shp.iprobs[i].itype === VEGETARIAN_CLASS) {
+            if (veggy_item(obj, 0))
+                return true;
+        } else if ((shp.iprobs[i].itype < 0)
+                       ? shp.iprobs[i].itype === -obj.otyp
+                       : shp.iprobs[i].itype === obj.oclass)
+            return true;
+    }
+    /* not found */
+    return false;
+}
+
 export function veggy_item(obj, otyp /* used iff obj is null */) {
     let corpsenm;
     let oclass;

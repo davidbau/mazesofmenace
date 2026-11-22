@@ -16,16 +16,17 @@ import { You_hear } from './sounds.js';
 import { sellobj } from './shk.js';
 import { olfaction } from './mondata.js';
 import { ACH_HELL, ACH_MINE, ACH_SOKO, ACH_BGRM } from './const.js';
+import { Is_rogue_level, ROGUESET, PRIMARYSET } from './const.js';
 import {
     depth, dunlev, dunlevs_in_dungeon, ledger_no, on_level, assign_level,
     In_hell, builds_up, at_dgn_entrance, level_difficulty,
     In_W_tower, recalc_mapseen, recbranch_mapseen, remdun_mapseen,
     print_level_annotation,
 } from './dungeon.js';
-import { In_endgame, Is_waterlevel, Is_airlevel, IS_ALTAR, ROOM, CORR } from './const.js';
+import { In_endgame, Is_waterlevel, Is_airlevel, IS_ALTAR, ROOM, CORR, MAGIC_PORTAL, Is_qstart } from './const.js';
 import * as O from './objects.js';
 import { is_pool, is_lava, u_at } from './makemon.js';
-import { t_at, is_pit, is_hole, set_utrap } from './trap.js';
+import { t_at, is_pit, is_hole, set_utrap, seetrap } from './trap.js';
 import { cansee } from './vision.js';
 import { PM_TOURIST, PM_ROGUE } from './monsters.js';
 import { onquest, ok_to_quest } from './quest.js';
@@ -57,7 +58,10 @@ import { MENU_FULL, MENU_TRADITIONAL, MENU_COMBINATION, UNPAID_TYPES,
          USE_INVLET, INVORDER_SORT } from './const.js';
 import { GETOBJ_PROMPT, GETOBJ_ALLOWCNT, ECMD_FAIL, ECMD_TIME, W_ARMOR,
          W_ACCESSORY, W_SADDLE, IS_SINK, LOST_DROPPED } from './const.js';
-import { welded, setuwep, setuqwep, setuswapwep } from './wield.js';
+import { welded, setuwep, setuqwep, setuswapwep, bimanual } from './wield.js';
+import { Norep } from './display.js';
+import { makeplural } from './objnam.js';
+import { HAND } from './const.js';
 import { placebc, unplacebc, drag_down, ballrelease, drop_ball } from './ball.js';
 import { You, newsym, stairway_at } from './display.js';
 import { can_reach_floor } from './engrave.js';
@@ -558,8 +562,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* if (cant_go_back): discarding unreachable levels is only reachable
        via the endgame/tutorial entry, which throws above */
 
-    /* Is_rogue_level(newlevel) || Is_rogue_level(&u.uz): assign_graphics():
-       the rogue level isn't ported yet */
+    if (Is_rogue_level(newlevel) || Is_rogue_level(u.uz))
+        game.currentgraphics = Is_rogue_level(newlevel) ? ROGUESET : PRIMARYSET; /* assign_graphics() */
     /* check_gold_symbol(): display only */
     /* record this level transition as a potential seen branch unless using
      * some non-standard means of transportation (level teleport).
@@ -621,7 +625,30 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     if (portal && !In_endgame(u.uz)) {
         /* find the portal on the new level */
-        throw new Error('goto_level(): portal arrival not ported yet');
+        let ttrap = null;
+
+        for (const t of (g.level.traps || []))
+            if (t.ttyp === MAGIC_PORTAL) {
+                ttrap = t;
+                break;
+            }
+
+        if (!ttrap) {
+            if (u.uevent.qexpelled
+                && (Is_qstart(u.uz0) || Is_qstart(u.uz))) {
+                /* we're coming back from or going into the quest home level,
+                   after already getting expelled once. The portal back
+                   doesn't exist anymore - see expulsion(). */
+                u_on_rndspot(0);
+            } else {
+                /* !iflags.debug_fuzzer */
+                console.error('impossible: goto_level: no corresponding portal!');
+                u_on_rndspot(0);
+            }
+        } else {
+            seetrap(ttrap);
+            u_on_newpos(ttrap.tx, ttrap.ty);
+        }
     } else if (at_stairs && !In_endgame(u.uz)) {
         if (up) {
             const stway = stairway_find_from(u.uz0, g.at_ladder);
@@ -770,7 +797,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     } else {
         if (new_ && topo.d_rogue_level?.dlevel
             && on_level(u.uz, topo.d_rogue_level)) { /* Is_rogue_level() */
-            throw new Error('goto_level(): the rogue level not ported yet');
+            await You("enter what seems to be an older, more primitive world.");
         } else if (new_ && topo.d_bigroom_level?.dlevel
                    && on_level(u.uz, topo.d_bigroom_level)) { /* Is_bigroom() */
             record_achievement(ACH_BGRM);
@@ -1082,7 +1109,7 @@ async function menu_drop(retry) {
 
 /* C ref: cmd.c reset_occupations() -- reset_remarm(), reset_pick(),
    reset_trapset(): none of their occupations is ported yet */
-function reset_occupations() {
+export function reset_occupations() {
 }
 
 // C ref: do.c canletgo() -- some common tests when trying to drop or
@@ -1090,12 +1117,19 @@ function reset_occupations() {
 export async function canletgo(obj, word) {
     if (obj.owornmask & (W_ARMOR | W_ACCESSORY)) {
         if (word)
-            throw new Error('canletgo(): Norep() not ported yet');
+            await Norep(`You cannot ${word} something you are wearing.`);
         return false;
     }
     if (obj === game.uwep && welded(game.uwep)) {
-        if (word)
-            throw new Error('canletgo(): Norep() not ported yet');
+        /* no weldmsg(), so uwep->bknown might become set silently
+           if word is "" */
+        if (word) {
+            let hand = body_part(HAND);
+
+            if (bimanual(game.uwep))
+                hand = makeplural(hand);
+            await Norep(`You cannot ${word} something welded to your ${hand}.`);
+        }
         return false;
     }
     if (obj.otyp === O.LOADSTONE && obj.cursed) {

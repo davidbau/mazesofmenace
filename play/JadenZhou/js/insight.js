@@ -488,9 +488,10 @@ export function P_NAME(type) {
 
 /* C ref: drawing.c def_oc_syms[].name */
 const def_oc_names = [
-    "illegal objects", "weapon", "armor", "ring", "amulet", "tool", "food",
-    "potion", "scroll", "spellbook", "wand", "coin", "gem",
-    "boulder or statue", "iron ball", "iron chain", "venom",
+    "", /* placeholder for the "random class" */
+    "illegal objects", "weapons", "armor", "rings", "amulets", "tools",
+    "food", "potions", "scrolls", "spellbooks", "wands", "coins", "rocks",
+    "large stones", "iron balls", "chains", "venoms",
 ];
 
 // C ref: weapon.c weapon_descr()
@@ -1543,7 +1544,119 @@ function weapon_insight(final) {
                 you_are(buf, "");
 
         } else { /* two-weapon */
-            throw new Error('weapon_insight(): two-weapon skill insight not ported yet');
+            const also_ = "also ";
+            let pfx, sfx, twobuf;
+            let also = "", also2 = "", also3 = null, verb_present, verb_past;
+            const wtype2 = weapon_type(game.uswapwep),
+                sklvl2 = P_SKILL(wtype2);
+            let twoskl = P_SKILL(P_TWO_WEAPON_COMBAT);
+            const hav2 = (sklvl2 !== P_UNSKILLED && sklvl2 !== P_SKILLED);
+
+            /* normally hero must have access to two-weapon skill in
+               order to initiate u.twoweap, but not if polymorphed into
+               a form which has multiple weapon attacks, so we need to
+               avoid getting bitten by unexpected skill value */
+            if (twoskl === P_ISRESTRICTED) {
+                twoskl = P_UNSKILLED;
+                /* restricted is the same as unskilled as far as bonus
+                   or penalty goes, and it isn't ordinarily seen so
+                   skill_level_name() returns "Unknown" for it */
+                twobuf = "restricted";
+            } else {
+                twobuf = skill_level_name(P_TWO_WEAPON_COMBAT).toLowerCase();
+            }
+
+            /* keep buf[] from above in case skill levels match */
+            pfx = sfx = "";
+            if (twoskl < sklvl) {
+                /* twoskil won't be restricted so sklvl is at least basic */
+                pfx = `Your skill in ${skill_name(wtype)} `;
+                sfx = ` limited by being ${twobuf} with two weapons`;
+                also = also_;
+            } else if (twoskl > sklvl) {
+                /* sklvl might be restricted */
+                pfx = "Your two weapon skill ";
+                sfx = " limited by ";
+                if (sklvl > P_ISRESTRICTED)
+                    sfx += `being ${sklvlbuf}`;
+                else
+                    sfx += "having no skill";
+                sfx += ` with ${skill_name(wtype)}`;
+                also2 = also_;
+            } else {
+                buf += " and two weapons";
+                also3 = also_;
+            }
+            if (pfx)
+                enl_msg(pfx, "is", "was", sfx, "");
+            else if (hav)
+                you_have(buf, "");
+            else
+                you_are(buf, "");
+
+            /* skip comparison between secondary and two-weapons if it is
+               identical to the comparison between primary and twoweap */
+            if (wtype2 !== wtype) {
+                const sknambuf2 = skill_name(wtype2);
+                const sklvlbuf2 = skill_level_name(wtype2).toLowerCase();
+                verb_present = "is", verb_past = "was";
+                pfx = sfx = buf = "";
+                if (twoskl < sklvl2) {
+                    /* twoskil is at least unskilled, sklvl2 at least basic */
+                    pfx = `Your skill in ${sknambuf2} `;
+                    sfx = ` ${also}limited by being ${twobuf} with two weapons`;
+                } else if (twoskl > sklvl2) {
+                    /* sklvl2 might be restricted */
+                    pfx = "Your two weapon skill ";
+                    sfx = ` ${also2}limited by `;
+                    if (sklvl2 > P_ISRESTRICTED)
+                        sfx += `being ${sklvlbuf2}`;
+                    else
+                        sfx += "having no skill";
+                    sfx += ` with ${sknambuf2}`;
+                } else {
+                    /* equal; two-weapon is at least unskilled, so sklvl2 is
+                       too; "you [also] have basic/expert/master/grand-master
+                       skill with <skill>" or "you [also] are unskilled/
+                       skilled in <skill> */
+                    buf = `${sklvlbuf2} ${hav2 ? "skill with" : "in"} ${sknambuf2}`;
+                    buf += " and two weapons";
+                    if (also3) {
+                        pfx = "You also ";
+                        sfx = ` ${buf}`, buf = "";
+                        verb_present = hav2 ? "have" : "are";
+                        verb_past = hav2 ? "had" : "were";
+                    }
+                }
+                if (pfx)
+                    enl_msg(pfx, verb_present, verb_past, sfx, "");
+                else if (hav2)
+                    you_have(buf, "");
+                else
+                    you_are(buf, "");
+            } /* wtype2 != wtype */
+
+            /* if training and available skill credits already allow
+               #enhance for any of primary, secondary, or two-weapon,
+               tell the player; avoid attempting figure out whether
+               spending skill credits enhancing one might make either
+               or both of the others become ineligible for enhancement */
+            const a1 = can_advance(wtype, false);
+            const a2 = (wtype2 !== wtype) ? can_advance(wtype2, false) : false;
+            const ab = can_advance(P_TWO_WEAPON_COMBAT, false);
+            if (a1 || a2 || ab) {
+                const also_wik_ = " and also with ";
+
+                sfx = ` skill${((a1 ? 1 : 0) + (a2 ? 1 : 0) + (ab ? 1 : 0) > 1) ? "s" : ""} with ${
+                    a1 ? skill_name(wtype) : ""}${
+                    ((a1 && a2 && ab) ? ", "
+                     : (a1 && (a2 || ab)) ? also_wik_ : "")}${
+                    a2 ? skill_name(wtype2) : ""}${
+                    ((a1 && a2 && ab) ? ", and "
+                     : (a2 && ab) ? also_wik_ : "")}${
+                    ab ? "two weapons" : ""}`;
+                enl_msg(You_, "can enhance", "could have enhanced", sfx, "");
+            }
         }
     } /* skill applies */
 }

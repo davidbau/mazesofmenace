@@ -17,6 +17,7 @@ import {
     SYM_BOULDER,
 } from './const.js';
 import { game } from './gstate.js';
+import { reset_glyphmap } from './display_glyphmap.js';
 import { g_putch_graphics, nomux_g_putch_byte } from './termcap.js';
 import { isDefaultSymsetName } from './files.js';
 import {
@@ -708,14 +709,14 @@ export function switch_symbols(state = game, useOverrides = true) {
 }
 
 // C ref: symbols.c assign_graphics().  A level change selects the primary or
-// Rogue symbol table, then rebuilds the active display symbols.  The JavaScript
-// renderer resolves glyphs when it draws them, so reset_glyphmap() has no
-// separate table to rebuild here.
+// Rogue symbol table, then rebuilds the active display symbols and, at 249,
+// the glyph map (reset_glyphmap(gm_symchange)).
 export function assign_graphics(whichSet, state = game) {
     graphicsState(state);
     state.gc.currentgraphics = whichSet === ROGUESET
         ? ROGUESET : PRIMARYSET;
     showSlotSymbols(state.gc.currentgraphics, state);
+    reset_glyphmap(state);
 }
 
 export function initialize_symbols_from_options(options, state = game) {
@@ -749,6 +750,11 @@ export function replay_symbol_operations(options, state = game) {
             // Both SYMBOLS and ROGUESYMBOLS call switch_symbols(TRUE) when
             // parsesymbols() succeeds.
             if (operation.switchSymbols !== false) switch_symbols(state, true);
+            // options.c parseoptions() (663-666): an S_ assignment in an
+            // OPTIONS line also runs botl.c check_gold_symbol(), against
+            // the symbols the lines before it have left displayed.
+            if (operation.switchSymbols !== false)
+                operation.afterSwitch?.(state);
             break;
         case 'glyph-customization': {
             const set = operation.set === 'rogue' ? ROGUESET : PRIMARYSET;

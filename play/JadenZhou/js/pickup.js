@@ -44,7 +44,7 @@ import { in_rooms } from './hack.js';
 import { SHOPBASE } from './const.js';
 import { money_cnt } from './u_init.js';
 import { max_capacity, calc_capacity, inv_cnt } from './hack.js';
-import { weight, splitobj, obj_extract_self } from './mkobj.js';
+import { weight, splitobj, obj_extract_self, unsplitobj } from './mkobj.js';
 import { doname, otense } from './objnam.js';
 import { There, newsym, newsym_force } from './display.js';
 import { carrying, merge_choice, addinv, prinv, reset_justpicked,
@@ -2159,17 +2159,6 @@ function sellobj_state(deliberate) {
     game.sell_response = (deliberate !== SELL_NORMAL) ? '\0' : 'a';
     game.sell_how = deliberate;
     game.auto_credit = false;
-}
-
-// C ref: mkobj.c unsplitobj() -- only the "not split" result is ported
-function unsplitobj(obj) {
-    const os = game.context.objsplit || {};
-    if (obj.where !== 'OBJ_INVENT' && obj.where !== 'OBJ_MINVENT'
-        && obj.where !== 'OBJ_CONTAINED')
-        return null;
-    if (obj.o_id === os.child_oid || obj.o_id === os.parent_oid)
-        throw new Error('unsplitobj(): rejoining a split stack not ported yet');
-    return null;
 }
 
 // C ref: pickup.c in_container()

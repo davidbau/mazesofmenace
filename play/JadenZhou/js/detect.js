@@ -33,7 +33,9 @@ import { S_EEL, M1_HIDE, M1_CONCEAL } from './monsters.js';
 // C ref: mondata.h is_hider(), hides_under()
 function is_hider(ptr) { return (ptr.mflags1 & M1_HIDE) !== 0; }
 function hides_under(ptr) { return (ptr.mflags1 & M1_CONCEAL) !== 0; }
-import { t_at, STATUE_TRAP } from './trap.js';
+import { t_at, STATUE_TRAP, trapname as trapname_ft } from './trap.js';
+import { an as an_ft } from './objnam.js';
+import { Hallucination as Hallucination_ft } from './display.js';
 import {
     A_WIS, SDOOR, SCORR, DOOR, CORR, WM_MASK, D_NODOOR, D_CLOSED, D_LOCKED,
     BLINDED, isok, Is_rogue_level,
@@ -190,16 +192,40 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
                                created by the JS port yet */
                             throw new Error('dosearch0(): activate_statue_trap() not ported yet');
                         } else {
-                            /* find_trap(): the "You find <trap>." message
-                               isn't ported yet */
-                            trap.tseen = 1;
-                            newsym(x, y);
+                            await find_trap(trap);
                         }
                     }
                 }
             }
     }
     return 1;
+}
+
+// C ref: detect.c find_trap()
+async function find_trap(trap) {
+    trap.tseen = 1;
+    exercise(A_WIS, true);
+    /* feel_newsym(trap->tx, trap->ty) */
+    if (Blind())
+        throw new Error('find_trap(): feel_location() not ported yet');
+    newsym(trap.tx, trap.ty);
+
+    /* The "Hallucination ||" is to preserve 3.6.1 behavior, but this
+       behavior might need a rework in the hallucination case
+       (e.g. to not prompt if any trap glyph appears on the square). */
+    const rg = game.level.at(trap.tx, trap.ty).remembered_glyph;
+    const tg = trap_to_glyph(trap);
+    if (Hallucination_ft()
+        || !(rg && rg.trap && rg.ch === tg.ch && rg.color === tg.color)) {
+        /* There's too much clutter to see your find otherwise:
+           cls(); map_trap(trap, 1); display_self(); ...
+           display_nhwindow(WIN_MAP, TRUE); docrt(); */
+        throw new Error('find_trap(): showing a covered trap (display_nhwindow(WIN_MAP)) not ported yet');
+    }
+
+    /* set_msg_xy(trap->tx, trap->ty): only positions the message for
+       screen readers */
+    await pline(`You find ${an_ft(trapname_ft(trap.ttyp, false))}.`);
 }
 
 // C ref: detect.c dosearch() -- the 's' command

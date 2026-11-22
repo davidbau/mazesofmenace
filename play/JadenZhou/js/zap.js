@@ -23,7 +23,8 @@ import { mon_nam } from './do_name.js';
 import { resists_blnd, resists_blnd_by_arti } from './mondata.js';
 import { make_blinded } from './potion.js';
 import { body_part } from './insight.js';
-import { ARM } from './const.js';
+import { ARM, POLY_NOFLAGS } from './const.js';
+import { polyself } from './polyself.js';
 import { fall_asleep } from './timeout.js';
 import { monstseesu, monstunseesu } from './uhitm.js';
 import { bhit } from './dothrow.js';
@@ -129,37 +130,17 @@ export function learnwand(obj) {
 }
 
 // C ref: zap.c resist() -- monster mtmp resists the effect of an object
-// of class oclass, taking `damage' (halved if resisted); the synchronous C
+// of class oclass, taking `damage' (halved if resisted); a synchronous C
 // caller can't await killed()/monkilled(), so a fatal `damage' stops
-export function resist(mtmp, oclass, damage, tell) {
-    const r = resist_core(mtmp, oclass, damage, tell);
-    if (r.dead)
-        throw new Error('resist(): killing the monster (monkilled()/killed()) not ported yet');
-    return r.resisted;
-}
-
-// C ref: zap.c resist() -- for async callers: the fatal-damage path awaits
-// monkilled()/killed()
-export async function resist_async(mtmp, oclass, damage, tell) {
-    const r = resist_core(mtmp, oclass, damage, tell);
-    if (r.dead) {
-        if (game.m_using)
-            await monkilled(mtmp, "", AD_RBRE);
-        else
-            await killed(mtmp);
-    }
-    return r.resisted;
-}
-
-/* resist() up to the DEADMONSTER() check */
-function resist_core(mtmp, oclass, damage, tell) {
+// unless the caller (resist_async()) passes deadout to do the killing
+export function resist(mtmp, oclass, damage, tell, deadout = null) {
     let resisted;
     let alev, dlev;
 
     /* fake players always pass resistance test against Conflict
        (this doesn't guarantee that they're never affected by it) */
     if (oclass === RING_CLASS && !damage && !tell && is_mplayer(mtmp.data))
-        return { resisted: 1, dead: false };
+        return 1;
 
     /* attack level */
     switch (oclass) {
@@ -198,12 +179,29 @@ function resist_core(mtmp, oclass, damage, tell) {
         damage = Math.trunc((damage + 1) / 2);
     }
 
-    let dead = false;
     if (damage) {
         mtmp.mhp -= damage;
-        dead = mtmp.mhp < 1; /* DEADMONSTER() */
+        if (mtmp.mhp < 1) { /* DEADMONSTER(mtmp) */
+            if (!deadout)
+                throw new Error('resist(): killing the monster (monkilled()/killed()) not ported yet');
+            deadout.dead = true;
+        }
     }
-    return { resisted: resisted ? 1 : 0, dead };
+    return resisted ? 1 : 0;
+}
+
+// C ref: zap.c resist() -- for async callers: the fatal-damage path awaits
+// monkilled()/killed()
+export async function resist_async(mtmp, oclass, damage, tell) {
+    const out = { dead: false };
+    const resisted = resist(mtmp, oclass, damage, tell, out);
+    if (out.dead) {
+        if (game.m_using)
+            await monkilled(mtmp, "", AD_RBRE);
+        else
+            await killed(mtmp);
+    }
+    return resisted;
 }
 
 // C ref: zap.c do_enlightenment_effect()
@@ -891,7 +889,7 @@ export async function dozap() {
 }
 
 // C ref: shk.c check_unpaid() -> check_unpaid_usage(otmp, FALSE)
-function check_unpaid(otmp) {
+export function check_unpaid(otmp) {
     if (!otmp.unpaid || !game.u.ushops || !game.u.ushops[0]
         || (otmp.spe <= 0 && objects[otmp.otyp].oc_charged))
         return;
@@ -904,10 +902,12 @@ function Sleep_resistance() {
     return !!(p.intrinsic || p.extrinsic);
 }
 
-// C ref: zap.c zapyourself() -- the cases sessions reach so far
+// C ref: zap.c zapyourself()
+/* you've zapped yourself with a wand or spell (or broken a wand) */
 export async function zapyourself(obj, ordinary) {
     let learn_it = false;
     let damage = 0;
+    let orig_dmg = 0; /* for passing to destroy_items() */
     const u = game.u;
 
     switch (obj.otyp) {
@@ -927,6 +927,164 @@ export async function zapyourself(obj, ordinary) {
             exercise(A_STR_ZY, false);
             monstunseesu(M_SEEN_MAGR_ZY);
         }
+        break;
+
+    case O_zy.WAN_LIGHTNING:
+        learn_it = true;
+        orig_dmg = d(12, 6);
+        if (!uhave_zp(SHOCK_RES)) { /* !Shock_resistance */
+            await You("shock yourself!");
+            damage = orig_dmg;
+            exercise(A_CON_ZP, false);
+            monstunseesu(M_SEEN_ELEC_ZP);
+        } else {
+            /* shieldeff(u.ux, u.uy) */
+            await You("zap yourself, but seem unharmed.");
+            monstseesu(M_SEEN_ELEC_ZP);
+            await ugolemeffects_zp(AD_ELEC, orig_dmg);
+        }
+        await destroy_items(game.youmonst, AD_ELEC, orig_dmg);
+        await flashburn(rnd(100), true);
+        break;
+
+    case O_zy.SPE_FIREBALL:
+        await You("explode a fireball on top of yourself!");
+        await explode(u.ux, u.uy, 11, d(6, 6), WAND_CLASS, EXPL_FIERY_ZP);
+        break;
+    case O_zy.WAN_FIRE:
+    case O_zy.FIRE_HORN:
+        learn_it = true;
+        orig_dmg = d(12, 6);
+        if (uhave_zp(FIRE_RES)) { /* Fire_resistance */
+            /* shieldeff(u.ux, u.uy) */
+            await You_feel("rather warm.");
+            monstseesu(M_SEEN_FIRE_ZP);
+            await ugolemeffects_zp(AD_FIRE, orig_dmg);
+        } else {
+            await pline("You've set yourself afire!");
+            damage = orig_dmg;
+            monstunseesu(M_SEEN_FIRE_ZP);
+        }
+        await burn_away_slime_zp();
+        await burnarmor_zp(game.youmonst);
+        await destroy_items(game.youmonst, AD_FIRE, orig_dmg);
+        await ignite_items_zp(game.invent);
+        break;
+
+    case O_zy.WAN_COLD:
+    case O_zy.SPE_CONE_OF_COLD:
+    case O_zy.FROST_HORN:
+        learn_it = true;
+        orig_dmg = d(12, 6);
+        if (uhave_zp(COLD_RES)) { /* Cold_resistance */
+            /* shieldeff(u.ux, u.uy) */
+            await You_feel("a little chill.");
+            monstseesu(M_SEEN_COLD_ZP);
+            await ugolemeffects_zp(AD_COLD, orig_dmg);
+        } else {
+            await You("imitate a popsicle!");
+            damage = orig_dmg;
+            monstunseesu(M_SEEN_COLD_ZP);
+        }
+        await destroy_items(game.youmonst, AD_COLD, orig_dmg);
+        break;
+
+    case O_zy.WAN_MAGIC_MISSILE:
+    case O_zy.SPE_MAGIC_MISSILE:
+        learn_it = true;
+        if (Antimagic_zp()) {
+            /* shieldeff(u.ux, u.uy) */
+            await pline_The("missiles bounce!");
+            monstseesu(M_SEEN_MAGR_ZY);
+        } else {
+            damage = d(4, 6);
+            await pline("Idiot!  You've shot yourself!");
+            monstunseesu(M_SEEN_MAGR_ZY);
+        }
+        break;
+
+    case O_zy.WAN_POLYMORPH:
+    case O_zy.SPE_POLYMORPH:
+        if (!uhave_zp(UNCHANGING_ZP)) { /* !Unchanging */
+            learn_it = true;
+            await polyself(POLY_NOFLAGS);
+        }
+        break;
+
+    case O_zy.WAN_CANCELLATION:
+    case O_zy.SPE_CANCELLATION:
+        throw new Error('zapyourself(): cancel_monst() not ported yet');
+
+    case O_zy.SPE_DRAIN_LIFE:
+        if (!uhave_zp(DRAIN_RES_ZP)) { /* !Drain_resistance */
+            learn_it = true; /* (no effect for spells...) */
+            await losexp_zp("life drainage");
+        }
+        damage = 0; /* No additional damage */
+        break;
+
+    case O_zy.WAN_MAKE_INVISIBLE: {
+        /* have to test before changing HInvis but must change
+         * HInvis before doing newsym().
+         */
+        const inv = u.uprops[INVIS_ZP];
+        const BInvis = !!inv.blocked;
+        const Invis = !!(inv.intrinsic || inv.extrinsic) && !BInvis;
+        const msg = !Invis && !Blind() && !BInvis;
+
+        if (BInvis && game.uarmc.otyp === O_zy.MUMMY_WRAPPING) {
+            /* A mummy wrapping absorbs it and protects you */
+            await You_feel(`rather itchy under ${yname_zp(game.uarmc)}.`);
+            break;
+        }
+        incr_itimeout_zp(INVIS_ZP, rn1(15, 31));
+        if (msg) {
+            learn_it = true;
+            newsym(u.ux, u.uy);
+            await self_invis_message_zp();
+        }
+        break;
+    }
+
+    case O_zy.WAN_SPEED_MONSTER:
+        /* no longer gives intrinsic, but gives very fast speed instead */
+        await speed_up_zp(rn1(25, 50));
+        learn_it = true;
+        break;
+
+    case WAN_SLEEP:
+    case SPE_SLEEP:
+        learn_it = true;
+        if (Sleep_resistance()) {
+            /* shieldeff(u.ux, u.uy): transient display only */
+            await You("don't feel sleepy!");
+            monstseesu(M_SEEN_SLEEP);
+        } else {
+            if (ordinary)
+                await pline_The("sleep ray hits you!");
+            else
+                await You("fall asleep!");
+            monstunseesu(M_SEEN_SLEEP);
+            await fall_asleep(-rnd(50), true);
+        }
+        break;
+
+    case O_zy.WAN_SLOW_MONSTER:
+    case O_zy.SPE_SLOW_MONSTER:
+        if (u.uprops[FAST_ZP].intrinsic & (TIMEOUT_ZP | INTRINSIC_ZP)) {
+            learn_it = true;
+            await u_slow_down_zp();
+        }
+        break;
+
+    case O_zy.WAN_TELEPORTATION:
+    case O_zy.SPE_TELEPORT_AWAY:
+        await tele_zp();
+        /* same criteria as when mounted (zap_steed) */
+        if ((uhave_zp(TELEPORT_CONTROL_ZP) && !u.uprops[STUNNED_ZP].intrinsic)
+            || !couldsee(u.ux0, u.uy0)
+            || ((u.ux - u.ux0) ** 2 + (u.uy - u.uy0) ** 2) >= 16) /* distu() */
+            learn_it = true;
         break;
 
     case O_zy.WAN_DEATH:
@@ -949,6 +1107,11 @@ export async function zapyourself(obj, ordinary) {
         await done_zy(DIED_ZY);
         break;
     }
+    case O_zy.WAN_UNDEAD_TURNING:
+    case O_zy.SPE_TURN_UNDEAD:
+        learn_it = true;
+        await unturn_you();
+        break;
     case O_zy.SPE_HEALING:
     case O_zy.SPE_EXTRA_HEALING:
         learn_it = true; /* (no effect for spells...) */
@@ -956,35 +1119,37 @@ export async function zapyourself(obj, ordinary) {
                         !!(obj.blessed || obj.otyp === O_zy.SPE_EXTRA_HEALING));
         await You_feel(`${obj.otyp === O_zy.SPE_EXTRA_HEALING ? "much " : ""}better.`);
         break;
-    case O_zy.EXPENSIVE_CAMERA:
+    case O_zy.WAN_LIGHT: /* (broken wand) */
+        /* assert( !ordinary ); */
+        damage = d(obj.spe, 25);
+        /*FALLTHRU*/
+    case O_zy.EXPENSIVE_CAMERA: // eslint-disable-line no-fallthrough
+        if (!damage)
+            damage = 5;
+        damage = await lightdamage(obj, ordinary, damage);
+        damage += rnd(25);
+        if (await flashburn(damage, false))
+            learn_it = true;
+        damage = 0; /* reset */
+        break;
+    case WAN_OPENING:
+    case SPE_KNOCK:
+        throw new Error('zapyourself(): release_hold()/boxlock_invent() not ported yet');
+    case WAN_LOCKING:
+    case SPE_WIZARD_LOCK:
+        throw new Error('zapyourself(): closeholdingtrap()/boxlock_invent() not ported yet');
     case O_zy.WAN_DIGGING:
     case O_zy.SPE_DIG:
     case O_zy.SPE_DETECT_UNSEEN:
-        break;
-    case WAN_SLEEP:
-    case SPE_SLEEP:
-        learn_it = true;
-        if (Sleep_resistance()) {
-            /* shieldeff(u.ux, u.uy): transient display only */
-            await You("don't feel sleepy!");
-            monstseesu(M_SEEN_SLEEP);
-        } else {
-            if (ordinary)
-                await pline_The("sleep ray hits you!");
-            else
-                await You("fall asleep!");
-            monstunseesu(M_SEEN_SLEEP);
-            await fall_asleep(-rnd(50), true);
-        }
-        break;
-
     case WAN_NOTHING:
         break;
-
-    case WAN_OPENING:
-    case WAN_LOCKING:
+    case WAN_PROBING:
+        throw new Error('zapyourself(): probe_objchain() not ported yet');
+    case O_zy.SPE_STONE_TO_FLESH:
+        throw new Error('zapyourself(): stone to flesh on yourself not ported yet');
     default:
-        throw new Error(`zapyourself(): object ${obj.otyp} self-zap not ported yet`);
+        /* impossible("zapyourself: object %d used?", obj->otyp) */
+        break;
     }
     /* if effect was observable then discover the wand type provided
        that the wand itself has been seen */
@@ -1098,6 +1263,18 @@ function adtyp_to_prop(dmgtyp) {
         break;
     }
     return 0; /* prop_types start at 1 */
+}
+
+// C ref: zap.c inventory_resistance_check()
+/* Rolls to see whether an object in inventory resists damage from the
+   given damage type, due to an equipped item protecting it. */
+export function inventory_resistance_check(dmgtyp) {
+    const prob = u_adtyp_resistance_obj(dmgtyp);
+
+    if (!prob)
+        return false;
+
+    return rn2(100) < prob;
 }
 
 // C ref: zap.c u_adtyp_resistance_obj()
@@ -1225,7 +1402,7 @@ export async function miss(str, mtmp) {
 /* C ref: zap.c ZT_* -- zap types (AD_foo - 1) */
 const ZT_MAGIC_MISSILE = 0, ZT_FIRE = 1, ZT_COLD = 2, ZT_SLEEP = 3,
     ZT_DEATH = 4, ZT_LIGHTNING = 5, ZT_POISON_GAS = 6, ZT_ACID = 7;
-void ZT_MAGIC_MISSILE; void ZT_SLEEP;
+function ZT_WAND(x) { return x; }
 function ZT_SPELL(x) { return 10 + x; }
 function ZT_BREATH(x) { return 20 + x; }
 /* C ref: zap.c is_hero_spell() */
@@ -1308,9 +1485,7 @@ function bounce_dir(sx, sy, dd, bounceback) {
 // against armor class `ac'?
 function zap_hit(ac, type) { /* either hero cast spell type or 0 */
     const chance = rn2(20);
-    if (type)
-        throw new Error('zap_hit(): spell_hit_bonus() not ported yet');
-    const spell_bonus = 0;
+    const spell_bonus = type ? spell_hit_bonus(type) : 0;
 
     /* small chance for naked target to avoid being hit */
     if (!chance)
@@ -1320,6 +1495,826 @@ function zap_hit(ac, type) { /* either hero cast spell type or 0 */
     ac = AC_VALUE(ac);
 
     return (3 - chance < ac + spell_bonus);
+}
+
+// C ref: zap.c spell_damage_bonus()
+/* adjust damage of a hero's spell by Int and experience level */
+function spell_damage_bonus(
+    dmg) { /* base amount to be adjusted by bonus or penalty */
+    const intell = ACURR_ZP(A_INT_ZP);
+
+    /* Punish low intelligence before low level else low intelligence
+       gets punished only when high level */
+    if (intell <= 9) {
+        /* -3 penalty, but never reduce combined amount below 1
+           (if dmg is 0 for some reason, we're careful to leave it there) */
+        if (dmg > 1)
+            dmg = (dmg <= 3) ? 1 : dmg - 3;
+    } else if (intell <= 13 || game.u.ulevel < 5)
+        ; /* no bonus or penalty; dmg remains same */
+    else if (intell <= 18)
+        dmg += 1;
+    else if (intell <= 24 || game.u.ulevel < 14)
+        dmg += 2;
+    else
+        dmg += 3; /* Int 25 */
+
+    return dmg;
+}
+
+// C ref: zap.c spell_hit_bonus()
+/*
+ * Generate the to-hit bonus for a spell.  Based on the hero's skill in
+ * spell class and dexterity.
+ */
+function spell_hit_bonus(skill) {
+    let hit_bon = 0;
+    const dex = ACURR_ZP(A_DEX_ZP);
+
+    switch (P_SKILL_ZP(spell_skilltype_zp(skill))) {
+    case P_ISRESTRICTED_ZP:
+    case P_UNSKILLED_ZP:
+        hit_bon = -4;
+        break;
+    case P_BASIC_ZP:
+        hit_bon = 0;
+        break;
+    case P_SKILLED_ZP:
+        hit_bon = 2;
+        break;
+    case P_EXPERT_ZP:
+        hit_bon = 3;
+        break;
+    }
+
+    if (dex < 4)
+        hit_bon -= 3;
+    else if (dex < 6)
+        hit_bon -= 2;
+    else if (dex < 8)
+        hit_bon -= 1;
+    else if (dex < 14)
+        /* Will change when print stuff below removed */
+        hit_bon -= 0;
+    else
+        /* Even increment for dexterous heroes (see weapon.c abon) */
+        hit_bon += dex - 14;
+
+    return hit_bon;
+}
+
+// C ref: zap.c zhitm()
+/* returns damage to mon */
+async function zhitm(
+    mon,     /* monster being hit */
+    type,    /* zap or breath type */
+    nd,      /* number of hit dice to use */
+    ootmp) { /* to return worn armor for caller to disintegrate */
+    let tmp = 0, orig_dmg = 0; /* damage amount */
+    const damgtype = zaptype(type) % 10;
+    let sho_shieldeff = false;
+    const spellcaster = is_hero_spell(type); /* maybe get a bonus! */
+
+    ootmp.v = null;
+    switch (damgtype) {
+    case ZT_MAGIC_MISSILE:
+        if (resists_magm_zp(mon) || defended_zp(mon, AD_MAGM)) {
+            sho_shieldeff = true;
+            break;
+        }
+        tmp = d(nd, 6);
+        if (spellcaster)
+            tmp = spell_damage_bonus(tmp);
+        break;
+    case ZT_FIRE:
+        if (resists_fire_zp(mon) || defended_zp(mon, AD_FIRE)) {
+            sho_shieldeff = true;
+            break;
+        }
+        tmp = d(nd, 6);
+        if (spellcaster)
+            tmp = spell_damage_bonus(tmp);
+        orig_dmg = tmp; /* includes spell bonus but not monster vuln to fire */
+        if (resists_cold_zp(mon))
+            tmp += 7;
+        if (await burnarmor_zp(mon)) {
+            if (!rn2(3)) {
+                tmp += await destroy_items(mon, AD_FIRE, orig_dmg);
+                await ignite_items_zp(mon.minvent);
+            }
+        }
+        break;
+    case ZT_COLD:
+        if (resists_cold_zp(mon) || defended_zp(mon, AD_COLD)) {
+            sho_shieldeff = true;
+            break;
+        }
+        tmp = d(nd, 6);
+        if (spellcaster)
+            tmp = spell_damage_bonus(tmp);
+        orig_dmg = tmp; /* includes spell bonus but not monster vuln to cold */
+        if (resists_fire_zp(mon))
+            tmp += d(nd, 3);
+        if (!rn2(3))
+            tmp += await destroy_items(mon, AD_COLD, orig_dmg);
+        break;
+    case ZT_SLEEP:
+        /* resistance and shield effect and revealing concealed mimic are
+           handled by sleep_monst() */
+        tmp = 0;
+        sleep_monst_zp(mon, d(nd, 25),
+                       type === ZT_WAND(ZT_SLEEP) ? WAND_CLASS : 0);
+        break;
+    case ZT_DEATH:                                   /* death/disintegration */
+        if (Math.abs(type) !== ZT_BREATH(ZT_DEATH)) { /* death */
+            if (mon.data === mons_zy[PM_DEATH_ZP]) {
+                healmon_zp(mon, Math.trunc(mon.mhpmax * 3 / 2),
+                           Math.trunc(mon.mhpmax / 2));
+                if (mon.mhpmax >= MAGIC_COOKIE)
+                    mon.mhpmax = MAGIC_COOKIE - 1;
+                tmp = 0;
+                break;
+            }
+            if (nonliving_zy(mon.data) || is_demon_zp(mon.data)
+                || is_vampshifter_zp(mon) || resists_magm_zp(mon)) {
+                /* similar to player */
+                sho_shieldeff = true;
+                break;
+            }
+            type = -1; /* so they don't get saving throws */
+        } else {
+            let otmp2;
+
+            if (resists_disint_zp(mon) || defended_zp(mon, AD_DISN)) {
+                sho_shieldeff = true;
+            } else if (mon.misc_worn_check & W_ARMS) {
+                /* destroy shield; victim survives */
+                ootmp.v = which_armor_zp(mon, W_ARMS);
+            } else if (mon.misc_worn_check & W_ARM) {
+                /* destroy suit, also cloak if present */
+                ootmp.v = which_armor_zp(mon, W_ARM);
+                if ((otmp2 = which_armor_zp(mon, W_ARMC)) != null)
+                    m_useup(mon, otmp2);
+            } else {
+                /* no suit, victim dies; destroy cloak
+                   and shirt now in case target gets life-saved */
+                tmp = MAGIC_COOKIE;
+                if ((otmp2 = which_armor_zp(mon, W_ARMC)) != null)
+                    m_useup(mon, otmp2);
+                if ((otmp2 = which_armor_zp(mon, W_ARMU)) != null)
+                    m_useup(mon, otmp2);
+            }
+            type = -1; /* no saving throw wanted */
+            break;     /* not ordinary damage */
+        }
+        tmp = mon.mhp + 1;
+        break;
+    case ZT_LIGHTNING:
+        tmp = d(nd, 6);
+        if (spellcaster)
+            tmp = spell_damage_bonus(tmp);
+        orig_dmg = tmp;
+        if (resists_elec_zp(mon) || defended_zp(mon, AD_ELEC)) {
+            sho_shieldeff = true;
+            tmp = 0;
+            /* can still blind the monster */
+        }
+        if (!resists_blnd(mon)
+            && !(type > 0 && engulfing_u_zp(mon))
+            && nd > 2) {
+            /* sufficiently powerful lightning blinds monsters */
+            const rnd_tmp = rnd(50);
+            mon.mcansee = 0;
+            if (((mon.mblinded || 0) + rnd_tmp) > 127)
+                mon.mblinded = 127;
+            else
+                mon.mblinded = (mon.mblinded || 0) + rnd_tmp;
+        }
+        if (!rn2(3))
+            tmp += await destroy_items(mon, AD_ELEC, orig_dmg);
+        break;
+    case ZT_POISON_GAS:
+        if (resists_poison_zp(mon) || defended_zp(mon, AD_DRST_ZP)) {
+            sho_shieldeff = true;
+            break;
+        }
+        tmp = d(nd, 6);
+        break;
+    case ZT_ACID:
+        if (resists_acid_zp(mon) || defended_zp(mon, AD_ACID)) {
+            sho_shieldeff = true;
+            break;
+        }
+        tmp = d(nd, 6);
+        if (!rn2(6))
+            await acid_damage_zp(mon.mw); /* MON_WEP(mon) */
+        if (!rn2(6))
+            await erode_armor_zp(mon, ERODE_CORRODE_ZP);
+        break;
+    }
+    /* if (sho_shieldeff) shieldeff(mon->mx, mon->my): transient display */
+    void sho_shieldeff;
+    if (is_hero_spell(type)
+        && (game.urole.mnum === PM_KNIGHT_ZP && game.u.uhave?.questart))
+        tmp *= 2;
+    if (tmp > 0 && type >= 0
+        && resist(mon, type < ZT_SPELL(0) ? WAND_CLASS : 0, 0, NOTELL_ZP))
+        tmp = Math.trunc(tmp / 2);
+    if (tmp < 0)
+        tmp = 0; /* don't allow negative damage */
+    mon.mhp -= tmp;
+    return tmp;
+}
+
+// C ref: zap.c zhitu()
+async function zhitu(
+    type, nd,
+    fltxt,
+    sx, sy) {
+    const g = game;
+    const u = g.u;
+    let dam = 0;
+    const abstyp = zaptype(type);
+    let orig_dam = 0;
+    void sx; void sy;
+
+    switch (abstyp % 10) {
+    case ZT_MAGIC_MISSILE:
+        if (Antimagic_zp()) {
+            /* shieldeff(sx, sy): transient display only */
+            await pline_The("missiles bounce off!");
+            monstseesu(M_SEEN_MAGR_ZY);
+        } else {
+            dam = d(nd, 6);
+            exercise(A_STR, false);
+            monstunseesu(M_SEEN_MAGR_ZY);
+        }
+        break;
+    case ZT_FIRE:
+        orig_dam = d(nd, 6);
+        if (uhave_zp(FIRE_RES)) { /* Fire_resistance */
+            /* shieldeff(sx, sy) */
+            await You("don't feel hot!");
+            monstseesu(M_SEEN_FIRE_ZP);
+            await ugolemeffects_zp(AD_FIRE, orig_dam);
+        } else {
+            dam = orig_dam;
+            monstunseesu(M_SEEN_FIRE_ZP);
+        }
+        await burn_away_slime_zp();
+        if (await burnarmor_zp(g.youmonst)) { /* "body hit" */
+            if (!rn2(3))
+                await destroy_items(g.youmonst, AD_FIRE, orig_dam);
+            if (!rn2(3))
+                await ignite_items_zp(g.invent);
+        }
+        break;
+    case ZT_COLD:
+        orig_dam = d(nd, 6);
+        if (uhave_zp(COLD_RES)) { /* Cold_resistance */
+            /* shieldeff(sx, sy) */
+            await You("don't feel cold.");
+            monstseesu(M_SEEN_COLD_ZP);
+            await ugolemeffects_zp(AD_COLD, orig_dam);
+        } else {
+            dam = orig_dam;
+            monstunseesu(M_SEEN_COLD_ZP);
+        }
+        if (!rn2(3))
+            await destroy_items(g.youmonst, AD_COLD, orig_dam);
+        break;
+    case ZT_SLEEP:
+        if (Sleep_resistance()) {
+            /* shieldeff(u.ux, u.uy) */
+            await You("don't feel sleepy.");
+            monstseesu(M_SEEN_SLEEP);
+        } else {
+            monstunseesu(M_SEEN_SLEEP);
+            await fall_asleep(-d(nd, 25), true); /* sleep ray */
+        }
+        break;
+    case ZT_DEATH:
+        if (abstyp === ZT_BREATH(ZT_DEATH)) {
+            const disn_prot = inventory_resistance_check(AD_DISN);
+
+            if (uhave_zp(DISINT_RES)) { /* Disint_resistance */
+                await You("are not disintegrated.");
+                monstseesu(M_SEEN_DISINT_ZP);
+                break;
+            } else if (disn_prot) {
+                break;
+            }
+            monstunseesu(M_SEEN_DISINT_ZP);
+            if (g.uarms) {
+                /* destroy shield; other possessions are safe */
+                await disintegrate_arm_zp(g.uarms);
+                break;
+            } else if (g.uarm) {
+                /* destroy suit; if present, cloak goes too */
+                if (g.uarmc)
+                    await disintegrate_arm_zp(g.uarmc);
+                await disintegrate_arm_zp(g.uarm);
+                break;
+            }
+            /* no shield or suit, you're dead; wipe out cloak
+               and/or shirt in case of life-saving or bones */
+            if (g.uarmc)
+                await disintegrate_arm_zp(g.uarmc);
+            if (g.uarmu)
+                await disintegrate_arm_zp(g.uarmu);
+        } else if (nonliving_zy(g.youmonst.data) || is_demon_zp(g.youmonst.data)) {
+            /* shieldeff(sx, sy) */
+            await You("seem unaffected.");
+            break;
+        } else if (Antimagic_zp()) {
+            /* shieldeff(sx, sy) */
+            monstseesu(M_SEEN_MAGR_ZY);
+            await You("aren't affected.");
+            break;
+        }
+        monstunseesu(M_SEEN_MAGR_ZY);
+        killer_zy().format = KILLED_BY_AN;
+        killer_zy().name = fltxt ? fltxt : "";
+        /* when killed by disintegration breath, don't leave corpse */
+        u.ugrave_arise = (type === -ZT_BREATH(ZT_DEATH)) ? -3 : NON_PM_ZP;
+        await done_zy(DIED_ZY);
+        return; /* lifesaved */
+    case ZT_LIGHTNING:
+        orig_dam = d(nd, 6);
+        if (uhave_zp(SHOCK_RES)) { /* Shock_resistance */
+            /* shieldeff(sx, sy) */
+            await You("aren't affected.");
+            monstseesu(M_SEEN_ELEC_ZP);
+            await ugolemeffects_zp(AD_ELEC, orig_dam);
+        } else {
+            dam = orig_dam;
+            exercise(A_CON_ZP, false);
+            monstunseesu(M_SEEN_ELEC_ZP);
+        }
+        if (!rn2(3))
+            await destroy_items(g.youmonst, AD_ELEC, orig_dam);
+        break;
+    case ZT_POISON_GAS:
+        await poisoned_zp("blast", A_DEX_ZP, "poisoned blast", 15, false);
+        break;
+    case ZT_ACID:
+        if (uhave_zp(ACID_RES)) { /* Acid_resistance */
+            await pline_The(`${hliquid_zp("acid")} doesn't hurt.`);
+            monstseesu(M_SEEN_ACID_ZP);
+            dam = 0;
+        } else {
+            await pline_The(`${hliquid_zp("acid")} burns!`);
+            dam = d(nd, 6);
+            exercise(A_STR, false);
+            monstunseesu(M_SEEN_ACID_ZP);
+        }
+        /* using two weapons at once makes both of them more vulnerable */
+        if (!rn2(u.twoweap ? 3 : 6))
+            await acid_damage_zp(g.uwep);
+        if (u.twoweap && !rn2(3))
+            await acid_damage_zp(g.uswapwep);
+        if (!rn2(6))
+            await erode_armor_zp(game.youmonst, ERODE_CORRODE_ZP);
+        break;
+    }
+
+    /*
+     * 5.0: when fatal, this used to yield "Killed by <fltxt>." without any
+     * information about who was responsible.  Now 'buzzer' is used to try
+     * to supply "zapped/cast/breathed by <mon> [imitating <other_mon>]."
+     */
+    {
+        let kbuf;
+        const otmp = g.current_wand;
+        /* fire horn and frost horn get handled as wands by caller */
+        const verb = (abstyp < 10) /* wand */
+                     ? ((otmp && otmp.oclass === TOOL_CLASS) ? "played"
+                        : "zapped")
+                     : (abstyp < 20) ? "cast"
+                       : (abstyp < 30) ? "exhaled"
+                         : "imagined"; /* should never happen */
+
+        if (type < 0 || (type === 0 && g.buzzer)) {
+            /* if gb.buzzer is Null, kbuf[] will end up with just <fltxt> */
+            kbuf = death_inflicted_by_zp(fltxt, g.buzzer || null);
+            /* change "death inflicted by mon" to "death <verb> by mon" */
+            if (g.buzzer)
+                kbuf = kbuf.replace("inflicted", verb); /* strsubst() */
+        } else {
+            /* FIXME: "zapped by herself" is suitable for a rebound;
+               "zapped at herself" would be better if player explicitly
+               targeted hero */
+            kbuf = `${fltxt} ${verb} by ${uhim_zy()}self`;
+        }
+        /* Half_spell_damage protection yields half-damage for wands & spells,
+           including hero's own ricochets; breath attacks do full damage */
+        if (dam && uhave_zp(HALF_SPDAM_ZP) && abstyp < 20)
+            dam = Math.trunc((dam + 1) / 2);
+        await losehp(dam, kbuf, KILLED_BY_AN);
+    }
+}
+
+// C ref: zap.c disintegrate_mon()
+async function disintegrate_mon(
+    mon,
+    type, /* hero vs other */
+    fltxt) {
+    const m_amulet = mlifesaver_zp(mon);
+
+    if (canseemon(mon)) {
+        if (!m_amulet)
+            await pline(`${Monnam(mon)} is disintegrated!`);
+        else
+            await hit(fltxt, mon, "!");
+    }
+
+    /* note: worn amulet of life saving must be preserved in order to operate */
+    const oresist_disintegration = (obj) =>
+        (objects[obj.otyp].oc_oprop === DISINT_RES || obj_resists(obj, 5, 50)
+         || is_quest_artifact_zp(obj) || obj === m_amulet);
+
+    for (const otmp of (mon.minvent || []).slice().reverse()) {
+        if (!oresist_disintegration(otmp)) {
+            extract_from_minvent_zp(mon, otmp, true, true);
+            obfree_zp(otmp, null);
+        }
+    }
+
+    if (type < 0)
+        await monkilled(mon, null, -AD_RBRE);
+    else
+        await xkilled(mon, XKILL_NOMSG_ZP | XKILL_NOCORPSE_ZP);
+}
+
+/* C ref: zap.c destroy_strings[] -- also used in trap.c */
+const destroy_strings = [
+    [ "freezes and shatters", "freeze and shatter", "shattered potion" ],
+    [ "boils and explodes", "boil and explode", "boiling potion" ],
+    [ "ignites and explodes", "ignite and explode", "exploding potion" ],
+    [ "catches fire and burns", "catch fire and burn", "burning scroll" ],
+    [ "catches fire and burns", "", "burning book" ],
+    [ "turns to dust and vanishes", "", "" ],
+    [ "breaks apart and explodes", "", "exploding wand" ],
+];
+
+// C ref: zap.c destroyable()
+/* Return TRUE if obj is eligible to pass to maybe_destroy_item given
+ * the type of elemental damage it's being subjected to.
+ * Note that things like the Book of the Dead are eligible even though they
+ * won't get destroyed, because it will attempt to be destroyed but print a
+ * special message instead. */
+function destroyable(obj, adtyp) {
+    if (obj.oartifact) {
+        /* don't destroy artifacts */
+        return false;
+    }
+    if (obj.in_use && obj.quan === 1) {
+        /* not available for destroying */
+        return false;
+    }
+    if (adtyp === AD_FIRE) {
+        /* fire-magic items are immune */
+        if (obj.otyp === SCR_FIRE || obj.otyp === SPE_FIREBALL) {
+            return false;
+        }
+        if (obj.otyp === GLOB_OF_GREEN_SLIME || obj.oclass === POTION_CLASS
+            || obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS) {
+            return true;
+        }
+    } else if (adtyp === AD_COLD) {
+        /* non-water potions don't freeze and shatter */
+        if (obj.oclass === POTION_CLASS && obj.otyp !== POT_OIL) {
+            return true;
+        }
+    } else if (adtyp === AD_ELEC) {
+        if (obj.oclass !== RING_CLASS && obj.oclass !== WAND_CLASS) {
+            return false;
+        }
+        /* electric-magic items are immune */
+        if (obj.otyp !== RIN_SHOCK_RESISTANCE_ZP && obj.otyp !== WAN_LIGHTNING) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// C ref: zap.c maybe_destroy_item()
+/* guts of destroy_items();
+   caller must decide whether obj is eligible, though there's one case (Book
+   of the Dead) in which an eligible item shouldn't be destroyed (it prints a
+   special message instead).
+   Returns the amount of damage done, but it's used differently depending on
+   whether it's the player or a monster having an item destroyed: players lose
+   the HP and possibly die in this function, and the return value is unused,
+   whereas monsters return the damage to their caller to be taken off later */
+async function maybe_destroy_item(
+    carrier,
+    obj,
+    dmgtyp) {
+    let i, cnt, quan;
+    let dmg, xresist, skip, dindx;
+    let mult;
+    const u_carry = (carrier === game.youmonst);
+    const vis = !u_carry && canseemon(carrier);
+    let chargeit = false;
+
+    xresist = skip = 0;
+    /* lint suppression */
+    dmg = dindx = 0;
+    quan = 0;
+
+    /* external worn item protects inventory? */
+    if (u_carry && inventory_resistance_check(dmgtyp))
+        return 0;
+
+    switch (dmgtyp) {
+    case AD_COLD:
+        quan = obj.quan;
+        dindx = 0;
+        dmg = rnd(4);
+        break;
+    case AD_FIRE:
+        xresist = (obj.oclass !== POTION_CLASS
+                   && obj.otyp !== GLOB_OF_GREEN_SLIME
+                   && (u_carry ? uhave_zp(FIRE_RES) : resists_fire_zp(carrier)));
+        if (obj.otyp === SPE_BOOK_OF_THE_DEAD_ZP) {
+            skip = 1;
+            if (u_carry ? !Blind() : vis) {
+                await pline(`${The(u_carry ? xname(obj) : distant_name(obj, xname))} glows a strange ${
+                    hcolor_zp("dark red")}, but remains intact.`);
+            }
+            break;
+        }
+        quan = obj.quan;
+        switch (obj.oclass) {
+        case POTION_CLASS:
+            dindx = (obj.otyp !== POT_OIL) ? 1 : 2;
+            dmg = rnd(6);
+            break;
+        case SCROLL_CLASS:
+            dindx = 3;
+            dmg = 1;
+            break;
+        case SPBOOK_CLASS:
+            dindx = 4;
+            dmg = 1;
+            break;
+        case FOOD_CLASS: /* only GLOB_OF_GREEN_SLIME */
+            dindx = 1; /* boil and explode */
+            dmg = Math.trunc((obj.owt + 19) / 20);
+            break;
+        }
+        break;
+    case AD_ELEC:
+        xresist = (obj.oclass !== RING_CLASS
+                   && (u_carry ? uhave_zp(SHOCK_RES) : resists_elec_zp(carrier)));
+        quan = obj.quan;
+        switch (obj.oclass) {
+        case RING_CLASS:
+            if (((obj.owornmask & W_RING) && game.uarmg && !is_metallic_zp(game.uarmg))
+                || obj.otyp === RIN_SHOCK_RESISTANCE_ZP) {
+                skip++;
+                break;
+            } else if (objects[obj.otyp].oc_charged && rn2(3)) {
+                chargeit = true;
+                break;
+            }
+            dindx = 5;
+            dmg = 0;
+            break;
+        case WAND_CLASS:
+            dindx = 6;
+            dmg = rnd(10);
+            break;
+        }
+        break;
+    default:
+        skip = 1; /* just in case ineligible damage type gets through... */
+        /* impossible("maybe_destroy_item with unexpected dmgtyp %d") */
+        break;
+    }
+
+    if (chargeit) {
+        /* FIXME: recharge only handles items in hero's inventory */
+        if (u_carry)
+            await recharge_zp(obj, 0);
+    } else if (!skip) {
+        const osym = obj.oclass; /* for checking glob of slime after it's
+                                    destroyed */
+        if (obj.in_use)
+            --quan; /* one will be used up elsewhere */
+        for (i = cnt = 0; i < quan; i++)
+            if (!rn2(3))
+                cnt++;
+
+        if (!cnt)
+            return 0;
+
+        if (u_carry || vis) {
+            mult = (cnt === 1) ? ((quan === 1) ? "" /* 1 of 1 */
+                                  : "One of ")      /* 1 of N */
+                   : ((cnt < quan) ? "Some of "     /* n of N */
+                      : (quan === 2) ? "Both of "   /* 2 of 2 */
+                        : "All of ");               /* N of N */
+            await pline(`${mult}${(cnt === 1 && quan === 1) ? Yname2_zp(obj)
+                                                            : yname_zp(obj)} ${
+                destroy_strings[dindx][(cnt > 1) ? 1 : 0]}!`);
+        }
+        if (u_carry) { /* effects that happen only to the player */
+            if (osym === POTION_CLASS && dmgtyp !== AD_COLD
+                && (!breathless_zp(game.youmonst.data)
+                    || haseyes_zp(game.youmonst.data))) {
+                await potionbreathe_zp(obj);
+            }
+            if (obj.owornmask) { /* m_useup handles these for monster */
+                if (obj.owornmask & W_RING) /* ring being worn */
+                    throw new Error('maybe_destroy_item(): Ring_gone() not ported yet');
+                else
+                    setnotworn_zp(obj);
+            }
+            if (obj === game.current_wand) {
+                game.current_wand = null; /* destroyed */
+            }
+        }
+        for (i = 0; i < cnt; i++) {
+            if (u_carry)
+                useup_zp(obj);
+            else
+                m_useup(carrier, obj);
+        }
+        if (dmg) {
+            if (!u_carry) {
+                return xresist ? 0 : dmg;
+            }
+            if (xresist) {
+                await You("aren't hurt!");
+            } else {
+                let how = destroy_strings[dindx][2];
+                const one = (cnt === 1);
+
+                if (dmgtyp === AD_FIRE && osym === FOOD_CLASS)
+                    how = "exploding glob of slime";
+                await losehp(dmg, one ? how : makeplural(how),
+                             one ? KILLED_BY_AN : KILLED_BY_ZP);
+                exercise(A_STR, false);
+            }
+        }
+    }
+    return dmg;
+}
+
+/* scaling factor; dmg/5 stacks will be subjected to destroy_items() */
+const DMG_DESTROY_SCALE = 5;
+/* largest amount of stacks that will be destroyed in a single call */
+const MAX_ITEMS_DESTROYED = 20;
+
+// C ref: zap.c destroy_items()
+/* target items of specified class in mon's inventory for possible destruction
+   return total amount of damage inflicted, though this is unused if mon is
+   the player */
+export async function destroy_items(
+    mon,     /* monster whose invent is being subjected to
+              * destruction */
+    dmgtyp,  /* AD_**** - currently only cold, fire, elec */
+    dmg_in) { /* the amount of HP damage the attack dealt */
+    let obj;
+    let i, defer;
+    let limit; /* max amount of item stacks destroyed, based on damage */
+    const items_to_destroy = [];
+    let elig_stacks = 0; /* number of destroyable objects found so far */
+    const u_carry = (mon === game.youmonst);
+    /* the hero's invent chain or the monster's minvent in chain order */
+    const objchn = () => (u_carry ? game.invent
+                          : (mon.minvent || []).slice().reverse());
+    let dmg_out = 0; /* damage caused by items getting destroyed */
+    let where = null; /* NOBJ_STATES */
+
+    /* initialize items_to_destroy */
+    for (i = 0; i < MAX_ITEMS_DESTROYED; ++i) {
+        /* 0 should not be a valid o_id for anything */
+        items_to_destroy.push({ oid: 0, otmp: null, deferred: false });
+    }
+
+    /* don't straight up destroy all items with an equal chance; limit it
+       based on the amount of damage being dealt by the source of the item
+       destruction */
+    limit = Math.trunc(dmg_in / DMG_DESTROY_SCALE);
+    if (dmg_in % DMG_DESTROY_SCALE > rn2(DMG_DESTROY_SCALE)) {
+        limit++; /* dmg = 9: 20% chance of limit=1, 80% of limit=2, etc */
+    }
+    if (limit > MAX_ITEMS_DESTROYED) {
+        /* in case of incredibly high damage, prevent from overflowing
+         * items_to_destroy */
+        limit = MAX_ITEMS_DESTROYED;
+    }
+    if (limit < 1) {
+        return 0; /* nothing destroyed */
+    }
+
+    bypass_objlist_zp(objchn(), false); /* clear bypass bit for invent */
+
+    while ((obj = nxt_unbypassed_obj_zp(objchn())) !== null) {
+        if (!destroyable(obj, dmgtyp))
+            continue; /* this dmg type can't destroy this obj */
+
+        /* obj is eligible; maybe add it to items_to_destroy */
+        i = (elig_stacks < limit) ? elig_stacks : rn2(elig_stacks);
+        /* do this afterwards to avoid not filling items_to_destroy[0] */
+        elig_stacks++;
+        if (i < 0 || i >= limit) {
+            /* random index was too high; mollify analyzer by including < 0 */
+            continue;
+        }
+        items_to_destroy[i].oid = obj.o_id;
+        items_to_destroy[i].otmp = obj;
+        if (where === null)
+            where = obj.where;
+        /* else if (where != obj->where)
+            impossible("destroy_item: items in multiple chains"); */
+
+        /* if loss of this item might dump us onto a trap, hold off
+           until later because potential recursive destroy_items() will
+           result in setting bypass bits on whole chain--we would skip
+           the rest as already processed once control returns here */
+        if (u_carry
+            && ((obj.owornmask !== 0
+                 && (objects[obj.otyp].oc_oprop === LEVITATION_ZP
+                     || objects[obj.otyp].oc_oprop === FLYING_ZP))
+                /* destroyed wands and potions of polymorph don't trigger
+                   polymorph so don't need to be deferred */
+                || (obj.otyp === POT_WATER && game.u.ulycn >= LOW_PM_ZP
+                    && ((game.u.umonnum !== game.u.umonster) ? obj.blessed
+                                                             : obj.cursed)))) {
+            items_to_destroy[i].deferred = true;
+        } else {
+            items_to_destroy[i].deferred = false;
+        }
+    }
+    if (elig_stacks > limit) {
+        elig_stacks = limit; /* so we can loop up to elig_stacks */
+    }
+    for (defer = 0; defer <= 1; ++defer) {
+        /* if we saved some items for later (most likely just a worn ring
+           of levitation) and they're still in inventory, handle them on the
+           second iteration of the loop */
+        for (i = 0; i < elig_stacks; ++i) {
+            obj = items_to_destroy[i].otmp;
+            if (obj && obj.o_id === items_to_destroy[i].oid
+                && obj.where === where
+                && (items_to_destroy[i].deferred === (defer === 1))) {
+                dmg_out += await maybe_destroy_item(mon, obj, dmgtyp);
+                items_to_destroy[i].otmp = null;
+            }
+        }
+    }
+    /* almost certainly not everything was destroyed; clear bypass bit after
+       it was set earlier */
+    bypass_objlist_zp(objchn(), false);
+    return dmg_out;
+}
+
+// C ref: zap.c revive_egg()
+function revive_egg(obj) { /* nonnull */
+    /*
+     * Note: generic eggs with corpsenm set to NON_PM will never hatch.
+     */
+    if (obj.otyp !== EGG)
+        return;
+    if (obj.corpsenm !== NON_PM_ZP)
+        throw new Error('revive_egg(): dead_species()/attach_egg_hatch_timeout() not ported yet');
+}
+
+// C ref: zap.c unturn_dead()
+/* try to revive all corpses and eggs carried by `mon' */
+function unturn_dead(mon) {
+    const is_u = (mon === game.youmonst);
+    const chain = is_u ? [] : (mon.minvent || []).slice().reverse();
+    if (is_u)
+        for (let o = game.invent; o; o = o.nobj)
+            chain.push(o);
+    const res = 0;
+
+    for (const otmp of chain) {
+        if (otmp.otyp === EGG)
+            revive_egg(otmp);
+        if (otmp.otyp !== CORPSE)
+            continue;
+        throw new Error('unturn_dead(): revive() not ported yet');
+    }
+    return res;
+}
+
+// C ref: zap.c unturn_you()
+async function unturn_you() {
+    unturn_dead(game.youmonst); /* hit carried corpses and eggs */
+
+    if (is_undead_zp(game.youmonst.data)) {
+        const HStun = game.u.uprops[STUNNED_ZP].intrinsic;
+        await You_feel(`frightened and ${HStun ? "even more " : ""}stunned.`);
+        await make_stunned_zp((HStun & TIMEOUT_ZP) + rnd(30), false);
+    } else {
+        await You("shudder in dread.");
+    }
 }
 
 // C ref: zap.c ubuzz()
@@ -1359,18 +2354,32 @@ export async function dobuzz(
     const shopdamage = { v: false };
     const fireball = (type === ZT_SPELL(ZT_FIRE)); /* set once */
     let gas_hit = false; /* will be set during each iteration */
-    void sayhit; void saymiss; void nd;
-    /* hdmgtype only picks the transient beam glyph */
+    let otmp;
     const hdmgtype = Hallucination() ? rn2(6) : damgtype;
-    void hdmgtype;
 
     /* if it's a hero spell then get its SPE_TYPE */
     const spell_type = is_hero_spell(type) ? SPE_MAGIC_MISSILE + damgtype : 0;
 
     if (u.uswallow) {
+        let tmp;
+
         if (type < 0)
             return;
-        throw new Error('dobuzz(): zapping a ray while engulfed (zhitm()) not ported yet');
+        const ootmp = { v: null };
+        tmp = await zhitm(u.ustuck, type, nd, ootmp);
+        otmp = ootmp.v;
+        if (!u.ustuck) {
+            u.uswallow = 0;
+        } else {
+            await pline(`${The(flash_str(fltyp, false))} rips into ${
+                mon_nam(u.ustuck)}${exclam(tmp)}`);
+            /* Using disintegration from the inside only makes a hole... */
+            if (tmp === MAGIC_COOKIE)
+                u.ustuck.mhp = 0;
+            if (u.ustuck.mhp < 1) /* DEADMONSTER() */
+                await killed(u.ustuck);
+        }
+        return;
     }
     if (type < 0)
         newsym(u.ux, u.uy);
@@ -1379,7 +2388,8 @@ export async function dobuzz(
         range = 1;
     const save_bhitpos = g.bhitpos ? { x: g.bhitpos.x, y: g.bhitpos.y } : g.bhitpos;
 
-    tmp_at(DISP_BEAM, 0); /* zapdir_to_glyph(dx, dy, hdmgtype) */
+    tmp_at(DISP_BEAM, zapdir_to_glyph(dx, dy, hdmgtype));
+    zaploop:
     while (range-- > 0) {
         lsx = sx;
         sx += dx;
@@ -1416,33 +2426,137 @@ export async function dobuzz(
                 mon = m_at(sx, sy);
             }
 
+            let buzzmonst = false;
             if (mon) {
                 if (fireball)
                     break;
                 if (type >= 0)
                     mon.mstrategy = (mon.mstrategy || 0) & ~STRAT_WAITMASK;
+                buzzmonst = true;
+            } else if (u_at(sx, sy) && range >= 0) {
+                nomul(0);
+                if (u.usteed && !rn2(3) && !await mon_reflects(u.usteed, null)) {
+                    mon = u.usteed;
+                    buzzmonst = true; /* goto buzzmonst */
+                } else {
+                    if (!forcemiss && zap_hit(u.uac, 0)) {
+                        range -= 2;
+                        /* pline_dir(xytodir(-dx, -dy), ...) */
+                        await pline(`${The(flash_str(fltyp, false))} hits you!`);
+                        if (Reflecting()) {
+                            if (!Blind()) {
+                                await ureflects("But %s reflects from your %s!",
+                                                "it");
+                            } else
+                                await pline("For some reason you are not affected.");
+                            monstseesu(M_SEEN_REFL);
+                            dx = -dx;
+                            dy = -dy;
+                            /* shieldeff(sx, sy): transient display only */
+                            gas_hit = false;
+                        } else {
+                            /* flash_str here only used for killer; suppress
+                             * hallucination */
+                            await zhitu(type, nd, flash_str(fltyp, true), sx, sy);
+                            monstunseesu(M_SEEN_REFL);
+                        }
+                    } else if (!Blind()) {
+                        await pline(`${The(flash_str(fltyp, false))} whizzes by you!`);
+                    } else if (damgtype === ZT_LIGHTNING) {
+                        await Your(`${body_part(ARM)} tingles.`);
+                    }
+                    if (damgtype === ZT_LIGHTNING)
+                        await flashburn(d(nd, 50), true);
+                    await stop_occupation();
+                    nomul(0);
+                }
+            }
+            if (buzzmonst) {
                 /* buzzmonst: */
                 g.notonhead = (mon.mx !== g.bhitpos.x || mon.my !== g.bhitpos.y);
                 if (!forcemiss && zap_hit(find_mac(mon), spell_type)) {
-                    throw new Error('dobuzz(): ray hitting a monster (mon_reflects()/zhitm()) not ported yet');
+                    if (await mon_reflects(mon, null)) {
+                        if (cansee(mon.mx, mon.my)) {
+                            await hit(flash_str(fltyp, false), mon, exclam(0));
+                            /* shieldeff(mon->mx, mon->my): transient display */
+                            await mon_reflects(mon, "But it reflects from %s %s!");
+                            gas_hit = false;
+                        }
+                        dx = -dx;
+                        dy = -dy;
+                    } else {
+                        const mon_could_move = mon.mcanmove;
+                        const ootmp = { v: null };
+                        const tmp = await zhitm(mon, type, nd, ootmp);
+                        otmp = ootmp.v;
+
+                        if (is_rider_zp(mon.data)
+                            && Math.abs(type) === ZT_BREATH(ZT_DEATH)) {
+                            if (canseemon(mon)) {
+                                await hit(flash_str(fltyp, false), mon, ".");
+                                await pline(`${Monnam(mon)} disintegrates.`);
+                                await pline(`${s_suffix(Monnam(mon))} body reintegrates before your ${
+                                    (eyecount_zp(g.youmonst.data) === 1)
+                                        ? body_part(EYE_ZP)
+                                        : makeplural(body_part(EYE_ZP))}!`);
+                                await pline(`${Monnam(mon)} resurrects!`);
+                            }
+                            mon.mhp = mon.mhpmax;
+                            break zaploop; /* Out of while loop */
+                        }
+                        if (mon.data === mons_zy[PM_DEATH_ZP] && damgtype === ZT_DEATH) {
+                            if (canseemon(mon)) {
+                                await hit(flash_str(fltyp, false), mon, ".");
+                                await pline(`${Monnam(mon)} absorbs the deadly ${
+                                    type === ZT_BREATH(ZT_DEATH) ? "blast" : "ray"}!`);
+                                await pline("It seems even stronger than before.");
+                            }
+                            break zaploop; /* Out of while loop */
+                        }
+
+                        if (tmp === MAGIC_COOKIE) { /* disintegration */
+                            await disintegrate_mon(mon, type, flash_str(fltyp, false));
+                        } else if (mon.mhp < 1) { /* DEADMONSTER(mon) */
+                            if (type < 0) {
+                                /* mon has just been killed by another monster */
+                                await monkilled(mon, flash_str(fltyp, false), AD_RBRE);
+                            } else {
+                                let xkflags = XKILL_GIVEMSG_ZP; /* killed(mon); */
+
+                                /* killed by hero; we know 'type' isn't negative;
+                                   if it's fire, highly flammable monsters leave
+                                   no corpse; don't bother reporting that they
+                                   "burn completely" -- unnecessary verbosity */
+                                if (damgtype === ZT_FIRE
+                                    /* paper golem or straw golem */
+                                    && completelyburns(mon.data))
+                                    xkflags |= XKILL_NOCORPSE_ZP;
+                                await xkilled(mon, xkflags);
+                            }
+                        } else {
+                            if (!otmp) {
+                                /* normal non-fatal hit */
+                                if (sayhit || canseemon(mon))
+                                    await hit(flash_str(fltyp, false), mon, exclam(tmp));
+                            } else {
+                                /* some armor was destroyed; no damage done */
+                                if (canseemon(mon))
+                                    await pline(`${s_suffix(Monnam(mon))} ${
+                                        distant_name(otmp, xname)} is disintegrated!`);
+                                m_useup(mon, otmp);
+                            }
+                            if (mon_could_move && !mon.mcanmove) /* ZT_SLEEP */
+                                await slept_monst(mon);
+                            if (damgtype !== ZT_SLEEP)
+                                await wakeup(mon, (type >= 0) ? true : false);
+                        }
+                    }
+                    range -= 2;
                 } else {
-                    throw new Error('dobuzz(): ray missing a monster (miss()) not ported yet');
+                    if (saymiss
+                        || (canseemon(mon) && !disguised_as_non_mon(mon)))
+                        await miss(flash_str(fltyp, false), mon);
                 }
-            } else if (u.ux === sx && u.uy === sy && range >= 0) {
-                nomul(0);
-                if (u.usteed)
-                    throw new Error('dobuzz(): ray hitting the steed not ported yet');
-                if (!forcemiss && zap_hit(u.uac, 0)) {
-                    throw new Error('dobuzz(): ray hitting you (zhitu()) not ported yet');
-                } else if (!Blind()) {
-                    await pline(`${The(flash_str(fltyp, false))} whizzes by you!`);
-                } else if (damgtype === ZT_LIGHTNING) {
-                    await Your(`${body_part(ARM)} tingles.`);
-                }
-                if (damgtype === ZT_LIGHTNING)
-                    await flashburn(d(nd, 50), true);
-                await stop_occupation();
-                nomul(0);
             }
             /* gas that missed or that hit without being reflected will leave
                a 1x1 cloud here; the earlier zap_over_floor() was deferred */
@@ -1460,7 +2574,10 @@ export async function dobuzz(
             if ((--range > 0 && isok(lsx, lsy) && cansee(lsx, lsy))
                 || fireball) {
                 if (Is_airlevel(u.uz)) { /* nothing to bounce off of */
-                    throw new Error('dobuzz(): ray on the Plane of Air not ported yet');
+                    await pline_The(`${flash_str(fltyp, false)} vanishes into the aether!`);
+                    if (fireball)
+                        type = ZT_WAND(ZT_FIRE); /* skip pending fireball */
+                    break;
                 } else if (fireball) {
                     sx = lsx;
                     sy = lsy;
@@ -1471,20 +2588,130 @@ export async function dobuzz(
             const dd = { dx, dy };
             bounce_dir(sx, sy, dd, bchance);
             dx = dd.dx, dy = dd.dy;
-            tmp_at(DISP_CHANGE, 0); /* zapdir_to_glyph(dx, dy, hdmgtype) */
+            tmp_at(DISP_CHANGE, zapdir_to_glyph(dx, dy, hdmgtype));
         }
     }
     tmp_at(DISP_END, 0);
     if (fireball)
-        throw new Error('dobuzz(): fireball explode() not ported yet');
+        await explode(sx, sy, type, d(12, 6), 0, EXPL_FIERY_ZP);
     if (shopdamage.v)
         throw new Error('dobuzz(): pay_for_damage() not ported yet');
     g.bhitpos = save_bhitpos;
 }
 
-// C ref: zap.c zap_over_floor() -- the cases with no terrain/object
-// effects; everything else throws until ported
-async function zap_over_floor(
+// C ref: zap.c melt_ice()
+export async function melt_ice(x, y, msg) {
+    const g = game;
+    const lev = g.level.at(x, y);
+    let otmp, mtmp;
+
+    if (!msg)
+        msg = "The ice crackles and melts.";
+    if (lev.typ === DRAWBRIDGE_UP_ZP || lev.typ === DRAWBRIDGE_DOWN_ZP) {
+        lev.drawbridgemask &= ~DB_ICE_ZP; /* revert to DB_MOAT */
+    } else { /* lev->typ == ICE */
+        lev.typ = (lev.icedpool === ICED_POOL_ZP ? POOL_ZP : MOAT_ZP);
+        lev.icedpool = 0;
+    }
+    spot_stop_timers_zp(x, y, MELT_ICE_AWAY_ZP); /* no more ice to melt away */
+    if (t_at(x, y))
+        throw new Error('melt_ice(): trap_ice_effects() not ported yet');
+    obj_ice_effects_zp(x, y, false);
+    unearth_objs_zp(x, y);
+    if (g.u.uinwater) /* Underwater */
+        throw new Error('melt_ice(): vision_recalc() while Underwater not ported yet');
+    newsym(x, y);
+    if (cansee(x, y) || u_at(x, y))
+        await Norep_zp(msg);
+    if ((otmp = sobj_at(O_zy.BOULDER, x, y)) !== null && otmp !== undefined)
+        throw new Error('melt_ice(): a boulder settling into the pool (boulder_hits_pool()) not ported yet');
+    if (u_at(x, y))
+        await spoteffects_zp(true); /* possibly drown, notice objects */
+    else if (is_pool(x, y) && (mtmp = m_at(x, y)) !== null && mtmp !== undefined)
+        await minliquid_zp(mtmp);
+}
+
+// C ref: zap.c start_melt_ice_timeout()
+/*
+ * Usually start a melt_ice timer; sometimes the ice will become
+ * permanent instead.
+ */
+export function start_melt_ice_timeout(x, y,
+                                       min_time) { /* <x,y>'s old melt timeout (deleted by time we get here) */
+    const MIN_ICE_TIME = 50, MAX_ICE_TIME = 2000;
+    let when = min_time;
+
+    if (when < MIN_ICE_TIME - 1)
+        when = MIN_ICE_TIME - 1;
+
+    /* random timeout; surrounding ice locations ought to be a factor... */
+    while (++when <= MAX_ICE_TIME)
+        if (!rn2((MAX_ICE_TIME - when) + MIN_ICE_TIME))
+            break;
+
+    /* if we're within MAX_ICE_TIME, install a melt timer;
+       otherwise, omit it to leave this ice permanent */
+    if (when <= MAX_ICE_TIME) {
+        /* start_timer(when, TIMER_LEVEL, MELT_ICE_AWAY, long_to_any(where));
+           the timer queue isn't ported: like nhlua.js, the location keeps
+           its pending timer, with its absolute expiry */
+        game.level.at(x, y).timer = { when, action: MELT_ICE_AWAY_ZP,
+                                      timeout: game.moves + when };
+    }
+}
+
+// C ref: timeout.c spot_time_left() -- the location's pending level timer
+function spot_time_left_zp(x, y, func_index) {
+    const t = game.level.at(x, y).timer;
+    if (!t || t.action !== func_index)
+        return 0;
+    if (t.timeout === undefined)
+        throw new Error('spot_time_left(): a timer started by a level script not ported yet');
+    const expires = t.timeout;
+    return (expires > 0) ? expires - game.moves : 0;
+}
+
+// C ref: timeout.c spot_stop_timers()
+function spot_stop_timers_zp(x, y, func_index) {
+    const lev = game.level.at(x, y);
+    if (lev.timer && lev.timer.action === func_index)
+        lev.timer = null; /* no cleanup function for MELT_ICE_AWAY */
+}
+
+// C ref: dig.c bury_objs()
+function bury_objs_zp(x, y) {
+    const here = (game.level.objects || []).filter(
+        o => o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR');
+    if (here.length)
+        throw new Error('bury_objs(): burying objects under new ice or rock not ported yet');
+    /* don't expect any engravings here, but just in case */
+    del_engr_at_zp(x, y);
+    newsym(x, y);
+    maybe_unhide_at_zp(x, y);
+}
+
+// C ref: dig.c unearth_objs()
+function unearth_objs_zp(x, y) {
+    if ((game.level.buriedobjlist || []).some(o => o.ox === x && o.oy === y))
+        throw new Error('unearth_objs(): unearthing buried objects not ported yet');
+    del_engr_at_zp(x, y);
+    newsym(x, y);
+}
+
+// C ref: mkobj.c obj_ice_effects()
+function obj_ice_effects_zp(x, y, do_buried) {
+    for (const o of game.level.objects || [])
+        if (o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR' && o.timer)
+            throw new Error('obj_ice_effects(): obj_timer_checks() not ported yet');
+    if (do_buried) {
+        for (const o of game.level.buriedobjlist || [])
+            if (o.ox === x && o.oy === y && o.timer)
+                throw new Error('obj_ice_effects(): obj_timer_checks() not ported yet');
+    }
+}
+
+// C ref: zap.c zap_over_floor()
+export async function zap_over_floor(
     x, y,              /* location */
     type,              /* damage type plus {wand|spell|breath} info */
     shopdamage,        /* extra output if shop door is destroyed */
@@ -1497,7 +2724,7 @@ async function zap_over_floor(
     let rangemod = 0;
     const damgtype = zaptype(type) % 10;
     const lavawall = (lev.typ === LAVAWALL);
-    void shopdamage;
+    let t;
 
     if (type === PHYS_EXPL_TYPE) {
         /* this won't have any effect on the floor */
@@ -1505,28 +2732,197 @@ async function zap_over_floor(
     }
 
     switch (damgtype) {
-    case ZT_FIRE: {
-        const t = t_at(x, y);
-        if (t && t.ttyp === WEB)
-            throw new Error('zap_over_floor(): burning a web not ported yet');
-        if (lev.typ === ICE || is_pool(x, y) || lev.typ === FOUNTAIN)
-            throw new Error('zap_over_floor(): fire over ice/water/fountain not ported yet');
+    case ZT_FIRE:
+        t = t_at(x, y);
+        if (t && t.ttyp === WEB) {
+            /* a burning web is too flimsy to notice if you can't see it */
+            if (see_it)
+                await Norep_zp("A web bursts into flames!");
+            await delfloortrap_zp(t), t = null;
+            if (see_it)
+                newsym(x, y);
+        }
+        if (is_ice_zp(x, y)) {
+            await melt_ice(x, y, null);
+        } else if (is_pool(x, y)) {
+            const on_water_level = Is_waterlevel_zp(g.u.uz);
+            let msggiven = false;
+            let msgtxt = (!Deaf_zp())
+                         ? "You hear hissing gas." /* Deaf-aware */
+                         : (type >= 0)
+                           ? "That seemed remarkably uneventful."
+                           : null;
+
+            /* don't create steam clouds on Plane of Water; air bubble
+               movement and gas regions don't understand each other */
+            if (!on_water_level) {
+                await create_gas_cloud_zp(x, y, rnd(5), 0); /* 1..5, no damg */
+                if (g.iflags.last_msg === PLNMSG_ENVELOPED_IN_GAS_ZP)
+                    msggiven = true;
+            }
+
+            if (lev.typ !== POOL_ZP) { /* MOAT or DRAWBRIDGE_UP or WATER */
+                t = null;
+                if (on_water_level)
+                    msgtxt = (see_it || !Deaf_zp()) ? "Some water boils." : null;
+                else if (see_it)
+                    msgtxt = "Some water evaporates.";
+            } else {
+                rangemod -= 3;
+                lev.typ = ROOM_ZP, lev.flags = 0;
+                t = maketrap_zp(x, y, PIT);
+                /*if (t) -- this was before the vapor cloud was added --
+                      t->tseen = 1;*/
+                if (see_it)
+                    msgtxt = "The water evaporates.";
+            }
+            if (msgtxt && !msggiven)
+                await Norep_zp(msgtxt);
+
+            if (lev.typ === ROOM_ZP) { /* POOL changed to ROOM above */
+                let mon;
+                if ((mon = m_at(x, y)) !== null && mon !== undefined) {
+                    /* probably ought to do some hefty damage to any
+                       creature caught in boiling water;
+                       at a minimum, eels are forced out of hiding */
+                    if (is_swimmer_zp(mon.data) && mon.mundetected) {
+                        mon.mundetected = 0;
+                    }
+                } else {
+                    mon = null;
+                }
+                newsym(x, y);
+                if (t) {
+                    /* if water walking/swimming/magical breathing, maybe fall
+                       into the new pit (after the water evaporation message);
+                       if flying or levitating, nothing will happen */
+                    if (u_at(x, y))
+                        await dotrap_zp(t, NO_TRAP_FLAGS_ZP);
+                    else if (mon)
+                        await mintrap_zp(mon, NO_TRAP_FLAGS_ZP);
+                }
+            }
+        } else if (lev.typ === FOUNTAIN) { /* IS_FOUNTAIN() */
+            await create_gas_cloud_zp(x, y, rnd(3), 0); /* 1..3, no damage */
+            if (see_it)
+                await pline("Steam billows from the fountain.");
+            rangemod -= 1;
+            await dryup_zp(x, y, type > 0);
+        }
         break; /* ZT_FIRE */
-    }
+
     case ZT_COLD:
-        if (is_pool(x, y) || is_lava(x, y) || lavawall || lev.typ === ICE)
-            throw new Error('zap_over_floor(): cold over water/lava/ice not ported yet');
+        if (is_pool(x, y) || is_lava(x, y) || lavawall) {
+            const lava = (is_lava(x, y) || lavawall),
+                  moat = is_moat_zp(x, y);
+            const chance = Math.max(2, 5 + (g.level.flags.temperature || 0) * 10);
+
+            if (IS_WATERWALL_ZP(lev.typ) || (lavawall && rn2(chance))) {
+                /* For now, don't let WATER freeze. */
+                /* Soundeffect(se_soft_crackling, 100); */
+                if (see_it)
+                    await pline_The(`${hliquid_zp(lavawall ? "lava" : "water")} freezes for a moment.`);
+                else
+                    await You_hear_zp("a soft crackling.");
+                rangemod -= 1000; /* stop */
+            } else {
+                const buf = waterbody_name_zp(x, y); /* for MOAT */
+                rangemod -= 3;
+                if (lev.typ === DRAWBRIDGE_UP_ZP) {
+                    lev.drawbridgemask &= ~DB_UNDER_ZP; /* clear lava */
+                    lev.drawbridgemask |= (lava ? DB_FLOOR_ZP : DB_ICE_ZP);
+                } else {
+                    lev.icedpool = lava ? 0
+                                        : (lev.typ === POOL_ZP) ? ICED_POOL_ZP
+                                                                : ICED_MOAT_ZP;
+                    if (lavawall) {
+                        if ((isok_zp(x, y - 1) && IS_WALL(g.level.at(x, y - 1).typ))
+                            || (isok_zp(x, y + 1) && IS_WALL(g.level.at(x, y + 1).typ)))
+                            lev.typ = VWALL_ZP;
+                        else
+                            lev.typ = HWALL_ZP;
+                        fix_wall_spines_zp(Math.max(0, x - 1), Math.max(0, y - 1),
+                                           Math.min(COLNO_ZP - 1, x + 1),
+                                           Math.min(ROWNO_ZP - 1, y + 1));
+                    } else {
+                        lev.typ = lava ? ROOM_ZP : ICE;
+                    }
+                }
+                bury_objs_zp(x, y);
+                /* if (!lava) Soundeffect(se_soft_crackling, 30); */
+                if (see_it) {
+                    if (lava)
+                        await Norep_zp(`The ${hliquid_zp("lava")} cools and solidifies.`);
+                    else if (moat)
+                        await Norep_zp(`The ${buf} is bridged with ice!`);
+                    else
+                        await Norep_zp(`The ${hliquid_zp("water")} freezes.`);
+                    newsym(x, y);
+                } else if (!lava) {
+                    await You_hear_zp("a crackling sound.");
+                }
+                let mon;
+                if (u_at(x, y)) {
+                    if (g.u.uinwater) { /* not just `if (Underwater)' */
+                        throw new Error('zap_over_floor(): freezing the water the hero is in (set_uinwater()) not ported yet');
+                    } else if (g.u.utrap && g.u.utraptype === TT_LAVA_ZP) {
+                        throw new Error('zap_over_floor(): hero stuck in cooling lava not ported yet');
+                    }
+                } else if ((mon = m_at(x, y)) !== null && mon !== undefined) {
+                    /* probably ought to do some hefty damage to any
+                       non-ice creature caught in freezing water;
+                       at a minimum, eels are forced out of hiding */
+                    if (is_swimmer_zp(mon.data) && mon.mundetected) {
+                        mon.mundetected = 0;
+                        newsym(x, y);
+                    }
+                }
+                if (!lava) {
+                    start_melt_ice_timeout(x, y, 0);
+                    obj_ice_effects_zp(x, y, true);
+                }
+            } /* ?WATER */
+
+        } else if (is_ice_zp(x, y)) {
+            let melt_time;
+
+            /* Already ice here, so just firm it up. */
+            /* Now ensure that only ice that is already timed is affected */
+            if ((melt_time = spot_time_left_zp(x, y, MELT_ICE_AWAY_ZP)) !== 0) {
+                spot_stop_timers_zp(x, y, MELT_ICE_AWAY_ZP);
+                start_melt_ice_timeout(x, y, melt_time);
+            }
+        }
         break; /* ZT_COLD */
 
     case ZT_POISON_GAS:
+        /* poison gas with range 1: green dragon/iron golem breath (AD_DRST);
+           caller is placing a series of 1x1 clouds along the zap's path;
+           <x,y> for wall locations might be included--reject those */
         if (ZAP_POS(lev.typ))
-            throw new Error('zap_over_floor(): create_gas_cloud() not ported yet');
+            await create_gas_cloud_zp(x, y, 1, 8);
         break;
 
     case ZT_LIGHTNING:
-    case ZT_ACID:
-        if (lev.typ === IRONBARS)
-            throw new Error('zap_over_floor(): ray hitting iron bars not ported yet');
+    case ZT_ACID: // eslint-disable-line no-fallthrough
+        if (lev.typ === IRONBARS) {
+            if (damgtype === ZT_LIGHTNING && rn2(10))
+                break;
+            if ((lev.wall_info & W_NONDIGGABLE_ZP) !== 0) {
+                if (see_it)
+                    await Norep_zp(`The iron bars ${
+                        (damgtype === ZT_ACID) ? "corrode" : "melt"} somewhat but remain intact.`);
+                /* but nothing actually happens... */
+            } else {
+                rangemod -= 3;
+                if (see_it)
+                    await Norep_zp(`The iron bars ${
+                        (damgtype === ZT_ACID) ? "corrode away" : "melt"}.`);
+                await dissolve_bars(x, y);
+                if (in_rooms_zp(x, y, SHOPBASE_ZP).length)
+                    throw new Error('zap_over_floor(): add_damage() for shop bars not ported yet');
+            }
+        }
         break; /* ZT_ACID */
 
     default:
@@ -1544,38 +2940,101 @@ async function zap_over_floor(
             zapverb = "bolt"; /* wand zap */
         else if (ztype < ZT_BREATH(0))
             zapverb = "spell";
-    } else {
-        throw new Error('zap_over_floor(): exploding wand/oil not ported yet');
+    } else if (exploding_wand_typ === POT_OIL
+               || exploding_wand_typ === SCR_FIRE) {
+        /* breakobj() -> explode_oil() -> splatter_burning_oil()
+           -> explode(ZT_SPELL(ZT_FIRE), BURNING_OIL)
+           -> zap_over_floor(ZT_SPELL(ZT_FIRE), POT_OIL) */
+        /* leave zapverb as "blast"; exploding_wand_typ was nonzero, so
+           'yourzap' is FALSE and the result will be "the blast" */
+        exploding_wand_typ = 0; /* not actually an exploding wand */
     }
 
     /* secret door gets revealed, converted into regular door */
-    if (lev.typ === SDOOR)
-        throw new Error('zap_over_floor(): revealing a secret door not ported yet');
+    if (lev.typ === SDOOR) {
+        cvt_sdoor_to_door_zp(lev); /* .typ = DOOR */
+        recalc_block_point_zp(x, y);
+        /* target spot will now pass closed_door() test below
+           (except on rogue level) */
+        newsym(x, y);
+        if (see_it)
+            await pline(`${yourzap ? "Your" : "The"} ${zapverb} reveals a secret door.`);
+        else if (Is_rogue_level_zp(g.u.uz))
+            throw new Error('zap_over_floor(): draft_message() not ported yet');
+    }
 
     /* regular door absorbs remaining zap range, possibly gets destroyed */
     if (closed_door(x, y)) {
+        let new_doormask = -1;
+        let see_txt = null, sense_txt = null, hear_txt = null;
+
         rangemod = -1000;
+        let def_case = false;
         switch (damgtype) {
         case ZT_FIRE:
+            new_doormask = D_NODOOR_ZP;
+            see_txt = "The door is consumed in flames!";
+            sense_txt = "smell smoke.";
+            break;
         case ZT_COLD:
-        case ZT_LIGHTNING:
-            throw new Error('zap_over_floor(): ray destroying a door not ported yet');
+            new_doormask = D_NODOOR_ZP;
+            see_txt = "The door freezes and shatters!";
+            hear_txt = "a deep cracking sound.";
+            break;
         case ZT_DEATH:
             /* death spells/wands don't disintegrate */
-            if (Math.abs(type) === ZT_BREATH(ZT_DEATH))
-                throw new Error('zap_over_floor(): ray destroying a door not ported yet');
-            /* goto def_case */
-            // eslint-disable-next-line no-fallthrough
+            if (Math.abs(type) !== ZT_BREATH(ZT_DEATH)) {
+                def_case = true; /* goto def_case */
+                break;
+            }
+            new_doormask = D_NODOOR_ZP;
+            see_txt = "The door disintegrates!";
+            hear_txt = "crashing wood.";
+            break;
+        case ZT_LIGHTNING:
+            new_doormask = D_BROKEN_ZP;
+            see_txt = "The door splinters!";
+            hear_txt = "crackling.";
+            break;
         default:
-            /* def_case: (exploding_wand_typ is 0 here) */
-            if (see_it) {
+            def_case = true;
+            break;
+        }
+        if (def_case) {
+            /* def_case: */
+            if (exploding_wand_typ > 0
+                /* Magical explosion from misc exploding wand */
+                && exploding_wand_typ === O_zy.WAN_STRIKING) {
+                new_doormask = D_BROKEN_ZP;
+                see_txt = "The door crashes open!";
+                sense_txt = "feel a burst of cool air.";
+            } else if (see_it) {
                 /* "the door absorbs the blast" would be
                    inaccurate for an exploding wand since
                    other adjacent locations still get hit */
-                await pline_The(`door absorbs ${yourzap ? "your" : "the"} ${zapverb}!`);
+                if (exploding_wand_typ)
+                    await pline_The("door remains intact.");
+                else
+                    await pline_The(`door absorbs ${yourzap ? "your" : "the"} ${zapverb}!`);
             } else
-                await You("feel vibrations."); /* You_feel() */
-            break;
+                await You_feel("vibrations.");
+        }
+        if (new_doormask >= 0) { /* door gets broken */
+            if (in_rooms_zp(x, y, SHOPBASE_ZP).length)
+                throw new Error('zap_over_floor(): add_damage() for a shop door not ported yet');
+            lev.doormask = new_doormask;
+            recalc_block_point_zp(x, y); /* vision */
+            if (see_it) {
+                await pline(see_txt);
+                newsym(x, y);
+            } else if (sense_txt) {
+                await You(sense_txt);
+            } else if (hear_txt)
+                await You_hear_zp(hear_txt);
+            if (picking_at_zp(x, y)) {
+                await stop_occupation();
+                reset_pick_zp();
+            }
         }
     }
 
@@ -1626,18 +3085,10 @@ export async function mon_spell_hits_spot(
          mon_spell_hits_spot.", adtyp) */
 }
 
-/* C ref: obj.h ignitable() */
-function ignitable(otmp) {
-    return otmp.otyp === BRASS_LANTERN || otmp.otyp === OIL_LAMP
-        || (otmp.otyp === MAGIC_LAMP && otmp.spe > 0)
-        || otmp.otyp === CANDELABRUM_OF_INVOCATION
-        || otmp.otyp === TALLOW_CANDLE || otmp.otyp === WAX_CANDLE
-        || otmp.otyp === POT_OIL;
-}
 
 // C ref: zap.c burn_floor_objects() -- burn scrolls and spellbooks on
 // floor at position x,y; return the number of scrolls and spellbooks burned
-async function burn_floor_objects(
+export async function burn_floor_objects(
     x, y,
     give_feedback, /* caller needs to decide about visibility checks */
     u_caused) {
@@ -1657,27 +3108,40 @@ async function burn_floor_objects(
                 if (!rn2(3))
                     delquan++;
             if (delquan) {
-                if (give_feedback)
-                    throw new Error('burn_floor_objects(): feedback messages not ported yet');
+                let buf1, buf2;
+                /* save name before potential delobj() */
+                if (give_feedback) {
+                    obj.quan = 1;
+                    buf1 = u_at(x, y) ? xname(obj) : distant_name(obj, xname);
+                    obj.quan = 2;
+                    buf2 = u_at(x, y) ? xname(obj) : distant_name(obj, xname);
+                    obj.quan = scrquan;
+                }
                 /* useupf(), which charges, only if hero caused damage */
                 if (u_caused)
-                    throw new Error('burn_floor_objects(): useupf() not ported yet');
+                    useupf_zp(obj, delquan);
                 else if (delquan < scrquan) {
                     obj.quan -= delquan;
                     obj.owt = weight(obj);
                 } else
                     delobj(obj);
                 cnt += delquan;
+                if (give_feedback) {
+                    if (delquan > 1)
+                        await pline(`${delquan} ${buf2} burn.`);
+                    else
+                        await pline(`${An_zp(buf1)} burns.`);
+                }
             }
         }
     }
     /* This also ignites floor items, but does not change cnt
        because they weren't consumed. */
-    /* ignite_items(svl.level.objects[x][y]) -> catch_lit() */
+    /* ignite_items(svl.level.objects[x][y]), along the nexthere chain */
     for (const obj of (game.level.objects || []).filter(o => o.ox === x
                                                         && o.oy === y))
-        if (!obj.lamplit && !obj.in_use && ignitable(obj))
-            throw new Error('burn_floor_objects(): catch_lit() not ported yet');
+        if (!obj.lamplit && !obj.in_use)
+            await catch_lit_zp(obj);
     return cnt;
 }
 
@@ -1686,3 +3150,154 @@ import { makewish } from './wizcmds.js';
 import { SPE_LIGHT as SPE_LIGHT_ZN,
          SPE_DETECT_UNSEEN as SPE_DETECT_UNSEEN_ZN } from './objects.js';
 import { litroom, lightdamage } from './read.js';
+
+/* C ref: zap.c MAGIC_COOKIE */
+const MAGIC_COOKIE = 1000;
+/* C ref: youprop.h property tests used by zhitu()/zapyourself() */
+function uhave_zp(p) {
+    const q = game.u.uprops[p];
+    return !!(q && (q.intrinsic || q.extrinsic));
+}
+function Antimagic_zp() { return uhave_zp(ANTIMAGIC_ZY); }
+function Reflecting() { return uhave_zp(REFLECTING_ZP); }
+/* C ref: mondata.h is_rider(), eyecount() */
+function is_rider_zp(ptr) {
+    return ptr === mons_zy[PM_DEATH_ZP] || ptr === mons_zy[PM_FAMINE_ZP]
+           || ptr === mons_zy[PM_PESTILENCE_ZP];
+}
+function eyecount_zp(ptr) {
+    return !haseyes_zp(ptr) ? 0
+           : (ptr === mons_zy[PM_CYCLOPS_ZP] || ptr === mons_zy[PM_FLOATING_EYE_ZP])
+             ? 1 : 2;
+}
+/* C ref: mondata.h breathless() */
+function breathless_zp(ptr) { return (ptr.mflags1 & M1_BREATHLESS_ZP) !== 0; }
+// C ref: uhitm.c disguised_as_non_mon()
+function disguised_as_non_mon(mtmp) {
+    return (!sensemon_zp(mtmp)
+            && !!mtmp.m_ap_type
+            && mtmp.m_ap_type !== M_AP_MONSTER_ZP);
+}
+
+// C ref: mhitu.c u_slow_down()
+/* called when your intrinsic speed is taken away */
+async function u_slow_down_zp() {
+    game.u.uprops[FAST_ZP].intrinsic = 0; /* HFast = 0L */
+    if (!uhave_zp(FAST_ZP)) /* !Fast */
+        await You("slow down.");
+    else /* speed boots */
+        await Your("quickness feels less natural.");
+    exercise(A_DEX_ZP, false);
+}
+
+import { ACURR as ACURR_ZP } from './attrib.js';
+import { A_INT as A_INT_ZP, A_DEX as A_DEX_ZP, A_CON as A_CON_ZP,
+         P_ISRESTRICTED as P_ISRESTRICTED_ZP, P_UNSKILLED as P_UNSKILLED_ZP,
+         P_BASIC as P_BASIC_ZP, P_SKILLED as P_SKILLED_ZP,
+         P_EXPERT as P_EXPERT_ZP, NOTELL as NOTELL_ZP,
+         M_SEEN_FIRE as M_SEEN_FIRE_ZP, M_SEEN_COLD as M_SEEN_COLD_ZP,
+         M_SEEN_DISINT as M_SEEN_DISINT_ZP, M_SEEN_ELEC as M_SEEN_ELEC_ZP,
+         M_SEEN_ACID as M_SEEN_ACID_ZP, M_SEEN_REFL,
+         NON_PM as NON_PM_ZP, KILLED_BY as KILLED_BY_ZP,
+         HALF_SPDAM as HALF_SPDAM_ZP, XKILL_GIVEMSG as XKILL_GIVEMSG_ZP,
+         XKILL_NOMSG as XKILL_NOMSG_ZP, XKILL_NOCORPSE as XKILL_NOCORPSE_ZP,
+         LEVITATION as LEVITATION_ZP, FLYING as FLYING_ZP,
+         STUNNED as STUNNED_ZP, TIMEOUT as TIMEOUT_ZP,
+         INTRINSIC as INTRINSIC_ZP, FAST as FAST_ZP, INVIS as INVIS_ZP,
+         UNCHANGING as UNCHANGING_ZP, DRAIN_RES as DRAIN_RES_ZP,
+         TELEPORT_CONTROL as TELEPORT_CONTROL_ZP, REFLECTING as REFLECTING_ZP,
+         EYE as EYE_ZP, EXPL_FIERY as EXPL_FIERY_ZP,
+         engulfing_u as engulfing_u_zp, u_at, M_AP_MONSTER as M_AP_MONSTER_ZP,
+         } from './const.js';
+import { P_SKILL as P_SKILL_ZP } from './weapon.js';
+import { spell_skilltype as spell_skilltype_zp } from './spell.js';
+import { resists_magm as resists_magm_zp, defended as defended_zp,
+         resists_fire as resists_fire_zp, resists_cold as resists_cold_zp,
+         resists_elec as resists_elec_zp, resists_poison as resists_poison_zp,
+         resists_acid as resists_acid_zp, resists_disint as resists_disint_zp,
+         is_demon as is_demon_zp, is_vampshifter as is_vampshifter_zp,
+         is_undead as is_undead_zp, haseyes as haseyes_zp } from './mondata.js';
+import { burnarmor as burnarmor_zp, ignite_items as ignite_items_zp,
+         acid_damage as acid_damage_zp,
+         sleep_monst as sleep_monst_zp } from './trap.js';
+import { healmon as healmon_zp, mlifesaver as mlifesaver_zp, xkilled,
+         completelyburns } from './mon.js';
+import { PM_DEATH as PM_DEATH_ZP, PM_FAMINE as PM_FAMINE_ZP,
+         PM_PESTILENCE as PM_PESTILENCE_ZP, PM_CYCLOPS as PM_CYCLOPS_ZP,
+         PM_FLOATING_EYE as PM_FLOATING_EYE_ZP, PM_KNIGHT as PM_KNIGHT_ZP,
+         AD_DRST as AD_DRST_ZP, M1_BREATHLESS as M1_BREATHLESS_ZP } from './monsters.js';
+import { which_armor as which_armor_zp, setnotworn as setnotworn_zp,
+         bypass_objlist as bypass_objlist_zp,
+         nxt_unbypassed_obj as nxt_unbypassed_obj_zp } from './worn.js';
+import { m_useup } from './mthrowu.js';
+import { ugolemeffects as ugolemeffects_zp } from './mhitu.js';
+import { burn_away_slime as burn_away_slime_zp,
+         hliquid as hliquid_zp, potionbreathe as potionbreathe_zp,
+         make_stunned as make_stunned_zp, incr_itimeout as incr_itimeout_zp,
+         self_invis_message as self_invis_message_zp,
+         speed_up as speed_up_zp } from './potion.js';
+import { poisoned as poisoned_zp } from './attrib.js';
+import { disintegrate_arm as disintegrate_arm_zp } from './do_wear.js';
+import { death_inflicted_by as death_inflicted_by_zp, ureflects } from './mcastu.js';
+import { is_quest_artifact as is_quest_artifact_zp } from './questpgr.js';
+import { extract_from_minvent as extract_from_minvent_zp } from './steal.js';
+import { obfree as obfree_zp, useup as useup_zp } from './invent.js';
+import { SPE_BOOK_OF_THE_DEAD as SPE_BOOK_OF_THE_DEAD_ZP,
+         RIN_SHOCK_RESISTANCE as RIN_SHOCK_RESISTANCE_ZP,
+         is_metallic as is_metallic_zp } from './objects.js';
+import { hcolor as hcolor_zp, Monnam } from './do_name.js';
+import { recharge as recharge_zp } from './read.js';
+import { Yname2 as Yname2_zp, yname as yname_zp, makeplural,
+         distant_name } from './objnam.js';
+import { s_suffix } from './hacklib.js';
+import { mon_reflects } from './muse.js';
+import { slept_monst } from './mhitm.js';
+import { canseemon, sensemon as sensemon_zp, zapdir_to_glyph } from './display.js';
+import { explode } from './explode.js';
+import { losexp as losexp_zp } from './exper.js';
+import { tele as tele_zp } from './teleport.js';
+import { LOW_PM as LOW_PM_ZP } from './monsters.js';
+import { Norep as Norep_zp } from './display.js';
+import { delfloortrap as delfloortrap_zp } from './trap.js';
+import { is_ice as is_ice_zp } from './dig.js';
+import { create_gas_cloud as create_gas_cloud_zp } from './region.js';
+import { dryup as dryup_zp } from './fountain.js';
+import { W_NONDIGGABLE as W_NONDIGGABLE_ZP, D_NODOOR as D_NODOOR_ZP,
+         D_BROKEN as D_BROKEN_ZP, SHOPBASE as SHOPBASE_ZP,
+         Is_rogue_level as Is_rogue_level_zp } from './const.js';
+import { cvt_sdoor_to_door as cvt_sdoor_to_door_zp } from './detect.js';
+import { recalc_block_point as recalc_block_point_zp } from './vision.js';
+import { in_rooms as in_rooms_zp } from './hack.js';
+import { You_hear as You_hear_zp } from './sounds.js';
+import { picking_at as picking_at_zp, reset_pick as reset_pick_zp } from './lock.js';
+import { catch_lit as catch_lit_zp } from './trap.js';
+import { useupf as useupf_zp } from './invent.js';
+import { An as An_zp } from './objnam.js';
+import { erode_armor as erode_armor_zp } from './uhitm.js';
+import { POOL as POOL_ZP, ROOM as ROOM_ZP,
+         NO_TRAP_FLAGS as NO_TRAP_FLAGS_ZP, DEAF as DEAF_ZP,
+         PLNMSG_ENVELOPED_IN_GAS as PLNMSG_ENVELOPED_IN_GAS_ZP,
+         Is_waterlevel as Is_waterlevel_zp } from './const.js';
+import { maketrap as maketrap_zp, dotrap as dotrap_zp,
+         mintrap as mintrap_zp } from './trap.js';
+import { is_swimmer as is_swimmer_zp } from './mondata.js';
+import { dissolve_bars } from './monmove.js';
+/* C ref: youprop.h Deaf */
+function Deaf_zp() {
+    const q = game.u.uprops[DEAF_ZP];
+    return !!(q && (q.intrinsic || q.extrinsic)) || !!game.u.uroleplay?.deaf;
+}
+/* C ref: hack.h ERODE_CORRODE */
+const ERODE_CORRODE_ZP = 3;
+import { DRAWBRIDGE_UP as DRAWBRIDGE_UP_ZP, DRAWBRIDGE_DOWN as DRAWBRIDGE_DOWN_ZP,
+         DB_ICE as DB_ICE_ZP, DB_UNDER as DB_UNDER_ZP, DB_FLOOR as DB_FLOOR_ZP,
+         ICED_POOL as ICED_POOL_ZP, ICED_MOAT as ICED_MOAT_ZP, MOAT as MOAT_ZP,
+         VWALL as VWALL_ZP, HWALL as HWALL_ZP, TT_LAVA as TT_LAVA_ZP,
+         MELT_ICE_AWAY as MELT_ICE_AWAY_ZP, COLNO as COLNO_ZP, ROWNO as ROWNO_ZP,
+         isok as isok_zp, IS_WATERWALL as IS_WATERWALL_ZP } from './const.js';
+import { waterbody_name as waterbody_name_zp } from './pager.js';
+import { fix_wall_spines as fix_wall_spines_zp } from './mklev.js';
+import { del_engr_at as del_engr_at_zp } from './engrave.js';
+import { maybe_unhide_at as maybe_unhide_at_zp, minliquid as minliquid_zp } from './mon.js';
+import { spoteffects as spoteffects_zp } from './hack.js';
+import { is_moat as is_moat_zp } from './makemon.js';

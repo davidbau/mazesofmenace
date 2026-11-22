@@ -19,6 +19,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rnl, d, ROLL_FROM, rn2_on_display_rng } from './rng.js';
+import { swallowed } from './display.js';
 import { pline, You, Your, You_feel, pline_The, newsym, see_monsters,
          canseemon, canspotmon, map_invisible, flush_screen, vobj_at,
          glyph_at, glyph_is_invisible, unmap_object, tmp_at, DISP_ALWAYS,
@@ -80,7 +81,10 @@ import { shop_keeper, subfrombill } from './shk.js';
 import { tty_getlin } from './wintty.js';
 import { safe_qbuf } from './pickup.js';
 import { surface } from './iactions.js';
+import { thesimpleoname as thesimpleoname_pt } from './iactions.js';
+import { short_oname as short_oname_pt } from './objnam.js';
 import { tty_display_nhwindow, tty_yn_function } from './wintty.js';
+import { set_bc } from './ball.js';
 import { float_vs_flight } from './polyself.js';
 import { monster_detect } from './detect.js';
 import { drinkfountain, dipfountain, drinksink, dipsink, floating_above,
@@ -481,7 +485,7 @@ export async function make_blinded(xtime, talk) {
         }
         /* Before the hero goes blind, set the ball&chain variables. */
         if (game.uball) /* Punished */
-            throw new Error('make_blinded(): set_bc() not ported yet');
+            set_bc(0);
     } else if (!old && xtime) {
         /* setting temporary blindness without toggling blindness */
         if (talk) {
@@ -581,7 +585,7 @@ export async function make_hallucinated(
             eatmupdate();
 
         if (game.u.uswallow) {
-            throw new Error('make_hallucinated(): swallowed() redraw not ported yet');
+            await swallowed(0); /* redraw swallow display */
         } else {
             /* The see_* routines should be called *before* the pline. */
             see_monsters();
@@ -2312,12 +2316,11 @@ export async function dodip() {
     if (is_hands) {
         obuf = `your ${makeplural(body_part(HAND))}`;
     } else {
-        /* short_oname(obj, doname, thesimpleoname, QBUFSZ - sizeof "What do
-           you want to dip into? [abdeghjkmnpqstvwyzBCEFHIKLNOQRTUWXZ#-# or
-           ?*] ") -- only the case where doname() fits is ported */
-        obuf = doname(obj);
-        if (obuf.length > 128 - 78)
-            throw new Error('dodip(): short_oname() shortening not ported yet');
+        obuf = short_oname_pt(obj, doname, thesimpleoname_pt,
+                              /* 128 - (24 + 54 + 1) leaves 49 for
+                                 <object> */
+                              128 /* QBUFSZ */ - 78 /* sizeof "What do you want to dip\
+ into? [abdeghjkmnpqstvwyzBCEFHIKLNOQRTUWXZ#-# or ?*] " */);
     }
     const verbose = game.flags.verbose;
 

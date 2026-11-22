@@ -660,7 +660,7 @@ export function is_lava(x, y) {
                && ((game.level.at(x, y).drawbridgemask ?? 0) & DB_UNDER) === DB_LAVA);
 }
 // C ref: dbridge.c is_moat()
-function is_moat(x, y) {
+export function is_moat(x, y) {
     if (!isok(x, y)) return false;
     const typ = game.level.at(x, y).typ;
     return !Is_juiblex_level(game.u.uz)

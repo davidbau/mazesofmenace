@@ -25,7 +25,7 @@ import { LARGEST_INT, M_AP_NOTHING } from './const.js';
 import { mon_track_clear } from './monmove.js';
 import { mnexto, rloc_to } from './teleport.js';
 import { on_level, ledger_to_dnum, ledger_to_dlev, depth,
-         In_W_tower } from './dungeon.js';
+         In_W_tower, ledger_no } from './dungeon.js';
 import { relmon, mnearto } from './mon.js';
 import { stairway_find_from, stairway_find, somexy } from './mklev.js';
 import { in_rooms } from './hack.js';
@@ -40,6 +40,7 @@ import { PM_FLAMING_SPHERE, PM_SHOCKING_SPHERE, PM_BABY_GOLD_DRAGON,
          PM_FIRE_VORTEX, PM_FIRE_ELEMENTAL, PM_GOLD_DRAGON,
          S_LIGHT } from './monsters.js';
 import { mintrap } from './trap.js';
+import { MAGIC_PORTAL, Is_qstart } from './const.js';
 import { NO_TRAP_FLAGS } from './const.js';
 import { pline, canseemon, newsym } from './display.js';
 import { yelp, growl } from './sounds.js';
@@ -399,7 +400,8 @@ export async function keepdogs(pets_only) /* true for ascension or final escape 
                priest, vault guard) who have level data in mon->mextra
                in case #wizmakemap is used to replace their home level
                while they're away from it */
-            throw new Error('keepdogs(): migrate_to_level() not ported yet');
+            migrate_to_level(mtmp, ledger_no(g.u.uz), MIGR_EXACT_XY,
+                             null);
         } else if (mtmp.mleashed) {
             throw new Error('keepdogs(): leash goes slack not ported yet');
         }
@@ -675,8 +677,23 @@ export async function mon_arrive(mtmp, when) {
             ylocale = stway.sy;
         }
         break;
-    case MIGR_PORTAL:
-        throw new Error('mon_arrive(): MIGR_PORTAL arrival not ported yet');
+    case MIGR_PORTAL: {
+        if (In_endgame(u.uz))
+            /* there is no arrival portal for endgame levels: a random
+               spot in the updest region */
+            throw new Error('mon_arrive(): endgame MIGR_PORTAL arrival not ported yet');
+        /* find the arrival portal */
+        const t = (g.level.traps || []).find(tr => tr.ttyp === MAGIC_PORTAL);
+        if (t) {
+            xlocale = t.tx, ylocale = t.ty;
+            break;
+        } else if (!(u.uevent?.qexpelled
+                     && (Is_qstart(u.uz0) || Is_qstart(u.uz)))) {
+            throw new Error('mon_arrive(): impossible("no corresponding portal?")');
+        }
+        xlocale = ylocale = 0; /* FALLTHROUGH to MIGR_RANDOM */
+        break;
+    }
     default:
     case MIGR_RANDOM:
         xlocale = ylocale = 0;

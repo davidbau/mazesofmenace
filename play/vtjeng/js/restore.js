@@ -14,6 +14,7 @@ import { push_front } from './hacklib.js';
 import { cliparound, tty_clear_base_window, tty_putstr_base } from './wintty.js';
 import { rest_regions, rest_saved_level_regions } from './region.js';
 import { installLevel, newsym } from './display.js';
+import { reset_glyphmap } from './display_glyphmap.js';
 import { cansee, does_block, unblock_point } from './vision.js';
 import { mon_catchup_elapsed_time } from './dog.js';
 import { restore_timers } from './timeout.js';
@@ -91,7 +92,7 @@ import { set_residency, restshk } from './shk.js';
 import { rest_rooms } from './mkroom.js';
 import { stairway_add, stairway_at, stairway_free_all } from './stairs.js';
 import {
-    get_saved_games, playgroundDeleteFile, playgroundReadFile, set_savefile_name,
+    delete_savefile, get_saved_games, open_savefile,
 } from './files.js';
 import { initrack } from './track.js';
 import { _uInitInternals } from './u_init.js';
@@ -329,11 +330,16 @@ function restoreLevelAt(level) {
 export async function dorestore(state = game) {
     // C ref: files.c restore_saved_game() names the file from the current
     // svp.plname; dorecover() then reads the saved name over it.
-    const savefile = set_savefile_name(state);
-    const raw = playgroundReadFile(savefile);
+    const raw = open_savefile(state);
     if (raw == null) return false;
 
     const snapshot = parseSnapshot(raw);
+
+    // C ref: dorecover():797 get_plname_from_file(nhfp, svp.plname, TRUE).
+    // The saved name replaces the one that named the file before
+    // restgamestate()'s role_init() tests it against GENERICUSERS; whatever
+    // that asks for, dorecover():893 reads the saved name again.
+    state.plname = snapshot.plname;
 
     // Apply saved fields to the game object. Fields set here overwrite the
     // values newgame_pre_mklev() would have set; fields the snapshot omits
@@ -373,13 +379,16 @@ export async function dorestore(state = game) {
     // a leader or nemesis without a fixed gender draws rn2(100) again here
     // (role.c 2036-2060). Sfi_q_score() below then replaces the quest status
     // this call initializes with the saved one.
-    role_init(state);
+    await role_init(state);
     state.u = snapshot.u;
     state.context = snapshot.context;
     state.plname = snapshot.plname;
     state.pl_character = snapshot.pl_character;
-    state.urole = snapshot.urole;
-    state.urace = snapshot.urace;
+    // gu.urole and gu.urace are not in the save file: role_init() above set
+    // them from the saved flags.initrole and flags.initrace (role.c
+    // 2000-2010, 2071-2075), or from the "-role-race" suffix of a name its
+    // plnamesuffix() asked for. The snapshot's copies only feed js/files.js
+    // plname_from_file().
 
     // C ref: dungeon.c restore_dungeon():222 reads svd.dungeon_topology
     // whole; dorecover() does not rerun fixup_level_locations(), whose x-
@@ -646,6 +655,8 @@ export async function dorestore(state = game) {
     // arrival.
     if (on_level(state.u.uz, state.rogue_level))
         assign_graphics(ROGUESET, state);
+    // restore.c:907 reset_glyphmap(gm_levelchange).
+    reset_glyphmap(state);
 
     // max_rank_sz computes gm.mrank_sz from the role's rank table.
     _uInitInternals.max_rank_sz(state);
@@ -740,7 +751,7 @@ export async function dorestore(state = game) {
     // C ref: dorecover():904 delete_savefile(). The JS port deletes the
     // save from VFS so a subsequent segment does not restore it again.
     if (!state.wizard && !state.discover) {
-        playgroundDeleteFile(savefile);
+        delete_savefile(state);
     }
 
     restore_msghistory(snapshot.msghistory, state);

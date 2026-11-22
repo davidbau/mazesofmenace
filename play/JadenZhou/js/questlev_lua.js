@@ -1,7 +1,9 @@
 // questlev_lua.js — hand port of the quest level scripts sessions reach:
 // dat/Bar-strt.lua and dat/Pri-strt.lua (the quest home levels),
 // dat/Bar-loca.lua (locate level), dat/Bar-fila.lua and dat/Bar-filb.lua
-// (filler levels) and dat/Bar-goal.lua (goal level).
+// (filler levels) and dat/Bar-goal.lua (goal level). The other roles'
+// quest levels are in questlev_<role>_lua.js; quest_level_lua_files below
+// lists them all.
 // makemaz() loads them through load_special() (sp_lev.c).
 // C ref: dat/Bar-strt.lua, dat/Pri-strt.lua, dat/Bar-loca.lua, dat/Bar-fila.lua,
 // dat/Bar-filb.lua, dat/Bar-goal.lua
@@ -10,6 +12,18 @@
 // is lua_band() (nhlua.js).
 
 import { lua_band } from './nhlua.js';
+import { questlev_arc_lua_files } from './questlev_arc_lua.js';
+import { questlev_cav_lua_files } from './questlev_cav_lua.js';
+import { questlev_hea_lua_files } from './questlev_hea_lua.js';
+import { questlev_kni_lua_files } from './questlev_kni_lua.js';
+import { questlev_mon_lua_files } from './questlev_mon_lua.js';
+import { questlev_pri_lua_files } from './questlev_pri_lua.js';
+import { questlev_ran_lua_files } from './questlev_ran_lua.js';
+import { questlev_rog_lua_files } from './questlev_rog_lua.js';
+import { questlev_sam_lua_files } from './questlev_sam_lua.js';
+import { questlev_tou_lua_files } from './questlev_tou_lua.js';
+import { questlev_val_lua_files } from './questlev_val_lua.js';
+import { questlev_wiz_lua_files } from './questlev_wiz_lua.js';
 
 // The des.map() maps, verbatim from the .lua files.
 const MAP_Bar_strt = [
@@ -464,4 +478,16 @@ export const quest_level_lua_files = {
     'Bar-filb.lua': Bar_filb_lua,
     'Bar-goal.lua': Bar_goal_lua,
     'Pri-strt.lua': Pri_strt_lua,
+    ...questlev_arc_lua_files,
+    ...questlev_cav_lua_files,
+    ...questlev_hea_lua_files,
+    ...questlev_kni_lua_files,
+    ...questlev_mon_lua_files,
+    ...questlev_pri_lua_files,
+    ...questlev_ran_lua_files,
+    ...questlev_rog_lua_files,
+    ...questlev_sam_lua_files,
+    ...questlev_tou_lua_files,
+    ...questlev_val_lua_files,
+    ...questlev_wiz_lua_files,
 };

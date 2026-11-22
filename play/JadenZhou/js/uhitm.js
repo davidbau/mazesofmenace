@@ -102,6 +102,78 @@ import { could_seduce } from './mhitu.js';
 import { carrying } from './invent.js';
 import { abuse_dog } from './dog.js';
 import { discover_object } from './o_init.js';
+import { steal, stealgold, stealamulet } from './steal.js';
+import { tele_restrict, rloc } from './teleport.js';
+import { locomotion } from './trap.js';
+import { Adjmonnam } from './do_name.js';
+import { doseduce } from './mhitu.js';
+import { You_hear } from './sounds.js';
+import { make_stoned } from './potion.js';
+import { poly_when_stoned } from './mondata.js';
+import { the } from './iactions.js';
+import { RLOC_MSG, M_ATTK_AGR_DONE, M_ATTK_AGR_DIED, KILLED_BY_AN, KILLED_BY,
+         NEW_MOON, STONED, STONE_RES, DEAF } from './const.js';
+import { DRAIN_RES, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_ACID, M_SEEN_SLEEP,
+         FIRE_RES, COLD_RES, ACID_RES, SLEEP_RES, TELEPORT_CONTROL, BLINDED,
+         TIMEOUT, LEG, SWIMMING, UNCHANGING, SLIMED, FAST, SICK, SICK_ALL,
+         RIGHT_SIDE, LEFT_SIDE, ANTIMAGIC, A_INT,
+         W_ARMH, W_ARMC, W_ARMU, W_ARMF, ERODE_RUST, ERODE_CORRODE, ERODE_ROT,
+         ER_NOTHING, EF_GREASE, EF_VERBOSE, MAGICAL_BREATHING }
+       from './const.js';
+import { GRAY_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALES, DUNCE_CAP, LOW_BOOTS,
+         IRON_SHOES } from './objects.js';
+import { erode_obj, drain_en, set_wounded_legs, Maybe_Half_Phys } from './trap.js';
+import { losexp } from './exper.js';
+import { completelyrusts, completelyrots, completelyburns, mon_give_prop,
+         mongone } from './mon.js';
+import { burn_away_slime, hliquid, make_blinded, make_confused, make_stunned,
+         make_slimed, make_sick, delayed_killer } from './potion.js';
+import { tele } from './teleport.js';
+import { unconscious, is_fainted, morehungry } from './eat.js';
+import { can_blnd } from './mondata.js';
+import { night } from './calendar.js';
+import { attrcurse } from './sit.js';
+import { mdamageu, u_slip_free, u_slow_down, diseasemu } from './mhitu.js';
+import { adjattrib } from './attrib.js';
+import { losespells } from './spell.js';
+import { drain_weapon_skill } from './weapon.js';
+import { helm_simple_name } from './objnam.js';
+import { urgent_pline, You_feel } from './display.js';
+import { Some_Monnam } from './do_name.js';
+import { fall_asleep } from './timeout.js';
+import { some_armor } from './do_wear.js';
+import { touch_of_death } from './mcastu.js';
+import { set_uasmon } from './polyself.js';
+/* C ref: mondata.h slithy(), flaming(), has_head() */
+function slithy(ptr) { return (ptr.mflags1 & M.M1_SLITHY) !== 0; }
+function flaming(ptr) {
+    return ptr === mons[M.PM_FIRE_VORTEX] || ptr === mons[M.PM_FLAMING_SPHERE]
+           || ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER];
+}
+function has_head(ptr) { return (ptr.mflags1 & M.M1_NOHEAD) === 0; }
+/* C ref: youprop.h Amphibious, Breathless */
+function Amphibious() {
+    const p = game.u.uprops[MAGICAL_BREATHING];
+    return !!(p.intrinsic || p.extrinsic)
+           || (game.youmonst.data.mflags1 & M.M1_AMPHIBIOUS) !== 0;
+}
+function Breathless() {
+    const p = game.u.uprops[MAGICAL_BREATHING];
+    return !!(p.intrinsic || p.extrinsic)
+           || (game.youmonst.data.mflags1 & M.M1_BREATHLESS) !== 0;
+}
+/* C ref: mondata.h is_animal(), type_is_pname() */
+function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
+function type_is_pname(ptr) { return (ptr.mflags2 & M.M2_PNAME) !== 0; }
+/* C ref: youprop.h Deaf, Stone_resistance */
+function Deaf() {
+    const p = game.u.uprops[DEAF];
+    return !!(((p.intrinsic || p.extrinsic) && !p.blocked) || game.u.uroleplay?.deaf);
+}
+function Stone_resistance() {
+    const p = game.u.uprops[STONE_RES];
+    return !!(p.intrinsic || p.extrinsic);
+}
 /* C ref: hack.h makeknown() */
 function makeknown(x) { discover_object(x, true, true, true); }
 
@@ -397,17 +469,1230 @@ async function mhitm_ad_drst(magr, mattk, mdef, mhm) {
     }
 }
 
+// C ref: uhitm.c mhitm_ad_sgld()
+async function mhitm_ad_sgld(magr, mattk, mdef, mhm) {
+    const pa = magr.data;
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_sgld(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (pd.mlet === pa.mlet)
+            return;
+        if (!magr.mcan)
+            await stealgold(magr);
+    } else {
+        throw new Error('mhitm_ad_sgld(): mhitm branch not ported yet');
+    }
+    void mhm;
+}
+
+// C ref: uhitm.c mhitm_ad_samu()
+async function mhitm_ad_samu(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        /* uhitm */
+        mhm.damage = 0;
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        /* when the Wizard or quest nemesis hits, there's a 1/20 chance
+           to steal a quest artifact (any, not just the one for the hero's
+           own role) or the Amulet or one of the invocation tools */
+        if (!rn2(20))
+            await stealamulet(magr);
+    } else {
+        /* mhitm */
+        mhm.damage = 0;
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_sedu()
+/* seduce and also steal item */
+async function mhitm_ad_sedu(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_sedu(): uhitm branch (steal_it()) not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        const buf = { buf: '' };
+
+        if (is_animal(magr.data)) {
+            await hitmsg(magr, mattk);
+            if (magr.mcan)
+                return;
+            /* Continue below */
+        } else if (dmgtype(game.youmonst.data, M.AD_SEDU)
+                   /* !SYSOPT_SEDUCE: when hero is attacking and AD_SSEX
+                      is disabled, it would be changed to another damage
+                      type, but when defending, it remains as-is */
+                   || dmgtype(game.youmonst.data, M.AD_SSEX)) {
+            await pline(`${Monnam(magr)} ${
+                Deaf() ? "says something but you can't hear it"
+                : (magr.minvent && magr.minvent.length)
+                  ? "brags about the goods some dungeon explorer provided"
+                : "makes some remarks about how difficult theft is lately"}.`); /* pline_mon() */
+            if (!await tele_restrict(magr))
+                await rloc(magr, RLOC_MSG);
+            mhm.hitflags = M_ATTK_AGR_DONE; /* return 3??? */
+            mhm.done = true;
+            return;
+        } else if (magr.mcan) {
+            if (!Blind())
+                await pline(`${Adjmonnam(magr, "plain")} tries to ${
+                    game.flags.female ? "charm" : "seduce"} you, but you seem ${
+                    game.flags.female ? "unaffected" : "uninterested"}.`);
+            if (rn2(3)) {
+                if (!await tele_restrict(magr))
+                    await rloc(magr, RLOC_MSG);
+                mhm.hitflags = M_ATTK_AGR_DONE; /* return 3??? */
+                mhm.done = true;
+                return;
+            }
+            return;
+        }
+        switch (await steal(magr, buf)) {
+        case -1:
+            mhm.hitflags = M_ATTK_AGR_DIED; /* return 2??? */
+            mhm.done = true;
+            return;
+        case 0:
+            return;
+        default:
+            if (!is_animal(magr.data) && !await tele_restrict(magr))
+                await rloc(magr, RLOC_MSG);
+            if (is_animal(magr.data) && buf.buf) {
+                if (canseemon(magr))
+                    await pline(`${Monnam(magr)} tries to ${
+                        locomotion(magr.data, "run")} away with ${buf.buf}.`); /* pline_mon() */
+            }
+            await monflee(magr, 0, false, false);
+            mhm.hitflags = M_ATTK_AGR_DONE; /* return 3??? */
+            mhm.done = true;
+            return;
+        }
+    } else {
+        throw new Error('mhitm_ad_sedu(): mhitm branch not ported yet');
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_ssex()
+async function mhitm_ad_ssex(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        /* uhitm */
+        await mhitm_ad_sedu(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        if (true /* SYSOPT_SEDUCE: on in the recorded games */) {
+            if (could_seduce(magr, mdef, mattk) === 1 && !magr.mcan)
+                if (await doseduce(magr)) {
+                    mhm.hitflags = M_ATTK_AGR_DONE;
+                    mhm.done = true;
+                    return;
+                }
+            return;
+        }
+    } else {
+        /* mhitm */
+        await mhitm_ad_sedu(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
+    }
+}
+
+// C ref: uhitm.c do_stone_u()
+async function do_stone_u(mtmp) {
+    const u = game.u;
+    if (!uprop(STONED) && !Stone_resistance()
+        && !(poly_when_stoned(game.youmonst.data)
+             && polymon_nyi(M.PM_STONE_GOLEM))) {
+        let kformat = KILLED_BY_AN;
+        let kname = pmname(mtmp.data, Mgender(mtmp));
+
+        if (mtmp.data.geno & M.G_UNIQ) {
+            if (!type_is_pname(mtmp.data))
+                kname = the(kname);
+            kformat = KILLED_BY;
+        }
+        await make_stoned(5, null, kformat, kname);
+        return 1;
+        /* done_in_by(mtmp, STONING); */
+    }
+    void u;
+    return 0;
+}
+/* C ref: polyself.c polymon() -- not ported */
+function polymon_nyi(mntmp) {
+    void mntmp;
+    throw new Error('polymon() not ported yet');
+}
+
+// C ref: uhitm.c mhitm_ad_ston()
+async function mhitm_ad_ston(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_ston(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (!rn2(3)) {
+            if (magr.mcan) {
+                if (!Deaf())
+                    await You_hear(`a cough from ${mon_nam(magr)}!`);
+            } else {
+                if (Hallucination() && !Blind()) {
+                    /* Soundeffect(se_cockatrice_hiss, 50); */
+                    await You_hear("hissing."); /* You_hear() deals with Deaf */
+                    await pline(`${Monnam(magr)} appears to be blowing you a kiss...`);
+                } else if (!Deaf()) {
+                    await You_hear(`${s_suffix(mon_nam(magr))} hissing!`);
+                } else if (!Blind()) {
+                    await pline(`${Monnam(magr)} seems to grimace.`);
+                }
+                /*
+                 * 5.0:  New moon is no longer overridden by carrying a
+                 * lizard corpse.
+                 */
+                if (!rn2(10) || game.flags.moonphase === NEW_MOON) {
+                    if (await do_stone_u(magr)) {
+                        mhm.hitflags = M_ATTK_HIT;
+                        mhm.done = true;
+                        return;
+                    }
+                }
+            }
+        }
+    } else {
+        throw new Error('mhitm_ad_ston(): mhitm branch (do_stone_mon()) not ported yet');
+    }
+}
+
+/* C ref: polyself.c rehumanize() -- not ported; only reached by a
+   polymorphed hero */
+function rehumanize_nyi(who) {
+    throw new Error(`${who}: rehumanize() not ported yet`);
+}
+/* C ref: artifact.c defends() -- the non-artifact, non-dragon-armor case */
+function defends(adtyp, otmp) {
+    if (!otmp)
+        return false;
+    if (otmp.oartifact)
+        throw new Error('defends(): artifact defn not ported yet');
+    if (otmp.otyp >= GRAY_DRAGON_SCALE_MAIL && otmp.otyp <= YELLOW_DRAGON_SCALES)
+        throw new Error('defends(): dragon armor not ported yet');
+    void adtyp;
+    return false;
+}
+
+// C ref: uhitm.c erode_armor()
+export async function erode_armor(mdef, hurt) {
+    let target;
+
+    /* What the following code does: it keeps looping until it
+     * finds a target for the rust monster.
+     * Head, feet, etc... not covered by metal, or covered by
+     * rusty metal, are not targets.  However, your body always
+     * is, no matter what covers it.
+     */
+    for (;;) {
+        switch (rn2(5)) {
+        case 0:
+            target = which_armor(mdef, W_ARMH);
+            if (!target
+                || await erode_obj(target, xname(target), hurt, EF_GREASE)
+                       === ER_NOTHING)
+                continue;
+            break;
+        case 1:
+            target = which_armor(mdef, W_ARMC);
+            if (target) {
+                await erode_obj(target, xname(target), hurt,
+                                EF_GREASE | EF_VERBOSE);
+                break;
+            }
+            if ((target = which_armor(mdef, W_ARM)) != null) {
+                await erode_obj(target, xname(target), hurt,
+                                EF_GREASE | EF_VERBOSE);
+            } else if ((target = which_armor(mdef, W_ARMU)) != null) {
+                await erode_obj(target, xname(target), hurt,
+                                EF_GREASE | EF_VERBOSE);
+            }
+            break;
+        case 2:
+            target = which_armor(mdef, W_ARMS);
+            if (!target
+                || await erode_obj(target, xname(target), hurt, EF_GREASE)
+                       === ER_NOTHING)
+                continue;
+            break;
+        case 3:
+            target = which_armor(mdef, W_ARMG);
+            if (!target
+                || await erode_obj(target, xname(target), hurt, EF_GREASE)
+                       === ER_NOTHING)
+                continue;
+            break;
+        case 4:
+            target = which_armor(mdef, W_ARMF);
+            if (!target
+                || await erode_obj(target, xname(target), hurt, EF_GREASE)
+                       === ER_NOTHING)
+                continue;
+            break;
+        }
+        break; /* Out of while loop */
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_rust()
+async function mhitm_ad_rust(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_rust(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (magr.mcan) {
+            return;
+        }
+        if (completelyrusts(pd)) {
+            await You("rust!");
+            /* KMH -- this is okay with unchanging */
+            rehumanize_nyi('mhitm_ad_rust()');
+            return;
+        }
+        await erode_armor(game.youmonst, ERODE_RUST);
+    } else {
+        throw new Error('mhitm_ad_rust(): mhitm branch not ported yet');
+    }
+    void mhm;
+}
+
+// C ref: uhitm.c mhitm_ad_corr()
+async function mhitm_ad_corr(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_corr(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (magr.mcan)
+            return;
+        await erode_armor(mdef, ERODE_CORRODE);
+    } else {
+        throw new Error('mhitm_ad_corr(): mhitm branch not ported yet');
+    }
+    void mhm;
+}
+
+// C ref: uhitm.c mhitm_ad_dcay()
+async function mhitm_ad_dcay(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_dcay(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (magr.mcan)
+            return;
+        if (completelyrots(pd)) {
+            await You("rot!");
+            /* KMH -- this is okay with unchanging */
+            rehumanize_nyi('mhitm_ad_dcay()');
+            return;
+        }
+        await erode_armor(mdef, ERODE_ROT);
+    } else {
+        throw new Error('mhitm_ad_dcay(): mhitm branch not ported yet');
+    }
+    void mhm;
+}
+
+// C ref: uhitm.c mhitm_ad_dren()
+async function mhitm_ad_dren(magr, mattk, mdef, mhm) {
+    const negated = mhitm_mgc_atk_negated(magr, mdef, false).negated;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_dren(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (!negated && !rn2(4)) /* 25% chance */
+            await drain_en(mhm.damage, false);
+        mhm.damage = 0;
+    } else {
+        throw new Error('mhitm_ad_dren(): mhitm branch not ported yet');
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_drli()
+async function mhitm_ad_drli(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_drli(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (!rn2(3) && !uprop(DRAIN_RES)
+            && !await mgc_atk_negated(magr, mdef, true)) {
+            await losexp("life drainage");
+            /* unlike hitting with Stormbringer, wounded attacker doesn't
+               heal any from the drained life */
+        }
+    } else {
+        throw new Error('mhitm_ad_drli(): mhitm branch not ported yet');
+    }
+    void mhm;
+}
+
+// C ref: mondata.c on_fire()
+export function on_fire(mptr, mattk) {
+    let what;
+
+    switch (monsndx(mptr)) {
+    case M.PM_FLAMING_SPHERE:
+    case M.PM_FIRE_VORTEX:
+    case M.PM_FIRE_ELEMENTAL:
+    case M.PM_SALAMANDER:
+        what = "already on fire";
+        break;
+    case M.PM_WATER_ELEMENTAL:
+    case M.PM_FOG_CLOUD:
+    case M.PM_STEAM_VORTEX:
+        what = "boiling";
+        break;
+    case M.PM_ICE_VORTEX:
+    case M.PM_GLASS_GOLEM:
+        what = "melting";
+        break;
+    case M.PM_STONE_GOLEM:
+    case M.PM_CLAY_GOLEM:
+    case M.PM_GOLD_GOLEM:
+    case M.PM_AIR_ELEMENTAL:
+    case M.PM_EARTH_ELEMENTAL:
+    case M.PM_DUST_VORTEX:
+    case M.PM_ENERGY_VORTEX:
+        what = "heating up";
+        break;
+    default:
+        what = (mattk.aatyp === AT_HUGS) ? "being roasted" : "on fire";
+        break;
+    }
+    return what;
+}
+
+// C ref: uhitm.c mhitm_ad_fire()
+async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_fire(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (!await mgc_atk_negated(magr, mdef, true)) {
+            await pline(`You're ${on_fire(pd, mattk)}!`);
+            if (completelyburns(pd)) { /* paper or straw golem */
+                await You("go up in flames!");
+                monstunseesu(M_SEEN_FIRE);
+                /* KMH -- this is okay with unchanging */
+                rehumanize_nyi('mhitm_ad_fire()');
+                return;
+            } else if (uprop(FIRE_RES)) {
+                await pline_The("fire doesn't feel hot!");
+                monstseesu(M_SEEN_FIRE);
+                mhm.damage = 0;
+            } else {
+                monstunseesu(M_SEEN_FIRE);
+            }
+            if (magr.m_lev > rn2(20))
+                throw new Error('mhitm_ad_fire(): destroy_items()/ignite_items() not ported yet');
+            await burn_away_slime();
+        } else {
+            mhm.damage = 0;
+        }
+    } else {
+        throw new Error('mhitm_ad_fire(): mhitm branch not ported yet');
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_cold()
+async function mhitm_ad_cold(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_cold(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (!await mgc_atk_negated(magr, mdef, true)) {
+            await pline("You're covered in frost!");
+            if (uprop(COLD_RES)) {
+                await pline_The("frost doesn't seem cold!");
+                monstseesu(M_SEEN_COLD);
+                mhm.damage = 0;
+            } else {
+                monstunseesu(M_SEEN_COLD);
+            }
+            if (magr.m_lev > rn2(20))
+                throw new Error('mhitm_ad_cold(): destroy_items() not ported yet');
+        } else
+            mhm.damage = 0;
+    } else {
+        throw new Error('mhitm_ad_cold(): mhitm branch not ported yet');
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_acid()
+async function mhitm_ad_acid(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_acid(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (!magr.mcan && !rn2(3))
+            if (uprop(ACID_RES)) {
+                await pline(`You're covered in ${hliquid("acid")}, but it seems harmless.`);
+                monstseesu(M_SEEN_ACID);
+                mhm.damage = 0;
+            } else {
+                await pline(`You're covered in ${hliquid("acid")}!  It burns!`);
+                exercise(A_STR, false);
+                monstunseesu(M_SEEN_ACID);
+            }
+        else
+            mhm.damage = 0;
+    } else {
+        throw new Error('mhitm_ad_acid(): mhitm branch not ported yet');
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_tlpt()
+async function mhitm_ad_tlpt(magr, mattk, mdef, mhm) {
+    const u = game.u;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_tlpt(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        let tmphp;
+
+        await hitmsg(magr, mattk);
+        if (await mgc_atk_negated(magr, mdef, false)) {
+            await You("are not affected.");
+        } else {
+            if (game.flags.verbose)
+                await Your(`position suddenly seems ${
+                    (uprop(TELEPORT_CONTROL) && !Stunned() && !unconscious())
+                        ? "" : "very "}uncertain!`);
+            await tele();
+            /* As of 3.6.2:  make sure damage isn't fatal; previously, it
+               was possible to be teleported and then drop dead at
+               the destination when QM's 1d4 damage gets applied below */
+            if ((Half_physical_damage() ? Math.trunc((mhm.damage - 1) / 2) : mhm.damage)
+                >= (tmphp = (Upolyd() ? u.mh : u.uhp))) {
+                mhm.damage = tmphp - 1;
+                if (Half_physical_damage())
+                    mhm.damage *= 2; /* doesn't actually increase damage */
+                if (mhm.damage < 1) { /* implies (tmphp <= 1) */
+                    mhm.damage = 1;
+                    /* this might increase current HP beyond maximum HP but it
+                       will be immediately reduced by caller */
+                    if (Upolyd() && u.mh === 1)
+                        ++u.mh;
+                    else if (!Upolyd() && u.uhp === 1)
+                        ++u.uhp;
+                    /* [don't set context.botl here] */
+                }
+            }
+        }
+    } else {
+        throw new Error('mhitm_ad_tlpt(): mhitm branch not ported yet');
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_blnd()
+async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_blnd(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        if (can_blnd(magr, mdef, mattk.aatyp, null)) {
+            if (!Blind())
+                await pline(`${Monnam(magr)} blinds you!`);
+            await make_blinded((game.u.uprops[BLINDED].intrinsic & TIMEOUT)
+                               + mhm.damage, false);
+            if (!Blind()) /* => Eyes of the Overworld */
+                await Your("vision quickly clears."); /* Your1(vision_clears) */
+        }
+        mhm.damage = 0;
+    } else {
+        throw new Error('mhitm_ad_blnd(): mhitm branch not ported yet');
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_curs()
+async function mhitm_ad_curs(magr, mattk, mdef, mhm) {
+    const u = game.u;
+    const pa = magr.data;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_curs(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (!night() && pa === mons[M.PM_GREMLIN])
+            return;
+        if (!magr.mcan && !rn2(10)) {
+            if (!Deaf()) {
+                /* Soundeffect(se_laughter, 40); */
+                if (Blind()) {
+                    await You_hear("laughter.");
+                } else {
+                    await pline(`${Monnam(magr)} chuckles.`); /* pline_mon() */
+                }
+            }
+            if (u.umonnum === M.PM_CLAY_GOLEM) {
+                await pline("Some writing vanishes from your head!");
+                /* KMH -- this is okay with unchanging */
+                rehumanize_nyi('mhitm_ad_curs()');
+                return;
+            }
+            await mon_give_prop(magr, await attrcurse());
+        }
+    } else {
+        throw new Error('mhitm_ad_curs(): mhitm branch not ported yet');
+    }
+    void mhm;
+}
+
+// C ref: uhitm.c mhitm_ad_drin()
+async function mhitm_ad_drin(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_drin(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (defends(M.AD_DRIN, game.uwep) || !has_head(pd)) {
+            await You("don't seem harmed.");
+            /* attacker should skip remaining AT_TENT+AD_DRIN attacks */
+            game.skipdrin = true;
+            /* Not clear what to do for green slimes */
+            return;
+        }
+        if (await u_slip_free(magr, mattk))
+            return;
+        if (game.uarmh && rn2(8)) {
+            /* not body_part(HEAD) */
+            await Your(`${helm_simple_name(game.uarmh)} blocks the attack to your head.`);
+            return;
+        }
+        /* negative armor class doesn't reduce this damage */
+        if (Half_physical_damage())
+            mhm.damage = Math.trunc((mhm.damage + 1) / 2);
+        await mdamageu(magr, mhm.damage);
+        mhm.damage = 0; /* don't inflict a second dose below */
+
+        if (!game.uarmh || game.uarmh.otyp !== DUNCE_CAP)
+            throw new Error('mhitm_ad_drin(): eat_brains() not ported yet');
+        /* adjattrib gives dunce cap message when appropriate */
+        await adjattrib(A_INT, -rnd(2), false);
+        if (!rn2(5)) {
+            await losespells();
+            game.skipdrin = true;
+        }
+        if (!rn2(5)) {
+            await drain_weapon_skill(rnd(2));
+            game.skipdrin = true;
+        }
+    } else {
+        throw new Error('mhitm_ad_drin(): mhitm branch not ported yet');
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_wrap()
+async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
+    const u = game.u;
+    const pd = mdef.data, pa = magr.data;
+    const coil = slithy(pa) && (pa.mlet === M.S_SNAKE || pa.mlet === M.S_NAGA);
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_wrap(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        if ((!magr.mcan || u.ustuck === magr) && !sticks(pd)) {
+            if (!u.ustuck && !rn2(10)) {
+                if (await u_slip_free(magr, mattk)) {
+                    mhm.damage = 0;
+                } else {
+                    set_ustuck(magr); /* before message, for botl update */
+                    await urgent_pline(`${Some_Monnam(magr)} ${
+                        coil ? "coils" : "swings"} itself around you!`);
+                }
+            } else if (u.ustuck === magr) {
+                if (is_pool(magr.mx, magr.my) && !uprop(SWIMMING)
+                    && !Amphibious() && !Breathless())
+                    throw new Error('mhitm_ad_wrap(): drowning the hero not ported yet');
+                else if (mattk.aatyp === AT_HUGS)
+                    await You("are being crushed.");
+            } else {
+                mhm.damage = 0;
+                if (game.flags.verbose) {
+                    if (coil)
+                        await pline(`${Monnam(magr)} brushes against you.`);
+                    else
+                        await pline(`${Monnam(magr)} brushes against your ${body_part(LEG)}.`);
+                }
+            }
+        } else
+            mhm.damage = 0;
+    } else {
+        throw new Error('mhitm_ad_wrap(): mhitm branch not ported yet');
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_plys()
+async function mhitm_ad_plys(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_plys(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (game.multi >= 0 && !rn2(3)
+            && !await mgc_atk_negated(magr, mdef, true)) {
+            if (Free_action()) {
+                await You("momentarily stiffen.");
+            } else {
+                if (Blind())
+                    await You("are frozen!");
+                else
+                    await You(`are frozen by ${mon_nam(magr)}!`);
+                game.nomovemsg = "You can move again."; /* You_can_move_again */
+                nomul(-rnd(10));
+                /* set gm.multi_reason;
+                   3.6.x used "paralyzed by a monster"; be more specific */
+                dynamic_multi_reason(magr, "paralyzed", false);
+                exercise(A_DEX, false);
+            }
+        }
+    } else {
+        throw new Error('mhitm_ad_plys(): mhitm branch not ported yet');
+    }
+    void mhm;
+}
+
+// C ref: uhitm.c mhitm_ad_slee()
+async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_slee(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (game.multi >= 0 && !rn2(5)
+            && !await mgc_atk_negated(magr, mdef, true)) {
+            if (uprop(SLEEP_RES)) {
+                monstseesu(M_SEEN_SLEEP);
+                return;
+            }
+            monstunseesu(M_SEEN_SLEEP);
+            await fall_asleep(-rnd(10), true);
+            if (Blind())
+                await You("are put to sleep!");
+            else
+                await You(`are put to sleep by ${mon_nam(magr)}!`);
+        }
+    } else {
+        throw new Error('mhitm_ad_slee(): mhitm branch not ported yet');
+    }
+    void mhm;
+}
+
+// C ref: uhitm.c mhitm_ad_slim()
+async function mhitm_ad_slim(magr, mattk, mdef, mhm) {
+    const negated = mhitm_mgc_atk_negated(magr, mdef, false).negated;
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_slim(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (negated) {
+            if (!magr.mcan)
+                await You("escape harm.");
+            return;
+        }
+        if (flaming(pd)) {
+            await pline_The("slime burns away!");
+            mhm.damage = 0;
+        } else if (uprop(UNCHANGING) || noncorporeal(pd)
+                   || pd === mons[M.PM_GREEN_SLIME]) {
+            await You("are unaffected.");
+            mhm.damage = 0;
+        } else if (!uprop(SLIMED)) {
+            await You("don't feel very well.");
+            await make_slimed(10, null);
+            delayed_killer(SLIMED, KILLED_BY_AN,
+                           pmname(magr.data, Mgender(magr)));
+        } else
+            await pline("Yuck!");
+    } else {
+        throw new Error('mhitm_ad_slim(): mhitm branch not ported yet');
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_ench()
+async function mhitm_ad_ench(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_ench(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        const negated = mhitm_mgc_atk_negated(magr, mdef, false).negated;
+
+        await hitmsg(magr, mattk);
+        /* uncancelled is sufficient enough; please
+           don't make this attack less frequent */
+        if (!negated) {
+            let obj = some_armor(mdef);
+
+            if (!obj) {
+                /* some rings are susceptible;
+                   amulets and blindfolds aren't (at present) */
+                switch (rn2(5)) {
+                case 0:
+                    break;
+                case 1:
+                    obj = game.uright;
+                    break;
+                case 2:
+                    obj = game.uleft;
+                    break;
+                case 3:
+                    obj = game.uamul;
+                    break;
+                case 4:
+                    obj = game.ublindf;
+                    break;
+                }
+            }
+            if (obj)
+                throw new Error('mhitm_ad_ench(): drain_item() not ported yet');
+        }
+    } else {
+        throw new Error('mhitm_ad_ench(): mhitm branch not ported yet');
+    }
+    void mhm;
+}
+
+// C ref: uhitm.c mhitm_ad_slow()
+async function mhitm_ad_slow(magr, mattk, mdef, mhm) {
+    const negated = mhitm_mgc_atk_negated(magr, mdef, false).negated;
+
+    if (defended(mdef, M.AD_SLOW))
+        return;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_slow(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (!negated && game.u.uprops[FAST].intrinsic && !rn2(4))
+            await u_slow_down();
+    } else {
+        throw new Error('mhitm_ad_slow(): mhitm branch not ported yet');
+    }
+    void mhm;
+}
+
+// C ref: uhitm.c mhitm_ad_conf()
+async function mhitm_ad_conf(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_conf(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (!magr.mcan && !rn2(4) && !magr.mspec_used) {
+            magr.mspec_used = magr.mspec_used + (mhm.damage + rn2(6));
+            if (Confusion())
+                await You("are getting even more confused.");
+            else
+                await You("are getting confused.");
+            await make_confused(game.u.uprops[CONFUSION].intrinsic + mhm.damage, false);
+        }
+        mhm.damage = 0;
+    } else {
+        throw new Error('mhitm_ad_conf(): mhitm branch not ported yet');
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_poly()
+async function mhitm_ad_poly(magr, mattk, mdef, mhm) {
+    const u = game.u;
+    const negated = (mhitm_mgc_atk_negated(magr, mdef, false).negated
+                     || !!magr.mspec_used);
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_poly(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (Maybe_Half_Phys(mhm.damage) < (Upolyd() ? u.mh : u.uhp)) {
+            if (negated) {
+                if (magr.mcan)
+                    await You("aren't transformed.");
+            } else {
+                throw new Error('mhitm_ad_poly(): mon_poly() not ported yet');
+            }
+        }
+    } else {
+        throw new Error('mhitm_ad_poly(): mhitm branch not ported yet');
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_famn()
+async function mhitm_ad_famn(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_famn(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await pline(`${Monnam(magr)} reaches out, and your body shrivels.`); /* pline_mon() */
+        exercise(A_CON, false);
+        if (!is_fainted())
+            await morehungry(rn1(40, 40));
+        /* plus the normal damage */
+    } else {
+        throw new Error('mhitm_ad_famn(): mhitm branch not ported yet');
+    }
+    void mattk; void mhm;
+}
+
+// C ref: uhitm.c mhitm_ad_pest()
+async function mhitm_ad_pest(magr, mattk, mdef, mhm) {
+    const pa = magr.data;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_pest(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await pline(`${Monnam(magr)} reaches out, and you feel fever and chills.`); /* pline_mon() */
+        await diseasemu(pa);
+        /* plus the normal damage */
+    } else {
+        throw new Error('mhitm_ad_pest(): mhitm branch not ported yet');
+    }
+    void mattk; void mhm;
+}
+
+// C ref: uhitm.c mhitm_ad_deth()
+async function mhitm_ad_deth(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_deth(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await pline(`${Monnam(magr)} reaches out with its deadly touch.`); /* pline_mon() */
+        if (is_undead(pd)) {
+            /* still does some damage */
+            mhm.damage = Math.trunc((mhm.damage + 1) / 2);
+            await pline("Was that the touch of death?");
+            return;
+        }
+        switch (rn2(20)) {
+        case 19:
+        case 18:
+        case 17:
+            if (!uprop(ANTIMAGIC)) {
+                await touch_of_death(magr);
+                mhm.damage = 0;
+                return;
+            }
+            /*FALLTHRU*/
+        // eslint-disable-next-line no-fallthrough
+        default: /* case 16: ... case 5: */
+            await You_feel("your life force draining away...");
+            mhm.permdmg = 1; /* actual damage done by caller */
+            return;
+        case 4:
+        case 3:
+        case 2:
+        case 1:
+        case 0:
+            if (uprop(ANTIMAGIC))
+                throw new Error('mhitm_ad_deth(): shieldeff() not ported yet');
+            await pline("Lucky for you, it didn't work!");
+            mhm.damage = 0;
+            return;
+        }
+    } else {
+        throw new Error('mhitm_ad_deth(): mhitm branch not ported yet');
+    }
+    void mattk;
+}
+
+// C ref: uhitm.c mhitm_ad_halu()
+async function mhitm_ad_halu(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_halu(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        mhm.damage = 0;
+    } else {
+        throw new Error('mhitm_ad_halu(): mhitm branch not ported yet');
+    }
+    void mattk;
+}
+
+// C ref: uhitm.c mhitm_ad_were()
+async function mhitm_ad_were(magr, mattk, mdef, mhm) {
+    const u = game.u;
+    const pa = magr.data;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_were(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (!rn2(4) && (u.ulycn ?? NON_PM) === NON_PM
+            && !Protection_from_shape_changers() && !defends(M.AD_WERE, game.uwep)
+            && !await mgc_atk_negated(magr, mdef, true)) {
+            await urgent_pline("You feel feverish.");
+            exercise(A_CON, false);
+            /* set_ulycn(monsndx(pa)) */
+            u.ulycn = monsndx(pa);
+            set_uasmon();
+            throw new Error('mhitm_ad_were(): retouch_equipment() not ported yet');
+        }
+    } else {
+        throw new Error('mhitm_ad_were(): mhitm branch not ported yet');
+    }
+    void mhm;
+}
+
+// C ref: uhitm.c mhitm_ad_heal()
+async function mhitm_ad_heal(magr, mattk, mdef, mhm) {
+    const u = game.u;
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_heal(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        /* a cancelled nurse is just an ordinary monster,
+         * nurses don't heal those that cause petrification */
+        if (magr.mcan || (Upolyd() && touch_petrifies(pd))) {
+            await hitmsg(magr, mattk);
+            return;
+        }
+        /* weapon check should match the one in sounds.c for MS_NURSE */
+        if (!(game.uwep && (game.uwep.oclass === WEAPON_CLASS || is_weptool(game.uwep)))
+            && !game.uarmu && !game.uarm && !game.uarmc
+            && !game.uarms && !game.uarmg && !game.uarmf && !game.uarmh) {
+            let goaway = false;
+
+            await pline(`${Monnam(magr)} hits!  (I hope you don't mind.)`); /* pline_mon() */
+            if (Upolyd()) {
+                u.mh += rnd(7);
+                if (!rn2(7)) {
+                    /* no upper limit necessary; effect is temporary */
+                    u.mhmax++;
+                    if (!rn2(13))
+                        goaway = true;
+                }
+                if (u.mh > u.mhmax)
+                    u.mh = u.mhmax;
+            } else {
+                u.uhp += rnd(7);
+                if (!rn2(7)) {
+                    /* hard upper limit via nurse care: 25 * ulevel */
+                    if (u.uhpmax < 5 * u.ulevel + d(2 * u.ulevel, 10)) {
+                        u.uhpmax++;
+                        if (u.uhpmax > u.uhppeak)
+                            u.uhppeak = u.uhpmax;
+                    }
+                    if (!rn2(13))
+                        goaway = true;
+                }
+                if (u.uhp > u.uhpmax)
+                    u.uhp = u.uhpmax;
+            }
+            if (!rn2(3))
+                exercise(A_STR, true);
+            if (!rn2(3))
+                exercise(A_CON, true);
+            if (u.uprops[SICK].intrinsic) /* Sick */
+                await make_sick(0, null, false, SICK_ALL);
+            game.disp_botl = true;
+            if (goaway) {
+                await mongone(magr);
+                mhm.done = true;
+                mhm.hitflags = M_ATTK_DEF_DIED; /* return 2??? */
+                return;
+            } else if (!rn2(33)) {
+                if (!await tele_restrict(magr))
+                    await rloc(magr, RLOC_MSG);
+                await monflee(magr, d(3, 6), true, false);
+                mhm.done = true;
+                mhm.hitflags = M_ATTK_HIT | M_ATTK_DEF_DIED; /* return 3??? */
+                return;
+            }
+            mhm.damage = 0;
+        } else {
+            if (Role_if(M.PM_HEALER)) {
+                if (!Deaf() && !(game.moves % 5)) {
+                    /* SetVoice(magr, 0, 80, 0); */
+                    await pline("\"Doc, I can't help you unless you cooperate.\""); /* verbalize() */
+                }
+                mhm.damage = 0;
+            } else
+                await hitmsg(magr, mattk);
+        }
+    } else {
+        throw new Error('mhitm_ad_heal(): mhitm branch not ported yet');
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_stun()
+async function mhitm_ad_stun(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_stun(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (!magr.mcan && !rn2(4)) {
+            await make_stunned((game.u.uprops[STUNNED].intrinsic & TIMEOUT)
+                               + mhm.damage, true);
+            mhm.damage = Math.trunc(mhm.damage / 2);
+        }
+    } else {
+        throw new Error('mhitm_ad_stun(): mhitm branch not ported yet');
+    }
+}
+
+// C ref: uhitm.c mhitm_ad_legs()
+async function mhitm_ad_legs(magr, mattk, mdef, mhm) {
+    const u = game.u;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_legs(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        const side = rn2(2) ? RIGHT_SIDE : LEFT_SIDE;
+        const sidestr = (side === RIGHT_SIDE) ? "right" : "left",
+              Monst_name = Monnam(magr), leg = body_part(LEG);
+
+        /* This case is too obvious to ignore, but Nethack is not in
+         * general very good at considering height--most short monsters
+         * still _can_ attack you when you're flying or mounted.
+         */
+        if ((u.usteed || uprop(LEVITATION) || uprop(FLYING))
+            && !is_flyer(magr.data)) {
+            await pline(`${Monst_name} tries to reach your ${sidestr} ${leg}!`);
+            mhm.damage = 0;
+        } else if (magr.mcan) {
+            await pline(`${Monnam(magr)} nuzzles against your ${sidestr} ${leg}!`); /* pline_mon() */
+            mhm.damage = 0;
+        } else {
+            if (game.uarmf) {
+                if (rn2(2) && (game.uarmf.otyp === LOW_BOOTS
+                               || game.uarmf.otyp === IRON_SHOES)) {
+                    await pline(`${Monst_name} pricks the exposed part of your ${sidestr} ${leg}!`);
+                } else if (!rn2(5)) {
+                    await pline(`${Monst_name} pricks through your ${sidestr} boot!`);
+                } else {
+                    await pline(`${Monst_name} scratches your ${sidestr} boot!`);
+                    mhm.damage = 0;
+                    return;
+                }
+            } else
+                await pline(`${Monst_name} pricks your ${sidestr} ${leg}!`);
+            await set_wounded_legs(side, rnd(60 - ACURR(A_DEX)));
+            exercise(A_STR, false);
+            exercise(A_DEX, false);
+        }
+    } else {
+        throw new Error('mhitm_ad_legs(): mhitm branch not ported yet');
+    }
+    void mattk;
+}
+
+// C ref: uhitm.c mhitm_ad_dgst()
+async function mhitm_ad_dgst(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_dgst(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        mhm.damage = 0;
+    } else {
+        throw new Error('mhitm_ad_dgst(): mhitm branch not ported yet');
+    }
+    void mattk;
+}
+
+// C ref: uhitm.c mhitm_ad_dise()
+async function mhitm_ad_dise(magr, mattk, mdef, mhm) {
+    const pa = magr.data;
+
+    if (magr === game.youmonst) {
+        throw new Error('mhitm_ad_dise(): uhitm branch not ported yet');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (!await diseasemu(pa))
+            mhm.damage = 0;
+    } else {
+        throw new Error('mhitm_ad_dise(): mhitm branch not ported yet');
+    }
+}
+
 // C ref: uhitm.c mhitm_adtyping()
 export async function mhitm_adtyping(magr, mattk, mdef, mhm) {
     switch (mattk.adtyp) {
+    case M.AD_STUN: await mhitm_ad_stun(magr, mattk, mdef, mhm); break;
+    case M.AD_LEGS: await mhitm_ad_legs(magr, mattk, mdef, mhm); break;
+    case M.AD_WERE: await mhitm_ad_were(magr, mattk, mdef, mhm); break;
+    case M.AD_HEAL: await mhitm_ad_heal(magr, mattk, mdef, mhm); break;
     case AD_PHYS: await mhitm_ad_phys(magr, mattk, mdef, mhm); break;
+    case M.AD_FIRE: await mhitm_ad_fire(magr, mattk, mdef, mhm); break;
+    case M.AD_COLD: await mhitm_ad_cold(magr, mattk, mdef, mhm); break;
     case AD_ELEC: await mhitm_ad_elec(magr, mattk, mdef, mhm); break;
-    case AD_STCK: await mhitm_ad_stck(magr, mattk, mdef, mhm); break;
+    case M.AD_ACID: await mhitm_ad_acid(magr, mattk, mdef, mhm); break;
+    case AD_STON: await mhitm_ad_ston(magr, mattk, mdef, mhm); break;
+    case M.AD_SSEX: await mhitm_ad_ssex(magr, mattk, mdef, mhm); break;
+    case M.AD_SITM:
+    case M.AD_SEDU: await mhitm_ad_sedu(magr, mattk, mdef, mhm); break;
+    case M.AD_SGLD: await mhitm_ad_sgld(magr, mattk, mdef, mhm); break;
+    case M.AD_TLPT: await mhitm_ad_tlpt(magr, mattk, mdef, mhm); break;
+    case M.AD_BLND: await mhitm_ad_blnd(magr, mattk, mdef, mhm); break;
+    case M.AD_CURS: await mhitm_ad_curs(magr, mattk, mdef, mhm); break;
+    case M.AD_DRLI: await mhitm_ad_drli(magr, mattk, mdef, mhm); break;
+    case M.AD_RUST: await mhitm_ad_rust(magr, mattk, mdef, mhm); break;
+    case M.AD_CORR: await mhitm_ad_corr(magr, mattk, mdef, mhm); break;
+    case M.AD_DCAY: await mhitm_ad_dcay(magr, mattk, mdef, mhm); break;
+    case M.AD_DREN: await mhitm_ad_dren(magr, mattk, mdef, mhm); break;
     case M.AD_DRST:
     case M.AD_DRDX:
     case M.AD_DRCO: await mhitm_ad_drst(magr, mattk, mdef, mhm); break;
+    case M.AD_DRIN: await mhitm_ad_drin(magr, mattk, mdef, mhm); break;
+    case AD_STCK: await mhitm_ad_stck(magr, mattk, mdef, mhm); break;
+    case M.AD_WRAP: await mhitm_ad_wrap(magr, mattk, mdef, mhm); break;
+    case M.AD_PLYS: await mhitm_ad_plys(magr, mattk, mdef, mhm); break;
+    case M.AD_SLEE: await mhitm_ad_slee(magr, mattk, mdef, mhm); break;
+    case M.AD_SLIM: await mhitm_ad_slim(magr, mattk, mdef, mhm); break;
+    case M.AD_ENCH: await mhitm_ad_ench(magr, mattk, mdef, mhm); break;
+    case M.AD_SLOW: await mhitm_ad_slow(magr, mattk, mdef, mhm); break;
+    case M.AD_CONF: await mhitm_ad_conf(magr, mattk, mdef, mhm); break;
+    case M.AD_POLY: await mhitm_ad_poly(magr, mattk, mdef, mhm); break;
+    case M.AD_DISE: await mhitm_ad_dise(magr, mattk, mdef, mhm); break;
+    case M.AD_SAMU: await mhitm_ad_samu(magr, mattk, mdef, mhm); break;
+    case M.AD_DETH: await mhitm_ad_deth(magr, mattk, mdef, mhm); break;
+    case M.AD_PEST: await mhitm_ad_pest(magr, mattk, mdef, mhm); break;
+    case M.AD_FAMN: await mhitm_ad_famn(magr, mattk, mdef, mhm); break;
+    case M.AD_DGST: await mhitm_ad_dgst(magr, mattk, mdef, mhm); break;
+    case M.AD_HALU: await mhitm_ad_halu(magr, mattk, mdef, mhm); break;
     default:
-        throw new Error(`mhitm_adtyping(): damage type ${mattk.adtyp} vs hero not ported yet`);
+        mhm.damage = 0;
     }
 }
 

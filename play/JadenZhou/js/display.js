@@ -28,13 +28,15 @@ import { HALLUC, Is_waterlevel, isok, IS_STWALL, DB_UNDER, DB_ICE, DB_LAVA, DB_M
          M_AP_FURNITURE, WARNCOUNT, def_warnsyms, In_mines, In_sokoban,
          Is_knox_level, M_AP_NOTHING, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE,
          PROT_FROM_SHAPE_CHANGERS, MCORPSENM, ACCESSIBLE } from './const.js';
+import { ROGUESET } from './const.js';
 import { visible_region_at, show_region } from './region.js';
 import { In_hell } from './dungeon.js';
 import { rn2_on_display_rng } from './rng.js';
 import {
     objects, BOULDER, STATUE, CORPSE, POTION_CLASS, FIRST_REAL_GEM,
-    LAST_GLASS_GEM, FIRST_SPELL, LAST_SPELL, FIRST_OBJECT,
+    LAST_GLASS_GEM, FIRST_SPELL, LAST_SPELL, FIRST_OBJECT, NUM_OBJECTS,
 } from './objects.js';
+import { pmname } from './do_name.js';
 import { mons, NUMMONS, M3_INFRAVISIBLE, M1_MINDLESS, S_EEL, M1_FLY,
          PM_TENGU, PM_LONG_WORM_TAIL, M1_SEE_INVIS } from './monsters.js';
 import { def_oc_syms } from './drawing.js';
@@ -80,12 +82,53 @@ const DEF_CMAP_FOR_DEC = {
     'u': '|', 't': '|',                     /* S_tlwall, S_trwall */
 };
 
+// C ref: symbols.c assign_graphics() -- gc.currentgraphics; the DECgraphics
+// symset is the primary one, while the Rogue level shows the rogue symset
+// (symbols.c init_rogue_symbols(): no DEC line drawing)
+function dec_symset() {
+    return /^decgraphics$/i.test(game.symset_name || '')
+           && game.currentgraphics !== ROGUESET;
+}
+
+// C ref: drawing.c def_r_oc_syms[] -- object class symbols of the rogue symset
+const def_r_oc_syms = [
+    '\0', ']' /* ILLOBJ_SYM */, ')', ']', /* armor */
+    '=',
+    ',', /* amulet */
+    '(', ':', /* food */
+    '!', '?',
+    '+', '/',
+    '*', /* gold -- yes it's the same as gems */
+    '*', '`',
+    '0', '_', '.',
+];
+
+// C ref: symbols.c init_rogue_symbols() and display.c reset_glyphmap() --
+// on the Rogue level (gc.currentgraphics == ROGUESET) a map cell uses the
+// rogue symset: the default cmap symbols except '+' for doorways and
+// '%' for stairs, def_r_oc_syms[] for objects, and no color (no
+// H_IBM symset handling)
+function rogue_cell_ch(ch, decgfx, kind, gid) {
+    if (kind === 'obj' && gid && gid.otyp !== undefined && gid.otyp !== null)
+        return def_r_oc_syms[objects[gid.otyp].oc_class];
+    if (gid && gid.cmapidx !== undefined && gid.cmapidx !== null) {
+        const i = gid.cmapidx;
+        if (i === 12 || i === 13 || i === 14) /* S_ndoor, S_vodoor, S_hodoor */
+            return '+';
+        if (i === 25 || i === 26) /* S_upstair, S_dnstair */
+            return '%';
+    }
+    if (decgfx)
+        return DEF_CMAP_FOR_DEC[ch] ?? ch;
+    return ch;
+}
+
 // ── Terrain to display character + color + DEC flag ──
 // With symset:DECgraphics the DEC line-drawing glyphs are used;
 // otherwise the default symbols.
 function terrain_glyph(loc, x, y) {
     const tg = terrain_glyph_dec(loc, x, y);
-    if (tg.dec && !/^decgraphics$/i.test(game.symset_name || ''))
+    if (tg.dec && !dec_symset())
         /* the default symset doesn't color the branch wall variants */
         return { ch: tg.asc ?? DEF_CMAP_FOR_DEC[tg.ch] ?? tg.ch,
                  color: tg.wall ? NO_COLOR : tg.color, dec: false,
@@ -142,7 +185,7 @@ export function cmap_to_glyph(sym) {
     default:
         throw new Error(`cmap_to_glyph(): cmap symbol ${sym} not ported yet`);
     }
-    if (tg.dec && !/^decgraphics$/i.test(game.symset_name || ''))
+    if (tg.dec && !dec_symset())
         tg = { ch: tg.asc ?? DEF_CMAP_FOR_DEC[tg.ch] ?? tg.ch,
                color: tg.wall ? NO_COLOR : tg.color, dec: false };
     return { ch: tg.ch, color: tg.color, decgfx: tg.dec, cmap: CMAP_NAMES[sym],
@@ -781,6 +824,11 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
                                 kind = 'cmap', objpile = false, gid = null) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
+    if (game.currentgraphics === ROGUESET) {
+        ch = rogue_cell_ch(ch, decgfx, kind, gid);
+        decgfx = false;
+        color = NO_COLOR;
+    }
     loc.disp_ch = ch;
     loc.disp_color = color;
     loc.disp_decgfx = !!decgfx;
@@ -820,7 +868,8 @@ function tty_glyph_attr(loc) {
    map_trap(), map_engraving() and map_invisible() mark theirs; the rest
    are background (cmap) glyphs */
 export function glyph_kind(rg) {
-    return !rg ? 'cmap' : rg.invisible ? 'invisible' : rg.obj ? 'obj'
+    return !rg ? 'cmap' : rg.kind === 'mon' ? 'mon'
+           : rg.invisible ? 'invisible' : rg.obj ? 'obj'
            : rg.trap ? 'trap' : rg.engr ? 'engr' : 'cmap';
 }
 
@@ -843,7 +892,7 @@ export function cmap_to_type(sym) {
 }
 
 // C ref: dbridge.c db_under_typ()
-function db_under_typ(mask) {
+export function db_under_typ(mask) {
     switch (mask & DB_UNDER) {
     case DB_ICE: return ICE;
     case DB_LAVA: return LAVAPOOL;
@@ -1157,11 +1206,26 @@ function display_monster(
 
     /* If mimic is unsuccessfully mimicking something, display the monster. */
     if (!mon_mimic || sensed) {
-        /* a worm tail shows as PM_LONG_WORM_TAIL (petnum_to_glyph() or
-           monnum_to_glyph(what_mon(PM_LONG_WORM_TAIL, ...))) */
-        if (worm_tail && Hallucination())
-            throw new Error('display_monster(): hallucinatory worm tail (what_mon()) not ported yet');
-        const ptr = worm_tail ? mons[PM_LONG_WORM_TAIL] : mon.data;
+        /*
+         * There are no glyphs for "detected pets" so we have to
+         * decide whether to display such things as detected or as tame.
+         * If both are being highlighted in the same way, it doesn't
+         * matter, but if not, showing them as pets is preferrable.
+         */
+        let mndx;
+        if (mon.mtame && !Hallucination()) {
+            /* petnum_to_glyph(PM_LONG_WORM_TAIL) / pet_to_glyph(mon, ...) */
+            mndx = worm_tail ? PM_LONG_WORM_TAIL : mon.data.pmidx;
+        } else {
+            /* (sightflags == DETECTED: detected_monnum_to_glyph() /
+               detected_mon_to_glyph(), shown like the plain glyph here)
+               monnum_to_glyph(what_mon(PM_LONG_WORM_TAIL,
+                                        rn2_on_display_rng)) /
+               mon_to_glyph(mon, rn2_on_display_rng) */
+            mndx = what_mon(worm_tail ? PM_LONG_WORM_TAIL : mon.data.pmidx,
+                            rn2_on_display_rng);
+        }
+        const ptr = mons[mndx];
         const ch = def_monsyms[ptr.mlet] ?? '?';
         /* a tame monster gets pet_to_glyph() (mon->mtame && !Hallucination),
            whose glyphs have MG_PET; wintty.c tty_print_glyph() shows those
@@ -1169,7 +1233,7 @@ function display_monster(
         const attr = (mon.mtame && !Hallucination() && game.iflags?.wc_hilite_pet)
                      ? game.iflags.wc2_petattr : 0;
         show_mon_or_warn(x, y, ch, ptr.mcolor ?? NO_COLOR, 'mon', attr,
-                         { mndx: ptr.pmidx });
+                         { mndx });
         mon.meverseen = 1;
     }
 }
@@ -1182,8 +1246,8 @@ export function Hallucination() {
 
 // C ref: display.h newsym_rn2 (rn2_on_display_rng) -- the display RNG is
 // separate from the core one; only hallucination draws from it here
-function newsym_rn2(x) {
-    throw new Error('newsym_rn2(): rn2_on_display_rng not ported yet');
+export function newsym_rn2(x) {
+    return rn2_on_display_rng(x);
 }
 
 // C ref: display.h covers_objects()
@@ -1225,14 +1289,10 @@ function obj_is_generic(obj) {
 // 'otyp' is glyph_to_obj() (the generic glyphs' objects[] index is the
 // class), 'corpsenm' glyph_to_statue_corpsenm()/glyph_to_body_corpsenm().
 export function obj_to_glyph(obj, rng) {
-    if (obj.otyp === STATUE) {
-        if (Hallucination()) rng(2);
-        return { ch: def_monsyms[mons[obj.corpsenm].mlet] ?? '?',
-                 color: objects[STATUE].oc_color, decgfx: false, obj: true,
-                 piletop: obj_is_piletop(obj), otyp: STATUE,
-                 corpsenm: obj.corpsenm };
-    }
-    if (Hallucination()) rng(2);
+    if (obj.otyp === STATUE)
+        return statue_to_glyph(obj, rng);
+    if (Hallucination())
+        return random_obj_to_glyph(rng);
     if (obj.otyp === CORPSE)
         return { ch: def_oc_syms[objects[CORPSE].oc_class],
                  color: mons[obj.corpsenm].mcolor ?? NO_COLOR, decgfx: false, obj: true,
@@ -1246,6 +1306,55 @@ export function obj_to_glyph(obj, rng) {
              color: objects[offset].oc_color, decgfx: false,
              generic: generic && offset > 0 && offset < FIRST_OBJECT - 1,
              obj: true, piletop: obj_is_piletop(obj), otyp: offset };
+}
+
+// C ref: display.h random_monster()
+/* won't return STRANGE_OBJECT or the generic objects */
+function random_monster(rng) {
+    return rng(NUMMONS);
+}
+
+// C ref: display.h random_object()
+function random_object(rng) {
+    return rng(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT;
+}
+
+// C ref: display.h what_mon() -- a random monster when hallucinating
+export function what_mon(mon, rng) {
+    return Hallucination() ? random_monster(rng) : mon;
+}
+
+// C ref: display.h random_obj_to_glyph() -- a random object's glyph (never
+// a pile-top one); a random CORPSE becomes a random monster's body glyph
+export function random_obj_to_glyph(rng) {
+    const otg_temp = random_object(rng); /* go.otg_temp */
+    if (otg_temp === CORPSE) {
+        const mndx = random_monster(rng); /* + GLYPH_BODY_OFF */
+        return { ch: def_oc_syms[objects[CORPSE].oc_class],
+                 color: mons[mndx].mcolor ?? NO_COLOR, decgfx: false, obj: true,
+                 piletop: false, otyp: CORPSE, corpsenm: mndx };
+    }
+    /* otg_temp + GLYPH_OBJ_OFF */
+    return { ch: def_oc_syms[objects[otg_temp].oc_class],
+             color: objects[otg_temp].oc_color, decgfx: false,
+             generic: false, obj: true, piletop: false, otyp: otg_temp };
+}
+
+// C ref: display.h statue_to_glyph() -- while hallucinating, a statue
+// shows as a random monster (a GLYPH_MON_MALE_OFF/GLYPH_MON_FEM_OFF glyph)
+function statue_to_glyph(obj, rng) {
+    if (Hallucination()) {
+        const mndx = random_monster(rng);
+        /* (!(rng)(2)) ? GLYPH_MON_MALE_OFF : GLYPH_MON_FEM_OFF */
+        const female = !!rng(2);
+        const ptr = mons[mndx];
+        return { ch: def_monsyms[ptr.mlet] ?? '?', color: ptr.mcolor ?? NO_COLOR,
+                 decgfx: false, kind: 'mon', mndx, female };
+    }
+    return { ch: def_monsyms[mons[obj.corpsenm].mlet] ?? '?',
+             color: objects[STATUE].oc_color, decgfx: false, obj: true,
+             piletop: obj_is_piletop(obj), otyp: STATUE,
+             corpsenm: obj.corpsenm };
 }
 
 // C ref: display.h obj_is_piletop() -- the object is on the floor and its
@@ -1295,11 +1404,35 @@ export function map_object(obj, show) {
     if (game.level.flags?.hero_memory) {
         /* MRKR: While hallucinating, statues are seen as random monsters */
         /*       but remembered as random objects.                        */
-        loc.remembered_glyph = glyph;
+
+        if (Hallucination() && obj.otyp === STATUE) {
+            loc.remembered_glyph = random_obj_to_glyph(newsym_rn2);
+        } else {
+            loc.remembered_glyph = glyph;
+        }
     }
     if (show)
-        show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.decgfx, 0, 'obj',
+        show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.decgfx, 0,
+                        glyph.kind ?? 'obj',
                         glyph.piletop, glyph_gid(glyph));
+}
+
+// C ref: display.c see_objects()
+export function see_objects() {
+    for (const obj of (game.level?.objects || []).slice())
+        if (obj.where === 'OBJ_FLOOR' && vobj_at(obj.ox, obj.oy) === obj)
+            newsym(obj.ox, obj.oy);
+
+    /* update_inventory(): perm_invent isn't ported */
+}
+
+// C ref: display.c see_traps()
+export function see_traps() {
+    for (const trap of (game.level?.traps || []).slice()) {
+        /* glyph = _glyph_at(trap->tx, trap->ty) */
+        if (game.level.at(trap.tx, trap.ty).disp_kind === 'trap') /* glyph_is_trap() */
+            newsym(trap.tx, trap.ty);
+    }
 }
 
 // C ref: display.c see_nearby_objects()
@@ -1682,11 +1815,46 @@ export const DISP_BEAM = -1, DISP_ALL = -2, DISP_TETHER = -3, DISP_FLASH = -4,
 const TMP_AT_MAX_GLYPHS = 80 * 2; /* COLNO * 2 */
 let tmp_at_glyph = null; /* static struct tmp_glyph *tglyph */
 
+/* C ref: display.h enum zap_colors, display.c zapcolors[] */
+const zapcolors = [ CLR_BRIGHT_BLUE /* HI_ZAP */, CLR_ORANGE, CLR_WHITE,
+    CLR_BRIGHT_BLUE /* HI_ZAP */, CLR_BLACK, CLR_WHITE, CLR_GREEN,
+    CLR_YELLOW ];
+/* C ref: display.h enum explode_colors, display.c explodecolors[] */
+const explodecolors = [ CLR_BLACK, CLR_GREEN, CLR_BROWN, CLR_BLUE,
+    CLR_MAGENTA, CLR_ORANGE, CLR_WHITE ];
+const NUM_ZAP = 8;
+
+// C ref: display.c zapdir_to_glyph() -- the S_vbeam, S_hbeam, S_lslant or
+// S_rslant symbol (defsym.h; DECgraphics draws the first two as line
+// drawing characters) in the color of the beam type
+export function zapdir_to_glyph(dx, dy, beam_type) {
+    if (beam_type >= NUM_ZAP) {
+        /* impossible("zapdir_to_glyph:  illegal beam type") */
+        beam_type = 0;
+    }
+    dx = (dx === dy) ? 2 : (dx && dy) ? 3 : dx ? 1 : 0;
+    const dec = dec_symset() && dx < 2;
+    const ch = dec ? ['x', 'q'][dx] : ['|', '-', '\\', '/'][dx];
+    return { ch, color: zapcolors[beam_type], decgfx: dec, kind: 'zap',
+             cmapidx: 74 /* S_vbeam */ + dx };
+}
+
+// C ref: display.h explosion_to_glyph() -- the S_expl_tl..S_expl_br symbol
+// idx (0..8, defsym.h; DECgraphics replaces four of them) in the color of
+// the explosion type
+export function explosion_to_glyph(expltype, idx) {
+    const asc = ['/', '-', '\\', '|', ' ', '|', '\\', '-', '/'];
+    const decs = [null, 'o', null, 'x', null, 'x', null, 's', null];
+    const dec = dec_symset() && !!decs[idx];
+    return { ch: dec ? decs[idx] : asc[idx], color: explodecolors[expltype],
+             decgfx: dec, kind: 'explode', cmapidx: 96 /* S_expl_tl */ + idx };
+}
+
 // C ref: display.c tmp_at() -- DISP_BEAM, DISP_ALL, DISP_FLASH and
-// DISP_ALWAYS (DISP_TETHER isn't ported yet).  The transient beam glyphs
-// aren't drawn (no screen is captured while they show), but the spots the
-// beam covered are remembered and newsym()'d by DISP_END, which redraws
-// terrain the beam changed (e.g. a wall dug by a zap).  A flashed glyph
+// DISP_ALWAYS (DISP_TETHER isn't ported yet).  A beam's glyphs are drawn
+// (a --More-- during a zap shows them) and the spots the beam covered are
+// remembered and newsym()'d by DISP_END, which also redraws terrain the
+// beam changed (e.g. a wall dug by a zap).  A flashed glyph
 // (a missile in flight) is drawn at its one spot; the next pline()'s
 // flush_screen(1) shows it, as C's flush_screen(0) here would.
 export function tmp_at(x, y) {
@@ -1735,7 +1903,10 @@ export function tmp_at(x, y) {
                 break; /* too many locations */
             /* save pos for later erasing */
             tglyph.saved.push({ x, y });
-            /* show_glyph(x, y, tglyph->glyph): transient, not drawn */
+            /* show_glyph(x, y, tglyph->glyph): callers whose beam glyph
+               isn't ported yet pass 0 and nothing is drawn */
+            if (tglyph.glyph)
+                show_glyph(x, y, tglyph.glyph); /* show it */
         } else { /* DISP_FLASH/ALWAYS */
             if (tglyph.saved.length) { /* not first call, so reset previous pos */
                 newsym(tglyph.saved[0].x, tglyph.saved[0].y);
@@ -1760,6 +1931,13 @@ export function newsym(x, y) {
         return;
     const loc = game.level?.at(x, y);
     if (!loc) return;
+
+    /* only permit updating the hero when swallowed */
+    if (game.u?.uswallow) {
+        if (game.u.ux === x && game.u.uy === y)
+            display_self();
+        return;
+    }
 
     /* C ref: display.c newsym(): when the spot can be seen, remember its
        lit condition (not templit, so that temporarily lit spots re-darken
@@ -1813,7 +1991,7 @@ export function newsym(x, y) {
                 && !loc.waslit)
                 loc.remembered_glyph = rememb_glyph(S_corr_g);
         }
-        show_glyph_cell(x, y, '@', CLR_WHITE, false, 0, 'mon');
+        display_self();
         return;
     }
 
@@ -1940,8 +2118,29 @@ export function feel_location(x, y) {
 
         _map_location(x, y, true);
 
-        if (game.uball || game.uchain) /* Punished */
-            throw new Error('feel_location(): ball and chain (bc_felt) not ported yet');
+        if (game.uball) { /* Punished */
+            /*
+             * A ball or chain is only felt if it is first on the object
+             * location list.  Otherwise, we need to clear the felt bit ---
+             * something has been dropped on the ball/chain.  If the bit is
+             * not cleared, then when the ball/chain is moved it will drop
+             * the wrong glyph.
+             */
+            const uchain = game.uchain, uball = game.uball;
+            if (uchain && uchain.where === 'OBJ_FLOOR'
+                && uchain.ox === x && uchain.oy === y
+                && vobj_at(x, y) === uchain)
+                u.bc_felt |= 0x02; /* BC_CHAIN */
+            else
+                u.bc_felt &= ~0x02; /* do not feel the chain */
+
+            if (uball && uball.where === 'OBJ_FLOOR'
+                && uball.ox === x && uball.oy === y
+                && vobj_at(x, y) === uball)
+                u.bc_felt |= 0x01; /* BC_BALL */
+            else
+                u.bc_felt &= ~0x01; /* do not feel the ball */
+        }
 
         /* Floor spaces are dark if unlit.  Corridors are dark if unlit.
            (JS remembers no S_darkroom glyphs; see newsym()) */
@@ -2002,7 +2201,7 @@ export async function docrt_flags(refresh_flags) {
     if (redrawonly) {
         throw new Error('docrt_flags(): redraw_map() not ported yet');
     } else if (u.uswallow) {
-        throw new Error('docrt_flags(): swallowed() not ported yet');
+        await swallowed(1);
     } else if (u.uinwater && !Is_waterlevel(u.uz)) { /* Underwater */
         throw new Error('docrt_flags(): under_water() not ported yet');
     } else if (u.uburied) { /* [not implemented] */
@@ -2067,8 +2266,8 @@ export function see_monsters() {
     if (u.ustuck)
         u.ustuck.meverseen = 1;
 
-    /* loop through level.monsters (aka fmon) */
-    for (const mon of game.level?.monsters || []) {
+    /* loop through level.monsters (aka fmon), in fmon order */
+    for (let mon = game.fmon; mon; mon = mon.nmon) {
         if (mon.dead || mon.mhp < 1) /* DEADMONSTER(mon) */
             continue;
         if (((mon.mstate || 0) & MON_STILL_ARRIVING) !== 0)
@@ -2202,7 +2401,19 @@ function _statusLine1() {
     /* C ref: botl.c do_statusline1(): plname with its first letter capitalized */
     const pn = game.plname || 'Hero';
     const name = ('a' <= pn[0] && pn[0] <= 'z') ? pn[0].toUpperCase() + pn.slice(1) : pn;
-    const role = game.urole?.rank ? rank() : 'Adventurer'; // C ref: botl.c rank()
+    const Upolyd = (u.umonnum !== u.umonster);
+    /* C ref: botl.c do_statusline1(): titl = !Upolyd ? rank()
+       : pmname(&mons[u.umonnum], Ugender); when poly'd, capitalize
+       each word of the monster name */
+    let role;
+    if (Upolyd) {
+        const Ugender = (Upolyd ? u.mfemale : game.flags.female) ? 1 : 0;
+        const titl = pmname(mons[u.umonnum], Ugender);
+        role = titl.split('').map((c, i) =>
+            (i === 0 || titl[i - 1] === ' ') ? c.toUpperCase() : c).join('');
+    } else {
+        role = game.urole?.rank ? rank() : 'Adventurer'; // C ref: botl.c rank()
+    }
     const title = `${name} the ${role}`;
     /* C ref: botl.c do_statusline1(): ACURR() of each attribute, in
        A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA display order */
@@ -2220,8 +2431,11 @@ function _statusLine2() {
     if (!u) return '';
     /* C ref: botl.c do_statusline2(): experience is "Xp:N/pts" only with
        the showexp option, and the turn counter is shown only with time */
-    const expr = game.flags?.showexp ? `Xp:${u.ulevel || 1}/${u.uexp || 0}`
-                                     : `Xp:${u.ulevel || 1}`;
+    const Upolyd = (u.umonnum !== u.umonster);
+    /* BL_HD replaces BL_XP and BL_EXP while polymorphed */
+    const expr = Upolyd ? `HD:${mons[u.umonnum].mlevel}`
+                 : game.flags?.showexp ? `Xp:${u.ulevel || 1}/${u.uexp || 0}`
+                                       : `Xp:${u.ulevel || 1}`;
     const tmmv = game.flags?.time ? ` T:${game.moves}` : '';
     /* BL_HUNGER and BL_CAP (wintty.c status_fieldfmt " %s", with the
        hunger text's trailing blanks suppressed), then BL_CONDITION */
@@ -2234,8 +2448,12 @@ function _statusLine2() {
     const leveldesc = describe_level(1)[1].replace(/ +$/, '');
     /* botl.c bot_via_windowport(): BL_HP is u.uhp, but not below 0
        (gameover sets u.uhp to -1) */
-    const hpval = Math.max(u.uhp || 0, 0);
-    const line = `${leveldesc} $:${Math.min(money_cnt(game.invent), 999999)} HP:${hpval}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${expr}${tmmv}${hunger}${capstr}${status_conditions()}`;
+    const hpval = Math.max((Upolyd ? u.mh : u.uhp) || 0, 0);
+    const hpmax = (Upolyd ? u.mhmax : u.uhpmax) || 0;
+    /* encglyph(objnum_to_glyph(GOLD_PIECE)): the gold symbol of the current
+       symset */
+    const goldsym = (game.currentgraphics === ROGUESET) ? '*' : '$';
+    const line = `${leveldesc} ${goldsym}:${Math.min(money_cnt(game.invent), 999999)} HP:${hpval}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${expr}${tmmv}${hunger}${capstr}${status_conditions()}`;
     /* make_things_fit(): shrinking or truncating an overlong line */
     if (line.length > 79)
         throw new Error('_statusLine2(): make_things_fit() shrinking not ported yet');
@@ -2455,6 +2673,120 @@ export async function cls() {
     if (display?.clearScreen) display.clearScreen();  /* clear_nhwindow(WIN_MAP) */
     if (game.status_shown !== undefined)
         game.status_shown = false; /* erase_tty_screen() */
+
+    clear_glyph_buffer(); /* force gbuf[][].glyph to unexplored */
+}
+
+// C ref: display.c clear_glyph_buffer() -- the shown map glyphs (gbuf)
+// become the unexplored glyph (blank)
+function clear_glyph_buffer() {
+    if (!game.level?.at)
+        return;
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++)
+            if (game.level.at(x, y))
+                show_glyph_cell(x, y, ' ', NO_COLOR, false);
+}
+
+// C ref: display.h display_self() -- the hero's glyph at <u.ux,u.uy>
+function display_self() {
+    const u = game.u;
+    /* hero_glyph: monnum_to_glyph((Upolyd || !flags.showrace) ? u.umonnum
+       : gu.urace.mnum, Ugender); a polymorphed hero shows the monster */
+    if (u.umonnum !== u.umonster) { /* Upolyd */
+        const ptr = mons[u.umonnum];
+        show_glyph_cell(u.ux, u.uy, def_monsyms[ptr.mlet] ?? '?',
+                        ptr.mcolor ?? NO_COLOR, false, 0, 'mon');
+        return;
+    }
+    show_glyph_cell(u.ux, u.uy, '@', CLR_WHITE, false, 0, 'mon');
+}
+
+// C ref: display.c swallow_to_glyph()
+/*
+ * Convert a monster number and a swallow location into the correct glyph.
+ * If you don't want a patchwork monster while hallucinating, decide on
+ * a random monster in swallowed() and don't use what_mon() here.
+ * Returns the glyph's monster (offset >> 3); 'loc' is S_sw_tl-relative.
+ */
+function swallow_to_glyph(mnum, loc) {
+    const m_3 = what_mon(mnum, rn2_on_display_rng);
+
+    if (loc < 0 || 7 < loc)
+        throw new Error('swallow_to_glyph: bad swallow location');
+    return m_3;
+}
+
+// C ref: display.c swallowed()
+/*
+ *  Display the hero surrounded by the monster's stomach (S_sw_tl ..
+ *  S_sw_br, shown in the swallower's color).  With symset:DECgraphics the
+ *  top/bottom centers and the sides are the line-drawing characters
+ *  (dat/symbols "DECgraphics": S_sw_tc 'o', S_sw_ml/S_sw_mr 'x', S_sw_bc 's').
+ */
+let swallow_lastx = 0, swallow_lasty = 0; /* last swallowed position */
+export async function swallowed(first) {
+    const u = game.u;
+    let left_ok, rght_ok;
+
+    if (first) {
+        await cls();
+        bot();
+    } else {
+        /* Clear old location */
+        for (let y = swallow_lasty - 1; y <= swallow_lasty + 1; y++)
+            for (let x = swallow_lastx - 1; x <= swallow_lastx + 1; x++)
+                if (isok(x, y))
+                    show_glyph_cell(x, y, ' ', NO_COLOR, false); /* GLYPH_UNEXPLORED */
+    }
+
+    const swallower = u.ustuck.data.pmidx; /* monsndx(u.ustuck->data) */
+    const dec = dec_symset();
+    /* [S_sw_tl, S_sw_tc, S_sw_tr, S_sw_ml, S_sw_mr, S_sw_bl, S_sw_bc,
+       S_sw_br]: { ch, dec } */
+    const sym = dec
+        ? [['/', false], ['o', true], ['\\', false], ['x', true], ['x', true],
+           ['\\', false], ['s', true], ['/', false]]
+        : [['/', false], ['-', false], ['\\', false], ['|', false], ['|', false],
+           ['\\', false], ['-', false], ['/', false]];
+    /* show_glyph(x, y, swallow_to_glyph(swallower, S_sw_tl + idx)) */
+    const show_sw = (x, y, idx) => {
+        const mnum = swallow_to_glyph(swallower, idx);
+        /* reset_glyphmap(): mon_color(offset >> 3) */
+        show_glyph_cell(x, y, sym[idx][0], mons[mnum].mcolor, sym[idx][1]);
+    };
+
+    /* assume isok(u.ux,u.uy) */
+    left_ok = isok(u.ux - 1, u.uy);
+    rght_ok = isok(u.ux + 1, u.uy);
+    /*
+     *  Display the hero surrounded by the monster's stomach.
+     */
+    if (isok(u.ux, u.uy - 1)) {
+        if (left_ok)
+            show_sw(u.ux - 1, u.uy - 1, 0); /* S_sw_tl */
+        show_sw(u.ux, u.uy - 1, 1);         /* S_sw_tc */
+        if (rght_ok)
+            show_sw(u.ux + 1, u.uy - 1, 2); /* S_sw_tr */
+    }
+
+    if (left_ok)
+        show_sw(u.ux - 1, u.uy, 3);         /* S_sw_ml */
+    display_self();
+    if (rght_ok)
+        show_sw(u.ux + 1, u.uy, 4);         /* S_sw_mr */
+
+    if (isok(u.ux, u.uy + 1)) {
+        if (left_ok)
+            show_sw(u.ux - 1, u.uy + 1, 5); /* S_sw_bl */
+        show_sw(u.ux, u.uy + 1, 6);         /* S_sw_bc */
+        if (rght_ok)
+            show_sw(u.ux + 1, u.uy + 1, 7); /* S_sw_br */
+    }
+
+    /* Update the swallowed position. */
+    swallow_lastx = u.ux;
+    swallow_lasty = u.uy;
 }
 
 // ── bot ──
@@ -2495,6 +2827,20 @@ export async function pline(msg) {
     if (game.u?.ux)
         await flush_screen(1); /* %% */
     await tty_putstr(game.WIN_MESSAGE, 0, msg);
+    /* this gets cleared after every pline message */
+    if (game.iflags)
+        game.iflags.last_msg = 0; /* PLNMSG_UNKNOWN */
+}
+
+// C ref: pline.c urgent_pline() -- vpline() with URGENT_MESSAGE: the tty
+// (WC2_URGENT_MESG) gets the line with ATR_URGENT, which overrides a
+// pending ESC at --More-- (WIN_STOP)
+export async function urgent_pline(msg) {
+    if (game.vision_full_recalc)
+        vision_recalc(0);
+    if (game.u?.ux)
+        await flush_screen(1); /* %% */
+    await tty_putstr(game.WIN_MESSAGE, 16 /* ATR_URGENT */, msg);
     /* this gets cleared after every pline message */
     if (game.iflags)
         game.iflags.last_msg = 0; /* PLNMSG_UNKNOWN */

@@ -295,7 +295,22 @@ export async function getpos(ccp, force, goal) {
             /* reset 'm&M', 'o&O', &c: the gathering isn't ported */
             cx = u.ux;
             cy = u.uy;
-        } else if ("?\x12$#\"!*mMoOdDxXaAzZ".includes(ch)) {
+        } else if (c === 0x23) { /* gc.Cmd.spkeys[NHKF_GETPOS_AUTODESC] '#' */
+            if (!game.iflags) game.iflags = {};
+            game.iflags.autodescribe = !autodescribe();
+            await pline(`Automatic description ${
+                game.flags.verbose !== false ? "of features under cursor " : ""}is ${
+                autodescribe() ? "on" : "off"}.`);
+            if (!autodescribe())
+                show_goal_msg = true;
+            msg_given = true;
+            /* goto nxtc */
+        } else if (c === 0x24) { /* gc.Cmd.spkeys[NHKF_GETPOS_SHOWVALID] '$' */
+            if (gp().hilitefunc)
+                throw new Error('getpos(): getpos_toggle_hilite_state() not ported yet');
+            show_goal_msg = true; /* we're still targeting */
+            /* goto nxtc */
+        } else if ("?\x12\"!*mMoOdDxXaAzZ".includes(ch)) {
             throw new Error(`getpos(): key '${ch}' not ported yet`);
         } else {
             /* !strchr(quitchars, c): the quitchars were handled above */

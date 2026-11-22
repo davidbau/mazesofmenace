@@ -11,6 +11,8 @@ import {
     REPAIR_DELAY, INVIS, DISPLACED, CONFLICT, DEAF, FAST, PASSES_WALLS,
     BLINDED, TELEPAT, DETECT_MONSTERS, M_AP_NOTHING, M_AP_MONSTER, u_at,
 } from './const.js';
+import { ANY_SHOP } from './const.js';
+import { search_special } from './sounds.js';
 import { mons, PM_GRID_BUG, PM_ROGUE, MS_ANIMAL, M1_HUMANOID, S_DOG,
          S_FELINE, S_RODENT, S_YETI } from './monsters.js';
 import { PICK_AXE, DWARVISH_MATTOCK } from './objects.js';
@@ -71,6 +73,20 @@ import { the } from './iactions.js';
 import { The, xname } from './objnam.js';
 import { is_vampire, is_elf, is_human } from './mondata.js';
 import { intrinsic_possible } from './eat.js';
+import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
+         tty_select_menu, tty_destroy_nhwindow } from './wintty.js';
+import { add_menu_heading } from './invent.js';
+import { PICK_ANY, MENU_FULL, MENU_TRADITIONAL, NHW_MENU,
+         MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE } from './const.js';
+import { ATR_NONE, NO_COLOR } from './terminal.js';
+import { M1_NOLIMBS } from './monsters.js';
+import { observe_object } from './o_init.js';
+import { Hallucination, bot } from './display.js';
+import { highc } from './hacklib.js';
+import { SCROLL_CLASS, SPBOOK_CLASS, MIRROR } from './objects.js';
+import { saleable } from './shknam.js';
+import { paydoname } from './objnam.js';
+import { simpleonames, thesimpleoname } from './iactions.js';
 
 // ── small helpers (C ref: youprop.h / monst.h / shk.c macros) ──
 
@@ -484,6 +500,64 @@ export function inhishop(shkp) {
         return false;
     const shkrooms = in_rooms(shkp.mx, shkp.my, SHOPBASE);
     return shkrooms.includes(String.fromCharCode(eshkp.shoproom));
+}
+
+// C ref: shk.c shkgone()
+/* called in mon.c */
+export function shkgone(mtmp) {
+    const u = game.u;
+    const eshk = mtmp.mextra.eshk;
+    const sroom = game.level.rooms[eshk.shoproom - ROOMOFFSET];
+
+    /* [BUG: some of this should be done on the shop level */
+    /*       even when the shk dies on a different level.] */
+    if (on_level(eshk.shoplevel, u.uz)) {
+        discard_damage_owned_by(mtmp);
+        sroom.resident = null;
+        if (!search_special(ANY_SHOP))
+            game.level.flags.has_shop = 0;
+
+        /* items on shop floor revert to ordinary objects */
+        for (let sx = sroom.lx; sx <= sroom.hx; sx++)
+            for (let sy = sroom.ly; sy <= sroom.hy; sy++)
+                for (const otmp of game.level.objects || [])
+                    if (otmp.where === 'OBJ_FLOOR' && otmp.ox === sx && otmp.oy === sy)
+                        otmp.no_charge = 0;
+
+        /* Make sure bill is set only when the
+           dead shk is the resident shk. */
+        const ushops = u.ushops || '';
+        const p = ushops.indexOf(String.fromCharCode(eshk.shoproom));
+        if (p >= 0) {
+            setpaid(mtmp);
+            eshk.bill_p = null;
+            /* remove eshk->shoproom from u.ushops */
+            u.ushops = ushops.slice(0, p) + ushops.slice(p + 1);
+        }
+    }
+}
+
+// C ref: shk.c discard_damage_owned_by()
+function discard_damage_owned_by(shkp) {
+    let dam = game.level.damagelist, dam2, prevdam = null;
+
+    while (dam) {
+        const x = dam.place.x, y = dam.place.y;
+
+        if (in_rooms(x, y, SHOPBASE).includes(
+                String.fromCharCode(shkp.mextra.eshk.shoproom))) {
+            dam2 = dam.next;
+            if (prevdam)
+                prevdam.next = dam2;
+            if (dam === game.level.damagelist)
+                game.level.damagelist = dam2;
+        } else {
+            prevdam = dam;
+            dam2 = dam.next;
+        }
+
+        dam = dam2;
+    }
 }
 
 // C ref: shk.c shop_keeper()
@@ -1665,8 +1739,15 @@ export async function dopay() {
 
     /* now check items on bill */
     pay_done = true; /* assume success */
-    if (eshkp.billct)
-        throw new Error('dopay(): make_itemized_bill()/pay_billed_items() not ported yet');
+    if (eshkp.billct) {
+        const ibill = make_itemized_bill(shkp);
+        const ibillct = ibill.length;
+        const paid_p = { paid };
+
+        if (!await pay_billed_items(shkp, ibillct, ibill, stashed_gold, paid_p))
+            pay_done = false; /* skip thank you message */
+        paid = paid_p.paid;
+    }
 
     /* {mute shk,deaf hero}-aware thank you message */
     if (pay_done && !ANGRY(shkp) && paid) {
@@ -1686,6 +1767,629 @@ export async function dopay() {
     if (game.iflags)
         game.iflags.menu_requested = false; /* reset */
     return paid ? ECMD_TIME : ECMD_OK;
+}
+
+// C ref: shk.c PAY_* -- dopayobj() results
+const PAY_BUY = 1;
+const PAY_CANT = 0; /* too poor */
+const PAY_SKIP = -1;
+const PAY_BROKE = -2;
+
+// C ref: shk.c enum billitem_status
+const FullyUsedUp = 1,   /* completely used up; obj->where==OBJ_ONBILL */
+    PartlyUsedUp = 2,    /* partly used up; obj->where==OBJ_INVENT or similar */
+    PartlyIntact = 3,    /* intact portion of partly used up item */
+    FullyIntact = 4,     /* normal unpaid item */
+    KnownContainer = 5,  /* container->cknown==1, holding unpaid item(s) */
+    UndisclosedContainer = 6; /* container->cknown==0 */
+
+/* Has_contents() for the JS container model (cobj is an array) */
+function has_contents(obj) {
+    return !!(obj.cobj && obj.cobj.length);
+}
+
+// C ref: invent.c o_on()
+function o_on(id, objchn) {
+    for (const otmp of objchain(objchn)) {
+        let temp;
+        if (otmp.o_id === id)
+            return otmp;
+        if (has_contents(otmp) && (temp = o_on(id, otmp.cobj)))
+            return temp;
+    }
+    return null;
+}
+
+// C ref: shk.c bp_to_obj()
+function bp_to_obj(bp) {
+    let obj;
+    const id = bp.bo_id;
+
+    if (bp.useup)
+        obj = o_on(id, game.billobjs);
+    else
+        obj = find_oid(id);
+    return obj;
+}
+
+// C ref: shk.c find_oid()
+/*
+ * Look for o_id on all lists but billobj.  Return obj or NULL if not found.
+ */
+function find_oid(id) {
+    let obj;
+
+    /* first check various obj lists directly */
+    if ((obj = o_on(id, game.invent)) != null)
+        return obj;
+    if ((obj = o_on(id, game.level.objects)) != null)
+        return obj;
+    if ((obj = o_on(id, game.level.buriedobjlist)) != null)
+        return obj;
+    if ((obj = o_on(id, game.migrating_objs)) != null)
+        return obj;
+
+    /* not found yet; check inventory for members of various monst lists */
+    const mmtmp = [game.fmon, game.migrating_mons, game.mydogs];
+    for (let i = 0; i < 3; i++)
+        for (const mon of objchain_mon(mmtmp[i]))
+            if ((obj = o_on(id, mon.minvent)) != null)
+                return obj;
+
+    /* not found at all */
+    return null;
+}
+
+/* monster chains are linked through ->nmon, or kept as arrays */
+function* objchain_mon(mchain) {
+    if (Array.isArray(mchain)) {
+        yield* mchain;
+    } else {
+        for (let mtmp = mchain; mtmp; mtmp = mtmp.nmon)
+            yield mtmp;
+    }
+}
+
+// C ref: shk.c sortbill_cmp()
+/* if one item is used-up and the other isn't, the used-up one comes first;
+   otherwise, if their costs differ, the more expensive one comes first;
+   if costs are the same, use internal index as tie-breaker for stable sort */
+function sortbill_cmp(sbi1, sbi2) {
+    const cost1 = sbi1.cost, cost2 = sbi2.cost;
+    const bidx1 = sbi1.bidx, bidx2 = sbi2.bidx,
+        /* sort such that FullyUsedUp and PartlyUsedUp come before
+            PartlyIntact, FullyIntact, KnownContainer, UndisclosedContainer */
+        used1 = (sbi1.usedup <= PartlyUsedUp) ? 1 : 0, /* 0=>unpaid, 1=>used */
+        used2 = (sbi2.usedup <= PartlyUsedUp) ? 1 : 0;
+
+    if (used1 !== used2)
+        return (used2 - used1); /* bigger comes before smaller here */
+    if (cost1 !== cost2)
+        return (cost2 - cost1); /* bigger comes before smaller here too */
+    return (bidx1 - bidx2);
+}
+
+// C ref: shk.c cheapest_item()
+/* delivers the cheapest item on the list */
+function cheapest_item(ibillct, ibill) {
+    let gmin = ibill[0].cost;
+
+    for (let i = 1; i < ibillct; ++i)
+        if (ibill[i].cost < gmin)
+            gmin = ibill[i].cost;
+    return gmin;
+}
+
+// C ref: shk.c make_itemized_bill()
+/* for itemized purchasing, create an alternate shop bill that hides
+   container contents; returns the augmented bill (its length is the
+   number of entries) */
+function make_itemized_bill(shkp) {
+    const ibill = [];
+    const eshkp = shkp.mextra.eshk;
+    const ebillct = eshkp.billct;
+    let bp, otmp, bidx, used, quan, cost;
+    /* static Bill zerosbi */
+    const zerosbi = () => ({ obj: null, quan: 0, cost: 0, bidx: 0,
+                             usedup: 0, queuedpay: false });
+
+    for (let i = 0; i < ebillct; ++i) {
+        bp = eshkp.bill_p[i];
+        /* find the object on the bill */
+        otmp = bp_to_obj(bp);
+        if (!otmp) {
+            /* impossible("Can't find shop bill entry for #%d", bp->bo_id) */
+            continue;
+        }
+        bidx = i; /* index into bill_p[], except for hero-owner container */
+
+        if (otmp.quan === 0 || otmp.where === 'OBJ_ONBILL') {
+            /* item is completely used up; restore quantity from when it
+               was first unpaid */
+            otmp.quan = bp.bquan;
+            bp.useup = true; /* (expected to be set already) */
+        } else if (otmp.quan < bp.bquan) {
+            /* item is partly used up; we will create two entries in the
+               augmented bill: one for the used up part here, another for
+               the intact part below */
+            const e = zerosbi();
+            e.obj = otmp;
+            e.quan = bp.bquan - otmp.quan;
+            e.cost = bp.price * e.quan;
+            e.bidx = bidx; /* duplicate index into eshkp->bill_p[] */
+            e.usedup = PartlyUsedUp; /* for sorting */
+            ibill.push(e); /* intact portion will be a separate entry, next */
+        }
+
+        if (otmp.where === 'OBJ_ONBILL') {
+            /* completely used up */
+            quan = bp.bquan;
+            cost = bp.price * quan;
+            used = FullyUsedUp;
+        } else if (otmp.where === 'OBJ_CONTAINED' || has_contents(otmp)) {
+            let j;
+            const item = otmp;
+            let cknown = true; /* assume container contents are known */
+
+            /* when it's in a container, put the container rather than the
+               specific object into ibill[]; find outermost container */
+            while (otmp.where === 'OBJ_CONTAINED') {
+                otmp = otmp.ocontainer;
+                if (!otmp.cknown)
+                    cknown = false;
+            }
+            /* this container might already be in ibill[]; only include
+               first instance */
+            for (j = 0; j < ibill.length; ++j)
+                if (otmp === ibill[j].obj)
+                    break;
+            if (j < ibill.length) {
+                if (ibill[j].usedup === FullyIntact)
+                    ibill[j].usedup = cknown ? KnownContainer
+                                             : UndisclosedContainer;
+                continue; /* 'i' loop */
+            }
+            /* include 1 container containing unpaid item(s) */
+            quan = 1;
+            cost = unpaid_cost(otmp, COST_CONTENTS);
+            if (!otmp.unpaid)
+                bidx = -1;
+            used = (otmp === item) ? FullyIntact
+                   : cknown ? KnownContainer
+                     : UndisclosedContainer;
+        } else {
+            /* ordinary unpaid; when partly used, these are values for the
+               intact portion; might be an empty shop-owned container */
+            quan = otmp.quan;
+            cost = bp.price * quan;
+            used = (quan < bp.bquan) ? PartlyIntact : FullyIntact;
+        }
+
+        const e = zerosbi();
+        e.obj = otmp;
+        e.quan = quan;
+        e.cost = cost;
+        e.bidx = bidx;
+        e.usedup = used;
+        ibill.push(e);
+    }
+
+    if (ibill.length > 1)
+        ibill.sort(sortbill_cmp); /* qsort() */
+    return ibill;
+}
+
+// C ref: shk.c menu_pick_pay_items()
+/* show items on your bill in a menu, and ask which to pay.
+   returns the number of entries selected. */
+async function menu_pick_pay_items(
+    ibillct, /* number of entries in ibill[] */
+    ibill) { /* all used up items, if any, precede all intact items */
+    let otmp, p, buf, amt, largest_amt, save_quan;
+    let i, j, n, amt_width;
+
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+
+    /* we go through ibill[] twice, first time to control price formatting
+       during the second */
+    largest_amt = 0;
+    for (i = 0; i < ibillct; ++i)
+        if (ibill[i].cost > largest_amt)
+            largest_amt = ibill[i].cost;
+    amt_width = String(largest_amt).length;
+
+    /* show the "used up items" header if there are any used up items on
+       the bill, no matter whether there are also any intact items */
+    if (ibill[0].usedup <= PartlyUsedUp) {
+        buf = `Used up item${(ibillct > 1 && ibill[1].usedup <= PartlyUsedUp)
+                             ? "s" : ""}:`;
+        add_menu_heading(win, buf);
+    }
+    for (i = 0; i < ibillct; ++i) {
+        /* the "unpaid items" header is only shown if the "used up items"
+           one was shown before the first menu entry */
+        if (i > 0 && ibill[i - 1].usedup <= PartlyUsedUp
+            && ibill[i].usedup >= PartlyIntact) {
+            buf = `Unpaid item${(i < ibillct - 1) ? "s" : ""}:`;
+            add_menu_heading(win, buf);
+        }
+        otmp = ibill[i].obj;
+        save_quan = otmp.quan;
+        otmp.quan = ibill[i].quan; /* in case it's partly used */
+        p = paydoname(otmp);
+        otmp.quan = save_quan;
+        amt = ibill[i].cost;
+        /* this doesn't support hallucinatory currency because shopkeeper
+           isn't hallucinating; also, that would mess up the alignment */
+        buf = `${String(amt).padStart(amt_width)} Zm, ${p}`.slice(0, 255);
+        /* any.a_int = i + 1; +1: avoid 0 */
+        tty_add_menu(win, null, i + 1, 0, 0, ATR_NONE, NO_COLOR, buf,
+                     MENU_ITEMFLAGS_NONE);
+    }
+
+    tty_end_menu(win, "Pay for which items?");
+    const res = await tty_select_menu(win, PICK_ANY);
+    n = res.n;
+    await tty_destroy_nhwindow(win);
+
+    for (j = 0; j < n; ++j) {
+        /*
+         * FIXME:
+         *  The menu will accept a subset count for each entry but buying
+         *  doesn't have any support for that.
+         */
+        i = res.selected[j].item - 1; /* -1: reverse +1 above */
+        ibill[i].queuedpay = true;
+    }
+    /* for ESC, return 0 instead of usual -1 */
+    return Math.max(n, 0);
+}
+
+// C ref: shk.c pay_billed_items()
+/* for menustyle=Traditional, choose between paying for everything (by
+   declining to itemize), asking item-by-item (by accepting itemization),
+   or switch to selecting via menu; for other menustyles, always select via
+   menu; player can use 'm' prefix before 'p' command to invert those
+   behaviors; once the method is chosen, actually pay for the selected
+   items, item by item for as long as hero has enough credit+cash */
+async function pay_billed_items(
+    shkp,
+    ibillct,
+    ibill,
+    stashed_gold,
+    paid_p) { /* output: paid_p.paid */
+    let bp, otmp, umoney, itemize, more_than_one;
+    let queuedpay = false, via_menu;
+    let buy, indx, bidx, pass, iprompt, ebillct;
+    const eshkp = shkp.mextra.eshk;
+
+    umoney = money_cnt(game.invent);
+    if (!umoney && !eshkp.credit) {
+        await You(`${stashed_gold ? "seem to " : ""}have no gold or credit${
+                   paid_p.paid ? " left" : ""}.`);
+        return true;
+    }
+    bp = eshkp.bill_p[0];
+    otmp = bp_to_obj(bp);
+    ebillct = eshkp.billct;
+    more_than_one = (ebillct > 1 || otmp.quan < bp.bquan
+                     /* note: will only get here for a single item, so
+                        we can deduce that it is ibill[0] */
+                     || ibill[0].usedup === UndisclosedContainer);
+    if ((umoney + eshkp.credit) < cheapest_item(ibillct, ibill)) {
+        await You(`don't have enough gold to buy${more_than_one ? " any of" : ""
+                   } the item${more_than_one ? "s" : ""} ${
+                   (ebillct > 1) ? "you've picked" : "on your bill"}.`);
+        if (stashed_gold)
+            await pline("Maybe you have some gold stashed away?");
+        return true;
+    }
+
+    via_menu = ((game.flags.menu_style ?? MENU_FULL) !== MENU_TRADITIONAL);
+    /* allow 'm p' to request a menu for menustyle:traditional;
+       for other styles, it will do the opposite */
+    if (game.iflags?.menu_requested)
+        via_menu = !via_menu;
+    /* this will loop for a second iteration iff not initially using a
+       menu and player answers 'm' at custom ynq prompt */
+    do {
+        if (via_menu /*&& more_than_one*/) {
+            if (!await menu_pick_pay_items(ibillct, ibill))
+                return true;
+            queuedpay = true;
+            itemize = false;
+            via_menu = false; /* reset so that we don't loop */
+        } else {
+            if (more_than_one)
+                throw new Error('pay_billed_items(): "Itemized billing?" prompt not ported yet');
+            iprompt = 'y';
+            itemize = (iprompt === 'y');
+            via_menu = (iprompt === 'm');
+        }
+    } while (via_menu);
+
+    /*
+     * Now it makes one pass through ibill[], which has all used up
+     * items sorted to the beginning and unpaid ones sorted to the end.
+     * Partly used items have two entries for same base item, one in
+     * each section.
+     */
+    for (indx = 0; indx < ibillct; ++indx) {
+        if (queuedpay && !ibill[indx].queuedpay)
+            continue;
+
+        otmp = ibill[indx].obj; /* ordinary object or outermost container */
+        if (ibill[indx].usedup >= KnownContainer) {
+            /* when successfull, buy_container() will call both
+               dopayobj() and update_bill(), possibly multiple times */
+            const boxbag_result = buy_container(shkp, indx, ibillct, ibill);
+
+            if (boxbag_result === 0) {
+                buy = PAY_BUY;
+            } else { /* buy_container() failed... */
+                if (boxbag_result === 2) /* ... but didn't explain why */
+                    await verbalize(`You need to remove any unpaid items from that ${
+                                     simpleonames(otmp)} and buy them separately.`);
+                buy = PAY_CANT;
+            }
+        } else {
+            bidx = ibill[indx].bidx;
+            bp = eshkp.bill_p[bidx];
+            pass = (ibill[indx].usedup <= PartlyUsedUp) ? 0 : 1;
+
+            buy = await dopayobj(shkp, bp, otmp, pass, itemize, false);
+
+            if (buy === PAY_BUY)
+                update_bill(indx, ibillct, ibill, eshkp, bp, otmp);
+        }
+        switch (buy) {
+        case PAY_CANT:
+            return false;
+        case PAY_BROKE:
+            paid_p.paid = true;
+            return true;
+        case PAY_SKIP:
+            continue;
+        case PAY_BUY:
+            paid_p.paid = true;
+            if (itemize || queuedpay) {
+                /* update_inventory(): perm_invent isn't ported */
+                bot();
+            }
+            break;
+        }
+    }
+    return true;
+}
+
+// C ref: shk.c update_bill()
+/* update shk's bill and augmented bill after an item has been purchased */
+function update_bill(
+    indx, /* index into ibill[]; -1 for unpaid contained item */
+    ibillct,
+    ibill,
+    eshkp,
+    bp,
+    paiditem) {
+    let j, newebillct;
+
+    /* remove from eshkp->bill_p[] unless this was the used up portion
+       of partly used item */
+    if (indx >= 0 && ibill[indx].usedup === PartlyUsedUp) {
+        bp.bquan = paiditem.quan;
+        for (j = 0; j < ibillct; ++j)
+            if (ibill[j].obj === paiditem && ibill[j].usedup === PartlyIntact) {
+                ibill[j].usedup = FullyIntact;
+                break;
+            }
+    } else {
+        /* if we get here, something was bought and needs to be removed
+           from shop bill; if it was used up, remove it from the billobjs
+           list and delete it; update shop's bill by moving last bill_p[]
+           entry into vacated slot; also update ibill[] indices for that */
+        paiditem.unpaid = 0; /* clear before maybe deallocating */
+        if (paiditem.where === 'OBJ_ONBILL') {
+            obj_extract_self(paiditem);
+            /* dealloc_obj(paiditem): garbage collected */
+        }
+        newebillct = eshkp.billct - 1;
+        const bpidx = eshkp.bill_p.indexOf(bp); /* bp - eshkp->bill_p */
+        /* *bp = eshkp->bill_p[newebillct] */
+        Object.assign(bp, eshkp.bill_p[newebillct]);
+        for (j = 0; j < ibillct; ++j)
+            if (ibill[j].bidx === newebillct)
+                ibill[j].bidx = bpidx;
+        eshkp.billct = newebillct; /* eshkp->billct - 1 */
+    }
+    return;
+}
+
+// C ref: shk.c dopayobj()
+/* return 2 if used-up portion paid
+ *        1 if paid successfully
+ *        0 if not enough money
+ *       -1 if skip this object
+ *       -2 if no money/credit left
+ */
+async function dopayobj(
+    shkp,
+    bp,
+    obj,
+    which, /* 0 => used-up item, 1 => other (unpaid or lost) */
+    itemize,
+    unseen) {
+    let ltmp, quan, save_quan;
+    let buy;
+    const consumed = (which === 0);
+
+    if (!obj.unpaid && !bp.useup
+        && !(has_contents(obj) && unpaid_cost(obj, COST_CONTENTS))) {
+        /* impossible("Paid object on bill??") */
+        return PAY_BUY;
+    }
+    if (itemize && await insufficient_funds(shkp, obj, 0)) {
+        return PAY_BROKE;
+    }
+    /* we may need to temporarily adjust the object, if part of the
+       original quantity has been used up but part remains unpaid */
+    save_quan = obj.quan;
+    if (consumed) {
+        /* either completely used up (simple), or split needed */
+        quan = bp.bquan;
+        if (quan > obj.quan) /* difference is amount used up */
+            quan -= obj.quan;
+    } else {
+        /* dealing with ordinary unpaid item */
+        quan = obj.quan;
+    }
+    ltmp = bp.price * quan;
+
+    obj.quan = quan;        /* to be used by doname() */
+    const iflags = game.iflags || (game.iflags = {});
+    iflags.suppress_price = (iflags.suppress_price || 0) + 1; /* affects containers */
+    buy = PAY_BUY; /* flag; if changed then return early */
+
+    if (itemize) {
+        /* safe_qbuf(..., (quan == 1L) ? Doname2 : doname, ansimpleoname,
+                     ...) + y_n(qbuf) */
+        obj.quan = save_quan;
+        iflags.suppress_price--;
+        throw new Error('dopayobj(): itemized "Pay?" prompt not ported yet');
+    } /* itemize */
+
+    if (quan < bp.bquan && !consumed) { /* partly used goods */
+        /* shk won't sell the intact portion until the used up portion has
+           been paid for (once it has been, bp->bquan will match quan) */
+        await reject_purchase(shkp, obj, bp.bquan);
+        buy = PAY_SKIP;
+    }
+    if (buy === PAY_BUY && await insufficient_funds(shkp, obj, ltmp)) {
+        buy = itemize ? PAY_SKIP : PAY_CANT;
+    }
+
+    if (buy === PAY_BUY) {
+        await pay(ltmp, shkp);
+        if (!unseen)
+            await shk_names_obj(shkp, obj,
+                                consumed
+                                    ? "paid for %s at a cost of %ld gold piece%s.%s"
+                                    : "bought %s for %ld gold piece%s.%s",
+                                ltmp, "");
+    }
+
+    /* restore obj to original state */
+    obj.quan = save_quan; /* restore original count */
+    iflags.suppress_price--;
+
+    return buy;
+}
+
+// C ref: shk.c buy_container()
+/* pay for the unpaid contents of a container without itemizing,
+   and for the container itself if it is unpaid too */
+function buy_container(shkp, indx, ibillct, ibill) {
+    void shkp, indx, ibillct, ibill;
+    throw new Error('buy_container(): paying for a container not ported yet');
+}
+
+// C ref: shk.c reject_purchase()
+async function reject_purchase(shkp, obj, billed_quan) {
+    const intact_quan = obj.quan;
+
+    /* temporarily change obj to refer to the used up portion */
+    obj.quan = billed_quan - intact_quan;
+    if (!Deaf() && !muteshk(shkp)) {
+        let which;
+
+        if (obj.where === 'OBJ_CONTAINED')
+            which = `the one${intact_quan !== 1 ? "s" : ""} in ${
+                     thesimpleoname(obj.ocontainer)}`;
+        else
+            which = (intact_quan > 1) ? "these" : "this one";
+
+        await verbalize(`${ANGRY(shkp) ? "Pay" : "Please pay"} for the other ${
+                         simpleonames(obj)} before buying ${which}.`);
+    } else {
+        await pline(`${Shknam(shkp)} ${ANGRY(shkp) ? "angrily " : ""}${
+                     nolimbs_shk(shkp.data) ? "motions to" : "points out"
+                     } your bill for the other ${simpleonames(obj)} first.`);
+    }
+    obj.quan = intact_quan;
+}
+
+/* C ref: mondata.h nolimbs() */
+function nolimbs_shk(ptr) {
+    return (ptr.mflags1 & M1_NOLIMBS) === M1_NOLIMBS;
+}
+
+// C ref: shk.c insufficient_funds()
+/* gold+credit checking+feedback common to dopayobj() and buy_container() */
+async function insufficient_funds(
+    shkp,
+    item,
+    cost) { /* 0: check for no-gold; >0: check for specified amount */
+    let stashed_gold;
+    const umoney = money_cnt(game.invent),
+        ecredit = shkp.mextra.eshk.credit;
+
+    if (!cost && umoney + ecredit === 0) {
+        stashed_gold = hidden_gold(true);
+        await You(`${(stashed_gold > 0) ? "seem to " : ""}have no gold or credit left.`);
+        return true;
+    }
+    if (cost && umoney + ecredit < cost) {
+        stashed_gold = hidden_gold(true);
+        await You(`don't${(stashed_gold > 0) ? " seem to" : ""} have gold${
+                   (ecredit > 0) ? " or credit" : ""} enough to pay for ${
+                   paydoname(item)}.`);
+        return true;
+    }
+    return false;
+}
+
+// C ref: shk.c shk_names_obj()
+async function shk_names_obj(
+    shkp,
+    obj,
+    fmt, /* "%s %ld %s %s", doname(obj), amt, plur(amt), arg */
+    amt,
+    arg) {
+    let obj_name;
+    let was_unknown = !obj.dknown;
+
+    observe_object(obj, Hallucination());
+    /* Use real name for ordinary weapons/armor, and spell-less
+     * scrolls/books (that is, blank and mail), but only if the
+     * object is within the shk's area of interest/expertise.
+     */
+    if (!objects[obj.otyp].oc_magic && saleable(shkp, obj)
+        && (obj.oclass === WEAPON_CLASS || obj.oclass === ARMOR_CLASS
+            || obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS
+            || obj.otyp === MIRROR)) {
+        was_unknown = was_unknown || !objects[obj.otyp].oc_name_known;
+        makeknown(obj.otyp);
+    }
+    obj_name = paydoname(obj);
+    /* fmt's %s, %ld, %s, %s: obj_name, amt, plur(amt), arg */
+    const fill = (f, name) => {
+        const vals = [name, String(amt), amt !== 1 ? "s" : "", arg];
+        let k = 0;
+        return f.replace(/%ld|%s/g, () => vals[k++]);
+    };
+    /* Use an alternate message when extra information is being provided */
+    if (was_unknown) {
+        obj_name = highc(obj_name[0]) + obj_name.slice(1);
+        /* Sprintf(fmtbuf, "%%s; you %s", fmt);
+           pline(fmtbuf, obj_name, (obj->quan > 1L) ? "them" : "it", amt,
+                 plur(amt), arg) */
+        const vals = [obj_name, (obj.quan > 1) ? "them" : "it", String(amt),
+                      amt !== 1 ? "s" : "", arg];
+        let k = 0;
+        await pline(`%s; you ${fmt}`.replace(/%ld|%s/g, () => vals[k++]));
+    } else {
+        await You(fill(fmt, obj_name));
+    }
 }
 
 // ── pricing ──

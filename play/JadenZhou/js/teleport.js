@@ -41,9 +41,11 @@ import { mintrap, seetrap, t_at, is_hole, is_pit, HOLE, TRAPDOOR, TELEP_TRAP,
          LEVEL_TELEP, MAGIC_PORTAL, NO_TRAP, Trap_Effect_Finished,
          Trap_Moved_Mon, clamp_hole_destination } from './trap.js';
 import { migrate_to_level } from './dog.js';
-import { MIGR_RANDOM } from './const.js';
+import { MIGR_RANDOM, MIGR_PORTAL } from './const.js';
 import { within_bounded_area } from './rect.js';
 import { obj_extract_self, place_object } from './mkobj.js';
+import { mksobj } from './mkobj.js';
+import { addinv, prinv } from './invent.js';
 import { flooreffects } from './do.js';
 import { dist2, distmin } from './hacklib.js';
 import { drag_ball, move_bc, placebc, unplacebc } from './ball.js';
@@ -878,8 +880,18 @@ export async function level_tele() {
 
                 newlevel.dnum = r.rdgn;
                 newlevel.dlevel = r.rlev;
-                if (In_endgame(newlevel) && !In_endgame(u.uz))
-                    throw new Error('level_tele(): "Endgame prerequisite" amulet not ported yet');
+                if (In_endgame(newlevel) && !In_endgame(u.uz)) {
+                    let amu;
+
+                    if (!u.uhave?.amulet
+                        && (amu = mksobj(AMULET_OF_YENDOR, true, false))) {
+                        /* ordinarily we'd use hold_another_object()
+                           for something like this, but we don't want
+                           fumbling or already full pack to interfere */
+                        amu = await addinv(amu);
+                        await prinv("Endgame prerequisite:", amu, 0);
+                    }
+                }
                 force_dest = true;
             } else {
                 if (!/^-?\d+$/.test(buf))
@@ -1425,7 +1437,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
         return Trap_Effect_Finished; /* temporary? kludge */
     if (teleport_pet(mtmp, force_it)) {
         const tolevel = { dnum: 0, dlevel: 0 };
-        const migrate_typ = MIGR_RANDOM; /* MIGR_PORTAL: portals aren't ported */
+        let migrate_typ = MIGR_RANDOM;
 
         if (is_hole(tt)) {
             const topo = game.dungeon_topology;
@@ -1445,7 +1457,13 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
                 clamp_hole_destination(tolevel);
             }
         } else if (tt === MAGIC_PORTAL) {
-            throw new Error('mlevel_tele_trap(): magic portal not ported yet');
+            if (In_endgame(u.uz))
+                /* mon_has_amulet() || is_home_elemental() || rn2(7):
+                   "seems to shimmer for a moment" */
+                throw new Error('mlevel_tele_trap(): endgame magic portal not ported yet');
+            tolevel.dnum = trap.dst.dnum; /* assign_level(&tolevel, &trap->dst) */
+            tolevel.dlevel = trap.dst.dlevel;
+            migrate_typ = MIGR_PORTAL;
         } else if (tt === LEVEL_TELEP || tt === NO_TRAP) {
             let nlev;
 

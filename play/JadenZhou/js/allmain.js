@@ -12,6 +12,7 @@ import { mklev, u_on_upstairs } from './mklev.js';
 import { l_nhcore_init } from './nhlua.js';
 import { rhack, domove, enter_explore_mode } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, see_monsters } from './display.js';
+import { see_objects, see_traps, Hallucination, Blind, swallowed } from './display.js';
 import { read_engr_at } from './engrave.js';
 import { encumber_msg, pickup } from './pickup.js';
 import { reset_justpicked } from './invent.js';
@@ -295,11 +296,23 @@ function is_pool_or_lava_at_u() {
            || typ === LAVAWALL || typ === DRAWBRIDGE_UP;
 }
 
+// C ref: cmd.c timed_occupation()
+/* used by set_occupation() for a counted command with an occupation text
+   (search, wait); the command function is game.timed_occ_fn */
+async function timed_occupation() {
+    await game.timed_occ_fn();
+    if (game.multi > 0)
+        game.multi--;
+    return (game.multi > 0) ? 1 : 0;
+}
+
 // C ref: cmd.c set_occupation()
 export function set_occupation(fn, txt, xtime) {
-    if (xtime)
-        throw new Error('set_occupation(): timed_occupation() not ported yet');
-    game.occupation = fn;
+    if (xtime) {
+        game.occupation = timed_occupation;
+        game.timed_occ_fn = fn;
+    } else
+        game.occupation = fn;
     game.occtxt = txt;
     game.occtime = 0;
 }
@@ -649,6 +662,18 @@ export async function moveloop_core() {
     /* once-per-player-input things go here */
 
     find_ac();
+    if (!g.context.mv || Blind()) {
+        /* redo monsters if hallu or wearing a helm of telepathy */
+        if (Hallucination()) { /* update screen randomly */
+            see_monsters();
+            see_objects();
+            see_traps();
+            if (u.uswallow)
+                await swallowed(0);
+        }
+        /* else if (Unblind_telepat || Warning || Warn_of_mon
+                    || any_visible_region()) see_monsters(): not ported */
+    }
     // Vision + display
     if (g.vision_full_recalc) {
         vision_recalc(0);

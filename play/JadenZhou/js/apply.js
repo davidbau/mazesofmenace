@@ -186,7 +186,40 @@ async function use_stethoscope(obj) {
             mtmp.mundetected = 0;
             newsym(mtmp.mx, mtmp.my);
         } else if (mtmp.mappearance) {
-            throw new Error('use_stethoscope(): exposing a mimic (seemimic()) not ported yet');
+            let what = "thing";
+            let use_plural = false;
+
+            switch (M_AP_TYPE_AP(mtmp)) {
+            case M_AP_OBJECT_AP: {
+                /* FIXME?
+                 *  we should probably be using object_from_map() here
+                 */
+                const otyp = mtmp.mappearance; /* init_dummyobj(&dummyobj, mappearance, 1L) */
+                /* simple_typename() yields "fruit" for any named fruit;
+                   we want the same thing '//' or ';' shows: "slime mold"
+                   or "grape" or "slice of pizza" */
+                if (otyp === O.SLIME_MOLD && has_mcorpsenm_ap(mtmp)) {
+                    throw new Error('use_stethoscope(): mimic shown as a named fruit (simpleonames()) not ported yet');
+                } else {
+                    what = simple_typename_ap(otyp);
+                }
+                /* is_boots(odummy) || is_gloves(odummy) || LENSES */
+                use_plural = ((objects[otyp].oc_class === O.ARMOR_CLASS
+                               && (objects[otyp].oc_armcat === O.ARM_BOOTS
+                                   || objects[otyp].oc_armcat === O.ARM_GLOVES))
+                              || otyp === O.LENSES);
+                break;
+            }
+            case M_AP_MONSTER_AP: /* ignore Hallucination here */
+                what = pmname_ap(mons[mtmp.mappearance], Mgender_ap(mtmp));
+                break;
+            case M_AP_FURNITURE_AP:
+                what = defsyms_explanation_ap[mtmp.mappearance];
+                break;
+            }
+            seemimic_ap(mtmp);
+            await pline(`${use_plural ? "Those" : "That"} ${what} ${
+                use_plural ? "are" : "is"} really ${mnm}.`);
         } else if ((game.flags.verbose ?? true) && !canspotmon(mtmp)) {
             await There(`is ${mnm} there.`);
         }
@@ -260,6 +293,77 @@ async function flip_through_book(obj) {
     return ECMD_TIME;
 }
 
+import { M_AP_TYPE as M_AP_TYPE_AP, M_AP_OBJECT as M_AP_OBJECT_AP,
+         M_AP_MONSTER as M_AP_MONSTER_AP,
+         M_AP_FURNITURE as M_AP_FURNITURE_AP } from './const.js';
+import { obj_typename as obj_typename_ap } from './objnam.js';
+/* C ref: mextra.h has_mcorpsenm() */
+function has_mcorpsenm_ap(mtmp) { return mtmp.mextra?.mcorpsenm !== undefined; }
+/* C ref: objnam.c simple_typename() -- obj_typename() without the
+   user-assigned name or the appended description */
+function simple_typename_ap(otyp) {
+    const save_uname = objects[otyp].oc_uname;
+    objects[otyp].oc_uname = null; /* suppress any name given by user */
+    let bufp = obj_typename_ap(otyp);
+    objects[otyp].oc_uname = save_uname;
+    const pp = bufp.indexOf(" (");
+    if (pp >= 0)
+        bufp = bufp.slice(0, pp); /* strip the appended description */
+    return bufp;
+}
+import { pmname as pmname_ap, Mgender as Mgender_ap } from './do_name.js';
+import { defsyms_explanation as defsyms_explanation_ap } from './pager.js';
+import { seemimic as seemimic_ap } from './mon.js';
+
+// C ref: apply.c use_cream_pie()
+async function use_cream_pie(obj) {
+    const u = game.u;
+    const wasblind = Blind();
+    const wascreamed = u.ucreamed;
+    let several = false;
+
+    if (obj.quan > 1) {
+        several = true;
+        obj = splitobj_ap(obj, 1);
+    }
+    if (Hallucination())
+        await You("give yourself a facial.");
+    else
+        await You(`immerse your ${body_part(FACE_AP)} in ${
+            several ? "one of " : ""}${
+            several ? makeplural_ap(the_ap(xname_ap(obj))) : the_ap(xname_ap(obj))}.`);
+    if (can_blnd_ap(null, game.youmonst, AT_WEAP_AP, obj)) {
+        const blindinc = rnd(25);
+
+        u.ucreamed = (u.ucreamed || 0) + blindinc;
+        await make_blinded_ap((u.uprops[BLINDED_AP].intrinsic & TIMEOUT_AP) /* BlindedTimeout */
+                              + blindinc, false);
+        if (!Blind() || (Blind() && wasblind))
+            await pline(`There's ${wascreamed ? "more " : ""}sticky goop all over your ${
+                body_part(FACE_AP)}.`);
+        else /* Blind  && !wasblind */
+            await You_cant(`see through all the sticky goop on your ${body_part(FACE_AP)}.`);
+    }
+
+    setnotworn_ap(obj);
+    /* useup() is appropriate, but we want costly_alteration()'s message */
+    costly_alteration_ap(obj, COST_SPLAT_AP);
+    obj_extract_self_ap(obj);
+    delobj_ap(obj);
+    return ECMD_OK;
+}
+import { splitobj as splitobj_ap, costly_alteration as costly_alteration_ap,
+         obj_extract_self as obj_extract_self_ap } from './mkobj.js';
+import { makeplural as makeplural_ap, xname as xname_ap } from './objnam.js';
+import { the as the_ap } from './iactions.js';
+import { can_blnd as can_blnd_ap } from './mondata.js';
+import { AT_WEAP as AT_WEAP_AP } from './monsters.js';
+import { make_blinded as make_blinded_ap } from './potion.js';
+import { setnotworn as setnotworn_ap } from './worn.js';
+import { delobj as delobj_ap } from './invent.js';
+import { FACE as FACE_AP, BLINDED as BLINDED_AP, TIMEOUT as TIMEOUT_AP,
+         COST_SPLAT as COST_SPLAT_AP } from './const.js';
+
 // C ref: apply.c rub_ok() -- getobj callback for object to rub
 function rub_ok(obj) {
     if (!obj)
@@ -282,8 +386,64 @@ export async function dorub() {
     const obj = await getobj("rub", rub_ok, GETOBJ_NOFLAGS);
     if (!obj)
         return ECMD_CANCEL;
-    throw new Error('dorub(): rubbing (wield_tool()/dorub effects) not ported yet');
+    if (obj.oclass === O.GEM_CLASS || obj.oclass === O.FOOD_CLASS) {
+        if (is_graystone(obj)) {
+            throw new Error('dorub(): use_stone() not ported yet');
+        } else if (obj.otyp === O.LUMP_OF_ROYAL_JELLY) {
+            throw new Error('dorub(): use_royal_jelly() not ported yet');
+        } else {
+            await pline("Sorry, I don't know how to use that.");
+            return ECMD_OK;
+        }
+    }
+    if (obj !== game.uwep) {
+        if (await wield_tool_ap(obj, "rub")) {
+            /* cmdq_add_ec(CQ_CANNED, dorub);
+               cmdq_add_key(CQ_CANNED, obj->invlet); */
+            if (!game.cmdq) game.cmdq = [];
+            game.cmdq.push({ typ: 'ec', fn: 'dorub' });
+            game.cmdq.push({ typ: 'key', key: obj.invlet });
+            return ECMD_TIME;
+        }
+        return ECMD_OK;
+    }
+
+    /* now uwep is obj */
+    const uwep = game.uwep;
+    if (uwep.otyp === MAGIC_LAMP) {
+        if (uwep.spe > 0 && !rn2(3)) {
+            /* check_unpaid_usage(uwep, TRUE): unusual item use */
+            if (uwep.unpaid && game.u.ushops && game.u.ushops[0])
+                throw new Error('dorub(): check_unpaid_usage() not ported yet');
+            /* bones preparation:  perform the lamp transformation
+               before releasing the djinni in case the latter turns out
+               to be fatal (a hostile djinni has no chance to attack yet,
+               but an indebted one who grants a wish might bestow an
+               artifact which blasts the hero with lethal results) */
+            uwep.otyp = OIL_LAMP;
+            uwep.spe = 0; /* for safety */
+            uwep.age = rn1_ap(500, 1000);
+            if (uwep.lamplit)
+                throw new Error('dorub(): begin_burn() of a lit lamp not ported yet');
+            await djinni_from_bottle_ap(uwep);
+            discover_object(MAGIC_LAMP, true, true, true); /* makeknown() */
+            /* update_inventory(): no perm_invent */
+        } else if (rn2(2)) {
+            await You(`${!Blind() ? "see a puff of" : "smell"} smoke.`);
+        } else
+            await pline(nothing_happens_ap);
+    } else if (obj.otyp === BRASS_LANTERN) {
+        /* message from Adventure */
+        await pline("Rubbing the electric lamp is not particularly rewarding.");
+        await pline("Anyway, nothing exciting happens.");
+    } else
+        await pline(nothing_happens_ap);
+    return ECMD_TIME;
 }
+import { wield_tool as wield_tool_ap } from './wield.js';
+import { rn1 as rn1_ap } from './rng.js';
+import { djinni_from_bottle as djinni_from_bottle_ap } from './potion.js';
+import { nothing_happens as nothing_happens_ap } from './const.js';
 
 // C ref: apply.c apply_ok() -- getobj callback for object to apply
 function apply_ok(obj) {
@@ -378,7 +538,8 @@ export async function doapply() {
     case O.LENSES:
         throw new Error('doapply(): Blindf_on()/Blindf_off() not ported yet');
     case CREAM_PIE:
-        throw new Error('doapply(): use_cream_pie() not ported yet');
+        res = await use_cream_pie(obj);
+        break;
     case LUMP_OF_ROYAL_JELLY:
         throw new Error('doapply(): use_royal_jelly() not ported yet');
     case BULLWHIP:

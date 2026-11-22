@@ -21,6 +21,11 @@ import { game } from './gstate.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
          tty_select_menu, tty_destroy_nhwindow, add_menu_str,
          tty_yn_function } from './wintty.js';
+import { tty_putstr, tty_display_nhwindow } from './wintty.js';
+import { NHW_TEXT, MENU_SELECT_ALL, MENU_SELECT_PAGE, MENU_INVERT_ALL,
+         MENU_INVERT_PAGE, MENU_UNSELECT_ALL, MENU_UNSELECT_PAGE,
+         MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE, MENU_FIRST_PAGE, MENU_LAST_PAGE,
+         MENU_SEARCH } from './const.js';
 import { getpos } from './getpos.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ONE,
          ECMD_OK } from './const.js';
@@ -455,8 +460,8 @@ function cmap_lookat(symidx, x, y) {
     case S_water:
     case S_lava:
     case S_lavawall:
-    case S_ice:
-        throw new Error('lookat(): waterbody_name() not ported yet');
+    case S_ice: /* for hallucination; otherwise defsyms[] would be fine */
+        return waterbody_name(x, y);
     case S_stone:
         if (!lev.seenv)
             return "unexplored";
@@ -527,6 +532,90 @@ export function do_screen_description(cc) {
 }
 
 /* help menu choices that aren't ported yet */
+// C ref: pager.c domenucontrols()
+async function domenucontrols() {
+    const cwin = tty_create_nhwindow(NHW_TEXT);
+
+    show_menu_controls(cwin, false);
+    await tty_display_nhwindow(cwin, false);
+    await tty_destroy_nhwindow(cwin);
+}
+
+/* C ref: options.c get_menu_cmd_key() -- no menu command remapping is
+   configured, so each menu command is its own key */
+function get_menu_cmd_key(ch) { return ch.charCodeAt(0); }
+
+/* C sprintf() field helpers for show_menu_controls()'s formats */
+function padl(s, w) { return s.length >= w ? s : ' '.repeat(w - s.length) + s; }
+function padr(s, w) { return s.length >= w ? s : s + ' '.repeat(w - s.length); }
+
+// C ref: options.c show_menu_controls() -- the '?k' (dolist FALSE) form
+function show_menu_controls(win, dolist) {
+    const hardcoded = [
+        { key: "Return", desc: "Accept current choice(s) and dismiss menu" },
+        { key: "Enter",  desc: "Same as Return" },
+        { key: "Space",  desc: "If not on last page, advance one page;" },
+        { key: "     ",  desc: "when on last page, treat like Return" },
+        { key: "Escape", desc: "Cancel menu without making any choice(s)" },
+    ];
+    /* mc_fmt "%8s     %-6s %s", mc_altfmt "%9s  %-6s %s" */
+    const mc_fmt = (a, b, c) => `${padl(a, 8)}     ${padr(b, 6)} ${c}`;
+    const mc_altfmt = (a, b, c) => `${padl(a, 9)}  ${padr(b, 6)} ${c}`;
+    /* wc2_supported("menu_shift"): tty doesn't offer WC2_MENU_SHIFT */
+    const has_menu_shift = false;
+    let fmt, arg;
+
+    /*
+     * Relies on spaces to line things up in columns, so must be rendered
+     * with a fixed-width font or will look dreadful.
+     */
+    tty_putstr(win, 0, "Menu control keys:");
+    if (dolist) { /* key bindings help: '?i' */
+        throw new Error('show_menu_controls(): the key bindings list not ported yet');
+    } else { /* menu controls help: '?k' */
+        tty_putstr(win, 0, "");
+        tty_putstr(win, 0, mc_altfmt("", "Whole", "Current"));
+        tty_putstr(win, 0, mc_altfmt("", " Menu", " Page"));
+        tty_putstr(win, 0, mc_fmt("Select",
+                                  visctrl(get_menu_cmd_key(MENU_SELECT_ALL)),
+                                  visctrl(get_menu_cmd_key(MENU_SELECT_PAGE))));
+        tty_putstr(win, 0, mc_fmt("Invert",
+                                  visctrl(get_menu_cmd_key(MENU_INVERT_ALL)),
+                                  visctrl(get_menu_cmd_key(MENU_INVERT_PAGE))));
+        tty_putstr(win, 0, mc_fmt("Deselect",
+                                  visctrl(get_menu_cmd_key(MENU_UNSELECT_ALL)),
+                                  visctrl(get_menu_cmd_key(MENU_UNSELECT_PAGE))));
+        tty_putstr(win, 0, "");
+        tty_putstr(win, 0, mc_fmt("Go to",
+                                  visctrl(get_menu_cmd_key(MENU_NEXT_PAGE)),
+                                  "Next page"));
+        tty_putstr(win, 0, mc_fmt("",
+                                  visctrl(get_menu_cmd_key(MENU_PREVIOUS_PAGE)),
+                                  "Previous page"));
+        tty_putstr(win, 0, mc_fmt("",
+                                  visctrl(get_menu_cmd_key(MENU_FIRST_PAGE)),
+                                  "First page"));
+        tty_putstr(win, 0, mc_fmt("",
+                                  visctrl(get_menu_cmd_key(MENU_LAST_PAGE)),
+                                  "Last page"));
+        if (has_menu_shift)
+            throw new Error('show_menu_controls(): menu_shift lines not ported yet');
+        tty_putstr(win, 0, "");
+        tty_putstr(win, 0, mc_fmt("Search",
+                                  visctrl(get_menu_cmd_key(MENU_SEARCH)),
+                                  "Exter a target string and invert all matching entries"));
+        /* separator before hardcoded */
+        tty_putstr(win, 0, "");
+        /* fmt "%9s  %-8s %s" */
+        fmt = (a, b, c) => `${padl(a, 9)}  ${padr(b, 8)} ${c}`;
+        arg = "Other "; /* prefix for first hardcoded[] entry, then reset */
+    }
+    for (const xcp of hardcoded) {
+        tty_putstr(win, 0, fmt(arg, xcp.key, xcp.desc));
+        arg = "";
+    }
+}
+
 function hmenu_not_ported(fn) {
     return () => { throw new Error(`dohelp(): ${fn}() not ported yet`); };
 }
@@ -638,6 +727,8 @@ export async function dohelp() {
         const f = help_menu_items[sel].f;
         if (f === 'hmenu_dowhatis')
             await hmenu_dowhatis();
+        else if (f === 'domenucontrols')
+            await domenucontrols();
         else
             hmenu_not_ported(f)();
     }

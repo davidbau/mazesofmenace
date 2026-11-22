@@ -27,6 +27,7 @@ import { ACURR } from './attrib.js';
 import * as M from './monsters.js';
 import { ALTAR as ALTAR_TYP, ICE as ICE_TYP } from './const.js';
 import { mons } from './monsters.js';
+import { polyfood } from './mon.js';
 import { SPINACH_TIN, ROTTEN_TIN, HOMEMADE_TIN, NON_PM, NEUTRAL } from './const.js';
 import { FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
          ACID_RES, STONE_RES, TELEPORT, TELEPORT_CONTROL, TELEPAT,
@@ -212,7 +213,7 @@ export function init_uhunger() {
 }
 
 // C ref: eat.c is_fainted()
-function is_fainted() {
+export function is_fainted() {
     return game.u.uhs === FAINTED;
 }
 
@@ -222,7 +223,7 @@ export function Unaware() {
 }
 
 // C ref: trap.c unconscious()
-function unconscious() {
+export function unconscious() {
     const g = game;
     if (g.multi >= 0)
         return false;
@@ -1566,6 +1567,43 @@ async function consume_tin(mesg) {
     }
     if (tin)
         use_up_tin(tin);
+}
+
+// C ref: eat.c Popeye()
+/* Some threats can be stopped by eating a tin; is the hero opening one that
+   will help against the given threat? */
+export function Popeye(threat) {
+    if (game.occupation !== opentin)
+        return false;
+    const otin = tin_ctx().tin;
+    /* make sure hero still has access to tin */
+    if (!carried(otin)
+        && (!obj_here(otin, game.u.ux, game.u.uy) || !can_reach_floor(true)))
+        return false;
+    /* unknown tin is assumed to be helpful */
+    if (!otin.known)
+        return true;
+    /* known tin is helpful if it will stop life-threatening problem */
+    const mndx = otin.corpsenm;
+    switch (threat) {
+    /* note: not used; hunger code bypasses stop_occupation() when eating */
+    case HUNGER:
+        return (mndx !== NON_PM || otin.spe === 1);
+    /* flesh from lizards and acidic critters stops petrification */
+    case STONED:
+        return (mndx >= M.LOW_PM && mndx < M.NUMMONS /* ismnum() */
+                && (mndx === M.PM_LIZARD || acidic(mons[mndx])));
+    /* polymorph into a fiery monster */
+    case SLIMED:
+        return polyfood(otin);
+    /* no tins can cure these (yet?) */
+    case SICK:
+    case VOMITING:
+        break;
+    default:
+        break;
+    }
+    return false;
 }
 
 // C ref: eat.c opentin()

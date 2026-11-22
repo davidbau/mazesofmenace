@@ -640,6 +640,15 @@ const rwep = [
     O.LUCKSTONE, O.DART, O.CREAM_PIE,
 ];
 
+// C ref: weapon.c monmightthrowwep()
+/* is 'obj' a type of weapon that any monster knows how to throw? */
+export function monmightthrowwep(obj) {
+    for (let idx = 0; idx < rwep.length; ++idx)
+        if (obj.otyp === rwep[idx])
+            return true;
+    return false;
+}
+
 /* polearms */
 const pwep = [ O.HALBERD,       O.BARDICHE, O.SPETUM,
                O.BILL_GUISARME, O.VOULGE,   O.RANSEUR,

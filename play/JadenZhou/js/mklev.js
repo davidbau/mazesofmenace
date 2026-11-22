@@ -82,6 +82,7 @@ import {
     IS_THRONE, THRONE, IS_ROOM, OBJ_AT, AM_SHRINE, MM_ASLEEP, A_NONE, NON_PM,
 } from './const.js';
 import { MACE, LUMP_OF_ROYAL_JELLY } from './objects.js';
+import { makeroguerooms, makerogueghost } from './extralev.js';
 import { add_to_buried } from './dig.js';
 import { shtypes } from './shknam.js';
 import {
@@ -460,6 +461,9 @@ function clear_level_structures() {
     lf.stormy = false;
     lf.stasis_until = 0;
     init_rect();
+    if (g.lev_message) {
+        g.lev_message = null; /* free(gl.lev_message) */
+    }
 }
 
 
@@ -497,8 +501,8 @@ async function makelevel() {
         const u_depth = depth_of_level(g.u.uz);
 
         if (Is_rogue_level(g.u.uz)) {
-            /* makeroguerooms(); makerogueghost(); */
-            throw new Error('makelevel(): makeroguerooms() not ported yet');
+            makeroguerooms();
+            makerogueghost();
         } else {
             await makerooms();
         }
@@ -509,7 +513,9 @@ async function makelevel() {
         const branchp = Is_branchlev(g.u.uz); /* possible dungeon branch */
         let room_threshold = branchp ? 4 : 3; /* minimum number of rooms needed
                                                 to allow a random special room */
-
+        skip0: { /* the block ends at C's skip0 label */
+        if (Is_rogue_level(g.u.uz))
+            break skip0; /* goto skip0 */
         makecorridors();
         await make_niches();
 
@@ -576,6 +582,7 @@ async function makelevel() {
         else if (u_depth > 16 && !rn2(8)
                  && !(g.mvitals[PM_COCKATRICE].mvflags & G_GONE))
             await do_mkroom(COCKNEST);
+        } /* skip0 */
 
         /* skip0: */
         const prevstairs = game.stairs; /* used to test for place_branch() success */
@@ -1954,6 +1961,12 @@ function dosdoor(x, y, aroom, type) {
         } else {
             loc.flags = shdoor ? D_ISOPEN : D_NODOOR;
         }
+
+        /* also done in roguecorr(); doing it here first prevents
+           making mimics in place of trapped doors on rogue level */
+        if (Is_rogue_level(game.u.uz))
+            loc.flags = D_NODOOR;
+
         if (loc.flags & D_TRAPPED) {
             if (level_difficulty() >= 9 && !rn2(5)) {
                 loc.flags = D_NODOOR;
@@ -1968,7 +1981,7 @@ function dosdoor(x, y, aroom, type) {
     add_door(x, y, aroom);
 }
 
-function dodoor(x, y, aroom) {
+export function dodoor(x, y, aroom) {
     dosdoor(x, y, aroom, maybe_sdoor(8) ? SDOOR : DOOR);
 }
 
@@ -2545,11 +2558,26 @@ function extend_spine(locale, wall_there, dx, dy) {
     if (locale[0][1] && locale[2][1] && locale[0][ny] && locale[2][ny]) return 0;
     return 1;
 }
+/* C ref: decl.c gb.bughack -- for preserving the insect legs when
+   wallifying baalz level; inarea {COLNO, ROWNO, 0, 0} matches nothing */
+export function bughack() {
+    if (!game.bughack)
+        game.bughack = { inarea: { x1: COLNO, y1: ROWNO, x2: 0, y2: 0 },
+                         delarea: { x1: COLNO, y1: ROWNO, x2: 0, y2: 0 } };
+    return game.bughack;
+}
+function in_bughack_area(x, y) {
+    const a = bughack().inarea;
+    return within_bounded_area(x, y, a.x1, a.y1, a.x2, a.y2);
+}
+// C ref: mkmaze.c wall_cleanup()
 function wall_cleanup(x1, y1, x2, y2) {
     const map = game.level;
     if (!map) return;
     for (let x = x1; x <= x2; x++)
         for (let y = y1; y <= y2; y++) {
+            if (in_bughack_area(x, y))
+                continue;
             const loc = map.at(x, y);
             const typ = loc?.typ ?? STONE;
             if (!(IS_WALL(typ) && typ !== DBWALL)) continue;
@@ -2571,10 +2599,13 @@ export function fix_wall_spines(x1, y1, x2, y2) {
             const loc = map.at(x, y);
             const typ = loc?.typ ?? STONE;
             if (!(IS_WALL(typ) && typ !== DBWALL)) continue;
+            /* set the locations TRUE if rock or wall or out of bounds */
+            const loc_f = in_bughack_area(x, y) /* for baalz insect */
+                ? isWallTile : isWallOrStone;
             const locale = [
-                [isWallOrStone(x-1,y-1), isWallOrStone(x-1,y), isWallOrStone(x-1,y+1)],
-                [isWallOrStone(x,y-1), 0, isWallOrStone(x,y+1)],
-                [isWallOrStone(x+1,y-1), isWallOrStone(x+1,y), isWallOrStone(x+1,y+1)],
+                [loc_f(x-1,y-1), loc_f(x-1,y), loc_f(x-1,y+1)],
+                [loc_f(x,y-1), 0, loc_f(x,y+1)],
+                [loc_f(x+1,y-1), loc_f(x+1,y), loc_f(x+1,y+1)],
             ];
             const bits = (extend_spine(locale, isWallTile(x,y-1), 0, -1) << 3)
                 | (extend_spine(locale, isWallTile(x,y+1), 0, 1) << 2)

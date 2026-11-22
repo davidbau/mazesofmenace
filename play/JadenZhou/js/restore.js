@@ -15,6 +15,8 @@
 // way C re-links them by id.
 
 import { game } from './gstate.js';
+import { restshk, set_residency } from './shk.js';
+import { restpriest } from './priest.js';
 import { Sfi, Sf_eof, rewind_nhfile, close_nhfile } from './sfbase.js';
 import { create_levelfile, delete_savefile, get_freeing_nhfile, validate,
          HACK_UID } from './files.js';
@@ -55,8 +57,6 @@ import { NHF_BONESFILE, REST_GSTATE, REST_LEVELS, REST_CURRENT_LEVEL, WRITING,
 import { next_ident } from './mkobj.js';
 import { propagate, peace_minded, set_malign } from './makemon.js';
 import { Is_branchlev } from './dungeon.js';
-import { restshk, set_residency } from './shk.js';
-import { restpriest } from './priest.js';
 import { deltrap } from './trap.js';
 import { killer } from './topten.js';
 import { done } from './end.js';

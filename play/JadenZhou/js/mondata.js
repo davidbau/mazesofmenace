@@ -20,8 +20,9 @@ import { NON_PM, MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
 import { objects, ALCHEMY_SMOCK, WEAPON_CLASS, GRAY_DRAGON_SCALES,
          YELLOW_DRAGON_SCALES, GRAY_DRAGON_SCALE_MAIL,
          YELLOW_DRAGON_SCALE_MAIL, LENSES, CREAM_PIE, BLINDING_VENOM,
-         POT_BLINDNESS } from './objects.js';
+         POT_BLINDNESS, ARMOR_CLASS } from "./objects.js";
 import { objdescr_is } from './o_init.js';
+import { defends } from './artifact.js';
 import { Unaware } from './eat.js';
 import { is_weptool } from './mkobj.js';
 import { which_armor } from './worn.js';
@@ -324,21 +325,27 @@ export function defended(mon, adtyp) {
 
     /* is 'mon' wielding an artifact that protects against 'adtyp'? */
     let o = is_you ? g.uwep : mon.mw;
-    if (o && o.oartifact)
-        throw new Error('defended(): artifact defends() not ported yet');
+    if (o && o.oartifact && defends(adtyp, o))
+        return true;
 
     /* if 'mon' is an adult dragon, treat it as if it was wearing scales
        so that it has the same benefit as a hero wearing dragon scales */
     const mndx = monsndx(mon.data);
     if (mndx >= PM_GRAY_DRAGON && mndx <= PM_YELLOW_DRAGON) {
-        throw new Error('defended(): dragon scales (defends()) not ported yet');
+        /* a dragon is its own suit...  if mon is poly'd hero, we don't
+           care about embedded scales (uskin) because being a dragon with
+           embedded scales is no better than just being a dragon */
+        /* otemp = zeroobj; defends() and Is_dragon_armor() only care
+           about otyp so ignore the rest of otemp's fields */
+        o = { oclass: ARMOR_CLASS, otyp: GRAY_DRAGON_SCALES + (mndx - PM_GRAY_DRAGON),
+              oartifact: 0 };
     } else {
         /* ordinary case: not an adult dragon */
         o = is_you ? g.uarm : which_armor(mon, W_ARM);
     }
     /* is 'mon' wearing dragon scales that protect against 'adtyp'? */
-    if (o && Is_dragon_armor(o))
-        throw new Error('defended(): defends() not ported yet');
+    if (o && Is_dragon_armor(o) && defends(adtyp, o))
+        return true;
 
     return false;
 }
@@ -427,6 +434,7 @@ export function resists_poison(mon) { return Resists_Elem(mon, POISON_RES); }
 export function resists_cold(mon) { return Resists_Elem(mon, COLD_RES); }
 export function resists_elec(mon) { return Resists_Elem(mon, SHOCK_RES); }
 export function resists_acid(mon) { return Resists_Elem(mon, ACID_RES); }
+export function resists_disint(mon) { return Resists_Elem(mon, DISINT_RES); }
 
 /* hero inventory is a nobj chain; monster minvent is an array in pickup
    order (C prepends, so walk it newest first) */

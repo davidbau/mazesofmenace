@@ -19,7 +19,7 @@ import { mattackm, max_passive_dmg } from './mhitm.js';
 import { mfndpos, monnear, mon_allowflags, check_gear_next_turn,
          m_consume_obj, mondied } from './mon.js';
 import { gettrack } from './track.js';
-import { onscary, should_displace, m_avoid_kicked_loc, mon_track_add,
+import { onscary, should_displace, m_avoid_kicked_loc, m_avoid_soko_push_loc, mon_track_add,
          m_digweapon_check } from './monmove.js';
 import { monsndx, is_swimmer, passes_walls, haseyes, perceives, is_undead,
          is_elf, is_vampshifter, mon_hates_silver, is_flyer, is_floater } from './mondata.js';
@@ -1388,7 +1388,8 @@ export async function dog_move(mtmp, after) {
         /* avoid a location hero just kicked */
         if (m_avoid_kicked_loc(mtmp, nx, ny))
             continue;
-        /* m_avoid_soko_push_loc(): Sokoban isn't ported yet */
+        if (m_avoid_soko_push_loc(mtmp, nx, ny))
+            continue;
 
         {
             /* Dog avoids harmful traps, but perhaps it has to pass one

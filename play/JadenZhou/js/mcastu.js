@@ -1,7 +1,7 @@
 // mcastu.js — monster spellcasting: castmu(), buzzmu() and the wizard and
 // cleric spells they cast.
 // C ref: mcastu.c.  Every function here is a faithful port; paths that
-// would need large unported code (destroy_items(), rehumanize(),
+// would need large unported code (rehumanize(),
 // msummon() for summoners in Gehennom) throw a 'not ported yet' stop.
 
 import { game } from './gstate.js';
@@ -39,7 +39,7 @@ import { rndcurse } from './sit.js';
 import { nasty, clonewiz, has_aggravatables } from './wizard.js';
 import { monster_census } from './minion.js';
 import * as M from './monsters.js';
-import { mons, AD_SPEL, AD_CLRC, AD_FIRE, AD_COLD, AD_MAGM, AD_SPC2,
+import { mons, AD_SPEL, AD_CLRC, AD_FIRE, AD_COLD, AD_MAGM, AD_SPC2, AD_ELEC,
          S_ANT, S_SNAKE } from './monsters.js';
 import { M_ATTK_MISS, M_ATTK_HIT, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD,
          M_SEEN_ELEC, M_SEEN_REFL, MCF_INDIRECT, MCF_SIGHT, MCF_HOSTILE,
@@ -188,7 +188,7 @@ const vision_clears = "vision quickly clears.";
 // C ref: muse.c ureflects()
 /* Check from outermost to innermost objects; fmt has two %s: str and
    the reflecting item */
-async function ureflects(fmt, str) {
+export async function ureflects(fmt, str) {
     const ERefl = uprop(REFLECTING).extrinsic || 0;
     const msg = (what) => fmt.replace("%s", str).replace("%s", what);
 
@@ -673,9 +673,10 @@ async function mcast_geyser(dmg) {
 
 // C ref: mcastu.c mcast_fire_pillar()
 async function mcast_fire_pillar(mtmp, dmg) {
-    void mtmp;
+    let orig_dmg;
+
     await pline("A pillar of fire strikes all around you!");
-    dmg = d(8, 6);
+    orig_dmg = dmg = d(8, 6);
     if (Fire_resistance()) {
         /* shieldeff(u.ux, u.uy) */
         monstseesu(M_SEEN_FIRE);
@@ -686,19 +687,23 @@ async function mcast_fire_pillar(mtmp, dmg) {
     if (Half_spell_damage())
         dmg = Math.trunc((dmg + 1) / 2);
     await burn_away_slime();
-    /* (void) burnarmor(&gy.youmonst); then destroy_items(&youmonst,
-       AD_FIRE, orig_dmg), ignite_items(invent) and
-       mon_spell_hits_spot(mtmp, AD_FIRE, u.ux, u.uy) */
-    throw new Error('mcast_fire_pillar(): burnarmor()/destroy_items() not ported yet');
+    await burnarmor(game.youmonst);
+    /* item destruction dmg */
+    await destroy_items(game.youmonst, AD_FIRE, orig_dmg);
+    await ignite_items(game.invent);
+    /* burn up flammable items on the floor, melt ice terrain */
+    await mon_spell_hits_spot(mtmp, AD_FIRE, game.u.ux, game.u.uy);
+    return dmg;
 }
 
 // C ref: mcastu.c mcast_lightning()
 async function mcast_lightning(mtmp, dmg) {
-    void mtmp;
+    let orig_dmg;
+
     /* Soundeffect(se_bolt_of_lightning, 80) */
     await pline("A bolt of lightning strikes down at you from above!");
     const reflects = await ureflects("It bounces off your %s%s.", "");
-    dmg = d(8, 6);
+    orig_dmg = dmg = d(8, 6);
     if (reflects || Shock_resistance()) {
         /* shieldeff(u.ux, u.uy) */
         dmg = 0;
@@ -713,11 +718,18 @@ async function mcast_lightning(mtmp, dmg) {
     }
     if (Half_spell_damage())
         dmg = Math.trunc((dmg + 1) / 2);
-    /* (void) destroy_items(&gy.youmonst, AD_ELEC, orig_dmg); then
-       mon_spell_hits_spot(mtmp, AD_ELEC, u.ux, u.uy) and
-       flashburn((long) rnd(100), TRUE) */
-    throw new Error('mcast_lightning(): destroy_items() not ported yet');
+    await destroy_items(game.youmonst, AD_ELEC, orig_dmg);
+    /* lightning might destroy iron bars if hero is on such a spot;
+       reflection protects terrain here [execution won't get here due
+       to 'if (reflects) break' above] but hero resistance doesn't;
+       do this before maybe blinding the hero via flashburn() */
+    await mon_spell_hits_spot(mtmp, AD_ELEC, game.u.ux, game.u.uy);
+    /* blind hero; no effect if already blind */
+    await flashburn(rnd(100), true);
+    return dmg;
 }
+import { burnarmor, ignite_items } from './trap.js';
+import { destroy_items } from './zap.js';
 
 // C ref: mcastu.c mcast_psi_bolt()
 async function mcast_psi_bolt(dmg) {

@@ -23,11 +23,11 @@ import { rnd } from './rng.js';
 import { AT_WEAP } from './monsters.js';
 import { HAND, GLIB, A_DEX } from './const.js';
 import { makeplural } from './objnam.js';
-import { body_part } from './insight.js';
+import { body_part, empty_handed as empty_handed_wl } from './insight.js';
 import { ACURR } from './attrib.js';
 import { prinv, getobj, hands_obj, splittable, freeinv } from './invent.js';
 import { addinv } from './u_init.js';
-import { splitobj } from './mkobj.js';
+import { splitobj, unsplitobj } from './mkobj.js';
 import { simpleonames } from './iactions.js';
 import { vtense, otense } from './objnam.js';
 import { inv_cnt } from './hack.js';
@@ -244,6 +244,15 @@ export function Hate_silver() {
                           || (ptr.mlet === S_IMP && ptr !== mons[PM_TENGU]))));
 }
 
+/* C ref: obj.h is_sword() */
+function is_sword_wl(otmp) {
+    return otmp.oclass === WEAPON_CLASS
+        && objects[otmp.otyp].oc_skill >= P_SHORT_SWORD_WL
+        && objects[otmp.otyp].oc_skill <= P_SABER_WL;
+}
+import { BATTLE_AXE as BATTLE_AXE_WL } from './objects.js';
+import { P_SHORT_SWORD as P_SHORT_SWORD_WL, P_SABER as P_SABER_WL } from './const.js';
+
 // C ref: wield.c ready_weapon()
 export async function ready_weapon(wep) {
     /* Separated function so swapping works easily */
@@ -252,18 +261,39 @@ export async function ready_weapon(wep) {
 
     if (!wep) {
         /* No weapon */
-        throw new Error('ready_weapon(): empty_handed() not ported yet');
+        if (game.uwep) {
+            await You(`are ${empty_handed_wl()}.`);
+            setuwep(null);
+            res = ECMD_TIME;
+        } else
+            await You(`are already ${empty_handed_wl()}.`);
     } else if (wep.otyp === CORPSE) {
         throw new Error('ready_weapon(): cant_wield_corpse() not ported yet');
     } else if (game.uarms && bimanual(wep)) {
-        throw new Error('ready_weapon(): two-handed weapon with a shield not ported yet');
+        await You(`cannot wield a two-handed ${
+            is_sword_wl(wep) ? "sword" : wep.otyp === BATTLE_AXE_WL ? "axe"
+                                                                    : "weapon"} while wearing a shield.`);
+        res = ECMD_FAIL;
     } else if (!(await retouch_object(wep, false))) {
         res = ECMD_TIME; /* takes a turn even though it doesn't get wielded */
     } else {
         /* Weapon WILL be wielded after this point */
         res = ECMD_TIME;
         if (will_weld(wep)) {
-            throw new Error('ready_weapon(): welding message not ported yet');
+            let tmp = xname_wl(wep);
+            const thestr = "The ";
+
+            if (!tmp.startsWith(thestr) && The_wl(tmp).startsWith(thestr))
+                tmp = thestr;
+            else
+                tmp = "";
+            await pline(`${tmp}${aobjnam_wl(wep, "weld")} ${
+                (wep.quan === 1) ? "itself" : "themselves"} to your ${ /* a3 */
+                bimanual(wep) ? ""
+                    : (!game.u.uhandedness /* URIGHTY */ ? "dominant right "
+                                                         : "dominant left ")}${
+                bimanual(wep) ? makeplural(body_part(HAND)) : body_part(HAND)}!`);
+            wep.bknown = 1; /* set_bknown(wep, 1) */
         } else {
             /* The message must be printed before setuwep (since
              * you might die and be revived from changing weapons),
@@ -280,8 +310,14 @@ export async function ready_weapon(wep) {
         }
 
         setuwep(wep);
-        if (was_twoweap && !game.u.twoweap && (game.flags?.verbose ?? true))
-            throw new Error('ready_weapon(): no-longer-twoweapon message not ported yet');
+        if (was_twoweap && !game.u.twoweap && (game.flags?.verbose ?? true)) {
+            /* skip this message if we already got "empty handed" one above;
+               also, Null is not safe for neither TWOWEAPOK() or bimanual() */
+            if (game.uwep)
+                await You(`${(TWOWEAPOK(game.uwep) && !bimanual(game.uwep))
+                             ? "are no longer using two weapons at once"
+                             : "can no longer wield two weapons at once"}.`);
+        }
 
         /* KMH -- Talking artifacts are finally implemented */
         if (wep.oartifact) {
@@ -384,8 +420,12 @@ export async function dowield() {
         /* if wep is the result of supplying a count to getobj()
            we don't want to split something already wielded; for
            any other item, we need to give it its own inventory slot */
-        if (game.uwep && game.uwep.o_id === game.context.objsplit.parent_oid)
-            throw new Error('dowield(): unsplitobj() not ported yet');
+        if (game.uwep && game.uwep.o_id === game.context.objsplit.parent_oid) {
+            unsplitobj(wep);
+            /* wep was merged back to uwep, already_wielded uses wep */
+            wep = game.uwep;
+            return await already_wielded(wep);
+        }
         await finish_splitting(wep);
         return await wielding(wep);
     }
@@ -670,3 +710,79 @@ export function freehand() {
     return (!uwep || !welded(uwep)
             || (!bimanual(uwep) && (!uarms || !uarms.cursed)));
 }
+
+// C ref: wield.c wield_tool()
+/* used for #rub and for applying pick-axe, whip, grappling hook or polearm */
+export async function wield_tool(obj,
+                                 verb) { /* "rub",&c */
+    if (game.uwep && obj === game.uwep)
+        return true; /* nothing to do if already wielding it */
+
+    if (!verb)
+        verb = "wield";
+    const what = xname_wl(obj);
+    let more_than_1 = (obj.quan > 1 || what.includes("pair of ")
+                       || what.includes("s of "));
+
+    if (obj.owornmask & (W_ARMOR | W_ACCESSORY)) {
+        await You_cant(`${verb} ${yname_wl(obj)} while wearing ${
+            more_than_1 ? "them" : "it"}.`);
+        return false;
+    }
+    if (game.uwep && welded(game.uwep)) {
+        if (game.flags.verbose) {
+            let hand = body_part(HAND);
+
+            if (bimanual(game.uwep))
+                hand = makeplural(hand);
+            if (what.includes("pair of "))
+                more_than_1 = false;
+            await pline(`Since your weapon is welded to your ${hand}, you cannot ${
+                verb} ${more_than_1 ? "those" : "that"} ${xname_wl(obj)}.`);
+        } else {
+            await You_cant("do that.");
+        }
+        return false;
+    }
+    if (cantwield(game.youmonst.data)) {
+        await You_cant(`hold ${more_than_1 ? "them" : "it"} strongly enough.`);
+        return false;
+    }
+    /* check shield */
+    if (game.uarms && bimanual(obj)) {
+        await You(`cannot ${verb} a two-handed ${
+            (obj.oclass === WEAPON_CLASS) ? "weapon" : "tool"} while wearing a shield.`);
+        return false;
+    }
+
+    if (game.uquiver === obj)
+        setuqwep(null);
+    if (game.uswapwep === obj) {
+        await doswapweapon();
+        /* doswapweapon might fail */
+        if (game.uswapwep === obj)
+            return false;
+    } else {
+        const oldwep = game.uwep;
+
+        if (will_weld(obj)) {
+            /* hope none of ready_weapon()'s early returns apply here... */
+            await ready_weapon(obj);
+        } else {
+            await You(`now wield ${doname_wl(obj)}.`);
+            setuwep(obj);
+        }
+        if (game.flags.pushweapon && oldwep && game.uwep !== oldwep)
+            setuswapwep(oldwep);
+    }
+    if (game.uwep && game.uwep !== obj)
+        return false; /* rewielded old object after dying */
+    /* applying weapon or tool that gets wielded ends two-weapon combat */
+    if (game.u.twoweap)
+        await untwoweapon();
+    if (obj.oclass !== WEAPON_CLASS)
+        game.unweapon = true;
+    return true;
+}
+import { xname as xname_wl, yname as yname_wl, doname as doname_wl,
+         The as The_wl, aobjnam as aobjnam_wl } from './objnam.js';

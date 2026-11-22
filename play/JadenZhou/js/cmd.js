@@ -3,6 +3,7 @@
 // (commands_init()/reset_commands()) and the command functions ported so
 // far; hack.c domove() is in hack.js.
 
+import { dobreathe } from './polyself.js';
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, You_cant, You } from './display.js';
@@ -27,7 +28,7 @@ import { strcmpi, strncmpi, highc, visctrl, strstri } from './hacklib.js';
 import { dosearch } from './detect.js';
 import { level_tele, dotelecmd } from './teleport.js';
 import { wiz_level_change, wiz_wish, wiz_identify, wiz_intrinsic, wiz_map,
-         wiz_detect } from './wizcmds.js';
+         wiz_detect, wiz_polyself } from './wizcmds.js';
 import { ddoinv, dolook, doprgold, doprwep, doprarm, doprring, dopramulet,
          doprtool, add_menu_heading, doorganize, adjust_split } from './invent.js';
 import { cmd_safety_prevention, nomul, domove, DOMOVE_WALK,
@@ -54,12 +55,15 @@ import { dokick } from './dokick.js';
 import { doswapweapon, dowieldquiver, dowield, dotwoweapon } from './wield.js';
 import { enhance_weapon_skill } from './weapon.js';
 import { doapply, dorub, dojump } from './apply.js';
+import { dountrap } from './trap.js';
 import { doeat } from './eat.js';
 import { dowear, doputon, dotakeoff, ia_dotakeoff } from './do_wear.js';
 import { dodrink, dodip, aggravate } from './potion.js';
 import { dopay } from './shk.js';
 import { dotogglepickup, doset_simple, doset } from './options.js';
 import { doread } from './read.js';
+import { doengrave } from './engrave.js';
+import { set_occupation } from './allmain.js';
 import { dohelp, dowhatis, dowhatdoes, dowhatdoes_core } from './pager.js';
 import { doopen, doforce, doclose } from './lock.js';
 import { dosave } from './save.js';
@@ -137,6 +141,7 @@ const cmd_funcs = {
     dowieldquiver: () => dowieldquiver(),
     doapply: () => doapply(),
     dorub: () => dorub(),
+    dountrap: () => dountrap(),
     doeat: () => doeat(),
     dowear: () => dowear(),
     doputon: () => doputon(),
@@ -146,6 +151,7 @@ const cmd_funcs = {
     dopay: () => dopay(),
     dolook: () => dolook(),
     doread: () => doread(),
+    doengrave: () => doengrave(),
     dowield: () => dowield(),
     dotwoweapon: () => dotwoweapon(),
     enhance_weapon_skill: () => enhance_weapon_skill(),
@@ -187,6 +193,7 @@ const cmd_funcs = {
     wiz_intrinsic: () => wiz_intrinsic(),
     wiz_map: () => wiz_map(),
     wiz_detect: () => wiz_detect(),
+    wiz_polyself: () => wiz_polyself(),
 };
 /* C ref: cmd.c do_move_<dir>(), do_run_<dir>(), do_rush_<dir>() */
 ["west", "northwest", "north", "northeast", "east", "southeast", "south",
@@ -266,7 +273,7 @@ async function domonability() {
             return ECMD_OK;
     }
     if (can_breathe(uptr))
-        throw new Error('domonability(): dobreathe() not ported yet');
+        return await dobreathe();
     else if (attacktype(uptr, AT_SPIT))
         throw new Error('domonability(): dospit() not ported yet');
     else if (uptr.mlet === S_NYMPH)
@@ -917,8 +924,8 @@ export async function rhack(key) {
                     ? `rhack(): unported command prefix ${func} not ported yet`
                     : `rhack(): unported command ${func} not ported yet`);
             }
-            /* tlist->f_text && !occupation && multi: set_occupation()
-               isn't used by any command ported so far */
+            if (tlist.f_text && !game.occupation && game.multi)
+                set_occupation(fn, tlist.f_text, game.multi);
             game.ext_tlist = null;
             /* cmdq_add_ec(CQ_REPEAT, ...): the ^A repeat isn't ported */
 

@@ -1,7 +1,8 @@
-// tower_lua.js — hand port of the Vlad's Tower level scripts sessions
-// reach: dat/tower1.lua (the upper stage, Vlad's own level).
-// makemaz() loads it through load_special() (sp_lev.c).
-// C ref: dat/tower1.lua
+// tower_lua.js — port of the Vlad's Tower level scripts: dat/tower1.lua
+// (the upper stage, Vlad's own level), dat/tower2.lua (the middle stage)
+// and dat/tower3.lua (the bottom stage, with the portal arrival).
+// makemaz() loads them through load_special() (sp_lev.c).
+// C ref: dat/tower1.lua, dat/tower2.lua, dat/tower3.lua
 //
 // Lua-side rolls: shuffle() (nhlib.lua) and two math.random(4,8) calls,
 // tagged the way the C recorder writes them.
@@ -98,7 +99,128 @@ function tower1_lua(L) {
     des.non_diggable(selection.area(0, 0, 14, 10));
 }
 
+// tower2.lua and tower3.lua: translated from the .lua files by a script
+// (maps verbatim), then reviewed; Lua arrays are 1-based (t[i] is t[i - 1]).
+
+const MAP_tower2 = [
+    '  --- --- ---  ',
+    '  |.| |.| |.|  ',
+    '---S---S---S---',
+    '|.S.........S.|',
+    '---.------+----',
+    '  |......|..|  ',
+    '--------.------',
+    '|.S......+..S.|',
+    '---S---S---S---',
+    '  |.| |.| |.|  ',
+    '  --- --- ---  ',
+].join('\n') + '\n';
+
+// C ref: dat/tower2.lua
+function tower2_lua(L) {
+    const G = L.globals, des = G.des, selection = G.selection;
+
+    des.level_init({ style: 'solidfill', fg: ' ' });
+
+    des.level_flags('mazelevel', 'noteleport', 'hardfloor', 'solidify');
+    des.map({ halign: 'half-left', valign: 'center', map: MAP_tower2 });
+    // Random places are the 10 niches
+    const place = [[3, 1], [7, 1], [11, 1], [1, 3], [13, 3],
+        [1, 7], [13, 7], [3, 9], [7, 9], [11, 9]];
+    G.shuffle(place);
+
+    des.ladder('up', 11, 5);
+    des.ladder('down', 3, 7);
+    des.door('locked', 10, 4);
+    des.door('locked', 9, 7);
+    des.monster('&', place[9]);
+    des.monster('&', place[0]);
+    des.monster('hell hound pup', place[1]);
+    des.monster('hell hound pup', place[2]);
+    des.monster('winter wolf', place[3]);
+    des.object({ id: 'chest', coord: place[4],
+        contents: function() {
+            des.object('amulet of life saving');
+        } });
+    des.object({ id: 'chest', coord: place[5],
+        contents: function() {
+            des.object('amulet of strangulation');
+        } });
+    des.object('water walking boots', place[6]);
+    des.object('crystal plate mail', place[7]);
+
+    const spbooks = ['spellbook of invisibility',
+        'spellbook of cone of cold',
+        'spellbook of create familiar',
+        'spellbook of clairvoyance',
+        'spellbook of charm monster',
+        'spellbook of stone to flesh',
+        'spellbook of polymorph'];
+    G.shuffle(spbooks);
+    des.object(spbooks[0], place[8]);
+
+    // Walls in the tower are non diggable
+    des.non_diggable(selection.area(0, 0, 14, 10));
+}
+
+const MAP_tower3 = [
+    '    --- --- ---    ',
+    '    |.| |.| |.|    ',
+    '  ---S---S---S---  ',
+    '  |.S.........S.|  ',
+    '-----.........-----',
+    '|...|.........+...|',
+    '|.---.........---.|',
+    '|.|.S.........S.|.|',
+    '|.---S---S---S---.|',
+    '|...|.|.|.|.|.|...|',
+    '---.---.---.---.---',
+    '  |.............|  ',
+    '  ---------------  ',
+].join('\n') + '\n';
+
+// C ref: dat/tower3.lua
+function tower3_lua(L) {
+    const G = L.globals, des = G.des, selection = G.selection;
+
+    des.level_init({ style: 'solidfill', fg: ' ' });
+
+    des.level_flags('mazelevel', 'noteleport', 'hardfloor', 'solidify');
+    des.map({ halign: 'half-left', valign: 'center', map: MAP_tower3 });
+    // Random places are the 10 niches
+    const place = [[5, 1], [9, 1], [13, 1], [3, 3], [15, 3],
+        [3, 7], [15, 7], [5, 9], [9, 9], [13, 9]];
+
+    des.levregion({ type: 'branch', region: [2, 5, 2, 5] });
+    des.ladder('up', 5, 7);
+    // Entry door is, of course, locked
+    des.door('locked', 14, 5);
+    // Let's put a dragon behind the door, just for the fun...
+    des.monster('D', 13, 5);
+    des.monster({ x: 12, y: 4 });
+    des.monster({ x: 12, y: 6 });
+    des.monster();
+    des.monster();
+    des.monster();
+    des.monster();
+    des.monster();
+    des.monster();
+    des.object('long sword', place[3]);
+    des.trap({ coord: place[3] });
+    des.object('lock pick', place[0]);
+    des.trap({ coord: place[0] });
+    des.object('elven cloak', place[1]);
+    des.trap({ coord: place[1] });
+    des.object('blindfold', place[2]);
+    des.trap({ coord: place[2] });
+    // Walls in the tower are non diggable
+    des.non_diggable(selection.area(0, 0, 18, 12));
+}
+
+
 // The hand-ported tower level scripts by file name, for nhl_loadlua().
 export const tower_lua_files = {
     'tower1.lua': tower1_lua,
+    'tower2.lua': tower2_lua,
+    'tower3.lua': tower3_lua,
 };

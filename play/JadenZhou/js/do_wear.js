@@ -52,7 +52,7 @@ import { You_cant } from './display.js';
 import { doname, cloak_simple_name, suit_simple_name, helm_simple_name,
          gloves_simple_name, boots_simple_name, shield_simple_name,
          shirt_simple_name } from './objnam.js';
-import { the } from './iactions.js';
+import { the, thesimpleoname } from './iactions.js';
 import { change_luck } from './attrib.js';
 import { nomul } from './hack.js';
 import { encumber_msg } from './pickup.js';
@@ -975,7 +975,7 @@ export async function Blindf_off(otmp) {
 
 // C ref: do_wear.c Ring_on() -- rings whose effect is only the
 // extrinsic property so far
-function Ring_on(obj) {
+export function Ring_on(obj) {
     /* make sure ring isn't wielded; can't use remove_worn_item()
        here because it has already been set worn in a ring slot */
     if (obj === game.uwep)
@@ -1010,6 +1010,75 @@ function Ring_on(obj) {
         throw new Error('Ring_on(): this ring\'s effect is not ported yet');
     }
 }
+
+// C ref: do_wear.c Ring_off_or_gone()
+async function Ring_off_or_gone(obj, gone) {
+    const g = game;
+    const mask = (obj.owornmask & W_RING);
+
+    if (g.context.takeoff)
+        g.context.takeoff.mask &= ~mask;
+    /* if (!(u.uprops[objects[obj->otyp].oc_oprop].extrinsic & mask))
+           impossible("Strange... I didn't know you had that ring."); */
+    if (gone)
+        setnotworn_dw(obj);
+    else
+        setworn(null, obj.owornmask);
+
+    switch (obj.otyp) {
+    case O.RIN_TELEPORTATION:
+    case O.RIN_REGENERATION:
+    case O.RIN_SEARCHING:
+    case O.RIN_HUNGER:
+    case O.RIN_AGGRAVATE_MONSTER:
+    case O.RIN_POISON_RESISTANCE:
+    case O.RIN_FIRE_RESISTANCE:
+    case O.RIN_COLD_RESISTANCE:
+    case O.RIN_SHOCK_RESISTANCE:
+    case O.RIN_CONFLICT:
+    case O.RIN_TELEPORT_CONTROL:
+    case O.RIN_POLYMORPH:
+    case O.RIN_POLYMORPH_CONTROL:
+    case O.RIN_FREE_ACTION:
+    case O.RIN_SLOW_DIGESTION:
+    case O.RIN_SUSTAIN_ABILITY:
+    case O.MEAT_RING:
+        break;
+    case O.RIN_STEALTH: {
+        const st = g.u.uprops[STEALTH];
+        await toggle_stealth(obj, ((st ? st.extrinsic : 0) & ~mask), false);
+        break;
+    }
+    case O.RIN_INCREASE_ACCURACY: /* KMH */
+        g.u.uhitinc -= obj.spe;
+        break;
+    case O.RIN_INCREASE_DAMAGE:
+        g.u.udaminc -= obj.spe;
+        break;
+    case O.RIN_PROTECTION: {
+        /* might have been put on while blind and we can now see
+           or perhaps been forgotten due to amnesia */
+        const observable = (obj.spe !== 0);
+        learnring(obj, observable);
+        if (obj.spe)
+            find_ac(); /* updates botl */
+        break;
+    }
+    default:
+        throw new Error('Ring_off_or_gone(): this ring\'s effect is not ported yet');
+    }
+}
+
+// C ref: do_wear.c Ring_off()
+export async function Ring_off(obj) {
+    await Ring_off_or_gone(obj, false);
+}
+
+// C ref: do_wear.c Ring_gone()
+export async function Ring_gone(obj) {
+    await Ring_off_or_gone(obj, true);
+}
+import { setnotworn as setnotworn_dw } from './worn.js';
 
 // C ref: do_wear.c set_wear() -- called in moveloop()'s prologue to set
 // side-effects of worn start-up items; also used by poly_obj() when a
@@ -1673,6 +1742,30 @@ export async function Armor_off() {
     return 0;
 }
 
+// C ref: do_wear.c Armor_gone()
+/* The gone functions differ from the off functions in that if you die from
+ * taking it off and have life saving, you still die.
+ */
+export async function Armor_gone() {
+    const g = game;
+    const otmp = g.uarm;
+    const tk = takeoff_ctx();
+
+    if (otmp && otmp.lamplit)
+        throw new Error('Armor_gone(): artifact_light() end_burn() not ported yet');
+    tk.mask &= ~W_ARM;
+    setnotworn_dw(g.uarm);
+    tk.cancelled_don = false;
+
+    /* losing yellow dragon scales/mail might be fatal; arti_light
+       comes from gold dragon scales/mail so they don't overlap, but
+       conceptually the non-fatal change should be done before the
+       potentially fatal change in case the latter results in bones */
+    await dragon_armor_handling(otmp, false, false);
+
+    return 0;
+}
+
 // C ref: do_wear.c dragon_armor_handling() -- handle extra abilities for
 // hero wearing dragon scale armor
 async function dragon_armor_handling(otmp,   /* armor being put on or taken off */
@@ -1881,6 +1974,48 @@ export function cancel_don() {
     tk.what = 0;
 }
 
+// C ref: do_wear.c stop_donning()
+/* called by steal() during theft from hero; interrupt donning/doffing */
+export async function stop_donning(
+    stolenobj) /* no mesg if stolenobj is already being doffed */ {
+    const g = game;
+    let buf;
+    let otmp;
+    let putting_on;
+    let result = 0;
+
+    for (otmp = g.invent; otmp; otmp = otmp.nobj)
+        if ((otmp.owornmask & W_ARMOR) && donning(otmp))
+            break;
+    /* at most one item will pass donning() test at any given time */
+    if (!otmp)
+        return 0;
+
+    /* donning() returns True when doffing too; doffing() is more specific */
+    putting_on = !doffing(otmp);
+    /* cancel_don() looks at afternmv; it can also cancel doffing */
+    cancel_don();
+    /* don't want <armor>_on() or <armor>_off() being called
+       by unmul() since the on or off action isn't completing */
+    g.afternmv = null;
+    if (putting_on || otmp !== stolenobj) {
+        buf = `You stop ${putting_on ? "putting on" : "taking off"} ${
+            thesimpleoname(otmp)}.`;
+    } else {
+        buf = "";   /* silently stop doffing stolenobj */
+        result = -g.multi; /* remember this before calling unmul() */
+    }
+    await unmul(buf);
+    /* while putting on, item becomes worn immediately but side-effects are
+       deferred until the delay expires; when interrupted, make it unworn
+       (while taking off, item stays worn until the delay expires; when
+       interrupted, leave it worn) */
+    if (putting_on)
+        await remove_worn_item(otmp, false);
+
+    return result;
+}
+
 // C ref: do_wear.c count_worn_stuff()
 /* assign values to Narmorpieces and Naccessories */
 let Narmorpieces = 0, Naccessories = 0;
@@ -1966,7 +2101,7 @@ async function armor_or_accessory_off(obj) {
          * "being worn".
          */
         await off_msg(obj);
-        throw new Error('armor_or_accessory_off(): Ring_off() not ported yet');
+        await Ring_off(obj);
     } else if (obj === g.uamul) {
         await Amulet_off(); /* does its own off_msg */
     } else if (obj === g.ublindf) {

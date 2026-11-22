@@ -614,14 +614,40 @@ export function charge_ok(obj) {
 // Only the "feeling of loss" and stripspe() paths are ported so far.
 export async function recharge(obj, curse_bless) {
     const is_cursed = curse_bless < 0;
+    const is_blessed = curse_bless > 0;
 
-    if (obj.oclass === WAND_CLASS || obj.oclass === RING_CLASS
-        || obj.oclass === TOOL_CLASS) {
+    if (obj.oclass === RING_CLASS && objects[obj.otyp].oc_charged) {
+        /* charging does not affect ring's curse/bless status */
+        let s = is_blessed ? rnd(3) : is_cursed ? -rnd(2) : 1;
+        const is_on = (obj === game.uleft || obj === game.uright);
+
+        /* destruction depends on current state, not adjustment */
+        if (obj.spe > rn2(7) || obj.spe <= -5) {
+            await pline(`${Yobjnam2(obj, "pulsate")} momentarily, then ${
+                otense(obj, "explode")}!`);
+            if (is_on)
+                throw new Error('recharge(): Ring_gone() not ported yet');
+            s = rnd(3 * Math.abs(obj.spe)); /* amount of damage */
+            useup(obj), obj = null;
+            await losehp(Maybe_Half_Phys(s), "exploding ring", KILLED_BY_AN);
+        } else {
+            await pline(`${Yname2(obj)} spins ${s < 0 ? "counter" : ""}clockwise for a moment.`);
+            if (s < 0)
+                costly_alteration(obj, COST_DECHNT);
+            /* cause attributes and/or properties to be updated */
+            if (is_on)
+                throw new Error('recharge(): Ring_off()/Ring_on() not ported yet');
+            obj.spe += s; /* update the ring while it's off */
+            /* update shop bill to reflect new higher price */
+            if (s > 0 && obj.unpaid)
+                throw new Error('recharge(): alter_cost() not ported yet');
+        }
+    } else if (obj.oclass === WAND_CLASS || obj.oclass === TOOL_CLASS) {
         if (is_cursed) {
             await stripspe(obj);
             return;
         }
-        throw new Error('recharge(): recharging wands, rings and tools not ported yet');
+        throw new Error('recharge(): recharging wands and tools not ported yet');
     } else {
         await You("have a feeling of loss.");
     }
@@ -1597,10 +1623,11 @@ async function seffect_fire(sobjp) {
             await burn_away_slime();
         }
     }
-    /* explode(cc.x, cc.y, ZT_SPELL_O_FIRE, dam, SCROLL_CLASS, EXPL_FIERY) */
-    void dam;
-    throw new Error('seffect_fire(): explode() not ported yet');
+    const ZT_SPELL_O_FIRE = 11; /* explained in splatter_burning_oil(explode.c) */
+    await explode_rd(cc.x, cc.y, ZT_SPELL_O_FIRE, dam, O.SCROLL_CLASS, EXPL_FIERY_RD);
 }
+import { explode as explode_rd } from './explode.js';
+import { EXPL_FIERY as EXPL_FIERY_RD } from './const.js';
 const PLNMSG_TOWER_OF_FLAME = 3; /* C ref: hack.h enum plnmsg_types */
 
 // C ref: read.c seffect_earth()

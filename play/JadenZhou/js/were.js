@@ -15,6 +15,7 @@ import { wake_nearto, healmon, monnear } from './mon.js';
 import { is_were, is_human, monsndx, set_mon_data } from './mondata.js';
 import { Monnam, pmname, Mgender } from './do_name.js';
 import { possibly_unwield } from './weapon.js';
+import { mon_break_armor } from './worn.js';
 import { onscary, monflee } from './monmove.js';
 
 /* C ref: youprop.h Protection_from_shape_changers, Deaf, Hallucination */
@@ -142,9 +143,7 @@ export async function new_were(mon) {
     /* regenerate by 1/4 of the lost hit points */
     healmon(mon, Math.trunc((mon.mhpmax - mon.mhp) / 4), 0);
     newsym(mon.mx, mon.my);
-    /* mon_break_armor(mon, FALSE): only matters for worn armor */
-    if ((mon.misc_worn_check || 0) & ~I_SPECIAL)
-        throw new Error('new_were(): mon_break_armor() not ported yet');
+    mon_break_armor(mon, false);
     await possibly_unwield(mon, false);
 
     /* vision capability isn't changing so we don't call set_apparxy() to

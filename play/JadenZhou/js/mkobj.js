@@ -598,6 +598,89 @@ function copy_oextra(obj2, obj1) {
  * has its wornmask cleared and is positioned just following the original
  * in the nobj chain (and nexthere chain when on the floor).
  */
+// C ref: mkobj.c unsplitobj()
+/* try to find the stack obj was split from, then merge them back together;
+   returns the combined object if unsplit is successful, null otherwise */
+export function unsplitobj(obj) {
+    let target_oid = 0;
+    let oparent = null, ochild = null, list = null;
+    const os = game.context?.objsplit || {};
+
+    /*
+     * We don't operate on floor objects (we're following o->nobj rather
+     * than o->nexthere), on free objects (don't know which list to use when
+     * looking for obj's parent or child), on bill objects (too complicated,
+     * not needed), or on buried or migrating objects (not needed).
+     */
+    switch (obj.where) {
+    case 'OBJ_FREE':
+    case 'OBJ_FLOOR':
+    case 'OBJ_ONBILL':
+    case 'OBJ_MIGRATING':
+    case 'OBJ_BURIED':
+    default:
+        return null;
+    case 'OBJ_INVENT':
+        list = game.invent;
+        break;
+    case 'OBJ_MINVENT':
+        list = obj.ocarry.minvent;
+        break;
+    case 'OBJ_CONTAINED':
+        list = obj.ocontainer.cobj;
+        break;
+    }
+    /* the chain is linked through ->nobj (invent) or kept as an array
+       (minvent, cobj); o->nobj is the next entry either way */
+    const chain = Array.isArray(list) ? list.slice() : (() => {
+        const a = [];
+        for (let o = list; o; o = o.nobj)
+            a.push(o);
+        return a;
+    })();
+    const nobj = (o) => chain[chain.indexOf(o) + 1] || null;
+
+    /* first try the expected case; obj is split from another stack */
+    if (obj.o_id === os.child_oid) {
+        /* parent probably precedes child and will require list traversal */
+        ochild = obj;
+        target_oid = os.parent_oid;
+        if (nobj(obj) && nobj(obj).o_id === target_oid)
+            oparent = nobj(obj);
+    } else if (obj.o_id === os.parent_oid) {
+        /* alternate scenario: another stack was split from obj;
+           child probably follows parent and will be found here */
+        oparent = obj;
+        target_oid = os.child_oid;
+        if (nobj(obj) && nobj(obj).o_id === target_oid)
+            ochild = nobj(obj);
+    }
+    /* if we have only half the split, scan obj's list to find other half */
+    if (ochild && !oparent) {
+        /* expected case */
+        for (const o of chain)
+            if (o.o_id === target_oid) {
+                oparent = o;
+                break;
+            }
+    } else if (oparent && !ochild) {
+        /* alternate scenario */
+        for (const o of chain)
+            if (o.o_id === target_oid) {
+                ochild = o;
+                break;
+            }
+    }
+    /* if we have both parent and child, try to merge them;
+       if successful, return the combined stack, otherwise return null */
+    if (oparent && ochild) {
+        const r = { otmp: oparent, obj: ochild }; /* merged(&oparent, &ochild) */
+        if (merged(r))
+            return r.otmp;
+    }
+    return null;
+}
+
 export function splitobj(obj, num) {
     /* can't split containers */
     if ((obj.cobj && obj.cobj.length) || num <= 0 || obj.quan <= num)
@@ -697,6 +780,14 @@ export function obj_extract_self(obj) {
                                         ? c.ocontainer : null)
             c.owt = weight(c);
         obj.ocontainer = null;
+        break;
+    }
+    case 'OBJ_BURIED': { /* extract_nobj(obj, &svl.level.buriedobjlist) */
+        const blist = game.level.buriedobjlist || [];
+        const i = blist.indexOf(obj);
+        if (i >= 0)
+            blist.splice(i, 1);
+        obj.where = 'OBJ_FREE';
         break;
     }
     default:

@@ -28,6 +28,9 @@ import { which_armor } from './worn.js';
 import { Blind, Hallucination } from './display.js';
 import { rn2, rnd } from './rng.js';
 import { ANTIMAGIC, HALF_SPDAM, W_SADDLE } from './const.js';
+import * as C from './const.js';
+import { You_feel, see_monsters, newsym } from './display.js';
+import { set_mimic_blocking } from './potion.js';
 
 /* C ref: mondata.h macros used here */
 const is_hider = (ptr) => (ptr.mflags1 & M1_HIDE) !== 0;
@@ -262,4 +265,114 @@ export async function rndcurse() {
             otmp.bknown = 0; /* bypass set_bknown() */
         }
     }
+}
+
+// C ref: sit.c attrcurse()
+/* remove a random INTRINSIC ability from hero.
+   returns the intrinsic property which was removed,
+   or 0 if nothing was removed. */
+export async function attrcurse() {
+    const u = game.u;
+    const P = u.uprops;
+    let ret = 0;
+    /* the C switch falls through from case n to case n+1 until a held
+       intrinsic is found */
+    const step = async (n) => {
+        switch (n) {
+        case 1:
+            if (P[C.FIRE_RES].intrinsic & C.INTRINSIC) {
+                P[C.FIRE_RES].intrinsic &= ~C.INTRINSIC;
+                await You_feel("warmer.");
+                return C.FIRE_RES;
+            }
+            return 0;
+        case 2:
+            if (P[C.TELEPORT].intrinsic & C.INTRINSIC) {
+                P[C.TELEPORT].intrinsic &= ~C.INTRINSIC;
+                await You_feel("less jumpy.");
+                return C.TELEPORT;
+            }
+            return 0;
+        case 3:
+            if (P[C.POISON_RES].intrinsic & C.INTRINSIC) {
+                P[C.POISON_RES].intrinsic &= ~C.INTRINSIC;
+                await You_feel("a little sick!");
+                return C.POISON_RES;
+            }
+            return 0;
+        case 4:
+            if (P[C.TELEPAT].intrinsic & C.INTRINSIC) {
+                P[C.TELEPAT].intrinsic &= ~C.INTRINSIC;
+                if (Blind() && !(P[C.TELEPAT].intrinsic || P[C.TELEPAT].extrinsic))
+                    see_monsters(); /* Can't sense mons anymore! */
+                await Your("senses fail!");
+                return C.TELEPAT;
+            }
+            return 0;
+        case 5:
+            if (P[C.COLD_RES].intrinsic & C.INTRINSIC) {
+                P[C.COLD_RES].intrinsic &= ~C.INTRINSIC;
+                await You_feel("cooler.");
+                return C.COLD_RES;
+            }
+            return 0;
+        case 6:
+            if (P[C.INVIS].intrinsic & C.INTRINSIC) {
+                P[C.INVIS].intrinsic &= ~C.INTRINSIC;
+                await You_feel("paranoid.");
+                return C.INVIS;
+            }
+            return 0;
+        case 7:
+            if (P[C.SEE_INVIS].intrinsic & C.INTRINSIC) {
+                P[C.SEE_INVIS].intrinsic &= ~C.INTRINSIC;
+                if (!((P[C.SEE_INVIS].intrinsic || P[C.SEE_INVIS].extrinsic)
+                      && !P[C.SEE_INVIS].blocked)) { /* !See_invisible */
+                    set_mimic_blocking();
+                    see_monsters();
+                    /* might not be able to see self anymore */
+                    newsym(u.ux, u.uy);
+                }
+                await You(`${Hallucination() ? "tawt you taw a puttie tat"
+                                             : "thought you saw something"}!`);
+                return C.SEE_INVIS;
+            }
+            return 0;
+        case 8:
+            if (P[C.FAST].intrinsic & C.INTRINSIC) {
+                P[C.FAST].intrinsic &= ~C.INTRINSIC;
+                await You_feel("slower.");
+                return C.FAST;
+            }
+            return 0;
+        case 9:
+            if (P[C.STEALTH].intrinsic & C.INTRINSIC) {
+                P[C.STEALTH].intrinsic &= ~C.INTRINSIC;
+                await You_feel("clumsy.");
+                return C.STEALTH;
+            }
+            return 0;
+        case 10:
+            /* intrinsic protection is just disabled, not set back to 0 */
+            if (P[C.PROTECTION].intrinsic & C.INTRINSIC) {
+                P[C.PROTECTION].intrinsic &= ~C.INTRINSIC;
+                await You_feel("vulnerable.");
+                return C.PROTECTION;
+            }
+            return 0;
+        case 11:
+            if (P[C.AGGRAVATE_MONSTER].intrinsic & C.INTRINSIC) {
+                P[C.AGGRAVATE_MONSTER].intrinsic &= ~C.INTRINSIC;
+                await You_feel("less attractive.");
+                return C.AGGRAVATE_MONSTER;
+            }
+            return 0;
+        default:
+            return 0;
+        }
+    };
+
+    for (let n = rnd(11); n <= 11 && !ret; n++)
+        ret = await step(n);
+    return ret;
 }
