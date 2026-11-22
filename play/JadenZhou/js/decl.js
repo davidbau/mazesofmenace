@@ -22,4 +22,7 @@ export function decl_globals_init() {
     g.multi = 0;
     /* svq.quest_status */
     g.quest_status = {};
+    /* svu.updest, svd.dndest: level change destination areas (zeroed) */
+    g.updest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
+    g.dndest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
 }

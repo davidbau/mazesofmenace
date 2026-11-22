@@ -37,6 +37,7 @@ import { W_RINGL, W_RINGR, W_WEP, W_SWAPWEP, W_QUIVER, W_BALL, W_CHAIN,
          M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC,
          M_SEEN_POISON, M_SEEN_ACID, M_SEEN_REFL } from './const.js';
 import { monstunseesu } from './uhitm.js';
+import { learnwand } from './zap.js';
 import { cancel_doff } from './do_wear.js';
 import { is_weptool } from './wield.js';
 
@@ -465,7 +466,7 @@ function* mon_adjust_speed_g(
 
         /* might discover an object if we see the speed change happen */
         if (obj)
-            throw new Error('mon_adjust_speed(): learnwand() not ported yet');
+            learnwand(obj);
     }
 }
 

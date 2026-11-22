@@ -13,7 +13,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { NO_COLOR, ATR_NONE, ATR_INVERSE } from './terminal.js';
+import { NO_COLOR, ATR_NONE, ATR_INVERSE, ATR_BOLD } from './terminal.js';
 import {
     NHW_MESSAGE, NHW_STATUS, NHW_MAP, NHW_MENU, NHW_TEXT, NHW_BASE, WIN_ERR,
     PICK_NONE, PICK_ONE, PICK_ANY, MENU_ITEMFLAGS_SELECTED,
@@ -301,25 +301,34 @@ async function tty_dismiss_nhwindow(window) {
     switch (cw.type) {
     case NHW_MESSAGE:
         if (tty().toplin !== TOPLINE_EMPTY)
-            tty().toplin = TOPLINE_EMPTY;
-        cw.active = 0;
-        break;
+            await tty_display_nhwindow(window, true);
+        /*FALLTHRU*/
     case NHW_BASE:
+        /*
+         * these should only get dismissed when the game is going away
+         * or suspending
+         */
         tty_curs(game.BASE_WINDOW, 1, tty().rows - 1);
         cw.active = 0;
         break;
     case NHW_MENU:
     case NHW_TEXT:
         if (cw.active) {
-            let clearscreen = false; /* just erase the menu */
+            /* skip erasure if window_inited has been reset to 0 during
+               final run-down in case this is the end-of-game window;
+               the contents of that window should remain shown even when
+               the window itself has gone away */
+            if (game.iflags?.window_inited !== false) {
+                let clearscreen = false; /* just erase the menu */
 
-            /* during role/race/&c selection, menus are put up on top
-               of the base window; we don't track what was there so
-               can't refresh--force the screen to be cleared instead */
-            if (game.program_state?.in_role_selection)
-                clearscreen = true;
+                /* during role/race/&c selection, menus are put up on top
+                   of the base window; we don't track what was there so
+                   can't refresh--force the screen to be cleared instead */
+                if (game.program_state?.in_role_selection)
+                    clearscreen = true;
 
-            await erase_menu_or_text(window, cw, clearscreen);
+                await erase_menu_or_text(window, cw, clearscreen);
+            }
             cw.active = 0;
         }
         break;
@@ -327,22 +336,87 @@ async function tty_dismiss_nhwindow(window) {
     cw.flags = 0;
 }
 
-// C ref: wintty.c tty_raw_print() -- puts(str): the text at the cursor,
-// then a newline
+// C ref: wintty.c tty_destroy_nhwindow() of WIN_MAP and WIN_STATUS -- the
+// JS tty draws the map and the status lines straight onto the terminal
+// instead of keeping NHW_MAP/NHW_STATUS windows; both are active once the
+// game is under way, so destroying one dismisses it (cursor to the bottom
+// line) and destroying the map clears the screen
+export function tty_destroy_mapwindow() {
+    tty_curs(game.BASE_WINDOW, 1, tty().rows - 1); /* tty_dismiss_nhwindow() */
+    term_clear_screen(); /* cw->type == NHW_MAP */
+}
+export function tty_destroy_statuswindow() {
+    tty_curs(game.BASE_WINDOW, 1, tty().rows - 1); /* tty_dismiss_nhwindow() */
+}
+
+// C ref: termcap.c nomux_enter_raw_mode(), nomux_raw_putch(), nomux_raw_emit()
+// -- the recorder (NOMUX_CAPTURE with NOMUX_MARKERS) keeps its own shadow of
+// the screen for raw_print() output, with its own row/column counters: it
+// starts at the top of a cleared screen with the first raw_print() after the
+// tty display is gone (or the first non-empty one while it's still there);
+// empty raw_print()s before that are output flushes and are skipped. The
+// session's screens and cursor come from that shadow.
+function nomux_raw() {
+    if (!game.nomux_raw)
+        game.nomux_raw = { active: false, row: 0, col: 0 };
+    return game.nomux_raw;
+}
+function nomux_enter_raw_mode() {
+    const r = nomux_raw();
+    r.active = true;
+    r.row = 0;
+    r.col = 0;
+    /* exit_nhwindows / settty switch off alt-screen, so the visible
+     * terminal returns to a blank main-screen state before the high-score
+     * lines print. Mirror that by clearing the shadow. */
+    term()?.clearScreen();
+}
+function nomux_raw_putch(ch, attr) {
+    const r = nomux_raw();
+    if (ch === '\n') {
+        r.row++;
+        r.col = 0;
+        return;
+    }
+    if (ch.charCodeAt(0) < 32)
+        return;
+    term()?.setCell(r.col, r.row, ch, NO_COLOR, attr);
+    r.col++;
+}
+function nomux_raw_emit(s, bold) {
+    const r = nomux_raw();
+    if (!r.active) {
+        if (tty() && !s)
+            return; /* in-game flush: skip */
+        nomux_enter_raw_mode();
+    }
+    const attr = bold ? ATR_BOLD : ATR_NONE;
+    for (const ch of s)
+        nomux_raw_putch(ch, attr);
+    nomux_raw_putch('\n', attr); /* puts() / tty_raw_print_bold both append a newline */
+    /* nomux_get_cursor(): the raw counters while raw mode is active */
+    term()?.setCursor(r.col, r.row);
+}
+
+// C ref: wintty.c tty_raw_print() -- puts(str); NOMUX_CAPTURE: nomux_raw_emit()
 export function tty_raw_print(str) {
     const t = tty();
     if (t)
         t.rawprint = (t.rawprint || 0) + 1;
-    for (const ch of str) {
-        if (t.curx >= t.cols) {
-            t.curx = 0;
-            t.cury++;
-        }
-        xputc(ch);
-        t.curx++;
-    }
-    /* newline: column 0 of the next row */
-    cmov(0, Math.min(t.cury + 1, t.rows - 1));
+    else if (str)
+        game.iflags.raw_printed = (game.iflags.raw_printed || 0) + 1;
+    nomux_raw_emit(str, 0);
+}
+
+// C ref: wintty.c tty_raw_print_bold()
+export function tty_raw_print_bold(str) {
+    const t = tty();
+    if (t)
+        t.rawprint = (t.rawprint || 0) + 1;
+    else if (str)
+        game.iflags.raw_printed = (game.iflags.raw_printed || 0) + 1;
+    /* term_start_raw_bold(); fputs(str, stdout); term_end_raw_bold(); puts("") */
+    nomux_raw_emit(str, 1);
 }
 
 // C ref: termcap.c term_end_screen()
@@ -382,6 +456,11 @@ export function tty_exit_nhwindows(str) {
         w[i] = null;
     }
     g.WIN_MESSAGE = WIN_ERR; /* these are all gone now */
+    /* FREE_ALL_MEMORY (config.h): wins[BASE_WINDOW] and ttyDisplay are
+       freed as well */
+    w[g.BASE_WINDOW] = null;
+    g.BASE_WINDOW = WIN_ERR;
+    g.ttyDisplay = null;
     /* term_shutdown(): cleanup termcap/terminfo/whatever */
     if (g.iflags)
         g.iflags.window_inited = false;
@@ -393,6 +472,8 @@ export async function tty_destroy_nhwindow(window) {
 
     if (cw.active)
         await tty_dismiss_nhwindow(window);
+    if (cw.type === NHW_MESSAGE)
+        game.iflags.window_inited = false;
     wins()[window] = null;
 }
 
@@ -1303,6 +1384,9 @@ export async function tty_display_nhwindow(window, blocking) {
         } else
             t.toplin = TOPLINE_EMPTY;
         cw.curx = cw.cury = 0;
+        if (!cw.active)
+            game.iflags.window_inited = true;
+        cw.active = 1;
         return;
     case NHW_TEXT:
         cw.maxcol = t.cols; /* force full-screen mode */

@@ -675,6 +675,20 @@ export function obj_extract_self(obj) {
         obj.ocarry = null;
         break;
     }
+    case 'OBJ_CONTAINED': {
+        const container = obj.ocontainer;
+        const cobj = container.cobj || [];
+        const i = cobj.indexOf(obj);
+        if (i >= 0)
+            cobj.splice(i, 1);
+        obj.where = 'OBJ_FREE';
+        /* container_weight(obj->ocontainer) */
+        for (let c = container; c; c = (c.where === 'OBJ_CONTAINED')
+                                        ? c.ocontainer : null)
+            c.owt = weight(c);
+        obj.ocontainer = null;
+        break;
+    }
     default:
         throw new Error(`obj_extract_self: where=${obj.where} is not ported yet`);
     }

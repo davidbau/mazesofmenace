@@ -7,10 +7,10 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { Is_botlevel } from './const.js';
+import { Is_botlevel, MAGIC_PORTAL } from './const.js';
 import {
     ledger_no, assign_level, Is_special, Is_branchlev, In_hell,
-    dunlevs_in_dungeon,
+    dunlevs_in_dungeon, maxledgerno, depth,
 } from './dungeon.js';
 import { open_bonesfile } from './files.js';
 
@@ -61,6 +61,47 @@ function no_bones_level(lev) {
             /* no bones in the invocation level */
             || (In_hell(lev)
                 && lev.dlevel === dunlevs_in_dungeon(lev) - 1)) ? true : false;
+}
+
+// C ref: bones.c can_make_bones()
+/* check whether bones are feasible */
+export function can_make_bones() {
+    const g = game;
+    const u = g.u;
+    const wizard = !!g.flags.debug, discover = !!g.flags.explore;
+
+    if (!g.flags.bones)
+        return false;
+    if (ledger_no(u.uz) <= 0 || ledger_no(u.uz) > maxledgerno())
+        return false;
+    if (no_bones_level(u.uz))
+        return false; /* no bones for specific levels */
+    if (u.uswallow) {
+        return false; /* no bones when swallowed */
+    }
+    if (!Is_branchlev(u.uz)) {
+        /* no bones on non-branches with portals */
+        for (const ttmp of g.level.traps || [])
+            if (ttmp.ttyp === MAGIC_PORTAL)
+                return false;
+    }
+
+    if (depth(u.uz) <= 0                 /* bulletproofing for endgame */
+        || (!rn2(1 + (depth(u.uz) >> 2)) /* fewer ghosts on low levels */
+            && !wizard))
+        return false;
+    /* don't let multiple restarts generate multiple copies of objects
+       in bones files */
+    if (discover)
+        return false;
+    return true;
+}
+
+// C ref: bones.c savebones()
+/* save bones and possessions of a deceased adventurer */
+export async function savebones(how, when, corpse) {
+    void how; void when; void corpse;
+    throw new Error('savebones(): not ported yet');
 }
 
 // C ref: bones.c getbones()

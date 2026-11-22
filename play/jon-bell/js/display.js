@@ -14043,6 +14043,9 @@ export function putmsghistory(msg, _restoring) {
     // C topl.c:677-715: remember_topl() stores every nonempty topline,
     // including consecutive identical messages (topl.c:170-191).
     _msg_history_arr().push(text);
+    /* C topl.c:539,706: writing gt.toplines ends any SUPPRESS_HISTORY-empty
+     * state, so the next ^P recall starts at this line instead of a blank. */
+    game._toplEmptyAfterSuppress = false;
     /* C topl.c:706 Strcpy(gt.toplines, msg) skips update_topl's word-wrap
      * loop (:284-297), so redotoplin's putsyms() hard-wraps it on ^P recall. */
     (game._getlin_hist ||= new Set()).add(text);

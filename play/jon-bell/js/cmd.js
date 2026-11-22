@@ -5758,14 +5758,14 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
         windowLines.push(menu_heading_text(hdr));
         lineItems.push(null);
         for (const obj of group) {
-            let txt = await _pickinv_item_text(obj, hand);
+            const og = {};
+            let txt = await _pickinv_item_text(obj, hand, false, og);
             /* C wintty.c:1383-1390,1475-1483 show_obj_syms: with
              * iflags.use_menu_glyphs (menu_objsyms entries/both) the entry's
              * class glyph replaces the "-" separator.  Class headings are
              * identifier-0 rows, so conditional (bit 4) draws none here. */
             if ((g.iflags?.use_menu_glyphs ?? true)
                 && !(((g.iflags?.menuobjsyms ?? 4) | 0) & 4)) {
-                const og = obj_to_glyph(obj);
                 const sym = og.ch ?? def_oc_syms_chars[obj.oclass | 0];
                 const gc = g.iflags?.use_color === false ? 8 : og.color | 0;
                 const symTxt = gc === 0 ? `\x1b[${(g.iflags?.wc2_darkgray ?? true) ? 90 : 34}m${sym}\x1b[39m`
@@ -15262,6 +15262,32 @@ async function _do_look_lookat(x, y) {
                 /* dat/data.base has no "unexplored area" key, so checkfile()
                  * finds nothing and its "More info about ...?" never fires. */
                 dbaseEntry: null,
+            };
+        }
+        /* C pager.c:1296-1323 do_screen_description(): the arm whose first
+         * disjunct ((u.uswallow || submerged) && !next2u) the top of
+         * _do_look_lookat holds has a SECOND disjunct — while a detection's
+         * browse_map() getpos runs (detect.c:105-118 sets terrainmode to
+         * TER_DETECT without TER_MAP), a square whose display glyph is
+         * cmap_to_glyph(S_stone) reads "unreconnoitered", and `x_str ==
+         * unreconnoitered` does `goto didlook` with found == 1 and
+         * need_to_look == FALSE, so lookat() never runs and *firstmatch stays
+         * "unreconnoitered" (no " (stone)" parenthetical, no class list).
+         * df-x64a318f679 step 135: the fountain's monster detection, cursor
+         * over rock the hero has mapped (the buffer was repainted from memory
+         * when the getpos tip window was erased); C "unreconnoitered", this
+         * port fell to the S_stone arm below and said "stone".  neverMapped
+         * squares keep the unexplored arm above: C's buffer holds
+         * GLYPH_UNEXPLORED there, not S_stone, so the arm does not fire. */
+        if (overlay && paintedStone && !neverMapped) {
+            return {
+                kind: 'unreconnoitered',
+                glyphChar: dglyph?.ch || ' ', glyphDec: !!dglyph?.dec,
+                classText: 'unreconnoitered', classCount: 1, needsLook: false,
+                firstmatch: 'unreconnoitered', dbaseEntry: null,
+                /* C pager.c:1948 lookat() -> checkfile("unreconnoitered") hits
+                 * the data.base "unreconnoitered" entry (dat/data.base:5734). */
+                dbaseEntries: checkfile_entries('unreconnoitered'),
             };
         }
     }

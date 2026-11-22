@@ -1983,6 +1983,14 @@ async function _yn_count_tail(qbuf) {
     if (value >= 0n) { // topl.c:533-539 clean_up records the completed answer.
         putmsghistory(qbuf + ' ' + (value > 0n ? '#' + value : 'n'));
         g._toplEmptyAfterSuppress = false;
+        /* topl.c:483-503 addtopl()ed '#'+digits onto the painted prompt, and
+         * clean_up (:533-550) rewrites gt.toplines without ever repainting,
+         * so the ECHOED line is the text standing on row 0 (TOPLINE_NON_EMPTY)
+         * until the next pline or parse()'s clear_nhwindow — for value==0
+         * ('0' => q='n') just as much as for an accepted count.  Only an echo
+         * that wrapped onto row 1 (cw->cury != 0) is erased instead, by
+         * clean_up's tty_clear_nhwindow(WIN_MESSAGE). */
+        g._topl_sticky = topl_park_cursor(null, text)[1] > 0 ? null : text;
     }
     return Number(value);
 }
@@ -2145,7 +2153,10 @@ async function _pickup_old_style(objchain, traverse_how, count) {
              * and stays, query_menu or not. */
             const menuAnswered = !!(g.iflags?.query_menu && g.iflags?.window_inited
                 && ['yn', 'ynq', 'ynaq', 'rl', 'hsq'].includes(rs));
-            if (!menuAnswered && base.length + rs.length + 8 <= 79)
+            /* For sym==='#' _yn_count_tail armed the echoed `prompt #count` as
+             * the standing text (topl.c:483-503,533-550): clean_up never
+             * repaints, so the bare prompt must not replace the echo. */
+            if (!menuAnswered && base.length + rs.length + 8 <= 79 && sym !== '#')
                 g._topl_sticky = `${base} [${rs}] (y)`;
             if (sym === 'q' || sym === '\x1b') return { n_tried, n_picked };
             if (sym === 'n') continue;

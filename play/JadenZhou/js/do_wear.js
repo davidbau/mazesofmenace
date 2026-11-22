@@ -9,6 +9,7 @@
 // donning()/doffing()/cancel_don()/cancel_doff().
 
 import { game } from './gstate.js';
+import { make_slimed, make_glib, make_hallucinated } from './potion.js';
 import { pline, You, Your, There, pline_The, newsym,
          see_monsters } from './display.js';
 import { getobj, silly_thing } from './invent.js';
@@ -64,6 +65,7 @@ import { float_vs_flight } from './polyself.js';
 import { unmul } from './allmain.js';
 import { monsndx } from './mondata.js';
 import { rnd } from './rng.js';
+import { region_danger } from './region.js';
 
 // C's impossible() (pline.c) is not ported yet.
 function impossible(msg) { console.error(`impossible: ${msg}`); }
@@ -178,7 +180,7 @@ function Invisible() { return Invis() && !See_invisible(); }
 
 // C ref: do_wear.c fingers_or_gloves() -- plural "fingers" or optionally
 // "gloves"
-function fingers_or_gloves(check_gloves) {
+export function fingers_or_gloves(check_gloves) {
     return ((check_gloves && game.uarmg)
             ? gloves_simple_name(game.uarmg) /* "gloves" or "gauntlets" */
             : makeplural(body_part(FINGER))); /* "fingers" */
@@ -653,7 +655,7 @@ async function Amulet_on(amul) {
     }
     case O.AMULET_OF_UNCHANGING:
         if (uprop(SLIMED).intrinsic)
-            throw new Error('Amulet_on(): make_slimed() not ported yet');
+            await make_slimed(0, null);
         break;
     case O.AMULET_OF_CHANGE:
         throw new Error('Amulet_on(): amulet of change (change_sex()) not ported yet');
@@ -778,13 +780,6 @@ export async function Amulet_off() {
         await off_msg(amul); /* (not 'uamul'; it's Null now) */
     if (mkn)
         makeknown(amul.otyp);
-}
-
-/* C ref: region.c region_danger() -- gas clouds aren't ported */
-function region_danger() {
-    if (game.regions && game.regions.length)
-        throw new Error('region_danger(): gas clouds not ported yet');
-    return false;
 }
 
 // C ref: mon.c can_be_strangled() -- for the hero
@@ -1600,7 +1595,7 @@ export async function Gloves_off() {
        happens, 'cure' slippery fingers so that it doesn't transfer
        from gloves to bare hands */
     if (Glib())
-        throw new Error('Gloves_off(): make_glib(0) not ported yet');
+        make_glib(0); /* for update_inventory() */
 
     /* prevent wielding cockatrice when not wearing gloves */
     if ((g.uwep && g.uwep.otyp === O.CORPSE)
@@ -1733,7 +1728,10 @@ async function dragon_armor_handling(otmp,   /* armor being put on or taken off 
         break;
     case O.GOLD_DRAGON_SCALES:
     case O.GOLD_DRAGON_SCALE_MAIL:
-        throw new Error('dragon_armor_handling(): make_hallucinated() for gold dragon armor not ported yet');
+        await make_hallucinated(puton ? 0 : 1,
+                                game.program_state?.restoring ? false : true,
+                                W_ARM);
+        break;
     case O.ORANGE_DRAGON_SCALES:
     case O.ORANGE_DRAGON_SCALE_MAIL:
         if (puton) {

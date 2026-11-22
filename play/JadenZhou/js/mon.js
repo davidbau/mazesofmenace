@@ -5,10 +5,15 @@
 // monnear(), mon_allowflags().
 
 import { game } from './gstate.js';
+import { healup_nocure } from './potion.js';
+import { mcureblindness } from './muse.js';
 import { clear_bypasses, bypass_obj } from './worn.js';
 import { rn2, rn1 } from './rng.js';
 import * as MM from './monsters.js';
 import { SPECIAL_PM, NUMMONS } from './monsters.js';
+import { pick_nasty } from './wizard.js';
+import { tt_doppel } from './topten.js';
+import { were_change } from './were.js';
 import {
     MSLOW, MFAST, NORMAL_SPEED, LOW_PM, I_SPECIAL, CONFLICT, INVIS,
     DISPLACED, COLNO, ROWNO, IS_OBSTRUCTED, IS_TREE, IS_WATERWALL, IS_DOOR,
@@ -17,7 +22,7 @@ import {
     ALLOW_U, ALLOW_M, ALLOW_TM, ALLOW_ALL, ALLOW_MDISP, ALLOW_TRAPS,
     ALLOW_SANCT, ALLOW_SSM, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_BARS,
     NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, NOGARLIC,
-    M_AP_MONSTER, MON_DETACH, W_AMUL, NON_PM, NATTK, Is_rogue_level,
+    M_AP_MONSTER, MON_DETACH, MON_MIGRATING, W_AMUL, NON_PM, NATTK, Is_rogue_level,
     G_GENOD, STRAT_WAITMASK, STRAT_WAITFORU, BOLT_LIM, W_ARM,
 } from './const.js';
 import { dist2 } from './hacklib.js';
@@ -61,10 +66,14 @@ import { BOULDER, CLOVE_OF_GARLIC, CREDIT_CARD, SKELETON_KEY,
          YELLOW_DRAGON_SCALE_MAIL, TIN, GLOB_OF_GREEN_SLIME, CARROT,
          objects } from './objects.js';
 import { NO_NC_FLAGS, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES,
-         POISON_RES, STONE_RES } from './const.js';
+         POISON_RES, STONE_RES, M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD,
+         MAGICAL_BREATHING, Is_waterlevel } from './const.js';
+import { attacktype_fordmg, resists_poison } from './mondata.js';
+import { visible_region_at, cmap_to_glyph, S_poisoncloud, create_gas_cloud } from './region.js';
 import { corpse_intrinsic, should_givit } from './eat.js';
 import { delobj } from './invent.js';
-import { grow_up } from './makemon.js';
+import { grow_up, goodpos } from './makemon.js';
+import { enexto, rloc_to_core } from './teleport.js';
 import { PICK_AXE, DWARVISH_MATTOCK, AXE, BATTLE_AXE, WEAPON_CLASS,
          TOOL_CLASS } from './objects.js';
 import { NO_WEAPON_WANTED, W_ARMS, SHOPBASE, P_AXE, P_PICK_AXE, WT_TOOMUCH_DIAGONAL } from './const.js';
@@ -78,7 +87,10 @@ import { dead_species } from './mkobj.js';
 import { kill_egg } from './timeout.js';
 import { relobj } from './steal.js';
 import { dochugw, onscary, mon_regen, m_everyturn_effect,
-         mon_track_clear } from './monmove.js';
+         mon_track_clear, monflee } from './monmove.js';
+import { tele_restrict, rloc } from './teleport.js';
+import { can_teleport } from './mondata.js';
+import { FOUNTAIN, FLYING, LEVITATION, RLOC_MSG } from './const.js';
 import { canseemon, sensemon } from './display.js';
 import { UNICORN_HORN, WORM_TOOTH } from './objects.js';
 import { CORPSTAT_NONE, CORPSTAT_BURIED, CORPSTAT_INIT, CORPSTAT_FEMALE,
@@ -93,7 +105,9 @@ import { XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
          TEMPLE } from './const.js';
 import { Hallucination, canspotmon, see_monsters } from './display.js';
 import { mon_nam, x_monnam, ARTICLE_NONE, ARTICLE_THE,
-         SUPPRESS_SADDLE } from './do_name.js';
+         SUPPRESS_SADDLE, ARTICLE_A, ARTICLE_YOUR, noname_monnam } from './do_name.js';
+import { olfaction, is_orc } from './mondata.js';
+import { highc } from './hacklib.js';
 import { mkobj, place_object } from './mkobj.js';
 import { RANDOM_CLASS, FOOD_CLASS, FIGURINE } from './objects.js';
 import { flooreffects } from './do.js';
@@ -162,21 +176,21 @@ export function mcalcmove(mon,
 }
 
 // ── C ref: mon.c mcalcdistress() / m_calcdistress() ──
-export function mcalcdistress() {
+export async function mcalcdistress() {
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
         if (DEADMONSTER(mtmp)) continue; /* iter_mons() */
-        m_calcdistress(mtmp);
+        await m_calcdistress(mtmp);
     }
 }
 
-function m_calcdistress(mtmp) {
+async function m_calcdistress(mtmp) {
     /* must check non-moving monsters once/turn in case they managed
        to end up in water or lava; note: when not in liquid they regen,
        shape-shift, timeout temporary maladies just like other monsters */
     if (mtmp.data.mmove === 0) {
         if (game.vision_full_recalc)
             vision_recalc(0);
-        if (minliquid(mtmp))
+        if (await minliquid(mtmp))
             return;
     }
 
@@ -185,9 +199,9 @@ function m_calcdistress(mtmp) {
 
     /* possibly polymorph shapechangers and lycanthropes */
     if (mtmp.cham !== undefined && mtmp.cham >= LOW_PM) /* ismnum() */
-        decide_to_shapeshift(mtmp);
+        await decide_to_shapeshift(mtmp);
     if (is_were(mtmp.data))
-        throw new Error('m_calcdistress(): were_change() not ported yet');
+        await were_change(mtmp);
 
     /* gradually time out temporary problems */
     if (mtmp.mblinded && !--mtmp.mblinded)
@@ -240,10 +254,90 @@ function mon_leaving_level(mon) {
     }
     if (onmap) {
         mon.mundetected = 0; /* for migration; doesn't matter for death */
+        /* unhide mimic in case its shape has been blocking line of sight
+           or it is accompanying the hero to another level */
         if (mon.m_ap_type && mon.m_ap_type !== M_AP_MONSTER)
-            throw new Error('mon_leaving_level(): seemimic() not ported yet');
+            seemimic(mon);
         /* fill_pit(mx, my): boulders dropping into pits not ported */
         newsym(mx, my);
+    }
+}
+
+// C ref: mon.c mnearto()
+/* make monster mtmp next to you (if possible);
+   might place monst on far side of a wall or boulder */
+/* returns 0: couldn't place; 1: placed (maybe at an alternate spot);
+   2: placed and moved another monster out of the way */
+export async function mnearto(
+    mtmp,
+    x,
+    y,
+    move_other, /* make sure mtmp gets to x, y! so move m_at(x, y) */
+    rlocflags)
+{
+    let othermon = null;
+    let newx, newy;
+    const mm = { x: 0, y: 0 };
+    let res = 1;
+
+    if (mtmp.mx === x && mtmp.my === y && m_at(x, y) === mtmp)
+        return res;
+
+    if (move_other && (othermon = m_at(x, y)) !== null)
+        throw new Error('mnearto(): moving another monster out of the way not ported yet');
+
+    newx = x;
+    newy = y;
+    if (!goodpos(newx, newy, mtmp, 0)) {
+        /* Actually we have real problems if enexto ever fails.
+         * Migrating_mons that need to be placed will cause
+         * no end of trouble.
+         */
+        if (!enexto(mm, newx, newy, mtmp.data) || !isok(mm.x, mm.y))
+            return 0;
+        newx = mm.x;
+        newy = mm.y;
+    }
+    /* [this doesn't honor the 'montelecontrol' option] */
+    await rloc_to_core(mtmp, newx, newy, rlocflags); /* rloc_to_flag() */
+
+    return res;
+}
+
+// C ref: mon.c relmon()
+/* remove a monster from the fmon list (and the map); 'list' is the name
+   of the game list to put it on ('migrating_mons' or 'mydogs') or null */
+export function relmon(mon, list) {
+    const g = game;
+
+    if (!g.fmon)
+        throw new Error('relmon: no fmon available.'); /* panic() */
+
+    /* take 'mon' off the map */
+    mon_leaving_level(mon);
+
+    /* remove 'mon' from the 'fmon' list */
+    if (mon === g.fmon) {
+        g.fmon = g.fmon.nmon;
+    } else {
+        let mtmp;
+
+        for (mtmp = g.fmon; mtmp; mtmp = mtmp.nmon)
+            if (mtmp.nmon === mon) {
+                mtmp.nmon = mon.nmon;
+                break;
+            }
+        if (!mtmp)
+            throw new Error('relmon: mon not in list.'); /* panic() */
+    }
+
+    if (list) {
+        /* insert into gm.mydogs or gm.migrating_mons */
+        mon.nmon = g[list] || null;
+        g[list] = mon;
+    } else {
+        /* orphan has no next monster */
+        mon.nmon = null;
     }
 }
 
@@ -295,7 +389,7 @@ function m_detach(mtmp, mptr, due_to_death) {
                 /* The Archeologist, Caveman, and Priest quest texts describe
                    the nemesis's body creating noxious fumes/gas when killed. */
                 if (await stinky_nemesis(mtmp))
-                    nemesis_stinks(mx, my);
+                    await nemesis_stinks(mx, my);
             }
             if (mtmp.data.msound === MS_LEADER)
                 leaddead();
@@ -348,7 +442,7 @@ export async function mondead(mtmp) {
         await pline('You have a sad feeling for a moment, then it passes.');
 
     if (mtmp.data === mons[PM_STEAM_VORTEX])
-        throw new Error('mondead(): create_gas_cloud() not ported yet');
+        await create_gas_cloud(mtmp.mx, mtmp.my, rn2(10) + 5, 0); /* harmless */
 
     if (mtmp.isgd)
         throw new Error('mondead(): grddead() not ported yet');
@@ -882,6 +976,7 @@ export function seemimic(mtmp) {
         delete mtmp.mextra.mcorpsenm; /* freemcorpsenm(mtmp) */
 
     mtmp.m_ap_type = M_AP_NOTHING;
+    mtmp.m_ap_fdknown = 0; /* M_AP_F_DKNOWN, kept apart from m_ap_type */
     mtmp.mappearance = 0;
 
     /*
@@ -1026,10 +1121,133 @@ function worm_known(worm) {
     throw new Error('worm_known() not ported yet');
 }
 
-// C ref: mon.c minliquid() -- monsters in pools or lava aren't ported yet
-function minliquid(mtmp) {
-    if (is_pool(mtmp.mx, mtmp.my) || is_lava(mtmp.mx, mtmp.my))
-        throw new Error('minliquid() not ported yet');
+/* C ref: mondata.h is_clinger() */
+function is_clinger(ptr) { return (ptr.mflags1 & MM.M1_CLING) !== 0; }
+
+// C ref: mon.c minliquid()
+/* check mtmp and water/lava for compatibility, 0 (survived), 1 (died) */
+export async function minliquid(mtmp) {
+    let res;
+
+    /* set up flag for mondead() and xkilled() */
+    game.sad_feeling = (mtmp.mtame && !canseemon(mtmp));
+    res = await minliquid_core(mtmp);
+    /* always clear the flag */
+    game.sad_feeling = false;
+    return res;
+}
+
+// C ref: mon.c minliquid_core()
+/* guts of minliquid() */
+async function minliquid_core(mtmp) {
+    let inpool, inlava, infountain;
+    const u = game.u;
+    const waterwall = isok(mtmp.mx, mtmp.my)
+                      && IS_WATERWALL(game.level.at(mtmp.mx, mtmp.my).typ);
+    const ptr = mtmp.data;
+    const uhas = (p) => !!(u.uprops[p]?.intrinsic || u.uprops[p]?.extrinsic);
+
+    /* [ceiling clingers are handled below] */
+    inpool = (is_pool(mtmp.mx, mtmp.my)
+              && (!(is_flyer(ptr) || is_floater(ptr))
+                  /* there's no "above the surface" on the plane of water */
+                  || Is_waterlevel(u.uz)));
+    inlava = (is_lava(mtmp.mx, mtmp.my)
+              && !(is_flyer(ptr) || is_floater(ptr)));
+    infountain = (game.level.at(mtmp.mx, mtmp.my).typ === FOUNTAIN);
+
+    /* Flying and levitation keeps our steed out of the liquid
+       (but not water-walking or swimming; note: if hero is in a
+       water location on the Plane of Water, flight and levitating
+       are blocked so this (Flying || Levitation) test fails there
+       and steed will be subject to water effects, as intended) */
+    if (mtmp === u.usteed && (uhas(FLYING) || uhas(LEVITATION)) && !waterwall)
+        return 0;
+
+    /* Gremlin multiplying won't go on forever since the hit points
+     * keep going down, and when it gets to 1 hit point the clone
+     * function will fail.
+     */
+    if (ptr === mons[MM.PM_GREMLIN] && (inpool || infountain) && rn2(3)) {
+        throw new Error('minliquid(): split_mon() not ported yet');
+    } else if (ptr === mons[MM.PM_IRON_GOLEM] && inpool && !rn2(5)) {
+        const dam = d(2, 6);
+
+        if (cansee(mtmp.mx, mtmp.my))
+            await pline(`${Monnam(mtmp)} rusts.`); /* pline_mon() */
+        mtmp.mhp -= dam;
+        if (mtmp.mhpmax > dam)
+            mtmp.mhpmax -= dam;
+        if (DEADMONSTER(mtmp)) {
+            await mondied(mtmp);
+            if (DEADMONSTER(mtmp))
+                return 1;
+        }
+        /* water_damage_chain(mtmp->minvent, FALSE) */
+        if (mtmp.minvent?.length)
+            throw new Error('minliquid(): water_damage_chain() not ported yet');
+        return 0;
+    }
+
+    if (inlava) {
+        /*
+         * Lava effects much as water effects. Lava likers are able to
+         * protect their stuff. Fire resistant monsters can only protect
+         * themselves  --ALI
+         */
+        if (!is_clinger(ptr)
+            && !(ptr === mons[PM_FIRE_ELEMENTAL] || ptr === mons[PM_SALAMANDER])) {
+            /* likes_lava() */
+            throw new Error('minliquid(): monster in lava not ported yet');
+        }
+    } else if (inpool || waterwall) {
+        /* Most monsters drown in pools.  flooreffects() will take care of
+         * water damage to dead monsters' inventory, but survivors need to
+         * be handled here.  Swimmers are able to protect their stuff...
+         */
+        if ((waterwall || !is_clinger(ptr))
+            /* !cant_drown(): is_swimmer() || amphibious() || breathless() */
+            && !(is_swimmer(ptr) || (ptr.mflags1 & MM.M1_AMPHIBIOUS) !== 0
+                 || (ptr.mflags1 & MM.M1_BREATHLESS) !== 0)) {
+            /* like hero with teleport intrinsic or spell, teleport away
+               if possible */
+            if (can_teleport(ptr) && !(await tele_restrict(mtmp))) {
+                if (await rloc(mtmp, RLOC_MSG))
+                    return 0;
+            }
+            if (cansee(mtmp.mx, mtmp.my)) {
+                if (game.context.mon_moving)
+                    await pline(`${Monnam(mtmp)} drowns.`); /* pline_mon() */
+                else
+                    /* hero used fire to melt ice that monster was on */
+                    await pline(`You drown ${mon_nam(mtmp)}.`);
+            }
+            if (u.ustuck === mtmp && u.uswallow) { /* engulfing_u() */
+                /* This can happen after a purple worm plucks you off a
+                   flying steed while you are over water. */
+                throw new Error('minliquid(): engulfer sinking not ported yet');
+            }
+            if (game.context.mon_moving)
+                await mondied(mtmp); /* ok to leave corpse despite water */
+            else
+                await xkilled(mtmp, XKILL_NOMSG);
+            if (!DEADMONSTER(mtmp)) {
+                /* lifesaved: m_in_air(), water_damage_chain(), rloc(),
+                   deal_with_overcrowding() */
+                throw new Error('minliquid(): lifesaved drowning monster not ported yet');
+            }
+            return 1;
+        }
+    } else {
+        /* but eels have a difficult time outside */
+        if (ptr.mlet === S_EEL && !Is_waterlevel(u.uz)
+            && !((ptr.mflags1 & MM.M1_BREATHLESS) !== 0)) {
+            /* as mhp gets lower, the rate of further loss slows down */
+            if (mtmp.mhp > 1 && rn2(mtmp.mhp) > rn2(8))
+                mtmp.mhp--;
+            await monflee(mtmp, 2, false, false);
+        }
+    }
     return 0;
 }
 
@@ -1049,14 +1267,16 @@ async function movemon_singlemon(mtmp) {
     }
 
     /* one dead monster needs to perform a move after death: vault guard */
-    if (mtmp.isgd && !mtmp.mx)
+    if (mtmp.isgd && !mtmp.mx && !((mtmp.mstate || 0) & MON_MIGRATING))
         throw new Error('movemon_singlemon(): gd_move() not ported yet');
     if (DEADMONSTER(mtmp))
         return false;
 
-    /* monster isn't on this map anymore: migration isn't ported yet */
+    /* monster isn't on this map anymore */
+    if (mtmp.mstate) /* mon_offmap(): mstate != MON_FLOOR */
+        return false;
 
-    m_everyturn_effect(mtmp);
+    await m_everyturn_effect(mtmp);
 
     /* Find a monster that we have not treated yet. */
     if (mtmp.movement < NORMAL_SPEED)
@@ -1073,7 +1293,7 @@ async function movemon_singlemon(mtmp) {
     if (game.context.bypasses)
         clear_bypasses();
     /* clear_splitobjs(): not ported yet */
-    if (minliquid(mtmp))
+    if (await minliquid(mtmp))
         return false;
 
     /* after losing equipment, try to put on replacement */
@@ -1154,6 +1374,46 @@ export function dmonsfree() {
 
 /* mondata.h */
 function polyok(ptr) { return (ptr.mflags2 & MM.M2_NOPOLY) === 0; }
+function humanoid(ptr) { return (ptr.mflags1 & MM.M1_HUMANOID) !== 0; }
+function is_animal(ptr) { return (ptr.mflags1 & MM.M1_ANIMAL) !== 0; }
+
+// C ref: mon.c mon_animal_list()
+export function mon_animal_list(construct) {
+    if (construct) {
+        const animal_temp = [];
+        let i, n;
+
+        /* if (animal_list) impossible("animal_list already exists"); */
+
+        for (n = 0, i = LOW_PM; i < SPECIAL_PM; i++)
+            if (is_animal(mons[i]))
+                animal_temp[n++] = i;
+        /* if (n == 0) animal_temp[n++] = NON_PM; */
+
+        game.animal_list = animal_temp.slice(0, n);
+        game.animal_list_count = n;
+    } else { /* release */
+        if (game.animal_list)
+            game.animal_list = null;
+        game.animal_list_count = 0;
+    }
+}
+
+// C ref: mon.c pick_animal()
+function pick_animal() {
+    let res;
+
+    if (!game.animal_list)
+        mon_animal_list(true);
+    /* assert(ga.animal_list != 0); */
+    res = game.animal_list[rn2(game.animal_list_count)];
+    /* rogue level should use monsters represented by uppercase letters
+       only, but since chameleons aren't generated there (not uppercase!)
+       we don't perform a lot of retries */
+    if (Is_rogue_level(game.u.uz) && !isupper_monsym(mons[res]))
+        res = game.animal_list[rn2(game.animal_list_count)];
+    return res;
+}
 function is_shapeshifter(ptr) { return (ptr.mflags2 & MM.M2_SHAPESHIFTER) !== 0; }
 function notake(ptr) { return (ptr.mflags1 & MM.M1_NOTAKE) !== 0; }
 function has_head(ptr) { return (ptr.mflags1 & MM.M1_NOHEAD) === 0; }
@@ -1239,13 +1499,33 @@ export function select_newcham_form(mon) {
     switch (mon.cham) {
     case MM.PM_SANDESTIN:
         if (rn2(7))
-            throw new Error('select_newcham_form(): pick_nasty() not ported yet');
+            mndx = pick_nasty(mons[MM.PM_ARCHON].difficulty - 1);
         break;
     case MM.PM_DOPPELGANGER:
-        throw new Error('select_newcham_form(): doppelganger forms not ported yet');
+        if (!rn2(7)) {
+            mndx = pick_nasty(mons[MM.PM_JABBERWOCK].difficulty - 1);
+        } else if (rn2(3)) { /* role monsters */
+            mndx = tt_doppel(mon);
+        } else if (!rn2(3)) { /* quest guardians */
+            mndx = rn1(MM.PM_APPRENTICE - MM.PM_STUDENT + 1, MM.PM_STUDENT);
+            /* avoid own role's guardian */
+            if (mndx === game.urole.guardnum)
+                mndx = NON_PM;
+        } else { /* general humanoids */
+            tryct = 5;
+            do {
+                mndx = rn1(SPECIAL_PM - LOW_PM, LOW_PM);
+                /* assert(ismnum(mndx)); */
+                if (humanoid(mons[mndx]) && polyok(mons[mndx]))
+                    break;
+            } while (--tryct > 0);
+            if (!tryct)
+                mndx = NON_PM;
+        }
+        break;
     case MM.PM_CHAMELEON:
         if (!rn2(3))
-            throw new Error('select_newcham_form(): pick_animal() not ported yet');
+            mndx = pick_animal();
         break;
     case MM.PM_VLAD_THE_IMPALER:
     case MM.PM_VAMPIRE_LEADER:
@@ -1332,7 +1612,7 @@ export function mgender_from_permonst(mtmp, mdat) {
 }
 
 // C ref: mon.c decide_to_shapeshift()
-export function decide_to_shapeshift(mon) {
+export async function decide_to_shapeshift(mon) {
     let ptr = null;
     let mndx;
     const was_female = mon.female;
@@ -1384,7 +1664,7 @@ export function decide_to_shapeshift(mon) {
         }
     }
     if (dochng) {
-        if (newcham(mon, ptr, NC_SHOW_MSG)) {
+        if (await newcham(mon, ptr, NC_SHOW_MSG)) {
             /* for vampshift, override the 10% chance for sex change
                (by forcing original gender in case that occurred) */
             if (is_vampshifter(mon)) {
@@ -1400,17 +1680,30 @@ export function decide_to_shapeshift(mon) {
 /* make a chameleon take on another shape, or a polymorph target
    (possibly self-inflicted) become a different monster;
    returns 1 if it actually changes form */
-export function newcham(mtmp, mdat, ncflags) {
+export async function newcham(mtmp, mdat, ncflags) {
+    const gen = newcham_g(mtmp, mdat, ncflags);
+    let r;
+    while (!(r = gen.next()).done)
+        await pline(r.value); /* pline_mon() */
+    return r.value;
+}
+/* newcham() from a synchronous caller (makemon(), level creation), which
+   never asks for messages */
+export function newcham_sync(mtmp, mdat, ncflags) {
+    const r = newcham_g(mtmp, mdat, ncflags).next();
+    if (!r.done)
+        throw new Error(`newcham(): message from a synchronous caller not ported yet: ${r.value}`);
+    return r.value;
+}
+/* the body of newcham(); yields the messages it gives */
+function* newcham_g(mtmp, mdat, ncflags) {
     const polyspot = ((ncflags & NC_VIA_WAND_OR_SPELL) !== 0);
     /* "The oldmon turns into a newmon!" */
-    const msg = ((ncflags & NC_SHOW_MSG) !== 0);
+    let msg = ((ncflags & NC_SHOW_MSG) !== 0);
+    const seenorsensed = canspotmon(mtmp);
     let hpn, hpd, mndx, tryct;
     const olddata = mtmp.data;
-
-    /* seenorsensed = canspotmon(mtmp), oldname and l_oldname are only
-       used by the messages below, which aren't ported yet */
-    if (msg)
-        throw new Error('newcham(): NC_SHOW_MSG messages not ported yet');
+    let oldname = '';
 
     /* Riders are immune to polymorph and green slime
        (but apparent Rider might actually be a doppelganger) */
@@ -1429,6 +1722,15 @@ export function newcham(mtmp, mdat, ncflags) {
                 mtmp.mcan = 0;
         }
     }
+
+    if (msg) {
+        oldname = /* like YMonnam() but never mention saddle */
+            x_monnam(mtmp, mtmp.mtame ? ARTICLE_YOUR : ARTICLE_THE,
+                     null, SUPPRESS_SADDLE, false);
+        oldname = highc(oldname[0]) + oldname.slice(1);
+    }
+    /* we need this one whether msg is true or not: l_oldname is only
+       used by the engulfing case, which isn't ported yet */
 
     /* mdat = 0 -> caller wants a random monster shape */
     if (!mdat) {
@@ -1466,7 +1768,7 @@ export function newcham(mtmp, mdat, ncflags) {
     if (mtmp.wormno) /* throw tail away */
         throw new Error('newcham(): wormgone() not ported yet');
     if ((mtmp.m_ap_type || 0) && mdat.mlet !== MM.S_MIMIC)
-        throw new Error('newcham(): seemimic() not ported yet');
+        seemimic(mtmp); /* revert to normal monster */
 
     /* (this code used to try to adjust the monster's health based on
        a normal one of its type but there are too many special cases
@@ -1509,6 +1811,24 @@ export function newcham(mtmp, mdat, ncflags) {
                          * display_monster() may change it right back */
     newsym(mtmp.mx, mtmp.my);
 
+    if (msg) {
+        /* oldname is capitalized and might be an assigned name */
+        if (!canspotmon(mtmp)) { /* can't see or sense it now */
+            if (seenorsensed) /* could see or sense it before */
+                yield `${oldname} disappears!`;
+            /* (void) */ yield* usmellmon_g(mdat);
+        } else if (!seenorsensed) { /* couldn't see/sense before, can now */
+            const mnm = x_monnam(mtmp, mtmp.mtame ? ARTICLE_YOUR : ARTICLE_A,
+                                 null, 0, false);
+
+            yield `${highc(mnm[0]) + mnm.slice(1)} appears!`; /* upstart() */
+        } else { /* saw/sensed it before, still see/sense it now */
+            yield `${oldname} turns into ${
+                /* "a <monster type>" even if it has a name assigned */
+                noname_monnam(mtmp, ARTICLE_A)}!`;
+        }
+    }
+
     /* when polymorph trap/wand/potion produces a vampire, turn in into
        a full-fledged vampshifter unless shape-changing is blocked */
     if (mtmp.cham === NON_PM && mdat.mlet === MM.S_VAMPIRE
@@ -1535,6 +1855,121 @@ export function newcham(mtmp, mdat, ncflags) {
 
     return 1;
 }
+// C ref: mon.c usmellmon()
+export async function usmellmon(mdat) {
+    const gen = usmellmon_g(mdat);
+    let r;
+    while (!(r = gen.next()).done)
+        await pline(r.value);
+    return r.value;
+}
+/* the body of usmellmon(); yields the messages it gives */
+function* usmellmon_g(mdat) {
+    let mndx;
+    let nonspecific = false;
+    let msg_given = false;
+    const u = game.u;
+
+    if (mdat) {
+        if (!olfaction(game.youmonst.data))
+            return false;
+        mndx = monsndx(mdat);
+        switch (mndx) {
+        case MM.PM_ROTHE:
+        case MM.PM_MINOTAUR:
+            yield "You notice a bovine smell.";
+            msg_given = true;
+            break;
+        case MM.PM_CAVE_DWELLER:
+        case MM.PM_BARBARIAN:
+        case MM.PM_NEANDERTHAL:
+            yield "You smell body odor.";
+            msg_given = true;
+            break;
+        case MM.PM_HORNED_DEVIL:
+        case MM.PM_BALROG:
+        case MM.PM_ASMODEUS:
+        case MM.PM_DISPATER:
+        case MM.PM_YEENOGHU:
+        case MM.PM_ORCUS:
+            break;
+        case MM.PM_HUMAN_WEREJACKAL:
+        case MM.PM_HUMAN_WERERAT:
+        case MM.PM_HUMAN_WEREWOLF:
+        case MM.PM_WEREJACKAL:
+        case MM.PM_WERERAT:
+        case MM.PM_WEREWOLF:
+        case MM.PM_OWLBEAR:
+            yield "You detect an odor reminiscent of an animal's den.";
+            msg_given = true;
+            break;
+        case MM.PM_STEAM_VORTEX:
+            yield "You smell steam.";
+            msg_given = true;
+            break;
+        case MM.PM_GREEN_SLIME:
+            yield "Something stinks.";
+            msg_given = true;
+            break;
+        case MM.PM_VIOLET_FUNGUS:
+        case MM.PM_SHRIEKER:
+            yield "You smell mushrooms.";
+            msg_given = true;
+            break;
+        /* These are here to avoid triggering the
+           nonspecific treatment through the default case below*/
+        case MM.PM_WHITE_UNICORN:
+        case MM.PM_GRAY_UNICORN:
+        case MM.PM_BLACK_UNICORN:
+        case MM.PM_JELLYFISH:
+            break;
+        default:
+            nonspecific = true;
+            break;
+        }
+
+        if (nonspecific)
+            switch (mdat.mlet) {
+            case MM.S_DOG:
+                yield "You notice a dog smell.";
+                msg_given = true;
+                break;
+            case MM.S_DRAGON:
+                yield "You smell a dragon!";
+                msg_given = true;
+                break;
+            case MM.S_FUNGUS:
+                yield "Something smells moldy.";
+                msg_given = true;
+                break;
+            case MM.S_UNICORN:
+                yield `You detect a${(mndx === MM.PM_PONY) ? "n" : " strong"} odor reminiscent of a stable.`;
+                msg_given = true;
+                break;
+            case MM.S_ZOMBIE:
+                yield "You smell rotting flesh.";
+                msg_given = true;
+                break;
+            case MM.S_EEL:
+                yield "You smell fish.";
+                msg_given = true;
+                break;
+            case MM.S_ORC:
+                /* maybe_polyd(is_orc(youmonst.data), Race_if(PM_ORC)) */
+                if ((u.umonnum !== u.umonster) ? is_orc(game.youmonst.data)
+                                                : game.urace.mnum === MM.PM_ORC)
+                    yield "You notice an attractive smell.";
+                else
+                    yield "A foul stench makes you feel a little nauseated.";
+                msg_given = true;
+                break;
+            default:
+                break;
+            }
+    }
+    return msg_given ? true : false;
+}
+
 // C ref: mon.c check_gear_next_turn()
 /* setting misc_worn_check's I_SPECIAL bit flags a monster to reassess
    and potentially re-equip gear at the start of its next move */
@@ -1645,7 +2080,7 @@ function monhaskey(mon, for_unlocking) {
     return !!(m_carrying(mon, SKELETON_KEY) || m_carrying(mon, LOCK_PICK));
 }
 /* C ref: mondata.c passes_bars() */
-function passes_bars(mptr) {
+export function passes_bars(mptr) {
     return (passes_walls(mptr) || amorphous(mptr)
             || (mptr.mflags1 & M1_UNSOLID) !== 0
             || is_whirly(mptr) || verysmall(mptr)
@@ -1920,9 +2355,10 @@ export function mfndpos(mon, data, flag) {
     if (mdat === mons[PM_FLOATING_EYE]) /* prefers to avoid heat */
         lavaok = false;
     let thrudoor = ((flag & (ALLOW_WALL | BUSTDOOR)) !== 0);
-    /* poison gas regions: visible_region_at() is not ported yet; the
-       only regions so far are harmless clouds (S_cloud), which mfndpos()
-       does not avoid */
+    const poisongas_ok = (m_poisongas_ok(mon) === M_POISONGAS_OK);
+    const gas_glyph = cmap_to_glyph(S_poisoncloud);
+    const gas_reg0 = visible_region_at(x, y);
+    const in_poisongas = (gas_reg0 != null && gas_reg0.glyph === gas_glyph);
 
     if (flag & ALLOW_DIG) {
         let mw_tmp;
@@ -1991,6 +2427,12 @@ export function mfndpos(mon, data, flag) {
                     && ((((nloc.doormask ?? 0) & D_CLOSED) && !(flag & OPENDOOR))
                         || (((nloc.doormask ?? 0) & D_LOCKED)
                             && !(flag & UNLOCKDOOR))) && !thrudoor)
+                    continue;
+                /* avoid poison gas? */
+                let gas_reg;
+                if (!poisongas_ok && !in_poisongas
+                    && (gas_reg = visible_region_at(nx, ny)) != null
+                    && gas_reg.glyph === gas_glyph)
                     continue;
                 /* first diagonal checks (tight squeezes handled below) */
                 if (nx !== x && ny !== y
@@ -2198,7 +2640,11 @@ export function kill_genocided_monsters() {
 /* heal a monster (or the hero); returns amount of hit points restored */
 export function healmon(mtmp, amt, overheal) {
     if (mtmp === game.youmonst) {
-        throw new Error('healmon(): healup() for the hero not ported yet');
+        const u = game.u;
+        const Upolyd = u.umonnum !== u.umonster;
+        const oldhp = Upolyd ? u.mh : u.uhp;
+        healup_nocure(amt, 0); /* healup(amt, 0, 0, 0) */
+        return (Upolyd ? u.mh : u.uhp) - oldhp;
     } else {
         const oldhp = mtmp.mhp;
         if (mtmp.mhp + amt > mtmp.mhpmax + overheal) {
@@ -2266,19 +2712,19 @@ export async function m_consume_obj(mtmp, otmp) {
         if (poly || slimer) {
             const ptr = slimer ? mons[MM.PM_GREEN_SLIME] : null;
 
-            newcham(mtmp, ptr, vis ? NC_SHOW_MSG : NO_NC_FLAGS);
+            await newcham(mtmp, ptr, vis ? NC_SHOW_MSG : NO_NC_FLAGS);
         }
         if (grow) {
             if ((ispet && mtmp.m_lev < mtmp.data.mlevel + 15)
                 || !ispet)
-                grow_up(mtmp, null);
+                await grow_up(mtmp, null);
         }
         if (mstone)
             throw new Error('m_consume_obj(): monster stoning not ported yet');
         if (heal)
             healmon(mtmp, mtmp.mhpmax, 0);
         if ((eyes || heal) && !mtmp.mcansee)
-            throw new Error('m_consume_obj(): mcureblindness() not ported yet');
+            await mcureblindness(mtmp, canseemon(mtmp));
         if (ispet && deadmimic)
             throw new Error('m_consume_obj(): quickmimic() not ported yet');
         if (otyp === EGG && corpsenm === MM.PM_PYROLISK)
@@ -2355,6 +2801,69 @@ export async function mon_givit(mtmp, ptr) {
         return; /* failed die roll */
 
     await mon_give_prop(mtmp, prop);
+}
+
+// C ref: mon.c m_poisongas_ok()
+/* check whether a monster is tolerant of poison gas */
+export function m_poisongas_ok(mtmp) {
+    let px, py;
+    const is_you = (mtmp === game.youmonst);
+    const u = game.u;
+    const uhas = (p) => !!(u.uprops[p]?.intrinsic || u.uprops[p]?.extrinsic);
+    const breathless = (ptr) => (ptr.mflags1 & MM.M1_BREATHLESS) !== 0;
+
+    /* Non living, non breathing, immune monsters are not concerned */
+    if (nonliving(mtmp.data) || is_vampshifter(mtmp)
+        || breathless(mtmp.data)
+        /* immune_poisongas() */
+        || mtmp.data === mons[MM.PM_HEZROU] || mtmp.data === mons[MM.PM_VROCK])
+        return M_POISONGAS_OK;
+    /* not is_swimmer(); assume that non-fish are swimming on
+       the surface and breathing the air above it periodically
+       unless located at water spot on plane of water */
+    px = is_you ? u.ux : mtmp.mx;
+    py = is_you ? u.uy : mtmp.my;
+    if ((mtmp.data.mlet === S_EEL || Is_waterlevel(u.uz))
+        && is_pool(px, py))
+        return M_POISONGAS_OK;
+    /* exclude monsters with poison gas breath attack:
+       adult green dragon and Chromatic Dragon (and iron golem,
+       but nonliving() and breathless() tests also catch that) */
+    if (attacktype_fordmg(mtmp.data, MM.AT_BREA, MM.AD_DRST)
+        || attacktype_fordmg(mtmp.data, MM.AT_BREA, MM.AD_RBRE))
+        return M_POISONGAS_OK;
+    if (is_you && (u.uinvulnerable
+                   /* Breathless */
+                   || uhas(MAGICAL_BREATHING) || breathless(game.youmonst.data)
+                   || u.uinwater /* Underwater */))
+        return M_POISONGAS_OK;
+    if (is_you ? uhas(POISON_RES) : resists_poison(mtmp))
+        return M_POISONGAS_MINOR;
+    return M_POISONGAS_BAD;
+}
+
+// C ref: mon.c hide_monst()
+/* monster/hero tries to hide under something at the current location */
+export function hide_monst(mon) {
+    const hider_under = ((mon.data.mflags1 & MM.M1_CONCEAL) !== 0) /* hides_under() */
+                        || mon.data.mlet === MM.S_EEL;
+
+    if (((mon.data.mflags1 & MM.M1_HIDE) !== 0 /* is_hider() */ || hider_under)
+        && !(mon.mundetected || mon.m_ap_type)) {
+        const x = mon.mx, y = mon.my;
+        const save_viz = game.viz_array[y][x];
+
+        /* override vision, forcing hero to be unable to see monster's spot */
+        game.viz_array[y][x] &= ~(0x2 /* IN_SIGHT */ | 0x1 /* COULD_SEE */);
+        if ((mon.data.mflags1 & MM.M1_HIDE) !== 0) /* is_hider() */
+            restrap(mon);
+        /* try again if mimic missed its 1/3 chance to hide */
+        if (mon.data.mlet === MM.S_MIMIC && !mon.m_ap_type)
+            restrap(mon);
+        game.viz_array[y][x] = save_viz;
+        if (hider_under)
+            hideunder(mon);
+    }
 }
 
 // C ref: mon.c restrap()

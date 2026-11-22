@@ -78,6 +78,13 @@ import { can_twoweapon, untwoweapon, bimanual, is_launcher, is_missile,
 import { yname, makeplural, an, doname, xname, vtense, The } from './objnam.js';
 import { ing_suffix, s_suffix } from './hacklib.js';
 import { body_part } from './insight.js';
+import { object_from_map, defsyms_explanation } from './pager.js';
+import { simpleonames } from './iactions.js';
+import { otense } from './objnam.js';
+import { a_monnam, EXACT_NAME } from './do_name.js';
+import { M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, MIM_REVEAL, MIM_OMIT_WAIT,
+         TELEPAT, SEE_INVIS } from './const.js';
+import { STRANGE_OBJECT } from './objects.js';
 import { u_wipe_engr } from './engrave.js';
 import { m_move } from './monmove.js';
 import { wakeup, seemimic, xkilled, killed } from './mon.js';
@@ -899,10 +906,101 @@ export async function attack_checks(
     return false;
 }
 
+// C ref: uhitm.c that_is_a_mimic()
+/* used by stumble_onto_mimic() and bhitm() cases WAN_LOCKING, WAN_OPENING */
+export async function that_is_a_mimic(
+    mtmp, /* a hidden mimic (nonnull) */
+    mimic_flags) { /* 0, MIM_REVEAL, MIM_OMIT_WAIT, REVEAL+OMIT */
+    const generic = "a monster";
+    /* fmtbuf, with '%s' where 'what' goes */
+    let fmtbuf;
+    let what = null;
+    const reveal_it = (mimic_flags & MIM_REVEAL) !== 0,
+        omit_wait = (mimic_flags & MIM_OMIT_WAIT) !== 0;
+
+    fmtbuf = "Wait!  That's %s!";
+    if (Blind()) {
+        if (!uprop(TELEPAT)) /* !Blind_telepat */
+            what = generic; /* with default fmt */
+        else if (M_AP_TYPE(mtmp) === M_AP_MONSTER)
+            what = a_monnam(mtmp); /* differs from what was sensed */
+    } else {
+        const x = mtmp.mx, y = mtmp.my;
+        const glyph = glyph_at(x, y);
+
+        if (glyph.kind === 'cmap' || glyph.kind === 'trap') { /* glyph_is_cmap() */
+            if (M_AP_TYPE(mtmp) === M_AP_FURNITURE
+                || (M_AP_TYPE(mtmp) === M_AP_OBJECT && glyph.kind === 'trap')) {
+                /* sym = glyph_to_cmap(glyph); the M_AP_OBJECT case needs
+                   sym == S_trapped_chest */
+                const sym = glyph.cmapidx;
+                if (sym === undefined || glyph.kind === 'trap')
+                    throw new Error('that_is_a_mimic(): glyph_to_cmap() of this glyph not ported yet');
+                fmtbuf = `That ${defsyms_explanation[sym]} actually is %s!`;
+            }
+        } else if (glyph.kind === 'obj') { /* glyph_is_object() */
+            const { fakeobj, otmp } = object_from_map(glyph, x, y);
+            const otmp_name = (otmp && otmp.otyp !== STRANGE_OBJECT)
+                              ? simpleonames(otmp) : "strange object";
+
+            fmtbuf = `${(otmp && otmp.quan !== 1 /* is_plural() */) ? "Those" : "That"
+                     } ${otmp_name} ${otmp ? otense(otmp, "are") : "is"} %s!`;
+            if (fakeobj && otmp) {
+                otmp.where = 'OBJ_FREE'; /* object_from_map set to OBJ_FLOOR */
+                /* dealloc_obj(otmp): JS garbage-collects it */
+            }
+        } else if (glyph.kind === 'mon') { /* glyph_is_monster() */
+            const mndx = glyph.mndx; /* glyph_to_mon() */
+
+            if (mndx === undefined)
+                throw new Error('that_is_a_mimic(): glyph_to_mon() of this glyph not ported yet');
+            const mtmp_name = pmname(mons[mndx], Mgender(mtmp));
+            fmtbuf = `Wait!  That ${mtmp_name} is really %s!`;
+        }
+
+        /* cloned Wiz starts out mimicking some other monster and
+           might make himself invisible before being revealed */
+        if (mtmp.minvis && !uprop(SEE_INVIS)) /* !See_invisible */
+            what = generic;
+        else if (M_AP_TYPE(mtmp) === M_AP_MONSTER)
+            what = x_monnam(mtmp, ARTICLE_A, null, EXACT_NAME, true);
+        else if (mtmp.data.mlet === M.S_MIMIC
+                 && (M_AP_TYPE(mtmp) === M_AP_OBJECT
+                     || M_AP_TYPE(mtmp) === M_AP_FURNITURE)
+                 && (mtmp.msleeping || mtmp.mfrozen))
+            /* BUG: this will misclassify a paralyzed mimic as sleeping */
+            what = x_monnam(mtmp, ARTICLE_A, "sleeping", 0, false);
+        else
+            what = a_monnam(mtmp);
+    }
+
+    if (what) {
+        const i = (omit_wait && fmtbuf.startsWith("Wait!  ")) ? 7 : 0;
+
+        await pline(fmtbuf.slice(i).replace('%s', () => what));
+    }
+    if (reveal_it)
+        seemimic(mtmp);
+}
+
 // C ref: uhitm.c stumble_onto_mimic()
-async function stumble_onto_mimic(mtmp) {
-    void mtmp;
-    throw new Error('stumble_onto_mimic(): not ported yet');
+/* Note: caller must ascertain mtmp is mimicking... */
+export async function stumble_onto_mimic(mtmp) {
+    const u = game.u;
+
+    await that_is_a_mimic(mtmp, MIM_REVEAL);
+
+    if (!u.ustuck && !mtmp.mflee && dmgtype(mtmp.data, AD_STCK)
+        /* must be adjacent; attack via polearm could be from farther away */
+        && m_next2u(mtmp))
+        set_ustuck(mtmp);
+
+    await wakeup(mtmp, false); /* clears mimicking */
+    /* if hero is blind, wakeup() won't display the monster even though
+       it's no longer concealed */
+    if (!canspotmon(mtmp)
+        && !glyph_is_invisible(game.level.at(mtmp.mx, mtmp.my).remembered_glyph))
+        map_invisible(mtmp.mx, mtmp.my);
 }
 
 // C ref: uhitm.c check_caitiff()
@@ -2156,7 +2254,7 @@ const levitate = ["float", "Float", "wobble", "Wobble"],
     crawl = ["crawl", "Crawl", "falter", "Falter"];
 
 // C ref: mondata.c stagger()
-function stagger(ptr, def) {
+export function stagger(ptr, def) {
     const locoindx = (def[0] !== highc(def[0])) ? 2 : 3;
 
     return (is_floater(ptr) ? levitate[locoindx]

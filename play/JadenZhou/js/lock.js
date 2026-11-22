@@ -24,11 +24,32 @@ import { D_LOCKED, M_AP_OBJECT } from './const.js';
 import { recalc_block_point } from './vision.js';
 import { ACURR, acurrstr, exercise } from './attrib.js';
 import { m_at, closed_door } from './makemon.js';
+import { stumble_onto_mimic } from './uhitm.js';
 import { A_STR, A_DEX, A_CON, IS_DOOR, D_CLOSED, D_BROKEN, D_NODOOR,
          D_ISOPEN, D_TRAPPED, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, M_AP_FURNITURE,
          TT_PIT, CONFUSION, STUNNED, PROT_FROM_SHAPE_CHANGERS } from './const.js';
 import { SKELETON_KEY, LOCK_PICK, CREDIT_CARD } from './objects.js';
 import { M1_NOHANDS, MZ_SMALL } from './monsters.js';
+import { canspotmon, map_invisible } from './display.js';
+import { Some_Monnam } from './do_name.js';
+import { s_suffix } from './hacklib.js';
+import { cansee, block_point, vision_recalc } from './vision.js';
+import { t_at } from './trap.js';
+import { Unaware } from './eat.js';
+import { You_hear } from './sounds.js';
+import { wake_nearto } from './mon.js';
+import { in_rooms } from './hack.js';
+import { stop_occupation } from './allmain.js';
+import { OBJ_AT, SDOOR, DOOR, SHOPBASE, Is_rogue_level,
+         DEAF } from './const.js';
+import { WAND_CLASS, WAN_OPENING, WAN_LOCKING, WAN_STRIKING, SPE_KNOCK,
+         SPE_FORCE_BOLT, SPE_WIZARD_LOCK } from './objects.js';
+
+/* C ref: youprop.h Deaf */
+function Deaf() {
+    const p = game.u.uprops[DEAF];
+    return !!(p.intrinsic || p.extrinsic || game.u.uroleplay?.deaf);
+}
 
 /* C ref: flag.h AUTOUNLOCK_* */
 export const AUTOUNLOCK_UNTRAP = 1;
@@ -290,7 +311,9 @@ export async function pick_lock(pick, rx, ry, container) {
             return PICKLOCK_LEARNED_SOMETHING;
         } else if (mtmp && is_door_mappear(mtmp)) {
             /* "The door actually was a <mimic>!" */
-            throw new Error('pick_lock(): stumble_onto_mimic() not ported yet');
+            await stumble_onto_mimic(mtmp);
+            /* mimic might keep the key (50% chance, 10% for PYEC or MKoT) */
+            throw new Error('pick_lock(): maybe_absorb_item() not ported yet');
         }
         if (!IS_DOOR(door.typ))
             throw new Error('pick_lock(): picking a non-door not ported yet');
@@ -397,11 +420,13 @@ export function autokey(opening) {
 }
 
 // C ref: lock.c stumble_on_door_mimic()
-function stumble_on_door_mimic(x, y) {
+async function stumble_on_door_mimic(x, y) {
     const mtmp = m_at(x, y);
 
-    if (mtmp && is_door_mappear(mtmp) && !uhave(PROT_FROM_SHAPE_CHANGERS))
-        throw new Error('stumble_on_door_mimic(): stumble_onto_mimic() not ported yet');
+    if (mtmp && is_door_mappear(mtmp) && !uhave(PROT_FROM_SHAPE_CHANGERS)) {
+        await stumble_onto_mimic(mtmp);
+        return true;
+    }
     return false;
 }
 
@@ -446,7 +471,7 @@ export async function doopen_indir(x, y) {
         return ECMD_OK;
     }
 
-    if (stumble_on_door_mimic(cc.x, cc.y))
+    if (await stumble_on_door_mimic(cc.x, cc.y))
         return ECMD_TIME;
 
     /* when choosing a direction is impaired, use a turn
@@ -530,4 +555,164 @@ export async function doopen_indir(x, y) {
     }
 
     return ECMD_TIME;
+}
+
+// C ref: lock.c obstructed()
+async function obstructed(x, y, quietly) {
+    const mtmp = m_at(x, y);
+
+    if (mtmp && (mtmp.m_ap_type || 0) !== M_AP_FURNITURE) {
+        if ((mtmp.m_ap_type || 0) !== M_AP_OBJECT) {
+            if (!quietly) {
+                let Mn = Some_Monnam(mtmp); /* Monnam, Someone or Something */
+
+                if ((mtmp.mx !== x || mtmp.my !== y) && canspotmon(mtmp))
+                    Mn = s_suffix(Mn) + " tail";
+
+                await pline(`${Mn} blocks the way!`);
+            }
+            if (!canspotmon(mtmp))
+                map_invisible(x, y);
+            return true;
+        }
+        /* M_AP_OBJECT: goto objhere */
+        if (!quietly)
+            await pline("Something's in the way.");
+        return true;
+    }
+    if (OBJ_AT(x, y)) {
+        /* objhere: */
+        if (!quietly)
+            await pline("Something's in the way.");
+        return true;
+    }
+    return false;
+}
+
+// C ref: lock.c doorlock()
+/* try to open, close, lock, or unlock a door with a wand/spell or force
+   bolt; returns TRUE if something happened */
+export async function doorlock(otmp, x, y) {
+    const door = game.level.at(x, y);
+    let res = true;
+    let loudness = 0;
+    let msg = null;
+    const dustcloud = "A cloud of dust";
+    const quickly_dissipates = "quickly dissipates";
+    const mysterywand = (otmp.oclass === WAND_CLASS && !otmp.dknown);
+
+    if (door.typ === SDOOR) {
+        switch (otmp.otyp) {
+        case WAN_OPENING:
+        case SPE_KNOCK:
+        case WAN_STRIKING:
+        case SPE_FORCE_BOLT:
+            door.typ = DOOR;
+            door.doormask = D_CLOSED | ((door.doormask || 0) & D_TRAPPED);
+            newsym(x, y);
+            if (cansee(x, y))
+                await pline("A door appears in the wall!");
+            if (otmp.otyp === WAN_OPENING || otmp.otyp === SPE_KNOCK)
+                return true;
+            break; /* striking: continue door handling below */
+        case WAN_LOCKING:
+        case SPE_WIZARD_LOCK:
+        default:
+            return false;
+        }
+    }
+
+    switch (otmp.otyp) {
+    case WAN_LOCKING:
+    case SPE_WIZARD_LOCK:
+        if (Is_rogue_level(game.u.uz))
+            throw new Error('doorlock(): Rogue level doorway not ported yet');
+        if (await obstructed(x, y, mysterywand))
+            return false;
+        /* Don't allow doors to close over traps.  This is for pits */
+        /* & trap doors, but is it ever OK for anything else? */
+        if (t_at(x, y)) {
+            /* maketrap() clears doormask, so it should be NODOOR */
+            await pline(`${dustcloud} springs up in the doorway, but ${
+                quickly_dissipates}.`);
+            return false;
+        }
+
+        switch ((door.doormask || 0) & ~D_TRAPPED) {
+        case D_CLOSED:
+            msg = "The door locks!";
+            break;
+        case D_ISOPEN:
+            msg = "The door swings shut, and locks!";
+            break;
+        case D_BROKEN:
+            msg = "The broken door reassembles and locks!";
+            break;
+        case D_NODOOR:
+            msg =
+               "A cloud of dust springs up and assembles itself into a door!";
+            break;
+        default:
+            res = false;
+            break;
+        }
+        block_point(x, y);
+        door.doormask = D_LOCKED | ((door.doormask || 0) & D_TRAPPED);
+        newsym(x, y);
+        break;
+    case WAN_OPENING:
+    case SPE_KNOCK:
+        if ((door.doormask || 0) & D_LOCKED) {
+            msg = "The door unlocks!";
+            door.doormask = D_CLOSED | ((door.doormask || 0) & D_TRAPPED);
+        } else
+            res = false;
+        break;
+    case WAN_STRIKING:
+    case SPE_FORCE_BOLT:
+        if ((door.doormask || 0) & (D_LOCKED | D_CLOSED)) {
+            /* sawit: closed door location is more visible than open */
+            let sawit, seeit;
+
+            if ((door.doormask || 0) & D_TRAPPED)
+                throw new Error('doorlock(): booby-trapped door (mb_trapped()) not ported yet');
+            sawit = cansee(x, y);
+            door.doormask = D_BROKEN;
+            recalc_block_point(x, y);
+            seeit = cansee(x, y);
+            newsym(x, y);
+            if (game.flags.verbose) {
+                if ((sawit || seeit) && !Unaware()) {
+                    await pline_The("door crashes open!");
+                } else if (!Deaf()) {
+                    /* Soundeffect(se_crashing_sound, 100) */
+                    await You_hear("a crashing sound.");
+                }
+            }
+            /* force vision recalc before printing more messages */
+            if (game.vision_full_recalc)
+                vision_recalc(0);
+            loudness = 20;
+        } else
+            res = false;
+        break;
+    default:
+        /* impossible("magic (%d) attempted on door.", otmp->otyp) */
+        break;
+    }
+    if (msg && cansee(x, y))
+        await pline(msg);
+    if (loudness > 0) {
+        /* door was destroyed */
+        await wake_nearto(x, y, loudness);
+        if (in_rooms(x, y, SHOPBASE).length)
+            throw new Error('doorlock(): shop door damage (add_damage()) not ported yet');
+    }
+
+    if (res && picking_at(x, y)) {
+        /* maybe unseen monster zaps door you're unlocking */
+        await stop_occupation();
+        reset_pick();
+    }
+    return res;
 }

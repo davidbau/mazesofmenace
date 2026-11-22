@@ -33,12 +33,13 @@ import { splitobj, obj_extract_self } from './mkobj.js';
 import { distant_name, doname } from './objnam.js';
 import { mpickobj } from './steal.js';
 import { You_hear } from './sounds.js';
-import { find_defensive, find_offensive, find_misc,
-         cures_stoning, mcould_eat_tin } from './muse.js';
+import { find_defensive, find_offensive, find_misc, use_defensive,
+         use_misc, cures_stoning, mcould_eat_tin } from './muse.js';
 import { mattacku } from './mhitu.js';
 import { mon_wield_item, select_rwep, autoreturn_weapon,
          m_has_launcher_and_ammo } from './weapon.js';
-import { visible_region_at, create_gas_cloud } from './region.js';
+import { visible_region_at, create_gas_cloud, m_in_out_region } from './region.js';
+import { noteleport_level, tele_restrict, rloc } from './teleport.js';
 import { wipe_engr_at } from './engrave.js';
 import { acurrstr } from './attrib.js';
 import {
@@ -63,11 +64,11 @@ import { objects, BOULDER, ROCK, SCR_SCARE_MONSTER, GOLD_PIECE, CORPSE,
          CREDIT_CARD, SKELETON_KEY, LOCK_PICK } from './objects.js';
 import {
     MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE, MMOVE_NOMOVES,
-    ALLOW_U, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK, NOTONL, MTSZ, BOLT_LIM,
+    ALLOW_U, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK, NOTONL, MTSZ, BOLT_LIM, RLOC_MSG,
     STRAT_ARRIVE, STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE,
     INVIS, STEALTH, AGGRAVATE_MONSTER, CONFLICT, W_ARTI, M_AP_FURNITURE,
     M_AP_OBJECT, NON_PM, IS_DOOR, IS_ALTAR, IRONBARS, isok, SHOPBASE,
-    DISPLACED, HALLUC, SEE_INVIS, D_LOCKED, D_CLOSED, D_TRAPPED, M_AP_MONSTER,
+    DISPLACED, HALLUC, SEE_INVIS, D_LOCKED, D_CLOSED, D_TRAPPED, M_AP_MONSTER, M_AP_NOTHING,
     COLNO, ROWNO, IS_OBSTRUCTED, MFAST, I_SPECIAL,
     NO_TRAP_FLAGS, D_ISOPEN, D_NODOOR, D_BROKEN, DEAF, W_ARMG, STONE_RES,
     MON_OFFMAP, MON_DETACH, MON_MIGRATING, MON_LIMBO,
@@ -357,11 +358,15 @@ export function mon_regen(mon, digest_meal) {
     }
 }
 
-// C ref: dog.c finish_meating()
+// C ref: dogmove.c finish_meating()
 function finish_meating(mtmp) {
     mtmp.meating = 0;
-    if (mtmp.m_ap_type && mtmp.mappearance && mtmp.cham === NON_PM)
-        throw new Error('finish_meating(): seemimic() not ported yet');
+    if ((mtmp.m_ap_type || 0) !== M_AP_NOTHING && mtmp.data.mlet !== M.S_MIMIC) {
+        /* was eating a mimic and now appearance needs resetting */
+        mtmp.m_ap_type = M_AP_NOTHING;
+        mtmp.mappearance = 0;
+        newsym(mtmp.mx, mtmp.my);
+    }
 }
 
 // ── C ref: monmove.c disturb() ──
@@ -427,8 +432,10 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
             }
         }
 
-        if (mtmp.data === mons[M.PM_VROCK] && !mtmp.mspec_used)
-            throw new Error('monflee(): vrock create_gas_cloud() not ported yet');
+        if (mtmp.data === mons[M.PM_VROCK] && !mtmp.mspec_used) {
+            mtmp.mspec_used = 75 + rn2(25);
+            await create_gas_cloud(mtmp.mx, mtmp.my, 5, 8);
+        }
 
         mtmp.mflee = 1;
     }
@@ -728,10 +735,12 @@ export async function dochug(mtmp) {
     await distfleeck(mtmp, d);
 
     /* search for and potentially use defensive or miscellaneous items. */
-    if (find_defensive(mtmp, false)) {
-        throw new Error('use_defensive() not ported yet');
-    } else if (find_misc(mtmp)) {
-        throw new Error('use_misc() not ported yet');
+    if (await find_defensive(mtmp, false)) {
+        if (await use_defensive(mtmp) !== 0)
+            return 1;
+    } else if (await find_misc(mtmp)) {
+        if (await use_misc(mtmp) !== 0)
+            return 1;
     }
 
     /* Demonic Blackmail! */
@@ -797,7 +806,8 @@ export async function dochug(mtmp) {
 
         if (!status)
             status = await m_move(mtmp, 0);
-        /* if (mon_offmap(mtmp)) return 1: migration isn't ported yet */
+        if (mon_offmap(mtmp))
+            return 1;
         if (status !== MMOVE_DIED)
             await distfleeck(mtmp, d); /* recalc */
 
@@ -976,6 +986,37 @@ export function linedup(ax, ay, bx, by, boulderhandling) {
     }
     return false;
 }
+// C ref: mthrowu.c linedup_callback()
+/* Return TRUE if fnc returns TRUE for any location between <ax,ay> and
+   <bx,by> (excluding <bx,by> itself, including <ax,ay>) */
+export function linedup_callback(ax, ay, bx, by, fnc) {
+    let dx, dy;
+
+    /* These two values are set for use after successful return. */
+    game.tbx = ax - bx;
+    game.tby = ay - by;
+
+    /* sometimes displacement makes a monster think that you're at its
+       own location; prevent it from throwing and zapping in that case */
+    if (!game.tbx && !game.tby)
+        return false;
+
+    /* straight line, orthogonal to the map or diagonal */
+    if ((!game.tbx || !game.tby || Math.abs(game.tbx) === Math.abs(game.tby))
+        && distmin(game.tbx, game.tby, 0, 0) < BOLT_LIM) {
+        dx = Math.sign(ax - bx), dy = Math.sign(ay - by);
+        do {
+            /* <bx,by> is guaranteed to eventually converge with <ax,ay> */
+            bx += dx, by += dy;
+            if (blocking_terrain(bx, by))
+                return false;
+            if (fnc(bx, by))
+                return true;
+        } while (bx !== ax || by !== ay);
+    }
+    return false;
+}
+
 // C ref: mthrowu.c blocking_terrain()
 function blocking_terrain(x, y) {
     if (!isok(x, y) || IS_OBSTRUCTED(game.level.at(x, y).typ)
@@ -1057,7 +1098,7 @@ const magical = [AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS,
                  RING_CLASS, SPBOOK_CLASS];
 
 // ── C ref: monmove.c mon_would_take_item() ──
-function mon_would_take_item(mtmp, otmp) {
+export function mon_would_take_item(mtmp, otmp) {
     /* pctload = (curr_mon_load(mtmp) * 100) / max_mon_load(mtmp) */
     const pctload = () => Math.trunc((curr_mon_load(mtmp) * 100)
                                      / max_mon_load(mtmp));
@@ -1591,8 +1632,8 @@ export async function m_move(mtmp, after) {
 
         const cnt = mfndpos(mtmp, mfp, flag);
         if (cnt === 0 && !is_unicorn(mtmp.data)) {
-            if (find_defensive(mtmp, true))
-                throw new Error('m_move(): use_defensive() not ported yet');
+            if (await find_defensive(mtmp, true) && await use_defensive(mtmp))
+                return MMOVE_DONE;
             return MMOVE_NOMOVES;
         }
         chcnt = 0;
@@ -1603,8 +1644,12 @@ export async function m_move(mtmp, after) {
         if (!mtmp.mpeaceful && game.level.flags?.shortsighted
             && nidist > (couldsee(nix, niy) ? 144 : 36) && appr === 1)
             appr = 0;
-        if (is_unicorn(ptr))
-            throw new Error('m_move(): unicorns not ported yet');
+        if (is_unicorn(ptr) && noteleport_level(mtmp)) {
+            /* on noteleport levels, perhaps we cannot avoid hero */
+            for (let i = 0; i < cnt; i++)
+                if (!(mfp.info[i] & NOTONL))
+                    avoid = true;
+        }
         better_with_displacing = should_displace(mtmp, mfp, ggx, ggy);
         for (let i = 0; i < cnt; i++) {
             if (avoid && (mfp.info[i] & NOTONL))
@@ -1680,14 +1725,13 @@ export async function m_move(mtmp, after) {
         if ((mfp.info[chi] & ALLOW_MDISP) !== 0)
             throw new Error('m_move(): mdisplacem() not ported yet');
 
-        /* if (!m_in_out_region(mtmp, nix, niy)) return MMOVE_DONE:
-           m_in_out_region() is not ported yet; gas clouds, the only
-           regions so far, have no can_enter/can_leave callbacks */
+        if (!(await m_in_out_region(mtmp, nix, niy)))
+            return MMOVE_DONE;
 
         if ((mfp.info[chi] & ALLOW_ROCK) && m_can_break_boulder(mtmp))
             throw new Error('m_move(): m_break_boulder() not ported yet');
 
-        m_postmove_effect(mtmp);
+        await m_postmove_effect(mtmp);
 
         /* move a normal monster */
         /* remove_monster(omx, omy): game.level.monsters is a list keyed
@@ -1699,7 +1743,15 @@ export async function m_move(mtmp, after) {
 
         mon_track_add(mtmp, omx, omy);
     } else {
-        /* (is_unicorn handled above); long worms aren't ported yet */
+        if (is_unicorn(ptr) && rn2(2) && !(await tele_restrict(mtmp))) {
+            await rloc(mtmp, RLOC_MSG);
+            return MMOVE_MOVED;
+        }
+        /* for a long worm, shrink it (by discarding end of tail) when
+           it has failed to move: worm_nomove(): long worms aren't
+           ported yet */
+        if (mtmp.wormno)
+            throw new Error('m_move(): worm_nomove() not ported yet');
     }
     return await postmov(mtmp, ptr, omx, omy, mmoved,
                    seenflgs, can_tunnel, can_unlock, can_open);
@@ -1714,13 +1766,25 @@ function m_can_break_boulder(mtmp) {
 }
 
 // C ref: monmove.c m_postmove_effect()
-function m_postmove_effect(mtmp) {
-    if (mtmp.data === mons[M.PM_HEZROU]
-        || (mtmp.data === mons[M.PM_STEAM_VORTEX] && !mtmp.mcan))
-        throw new Error('m_postmove_effect(): create_gas_cloud() not ported yet');
+/* do whatever effects monster has after moving.
+   called for both monsters and polyed hero.
+   for hero, called after location changes,
+   to prevent spam messages for hero getting enveloped in a cloud.
+   for monsters, called before location changes,
+   because monsters don't have "previous location" field */
+export async function m_postmove_effect(mtmp) {
+    const is_u = (mtmp === game.youmonst);
+    const x = is_u ? game.u.ux0 : mtmp.mx,
+          y = is_u ? game.u.uy0 : mtmp.my;
+
+    /* Hezrous create clouds of stench. This does not cost a move. */
+    if (mtmp.data === mons[M.PM_HEZROU]) /* stench */
+        await create_gas_cloud(x, y, 1, 8);
+    else if (mtmp.data === mons[M.PM_STEAM_VORTEX] && !mtmp.mcan)
+        await create_gas_cloud(x, y, 1, 0); /* harmless vapor */
 }
 // C ref: monmove.c m_everyturn_effect()
-export function m_everyturn_effect(mtmp) {
+export async function m_everyturn_effect(mtmp) {
     const is_u = (mtmp === game.youmonst);
     const x = is_u ? game.u.ux : mtmp.mx,
           y = is_u ? game.u.uy : mtmp.my;
@@ -1730,7 +1794,7 @@ export function m_everyturn_effect(mtmp) {
            present, or when flowing under closed doors so that visibility
            changes aren't mixed with messages about doing such */
         if (!closed_door(x, y) && !visible_region_at(x, y))
-            create_gas_cloud(x, y, 1, 0); /* harmless vapor */
+            await create_gas_cloud(x, y, 1, 0); /* harmless vapor */
     }
 }
 

@@ -17,6 +17,11 @@ export function sys_early_init() {
         genericusers: 'play player game games nethack nethacker ec2-user',
         bones_pools: 0, /* sys.c default; BONES_POOLS is commented out */
         tt_oname_maxrank: 10, /* sys.c default; TT_ONAME_MAXRANK isn't set */
+        /* sys.c defaults from config.h (sysconf sets none of these) */
+        persmax: 3,      /* max(PERSMAX, 1) */
+        entrymax: 100,   /* max(ENTRYMAX, 10) */
+        pointsmin: 1,    /* max(POINTSMIN, 1) */
+        pers_is_uid: 1,  /* PERS_IS_UID */
     };
 }
 

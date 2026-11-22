@@ -34,7 +34,8 @@ import { objects, AMULET_OF_GUARDING, WEAPON_CLASS, TOOL_CLASS, TOWEL,
          PIERCE } from './objects.js';
 import { mon_wield_item, hitval } from './weapon.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
-import { Is_rogue_level } from './const.js';
+import { Is_rogue_level, DIED } from './const.js';
+import { done_in_by } from './end.js';
 import { ART_SNICKERSNEE } from './artilist.js';
 import { genders } from './role.js';
 import { xname } from './objnam.js';
@@ -738,7 +739,7 @@ export async function mdamageu(mtmp, n) {
         if (u.uhp > u.uhpmax)
             u.uhp = u.uhpmax;
         if (u.uhp < 1)
-            throw new Error('mdamageu(): done_in_by() (hero death) not ported yet');
+            await done_in_by(mtmp, DIED);
     }
 }
 

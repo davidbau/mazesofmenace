@@ -25,17 +25,20 @@ import {
 } from './const.js';
 import { HALLUC, Is_waterlevel, isok, IS_STWALL, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT,
          M_AP_FURNITURE, WARNCOUNT, def_warnsyms, In_mines, In_sokoban,
-         Is_knox_level } from './const.js';
+         Is_knox_level, M_AP_NOTHING, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE,
+         PROT_FROM_SHAPE_CHANGERS, MCORPSENM, ACCESSIBLE } from './const.js';
+import { visible_region_at, show_region } from './region.js';
 import { In_hell } from './dungeon.js';
 import { rn2_on_display_rng } from './rng.js';
 import {
     objects, BOULDER, STATUE, CORPSE, POTION_CLASS, FIRST_REAL_GEM,
-    LAST_GLASS_GEM, FIRST_SPELL, LAST_SPELL,
+    LAST_GLASS_GEM, FIRST_SPELL, LAST_SPELL, FIRST_OBJECT,
 } from './objects.js';
-import { mons, NUMMONS, M3_INFRAVISIBLE, M1_MINDLESS, S_EEL, M1_FLY } from './monsters.js';
+import { mons, NUMMONS, M3_INFRAVISIBLE, M1_MINDLESS, S_EEL, M1_FLY,
+         PM_TENGU } from './monsters.js';
 import { def_oc_syms } from './drawing.js';
 import { observe_object } from './o_init.js';
-import { is_pool } from './makemon.js';
+import { is_pool, is_lava } from './makemon.js';
 import { t_at } from './trap.js';
 import { engr_at, sticks } from './engrave.js';
 import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_GREEN, CLR_CYAN,
@@ -86,6 +89,58 @@ function terrain_glyph(loc, x, y) {
                  color: tg.wall ? NO_COLOR : tg.color, dec: false,
                  cmap: tg.cmap };
     return { ch: tg.ch, color: tg.color, dec: tg.dec, cmap: tg.cmap };
+}
+
+// C ref: display.h cmap_to_glyph() -- for the S_* symbols set_mimic_sym()
+// gives a mimic's furniture disguise (M_AP_FURNITURE), in the
+// remembered-glyph form; 'cmapidx' is glyph_to_cmap(). Walls are the
+// branch's wall glyphs (cmap_walls_to_glyph()); S_altar is
+// altar_to_glyph(AM_NEUTRAL).
+const CMAP_NAMES = { 1: 'S_vwall', 2: 'S_hwall', 15: 'S_vcdoor', 16: 'S_hcdoor',
+    25: 'S_upstair', 26: 'S_dnstair', 33: 'S_altar', 34: 'S_grave',
+    35: 'S_throne', 36: 'S_sink', 37: 'S_fountain' };
+export function cmap_to_glyph(sym) {
+    let tg;
+    switch (sym) {
+    case 1: /* S_vwall */
+        tg = { ch: 'x', color: dec_wall_color(), dec: true, wall: true };
+        break;
+    case 2: /* S_hwall */
+        tg = { ch: 'q', color: dec_wall_color(), dec: true, wall: true };
+        break;
+    case 15: /* S_vcdoor */
+    case 16: /* S_hcdoor */
+        tg = { ch: '+', color: CLR_BROWN, dec: false };
+        break;
+    case 25: /* S_upstair */
+        tg = { ch: '<', color: CLR_GRAY, dec: false };
+        break;
+    case 26: /* S_dnstair */
+        tg = { ch: '>', color: CLR_GRAY, dec: false };
+        break;
+    case 33: /* S_altar */
+        tg = { ch: '{', color: CLR_GRAY, dec: true, asc: '_' };
+        break;
+    case 34: /* S_grave */
+        tg = { ch: '|', color: CLR_WHITE, dec: false };
+        break;
+    case 35: /* S_throne */
+        tg = { ch: '\\', color: CLR_YELLOW, dec: false };
+        break;
+    case 36: /* S_sink */
+        tg = { ch: '{', color: CLR_WHITE, dec: false };
+        break;
+    case 37: /* S_fountain */
+        tg = { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
+        break;
+    default:
+        throw new Error(`cmap_to_glyph(): cmap symbol ${sym} not ported yet`);
+    }
+    if (tg.dec && !/^decgraphics$/i.test(game.symset_name || ''))
+        tg = { ch: tg.asc ?? DEF_CMAP_FOR_DEC[tg.ch] ?? tg.ch,
+               color: tg.wall ? NO_COLOR : tg.color, dec: false };
+    return { ch: tg.ch, color: tg.color, decgfx: tg.dec, cmap: CMAP_NAMES[sym],
+             cmapidx: sym };
 }
 
 // C ref: stairs.c stairway_at()
@@ -702,8 +757,12 @@ function tty_color(color) {
 
 // ── show_glyph_cell ──
 // objpile: the glyph is one of the *_PILETOP glyphs (MG_OBJPILE)
+// gid: which glyph of its range it is, when known: { otyp, corpsenm } for
+// an object glyph (glyph_to_obj(), glyph_to_body_corpsenm()), { cmapidx }
+// for a cmap glyph (glyph_to_cmap()), { mndx } for a monster glyph
+// (glyph_to_mon())
 export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0,
-                                kind = 'cmap', objpile = false) {
+                                kind = 'cmap', objpile = false, gid = null) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
     loc.disp_ch = ch;
@@ -714,7 +773,17 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
        glyph_is_object(), glyph_is_trap(), glyph_is_invisible(), ...) */
     loc.disp_kind = kind;
     loc.disp_objpile = !!objpile;
+    loc.disp_gid = gid;
     loc.gnew = 1;
+}
+
+/* the glyph identity fields of a glyph (see show_glyph_cell()) */
+function glyph_gid(glyph) {
+    if (glyph.otyp === undefined && glyph.cmapidx === undefined
+        && glyph.mndx === undefined)
+        return null;
+    return { otyp: glyph.otyp, corpsenm: glyph.corpsenm,
+             cmapidx: glyph.cmapidx, mndx: glyph.mndx };
 }
 
 // C ref: wintty.c tty_print_glyph() -- the video attribute a map cell is
@@ -780,19 +849,26 @@ export function update_lastseentyp(x, y) {
     if ((mtmp = mon_at_loc(x, y)) !== null
         && mtmp.m_ap_type === M_AP_FURNITURE && canseemon(mtmp))
         ltyp = cmap_to_type(mtmp.mappearance);
+    lastseentyp_array()[x][y] = ltyp;
+}
+
+/* svl.lastseentyp[][], made (zeroed) on first use for the level */
+function lastseentyp_array() {
+    const L = game.level;
     if (!L.lastseentyp) {
         L.lastseentyp = [];
         for (let c = 0; c < COLNO; c++)
             L.lastseentyp.push(new Array(ROWNO).fill(0));
     }
-    L.lastseentyp[x][y] = ltyp;
+    return L.lastseentyp;
 }
 
 // C ref: display.c show_glyph() -- for a glyph in the remembered/glyph_at()
 // form
 export function show_glyph(x, y, glyph) {
     show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.decgfx, 0,
-                    glyph.kind ?? glyph_kind(glyph), glyph.piletop);
+                    glyph.kind ?? glyph_kind(glyph), glyph.piletop,
+                    glyph_gid(glyph));
 }
 
 // C ref: display.c back_to_glyph() -- in the remembered-glyph form
@@ -811,7 +887,7 @@ export function glyph_at(x, y) {
     const loc = game.level.at(x, y);
     return { ch: loc.disp_ch ?? ' ', color: loc.disp_color ?? NO_COLOR,
              decgfx: !!loc.disp_decgfx, kind: loc.disp_kind ?? 'cmap',
-             piletop: !!loc.disp_objpile };
+             piletop: !!loc.disp_objpile, ...(loc.disp_gid || {}) };
 }
 
 // C ref: defsym.h MONSYMS -- def_monsyms[].sym, indexed by mlet (S_ANT = 1)
@@ -910,8 +986,9 @@ function mon_warning(mon) {
 }
 
 // C ref: display.c show_mon_or_warn()
-// (the glyph is passed as its ch/color/kind, as show_glyph_cell() takes it)
-function show_mon_or_warn(x, y, ch, color, kind) {
+// (the glyph is passed as its ch/color/kind, plus the MG_PET attribute and
+// glyph identity, as show_glyph_cell() takes it)
+function show_mon_or_warn(x, y, ch, color, kind, attr = 0, gid = null) {
     let o;
 
     /* "remembered, unseen monster" is tracked by object layer so if we're
@@ -923,7 +1000,7 @@ function show_mon_or_warn(x, y, ch, color, kind) {
             map_object(o, false);
     }
 
-    show_glyph_cell(x, y, ch, color, false, 0, kind);
+    show_glyph_cell(x, y, ch, color, false, attr, kind, false, gid);
 }
 
 // C ref: display.c display_warning()
@@ -967,18 +1044,99 @@ export function warning_of(mon) {
     return wl;
 }
 
-// C ref: display.c display_monster() -- the plain case: the monster's own
-// glyph (mon_to_glyph()), in its mons[] color; mimic appearances,
-// ridden-steed flags and warnings are not ported yet
-function display_monster(x, y, mon) {
-    const ptr = mon.data;
-    const ch = def_monsyms[ptr.mlet] ?? '?';
-    /* a tame monster gets pet_to_glyph() (mon->mtame && !Hallucination),
-       whose glyphs have MG_PET; wintty.c tty_print_glyph() shows those
-       with iflags.wc2_petattr when hilite_pet is on */
-    const attr = (mon.mtame && !Hallucination() && game.iflags?.wc_hilite_pet)
-                 ? game.iflags.wc2_petattr : 0;
-    show_glyph_cell(x, y, ch, ptr.mcolor ?? NO_COLOR, false, attr, 'mon');
+// C ref: display.h sightflags for display_monster()
+const PHYSICALLY_SEEN = 1, DETECTED = 2;
+
+// C ref: display.c display_monster()
+// The monster's own glyph is shown as before this port: mon_to_glyph(),
+// in its mons[] color, with pet_to_glyph()'s MG_PET attribute; detected
+// glyphs and worm tails show the same way (not ported separately).
+function display_monster(
+    x, y,        /* display position */
+    mon,         /* monster to display */
+    sightflags,  /* 1 if the monster is physically seen;
+                  * 2 if detected using Detect_monsters */
+    worm_tail) { /* mon is actually a worm tail */
+    const mon_mimic = (M_AP_TYPE(mon) !== M_AP_NOTHING);
+    const sensed = (mon_mimic && (uprop(PROT_FROM_SHAPE_CHANGERS)
+                                  || sensemon(mon)));
+
+    void worm_tail;
+    /*
+     * We must do the mimic check first.  If the mimic is mimicking something,
+     * and the location is in sight, we have to change the hero's memory
+     * so that when the position is out of sight, the hero remembers what
+     * the mimic was mimicking.
+     */
+    if (mon_mimic && (sightflags === PHYSICALLY_SEEN)) {
+        switch (M_AP_TYPE(mon)) {
+        default:
+            throw new Error(`display_monster: bad m_ap_type value [ = ${mon.m_ap_type} ]`);
+
+        case M_AP_FURNITURE: {
+            /*
+             * This is a poor man's version of map_background().  I can't
+             * use map_background() because we are overriding what is in
+             * the 'typ' field.  Maybe have map_background()'s parameters
+             * be (x,y,glyph) instead of just (x,y).
+             *
+             * mappearance is currently set to an S_ index value in
+             * makemon.c.
+             */
+            const sym = mon.mappearance, glyph = cmap_to_glyph(sym);
+
+            game.level.at(x, y).remembered_glyph = glyph;
+            if (!sensed) {
+                show_glyph(x, y, glyph);
+                /* override real topology with mimic's fake one */
+                lastseentyp_array()[x][y] = cmap_to_type(sym);
+            }
+            break;
+        }
+
+        case M_AP_OBJECT: {
+            /* Make a fake object to send to map_object(). */
+            const obj = {
+                /* obj = cg.zeroobj */
+                otyp: mon.mappearance, oclass: 0, dknown: 0, quan: 0,
+                where: 'OBJ_FREE',
+                ox: x, oy: y,
+                /* might be mimicking a corpse or statue */
+                corpsenm: (MCORPSENM(mon) !== -1 /* has_mcorpsenm(mon) */)
+                          ? MCORPSENM(mon) : PM_TENGU,
+            };
+            map_object(obj, !sensed);
+            break;
+        }
+
+        case M_AP_MONSTER: {
+            /* what_mon((int) mon->mappearance, rn2_on_display_rng) */
+            const mndx = Hallucination() ? rn2_on_display_rng(NUMMONS)
+                                         : mon.mappearance;
+            const ptr = mons[mndx];
+
+            /* show_glyph(x, y, monnum_to_glyph(mndx, mgendercode)) */
+            show_glyph_cell(x, y, def_monsyms[ptr.mlet] ?? '?',
+                            ptr.mcolor ?? NO_COLOR, false, 0, 'mon', false,
+                            { mndx });
+            break;
+        } /* case M_AP_MONSTER */
+        } /* switch M_AP_TYPE() */
+    }
+
+    /* If mimic is unsuccessfully mimicking something, display the monster. */
+    if (!mon_mimic || sensed) {
+        const ptr = mon.data;
+        const ch = def_monsyms[ptr.mlet] ?? '?';
+        /* a tame monster gets pet_to_glyph() (mon->mtame && !Hallucination),
+           whose glyphs have MG_PET; wintty.c tty_print_glyph() shows those
+           with iflags.wc2_petattr when hilite_pet is on */
+        const attr = (mon.mtame && !Hallucination() && game.iflags?.wc_hilite_pet)
+                     ? game.iflags.wc2_petattr : 0;
+        show_mon_or_warn(x, y, ch, ptr.mcolor ?? NO_COLOR, 'mon', attr,
+                         { mndx: ptr.pmidx });
+        mon.meverseen = 1;
+    }
 }
 
 // C ref: you.h Hallucination
@@ -1029,24 +1187,30 @@ function obj_is_generic(obj) {
 // SYM_BOULDER, which defaults to the rock class symbol. Pile-top glyphs
 // (the *_PILETOP_OFF ranges) are marked 'piletop': they map like the plain
 // ones but with MG_OBJPILE, which tty shows only with hilite_pile.
+// 'otyp' is glyph_to_obj() (the generic glyphs' objects[] index is the
+// class), 'corpsenm' glyph_to_statue_corpsenm()/glyph_to_body_corpsenm().
 export function obj_to_glyph(obj, rng) {
     if (obj.otyp === STATUE) {
         if (Hallucination()) rng(2);
         return { ch: def_monsyms[mons[obj.corpsenm].mlet] ?? '?',
                  color: objects[STATUE].oc_color, decgfx: false, obj: true,
-                 piletop: obj_is_piletop(obj) };
+                 piletop: obj_is_piletop(obj), otyp: STATUE,
+                 corpsenm: obj.corpsenm };
     }
     if (Hallucination()) rng(2);
     if (obj.otyp === CORPSE)
         return { ch: def_oc_syms[objects[CORPSE].oc_class],
                  color: mons[obj.corpsenm].mcolor ?? NO_COLOR, decgfx: false, obj: true,
-                 piletop: obj_is_piletop(obj) };
+                 piletop: obj_is_piletop(obj), otyp: CORPSE,
+                 corpsenm: obj.corpsenm };
     const generic = obj_is_generic(obj);
     const offset = generic ? obj.oclass : obj.otyp;
-    /* 'generic' marks glyph_is_generic_object() */
+    /* 'generic' marks glyph_is_generic_object(): objects[] 1 ..
+       FIRST_OBJECT - 2 (offset 0 is the strange object's own glyph) */
     return { ch: def_oc_syms[objects[offset].oc_class],
-             color: objects[offset].oc_color, decgfx: false, generic, obj: true,
-             piletop: obj_is_piletop(obj) };
+             color: objects[offset].oc_color, decgfx: false,
+             generic: generic && offset > 0 && offset < FIRST_OBJECT - 1,
+             obj: true, piletop: obj_is_piletop(obj), otyp: offset };
 }
 
 // C ref: display.h obj_is_piletop() -- the object is on the floor and its
@@ -1079,7 +1243,8 @@ export function map_object(obj, show) {
 
     /* if this object is already displayed as a generic object, it might
        become a specific one now */
-    if (obj_is_generic(obj) && cansee(x, y) && !Hallucination()) {
+    if (glyph.generic /* glyph_is_generic_object(glyph) */
+        && cansee(x, y) && !Hallucination()) {
         const u = game.u;
         const r = (u.xray_range > 2) ? u.xray_range : 2,
             /* neardist produces a small square with rounded corners */
@@ -1099,7 +1264,7 @@ export function map_object(obj, show) {
     }
     if (show)
         show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.decgfx, 0, 'obj',
-                        glyph.piletop);
+                        glyph.piletop, glyph_gid(glyph));
 }
 
 // C ref: display.c see_nearby_objects()
@@ -1317,8 +1482,47 @@ function _map_location(x, y, show) {
     }
 
     update_lastseentyp(x, y);
-    /* if (show && !Blind && visible_region_at(x, y)) show_region():
-       gas regions aren't shown yet */
+    let ml_reg;
+    if (show && !Blind() && (ml_reg = visible_region_at(x, y)) != null)
+        show_region(ml_reg, x, y);
+}
+
+// C ref: display.c mon_overrides_region()
+/* used by newsym() to decide whether to show a monster or a visible gas
+   cloud region when both are at the same spot; caller deals with region */
+function mon_overrides_region(
+    mon, /* might be Null */
+    mx, my) /* won't match mon->mx,my if long worm's tail */
+{
+    const u = game.u;
+    let r;
+
+    /* this is redundant because newsym() doesn't call us when swallowed */
+    if (u.uswallow && (!mon || mon !== u.ustuck))
+        return false;
+
+    if (mon) {
+        /* when not a worm tail, show mon if sensed rather than seen */
+        if (mx === mon.mx && my === mon.my
+            && (sensemon(mon) || mon_warning(mon)))
+            return true;
+
+        /* even if worm tail;
+           check whether the spot is adjacent and 'mon' would be visible
+           there if the gas cloud wasn't interfering with normal vision;
+           _mon_visible() handles mon->mundetected; don't need to check
+           infravision when monster is adjacent */
+        r = ((u.xray_range || 0) > 1) ? u.xray_range : 1;
+        if (!Blind() && mon_visible(mon)
+            && mon.m_ap_type !== M_AP_FURNITURE
+            && mon.m_ap_type !== M_AP_OBJECT
+            && ((mx - u.ux) ** 2 + (my - u.uy) ** 2) <= r * (r + 1))
+            return true;
+    }
+
+    /* if not overriding region for current mon, propagate "remembered,
+       unseen monster" */
+    return glyph_is_invisible(game.level.at(mx, my).remembered_glyph) ? true : false;
 }
 
 // C ref: display.c newsym_force() -- newsym() plus marking the spot as
@@ -1420,10 +1624,28 @@ export function newsym(x, y) {
        out of sight), and an engraving there is revealed, even when
        covered by objects or a monster */
     if (cansee(x, y)) {
+        const reg = visible_region_at(x, y);
         loc.waslit = (loc.lit ? 1 : 0); /* remember lit condition */
+        const rmon = mon_at_loc(x, y);
         const ep = engr_at(x, y);
         if (ep)
             ep.erevealed = 1;
+        /*
+         * Normal region shown only on accessible positions, but
+         * poison clouds and steam clouds also shown above lava,
+         * pools and moats.
+         * However, sensed monsters (via detection or telepathy or
+         * warning) take precedence over all regions.
+         * Adjacent monsters also take precedence if they would be
+         * seen when there's no gas region.
+         */
+        if (reg && (ACCESSIBLE(loc.typ)
+                    || (reg.visible && (is_pool(x, y) || is_lava(x, y))))) {
+            if (!mon_overrides_region(rmon, x, y)) {
+                show_region(reg, x, y);
+                return;
+            }
+        }
     }
 
     if (game.u?.ux === x && game.u?.uy === y) {
@@ -1444,7 +1666,7 @@ export function newsym(x, y) {
         return;
     }
 
-    let mon;
+    let mon, see_it_nv = false;
     /* Can physically see the location. */
     if (cansee(x, y)) {
         mon = mon_at_loc(x, y);
@@ -1452,11 +1674,7 @@ export function newsym(x, y) {
         const see_it = !!mon && (mon_visible(mon)
                                  || (!worm_tail && (tp_sensemon(mon)
                                                     || MATCH_WARN_OF_MON(mon))));
-        /* mimics' disguises (display_monster()'s M_AP_FURNITURE/OBJECT/
-           MONSTER cases) aren't ported yet: the location under them is
-           shown instead */
-        if (mon && (see_it || (!worm_tail && uprop(DETECT_MONSTERS)))
-            && !mon.m_ap_type) {
+        if (mon && (see_it || (!worm_tail && uprop(DETECT_MONSTERS)))) {
             if (mon.mtrapped) {
                 const trap = t_at(x, y);
                 const tt = trap ? trap.ttyp : NO_TRAP;
@@ -1468,7 +1686,8 @@ export function newsym(x, y) {
             }
             _map_location(x, y, false); /* map under the monster */
             /* also gets rid of any invisibility glyph */
-            display_monster(x, y, mon);
+            display_monster(x, y, mon, see_it ? PHYSICALLY_SEEN : DETECTED,
+                            worm_tail);
         } else if (mon && mon_warning(mon) && !worm_tail) {
             display_warning(mon);
         } else if (glyph_is_invisible(loc.remembered_glyph)) {
@@ -1479,15 +1698,14 @@ export function newsym(x, y) {
 
     /* Can't see the location. */
     } else if ((mon = mon_at_loc(x, y)) !== null
-               && (tp_sensemon(mon) || MATCH_WARN_OF_MON(mon)
-                   || (see_with_infrared(mon) && mon_visible(mon))
+               && ((see_it_nv = (tp_sensemon(mon) || MATCH_WARN_OF_MON(mon)
+                                 || (see_with_infrared(mon)
+                                     && mon_visible(mon))))
                    || (uprop(DETECT_MONSTERS) && !is_worm_tail(mon, x, y)))) {
         /* Seen or sensed monsters are printed every time.
-           This also gets rid of any invisibility glyph.
-           (display_monster() shows a disguised mimic only when it is
-           physically seen or sensed through its disguise) */
-        if (!mon.m_ap_type)
-            display_monster(x, y, mon);
+           This also gets rid of any invisibility glyph. */
+        display_monster(x, y, mon, see_it_nv ? 0 : DETECTED,
+                        is_worm_tail(mon, x, y));
     } else if (mon && mon_warning(mon) && !is_worm_tail(mon, x, y)) {
         display_warning(mon);
     } else if (loc.remembered_glyph) {
@@ -1502,7 +1720,8 @@ export function newsym(x, y) {
         // Out of sight but remembered — show remembered glyph
         show_glyph_cell(x, y, loc.remembered_glyph.ch,
             loc.remembered_glyph.color, loc.remembered_glyph.decgfx, 0,
-            glyph_kind(loc.remembered_glyph), loc.remembered_glyph.piletop);
+            glyph_kind(loc.remembered_glyph), loc.remembered_glyph.piletop,
+            glyph_gid(loc.remembered_glyph));
     } else {
         /* show_mem: never seen, the unexplored glyph (blank) */
         show_glyph_cell(x, y, ' ', NO_COLOR, false);
@@ -1570,7 +1789,7 @@ export async function docrt_flags(refresh_flags) {
                 const gl = lev.remembered_glyph;
                 if (gl)
                     show_glyph_cell(x, y, gl.ch, gl.color, gl.decgfx, 0, glyph_kind(gl),
-                                    gl.piletop);
+                                    gl.piletop, glyph_gid(gl));
                 else
                     show_glyph_cell(x, y, ' ', NO_COLOR, false);
             }
@@ -1774,7 +1993,10 @@ function _statusLine2() {
     /* BL_LEVELDESC: describe_level(buf, 1), with wintty.c's
        tty_status_update() suppressing its trailing blanks */
     const leveldesc = describe_level(1)[1].replace(/ +$/, '');
-    const line = `${leveldesc} $:${Math.min(money_cnt(game.invent), 999999)} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${expr}${tmmv}${hunger}${capstr}${status_conditions()}`;
+    /* botl.c bot_via_windowport(): BL_HP is u.uhp, but not below 0
+       (gameover sets u.uhp to -1) */
+    const hpval = Math.max(u.uhp || 0, 0);
+    const line = `${leveldesc} $:${Math.min(money_cnt(game.invent), 999999)} HP:${hpval}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${expr}${tmmv}${hunger}${capstr}${status_conditions()}`;
     /* make_things_fit(): shrinking or truncating an overlong line */
     if (line.length > 79)
         throw new Error('_statusLine2(): make_things_fit() shrinking not ported yet');
@@ -2034,6 +2256,9 @@ export async function pline(msg) {
     if (game.u?.ux)
         await flush_screen(1); /* %% */
     await tty_putstr(game.WIN_MESSAGE, 0, msg);
+    /* this gets cleared after every pline message */
+    if (game.iflags)
+        game.iflags.last_msg = 0; /* PLNMSG_UNKNOWN */
 }
 
 // C ref: pline.c Norep() -- pline() with PLINE_NOREPEAT: msgtype_type()

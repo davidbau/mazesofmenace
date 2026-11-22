@@ -76,7 +76,11 @@ import { body_part } from './insight.js';
 import { monflee } from './monmove.js';
 import { outrumor } from './rumors.js';
 import { make_confused, make_stunned, make_vomiting, make_blinded, make_deaf,
-         incr_itimeout } from './potion.js';
+         incr_itimeout, make_slimed, make_hallucinated, make_glib, make_sick,
+         make_stoned, delayed_killer } from './potion.js';
+import { CXN_NORMAL } from './objnam.js';
+import { fingers_or_gloves } from './do_wear.js';
+import { SICK_VOMITABLE, SICK_ALL } from './const.js';
 import { paranoid_query } from './cmd.js';
 import { tty_yn_function } from './wintty.js';
 import { safe_qbuf } from './pickup.js';
@@ -1062,7 +1066,8 @@ async function cprefx(pm) {
     case M.PM_GREEN_SLIME:
         if (!Slimed() && !Unchanging() && !slimeproof(game.youmonst.data)) {
             await You("don't feel very well.");
-            throw new Error('cprefx(): make_slimed() not ported yet');
+            await make_slimed(10, null);
+            delayed_killer(SLIMED, KILLED_BY_AN, "");
         }
         /* FALLTHRU */
     default:
@@ -1302,7 +1307,8 @@ async function cpostfx(pm) {
         if (dmgtype(ptr, M.AD_STUN) || dmgtype(ptr, M.AD_HALU)
             || pm === M.PM_VIOLET_FUNGUS) {
             await pline("Oh wow!  Great stuff!");
-            throw new Error('cpostfx(): make_hallucinated() not ported yet');
+            await make_hallucinated((uprop(HALLUC).intrinsic & TIMEOUT) + 200, false,
+                                    0);
         }
 
         /* Eating magical monsters can give you some magical energy. */
@@ -1481,8 +1487,15 @@ async function consume_tin(mesg) {
             await lesshungry(nutamt);
         }
 
-        if (tintxt_greasy[r])
-            throw new Error('consume_tin(): make_glib() for greasy tins not ported yet');
+        if (tintxt_greasy[r]) {
+            /* normal hero is !Glib, because you can't open tins when Glib,
+               but one poly'd into metallivorous form might already be Glib */
+            const alreadyglib = uprop(GLIB).intrinsic & TIMEOUT;
+
+            make_glib(alreadyglib + rn1(11, 5)); /* 5..15 */
+            await pline(`Eating ${tintxts[r]} food made your ${
+                fingers_or_gloves(true)} ${alreadyglib ? "even more" : "very"} slippery.`);
+        }
 
     } else { /* spinach... */
         throw new Error('consume_tin(): tin of spinach (gainstr()) not ported yet');
@@ -1653,9 +1666,14 @@ async function eatcorpse(otmp) {
         if (Sick_resistance()) {
             await pline("It doesn't seem at all sickening, though...");
         } else {
-            const sick_time = rn1(10, 10);
-            void sick_time;
-            throw new Error('eatcorpse(): make_sick() not ported yet');
+            let sick_time = rn1(10, 10);
+            /* make sure new ill doesn't result in improvement */
+            if (Sick() && (sick_time > Sick()))
+                sick_time = (Sick() > 1) ? Sick() - 1 : 1;
+            await make_sick(sick_time, corpse_xname(otmp, "rotted", CXN_NORMAL),
+                            true, SICK_VOMITABLE);
+
+            await pline("(It must have died too long ago to be safe to eat.)");
         }
         if (carried(otmp))
             useup(otmp);
@@ -1982,15 +2000,19 @@ async function fpostfx(otmp) {
             if (!Stone_resistance()
                 && !(poly_when_stoned(game.youmonst.data)
                      && (() => { throw new Error('fpostfx(): polymon(PM_STONE_GOLEM) not ported yet'); })())) {
-                if (!Stoned())
-                    throw new Error('fpostfx(): make_stoned() not ported yet');
+                if (!Stoned()) {
+                    if (!game.killer)
+                        game.killer = { format: 0, name: '', next: null };
+                    game.killer.name = `${mons[otmp.corpsenm].pmnames[NEUTRAL]} egg`;
+                    await make_stoned(5, null, KILLED_BY_AN, game.killer.name);
+                }
             }
             /* note: no "tastes like chicken" message for eggs */
         }
         break;
     case EUCALYPTUS_LEAF:
         if (Sick() && !otmp.cursed)
-            throw new Error('fpostfx(): make_sick() not ported yet');
+            await make_sick(0, null, true, SICK_ALL);
         if (uprop(VOMITING).intrinsic && !otmp.cursed)
             await make_vomiting(0, true);
         break;

@@ -37,6 +37,7 @@ import { getlev } from './restore.js';
 import { GameMap } from './game.js';
 import { setworn } from './worn.js';
 import { forget_temple_entry } from './priest.js';
+import { save_regions_data, clear_regions } from './region.js';
 import { ECMD_OK, WRITING, FREEING, COUNTING, FULL_MOON, VISITED, LFILE_EXISTS,
          REST_GSTATE, W_BALL, W_CHAIN, Has_contents } from './const.js';
 
@@ -659,11 +660,12 @@ function save_engravings(nhfp) {
 
 // C ref: region.c save_regions()
 function save_regions(nhfp) {
-    const L = game.level;
     if (update_file(nhfp))
-        Sfo(nhfp, L.regions ?? null, "regions");
+        /* timestamp, then the regions (region-tmstamp, region-region_count,
+           region-*) */
+        Sfo(nhfp, save_regions_data(), "regions");
     if (release_data(nhfp))
-        L.regions = [];
+        clear_regions();
 }
 
 // C ref: save.c save_bubbles() -- Plane of Water's air bubbles and Plane

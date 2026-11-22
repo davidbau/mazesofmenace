@@ -47,11 +47,19 @@ import { quest_level_lua_files } from './questlev_lua.js';
 import { soko_lua_files } from './soko_lua.js';
 import { tower_lua_files } from './tower_lua.js';
 import { mines_lua_files } from './mines_lua.js';
+import { valley_lua_files } from './valley_lua.js';
+import { medusa_lua_files } from './medusa_lua.js';
+import { castle_lua_files } from './castle_lua.js';
 import { name_to_mon } from './mondata.js';
 import { l_register_des, get_coord, cvt_to_abscoord } from './sp_lev.js';
 import { l_selection_register } from './selvar.js';
 import { l_obj_register, nhl_get_timertype } from './nhlobj.js';
 import { level_difficulty, depth } from './dungeon.js';
+import { Invocation_lev } from './mklev.js';
+import { NUMMONS, HIGH_PM } from './monsters.js';
+import { FIRST_OBJECT, NUM_OBJECTS } from './objects.js';
+import { hellfill_lua_files } from './hellfill_lua.js';
+import { wizard_lua_files } from './wizard_lua.js';
 
 // C's impossible() (pline.c) is not ported yet.
 function impossible(msg) { console.error(`impossible: ${msg}`); }
@@ -506,18 +514,45 @@ function nhl_lua_file(fname) {
         return tower_lua_files[fname];
     if (Object.hasOwn(mines_lua_files, fname))
         return mines_lua_files[fname];
+    if (Object.hasOwn(valley_lua_files, fname))
+        return valley_lua_files[fname];
+    if (Object.hasOwn(medusa_lua_files, fname))
+        return medusa_lua_files[fname];
+    if (Object.hasOwn(castle_lua_files, fname))
+        return castle_lua_files[fname];
+    if (Object.hasOwn(hellfill_lua_files, fname))
+        return hellfill_lua_files[fname];
+    if (Object.hasOwn(wizard_lua_files, fname))
+        return wizard_lua_files[fname];
     return null;
 }
 
 // C ref: nhlua.c nhl_meta_u_index()
-/* the u table's __index: read a hero field. Only the non-struct keys
-   and the plain ustruct fields are ported; the rest of ustruct[] (u.ux,
-   u.uhunger, ...) stops explicitly. */
+/* the u table's __index: read a hero field. u.inventory (nhl_push_obj
+   of the hero's inventory chain) stops explicitly. */
 function nhl_meta_u_index(tkey) {
     const u = game.u;
+    /* nhl_push_anything(): ANY_UCHAR and ANY_SCHAR read one byte */
+    const uchar = (v) => (v ?? 0) & 0xff;
+    const schar = (v) => ((((v ?? 0) & 0xff) ^ 0x80) - 0x80);
     const ustruct = {
+        ux: () => uchar(u.ux),
+        uy: () => uchar(u.uy),
+        dx: () => schar(u.dx),
+        dy: () => schar(u.dy),
+        dz: () => schar(u.dz),
+        tx: () => uchar(u.tx),
+        ty: () => uchar(u.ty),
         ulevel: () => u.ulevel,
         ulevelmax: () => u.ulevelmax,
+        uhunger: () => u.uhunger,
+        nv_range: () => u.nv_range,
+        xray_range: () => u.xray_range,
+        umonster: () => u.umonster,
+        umonnum: () => u.umonnum,
+        mh: () => u.mh,
+        mhmax: () => u.mhmax,
+        mtimedone: () => u.mtimedone,
         dlevel: () => u.uz.dlevel,
         dnum: () => u.uz.dnum,
         uluck: () => u.uluck,
@@ -533,17 +568,44 @@ function nhl_meta_u_index(tkey) {
         return game.urole.name.m;
     } else if (tkey === 'moves') {
         return game.moves;
+    } else if (tkey === 'uhave_amulet') {
+        return u.uhave?.amulet ? 1 : 0;
     } else if (tkey === 'depth') {
         return depth(u.uz);
+    } else if (tkey === 'invocation_level') {
+        return Invocation_lev(u.uz) ? true : false;
     }
-    if (['ux', 'uy', 'dx', 'dy', 'dz', 'tx', 'ty', 'uhunger', 'nv_range',
-         'xray_range', 'umonster', 'umonnum', 'mh', 'mhmax', 'mtimedone',
-         'inventory', 'uhave_amulet', 'invocation_level'].includes(tkey))
+    if (tkey === 'inventory')
         nhl_error(null, `u.${tkey} is not ported yet`);
 
     nhl_error(null, 'Unknown u table index');
     /*NOTREACHED*/
     return undefined;
+}
+
+// C ref: nhlua.c nhl_consts[]
+function nhl_consts() {
+    return [
+        ['COLNO', C.COLNO],
+        ['ROWNO', C.ROWNO],
+        ['NUMMONS', NUMMONS],
+        ['LOW_PM', C.LOW_PM],
+        ['HIGH_PM', HIGH_PM],
+        ['FIRST_OBJECT', FIRST_OBJECT],
+        ['LAST_OBJECT', NUM_OBJECTS - 1],
+        ['DLB', 0], /* the recorder is built without DLB (config.h) */
+    ];
+}
+
+// C ref: nhlua.c init_nhc_data()
+/* register and init the constants table */
+function init_nhc_data(L) {
+    const nhc = {};
+
+    for (const [name, value] of nhl_consts())
+        nhc[name] = value;
+
+    L.globals.nhc = nhc;
 }
 
 // C ref: nhlua.c init_u_data()
@@ -613,7 +675,9 @@ export function nhl_init(sbi) {
     /* register nh -table, and functions for it */
     L.globals.nh = { ...nhl_functions };
 
-    /* init_nhc_data(L): not ported yet */
+    init_nhc_data(L);
+
+    /* init u -table */
     init_u_data(L);
     l_selection_register(L);
     l_register_des(L);

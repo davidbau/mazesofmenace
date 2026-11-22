@@ -7,7 +7,8 @@ import { game } from './gstate.js';
 import { rn2, ROLL_FROM, rn2_on_display_rng } from './rng.js';
 import { canspotmon } from './display.js';
 import { highc, s_suffix, dist2 } from './hacklib.js';
-import { just_an } from './objnam.js';
+import { just_an, vtense, makeplural } from './objnam.js';
+import { genders } from './role.js';
 import { is_neuter } from './mondata.js';
 import { M1_HUMANOID, M1_ANIMAL, M1_MINDLESS, G_NOGEN, LOW_PM, SPECIAL_PM,
          PM_SHOPKEEPER, PM_ALIGNED_CLERIC, PM_HIGH_CLERIC } from './monsters.js';
@@ -777,4 +778,30 @@ export function mon_nam_too(mon, other_mon) {
     case 3: /* could happen when hallucinating */
         return "themselves";
     }
+}
+
+// C ref: do_name.c monverbself()
+/* construct "<monnamtext> <verb> <othertext> {him|her|it}self" which might
+   be distorted by Hallu; if that's plural, adjust monnamtext and verb */
+export function monverbself(mon, monnamtext, verb, othertext) {
+    /* "himself"/"herself"/"itself", maybe "themselves" if hallucinating */
+    const selfbuf = mon_nam_too(mon, mon);
+    /* verb starts plural; this will yield singular except for "themselves" */
+    const verbs = vtense(selfbuf, verb);
+    if (verb === verbs) { /* a match indicates that it stayed plural */
+        monnamtext = makeplural(monnamtext);
+        /* for "it", makeplural() produces "them" but we want "they" */
+        if (monnamtext.toLowerCase() === genders[3].he.toLowerCase()) {
+            const capitaliz = (monnamtext[0] === highc(monnamtext[0]));
+
+            monnamtext = genders[3].him;
+            if (capitaliz)
+                monnamtext = highc(monnamtext[0]) + monnamtext.slice(1);
+        }
+    }
+    monnamtext += " " + verbs;
+    if (othertext)
+        monnamtext += " " + othertext;
+    monnamtext += " " + selfbuf;
+    return monnamtext;
 }

@@ -956,6 +956,7 @@ export const DISCLOSE_PROMPT_DEFAULT_NO = 'n';
 export const DISCLOSE_PROMPT_DEFAULT_SPECIAL = '?';
 export const DISCLOSE_YES_WITHOUT_PROMPT = '+';
 export const DISCLOSE_NO_WITHOUT_PROMPT = '-';
+export const DISCLOSE_SPECIAL_WITHOUT_PROMPT = '#';
 export const GPCOORDS_NONE = 'n';
 export const GPCOORDS_MAP = 'm';
 export const GPCOORDS_COMPASS = 'c';
@@ -2939,3 +2940,5 @@ export function Is_rogue_level(uz) { return Lcheck_topo(uz, 'd_rogue_level'); }
 export function Is_oracle_level(uz) { return Lcheck_topo(uz, 'd_oracle_level'); }
 export function Is_knox_level(uz) { return Lcheck_topo(uz, 'd_knox_level'); }
 export function Is_juiblex_level(uz) { return Lcheck_topo(uz, 'd_juiblex_level'); }
+export function Is_medusa_level(uz) { return Lcheck_topo(uz, 'd_medusa_level'); }
+export function Is_qstart(uz) { return Lcheck_topo(uz, 'd_qstart_level'); }

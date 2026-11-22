@@ -67,6 +67,7 @@ import { the } from './iactions.js';
 import { cansee } from './vision.js';
 import { obj_resists } from './dogmove.js';
 import { map_invisible, unmap_object, glyph_is_invisible } from './display.js';
+import { in_out_region } from './region.js';
 
 /* C ref: weight.h WT_SPLASH_THRESHOLD -- weight needed to make splash in
    water */
@@ -1218,8 +1219,8 @@ export async function hurtle_step(arg, x, y) {
     if (!isok(x, y)) {
         await pline("You feel the spirits holding you back."); /* You_feel() */
         return false;
-    } else if (game.regions && game.regions.length) {
-        throw new Error('hurtle_step(): in_out_region() not ported yet');
+    } else if (!(await in_out_region(x, y))) {
+        return false;
     } else if (arg.range === 0) {
         return false; /* previous step wants to stop now */
     }

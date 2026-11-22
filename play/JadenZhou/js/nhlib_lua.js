@@ -15,13 +15,13 @@
 // each call site below wraps its math.random call in withRngCaller() with
 // its own tag.
 //
-// Ported so far: math.random, shuffle, align, d, monkfoodshop, percent. Not
-// ported yet (they need selection, des or nh.pline, and their definitions
-// roll no dice): hell_tweaks, pline, nh_set_variables_string,
+// Ported so far: math.random, shuffle, align, d, monkfoodshop, percent,
+// hell_tweaks. Not ported yet (they need nh.pline or the tutorial, and their
+// definitions roll no dice): pline, nh_set_variables_string,
 // nh_get_variables_string, table_stringify and the tutorial functions.
 
 import { withRngCaller } from './rng.js';
-import { lua_error } from './nhlua.js';
+import { lua_error, lua_bor, lua_band } from './nhlua.js';
 
 // C ref: dat/nhlib.lua (top-level chunk)
 export function nhlib_lua(L) {
@@ -94,5 +94,101 @@ export function nhlib_lua(L) {
         return withRngCaller(
             'random src=nhlib.lua:10 parent=percent(nhlib.lua:44)',
             () => G.math.random(0, 99)) < threshold;
+    };
+
+    // -- tweaks to gehennom levels; might add random lava pools or
+    // -- a lava river.
+    // -- protected_area is a selection where no changes will be done.
+    // function hell_tweaks(protected_area)
+    G.hell_tweaks = function hell_tweaks(protected_area) {
+        const u = G.u, nhc = G.nhc, selection = G.selection, des = G.des;
+        // math.random called from hell_tweaks at 'line'
+        const random = (line, ...args) => withRngCaller(
+            `random src=nhlib.lua:${args.length === 1 ? 8 : 10} `
+            + `parent=hell_tweaks(nhlib.lua:${line})`,
+            () => G.math.random(...args));
+        const liquid = 'L';
+        const ground = '.';
+        const n_prot = protected_area.numpoints();
+        const prot = protected_area.negate();
+
+        // -- random pools
+        if (G.percent(20 + u.depth)) {
+            let pools = selection.new();
+            const maxpools = 5 + random(66, u.depth);
+            for (let i = 1; i <= maxpools; i++) {
+                pools.set();
+            }
+            pools = lua_bor(pools, selection.grow(selection.set(selection.new()), 'west'));
+            pools = lua_bor(pools, selection.grow(selection.set(selection.new()), 'north'));
+            pools = lua_bor(pools, selection.grow(selection.set(selection.new()), 'random'));
+
+            pools = lua_band(pools, prot);
+
+            if (G.percent(80)) {
+                const poolground = lua_band(pools.clone().grow('all'), prot);
+                const pval = random(78, 1, 8) * 10;
+                des.terrain(poolground.percentage(pval), ground);
+            }
+            des.terrain(pools, liquid);
+        }
+
+        // -- river
+        if (G.percent(50)) {
+            let allrivers = selection.new();
+            // -- # of lava pools required (Lua '/' is float division)
+            const reqpts = ((nhc.COLNO * nhc.ROWNO) - n_prot) / 12;
+            let rpts = 0;
+            let rivertries = 0;
+
+            do {
+                const floor = selection.match(ground);
+                const a = selection.rndcoord(floor);
+                const b = selection.rndcoord(floor);
+                let lavariver = selection.randline(selection.new(), a.x, a.y, b.x, b.y, 10);
+
+                if (G.percent(50)) {
+                    lavariver = selection.grow(lavariver, 'north');
+                }
+                if (G.percent(50)) {
+                    lavariver = selection.grow(lavariver, 'west');
+                }
+                allrivers = lua_bor(allrivers, lavariver);
+                allrivers = lua_band(allrivers, prot);
+
+                rpts = allrivers.numpoints();
+                rivertries = rivertries + 1;
+            } while (!((rpts > reqpts) || (rivertries > 7)));
+
+            if (G.percent(60)) {
+                const prc = 10 * random(111, 1, 6);
+                let riverbanks = selection.grow(allrivers);
+                riverbanks = lua_band(riverbanks, prot);
+                des.terrain(selection.percentage(riverbanks, prc), ground);
+            }
+
+            des.terrain(allrivers, liquid);
+        }
+
+        // -- replacing some walls with boulders
+        if (G.percent(20)) {
+            const amount = 3 * random(122, 1, 8);
+            let bwalls = lua_bor(selection.match('.w.').percentage(amount),
+                                 selection.match('.\nw\n.').percentage(amount));
+            bwalls = lua_band(bwalls, prot);
+            bwalls.iterate(function (x, y) {
+                des.terrain(x, y, '.');
+                des.object('boulder', x, y);
+            });
+        }
+
+        // -- replacing some walls with iron bars
+        if (G.percent(20)) {
+            const amount = 3 * random(133, 1, 8);
+            let fwalls = lua_bor(selection.match('.w.').percentage(amount),
+                                 selection.match('.\nw\n.').percentage(amount));
+            fwalls = lua_band(lua_band(fwalls.grow(), selection.match('w')), prot);
+            des.terrain(fwalls, 'F');
+        }
     };
 }

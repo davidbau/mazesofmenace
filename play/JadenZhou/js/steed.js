@@ -10,6 +10,7 @@ import { pline, You, You_cant } from './display.js';
 import { m_at, can_saddle, which_armor } from './makemon.js';
 import { isok } from './hacklib.js';
 import { near_capacity, test_move, end_running } from './hack.js';
+import { losehp } from './trap.js'; /* C ref: hack.c losehp() */
 import { getdir } from './cmd.js';
 import { mon_nam, Monnam, YMonnam, x_monnam, ARTICLE_A, SUPPRESS_IT,
          SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION } from './do_name.js';
@@ -60,24 +61,6 @@ export async function stucksteed(checkfeeding) {
     return false;
 }
 
-// C ref: hack.c losehp() -- the not-polymorphed, surviving case
-async function losehp(n, knam, k_format) {
-    const u = game.u;
-    game.disp_botl = true; /* u.uhp or u.mh is changing */
-    end_running(true);
-    if (Upolyd())
-        throw new Error('losehp(): polymorphed hero not ported yet');
-
-    u.uhp -= n;
-    /* showdamage(n): the showdamage option isn't ported (default off) */
-    if (u.uhp > u.uhpmax)
-        u.uhpmax = u.uhp; /* perhaps n was negative */
-    if (u.uhp < 1)
-        throw new Error('losehp(): death (done(DIED)) not ported yet');
-    /* else if (n > 0 && u.uhp * 10 < u.uhpmax) maybe_wail(): */
-    if (n > 0 && u.uhp * 10 < u.uhpmax)
-        throw new Error('losehp(): maybe_wail() not ported yet');
-}
 
 // C ref: steed.c doride() -- the #ride command
 export async function doride() {

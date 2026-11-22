@@ -30,7 +30,7 @@ import { paranoid_query } from './cmd.js';
 import { welded, bimanual } from './wield.js';
 import { which_armor, sobj_at, is_pool, is_lava } from './makemon.js';
 import { confers_luck } from './timeout.js';
-import { level_regions, hero_inside } from './region.js';
+import { region_danger } from './region.js';
 import { xlev_to_rank } from './botl.js';
 import { tty_yn_function } from './wintty.js';
 
@@ -343,14 +343,6 @@ export function stuck_in_wall() {
         }
     }
     return (count === 8);
-}
-
-// C ref: region.c region_danger() -- only gas clouds the hero is inside
-function region_danger() {
-    for (const r of level_regions())
-        if (hero_inside(r))
-            throw new Error('region_danger(): gas cloud danger not ported yet');
-    return false;
 }
 
 // C ref: pray.c worst_cursed_item()

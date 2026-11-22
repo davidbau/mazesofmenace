@@ -1,11 +1,11 @@
 // mkmaze.js — maze levels, special level fixups and terrain setters.
 // C ref: mkmaze.c — set_levltyp, set_levltyp_lit, okay, maze0xy,
 // fixup_special, check_ransacked, maze_inbounds, maze_remove_deadends,
-// create_maze, populate_maze, makemaz, walkfrom, mazexy.
+// create_maze, pick_vibrasquare_location, populate_maze, makemaz, walkfrom,
+// mazexy.
 //
 // Not ported yet: the water/air levels (setup_waterlevel, movebubbles),
-// baalz_fixup, stolen_booty (orc-town loot), pick_vibrasquare_location,
-// mkportal, fumaroles. (mklev.js has place_lregion and put_lregion_here.)
+// baalz_fixup, stolen_booty (orc-town loot), fumaroles. (mklev.js has place_lregion and put_lregion_here.)
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
@@ -14,20 +14,27 @@ import {
     HWALL, ROOM, CORR, IS_DOOR, ACCESSIBLE, LR_BRANCH, LR_PORTAL, LR_UPSTAIR,
     LR_DOWNSTAIR, LR_TELE, LR_UPTELE, LR_DOWNTELE, NO_MM_FLAGS,
     MKTRAP_MAZEFLAG, Is_waterlevel, Is_airlevel, Is_stronghold, In_quest,
-    MAGIC_PORTAL,
+    MAGIC_PORTAL, CORPSTAT_NONE, TRUE, SPACE_POS, VIBRATING_SQUARE,
 } from './const.js';
 import { Is_special, dunlevs_in_dungeon, dunlev, Is_branchlev, on_level,
          find_level } from './dungeon.js';
 import { load_special } from './sp_lev.js';
 import {
     place_lregion, mkstairs, wallification, mktrap, Invocation_lev, place_branch,
+    somex, somey, stairway_find_dir, occupied,
 } from './mklev.js';
+import { distmin } from './hacklib.js';
 import { maketrap } from './trap.js';
-import { mkobj_at, mksobj_at, mkgold } from './mkobj.js';
-import { makemon } from './makemon.js';
-import { mons, PM_MINOTAUR, PM_CLERIC } from './monsters.js';
-import { GEM_CLASS, RANDOM_CLASS, BOULDER } from './objects.js';
+import { mkobj_at, mksobj_at, mkgold, mk_tt_object, mkcorpstat, set_corpsenm,
+         rndmonnum } from './mkobj.js';
+import { makemon, goodpos } from './makemon.js';
+import { poly_when_stoned } from './mondata.js';
+import { mons, PM_MINOTAUR, PM_CLERIC, MR_STONE } from './monsters.js';
+import { GEM_CLASS, RANDOM_CLASS, BOULDER, STATUE } from './objects.js';
 import { dmonsfree } from './mon.js';
+
+// C ref: mondata.h pm_resistance()
+function pm_resistance(ptr, typ) { return (ptr.mresists & typ) !== 0; }
 
 // C ref: mkmaze.c mz_move()
 /* move (cc.x, cc.y) one square in direction dir */
@@ -132,8 +139,41 @@ export function fixup_special() {
     }
 
     /* Still need to add some stuff to level file */
-    if (on_level(game.u.uz, game.dungeon_topology.d_medusa_level)) {
-        throw new Error('fixup_special(): Medusa level statues not ported yet');
+    if (on_level(game.u.uz, game.dungeon_topology.d_medusa_level)) { /* Is_medusa_level() */
+        let otmp;
+        let tryct;
+
+        const croom = game.level.rooms[0]; /* the first room defined on the medusa level */
+        for (tryct = rnd(4); tryct; tryct--) {
+            const x = somex(croom);
+            const y = somey(croom);
+            if (goodpos(x, y, null, 0)) {
+                let tryct2 = 0;
+
+                otmp = mk_tt_object(STATUE, x, y);
+                while (++tryct2 < 100 && otmp
+                       && (poly_when_stoned(mons[otmp.corpsenm])
+                           || pm_resistance(mons[otmp.corpsenm], MR_STONE))) {
+                    /* set_corpsenm() handles weight too */
+                    set_corpsenm(otmp, rndmonnum());
+                }
+            }
+        }
+
+        if (rn2(2))
+            otmp = mk_tt_object(STATUE, somex(croom), somey(croom));
+        else /* Medusa statues don't contain books */
+            otmp = mkcorpstat(STATUE, null, null,
+                              somex(croom), somey(croom), CORPSTAT_NONE);
+        if (otmp) {
+            tryct = 0;
+            while (++tryct < 100
+                   && (pm_resistance(mons[otmp.corpsenm], MR_STONE)
+                       || poly_when_stoned(mons[otmp.corpsenm]))) {
+                /* set_corpsenm() handles weight too */
+                set_corpsenm(otmp, rndmonnum());
+            }
+        }
     } else if (game.urole.mnum === PM_CLERIC && In_quest(game.u.uz)) {
         /* less chance for undead corpses (lured from lower morgues) */
         game.level.flags.graveyard = 1;
@@ -304,6 +344,52 @@ export function create_maze(corrwid, wallthick, rmdeadends) {
     }
 }
 
+// C ref: mkmaze.c pick_vibrasquare_location()
+export function pick_vibrasquare_location() {
+    let x, y;
+    let stway;
+    let trycnt = 0;
+    /* these are also defined in mklev.c and they may not be appropriate
+       for mazes with corridors wider than 1 or for cavernous levels */
+    const x_maze_min = 2;
+    const y_maze_min = 2;
+
+    /*
+     * Pick a position where the stairs down to Moloch's Sanctum
+     * level will ultimately be created.  At that time, an area
+     * will be altered:  walls removed, moat and traps generated,
+     * boulders destroyed.  The position picked here must ensure
+     * that that invocation area won't extend off the map.
+     *
+     * We actually allow up to 2 squares around the usual edge of
+     * the area to get truncated; see mkinvokearea(mklev.c).
+     */
+    const INVPOS_X_MARGIN = (6 - 2);
+    const INVPOS_Y_MARGIN = (5 - 2);
+    const INVPOS_DISTANCE = 11;
+    const x_range = game.x_maze_max - x_maze_min - 2 * INVPOS_X_MARGIN - 1,
+        y_range = game.y_maze_max - y_maze_min - 2 * INVPOS_Y_MARGIN - 1;
+
+    /* debugpline2("svi.inv_pos: maze is too small! ...") when the
+       ranges are too small: debug output only */
+    if (!game.inv_pos) game.inv_pos = { x: 0, y: 0 };
+    game.inv_pos.x = game.inv_pos.y = 0; /*{occupied() => invocation_pos()}*/
+    do {
+        x = rn1(x_range, x_maze_min + INVPOS_X_MARGIN + 1);
+        y = rn1(y_range, y_maze_min + INVPOS_Y_MARGIN + 1);
+        /* we don't want it to be too near the stairs, nor
+           to be on a spot that's already in use (wall|trap) */
+        if (++trycnt > 1000)
+            break;
+    } while (((stway = stairway_find_dir(TRUE)) !== null)
+             && (x === stway.sx || y === stway.sy /*(direct line)*/
+                 || Math.abs(x - stway.sx) === Math.abs(y - stway.sy)
+                 || distmin(x, y, stway.sx, stway.sy) <= INVPOS_DISTANCE
+                 || !SPACE_POS(game.level.at(x, y).typ) || occupied(x, y)));
+    game.inv_pos.x = x;
+    game.inv_pos.y = y;
+}
+
 // C ref: mkmaze.c populate_maze()
 function populate_maze() {
     let i;
@@ -394,7 +480,8 @@ export function makemaz(s) {
         mazexy(mm);
         mkstairs(mm.x, mm.y, 0, null, false); /* down */
     } else { /* choose "vibrating square" location */
-        throw new Error('makemaz(): pick_vibrasquare_location() not ported yet');
+        pick_vibrasquare_location();
+        maketrap(game.inv_pos.x, game.inv_pos.y, VIBRATING_SQUARE);
     }
 
     /* place branch stair or portal */

@@ -15,7 +15,7 @@ import { welded } from './wield.js';
 import { stairway_at } from './display.js';
 import { an, vtense } from './objnam.js';
 import { t_at, trapname } from './trap.js';
-import { visible_region_at } from './region.js';
+import { visible_region_at, reg_damg } from './region.js';
 import { is_pool, is_lava } from './makemon.js';
 import { engr_at, read_engr_at } from './engrave.js';
 import { IS_DOOR, IS_FOUNTAIN, IS_THRONE, IS_SINK, IS_ALTAR, IS_GRAVE,
@@ -1390,14 +1390,16 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
     if (u.uswallow)
         throw new Error('look_here(): looking inside an engulfer not ported yet');
     if (!skip_objects) {
+        let regbuf = '';
         const reg = visible_region_at(u.ux, u.uy);
+        if (reg)
+            regbuf = `a ${reg_damg(reg) ? "poison gas" : "vapor"} cloud`;
         let trap = t_at(u.ux, u.uy);
         if (trap && !trap.tseen)
             trap = null;
-        if (reg)
-            throw new Error('look_here(): "There is a <region> cloud here." (reg_damg) not ported yet');
         if (reg || trap)
-            await There(`is ${trap ? an(trapname(trap.ttyp, false)) : ""} here.`);
+            await There(`is ${reg ? regbuf : ""}${(reg && trap) ? " and " : ""}${
+                trap ? an(trapname(trap.ttyp, false)) : ""} here.`);
     }
 
     const here = (game.level.objects || []).filter(

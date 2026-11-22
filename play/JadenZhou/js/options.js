@@ -38,8 +38,11 @@ import {
     MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT, ECMD_OK,
     PARANOID_PRAY, PARANOID_SWIM, PARANOID_TRAP, RUN_LEAP, MOD_ENCUMBER,
     DISCLOSE_PROMPT_DEFAULT_NO, MENU_FULL, MENU_TRADITIONAL, MENU_COMBINATION,
-    STONE, Is_rogue_level,
+    STONE, Is_rogue_level, DISCLOSE_PROMPT_DEFAULT_YES,
+    DISCLOSE_PROMPT_DEFAULT_SPECIAL, DISCLOSE_YES_WITHOUT_PROMPT,
+    DISCLOSE_NO_WITHOUT_PROMPT, DISCLOSE_SPECIAL_WITHOUT_PROMPT,
 } from './const.js';
+import { lowc } from './hacklib.js';
 import { NO_COLOR, ATR_NONE, ATR_INVERSE } from './terminal.js';
 import {
     tty_create_nhwindow, tty_start_menu, tty_add_menu, add_menu_str,
@@ -336,6 +339,67 @@ function optfn_suppress_alert(result, negated, op) {
     return true;
 }
 
+// C ref: options.c optfn_disclose() (do_set) -- things to disclose at end
+// of game; flags.end_disclose[] starts out as the default (prompt, default
+// no) for each of disclosure_options[] and is updated in place
+function optfn_disclose(result, negated, op) {
+    const valid_settings = [DISCLOSE_PROMPT_DEFAULT_YES,
+                            DISCLOSE_PROMPT_DEFAULT_NO,
+                            DISCLOSE_PROMPT_DEFAULT_SPECIAL,
+                            DISCLOSE_YES_WITHOUT_PROMPT,
+                            DISCLOSE_NO_WITHOUT_PROMPT,
+                            DISCLOSE_SPECIAL_WITHOUT_PROMPT].join('');
+    let num, prefix_val;
+
+    if (!result.flags.end_disclose)
+        result.flags.end_disclose = disclosure_options.split('').map(
+            () => DISCLOSE_PROMPT_DEFAULT_NO);
+    const end_disclose = result.flags.end_disclose;
+    if (op && negated)
+        return false; /* bad_negation() */
+    /* "disclose" without a value means "all with prompting"
+       and negated means "none without prompting" */
+    if (!op || !strcmpi(op, "all") || !strcmpi(op, "none")) {
+        if (op && !strcmpi(op, "none"))
+            negated = true;
+        for (num = 0; num < disclosure_options.length; num++)
+            end_disclose[num] = negated ? DISCLOSE_NO_WITHOUT_PROMPT
+                                        : DISCLOSE_PROMPT_DEFAULT_YES;
+        return true;
+    }
+
+    prefix_val = -1;
+    for (let i = 0; i < op.length; i++) {
+        let c = lowc(op[i]);
+
+        if (c === 'k')
+            c = 'v'; /* killed -> vanquished */
+        if (c === 'd')
+            c = 'o'; /* dungeon -> overview */
+        const idx = disclosure_options.indexOf(c);
+        if (idx >= 0) {
+            if (prefix_val !== -1) {
+                if (c !== 'v' && c !== 'g') {
+                    if (prefix_val === DISCLOSE_PROMPT_DEFAULT_SPECIAL)
+                        prefix_val = DISCLOSE_PROMPT_DEFAULT_YES;
+                    if (prefix_val === DISCLOSE_SPECIAL_WITHOUT_PROMPT)
+                        prefix_val = DISCLOSE_YES_WITHOUT_PROMPT;
+                }
+                end_disclose[idx] = prefix_val;
+                prefix_val = -1;
+            } else
+                end_disclose[idx] = DISCLOSE_YES_WITHOUT_PROMPT;
+        } else if (valid_settings.includes(c)) {
+            prefix_val = c;
+        } else if (c === ' ') {
+            ; /* do nothing */
+        } else {
+            return false; /* config_error_add("Unknown %s parameter '%c'") */
+        }
+    }
+    return true;
+}
+
 // C ref: options.c optfn_msg_window() (do_set; PREV_MSGS)
 function optfn_msg_window(result, negated, op) {
     if (negated)
@@ -481,6 +545,7 @@ export function parseNethackrc(rc) {
                 else if (key === 'autounlock') optfn_autounlock(result, negated, val);
                 else if (key === 'pickup_types') optfn_pickup_types(result, negated, val);
                 else if (key === 'suppress_alert') optfn_suppress_alert(result, negated, val);
+                else if (key === 'disclose') optfn_disclose(result, negated, val);
                 else if (key === 'msg_window') optfn_msg_window(result, negated, val);
                 else if (key === 'runmode') optfn_runmode(result, negated, val);
                 else if (key === 'number_pad') optfn_number_pad(result, negated, val);

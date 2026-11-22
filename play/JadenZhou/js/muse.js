@@ -1,6 +1,7 @@
-// muse.js — monsters using items: find_defensive(), find_offensive().
-// C ref: muse.c.  The use_*() halves and paths that aren't ported yet
-// throw a 'not ported yet' error instead of skipping their rolls.
+// muse.js — monsters using items: find_defensive()/use_defensive(),
+// find_offensive()/use_offensive(), find_misc()/use_misc().
+// C ref: muse.c.  Paths that aren't ported yet throw a 'not ported yet'
+// error instead of skipping their rolls.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -22,13 +23,94 @@ import { losehp } from './trap.js';
 import { find_mac } from './worn.js';
 import { resists_magm } from './mondata.js';
 import { hit, miss, exclam, buzz, dobuzz, bhito,
-         find_drawbridge } from './zap.js';
+         find_drawbridge, resist_async } from './zap.js';
+import { TELL } from './const.js';
 import { m_throw } from './mthrowu.js';
 import { POTION_CLASS, WAND_CLASS, WAN_OPENING, WAN_LOCKING,
          WAN_CANCELLATION, SPE_CANCELLATION } from './objects.js';
 import { BOLT_LIM, G_GONE, ANTIMAGIC, HALF_SPDAM, KILLED_BY_AN,
          DRAWBRIDGE_UP, SDOOR, D_LOCKED, D_CLOSED, IS_DOOR,
          ZAP_POS } from './const.js';
+
+import { newsym, sensemon, Norep, cls, show_glyph, docrt, You_feel,
+         Blind } from './display.js';
+import { mon_nam, x_monnam, Some_Monnam, noit_mon_nam, mon_nam_too,
+         pronoun_gender, a_monnam } from './do_name.js';
+import { genders } from './role.js';
+import { vtense, makeplural, distant_name } from './objnam.js';
+import { ansimpleoname, surface, the } from './iactions.js';
+import { s_suffix, highc } from './hacklib.js';
+import { splitobj, bcsign, obj_extract_self, add_to_container, weight,
+         place_object } from './mkobj.js';
+import { extract_from_minvent, mpickobj, remove_worn_item } from './steal.js';
+import { obfree, freeinv, carrying } from './invent.js';
+import { trycall } from './potion.js';
+import { m_useup } from './mthrowu.js';
+import { healmon, mongone, monkilled, mondead, xkilled, maybe_unhide_at,
+         newcham } from './mon.js';
+import { monflee } from './monmove.js';
+import { enexto, rloc, tele_restrict, noteleport_level,
+         random_teleport_level } from './teleport.js';
+import { mintrap, maketrap, seetrap, locomotion, trapname,
+         Trap_Killed_Mon } from './trap.js';
+import { makemon, place_monster, rndmonst, is_pool, is_lava,
+         grow_up, nonliving } from './makemon.js';
+import { mon_set_minvis, mon_adjust_speed, which_armor } from './worn.js';
+import { mon_learns_traps, poly_when_stoned, Resists_Elem, is_bat,
+         mon_hates_silver, is_flyer, is_human, is_elf, is_dwarf, is_gnome,
+         is_orc, is_vampshifter } from './mondata.js';
+import { On_W_tower_level, get_level, depth, ledger_no, on_level,
+         dunlev, dunlevs_in_dungeon, In_hell } from './dungeon.js';
+import { Can_fall_thru, Can_dig_down } from './mklev.js';
+import { In_endgame, Is_botlevel, In_V_tower, In_sokoban, Is_knox_level,
+         IS_FURNITURE, IS_DRAWBRIDGE, SCORR, CORR, W_NONDIGGABLE,
+         NO_MM_FLAGS, MM_NOMSG, RLOC_MSG, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL,
+         MIGR_RANDOM, MIGR_STAIRS_UP, MIGR_STAIRS_DOWN, MIGR_LADDER_UP,
+         MIGR_LADDER_DOWN, MIGR_SSTAIRS, FORCETRAP, FORCEBUNGLE, PIT, HOLE,
+         DEAF, STONE_RES, ACID_RES, NORMAL_SPEED, W_ARM, W_ARMS, W_AMUL,
+         W_WEP, REFLECTING } from './const.js';
+import { inhishop } from './shk.js';
+import { is_ice } from './dig.js';
+import { unblock_point, recalc_block_point } from './vision.js';
+import { dog_nutrition, can_carry } from './dogmove.js';
+import { canletgo, dropy } from './do.js';
+import { welded, bimanual } from './wield.js';
+import { body_part } from './insight.js';
+import { learnwand } from './zap.js';
+import { migrate_to_level, mon_has_amulet } from './dog.js';
+import { paralyze_monst } from './mhitm.js';
+import { rndmonnam } from './do_name.js';
+import { HEAVY_IRON_BALL, SILVER, ICE_BOX, BAG_OF_HOLDING,
+         SHIELD_OF_REFLECTION, AMULET_OF_REFLECTION, SILVER_DRAGON_SCALES,
+         SILVER_DRAGON_SCALE_MAIL, AMULET_OF_LIFE_SAVING, ARMOR_CLASS,
+         GRAY_DRAGON_SCALES, YELLOW_DRAGON_SCALES,
+         GRAY_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALE_MAIL } from './objects.js';
+
+import { monverbself, PRONOUN_HALLU } from './do_name.js';
+import { same_race } from './mondata.js';
+import { ARTICLE_A, SUPPRESS_INVISIBLE, SUPPRESS_SADDLE, SUPPRESS_IT,
+         AUGMENT_IT, W_ARMF, TELEPORT_CONTROL, STRAT_WAITFORU, XKILL_NOMSG,
+         XKILL_NOCONDUCT, HAND, DOOR, DBWALL } from './const.js';
+import { AMULET_OF_YENDOR, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION,
+         SPE_BOOK_OF_THE_DEAD, IRON, POT_WATER } from './objects.js';
+import { ART_ORB_OF_DETECTION } from './artilist.js';
+import { arti_reflects } from './artifact.js';
+import { Can_rise_up, ceiling } from './dungeon.js';
+import { is_drawbridge_wall } from './dbridge.js';
+import { flooreffects } from './do.js';
+import { set_malign } from './makemon.js';
+import { G_UNIQ } from './monsters.js';
+import { linedup_callback, mon_would_take_item } from './monmove.js';
+import { xytodir } from './hack.js';
+import { accessible } from './makemon.js';
+import { resists_blnd } from './mondata.js';
+import { xdir, ydir, N_DIRS, OBJ_AT, W_ARMH, Is_rogue_level,
+         Is_earthlevel } from './const.js';
+import { MITHRIL, GLASS, ARM_HELM } from './objects.js';
+import { doorlock } from './lock.js';
+import { in_rooms } from './hack.js';
+import { D_BROKEN, SHOPBASE, TEMPLE } from './const.js';
+import { tele } from './teleport.js';
 
 const WAND_BACKFIRE_CHANCE = 100; /* hack.h */
 const QBUFSZ = 128; /* global.h */
@@ -151,6 +233,76 @@ function stairway_at(x, y) {
     return null;
 }
 
+/* C ref: youprop.h Deaf */
+function Deaf() {
+    const p = game.u.uprops[DEAF];
+    return !!(p.intrinsic || p.extrinsic || game.u.uroleplay?.deaf);
+}
+/* C ref: monst.h DEADMONSTER() */
+function DEADMONSTER(mon) { return mon.mhp < 1; }
+/* C ref: mondata.h resists_ston(), resists_acid(), acidic(), slimeproof(),
+   noncorporeal(), amorphous(), unsolid() */
+function resists_ston(mon) { return !!Resists_Elem(mon, STONE_RES); }
+function resists_acid(mon) { return !!Resists_Elem(mon, ACID_RES); }
+function acidic(ptr) { return (ptr.mflags1 & M.M1_ACID) !== 0; }
+function noncorporeal(ptr) { return ptr.mlet === M.S_GHOST; }
+function amorphous(ptr) { return (ptr.mflags1 & M.M1_AMORPHOUS) !== 0; }
+function unsolid(ptr) { return (ptr.mflags1 & M.M1_UNSOLID) !== 0; }
+function slimeproof(ptr) {
+    return ptr === mons[M.PM_GREEN_SLIME]
+           || ptr === mons[M.PM_FIRE_VORTEX] || ptr === mons[M.PM_FLAMING_SPHERE]
+           || ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER]
+           || noncorporeal(ptr);
+}
+/* C ref: mondata.h mhe() */
+function mhe(mtmp) { return genders[pronoun_gender(mtmp, PRONOUN_HALLU)].he; }
+/* C ref: hacklib.c upstart() */
+function upstart(s) { return s ? highc(s[0]) + s.slice(1) : s; }
+/* C ref: hacklib.c strsubst() -- replace the first instance of orig */
+function strsubst(bp, orig, replacement) {
+    const i = bp.indexOf(orig);
+    return (i < 0) ? bp : bp.slice(0, i) + replacement + bp.slice(i + orig.length);
+}
+/* C ref: obj.h Has_contents(), Is_mbag(), SchroedingersBox() */
+function Has_contents(o) { return !!(o.cobj && o.cobj.length); }
+function Is_mbag(o) { return o.otyp === BAG_OF_HOLDING || o.otyp === BAG_OF_TRICKS; }
+function SchroedingersBox(o) { return o.otyp === LARGE_BOX && o.spe === 1; }
+/* C ref: obj.h Is_dragon_scales(), Is_dragon_mail(), Dragon_scales_to_pm(),
+   Dragon_mail_to_pm() */
+function Is_dragon_scales(o) {
+    return o.otyp >= GRAY_DRAGON_SCALES && o.otyp <= YELLOW_DRAGON_SCALES;
+}
+function Is_dragon_mail(o) {
+    return o.otyp >= GRAY_DRAGON_SCALE_MAIL && o.otyp <= YELLOW_DRAGON_SCALE_MAIL;
+}
+function Dragon_scales_to_pm(o) {
+    return mons[M.PM_GRAY_DRAGON + o.otyp - GRAY_DRAGON_SCALES];
+}
+function Dragon_mail_to_pm(o) {
+    return mons[M.PM_GRAY_DRAGON + o.otyp - GRAY_DRAGON_SCALE_MAIL];
+}
+/* C ref: wizard.c mon_has_special() */
+function mon_has_special(mtmp) {
+    for (const otmp of minv(mtmp))
+        if (otmp.otyp === AMULET_OF_YENDOR
+            || (otmp.oartifact || 0) >= ART_ORB_OF_DETECTION /* any_quest_artifact() */
+            || otmp.otyp === BELL_OF_OPENING
+            || otmp.otyp === CANDELABRUM_OF_INVOCATION
+            || otmp.otyp === SPE_BOOK_OF_THE_DEAD)
+            return true;
+    return false;
+}
+/* C ref: trap.c wearing_iron_shoes() -- uses the monster's worn boots */
+function wearing_iron_shoes(mon) {
+    const boots = which_armor(mon, W_ARMF);
+    return !!(boots && objects[boots.otyp].oc_material === IRON);
+}
+/* C ref: you.h Teleport_control */
+function Teleport_control() {
+    const p = game.u.uprops[TELEPORT_CONTROL];
+    return !!(p.intrinsic || p.extrinsic);
+}
+
 // C ref: muse.c m_use_healing()
 function m_use_healing(mtmp) {
     let obj;
@@ -196,7 +348,7 @@ export function cures_stoning(mon, obj, tinok) {
     if (obj.otyp === POT_ACID)
         return true;
     if (obj.otyp === GLOB_OF_GREEN_SLIME)
-        throw new Error('cures_stoning(): slimeproof() not ported yet');
+        return slimeproof(mon.data);
     if (obj.otyp !== CORPSE && (obj.otyp !== TIN || !tinok))
         return false;
     /* corpse, or tin that mon can open */
@@ -206,6 +358,145 @@ export function cures_stoning(mon, obj, tinok) {
             || (mons[obj.corpsenm].mflags1 & M.M1_ACID) !== 0); /* acidic() */
 }
 
+
+// C ref: muse.c mon_reflects()
+export async function mon_reflects(mon, str) {
+    let orefl = which_armor(mon, W_ARMS);
+
+    if (orefl && orefl.otyp === SHIELD_OF_REFLECTION) {
+        if (str) {
+            await pline(str.replace("%s", s_suffix(mon_nam(mon)))
+                           .replace("%s", "shield"));
+            makeknown(SHIELD_OF_REFLECTION);
+        }
+        return true;
+    } else if (arti_reflects(mon.mw)) { /* MON_WEP(mon) */
+        /* due to wielded artifact weapon */
+        if (str)
+            await pline(str.replace("%s", s_suffix(mon_nam(mon)))
+                           .replace("%s", "weapon"));
+        return true;
+    } else if ((orefl = which_armor(mon, W_AMUL))
+               && orefl.otyp === AMULET_OF_REFLECTION) {
+        if (str) {
+            await pline(str.replace("%s", s_suffix(mon_nam(mon)))
+                           .replace("%s", "amulet"));
+            makeknown(AMULET_OF_REFLECTION);
+        }
+        return true;
+    } else if ((orefl = which_armor(mon, W_ARM))
+               && (orefl.otyp === SILVER_DRAGON_SCALES
+                   || orefl.otyp === SILVER_DRAGON_SCALE_MAIL)) {
+        if (str)
+            await pline(str.replace("%s", s_suffix(mon_nam(mon)))
+                           .replace("%s", "armor"));
+        return true;
+    } else if (mon.data === mons[M.PM_SILVER_DRAGON]
+               || mon.data === mons[M.PM_CHROMATIC_DRAGON]) {
+        /* Silver dragons only reflect when mature; babies do not */
+        if (str)
+            await pline(str.replace("%s", s_suffix(mon_nam(mon)))
+                           .replace("%s", "scales"));
+        return true;
+    }
+    return false;
+}
+
+// C ref: muse.c munstone()
+/* TRUE if the monster ate something */
+export async function munstone(mon, by_you) {
+    if (resists_ston(mon))
+        return false;
+    if (mon.meating || helpless(mon))
+        return false;
+    mon.mstrategy = (mon.mstrategy || 0) & ~STRAT_WAITFORU;
+
+    const tinok = mcould_eat_tin(mon);
+    for (const obj of minv(mon)) {
+        if (cures_stoning(mon, obj, tinok)) {
+            await mon_consume_unstone(mon, obj, by_you, true);
+            return true;
+        }
+    }
+    return false;
+}
+
+// C ref: muse.c mon_consume_unstone()
+async function mon_consume_unstone(
+    mon,
+    obj,
+    by_you,
+    stoning) /* T: stop petrification, F: cure stun && confusion */
+{
+    const vis = canseemon(mon), tinned = obj.otyp === TIN,
+        food = obj.otyp === CORPSE || tinned,
+        acid = obj.otyp === POT_ACID
+               || (food && acidic(mons[obj.corpsenm])),
+        lizard = food && obj.corpsenm === M.PM_LIZARD;
+    const nutrit = food ? dog_nutrition(mon, obj) : 0; /* also sets meating */
+
+    /* give a "<mon> is slowing down" message and also remove
+       intrinsic speed (comparable to similar effect on the hero) */
+    if (stoning)
+        await mon_adjust_speed(mon, -3, null);
+
+    if (vis) {
+        const save_quan = obj.quan;
+
+        obj.quan = 1;
+        /* pline_mon() */
+        await pline(`${Monnam(mon)} ${
+            (obj.oclass === POTION_CLASS) ? "quaffs"
+            : (obj.otyp === TIN) ? "opens and eats the contents of"
+              : "eats"} ${distant_name(obj, doname)}.`);
+        obj.quan = save_quan;
+    } else if (!Deaf())
+        await You_hear(`${(obj.oclass === POTION_CLASS) ? "drinking"
+                                                        : "chewing"}.`);
+
+    m_useup(mon, obj);
+    /* obj is now gone */
+
+    if (acid && !tinned && !resists_acid(mon)) {
+        mon.mhp -= rnd(15);
+        if (vis) /* pline_mon() */
+            await pline(`${Monnam(mon)} has a very bad case of stomach acid.`);
+        if (DEADMONSTER(mon)) {
+            await pline(`${Monnam(mon)} dies!`); /* pline_mon() */
+            if (by_you)
+                /* hero gets credit (experience) and blame (possible loss
+                   of alignment and/or luck and/or telepathy depending on
+                   mon) for the kill but does not break pacifism conduct */
+                await xkilled(mon, XKILL_NOMSG | XKILL_NOCONDUCT);
+            else
+                await mondead(mon);
+            return;
+        }
+    }
+    if (stoning && vis) {
+        if (Hallucination())
+            await pline(`What a pity - ${mon_nam(mon)} just ruined a future piece of art!`);
+        else /* pline_mon() */
+            await pline(`${Monnam(mon)} seems limber!`);
+    }
+    if (lizard && (mon.mconf || mon.mstun)) {
+        mon.mconf = 0;
+        mon.mstun = 0;
+        if (vis && !is_bat(mon.data) && mon.data !== mons[M.PM_STALKER])
+            await pline(`${Monnam(mon)} seems steadier now.`); /* pline_mon() */
+    }
+    if (mon.mtame && !mon.isminion && nutrit > 0) {
+        const edog = mon.edog || mon.mextra?.edog; /* EDOG(mon) */
+
+        if (edog.hungrytime < game.moves)
+            edog.hungrytime = game.moves;
+        edog.hungrytime += nutrit;
+        mon.mconf = 0;
+    }
+    /* use up monster's next move */
+    mon.movement -= NORMAL_SPEED;
+    mon.mlstmv = game.moves;
+}
 
 // C ref: muse.c mcould_eat_tin()
 /* can monster open a tin? */
@@ -251,8 +542,9 @@ export function find_defensive(mtmp, tryescape) {
         return false;
     if (!tryescape && dist2(x, y, mtmp.mux, mtmp.muy) > 25)
         return false;
-    if (tryescape && game.level.flags?.is_knox /* Is_knox(&u.uz) */)
-        throw new Error('find_defensive(): Fort Ludios m_next2m() not ported yet');
+    if (tryescape && Is_knox_level(u.uz)
+        && !m_next2u(mtmp) && m_next2m(mtmp))
+        return false;
     if (u.uswallow && stuck)
         return false;
 
@@ -301,11 +593,23 @@ export function find_defensive(mtmp, tryescape) {
             return true;
     }
 
-    /* use a wand of undead turning against a cockatrice-corpse wielder */
+    /* monsters aren't given wands of undead turning but if they
+       happen to have picked one up, use it against corpse wielder;
+       when applicable, use it now even if 'mtmp' isn't wounded */
     if (!mtmp.mpeaceful && !nohands(mtmp.data)
         && game.uwep && game.uwep.otyp === CORPSE
-        && touch_petrifies(mons[game.uwep.corpsenm]))
-        throw new Error('find_defensive(): undead turning vs corpse wielder not ported yet');
+        && touch_petrifies(mons[game.uwep.corpsenm])
+        && !poly_when_stoned(mtmp.data) && !resists_ston(mtmp)
+        && lined_up(mtmp)) { /* only lines up if distu range is within 5*5 */
+        /* could use m_carrying(), then nxtobj() when matching wand
+           is empty, but direct traversal is actually simpler here */
+        for (const o of minv(mtmp))
+            if (o.otyp === WAN_UNDEAD_TURNING && o.spe > 0) {
+                game.m_defensive = o;
+                game.m_has_defense = MUSE_WAN_UNDEAD_TURNING;
+                return true;
+            }
+    }
 
     if (!tryescape) {
         /* do we try to heal? */
@@ -379,9 +683,13 @@ export function find_defensive(mtmp, tryescape) {
             /* use trap if it's the correct type */
             if (is_hole(t.ttyp)
                 && !is_floater(mtmp.data)
-                && !mtmp.isshk && !mtmp.isgd && !mtmp.ispriest)
-                throw new Error('find_defensive(): trap door escape (Can_fall_thru()) not ported yet');
-            else if (t.ttyp === TELEP_TRAP) {
+                && !mtmp.isshk && !mtmp.isgd && !mtmp.ispriest
+                && Can_fall_thru(u.uz)) {
+                game.trapx = xx;
+                game.trapy = yy;
+                game.m_has_defense = MUSE_TRAPDOOR;
+                break; /* no need to look at any other spots */
+            } else if (t.ttyp === TELEP_TRAP) {
                 game.trapx = xx;
                 game.trapy = yy;
                 game.m_has_defense = MUSE_TELEPORT_TRAP;
@@ -420,16 +728,47 @@ export function find_defensive(mtmp, tryescape) {
             break;
         if (o.otyp === WAN_DIGGING && o.spe > 0 && !stuck && !t
             && !mtmp.isshk && !mtmp.isgd && !mtmp.ispriest
-            && !is_floater(mtmp.data))
-            throw new Error('find_defensive(): wand of digging checks not ported yet');
+            && !is_floater(mtmp.data)
+            /* monsters digging in Sokoban can ruin things */
+            && !game.level.flags.sokoban_rules /* Sokoban */
+            /* digging wouldn't be effective; assume they know that */
+            && !((game.level.at(x, y).wall_info || 0) & W_NONDIGGABLE)
+            && !(Is_botlevel(u.uz) || In_endgame(u.uz))
+            && !(is_ice(x, y) || is_pool(x, y) || is_lava(x, y))
+            && !(mtmp.data === mons[M.PM_VLAD_THE_IMPALER] /* is_Vlad() */
+                 && In_V_tower(u.uz))) {
+            game.m_defensive = o;
+            game.m_has_defense = MUSE_WAN_DIGGING;
+        }
         if (game.m_has_defense === MUSE_WAN_TELEPORTATION_SELF) continue;
         if (game.m_has_defense === MUSE_WAN_TELEPORTATION) continue;
-        if (o.otyp === WAN_TELEPORTATION && o.spe > 0)
-            throw new Error('find_defensive(): wand of teleportation (noteleport_level()) not ported yet');
+        if (o.otyp === WAN_TELEPORTATION && o.spe > 0) {
+            /* use the TELEP_TRAP bit to determine if they know
+             * about noteleport on this level or not.  Avoids
+             * ineffective re-use of teleportation.  This does
+             * mean if the monster leaves the level, they'll know
+             * about teleport traps.
+             */
+            if (!noteleport_level(mtmp)
+                || !mon_knows_traps(mtmp, TELEP_TRAP)) {
+                game.m_defensive = o;
+                game.m_has_defense = (mon_has_amulet(mtmp))
+                                     ? MUSE_WAN_TELEPORTATION
+                                     : MUSE_WAN_TELEPORTATION_SELF;
+            }
+        }
         if (game.m_has_defense === MUSE_SCR_TELEPORTATION) continue;
         if (o.otyp === SCR_TELEPORTATION && mtmp.mcansee
-            && haseyes(mtmp.data))
-            throw new Error('find_defensive(): scroll of teleportation (noteleport_level()) not ported yet');
+            && haseyes(mtmp.data)
+            && (!o.cursed || (!(mtmp.isshk && inhishop(mtmp))
+                              && !mtmp.isgd && !mtmp.ispriest))) {
+            /* see WAN_TELEPORTATION case above */
+            if (!noteleport_level(mtmp)
+                || !mon_knows_traps(mtmp, TELEP_TRAP)) {
+                game.m_defensive = o;
+                game.m_has_defense = MUSE_SCR_TELEPORTATION;
+            }
+        }
 
         if (mtmp.data !== mons[M.PM_PESTILENCE]) {
             if (game.m_has_defense === MUSE_POT_FULL_HEALING) continue;
@@ -474,9 +813,586 @@ export function find_defensive(mtmp, tryescape) {
 }
 
 // C ref: muse.c use_defensive()
+/* Perform a defensive action for a monster.  Must be called immediately
+ * after find_defensive().  Return values are 0: did something, 1: died,
+ * 2: did something and can't attack again (i.e. teleported).
+ */
 export async function use_defensive(mtmp) {
-    void mtmp;
-    throw new Error('use_defensive() not ported yet');
+    const u = game.u;
+    const MissingDefensiveItem = (what) => `use_defensive: no ${what}`;
+    let i;
+    let otmp = game.m_defensive;
+    let t;
+    let stway;
+
+    if ((i = await precheck(mtmp, otmp)) !== 0)
+        return i;
+    const vis = cansee(mtmp.mx, mtmp.my);
+    const vismon = canseemon(mtmp);
+    const oseen = !!otmp && vismon;
+
+    /* when using defensive choice to run away, we want monster to avoid
+       rushing right straight back; don't override if already scared */
+    const fleetim = !mtmp.mflee
+        ? (33 - Math.trunc(30 * mtmp.mhp / mtmp.mhpmax)) : 0;
+    const m_flee = async (m) => {
+        if (fleetim && !m.iswiz) {
+            await monflee(m, fleetim, false, false);
+        }
+    };
+
+    switch (game.m_has_defense) {
+    case MUSE_UNICORN_HORN:
+        /* unlike most defensive cases, unicorn horn object is optional */
+        if (vismon) {
+            if (otmp) /* pline_mon() */
+                await pline(`${Monnam(mtmp)} uses a unicorn horn!`);
+            else
+                await pline_The(`tip of ${mon_nam(mtmp)}'s horn glows!`);
+        }
+        if (!mtmp.mcansee) {
+            await mcureblindness(mtmp, vismon);
+        } else if (mtmp.mconf || mtmp.mstun) {
+            mtmp.mconf = mtmp.mstun = 0;
+            if (vismon) /* pline_mon() */
+                await pline(`${Monnam(mtmp)} seems steadier now.`);
+        } else {
+            /* impossible("No need for unicorn horn?") */
+        }
+        return 2;
+    case MUSE_BUGLE:
+        if (!otmp)
+            throw new Error(MissingDefensiveItem("bugle")); /* panic() */
+        if (vismon) {
+            await pline(`${Monnam(mtmp)} plays ${doname(otmp)}!`);
+        } else if (!Deaf()) {
+            /* Soundeffect(se_bugle_playing_reveille, 100) */
+            await You_hear("a bugle playing reveille!");
+        }
+        throw new Error('use_defensive(): awaken_soldiers() not ported yet');
+    case MUSE_WAN_TELEPORTATION_SELF:
+        if (!otmp)
+            throw new Error(MissingDefensiveItem("wand of teleportation"));
+        if ((mtmp.isshk && inhishop(mtmp)) || mtmp.isgd || mtmp.ispriest)
+            return 2;
+        await m_flee(mtmp);
+        await mzapwand(mtmp, otmp, true);
+        await m_tele(mtmp, vismon, oseen, WAN_TELEPORTATION);
+        return 2;
+    case MUSE_WAN_TELEPORTATION:
+        if (!otmp)
+            throw new Error(MissingDefensiveItem("wand of teleportation"));
+        game.zap_oseen = oseen;
+        await mzapwand(mtmp, otmp, false);
+        game.m_using = true;
+        await mbhit(mtmp, rn1(8, 6), mbhitm, bhito, otmp);
+        /* monster learns that teleportation isn't useful here */
+        if (noteleport_level(mtmp))
+            mon_learns_traps(mtmp, TELEP_TRAP);
+        game.m_using = false;
+        return 2;
+    case MUSE_SCR_TELEPORTATION: {
+        if (!otmp)
+            throw new Error(MissingDefensiveItem("scroll of teleportation"));
+        const obj_is_cursed = otmp.cursed;
+        if (mtmp.isshk || mtmp.isgd || mtmp.ispriest)
+            return 2;
+        await m_flee(mtmp);
+        /* we want to be able to access otmp after the teleport but it
+           might get destroyed if still in mtmp's inventory (maybe mtmp
+           lands in lava or on a fire trap) so take it out in advance */
+        if (otmp.quan > 1)
+            otmp = splitobj(otmp, 1);
+        extract_from_minvent(mtmp, otmp, false, false);
+        /* 'last_msg' will be changed to PLNMSG_UNKNOWN if any messages
+           are issued by mreadmsg(), 'if (vismon) pline()', or m_tele() */
+        game.iflags.last_msg = PLNMSG_enum;
+        await mreadmsg(mtmp, otmp); /* sets otmp->dknown if !Blind or !Deaf */
+        if (obj_is_cursed || mtmp.mconf) {
+            const flev = { dnum: 0, dlevel: 0 };
+
+            const nlev = random_teleport_level();
+            if (mon_has_amulet(mtmp) || In_endgame(u.uz)) {
+                if (vismon) /* pline_mon() */
+                    await pline(`${Monnam(mtmp)} seems very disoriented for a moment.`);
+            } else if (nlev === depth(u.uz)) {
+                if (vismon) /* pline_mon() */
+                    await pline(`${Monnam(mtmp)} shudders for a moment.`);
+            } else {
+                get_level(flev, nlev);
+                migrate_to_level(mtmp, ledger_no(flev), MIGR_RANDOM, null);
+            }
+        } else {
+            await m_tele(mtmp, vismon, oseen, SCR_TELEPORTATION);
+        }
+        /* m_tele() handles makeknown(); trycall() will be a no-op when
+           otmp->otyp is already discovered */
+        if (otmp.dknown && game.iflags.last_msg !== PLNMSG_enum)
+            await trycall(otmp);
+        /* already removed from mtmp->minvent so not 'm_useup(mtmp, otmp)' */
+        obfree(otmp, null);
+        return 2;
+    }
+    case MUSE_WAN_DIGGING:
+        if (!otmp)
+            throw new Error(MissingDefensiveItem("wand of digging"));
+        await m_flee(mtmp);
+        await mzapwand(mtmp, otmp, false);
+        if (oseen)
+            makeknown(WAN_DIGGING);
+        if (IS_FURNITURE(game.level.at(mtmp.mx, mtmp.my).typ)
+            || IS_DRAWBRIDGE(game.level.at(mtmp.mx, mtmp.my).typ)
+            || (is_drawbridge_wall(mtmp.mx, mtmp.my) >= 0)
+            || stairway_at(mtmp.mx, mtmp.my)) {
+            await pline_The("digging ray is ineffective.");
+            return 2;
+        }
+        if (!Can_dig_down(u.uz) && !game.level.at(mtmp.mx, mtmp.my).candig) {
+            /* can't dig further if there's already a pit (or other trap)
+               here, or if pit creation fails for some reason */
+            if (t_at(mtmp.mx, mtmp.my)
+                || !(t = maketrap(mtmp.mx, mtmp.my, PIT))) {
+                if (vismon) {
+                    await pline_The(`${surface(mtmp.mx, mtmp.my)} here is too hard to dig in.`);
+                }
+                return 2;
+            }
+            /* pit creation succeeded */
+            if (vis) {
+                seetrap(t);
+                /* pline_mon() */
+                await pline(`${Monnam(mtmp)} has made a pit in the ${
+                    surface(mtmp.mx, mtmp.my)}.`);
+            }
+            await fill_pit(mtmp.mx, mtmp.my);
+            recalc_block_point(mtmp.mx, mtmp.my);
+            return (await mintrap(mtmp, FORCEBUNGLE) === Trap_Killed_Mon) ? 1 : 2;
+        }
+        t = maketrap(mtmp.mx, mtmp.my, HOLE);
+        if (!t)
+            return 2;
+        recalc_block_point(mtmp.mx, mtmp.my);
+        seetrap(t);
+        if (vis) {
+            /* pline_mon() */
+            await pline(`${Monnam(mtmp)} has made a hole in the ${
+                surface(mtmp.mx, mtmp.my)}.`);
+            await pline(`${Monnam(mtmp)} ${
+                is_flyer(mtmp.data) ? "dives" : "falls"} through...`);
+        } else if (!Deaf()) {
+            /* Soundeffect(se_crash_through_floor, 100) */
+            await You_hear(`something crash through the ${
+                surface(mtmp.mx, mtmp.my)}.`);
+        }
+        await fill_pit(mtmp.mx, mtmp.my);
+        /* we made sure that there is a level for mtmp to go to */
+        migrate_to_level(mtmp, ledger_no(u.uz) + 1, MIGR_RANDOM, null);
+        return 2;
+    case MUSE_WAN_UNDEAD_TURNING:
+        if (!otmp)
+            throw new Error(MissingDefensiveItem("wand of undead turning"));
+        game.zap_oseen = oseen;
+        await mzapwand(mtmp, otmp, false);
+        game.m_using = true;
+        await mbhit(mtmp, rn1(8, 6), mbhitm, bhito, otmp);
+        game.m_using = false;
+        return 2;
+    case MUSE_WAN_CREATE_MONSTER: {
+        const cc = { x: 0, y: 0 };
+        /* pm: 0 => random, eel => aquatic, croc => amphibious */
+        const pm = !is_pool(mtmp.mx, mtmp.my) ? null
+                   : mons[u.uinwater ? M.PM_GIANT_EEL : M.PM_CROCODILE];
+
+        if (!otmp)
+            throw new Error(MissingDefensiveItem("wand of create monster"));
+        if (!enexto(cc, mtmp.mx, mtmp.my, pm))
+            return 0;
+        await mzapwand(mtmp, otmp, false);
+        const mon = makemon(null, cc.x, cc.y, NO_MM_FLAGS);
+        if (mon && canspotmon(mon) && oseen)
+            makeknown(WAN_CREATE_MONSTER);
+        return 2;
+    }
+    case MUSE_SCR_CREATE_MONSTER: {
+        const cc = { x: 0, y: 0 };
+        let pm = null, fish = null;
+        let cnt = 1;
+        let mon;
+        let known = false;
+
+        if (!otmp)
+            throw new Error(MissingDefensiveItem("scroll of create monster"));
+        if (!rn2(73))
+            cnt += rnd(4);
+        if (mtmp.mconf || otmp.cursed)
+            cnt += 12;
+        if (mtmp.mconf)
+            pm = fish = mons[M.PM_ACID_BLOB];
+        else if (is_pool(mtmp.mx, mtmp.my))
+            fish = mons[u.uinwater ? M.PM_GIANT_EEL : M.PM_CROCODILE];
+        await mreadmsg(mtmp, otmp);
+        while (cnt--) {
+            /* `fish' potentially gives bias towards water locations;
+               `pm' is what to actually create (0 => random) */
+            if (!enexto(cc, mtmp.mx, mtmp.my, fish))
+                break;
+            mon = makemon(pm, cc.x, cc.y, NO_MM_FLAGS);
+            if (mon && canspotmon(mon))
+                known = true;
+        }
+        /* The only case where we don't use oseen.  For wands, you
+         * have to be able to see the monster zap the wand to know
+         * what type it is.  For teleport scrolls, you have to see
+         * the monster to know it teleported.
+         */
+        if (known)
+            makeknown(SCR_CREATE_MONSTER);
+        else
+            await trycall(otmp);
+        m_useup(mtmp, otmp);
+        return 2;
+    }
+    case MUSE_TRAPDOOR:
+        /* trap doors on "bottom" levels of dungeons are rock-drop
+         * trap doors, not holes in the floor.  We check here for
+         * safety.
+         */
+        if (Is_botlevel(u.uz))
+            return 0;
+        await m_flee(mtmp);
+        t = t_at(game.trapx, game.trapy);
+        if (vis) {
+            /* pline_mon() */
+            await pline(`${Monnam(mtmp)} ${
+                vtense("mon" /* fakename[0] */, locomotion(mtmp.data, "jump"))} into a ${
+                trapname(t.ttyp, false)}!`);
+        }
+        /* if trap was in a concealed niche, it's no longer concealed */
+        reveal_trap(t, vis);
+
+        /*  don't use rloc_to() because worm tails must "move" */
+        remove_monster(mtmp);
+        newsym(mtmp.mx, mtmp.my); /* update old location */
+        place_monster(mtmp, game.trapx, game.trapy);
+        if (mtmp.wormno)
+            throw new Error('use_defensive(): worm_move() not ported yet');
+        newsym(game.trapx, game.trapy);
+
+        migrate_to_level(mtmp, ledger_no(u.uz) + 1, MIGR_RANDOM, null);
+        return 2;
+    case MUSE_UPSTAIRS:
+        await m_flee(mtmp);
+        stway = stairway_at(mtmp.mx, mtmp.my);
+        if (!stway)
+            return 0;
+        if (ledger_no(u.uz) === 1)
+            /* impossible; level 1 upstairs are SSTAIRS */
+            return await mon_escape(mtmp, vismon);
+        if (In_hell(u.uz) && mon_has_amulet(mtmp) && !rn2(4)
+            && (dunlev(u.uz) < dunlevs_in_dungeon(u.uz) - 3)) {
+            if (vismon)
+                await pline(`As ${mon_nam(mtmp)} climbs the stairs, a mysterious force momentarily surrounds ${mhim(mtmp)}...`);
+            /* simpler than for the player; this will usually be
+               the Wizard and he'll immediately go right to the
+               upstairs, so there's not much point in having any
+               chance for a random position on the current level */
+            migrate_to_level(mtmp, ledger_no(u.uz) + 1, MIGR_RANDOM, null);
+        } else {
+            if (vismon) /* pline_mon() */
+                await pline(`${Monnam(mtmp)} escapes upstairs!`);
+            migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_STAIRS_DOWN,
+                             null);
+        }
+        return 2;
+    case MUSE_DOWNSTAIRS:
+        await m_flee(mtmp);
+        stway = stairway_at(mtmp.mx, mtmp.my);
+        if (!stway)
+            return 0;
+        if (vismon) /* pline_mon() */
+            await pline(`${Monnam(mtmp)} escapes downstairs!`);
+        migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_STAIRS_UP, null);
+        return 2;
+    case MUSE_UP_LADDER:
+        await m_flee(mtmp);
+        stway = stairway_at(mtmp.mx, mtmp.my);
+        if (!stway)
+            return 0;
+        if (vismon) /* pline_mon() */
+            await pline(`${Monnam(mtmp)} escapes up the ladder!`);
+        migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_LADDER_DOWN,
+                         null);
+        return 2;
+    case MUSE_DN_LADDER:
+        await m_flee(mtmp);
+        stway = stairway_at(mtmp.mx, mtmp.my);
+        if (!stway)
+            return 0;
+        if (vismon) /* pline_mon() */
+            await pline(`${Monnam(mtmp)} escapes down the ladder!`);
+        migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_LADDER_UP, null);
+        return 2;
+    case MUSE_SSTAIRS:
+        await m_flee(mtmp);
+        stway = stairway_at(mtmp.mx, mtmp.my);
+        if (!stway)
+            return 0;
+        if (ledger_no(u.uz) === 1) {
+            return await mon_escape(mtmp, vismon);
+        }
+        if (vismon) /* pline_mon() */
+            await pline(`${Monnam(mtmp)} escapes ${stway.up ? "up" : "down"}stairs!`);
+        /* going from the Valley to Castle (Stronghold) has no sstairs
+           to target, but having gs.sstairs.<sx,sy> == <0,0> will work the
+           same as specifying MIGR_RANDOM when mon_arrive() eventually
+           places the monster, so we can use MIGR_SSTAIRS unconditionally */
+        migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_SSTAIRS, null);
+        return 2;
+    case MUSE_TELEPORT_TRAP:
+        await m_flee(mtmp);
+        t = t_at(game.trapx, game.trapy);
+        if (vis) {
+            /* pline_mon() */
+            await pline(`${Monnam(mtmp)} ${
+                vtense("mon" /* fakename[0] */, locomotion(mtmp.data, "jump"))} onto a ${
+                trapname(t.ttyp, false)}!`);
+        }
+        /* if trap was in a concealed niche, it's no longer concealed */
+        reveal_trap(t, vis);
+        /*  don't use rloc_to() because worm tails must "move" */
+        remove_monster(mtmp);
+        newsym(mtmp.mx, mtmp.my); /* update old location */
+        place_monster(mtmp, game.trapx, game.trapy);
+        if (mtmp.wormno)
+            throw new Error('use_defensive(): worm_move() not ported yet');
+        maybe_unhide_at(mtmp.mx, mtmp.my);
+        newsym(game.trapx, game.trapy);
+        /* 0: 'no object' rather than STRANGE_OBJECT; FALSE: obj not seen */
+        await m_tele(mtmp, vismon, false, 0);
+        return 2;
+    case MUSE_POT_HEALING:
+        if (!otmp)
+            throw new Error(MissingDefensiveItem("potioh of healing"));
+        await mquaffmsg(mtmp, otmp);
+        i = d(6 + 2 * bcsign(otmp), 4);
+        healmon(mtmp, i, 1);
+        if (!otmp.cursed && !mtmp.mcansee)
+            await mcureblindness(mtmp, vismon);
+        if (vismon) /* pline_mon() */
+            await pline(`${Monnam(mtmp)} looks better.`);
+        if (oseen)
+            makeknown(POT_HEALING);
+        m_useup(mtmp, otmp);
+        return 2;
+    case MUSE_POT_EXTRA_HEALING:
+        if (!otmp)
+            throw new Error(MissingDefensiveItem("potioh of extra healing"));
+        await mquaffmsg(mtmp, otmp);
+        i = d(6 + 2 * bcsign(otmp), 8);
+        healmon(mtmp, i, otmp.blessed ? 5 : 2);
+        if (!mtmp.mcansee)
+            await mcureblindness(mtmp, vismon);
+        if (vismon) /* pline_mon() */
+            await pline(`${Monnam(mtmp)} looks much better.`);
+        if (oseen)
+            makeknown(POT_EXTRA_HEALING);
+        m_useup(mtmp, otmp);
+        return 2;
+    case MUSE_POT_FULL_HEALING:
+        if (!otmp)
+            throw new Error(MissingDefensiveItem("potioh of full healing"));
+        await mquaffmsg(mtmp, otmp);
+        if (otmp.otyp === POT_SICKNESS)
+            unbless(otmp); /* Pestilence */
+        healmon(mtmp, mtmp.mhpmax, otmp.blessed ? 8 : 4);
+        if (!mtmp.mcansee && otmp.otyp !== POT_SICKNESS)
+            await mcureblindness(mtmp, vismon);
+        if (vismon) /* pline_mon() */
+            await pline(`${Monnam(mtmp)} looks completely healed.`);
+        if (oseen)
+            makeknown(otmp.otyp);
+        m_useup(mtmp, otmp);
+        return 2;
+    case MUSE_LIZARD_CORPSE:
+        if (!otmp)
+            throw new Error(MissingDefensiveItem("lizard corpse"));
+        /* not actually called for its unstoning effect */
+        await mon_consume_unstone(mtmp, otmp, false, false);
+        return 2;
+    case 0:
+        return 0; /* i.e. an exploded wand */
+    default:
+        /* impossible("%s wanted to perform action %d?") */
+        break;
+    }
+    return 0;
+}
+
+/* sentinel for use_defensive()'s MUSE_SCR_TELEPORTATION: pline() resets
+   iflags.last_msg to PLNMSG_UNKNOWN */
+const PLNMSG_enum = -1;
+
+/* C ref: mondata.h mhim() */
+function mhim(mtmp) { return genders[pronoun_gender(mtmp, PRONOUN_HALLU)].him; }
+
+/* C ref: display.h remove_monster() -- the monster list is keyed by mx/my */
+function remove_monster(mtmp) {
+    const lst = game.level.monsters || [];
+    const i = lst.indexOf(mtmp);
+    if (i >= 0)
+        lst.splice(i, 1);
+}
+
+/* C ref: mkobj.c unbless() -- no inventory update needed for a monster's
+   potion */
+function unbless(otmp) {
+    otmp.blessed = 0;
+    if (otmp.otyp === POT_WATER)
+        throw new Error('unbless(): holy water not ported yet');
+}
+
+// C ref: trap.c fill_pit()
+async function fill_pit(x, y) {
+    let otmp;
+    const t = t_at(x, y);
+
+    if (t && (is_pit(t.ttyp) || is_hole(t.ttyp))
+        && (otmp = sobj_at(BOULDER, x, y)) !== null) {
+        obj_extract_self(otmp);
+        await flooreffects(otmp, x, y, "settle");
+    }
+}
+
+
+// C ref: muse.c linedup_chk_corpse()
+function linedup_chk_corpse(x, y) {
+    return (sobj_at(CORPSE, x, y) !== null);
+}
+
+// C ref: muse.c m_use_undead_turning()
+function m_use_undead_turning(mtmp, obj) {
+    const u = game.u;
+    const ax = u.ux + sgn(mtmp.mux - mtmp.mx) * 3,
+          ay = u.uy + sgn(mtmp.muy - mtmp.my) * 3;
+    const bx = mtmp.mx, by = mtmp.my;
+
+    if (!(obj.otyp === WAN_UNDEAD_TURNING && obj.spe > 0))
+        return;
+
+    /* not necrophiliac(); unlike deciding whether to pick this
+       type of wand up, we aren't interested in corpses within
+       carried containers until they're moved into open inventory;
+       we don't check whether hero is poly'd into an undead--the
+       wand's turning effect is too weak to be a useful direct
+       attack--only whether hero is carrying at least one corpse */
+    if (carrying(CORPSE)
+        /*
+         * If hero is carrying one or more corpses but isn't wielding
+         * a cockatrice corpse (unless being hit by one won't do
+         * the monster much harm); otherwise we'd be using this wand
+         * as a defensive item with higher priority.
+         */
+        || linedup_callback(ax, ay, bx, by, linedup_chk_corpse)
+        /* or there's a corpse on the ground in a direct line from the
+           monster to the hero, and up to 3 steps beyond. */
+        ) {
+        game.m_offensive = obj;
+        game.m_has_offense = MUSE_WAN_UNDEAD_TURNING;
+    }
+}
+
+// C ref: muse.c hero_behind_chokepoint()
+/* from monster's point of view, is hero behind a chokepoint? */
+function hero_behind_chokepoint(mtmp) {
+    const dx = sgn(mtmp.mx - mtmp.mux);
+    const dy = sgn(mtmp.my - mtmp.muy);
+
+    const x = mtmp.mux + dx;
+    const y = mtmp.muy + dy;
+
+    const dir = xytodir(dx, dy);
+    const dir_l = (((dir + 6) % N_DIRS) + N_DIRS) % N_DIRS; /* DIR_CLAMP(DIR_LEFT2()) */
+    const dir_r = (((dir + 2) % N_DIRS) + N_DIRS) % N_DIRS; /* DIR_CLAMP(DIR_RIGHT2()) */
+
+    /* dirtocoord() */
+    const c1 = { x: xdir[dir_l], y: ydir[dir_l] };
+    const c2 = { x: xdir[dir_r], y: ydir[dir_r] };
+    c1.x += x, c2.x += x;
+    c1.y += y, c2.y += y;
+
+    if ((!isok(c1.x, c1.y) || !accessible(c1.x, c1.y))
+        && (!isok(c2.x, c2.y) || !accessible(c2.x, c2.y)))
+        return true;
+    return false;
+}
+
+// C ref: muse.c mon_has_friends()
+/* hostile monster has another hostile next to it */
+function mon_has_friends(mtmp) {
+    let mon2;
+
+    if (mtmp.mtame || mtmp.mpeaceful)
+        return false;
+
+    for (let dx = -1; dx <= 1; dx++)
+        for (let dy = -1; dy <= 1; dy++) {
+            const x = mtmp.mx + dx;
+            const y = mtmp.my + dy;
+
+            if (isok(x, y) && (mon2 = m_at(x, y)) !== null
+                && mon2 !== mtmp
+                && !mon2.mtame && !mon2.mpeaceful)
+                return true;
+        }
+
+    return false;
+}
+
+// C ref: muse.c mon_likes_objpile_at()
+/* does monster like object pile at x,y? */
+function mon_likes_objpile_at(mtmp, x, y) {
+    let i;
+
+    if (!isok(x, y) || !OBJ_AT(x, y))
+        return false;
+
+    /* monster likes any of the top 3 items in the pile?
+       (svl.level.objects[x][y] chain, top of the pile first) */
+    const pile = (game.level.objects || []).filter(o => o.ox === x && o.oy === y);
+    for (i = 0; i < pile.length && i < 3; i++) {
+        if (mon_would_take_item(mtmp, pile[i]))
+            return true;
+    }
+
+    /* pile is larger than 3 stacks? */
+    if (i >= 3)
+        return true;
+
+    return false;
+}
+
+/* C ref: mondata.c can_blow() */
+function can_blow(mtmp) {
+    const ptr = mtmp.data;
+    const is_silent = ptr.msound === M.MS_SILENT;
+    const breathless = (ptr.mflags1 & M.M1_BREATHLESS) !== 0;
+    const has_head = (ptr.mflags1 & M.M1_NOHEAD) === 0;
+    if ((is_silent || ptr.msound === M.MS_BUZZ)
+        && (breathless || verysmall(ptr) || !has_head || ptr.mlet === M.S_EEL))
+        return false;
+    /* (mtmp == &youmonst) && Strangled: only monsters get here */
+    return true;
+}
+
+/* C ref: do_wear.c hard_helmet() */
+function hard_helmet(obj) {
+    if (!obj || !(obj.oclass === ARMOR_CLASS /* is_helmet() */
+                  && objects[obj.otyp].oc_armcat === ARM_HELM))
+        return false;
+    const mat = objects[obj.otyp].oc_material;
+    return ((mat >= IRON && mat <= MITHRIL) /* is_metallic() */
+            || (mat === GLASS && obj.oclass === ARMOR_CLASS)) /* is_crackable() */
+        ? true : false;
 }
 
 // C ref: muse.c find_offensive()
@@ -505,7 +1421,7 @@ export function find_offensive(mtmp) {
 
     const reflection_skip = (m_seenres(mtmp, M_SEEN_REFL) !== 0
                              || monnear(mtmp, mtmp.mux, mtmp.muy));
-    /* mtmp_helmet = which_armor(mtmp, W_ARMH): only SCR_EARTH uses it */
+    const mtmp_helmet = which_armor(mtmp, W_ARMH);
     /* this picks the last viable item rather than prioritizing choices */
     for (const obj of minv(mtmp)) {
         if (!reflection_skip) {
@@ -528,8 +1444,11 @@ export function find_offensive(mtmp) {
                 game.m_has_offense = MUSE_WAN_FIRE;
             }
             if (game.m_has_offense === MUSE_FIRE_HORN) continue;
-            if (obj.otyp === FIRE_HORN && obj.spe > 0)
-                throw new Error('find_offensive(): can_blow() not ported yet');
+            if (obj.otyp === FIRE_HORN && obj.spe > 0 && can_blow(mtmp)
+                && !m_seenres(mtmp, M_SEEN_FIRE)) {
+                game.m_offensive = obj;
+                game.m_has_offense = MUSE_FIRE_HORN;
+            }
             if (game.m_has_offense === MUSE_WAN_COLD) continue;
             if (obj.otyp === WAN_COLD && obj.spe > 0
                 && !m_seenres(mtmp, M_SEEN_COLD)) {
@@ -537,8 +1456,11 @@ export function find_offensive(mtmp) {
                 game.m_has_offense = MUSE_WAN_COLD;
             }
             if (game.m_has_offense === MUSE_FROST_HORN) continue;
-            if (obj.otyp === FROST_HORN && obj.spe > 0)
-                throw new Error('find_offensive(): can_blow() not ported yet');
+            if (obj.otyp === FROST_HORN && obj.spe > 0 && can_blow(mtmp)
+                && !m_seenres(mtmp, M_SEEN_COLD)) {
+                game.m_offensive = obj;
+                game.m_has_offense = MUSE_FROST_HORN;
+            }
             if (game.m_has_offense === MUSE_WAN_LIGHTNING) continue;
             if (obj.otyp === WAN_LIGHTNING && obj.spe > 0
                 && !m_seenres(mtmp, M_SEEN_ELEC)) {
@@ -553,9 +1475,7 @@ export function find_offensive(mtmp) {
             }
         }
         if (game.m_has_offense === MUSE_WAN_UNDEAD_TURNING) continue;
-        /* m_use_undead_turning(mtmp, obj) */
-        if (obj.otyp === WAN_UNDEAD_TURNING)
-            throw new Error('find_offensive(): m_use_undead_turning() not ported yet');
+        m_use_undead_turning(mtmp, obj);
         if (game.m_has_offense === MUSE_WAN_STRIKING) continue;
         if (obj.otyp === WAN_STRIKING && obj.spe > 0
             && !m_seenres(mtmp, M_SEEN_MAGR)) {
@@ -563,8 +1483,20 @@ export function find_offensive(mtmp) {
             game.m_has_offense = MUSE_WAN_STRIKING;
         }
         if (game.m_has_offense === MUSE_WAN_TELEPORTATION) continue;
-        if (obj.otyp === WAN_TELEPORTATION && obj.spe > 0)
-            throw new Error('find_offensive(): wand of teleportation checks not ported yet');
+        if (obj.otyp === WAN_TELEPORTATION && obj.spe > 0
+            /* don't give controlled hero a free teleport */
+            && !Teleport_control()
+            /* same hack as MUSE_WAN_TELEPORTATION_SELF */
+            && (!noteleport_level(mtmp)
+                || !mon_knows_traps(mtmp, TELEP_TRAP))
+            /* do try to move hero to a more vulnerable spot */
+            && (onscary(u.ux, u.uy, mtmp)
+                || (hero_behind_chokepoint(mtmp) && mon_has_friends(mtmp))
+                || mon_likes_objpile_at(mtmp, u.ux, u.uy)
+                || stairway_at(u.ux, u.uy))) {
+            game.m_offensive = obj;
+            game.m_has_offense = MUSE_WAN_TELEPORTATION;
+        }
         if (game.m_has_offense === MUSE_POT_PARALYSIS) continue;
         if (obj.otyp === POT_PARALYSIS && game.multi >= 0) {
             game.m_offensive = obj;
@@ -593,12 +1525,32 @@ export function find_offensive(mtmp) {
             game.m_offensive = obj;
             game.m_has_offense = MUSE_POT_ACID;
         }
+        /* we can safely put this scroll here since the locations that
+         * are in a 1 square radius are a subset of the locations that
+         * are in wand or throwing range (in other words, always lined_up())
+         */
         if (game.m_has_offense === MUSE_SCR_EARTH) continue;
-        if (obj.otyp === SCR_EARTH)
-            throw new Error('find_offensive(): scroll of earth checks not ported yet');
+        if (obj.otyp === SCR_EARTH
+            && (hard_helmet(mtmp_helmet) || mtmp.mconf
+                || amorphous(mtmp.data) || passes_walls(mtmp.data)
+                || noncorporeal(mtmp.data) || unsolid(mtmp.data)
+                || !rn2(10))
+            && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 2
+            && mtmp.mcansee && haseyes(mtmp.data)
+            && !Is_rogue_level(u.uz)
+            && (!In_endgame(u.uz) || Is_earthlevel(u.uz))) {
+            game.m_offensive = obj;
+            game.m_has_offense = MUSE_SCR_EARTH;
+        }
         if (game.m_has_offense === MUSE_CAMERA) continue;
-        if (obj.otyp === EXPENSIVE_CAMERA)
-            throw new Error('find_offensive(): expensive camera checks not ported yet');
+        if (obj.otyp === EXPENSIVE_CAMERA
+            && ((!Blind() && !resists_blnd(game.youmonst))
+                || game.youmonst.data === mons[M.PM_GREMLIN] /* hates_light() */)
+            && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 2
+            && obj.spe > 0 && !rn2(6)) {
+            game.m_offensive = obj;
+            game.m_has_offense = MUSE_CAMERA;
+        }
     }
     return !!game.m_has_offense;
 }
@@ -616,7 +1568,7 @@ const MUSE_POT_POLYMORPH = 9;
 const MUSE_BAG = 10;
 
 // C ref: muse.c find_misc()
-export function find_misc(mtmp) {
+export async function find_misc(mtmp) {
     const u = game.u;
     const mdat = mtmp.data;
     const x = mtmp.mx, y = mtmp.my;
@@ -655,8 +1607,13 @@ export function find_misc(mtmp) {
                         && !onscary(xx, yy, mtmp)) {
                         /* use trap if it's the correct type and will
                            polymorph the monster */
-                        if (t.ttyp === POLY_TRAP)
-                            throw new Error('find_misc(): polymorph trap (wearing_iron_shoes()) not ported yet');
+                        if (t.ttyp === POLY_TRAP
+                            && !wearing_iron_shoes(mtmp)) {
+                            game.trapx = xx;
+                            game.trapy = yy;
+                            game.m_has_misc = MUSE_POLY_TRAP;
+                            return true;
+                        }
                     }
     }
     if (nohands(mdat))
@@ -683,8 +1640,12 @@ export function find_misc(mtmp) {
             && m_next2u(mtmp)
             /* don't bother if it can't work (this doesn't
                prevent cursed weapons from being targeted) */
-            && !u.uswallow)
-            throw new Error('find_misc(): canletgo() for MUSE_BULLWHIP not ported yet');
+            && !u.uswallow
+            && ((await canletgo(game.uwep, ""))
+                || (u.twoweap && (await canletgo(game.uswapwep, ""))))) {
+            game.m_misc = obj;
+            game.m_has_misc = MUSE_BULLWHIP;
+        }
         /* Note: peaceful/tame monsters won't make themselves
          * invisible unless you can see them.  Not really right, but...
          */
@@ -737,11 +1698,390 @@ export function find_misc(mtmp) {
     return !!game.m_has_misc;
 }
 
+// C ref: muse.c muse_newcham_mon()
+/* type of monster to polymorph into; defaults to one suitable for the
+   current level rather than the totally arbitrary choice of newcham() */
+function muse_newcham_mon(mon) {
+    let m_armr;
+
+    if ((m_armr = which_armor(mon, W_ARM)) !== null && m_armr !== undefined) {
+        if (Is_dragon_scales(m_armr))
+            return Dragon_scales_to_pm(m_armr);
+        else if (Is_dragon_mail(m_armr))
+            return Dragon_mail_to_pm(m_armr);
+    }
+    return rndmonst();
+}
+
+// C ref: muse.c mloot_container()
+async function mloot_container(mon, container, vismon) {
+    let contnr_nam = "", mpronounbuf = "";
+    let takeout_indx, takeout_count, res = 0;
+
+    if (!container || !Has_contents(container) || container.olocked)
+        return res; /* 0 */
+    /* FIXME: handle cursed bag of holding */
+    if (Is_mbag(container) && container.cursed)
+        return res; /* 0 */
+    if (SchroedingersBox(container))
+        return res;
+
+    switch (rn2(10)) {
+    default: /* case 0, 1, 2, 3: */
+        takeout_count = 1;
+        break;
+    case 4: case 5: case 6:
+        takeout_count = 2;
+        break;
+    case 7: case 8:
+        takeout_count = 3;
+        break;
+    case 9:
+        takeout_count = 4;
+        break;
+    }
+    const howfar = mdistu(mon);
+    const nearby = (howfar <= 7 * 7);
+    if (vismon) {
+        /* do this once so that when hallucinating it won't change
+           from one item to the next */
+        mpronounbuf = mhe(mon);
+    }
+
+    for (takeout_indx = 0; takeout_indx < takeout_count; ++takeout_indx) {
+        let xobj;
+        let nitems;
+
+        if (!Has_contents(container)) /* might have removed all items */
+            break;
+        /* TODO?
+         *  Monster ought to prioritize on something it wants to use.
+         */
+        /* container->cobj chain: mkobj.js keeps it as an array in C's
+           chain order */
+        nitems = container.cobj.length;
+        /* nitems is always greater than 0 due to Has_contents() check;
+           throttle item removal as the container becomes less filled */
+        if (!rn2(nitems + 1))
+            break;
+        nitems = rn2(nitems);
+        xobj = container.cobj[nitems];
+
+        container.cknown = 0; /* hero no longer knows container's contents
+                               * even if [attempted] removal is observed */
+        if (!contnr_nam) {
+            /* xname sets dknown, distant_name might depending on its own
+               idea about nearness */
+            contnr_nam = an(nearby ? xname(container)
+                                   : distant_name(container, xname));
+        }
+        /* this was originally just 'can_carry(mon, xobj)' which
+           covers objects a monster shouldn't pick up but also
+           checks carrying capacity; for that, it ended up counting
+           xobj's weight twice when container is carried; so take
+           xobj out, check whether it can be carried, and then put
+           it back (below) if it can't be */
+        obj_extract_self(xobj); /* this reduces container's weight */
+        /* check whether mon can handle xobj and whether weight of xobj plus
+           minvent (including container, now without xobj) can be carried */
+        if (can_carry(mon, xobj)) {
+            if (vismon) {
+                if (howfar > 2) /* not adjacent */
+                    await Norep(`${Monnam(mon)} rummages through ${contnr_nam}.`);
+                else if (takeout_indx === 0) /* adjacent, first item */
+                    await pline(`${Monnam(mon)} removes ${doname(xobj)} from ${
+                        contnr_nam}.`); /* pline_mon() */
+                else /* adjacent, additional items */
+                    await pline(`${upstart(mpronounbuf)} removes ${doname(xobj)}.`);
+            }
+            if (container.otyp === ICE_BOX)
+                throw new Error('mloot_container(): removed_from_icebox() not ported yet');
+            /* obj_extract_self(xobj); -- already done above */
+            mpickobj(mon, xobj);
+            res = 2;
+        } else { /* couldn't carry xobj separately so put back inside */
+            /* an achievement prize (castle's wand?) might already be
+               marked nomerge (when it hasn't been in invent yet) */
+            const already_nomerge = !!xobj.nomerge,
+                  just_xobj = !Has_contents(container);
+
+            /* this doesn't restore the original contents ordering
+               [shouldn't be a problem; even though this item didn't
+               give the rummage message, that's what mon was doing] */
+            xobj.nomerge = 1;
+            xobj = add_to_container(container, xobj);
+            if (!already_nomerge)
+                xobj.nomerge = 0;
+            container.owt = weight(container);
+            if (just_xobj)
+                break; /* out of takeout_count loop */
+        } /* can_carry */
+    } /* takeout_count */
+    return res;
+}
+
 // C ref: muse.c use_misc()
 export async function use_misc(mtmp) {
-    void mtmp;
-    throw new Error('use_misc() not ported yet');
+    const u = game.u;
+    const MissingMiscellaneousItem = (what) => `use_misc: no ${what}`;
+    let i;
+    let t;
+    const otmp = game.m_misc;
+
+    if ((i = await precheck(mtmp, otmp)) !== 0)
+        return i;
+    const vis = cansee(mtmp.mx, mtmp.my);
+    const vismon = canseemon(mtmp);
+    const oseen = !!otmp && vismon;
+
+    switch (game.m_has_misc) {
+    case MUSE_POT_GAIN_LEVEL:
+        if (!otmp) /* panic() */
+            throw new Error(MissingMiscellaneousItem("potion of gain level"));
+        await mquaffmsg(mtmp, otmp);
+        if (otmp.cursed) {
+            let skipmsg = false;
+            if (Can_rise_up(mtmp.mx, mtmp.my, u.uz)) {
+                const tolev = depth(u.uz) - 1;
+                const tolevel = { dnum: 0, dlevel: 0 };
+
+                get_level(tolevel, tolev);
+                /* insurance against future changes... */
+                if (on_level(tolevel, u.uz)) {
+                    skipmsg = true;
+                } else {
+                    if (vismon) {
+                        /* pline_mon() */
+                        await pline(`${Monnam(mtmp)} rises up, through the ${
+                            ceiling(mtmp.mx, mtmp.my)}!`);
+                        await trycall(otmp);
+                    }
+                    m_useup(mtmp, otmp);
+                    migrate_to_level(mtmp, ledger_no(tolevel), MIGR_RANDOM,
+                                     null);
+                    return 2;
+                }
+            } else {
+                skipmsg = true;
+            }
+            if (skipmsg) {
+                if (vismon) {
+                    /* pline_mon() */
+                    await pline(`${Monnam(mtmp)} looks uneasy.`);
+                    await trycall(otmp);
+                }
+                m_useup(mtmp, otmp);
+                return 2;
+            }
+        }
+        if (vismon) /* pline_mon() */
+            await pline(`${Monnam(mtmp)} seems more experienced.`);
+        if (oseen)
+            makeknown(POT_GAIN_LEVEL);
+        m_useup(mtmp, otmp);
+        if (!(await grow_up(mtmp, null)))
+            return 1;
+        /* grew into genocided monster */
+        return 2;
+    case MUSE_WAN_MAKE_INVISIBLE:
+    case MUSE_POT_INVISIBILITY: {
+        if (!otmp)
+            throw new Error(MissingMiscellaneousItem("potion of invisibility"));
+        if (otmp.otyp === WAN_MAKE_INVISIBLE) {
+            await mzapwand(mtmp, otmp, true);
+        } else
+            await mquaffmsg(mtmp, otmp);
+        /* format monster's name before altering its visibility */
+        const nambuf = mon_nam(mtmp);
+        mon_set_minvis(mtmp, !otmp.cursed ? false : true);
+        if (vismon && mtmp.minvis) { /* was seen, now invisible */
+            if (canspotmon(mtmp)) {
+                await pline(`${upstart(s_suffix(nambuf))} body takes on a ${
+                    Hallucination() ? "normal" : "strange"} transparency.`);
+            } else {
+                await pline(`Suddenly you cannot see ${nambuf}.`);
+                if (vis)
+                    map_invisible(mtmp.mx, mtmp.my);
+            }
+            if (oseen)
+                makeknown(otmp.otyp);
+        } else if (vismon && !mtmp.minvis) {
+            /* cursed potion; mon tried to make itself invisible but failed */
+            await pline(`${Monnam(mtmp)} briefly seems to be transparent.`);
+            /* we could call map_invisible() before the pline(), then
+               newsym() after; unseen monster glyph would be visible during
+               the pline, but hero would forget any remembered object under
+               the monster */
+        } else if (!vismon && canseemon(mtmp)) {
+            /* cursed potion; this won't happen because a monster will only
+               drink a potion of invisibility when not already invisible */
+            await pline(`${Monnam(mtmp)} suddenly appears!`);
+        }
+        if (otmp.otyp === POT_INVISIBILITY) {
+            if (otmp.cursed)
+                await you_aggravate(mtmp);
+            m_useup(mtmp, otmp);
+        }
+        return 2;
+    }
+    case MUSE_WAN_SPEED_MONSTER:
+        if (!otmp)
+            throw new Error(MissingMiscellaneousItem("wand of speed monster"));
+        await mzapwand(mtmp, otmp, true);
+        await mon_adjust_speed(mtmp, 1, otmp);
+        return 2;
+    case MUSE_POT_SPEED:
+        if (!otmp)
+            throw new Error(MissingMiscellaneousItem("potion of speed"));
+        await mquaffmsg(mtmp, otmp);
+        /* note difference in potion effect due to substantially
+           different methods of maintaining speed ratings:
+           player's character becomes "very fast" temporarily;
+           monster becomes "one stage faster" permanently */
+        await mon_adjust_speed(mtmp, 1, otmp);
+        m_useup(mtmp, otmp);
+        return 2;
+    case MUSE_WAN_POLYMORPH:
+        if (!otmp)
+            throw new Error(MissingMiscellaneousItem("wand of polymorph"));
+        await mzapwand(mtmp, otmp, true);
+        await newcham(mtmp, muse_newcham_mon(mtmp),
+                      NC_VIA_WAND_OR_SPELL | NC_SHOW_MSG);
+        if (oseen)
+            makeknown(WAN_POLYMORPH);
+        return 2;
+    case MUSE_POT_POLYMORPH:
+        if (!otmp)
+            throw new Error(MissingMiscellaneousItem("potion of polymorph"));
+        await mquaffmsg(mtmp, otmp);
+        m_useup(mtmp, otmp);
+        if (vismon) /* pline_mon() */
+            await pline(`${Monnam(mtmp)} suddenly mutates!`);
+        await newcham(mtmp, muse_newcham_mon(mtmp), NC_SHOW_MSG);
+        if (oseen)
+            makeknown(POT_POLYMORPH);
+        return 2;
+    case MUSE_POLY_TRAP: {
+        t = t_at(game.trapx, game.trapy);
+        const vistrapspot = cansee(t.tx, t.ty);
+        if (vis || vistrapspot)
+            seetrap(t);
+        if (vismon || vistrapspot) {
+            /* pline_mon() */
+            await pline(`${Some_Monnam(mtmp)} deliberately ${
+                vtense("mon" /* fakename[0] */, locomotion(mtmp.data, "jump"))} onto a ${
+                t.tseen ? trapname(t.ttyp, false) : "hidden trap"}!`);
+            /* note: if mtmp is unseen because it is invisible, its new
+               shape will also be invisible and could produce "Its armor
+               falls off" messages during the transformation; those make
+               more sense after we've given "Someone jumps onto a trap." */
+        }
+
+        /*  don't use rloc() due to worms */
+        remove_monster(mtmp);
+        newsym(mtmp.mx, mtmp.my);
+        place_monster(mtmp, game.trapx, game.trapy);
+        maybe_unhide_at(game.trapx, game.trapy);
+        if (mtmp.wormno)
+            throw new Error('use_misc(): worm_move() not ported yet');
+        newsym(game.trapx, game.trapy);
+
+        await newcham(mtmp, null, NC_SHOW_MSG);
+        return 2;
+    }
+    case MUSE_BAG:
+        if (!otmp)
+            throw new Error(MissingMiscellaneousItem("container"));
+        return await mloot_container(mtmp, otmp, vismon);
+    case MUSE_BULLWHIP:
+        /* attempt to disarm hero */
+        {
+            const The_whip = vismon ? "The bullwhip" : "A whip";
+            let where_to = rn2(4);
+            let obj = game.uwep;
+            let hand;
+
+            if (!obj || !(await canletgo(obj, ""))
+                || (u.twoweap && (await canletgo(game.uswapwep, "")) && rn2(2)))
+                obj = game.uswapwep;
+            if (!obj)
+                break; /* shouldn't happen after find_misc() */
+
+            const the_weapon = the(xname(obj));
+            hand = body_part(HAND);
+            if (bimanual(obj))
+                hand = makeplural(hand);
+            const hand_buf = hand;
+
+            if (vismon) /* pline_mon() */
+                await pline(`${Monnam(mtmp)} flicks a bullwhip towards your ${
+                    hand_buf}!`);
+            if (obj.otyp === HEAVY_IRON_BALL) {
+                await pline(`${The_whip} fails to wrap around ${the_weapon}.`);
+                return 1;
+            }
+            /* urgent_pline() */
+            await pline(`${The_whip} wraps around ${the_weapon} you're wielding!`);
+            if (welded(obj)) {
+                await pline(`${(obj.quan === 1) /* !is_plural(obj) */
+                               ? "It is" : "They are"} welded to your ${hand_buf}${
+                    !obj.bknown ? '!' : '.'}`);
+                /* obj->bknown = 1; */ /* welded() takes care of this */
+                where_to = 0;
+            }
+            if (!where_to) {
+                await pline_The("whip slips free."); /* not `The_whip' */
+                return 1;
+            } else if (where_to === 3 && mon_hates_silver(mtmp)
+                       && objects[obj.otyp].oc_material === SILVER) {
+                /* this monster won't want to catch a silver
+                   weapon; drop it at hero's feet instead */
+                where_to = 2;
+            }
+            await remove_worn_item(obj, false);
+            freeinv(obj);
+            switch (where_to) {
+            case 1: /* onto floor beneath mon */
+                /* pline_mon() */
+                await pline(`${Monnam(mtmp)} yanks ${the_weapon} from your ${
+                    hand_buf}!`);
+                place_object(obj, mtmp.mx, mtmp.my);
+                break;
+            case 2: /* onto floor beneath you */
+                /* pline_mon() */
+                await pline(`${Monnam(mtmp)} yanks ${the_weapon} to the ${
+                    surface(u.ux, u.uy)}!`);
+                await dropy(obj);
+                break;
+            case 3: /* into mon's inventory */
+                /* pline_mon() */
+                await pline(`${Monnam(mtmp)} snatches ${the_weapon}!`);
+                mpickobj(mtmp, obj);
+                break;
+            }
+            return 1;
+        }
+        /*NOTREACHED*/
+        return 0;
+    case 0:
+        return 0; /* i.e. an exploded wand */
+    default:
+        /* impossible("%s wanted to perform action %d?") */
+        break;
+    }
+    return 0;
 }
+
+// C ref: muse.c you_aggravate()
+async function you_aggravate(mtmp) {
+    await pline(`For some reason, ${s_suffix(noit_mon_nam(mtmp))} presence is known to you.`);
+    /* cls(); show_glyph(mon_to_glyph(mtmp, rn2_on_display_rng));
+       display_self(); You_feel("aggravated at ..."); and a blocking
+       display_nhwindow(WIN_MAP, TRUE) that waits for the hero to
+       acknowledge the map */
+    throw new Error('you_aggravate(): blocking map display not ported yet');
+}
+
 
 // C ref: muse.c precheck()
 /* Any preliminary checks which may result in the monster being unable to use
@@ -754,24 +2094,103 @@ async function precheck(mon, obj) {
     const vis = cansee(mon.mx, mon.my);
 
     if (obj.oclass === POTION_CLASS) {
+        const cc = { x: 0, y: 0 };
+        const empty = "The potion turns out to be empty.";
+        let mtmp;
         const mvitals = game.mvitals || [];
+        /* C ref: hack.h POTION_OCCUPANT_CHANCE() */
+        const POTION_OCCUPANT_CHANCE = (n) => 13 + 2 * n;
+
         if (objdescr_is(obj, "milky")) {
-            if (!((mvitals[M.PM_GHOST]?.mvflags || 0) & G_GONE))
-                /* !rn2(POTION_OCCUPANT_CHANCE(born)): ghost from the bottle */
-                throw new Error('precheck(): milky potion ghost not ported yet');
+            if (!((mvitals[M.PM_GHOST]?.mvflags || 0) & G_GONE)
+                && !rn2(POTION_OCCUPANT_CHANCE(mvitals[M.PM_GHOST]?.born || 0))) {
+                if (!enexto(cc, mon.mx, mon.my, mons[M.PM_GHOST]))
+                    return 0;
+                await mquaffmsg(mon, obj);
+                m_useup(mon, obj);
+                mtmp = makemon(mons[M.PM_GHOST], cc.x, cc.y, MM_NOMSG);
+                if (!mtmp) {
+                    if (vis)
+                        await pline(empty);
+                } else {
+                    if (vis) {
+                        await pline(`As ${mon_nam(mon)} opens the bottle, an enormous ${
+                            Hallucination() ? rndmonnam(null) : "ghost"} emerges!`);
+                        await pline(`${Monnam(mon)} is frightened to death, and unable to move.`);
+                    }
+                    paralyze_monst(mon, 3);
+                }
+                return 2;
+            }
         }
         if (objdescr_is(obj, "smoky")
-            && !((mvitals[M.PM_DJINNI]?.mvflags || 0) & G_GONE))
-            /* !rn2(POTION_OCCUPANT_CHANCE(born)): djinni from the bottle */
-            throw new Error('precheck(): smoky potion djinni not ported yet');
+            && !((mvitals[M.PM_DJINNI]?.mvflags || 0) & G_GONE)
+            && !rn2(POTION_OCCUPANT_CHANCE(mvitals[M.PM_DJINNI]?.born || 0))) {
+            if (!enexto(cc, mon.mx, mon.my, mons[M.PM_DJINNI]))
+                return 0;
+            await mquaffmsg(mon, obj);
+            m_useup(mon, obj);
+            mtmp = makemon(mons[M.PM_DJINNI], cc.x, cc.y, MM_NOMSG);
+            if (!mtmp) {
+                if (vis)
+                    await pline(empty);
+            } else {
+                if (vis) /* pline_mon() */
+                    await pline(`In a cloud of smoke, ${a_monnam(mtmp)} emerges!`);
+                await pline(`${vis ? Monnam(mtmp) : "Something"} speaks.`);
+                /* I suspect few players will be upset that monsters */
+                /* can't wish for wands of death here.... */
+                /* SetVoice(mtmp, 0, 80, 0): speech output only */
+                if (rn2(2)) {
+                    await verbalize("You freed me!");
+                    mtmp.mpeaceful = 1;
+                    set_malign(mtmp);
+                } else {
+                    await verbalize("It is about time.");
+                    if (vis)
+                        await pline(`${Monnam(mtmp)} vanishes.`);
+                    mongone(mtmp);
+                }
+            }
+            return 2;
+        }
     }
     if (obj.oclass === WAND_CLASS && obj.cursed
         && !rn2(WAND_BACKFIRE_CHANCE)) {
-        /* d(obj->spe + 2, 6), "<Mon> zaps <wand>, which suddenly explodes!" */
-        void vis;
-        throw new Error('precheck(): exploding cursed wand not ported yet');
+        const dam = d(obj.spe + 2, 6);
+
+        /* 3.6.1: no Deaf filter; 'if' message doesn't warrant it, 'else'
+           message doesn't need it since You_hear() has one of its own */
+        if (vis) {
+            /* pline_mon() */
+            await pline(`${Monnam(mon)} zaps ${an(xname(obj))}, which suddenly explodes!`);
+        } else {
+            /* same near/far threshold as mzapwand() */
+            const range = couldsee(mon.mx, mon.my) /* 9 or 5 */
+                          ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+
+            /* Soundeffect(se_zap_then_explosion, 100) */
+            await You_hear(`a zap and an explosion ${
+                (mdistu(mon) <= range * range) ? "nearby" : "in the distance"}.`);
+        }
+        m_useup(mon, obj);
+        mon.mhp -= dam;
+        if (DEADMONSTER(mon)) {
+            await monkilled(mon, "", M.AD_RBRE);
+            return 1;
+        }
+        game.m_has_defense = game.m_has_offense = game.m_has_misc = 0;
+        /* Only one needed to be set to 0 but the others are harmless */
     }
     return 0;
+}
+
+/* C ref: pline.c verbalize() -- SetVoice() only matters for speech
+   output, which the tty doesn't do */
+async function verbalize(line) {
+    if (Deaf())
+        return; /* vpline(): PLINE_VERBALIZE is dropped when Deaf */
+    await pline(`"${line}"`);
 }
 
 /* C ref: hack.h mdistu() */
@@ -806,9 +2225,8 @@ async function mzapwand(mtmp, otmp, self) {
                             ? "nearby" : "distant"} zap.`);
         unknow_object(otmp); /* hero loses info when unseen obj is used */
     } else if (self) {
-        /* pline("%s with %s!", monverbself(mtmp, Monnam(mtmp), "zap", 0),
-                 doname(otmp)) */
-        throw new Error('mzapwand(): monverbself() not ported yet');
+        await pline(`${monverbself(mtmp, Monnam(mtmp), "zap", null)} with ${
+            doname(otmp)}!`);
     } else {
         /* pline_mon(): tty ignores the position */
         await pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
@@ -831,7 +2249,14 @@ async function mplayhorn(mtmp, otmp, self) {
                                               ? "nearby" : "in the distance"}.`);
         unknow_object(otmp); /* hero loses info when unseen obj is used */
     } else if (self) {
-        throw new Error('mplayhorn(): monverbself() not ported yet');
+        observe_object(otmp, Hallucination());
+        objnamp = xname(otmp);
+        if (objnamp.length >= QBUFSZ)
+            objnamp = simpleonames(otmp);
+        const objbuf = `a ${objnamp} directed at`;
+        /* "<mon> plays a <horn> directed at himself!" */
+        await pline(`${monverbself(mtmp, Monnam(mtmp), "play", objbuf)}!`);
+        makeknown(otmp.otyp); /* (wands handle this slightly differently) */
     } else {
         observe_object(otmp, Hallucination());
         objnamp = xname(otmp);
@@ -842,6 +2267,165 @@ async function mplayhorn(mtmp, otmp, self) {
         await stop_occupation();
     }
     otmp.spe -= 1; /* use a charge */
+}
+
+// C ref: muse.c mreadmsg()
+/* see or hear a monster reading a scroll;
+   when scroll hasn't been seen, its label is revealed unless hero is deaf */
+async function mreadmsg(mtmp, otmp) {
+    const vismon = canseemon(mtmp);
+    let tpindicator = (!vismon && sensemon(mtmp));
+
+    if (!vismon && Deaf())
+        return; /* no feedback */
+
+    observe_object(otmp, Hallucination()); /* seeing/hearing scroll read
+                                               reveals its label */
+    const onambuf = singular(otmp, vismon ? doname : ansimpleoname);
+
+    if (vismon) {
+        /* directly see the monster reading the scroll */
+        await pline(`${Monnam(mtmp)} reads ${onambuf}!`); /* pline_mon() */
+    } else { /* !Deaf, otherwise we wouldn't reach here */
+        const similar = same_race(game.youmonst.data, mtmp.data),
+            uniqmon = ((mtmp.data.geno & G_UNIQ) !== 0
+                       /* shopkeepers aren't unique monsters but since
+                          they have distinct names, treat them as such */
+                       || !!mtmp.isshk),
+            recognize = (!Hallucination()
+                         && (mtmp.meverseen || (similar && !uniqmon)));
+        /* describe unseen monster accurately when not hallucinating if it
+           has ever been seen or is the same race as the hero (not yet seen
+           unique monsters excepted) */
+        const mflags = (SUPPRESS_INVISIBLE | SUPPRESS_SADDLE
+                        | (recognize ? SUPPRESS_IT : AUGMENT_IT));
+
+        if (sensemon(mtmp)) {
+            tpindicator = true;
+        } else if (couldsee(mtmp.mx, mtmp.my) && mdistu(mtmp) <= 10 * 10) {
+            /* monster can't be seen or sensed; hero might be blind or monster
+               might be at a spot that isn't in view or might be invisible;
+               remember it if the spot is within line of sight and relatively
+               close */
+            map_invisible(mtmp.mx, mtmp.my);
+        }
+
+        let blindbuf = `reading ${onambuf}`;
+        blindbuf = strsubst(blindbuf, "reading a scroll labeled",
+                            mtmp.mconf ? "attempting to incant" : "incant");
+        await You_hear(`${x_monnam(mtmp, ARTICLE_A, null, mflags, false)} ${
+            blindbuf}.`);
+        if (tpindicator) {
+            /* flash_mon(mtmp): transient display only (the monster's glyph
+               blinks and is restored) */
+        }
+    }
+    if (mtmp.mconf) /* (note: won't get if not seen and hero can't hear) */
+        await pline(`Being confused, ${vismon ? mon_nam(mtmp) : mhe(mtmp)
+                    } mispronounces the magic words...`);
+}
+
+// C ref: muse.c mquaffmsg()
+async function mquaffmsg(mtmp, otmp) {
+    if (canseemon(mtmp)) {
+        observe_object(otmp, Hallucination());
+        /* pline_mon() */
+        await pline(`${Monnam(mtmp)} drinks ${singular(otmp, doname)}!`);
+    } else if (!Deaf()) {
+        /* Soundeffect(se_mon_chugging_potion, 25) */
+        await You_hear("a chugging sound.");
+    }
+}
+
+// C ref: muse.c m_tele()
+async function m_tele(
+    mtmp,   /* monst that might be teleported */
+    vismon, /* can see it */
+    oseen,  /* have seen the object that triggered this */
+    how)    /* type of that object */
+{
+    if (await tele_restrict(mtmp)) { /* mysterious force... */
+        if (vismon && how)     /* mentions 'teleport' */
+            makeknown(how);
+        /* monster learns that teleportation isn't useful here */
+        if (noteleport_level(mtmp))
+            mon_learns_traps(mtmp, TELEP_TRAP);
+    } else if ((mon_has_amulet(mtmp) || On_W_tower_level(game.u.uz))
+               && !rn2(3)) {
+        if (vismon) /* pline_mon() */
+            await pline(`${Monnam(mtmp)} seems disoriented for a moment.`);
+    } else {
+        /* teleport monster 'mtmp' */
+        if (how) {
+            /* teleporation has been triggered by an object */
+            if (oseen)
+                makeknown(how);
+            await rloc(mtmp, RLOC_MSG);
+        } else {
+            /* monster is voluntarily entering a teleporation trap; use the
+               trap instead of rloc() in case it sends 'victim' to a vault */
+            mtmp.mx = game.trapx, mtmp.my = game.trapy;
+            await mintrap(mtmp, FORCETRAP);
+        }
+    }
+}
+
+// C ref: muse.c m_next2m()
+/* return TRUE if monster mtmp has another monster next to it.
+ * Called from find_defensive() where it is limited to Is_knox()
+ * only, otherwise you could trap two monsters next to each other
+ * in a boulder fort, and they would be happy to stay in there. */
+function m_next2m(mtmp) {
+    let m2;
+
+    if (DEADMONSTER(mtmp) || mtmp.mstate) /* mon_offmap() */
+        return false;
+
+    for (let x = mtmp.mx - 1; x <= mtmp.mx + 1; x++)
+        for (let y = mtmp.my - 1; y <= mtmp.my + 1; y++) {
+            if (!isok(x, y))
+                continue;
+            if ((m2 = m_at(x, y)) && m2 !== mtmp)
+                return true;
+        }
+    return false;
+}
+
+// C ref: muse.c reveal_trap()
+/* when a monster deliberately enters a trap, make sure the spot becomes
+   accessible (trap doors and teleporters inside niches are located at
+   secret corridor locations; convert such into normal corridor even if
+   hero doesn't see it happen) */
+function reveal_trap(t, seeit) {
+    const lev = game.level.at(t.tx, t.ty);
+
+    if (lev.typ === SCORR) {
+        lev.typ = CORR, lev.flags = 0; /* set_levltyp(,,CORR) */
+        unblock_point(t.tx, t.ty);
+    }
+    if (seeit)
+        seetrap(t);
+}
+
+// C ref: muse.c mon_escape()
+/* Monsters without the Amulet escape the dungeon and
+ * are gone for good when they leave up the up stairs.
+ * A monster with the Amulet would leave it behind
+ * (mongone -> mdrop_special_objs) but we force any
+ * monster who manages to acquire it or the invocation
+ * tools to stick around instead of letting it escape.
+ * Don't let the Wizard escape even when not carrying
+ * anything of interest unless there are more than 1
+ * of him.
+ */
+async function mon_escape(mtmp, vismon) {
+    if (mon_has_special(mtmp)
+        || (mtmp.iswiz && (game.context.no_of_wizards || 0) < 2))
+        return 0;
+    if (vismon) /* pline_mon() */
+        await pline(`${Monnam(mtmp)} escapes the dungeon!`);
+    mongone(mtmp);
+    return 2;
 }
 
 // C ref: muse.c mbhitm()
@@ -891,8 +2475,8 @@ async function mbhitm(mtmp, otmp) {
         } else if (rnd(20) < 10 + find_mac(mtmp)) {
             tmp = d(2, 12);
             await hit("wand", mtmp, exclam(tmp));
-            /* (void) resist(mtmp, otmp->oclass, tmp, TELL) */
-            throw new Error('mbhitm(): resist() not ported yet');
+            await resist_async(mtmp, otmp.oclass, tmp, TELL);
+            learnit = true;
         } else {
             await miss("wand", mtmp);
         }
@@ -903,15 +2487,27 @@ async function mbhitm(mtmp, otmp) {
             makeknown(WAN_STRIKING);
         break;
     case WAN_TELEPORTATION:
-        if (hits_you)
-            throw new Error('mbhitm(): tele() not ported yet');
-        else
-            throw new Error('mbhitm(): teleporting a monster (rloc()) not ported yet');
+        if (hits_you) {
+            await tele();
+            if (game.zap_oseen)
+                makeknown(WAN_TELEPORTATION);
+        } else {
+            /* for consistency with zap.c, don't identify */
+            if (mtmp.ispriest && in_rooms(mtmp.mx, mtmp.my, TEMPLE).length) {
+                if (cansee(mtmp.mx, mtmp.my)) /* pline_mon() */
+                    await pline(`${Monnam(mtmp)} resists the magic!`);
+            } else if (!(await tele_restrict(mtmp)))
+                await rloc(mtmp, RLOC_MSG);
+        }
+        break;
     case WAN_CANCELLATION:
     case SPE_CANCELLATION:
         throw new Error('mbhitm(): cancel_monst() not ported yet');
     case WAN_UNDEAD_TURNING:
-        throw new Error('mbhitm(): undead turning not ported yet');
+        if (hits_you)
+            throw new Error('mbhitm(): unturn_you() not ported yet');
+        else
+            throw new Error('mbhitm(): unturn_dead() not ported yet');
     default:
         break;
     }
@@ -1001,8 +2597,18 @@ async function mbhit(
             case WAN_OPENING:
             case WAN_LOCKING:
             case WAN_STRIKING:
-                /* doorlock(obj, bhitpos.x, bhitpos.y) */
-                throw new Error('mbhit(): doorlock() not ported yet');
+                if (await doorlock(obj, game.bhitpos.x, game.bhitpos.y)) {
+                    if (game.zap_oseen)
+                        makeknown(otyp);
+                    /* if a shop door gets broken, add it to
+                       the shk's fix list (no cost to player) */
+                    if (game.level.at(game.bhitpos.x, game.bhitpos.y).doormask
+                            === D_BROKEN
+                        && in_rooms(game.bhitpos.x, game.bhitpos.y,
+                                    SHOPBASE).length)
+                        throw new Error('mbhit(): add_damage() not ported yet');
+                }
+                break;
             }
         }
         if (!ZAP_POS(ltyp)
@@ -1125,3 +2731,14 @@ export async function use_offensive(mtmp) {
 }
 
 void m_next2u; void mon_knows_traps;
+
+// C ref: muse.c mcureblindness() -- cure mon's blindness (use_defensive,
+// dog_eat, meatobj)
+export async function mcureblindness(mon, verbos) {
+    if (!mon.mcansee) {
+        mon.mcansee = 1;
+        mon.mblinded = 0;
+        if (verbos && haseyes(mon.data))
+            await pline(`${Monnam(mon)} can see again.`);
+    }
+}

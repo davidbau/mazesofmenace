@@ -62,12 +62,18 @@ import { linedup } from './monmove.js';
 import { xdir, ydir, N_DIRS, ZAP_POS, is_xport } from './const.js';
 import { mongone, wake_nearto } from './mon.js';
 import { newsym, pline } from './display.js';
+import { done } from './end.js';
+import { killer } from './topten.js';
+import { DIED } from './const.js';
 import { cansee, couldsee } from './vision.js';
 import { m_in_air } from './monmove.js';
 import { canseemon } from './display.js';
 import { mon_nam, Monnam } from './do_name.js';
 import { You_hear } from './sounds.js';
 import { just_an } from './objnam.js';
+import { seemimic } from './mon.js';
+import { resist } from './zap.js';
+import { M_AP_FURNITURE, M_AP_OBJECT, NOTELL } from './const.js';
 import { dist2 } from './hacklib.js';
 import { rn1 } from './rng.js';
 import { nomul, end_running } from './hack.js';
@@ -167,7 +173,7 @@ export const TRAPNUM = 26;
 export function is_pit(ttyp) { return ttyp === PIT || ttyp === SPIKED_PIT; }
 export function is_hole(ttyp) { return ttyp === HOLE || ttyp === TRAPDOOR; }
 function unhideable_trap(ttyp) { return ttyp === HOLE; }
-function undestroyable_trap(ttyp) {
+export function undestroyable_trap(ttyp) {
     return ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE;
 }
 
@@ -278,10 +284,9 @@ export function Maybe_Half_Phys(dmg) {
 /* C ref: pline.c You_feel() -- Unaware dreaming isn't reached here */
 async function You_feel(line) { await pline(`You feel ${line}`); }
 
-// C ref: hack.c losehp() -- the not-polymorphed, surviving case
+// C ref: hack.c losehp() -- the not-polymorphed case
 export async function losehp(n, knam, k_format) {
     const u = game.u;
-    void knam; void k_format;
     game.disp_botl = true; /* u.uhp or u.mh is changing */
     end_running(true);
     if (Upolyd())
@@ -291,9 +296,13 @@ export async function losehp(n, knam, k_format) {
     /* showdamage(n): the showdamage option isn't ported (default off) */
     if (u.uhp > u.uhpmax)
         u.uhpmax = u.uhp; /* perhaps n was negative */
-    if (u.uhp < 1)
-        throw new Error('losehp(): death (done(DIED)) not ported yet');
-    else if (n > 0 && u.uhp * 10 < u.uhpmax)
+    if (u.uhp < 1) {
+        killer().format = k_format;
+        if (killer().name !== knam) /* the thing that killed you */
+            killer().name = knam ? knam : "";
+        await pline("You die..."); /* urgent_pline() */
+        await done(DIED);
+    } else if (n > 0 && u.uhp * 10 < u.uhpmax)
         throw new Error('losehp(): maybe_wail() not ported yet');
 }
 
@@ -1139,12 +1148,15 @@ async function trapeffect_bear_trap(mtmp, trap, trflags) {
 
 // C ref: mhitm.c sleep_monst()
 /* `mon' is hit by a sleep attack; return 1 if it's affected, 0 otherwise */
-function sleep_monst(mon, amt, how) {
+export function sleep_monst(mon, amt, how) {
     /* reveal mimic unless already asleep or paralyzed (won't be 'busy') */
-    if (how >= 0)
-        throw new Error('sleep_monst(): seemimic()/resist() not ported yet');
+    if (how >= 0 && !mon.msleeping && !mon.mfrozen
+        && mon.data.mlet === S_MIMIC && (mon.m_ap_type === M_AP_FURNITURE
+                                         || mon.m_ap_type === M_AP_OBJECT))
+        seemimic(mon);
 
-    if (resists_sleep(mon) || defended(mon, AD_SLEE)) {
+    if (resists_sleep(mon) || defended(mon, AD_SLEE)
+        || (how >= 0 && resist(mon, how, 0, NOTELL))) {
         /* shieldeff(mon->mx, mon->my): display effect only */
     } else if (mon.mcanmove) {
         finish_meating(mon); /* terminate any meal-in-progress */

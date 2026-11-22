@@ -27,6 +27,7 @@ import * as O from './objects.js';
 import { objects } from './objects.js';
 import { splitobj, obj_extract_self } from './mkobj.js';
 import { mpickobj, relobj } from './steal.js';
+import { m_in_out_region } from './region.js';
 import { distant_name, doname } from './objnam.js';
 import { newsym, pline, canseemon, mon_visible, canspotmon, Hallucination,
          glyph_kind, vobj_at } from './display.js';
@@ -1516,8 +1517,8 @@ export async function dog_move(mtmp, after) {
         if (mfp.info[chi] & ALLOW_U) {
             throw new Error('dog_move(): mattacku() not ported yet');
         }
-        /* if (!m_in_out_region(mtmp, nix, niy)) return MMOVE_MOVED:
-           regions aren't ported yet (none exist) */
+        if (!(await m_in_out_region(mtmp, nix, niy)))
+            return MMOVE_MOVED;
         if (await m_digweapon_check(mtmp, nix, niy))
             return MMOVE_NOTHING;
 

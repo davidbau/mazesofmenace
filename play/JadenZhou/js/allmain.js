@@ -21,7 +21,7 @@ import { initrack, settrack } from './track.js';
 import { m_at, makemon, makemon_flush_msg } from './makemon.js';
 import { mnexto } from './teleport.js';
 import { makedog } from './dog.js';
-import { deferred_goto } from './do.js';
+import { deferred_goto, hellish_smoke_mesg } from './do.js';
 import { com_pager } from './questpgr.js';
 import { objects_globals_init } from './objects.js';
 import { init_objects } from './o_init.js';
@@ -57,6 +57,8 @@ import { u_wipe_engr } from './engrave.js';
 import { dosearch0, warnreveal } from './detect.js';
 import { set_uasmon } from './polyself.js';
 import { init_artifacts } from './artifact.js';
+import { run_regions } from './region.js';
+import { m_everyturn_effect } from './monmove.js';
 
 const MON_AT = (x, y) => !!m_at(x, y); /* C ref: display.h MON_AT() */
 
@@ -188,16 +190,6 @@ export async function welcome(new_game) /* false => restoring an old game */ {
            print_level_annotation() -- level annotations (#annotate,
            mapseen) aren't ported, so there is none to print */
     }
-}
-
-// C ref: do.c hellish_smoke_mesg()
-async function hellish_smoke_mesg() {
-    const temperature = game.level.flags.temperature;
-    if (temperature)
-        await pline(`It is ${temperature > 0 ? "hot" : "cold"} here.`);
-
-    if (In_hell(game.u.uz) && temperature > 0)
-        throw new Error('hellish_smoke_mesg(): olfaction() not ported yet');
 }
 
 // C ref: allmain.c maybe_generate_rnd_mon()
@@ -477,7 +469,7 @@ export async function moveloop_core() {
 
                 /* set up for a new turn */
                 g.were_changes = 0;
-                mcalcdistress(); /* adjust monsters' trap, blind, etc */
+                await mcalcdistress(); /* adjust monsters' trap, blind, etc */
 
                 /* reallocate movement rations to monsters; don't need
                    to skip dead monsters here because they will have
@@ -511,10 +503,7 @@ export async function moveloop_core() {
                 if (P[GLIB].intrinsic) /* Glib */
                     throw new Error('moveloop_core(): glibr() not ported yet');
                 await nh_timeout();
-                /* run_regions(): not ported yet (region.js). The only regions
-                   so far are the themed Cloud room's harmless permanent gas
-                   clouds; run_regions() rolls no dice for those (it only
-                   ages/expires them and prints dissipation messages). */
+                await run_regions();
 
                 if (u.ublesscnt)
                     u.ublesscnt--;
@@ -667,6 +656,8 @@ export async function moveloop_core() {
     }
     await bot();
     await flush_screen(1);
+
+    await m_everyturn_effect(g.youmonst);
 
     g.context.move = 1;
 

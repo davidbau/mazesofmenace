@@ -1724,7 +1724,8 @@ async function dispinv_inuse_menu(lets, altLabel, want_reply = true) {
             windowLines.push(menucolor_row(`${HANDS_SYM} - ${u.uarmg ? 'gloved' : 'bare'} `
                              + `${hands} (no weapon)`));
         } else {
-            let txt = await _pickinv_item_text(obj, hand);
+            const og = {};
+            let txt = await _pickinv_item_text(obj, hand, false, og);
             /* C wintty.c:1383-1390,1475-1483 show_obj_syms: with
              * iflags.use_menu_glyphs (menu_objsyms 2 'entries' / 3 'both')
              * the entry's object glyph (invent.c:3316 obj_to_glyph ->
@@ -1735,7 +1736,6 @@ async function dispinv_inuse_menu(lets, altLabel, want_reply = true) {
              * passes nul_glyphinfo (invent.c:3312) and keeps its plain "-". */
             if (g.iflags?.use_menu_glyphs
                 && !((g.iflags.menuobjsyms | 0) & 4)) {
-                const og = obj_to_glyph(obj);
                 const sym = og.ch;
                 const gc = g.iflags?.use_color === false ? 8 : og.color | 0;
                 const symTxt = gc === 0 ? `\x1b[${(g.iflags?.wc2_darkgray ?? true) ? 90 : 34}m${sym}\x1b[39m`
@@ -2694,6 +2694,11 @@ async function yn_count_tail(qbuf) {
     if (value >= 0n) { // topl.c:533-539: only the final answer enters gt.toplines.
         putmsghistory(qbuf + ' ' + (value > 0n ? '#' + value : 'n'));
         g._toplEmptyAfterSuppress = false;
+        /* topl.c:483-503,533-550: the '#'+digits echo is the text physically
+         * standing after clean_up (no repaint), so it — not the bare prompt
+         * armed by the caller above — is the dead topline text, unless the
+         * echo wrapped (cw->cury != 0), which clean_up erases instead. */
+        g._topl_sticky = topl_park_cursor(null, text)[1] > 0 ? null : text;
     }
     await tty_yn_count_echo(qbuf, text, value);
     return Number(value);

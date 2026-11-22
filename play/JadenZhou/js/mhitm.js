@@ -9,15 +9,16 @@ import { rn2, rnd, rn1, d } from './rng.js';
 import { distmin, isok } from './hacklib.js';
 import { cansee } from './vision.js';
 import { m_at, grow_up } from './makemon.js';
-import { monkilled, zombie_maker, monnear } from './mon.js';
+import { monkilled, zombie_maker, monnear, seemimic } from './mon.js';
 import { thrwmm, spitmm, breamm } from './mthrowu.js';
 import { canspotmon, newsym, pline, map_invisible } from './display.js';
-import { Monnam, mon_nam_too } from './do_name.js';
+import { Monnam, mon_nam, mon_nam_too } from './do_name.js';
 import { is_elf, is_orc } from './mondata.js';
 import { M_AP_TYPE, IS_DOOR, M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED,
          M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, NATTK, HALLUC, W_SADDLE, W_ARMG,
          NEED_WEAPON, NEED_HTH_WEAPON, P_POLEARMS, P_LANCE, ERODE_BURN,
          ERODE_RUST, ERODE_CORRODE, CONFLICT, BLINDED } from './const.js';
+import { STRAT_WAITFORU } from './const.js';
 import { mons, AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH,
          AT_STNG, AT_HUGS, AT_ENGL, AT_TENT, AT_WEAP, AT_EXPL, AT_BOOM,
          AT_BREA, AT_SPIT,
@@ -171,14 +172,18 @@ async function noises(magr, mattk) {
 function pre_mm_attack(magr, mdef) {
     let showit = false;
 
+    /* unhiding or unmimicking happens even if hero can't see it
+       because the formerly concealed monster is now in action */
     if (M_AP_TYPE(mdef)) {
-        throw new Error('pre_mm_attack(): seemimic() not ported yet');
+        seemimic(mdef);
+        showit ||= game.mhitm_vis;
     } else if (mdef.mundetected) {
         mdef.mundetected = 0;
         showit ||= game.mhitm_vis;
     }
     if (M_AP_TYPE(magr)) {
-        throw new Error('pre_mm_attack(): seemimic() not ported yet');
+        seemimic(magr);
+        showit ||= game.mhitm_vis;
     } else if (magr.mundetected) {
         magr.mundetected = 0;
         showit ||= game.mhitm_vis;
@@ -649,7 +654,7 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         /* caveat: above digestion handling doesn't keep `pa' up to date */
 
         return (M_ATTK_DEF_DIED
-                | (grow_up(magr, mdef) ? 0 : M_ATTK_AGR_DIED));
+                | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED));
     }
     return (mhm.hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
 }
@@ -707,4 +712,23 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
         return (mdead | mhit | M_ATTK_AGR_DIED);
     }
     return (mdead | mhit);
+}
+
+// C ref: mhitm.c paralyze_monst()
+export function paralyze_monst(mon, amt) {
+    if (amt > 127)
+        amt = 127;
+
+    mon.mcanmove = 0;
+    mon.mfrozen = amt;
+    mon.meating = 0; /* terminate any meal-in-progress */
+    mon.mstrategy &= ~STRAT_WAITFORU;
+}
+
+// C ref: mhitm.c slept_monst() -- sleeping grabber releases, engulfer
+// doesn't; don't use for paralysis!
+export async function slept_monst(mon) {
+    if (helpless(mon) && mon === game.u.ustuck
+        && !sticks(game.youmonst.data) && !game.u.uswallow)
+        throw new Error('slept_monst(): grip relaxes (unstuck()) not ported yet');
 }

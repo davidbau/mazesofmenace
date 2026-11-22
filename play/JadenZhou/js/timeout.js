@@ -13,8 +13,24 @@ import { pline } from './display.js';
 import {
     FULL_MOON, TIMEOUT, LAST_PROP, STONED, SLIMED, VOMITING, STRANGLED, SICK,
     LEVITATION, PASSES_WALLS, MAGICAL_BREATHING, SLEEPY, FAST, FUMBLING,
-    FLYING, INTRINSIC, WOUNDED_LEGS,
+    FLYING, INTRINSIC, WOUNDED_LEGS, CONFUSION, STUNNED, BLINDED, DEAF,
+    INVIS, SEE_INVIS, HALLUC, HALLUC_RES, FIRE_RES, WWALKING, ACID_RES,
+    STONE_RES, DISPLACED, WARN_OF_MON, PROT_FROM_SHAPE_CHANGERS,
+    DETECT_MONSTERS, GLIB,
 } from './const.js';
+import { newsym, see_monsters } from './display.js';
+import { set_itimeout, make_confused, make_stunned, make_blinded, make_deaf,
+         make_hallucinated, make_glib, set_mimic_blocking } from './potion.js';
+
+/* C ref: youprop.h -- (H* || E*) for the timeout cases; Blind */
+function uhave(p) {
+    const q = game.u.uprops[p];
+    return !!(q.intrinsic || q.extrinsic);
+}
+function Blind() {
+    const q = game.u.uprops[BLINDED];
+    return !!((q.intrinsic || q.extrinsic) && !q.blocked);
+}
 import { PM_ARCHEOLOGIST } from './monsters.js';
 import { FEDORA, LUCKSTONE } from './objects.js';
 import { stone_luck } from './attrib.js';
@@ -117,6 +133,85 @@ export async function nh_timeout() {
                         (HFast || EFast) ? " a bit" : ""}.`);
                 break;
             }
+            case CONFUSION:
+                /* So make_confused works properly */
+                set_itimeout(CONFUSION, 1);
+                await make_confused(0, true);
+                if (!uhave(CONFUSION))
+                    await stop_occupation();
+                break;
+            case STUNNED:
+                set_itimeout(STUNNED, 1);
+                await make_stunned(0, true);
+                if (!uhave(STUNNED))
+                    await stop_occupation();
+                break;
+            case BLINDED: {
+                const was_blind = Blind();
+
+                set_itimeout(BLINDED, 1);
+                await make_blinded(0, true);
+                if (was_blind && !Blind())
+                    await stop_occupation();
+                break;
+            }
+            case DEAF:
+                set_itimeout(DEAF, 1);
+                await make_deaf(0, true);
+                g.disp_botl = true;
+                if (!(uhave(DEAF) || u.uroleplay?.deaf))
+                    await stop_occupation();
+                break;
+            case INVIS: {
+                const Invis = uhave(INVIS) && !P[INVIS].blocked;
+                newsym(u.ux, u.uy);
+                if (!Invis && !P[INVIS].blocked && !Blind()) {
+                    await pline(!uhave(SEE_INVIS)
+                                ? "You are no longer invisible."
+                                : "You can no longer see through yourself.");
+                    await stop_occupation();
+                }
+                break;
+            }
+            case SEE_INVIS:
+                set_mimic_blocking(); /* do special mimic handling */
+                see_monsters();       /* make invis mons appear */
+                newsym(u.ux, u.uy);   /* make self appear */
+                await stop_occupation();
+                break;
+            case HALLUC:
+                set_itimeout(HALLUC, 1);
+                await make_hallucinated(0, true, 0);
+                if (!(P[HALLUC].intrinsic && !uhave(HALLUC_RES)))
+                    await stop_occupation();
+                break;
+            case FIRE_RES:
+                /* timed fire resistance and timed water walking combine
+                   as a way to survive lava after multiple life-saving
+                   attempts fail to relocate hero; skip timeout message
+                   if hero has acquired fire resistance in the meantime */
+                if (!uhave(FIRE_RES))
+                    await pline("Your temporary ability to survive burning has ended.");
+                break;
+            case WWALKING:
+                /* [see fire resistance] */
+                if (!uhave(WWALKING))
+                    await pline("Your temporary ability to walk on liquid has ended.");
+                break;
+            case ACID_RES:
+            case STONE_RES:
+            case DISPLACED:
+            case WARN_OF_MON:
+            case PROT_FROM_SHAPE_CHANGERS:
+                /* eating_dangerous_corpse(), wielding_corpse(),
+                   toggle_displacement(), restartcham() */
+                throw new Error(`nh_timeout(): timeout of property ${idx} not ported yet`);
+            case DETECT_MONSTERS:
+                see_monsters();
+                break;
+            case GLIB:
+                make_glib(0); /* might update persistent inventory */
+                break;
             case FLYING:
                 /* timed Flying is via #wizintrinsic only */
                 break;
@@ -132,9 +227,7 @@ export async function nh_timeout() {
                    yet */
                 throw new Error(`nh_timeout(): timeout of property ${idx} not ported yet`);
             default:
-                /* the other cases only give feedback and update state
-                   (make_confused(), make_blinded(), ...): not ported yet;
-                   nothing in the JS port sets those timeouts yet */
+                /* the remaining properties have no case in C */
                 break;
             }
         }

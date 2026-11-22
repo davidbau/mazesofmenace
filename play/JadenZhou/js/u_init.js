@@ -9,6 +9,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne, ROLL_FROM } from './rng.js';
+import { getnow } from './calendar.js';
 import {
     NON_PM, LAST_PROP, MAXULEV, A_MAX, A_CURRENT, A_ORIGINAL, NO_SPELL,
     FROMOUTSIDE, BLINDED, RIGHT_HANDED, LEFT_HANDED, JUMPING, A_CHAOTIC,
@@ -123,7 +124,11 @@ export function u_init_misc() {
         aligns[flags.initalign].value;
 
     /* Route through getnow() so fixed datetime also controls ubirthday. */
-    /* ubirthday = getnow(); -- calendar.c not ported yet */
+    /* ubirthday = getnow(); -- not modelled yet: C's getnow() is mktime()
+       of the fixed datetime in the recorder's time zone, with the DST flag
+       of the real clock at recording time; ubirthday stays 0 (and
+       yyyymmdd(0) gives the fixed datetime's date, as C's would) */
+    void getnow;
 
     /*
      *  For now, everyone starts out with a night vision range of 1 and

@@ -674,6 +674,21 @@ export function get_artifact(obj) {
     return arts[ART_NONARTIFACT];
 }
 
+// C ref: artifact.c arti_reflects()
+export function arti_reflects(obj) {
+    const arti = get_artifact(obj);
+
+    if (arti !== artilist()[ART_NONARTIFACT]) {
+        /* while being worn */
+        if (((obj.owornmask || 0) & ~W_ART) && (arti.spfx & SPFX_REFLECT))
+            return true;
+        /* just being carried */
+        if (arti.cspfx & SPFX_REFLECT)
+            return true;
+    }
+    return false;
+}
+
 // C ref: artifact.c spec_ability()
 export function spec_ability(otmp, abil) {
     const arti = get_artifact(otmp);

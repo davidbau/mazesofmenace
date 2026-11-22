@@ -431,7 +431,7 @@ export async function nemesis_speaks() {
 
 // C ref: quest.c nemesis_stinks()
 /* create cloud of stinking gas around dying nemesis */
-export function nemesis_stinks(mx, my) {
+export async function nemesis_stinks(mx, my) {
     const save_mon_moving = game.context.mon_moving;
 
     /*
@@ -441,7 +441,7 @@ export function nemesis_stinks(mx, my) {
      */
     game.context.mon_moving = true;
     try {
-        create_gas_cloud(mx, my, 5, 8);
+        await create_gas_cloud(mx, my, 5, 8);
     } finally {
         game.context.mon_moving = save_mon_moving;
     }

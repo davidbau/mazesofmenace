@@ -7,7 +7,8 @@
 import { game } from './gstate.js';
 import { rnl } from './rng.js';
 import { pline, newsym, docrt, flush_screen, glyph_at, glyph_kind, show_glyph,
-         back_to_glyph, trap_to_glyph, covers_objects, xy_set_wall_state } from './display.js';
+         back_to_glyph, trap_to_glyph, covers_objects, xy_set_wall_state,
+         cmap_to_glyph } from './display.js';
 import { cansee } from './vision.js';
 import { visible_region_at } from './region.js';
 import { getpos } from './getpos.js';
@@ -346,7 +347,7 @@ function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_subset) {
                    if we don't find one, we'll have to fake it */
                 const mtmp = m_at(x, y);
                 if (mtmp && mtmp.m_ap_type === M_AP_FURNITURE) {
-                    throw new Error('reveal_terrain_getglyph(): mimic furniture glyph not ported yet');
+                    glyph = cmap_to_glyph(mtmp.mappearance);
                 } else {
                     /*
                      * We have a topology type but we want a screen symbol
@@ -357,6 +358,7 @@ function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_subset) {
                      */
                     const save_spot = { ...lev };
                     delete save_spot.doormask;
+                    delete save_spot.drawbridgemask;
                     lev.typ = g.level.lastseentyp?.[x]?.[y] ?? 0;
                     if (IS_WALL(lev.typ) || lev.typ === SDOOR)
                         xy_set_wall_state(x, y); /* levl[x][y].wall_info */

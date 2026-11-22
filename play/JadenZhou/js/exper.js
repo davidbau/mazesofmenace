@@ -7,7 +7,10 @@
 
 import { game } from './gstate.js';
 import { rnd, rn1 } from './rng.js';
-import { A_WIS, MAXULEV, NORMAL_SPEED, NATTK, MAGICAL_BREATHING } from './const.js';
+import { A_WIS, MAXULEV, NORMAL_SPEED, NATTK, MAGICAL_BREATHING, KILLED_BY,
+         DIED } from './const.js';
+import { done } from './end.js';
+import { killer } from './topten.js';
 import { AT_BUTT, AT_WEAP, AT_MAGC, AD_PHYS, AD_BLND, AD_DRLI, AD_STON,
          AD_SLIM, AD_WRAP, S_EEL, M2_NASTY, M1_AMPHIBIOUS } from './monsters.js';
 import { find_mac } from './worn.js';
@@ -327,8 +330,12 @@ export async function losexp(drainer) /* cause of death, if drain should be fata
         await adjabil(u.ulevel + 1, u.ulevel);
         /* livelog_printf(), SoundAchievement(): not needed */
     } else { /* u.ulevel==1 */
-        if (drainer)
-            throw new Error('losexp(): fatal level drain (done(DIED)) not ported yet');
+        if (drainer) {
+            killer().format = KILLED_BY;
+            if (killer().name !== drainer)
+                killer().name = drainer;
+            await done(DIED);
+        }
         /* no drainer or lifesaved */
         u.uexp = 0;
     }

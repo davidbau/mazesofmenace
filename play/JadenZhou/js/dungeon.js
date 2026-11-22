@@ -47,6 +47,12 @@ import {
 } from './nhlua.js';
 import { strcmpi, strncmpi, mungspaces } from './hacklib.js';
 import { tty_getlin } from './wintty.js';
+import { within_bounded_area } from './rect.js';
+import { stairway_find_special_dir } from './mklev.js';
+import { in_rooms } from './hack.js';
+import { In_sokoban, In_quest, Is_waterlevel, Is_firelevel, Is_earthlevel,
+         IS_AIR, IS_ROOM, IS_WALL, IS_DOOR, SDOOR, VAULT, TEMPLE,
+         SHOPBASE } from './const.js';
 
 // C's panic() (end.c) and impossible() (pline.c) are not ported yet.
 function panic(msg) { throw new Error(`panic: ${msg}`); }
@@ -1030,6 +1036,25 @@ export function maxledgerno() {
         + game.dungeons[game.n_dgns - 1].num_dunlevs;
 }
 
+// C ref: dungeon.c ledger_to_dnum()
+/* return the dungeon that this ledgerno exists in */
+export function ledger_to_dnum(ledgerno) {
+    /* find i such that (i->base + 1) <= ledgerno <= (i->base + i->count) */
+    for (let i = 0; i < game.n_dgns; i++)
+        if (game.dungeons[i].ledger_start < ledgerno
+            && ledgerno <= (game.dungeons[i].ledger_start
+                            + game.dungeons[i].num_dunlevs))
+            return i;
+
+    throw new Error(`level number out of range [ledger_to_dnum(${ledgerno})]`);
+}
+
+// C ref: dungeon.c ledger_to_dlev()
+/* return the level of the dungeon this ledgerno exists in */
+export function ledger_to_dlev(ledgerno) {
+    return ledgerno - game.dungeons[ledger_to_dnum(ledgerno)].ledger_start;
+}
+
 // C ref: dungeon.c depth()
 /* return the depth of lev; (schar) cast kept */
 export function depth(lev) {
@@ -1083,6 +1108,35 @@ export function induced_align(pct) {
 
     const al = rn2(3) - 1;
     return Align2amask(al);
+}
+
+// C ref: dungeon.c On_W_tower_level()
+/* is `lev' a level containing the Wizard's tower? */
+export function On_W_tower_level(lev) {
+    const t = game.dungeon_topology;
+    return (on_level(lev, t.d_wiz1_level)      /* Is_wiz1_level() */
+            || on_level(lev, t.d_wiz2_level)   /* Is_wiz2_level() */
+            || on_level(lev, t.d_wiz3_level)); /* Is_wiz3_level() */
+}
+
+// C ref: dungeon.c In_W_tower()
+/* is <x,y> of `lev' inside the Wizard's tower? */
+export function In_W_tower(x, y, lev) {
+    if (!On_W_tower_level(lev))
+        return false;
+    const dndest = game.dndest;
+    if (!dndest || !dndest.nlx) {
+        /* impossible("No boundary for Wizard's Tower?") */
+        console.error("impossible: No boundary for Wizard's Tower?");
+        return false;
+    }
+    /*
+     * Both of the exclusion regions for arriving via level teleport
+     * (from above or below) define the tower's boundary.
+     *  assert( svu.updest.nIJ == svd.dndest.nIJ for I={l|h},J={x|y} );
+     */
+    return within_bounded_area(x, y, dndest.nlx, dndest.nly,
+                               dndest.nhx, dndest.nhy);
 }
 
 // C ref: dungeon.c In_hell()
@@ -1489,4 +1543,56 @@ export async function donamelevel() {
         throw new Error('donamelevel(): dooverview() not ported yet');
     await query_annotation(null);
     return 0; /* ECMD_OK */
+}
+
+// C ref: dungeon.c Can_rise_up()
+export function Can_rise_up(x, y, lev) {
+    const stway = stairway_find_special_dir(false);
+
+    /* can't rise up from inside the top of the Wizard's tower */
+    /* KMH -- or in sokoban */
+    if (In_endgame(lev) || In_sokoban(lev)
+        || (on_level(lev, game.dungeon_topology.d_wiz1_level) /* Is_wiz1_level() */
+            && In_W_tower(x, y, lev)))
+        return false;
+    return (lev.dlevel > 1
+            || (game.dungeons[lev.dnum].entry_lev === 1
+                && ledger_no(lev) !== 1
+                && !!stway && !!stway.up));
+}
+
+// C ref: dungeon.c ceiling()
+export function ceiling(x, y) {
+    const lev = game.level.at(x, y);
+    const u = game.u;
+    let what;
+
+    /* other room types will no longer exist when we're interested --
+     * see check_special_room()
+     */
+    if (in_rooms(x, y, VAULT).length)
+        what = "vault's ceiling";
+    else if (in_rooms(x, y, TEMPLE).length)
+        what = "temple's ceiling";
+    else if (in_rooms(x, y, SHOPBASE).length)
+        what = "shop's ceiling";
+    else if (Is_waterlevel(u.uz))
+        /* water plane has no surface; its air bubbles aren't below sky */
+        what = "water above";
+    else if (IS_AIR(lev.typ))
+        what = "sky";
+    else if (Is_firelevel(u.uz))
+        what = "flames above";
+    else if (In_quest(u.uz))
+        /* just in case; try to avoid in caller if you can */
+        what = "expanse above";
+    else if (u.uinwater) /* Underwater */
+        what = "water's surface";
+    else if ((IS_ROOM(lev.typ) && !Is_earthlevel(u.uz))
+             || IS_WALL(lev.typ) || IS_DOOR(lev.typ) || lev.typ === SDOOR)
+        what = "ceiling";
+    else
+        what = "rock cavern";
+
+    return what;
 }

@@ -11,7 +11,7 @@ import { pline } from './display.js';
 import { tty_getlin } from './wintty.js';
 import { In_endgame, In_quest, In_mines, TELEPORT_CONTROL, STUNNED, CONFUSION } from './const.js';
 import { dunlevs_in_dungeon, In_hell, depth, get_level, on_level, find_hell,
-         print_dungeon } from './dungeon.js';
+         print_dungeon, ledger_no } from './dungeon.js';
 import { schedule_goto, UTOTYPE_NONE } from './do.js';
 import {
     COLNO, ROWNO, ZAP_POS, isok, GP_ALLOW_XY, GP_CHECKSCARY, NO_MM_FLAGS,
@@ -38,7 +38,9 @@ import { maybe_unhide_at } from './mon.js';
 import { set_apparxy, mon_track_clear, dochugw, onscary } from './monmove.js';
 import { mintrap, seetrap, t_at, is_hole, is_pit, HOLE, TRAPDOOR, TELEP_TRAP,
          LEVEL_TELEP, MAGIC_PORTAL, NO_TRAP, Trap_Effect_Finished,
-         clamp_hole_destination } from './trap.js';
+         Trap_Moved_Mon, clamp_hole_destination } from './trap.js';
+import { migrate_to_level } from './dog.js';
+import { MIGR_RANDOM } from './const.js';
 import { within_bounded_area } from './rect.js';
 import { obj_extract_self, place_object } from './mkobj.js';
 import { flooreffects } from './do.js';
@@ -59,6 +61,7 @@ import { PM_WIZARD } from './monsters.js';
 import { ACURR } from './attrib.js';
 import { check_capacity } from './hack.js';
 import { morehungry } from './eat.js';
+import { in_out_region, update_player_regions, update_monster_region } from './region.js';
 
 /* C ref: mondata.h is_rider() */
 function is_rider(ptr) {
@@ -303,9 +306,7 @@ export async function teleds(nux, nuy, teleds_flags) {
         if (t && (is_pit(t.ttyp) || is_hole(t.ttyp)) && sobj_at(BOULDER, u.ux0, u.uy0))
             throw new Error('teleds(): fill_pit() not ported yet');
     }
-    /* update_player_regions(): regions aren't ported yet */
-    if (game.regions && game.regions.length)
-        throw new Error('teleds(): update_player_regions() not ported yet');
+    update_player_regions();
     /*
      *  Make sure the hero disappears from the old location.  This will
      *  not happen if she is teleported within sight of her previous
@@ -339,7 +340,7 @@ export async function teleds(nux, nuy, teleds_flags) {
 }
 
 // C ref: teleport.c teleok()
-function teleok(x, y, trapok) {
+async function teleok(x, y, trapok) {
     if (!trapok) {
         /* allow teleportation onto vibrating square, it's not a real trap;
            also allow pits and holes if levitating or flying */
@@ -360,9 +361,8 @@ function teleok(x, y, trapok) {
         return false;
     if (!tele_jump_ok(game.u.ux, game.u.uy, x, y))
         return false;
-    /* in_out_region(x, y): regions aren't ported */
-    if (game.regions && game.regions.length)
-        throw new Error('teleok(): in_out_region() not ported yet');
+    if (!(await in_out_region(x, y)))
+        return false;
     return true;
 }
 
@@ -400,7 +400,7 @@ export async function safe_teleds(teleds_flags) {
     for (tcnt = 0; tcnt < 40; ++tcnt) {
         nux = rnd(COLNO - 1);
         nuy = rn2(ROWNO);
-        if (teleok(nux, nuy, false)) {
+        if (await teleok(nux, nuy, false)) {
             await teleds(nux, nuy, teleds_flags);
             return true;
         }
@@ -417,11 +417,11 @@ export async function safe_teleds(teleds_flags) {
        encountered trap spot that is acceptable to teleok(,,TRUE) */
     for (tcnt = 0; tcnt < candycount; ++tcnt) {
         nux = candy[tcnt].x, nuy = candy[tcnt].y;
-        if (teleok(nux, nuy, false)) {
+        if (await teleok(nux, nuy, false)) {
             await teleds(nux, nuy, teleds_flags);
             return true;
         }
-        if (!backupspot.x && t_at(nux, nuy) && teleok(nux, nuy, true))
+        if (!backupspot.x && t_at(nux, nuy) && await teleok(nux, nuy, true))
             backupspot.x = nux, backupspot.y = nuy;
     }
     /* no non-trap spot found; if we skipped a viable trap spot, use it */
@@ -511,7 +511,7 @@ export async function scrolltele(scroll) {
                 return; /* abort */
             /* possible extensions: introduce a small error if
                magic power is low; allow transfer to solid rock */
-            if (teleok(cc.x, cc.y, false)) {
+            if (await teleok(cc.x, cc.y, false)) {
                 /* for scroll, discover it regardless of destination */
                 await teleds(cc.x, cc.y, TELEDS_TELEPORT);
                 if (u.ux === iflags.travelcc.x && u.uy === iflags.travelcc.y)
@@ -1033,7 +1033,7 @@ function rloc_pos_ok(x, y, /* coordinates of candidate location */
  * a value because mtmp is a migrating_mon.  Worm tails are always
  * placed randomly around the head of the worm.
  */
-async function rloc_to_core(mtmp, x, y, rlocflags) {
+export async function rloc_to_core(mtmp, x, y, rlocflags) {
     const u = game.u;
     const oldx = mtmp.mx, oldy = mtmp.my;
     const preventmsg = (rlocflags & RLOC_NOMSG) !== 0;
@@ -1074,7 +1074,7 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
 
     mon_track_clear(mtmp);
     place_monster(mtmp, x, y); /* put monster down */
-    /* update_monster_region(mtmp): no regions are created yet */
+    update_monster_region(mtmp);
 
     if (u.ustuck === mtmp)
         throw new Error('rloc_to_core(): u.ustuck teleporting not ported yet');
@@ -1344,6 +1344,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
         return Trap_Effect_Finished; /* temporary? kludge */
     if (teleport_pet(mtmp, force_it)) {
         const tolevel = { dnum: 0, dlevel: 0 };
+        const migrate_typ = MIGR_RANDOM; /* MIGR_PORTAL: portals aren't ported */
 
         if (is_hole(tt)) {
             const topo = game.dungeon_topology;
@@ -1410,7 +1411,8 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
         if ((tt === TELEP_TRAP || tt === LEVEL_TELEP)
             && !control_teleport(mtmp.data))
             mtmp.mconf = 1;
-        throw new Error('mlevel_tele_trap(): migrate_to_level() not ported yet');
+        migrate_to_level(mtmp, ledger_no(tolevel), migrate_typ, null);
+        return Trap_Moved_Mon; /* no longer on this level */
     }
     return Trap_Effect_Finished;
 }

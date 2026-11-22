@@ -46,7 +46,7 @@ import {
 } from './const.js';
 import {
     tty_create_nhwindow, tty_start_menu, add_menu_str, tty_end_menu,
-    tty_select_menu, tty_destroy_nhwindow,
+    tty_select_menu, tty_destroy_nhwindow, tty_yn_function,
 } from './wintty.js';
 import {
     objects, OBJ_NAME, WEAPON_CLASS, GEM_CLASS, COIN_CLASS,
@@ -84,7 +84,7 @@ import { carrying } from './invent.js';
 import { u_adtyp_resistance_obj, item_what } from './zap.js';
 import { shield_simple_name } from './iactions.js';
 import { pline } from './display.js';
-import { visible_region_at } from './region.js';
+import { visible_region_at, reg_damg } from './region.js';
 import { find_mac } from './worn.js';
 import { x_monnam, ARTICLE_YOUR, SUPPRESS_IT, SUPPRESS_INVISIBLE } from './do_name.js';
 import { STRAT_WAITMASK, MFAST, MSLOW } from './const.js';
@@ -2239,8 +2239,10 @@ export async function ustatusline() {
         info += ", invisible";
     if (u.ustuck)
         throw new Error('ustatusline(): u.ustuck text not ported yet');
-    if (!u.uswallow && visible_region_at(u.ux, u.uy))
-        throw new Error('ustatusline(): region text (reg_damg()) not ported yet');
+    let reg;
+    if (!u.uswallow
+        && (reg = visible_region_at(u.ux, u.uy)) != null)
+        info += `, in a cloud of ${reg_damg(reg) ? "poison gas" : "vapor"}`;
 
     const Upolyd = (u.umonnum !== u.umonster);
     await pline(`Status of ${game.plname} (${piousness(false, align_str(u.ualign.type))}):  `
@@ -2273,9 +2275,70 @@ function num_gone(mvflags) {
     return mindx;
 }
 
+// C ref: insight.c count_achievements()
+export function count_achievements() {
+    return (game.u.uachieved || []).length;
+}
+
+// C ref: insight.c list_vanquished() -- the question; the list itself
+// isn't ported
+export async function list_vanquished(defquery, ask) {
+    let c;
+    /* 'A' is only supplied by 'm #vanquished'; 'd' is only supplied by
+       dump_everything() when writing dumplog */
+    const force_sort = (defquery === 'A'),
+          dumping = (defquery === 'd');
+
+    if (force_sort)
+        throw new Error('list_vanquished(): set_vanq_order() not ported yet');
+    if (dumping || force_sort) {
+        defquery = 'y';
+        ask = false; /* redundant */
+    }
+
+    /* get totals first */
+    let ntypes = 0;
+    for (let i = M.LOW_PM; i < M.NUMMONS; i++) {
+        if (!game.mvitals[i]?.died)
+            continue;
+        ntypes++;
+    }
+
+    /* vanquished creatures list;
+     * includes all dead monsters, not just those killed by the player
+     */
+    if (ntypes !== 0) {
+        if (ask) {
+            let allow_yn;
+
+            if (ntypes > 1) {
+                allow_yn = "ynaq"; /* ynaqchars */
+            } else {
+                allow_yn = "ynq"; /* don't include 'a', but */
+                allow_yn += "\x1ba"; /* allow user to answer 'a' */
+                if (defquery === 'a') /* potential default from 'disclose' */
+                    defquery = 'y';
+            }
+            c = await tty_yn_function("Do you want an account of creatures vanquished?",
+                                      allow_yn, defquery);
+        } else {
+            c = defquery;
+        }
+
+        if (c === 'q')
+            game.program_state.stopprint = (game.program_state.stopprint || 0) + 1;
+        if (c === 'y' || c === 'a')
+            throw new Error('list_vanquished(): the vanquished list not ported yet');
+    } else if (!game.program_state?.gameover) {
+        throw new Error('list_vanquished(): #vanquished not ported yet');
+    } else if (dumping) {
+        throw new Error('list_vanquished(): DUMPLOG not ported yet');
+    }
+}
+
 // C ref: insight.c list_genocided() -- the #genocided command case
-// (ask FALSE); the species list itself isn't ported
-async function list_genocided(defquery, ask) {
+// and the end-of-game question; the species list itself isn't ported
+export async function list_genocided(defquery, ask) {
     const G_GENOD = 0x02, G_EXTINCT = 0x01; /* C ref: monflag.h */
     let both = !!(game.program_state?.gameover || game.flags.debug
                   || game.flags.explore);
@@ -2287,14 +2350,23 @@ async function list_genocided(defquery, ask) {
     if (genoing)
         both = false; /* genocides only, not extinctions */
 
-    /* num_genocides() and num_extinct() only matter for the list */
+    const ngenocided = num_gone(G_GENOD).length; /* num_genocides() */
+    const nextinct = both ? num_gone(G_EXTINCT).length : 0; /* num_extinct() */
     const mvflags = G_GENOD | (both ? G_EXTINCT : 0);
     const ngone = num_gone(mvflags).length;
 
     /* genocided or extinct species list */
     if (ngone > 0) {
-        void ask;
-        throw new Error('list_genocided(): the species list not ported yet');
+        const buf = `Do you want a list of ${(nextinct && !ngenocided) ? "extinct " : ""
+                     }species${ngenocided ? " genocided" : ""}${
+                     (nextinct && ngenocided) ? " and extinct" : ""}?`;
+        const c = ask ? await tty_yn_function(buf, (ngone > 1) ? "ynaq" : "ynq\x1ba",
+                                              defquery)
+                      : defquery;
+        if (c === 'q')
+            game.program_state.stopprint = (game.program_state.stopprint || 0) + 1;
+        if (c === 'y' || c === 'a')
+            throw new Error('list_genocided(): the species list not ported yet');
     /* See the comment for similar code near the end of list_vanquished(). */
     } else if (!game.program_state?.gameover) {
         /* #genocided rather than final disclosure, so pline() is ok and

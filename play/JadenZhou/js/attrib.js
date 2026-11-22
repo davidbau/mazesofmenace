@@ -43,8 +43,12 @@ import { losehp } from './trap.js';
 import { d } from './rng.js';
 import { strncmpi } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
-import { KILLED_BY, KILLED_BY_AN } from './const.js';
-import { mons, G_UNIQ, M2_PNAME } from './monsters.js';
+import { KILLED_BY, KILLED_BY_AN, DIED, POISONING } from './const.js';
+import { done } from './end.js';
+import { killer } from './topten.js';
+import { mons, G_UNIQ, M2_PNAME, PM_ERINYS, M1_SEE_INVIS, M1_AMPHIBIOUS, M1_FLY,
+         M1_REGEN, M1_TPORT_CNTRL, M1_TPORT, AT_WEAP, AD_DRST, AT_MAGC,
+         AD_SPEL } from './monsters.js';
 import { the } from './iactions.js';
 import { encumber_msg } from './pickup.js';
 import { Unaware } from './eat.js';
@@ -725,9 +729,12 @@ export async function poisoned(
             await poisontell(typ, true);
     }
 
-    if (u.uhp < 1)
-        /* svk.killer = { kprefix, pkiller }; done(POISONING or DIED) */
-        throw new Error('poisoned(): death (done()) not ported yet');
+    if (u.uhp < 1) {
+        killer().format = kprefix;
+        killer().name = pkiller;
+        /* "Poisoned by a poisoned ___" is redundant */
+        await done((strstri(pkiller, "poison") >= 0) ? DIED : POISONING);
+    }
     await encumber_msg();
 }
 /* C ref: youprop.h Half_gas_damage -- a worn towel (ublindf) */
@@ -1217,8 +1224,49 @@ export function adjalign(n) {
     }
 }
 
-// C ref: mon.c adj_erinys() -- only the first steps are ported
+// C ref: mon.c adj_erinys()
+/* make erinyes more dangerous based on your alignment abuse */
 export function adj_erinys(abuse) {
-    if (abuse > 5)
-        throw new Error('adj_erinys(): Erinyes strengthening not ported yet');
+    const pm = mons[PM_ERINYS];
+
+    if (abuse > 5) {
+        pm.mflags1 |= M1_SEE_INVIS;
+    }
+    if (abuse > 10) {
+        pm.mflags1 |= M1_AMPHIBIOUS;
+    }
+    if (abuse > 15) {
+        pm.mflags1 |= M1_FLY;
+    }
+    if (abuse > 20) {
+        /* more powerful attack */
+        pm.mattk[0].damn = 3;
+    }
+    if (abuse > 25) {
+        pm.mflags1 |= M1_REGEN;
+    }
+    if (abuse > 30) {
+        pm.mflags1 |= M1_TPORT_CNTRL;
+    }
+    if (abuse > 35) {
+        /* second attack */
+        pm.mattk[1].aatyp = AT_WEAP;
+        pm.mattk[1].adtyp = AD_DRST;
+        pm.mattk[1].damn = 3;
+        pm.mattk[1].damd = 4;
+    }
+    if (abuse > 40) {
+        pm.mflags1 |= M1_TPORT;
+    }
+    if (abuse > 50) {
+        /* third (spellcasting) attack */
+        pm.mattk[2].aatyp = AT_MAGC;
+        pm.mattk[2].adtyp = AD_SPEL;
+        pm.mattk[2].damn = 3;
+        pm.mattk[2].damd = 4;
+    }
+
+    /* also adjust level and difficulty */
+    pm.mlevel = Math.min(7 + game.u.ualign.abuse, 50);
+    pm.difficulty = Math.min(10 + Math.trunc(game.u.ualign.abuse / 3), 25);
 }

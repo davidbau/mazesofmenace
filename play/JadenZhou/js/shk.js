@@ -41,8 +41,10 @@ import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, MAXULEV, CONTAINED_TOO, BURIED_TOO,
     BILLSZ, COST_SINGLEOBJ, COST_CONTENTS, HUNGRY, FIRE_RES, SLEEP_RES,
     COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, STONE_RES,
-    TELEPORT, TELEPORT_CONTROL, Has_contents,
+    TELEPORT, TELEPORT_CONTROL, Has_contents, HEAD, LOW_PM, isok,
 } from './const.js';
+import { M1_NOHEAD } from './monsters.js';
+import { mongone } from './mon.js';
 import { S_KOP, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_TOURIST, PM_ELF,
          G_UNIQ } from './monsters.js';
 import {
@@ -790,6 +792,25 @@ export function costly_spot(x, y) {
             && !(x === eshkp.shk.x && y === eshkp.shk.y));
 }
 
+// C ref: shk.c sellobj()
+// The exclusion tests are ported: dropping something outside a shop, or in
+// a shop without its shopkeeper there, or on the shop's door/entry spot,
+// sells nothing. Selling to the shopkeeper isn't ported yet.
+export async function sellobj(obj, x, y) {
+    let shkp;
+
+    if (!(game.u.ushops && game.u.ushops.length)) /* do cheapest exclusion test first */
+        return;
+    const shkrooms = in_rooms(x, y, SHOPBASE);
+    shkp = shop_keeper(shkrooms.length ? shkrooms.charCodeAt(0) : 0);
+    if (!shkp || !inhishop(shkp))
+        return;
+    if (!costly_spot(x, y))
+        return;
+    void obj;
+    throw new Error('sellobj(): selling to a shopkeeper not ported yet');
+}
+
 // ── money transfer, paying ──
 
 /* C ref: invent.c findgold() */
@@ -977,6 +998,333 @@ export function hot_pursuit(shkp) {
     for (const otmp of game.level.objects || [])
         clear_no_charge_obj(null, otmp);
     clear_no_charge_pets(shkp);
+}
+
+/* object chains are either linked through ->nobj (invent) or kept as
+   arrays (fobj, minvent, cobj, buriedobjlist) */
+function* objchain(ochain) {
+    if (Array.isArray(ochain)) {
+        yield* ochain;
+    } else {
+        for (let otmp = ochain; otmp; otmp = otmp.nobj)
+            yield otmp;
+    }
+}
+
+// C ref: shk.c clear_unpaid_obj()
+function clear_unpaid_obj(shkp, otmp) {
+    if (Has_contents(otmp))
+        clear_unpaid(shkp, otmp.cobj);
+    if (onbill(otmp, shkp, true))
+        otmp.unpaid = 0;
+}
+
+// C ref: shk.c clear_unpaid()
+/* clear the unpaid bit on all of the objects in the list */
+function clear_unpaid(shkp, list) {
+    for (const otmp of objchain(list))
+        clear_unpaid_obj(shkp, otmp);
+}
+
+// C ref: shk.c clear_no_charge()
+function clear_no_charge(shkp, list) {
+    for (const otmp of objchain(list))
+        clear_no_charge_obj(shkp, otmp);
+}
+
+// C ref: shk.c setpaid()
+/* either you paid or left the shop or the shopkeeper died */
+function setpaid(shkp) {
+    const g = game;
+
+    clear_unpaid(shkp, g.invent);
+    clear_unpaid(shkp, g.level.objects || []);
+    if (g.level.buriedobjlist)
+        clear_unpaid(shkp, g.level.buriedobjlist);
+    if (g.thrownobj)
+        clear_unpaid_obj(shkp, g.thrownobj);
+    if (g.kickedobj)
+        clear_unpaid_obj(shkp, g.kickedobj);
+    for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon)
+        if (mtmp.minvent && mtmp.minvent.length)
+            clear_unpaid(shkp, mtmp.minvent);
+    for (let mtmp = g.migrating_mons; mtmp; mtmp = mtmp.nmon)
+        if (mtmp.minvent && mtmp.minvent.length)
+            clear_unpaid(shkp, mtmp.minvent);
+
+    /* clear obj->no_charge for all obj in shkp's shop */
+    clear_no_charge(shkp, g.level.objects || []);
+    clear_no_charge(shkp, g.level.buriedobjlist || []);
+
+    if (g.billobjs)
+        throw new Error('setpaid(): discarding billobjs not ported yet');
+    if (shkp) {
+        const eshkp = shkp.mextra.eshk;
+        eshkp.billct = 0;
+        eshkp.credit = 0;
+        eshkp.debit = 0;
+        eshkp.loan = 0;
+    }
+}
+
+// C ref: shk.c home_shk()
+async function home_shk(shkp, killkops) {
+    void shkp; void killkops;
+    throw new Error('home_shk(): mnearto() not ported yet');
+}
+
+// C ref: shk.c paybill()
+/* routine called after dying (or quitting) */
+export async function paybill(
+    croaked, /* -1: escaped dungeon; 0: quit; 1: died */
+    silently) /* maybe avoid messages */
+{
+    const g = game;
+    let mtmp, mtmp2, firstshk, resident, creditor, hostile, localshk;
+    let eshkp, local;
+    let taken = false;
+    let numsk = 0;
+
+    /* if we escaped from the dungeon, shopkeepers can't reach us;
+       shops don't occur on level 1, but this could happen if hero
+       level teleports out of the dungeon and manages not to die */
+    if (croaked < 0)
+        return false;
+    /* [should probably also return false when dead hero has been
+        petrified since shk shouldn't be able to grab inventory
+        which has been shut inside a statue] */
+
+    /* this is where inventory will end up if any shk takes it */
+    g.repo = { location: { x: 0, y: 0 }, shopkeeper: null };
+
+    /*
+     * Scan all shopkeepers on the level, to prioritize them:
+     * 1) keeper of shop hero is inside and who is owed money,
+     * 2) keeper of shop hero is inside who isn't owed any money,
+     * 3) other shk who is owed money, 4) other shk who is angry,
+     * 5) any shk local to this level, and if none is found,
+     * 6) first shk on monster list (last resort; unlikely, since
+     * any nonlocal shk will probably be in the owed category
+     * and almost certainly be in the angry category).
+     */
+    resident = creditor = hostile = localshk = null;
+    for (mtmp = next_shkp(g.fmon, false); mtmp;
+         mtmp = next_shkp(mtmp2, false)) {
+        mtmp2 = mtmp.nmon;
+        eshkp = mtmp.mextra.eshk;
+        local = on_level(eshkp.shoplevel, g.u.uz);
+        if (local && (g.u.ushops || '').includes(String.fromCharCode(eshkp.shoproom))) {
+            /* inside this shk's shop [there might be more than one
+               resident shk if hero is standing in a breech of a shared
+               wall, so give priority to one who's also owed money] */
+            if (!resident || eshkp.billct || eshkp.debit || eshkp.robbed)
+                resident = mtmp;
+        } else if (eshkp.billct || eshkp.debit || eshkp.robbed) {
+            /* owe this shopkeeper money (might also owe others) */
+            if (!creditor)
+                creditor = mtmp;
+        } else if (eshkp.following || ANGRY(mtmp)) {
+            /* this shopkeeper is antagonistic (others might be too) */
+            if (!hostile)
+                hostile = mtmp;
+        } else if (local) {
+            /* this shopkeeper's shop is on current level */
+            if (!localshk)
+                localshk = mtmp;
+        }
+    }
+
+    /* give highest priority shopkeeper first crack */
+    firstshk = resident ? resident
+                        : creditor ? creditor
+                                   : hostile ? hostile
+                                             : localshk;
+    if (firstshk) {
+        numsk++;
+        taken = await inherits(firstshk, numsk, croaked, silently);
+    }
+
+    /* now handle the rest */
+    for (mtmp = next_shkp(g.fmon, false); mtmp;
+         mtmp = next_shkp(mtmp2, false)) {
+        mtmp2 = mtmp.nmon;
+        eshkp = mtmp.mextra.eshk;
+        local = on_level(eshkp.shoplevel, g.u.uz);
+        if (mtmp !== firstshk) {
+            numsk++;
+            taken = (await inherits(mtmp, numsk, croaked, silently)) || taken;
+        }
+        /* for bones: we don't want a shopless shk around */
+        if (!local)
+            await mongone(mtmp);
+    }
+    return taken;
+}
+
+// C ref: shk.c inherits()
+/* decide whether a shopkeeper will take possession of dying hero's invent;
+   when this returns True, it should call set_repo_loc() before returning;
+   when it returns False, it should not do such because that might have
+   already been called for some shopkeeper */
+async function inherits(shkp, numsk, croaked, silently) {
+    const g = game;
+    let loss = 0;
+    let umoney;
+    const eshkp = shkp.mextra.eshk;
+    let take = false, taken = false;
+    const uinshop = (g.u.ushops || '').includes(String.fromCharCode(eshkp.shoproom));
+    let takes;
+
+    /* not strictly consistent; affects messages and prevents next player
+       (if bones are saved) from blundering into or being ambushed by an
+       invisible shopkeeper */
+    shkp.minvis = shkp.perminvis = 0;
+
+    /* The simplifying principle is that first-come
+       already took everything you had. */
+    if (numsk > 1) {
+        if (cansee(shkp.mx, shkp.my) && croaked && !silently) {
+            takes = '';
+            if ((shkp.data.mflags1 & M1_NOHEAD) === 0 /* has_head() */ && !rn2(2))
+                takes = `, shakes ${noit_mhis(shkp)} ${mbodypart(shkp, HEAD)},`;
+            await pline(`${Shknam(shkp)} ${helpless(shkp) ? "wakes up, " : ""
+                         }looks at your corpse${takes} and ${
+                         !inhishop(shkp) ? "disappears" : "sighs"}.`);
+        }
+        taken = uinshop;
+    } else {
+        /* get one case out of the way: you die in the shop, the
+           shopkeeper is peaceful, nothing stolen, nothing owed */
+        if (uinshop && inhishop(shkp) && !eshkp.billct
+            && !eshkp.robbed && !eshkp.debit && !ANGRY(shkp)
+            && !eshkp.following && g.u.ugrave_arise < LOW_PM) {
+            taken = (g.invent != null);
+            if (taken && !silently)
+                await pline(`${Shknam(shkp)} gratefully inherits all your possessions.`);
+            /* goto clear; */
+            setpaid(shkp); /* clear this shk's bill */
+            /* where to put player's invent (after disclosure) */
+            if (taken)
+                set_repo_loc(shkp);
+            return taken;
+        }
+
+        if (eshkp.billct || eshkp.debit || eshkp.robbed) {
+            if (uinshop && inhishop(shkp))
+                loss = addupbill(shkp) + eshkp.debit;
+            if (loss < eshkp.robbed)
+                loss = eshkp.robbed;
+            take = true;
+        }
+
+        if (!(eshkp.following || ANGRY(shkp) || take)) {
+            /* goto clear; */
+            setpaid(shkp);
+            if (taken)
+                set_repo_loc(shkp);
+            return taken;
+        }
+        if (g.invent) {
+            umoney = money_cnt(g.invent);
+            takes = '';
+            if (helpless(shkp))
+                takes += "wakes up and ";
+            if (!m_next2u(shkp))
+                takes += "comes and ";
+            takes += "takes";
+
+            if (loss > umoney || !loss || uinshop) {
+                eshkp.robbed -= umoney;
+                if (eshkp.robbed < 0)
+                    eshkp.robbed = 0;
+                if (umoney > 0) {
+                    money2mon(shkp, umoney);
+                    g.disp_botl = true;
+                }
+                if (!silently)
+                    await pline(`${Shknam(shkp)} ${takes} all your possessions.`);
+                taken = true;
+            } else {
+                money2mon(shkp, loss);
+                g.disp_botl = true;
+                if (!silently)
+                    await pline(`${Shknam(shkp)} ${takes} the ${loss} ${currency(loss)} ${
+                                 (eshkp.customer || '').slice(0, PL_NSIZ)
+                                 !== (g.plname || '').slice(0, PL_NSIZ) ? "" : "you "
+                                 }owed ${noit_mhim(shkp)}.`);
+                /* shopkeeper has now been paid in full */
+                pacify_shk(shkp, false);
+                eshkp.following = 0;
+                eshkp.robbed = 0;
+            }
+        }
+    }
+    /* skip: */
+    /* in case we create bones */
+    await rouse_shk(shkp, false); /* wake up */
+    if (!inhishop(shkp))
+        await home_shk(shkp, false);
+    /* clear: */
+    setpaid(shkp); /* clear this shk's bill */
+    /* where to put player's invent (after disclosure) */
+    if (taken)
+        set_repo_loc(shkp);
+    return taken;
+}
+
+// C ref: shk.c set_repo_loc()
+function set_repo_loc(shkp) {
+    const g = game;
+    const u = g.u;
+    let ox, oy;
+    const eshkp = shkp.mextra.eshk;
+
+    /* when multiple shopkeepers are present, we might get called more
+       than once; don't override previous setting */
+    if (g.repo.shopkeeper)
+        return;
+
+    /* savebones() sets u.ux,u.uy to 0,0 to remove hero from map but that
+       takes place after finish_paybill() has been called so we expect
+       u.ux,u.uy to be valid */
+    ox = u.ux ? u.ux : u.ux0;
+    oy = u.ux ? u.uy : u.uy0; /* [testing u.ux when setting oy is correct] */
+    /* if you're not in this shk's shop room, or if you're in its doorway
+       or entry spot or one of its walls (temporary gap or Passes_walls),
+       then your gear gets dumped all the way inside */
+    if (!(u.ushops || '').includes(String.fromCharCode(eshkp.shoproom))
+        || costly_adjacent(shkp, ox, oy)) {
+        /* shk.x,shk.y is the position immediately in front of the door;
+           move in one more space */
+        ox = eshkp.shk.x;
+        oy = eshkp.shk.y;
+        ox += Math.sign(ox - eshkp.shd.x);
+        oy += Math.sign(oy - eshkp.shd.y);
+    } else {
+        ; /* already inside this shk's shop so use ox,oy as-is */
+    }
+    /* finish_paybill will deposit invent here */
+    g.repo.location.x = ox;
+    g.repo.location.y = oy;
+    g.repo.shopkeeper = shkp;
+}
+
+// C ref: shk.c costly_adjacent()
+/* is <x,y> in shkp's shop's doorway or entry spot or one of its walls? */
+function costly_adjacent(shkp, x, y) {
+    if (!shkp || !inhishop(shkp) || !isok(x, y))
+        return false;
+    const eshkp = shkp.mextra.eshk;
+    /* adjacent if <x,y> is a shop wall spot, including door;
+       also treat "free spot" one step inside the door as adjacent */
+    return !!(game.level.at(x, y).edge || (x === eshkp.shk.x && y === eshkp.shk.y));
+}
+
+// C ref: shk.c finish_paybill()
+/* called at game exit, after inventory disclosure but before making bones;
+   shouldn't issue any messages */
+export async function finish_paybill() {
+    throw new Error('finish_paybill(): drop_upon_death() not ported yet');
 }
 
 // C ref: shk.c clear_no_charge_obj()

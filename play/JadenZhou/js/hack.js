@@ -23,8 +23,12 @@ import {
     ROWNO, xdir, ydir, DO_MOVE, TEST_MOVE, WT_TOOMUCH_DIAGONAL, IS_DOOR,
     IS_FURNITURE, SCORR, SDOOR, TREE, OROOM, P_AXE, ACCESSIBLE, IS_STWALL,
     TEMPLE, ZOO, SWAMP, COURT, LEPREHALL, MORGUE, BEEHIVE, COCKNEST, ANTHOLE,
-    BARRACKS, DELPHI, THRONE, STEALTH,
+    BARRACKS, DELPHI, THRONE, STEALTH, WATER, POOL, LAVAPOOL, FIRE_RES,
 } from './const.js';
+import { waterbody_name } from './pager.js';
+import { has_ceiling } from './insight.js';
+import { ing_suffix, visctrl } from './hacklib.js';
+import { cmd_from_func } from './cmd.js';
 import { S_NYMPH, M2_STRONG, M2_ROCKTHROW, MZ_HUMAN, AT_BOOM, M1_HIDE,
          PM_GRID_BUG, mons, M1_TUNNEL, M1_NEEDPICK, M1_AMORPHOUS, MZ_SMALL,
          MZ_LARGE, M1_CONCEAL, S_VORTEX, PM_AIR_ELEMENTAL, M1_SLITHY, S_GHOST,
@@ -44,9 +48,9 @@ import { t_at, VIBRATING_SQUARE, is_pit, WEB } from './trap.js';
 import { dist2, distmin } from './hacklib.js';
 import { selection_new, selection_free, selection_getpoint,
          selection_setpoint } from './selvar.js';
-import { onscary } from './monmove.js';
+import { onscary, m_postmove_effect } from './monmove.js';
 import { COIN_CLASS, BOULDER, PICK_AXE, DWARVISH_MATTOCK, STATUE, WEAPON_CLASS,
-         TOOL_CLASS, objects } from './objects.js';
+         TOOL_CLASS, objects, WATER_WALKING_BOOTS } from './objects.js';
 import { back_to_cmap, defsyms_explanation } from './pager.js';
 import { u_on_newpos } from './mklev.js';
 import { inside_room } from './sp_lev.js';
@@ -56,20 +60,20 @@ import { do_attack } from './uhitm.js';
 import { x_monnam, YMonnam, m_monnam, mon_nam, ARTICLE_NONE, ARTICLE_THE,
          ARTICLE_YOUR, SUPPRESS_SADDLE } from './do_name.js';
 import { curr_mon_load } from './dogmove.js';
-import { bad_rock } from './mon.js';
+import { bad_rock, passes_bars, minliquid } from './mon.js';
 import { engr_at, wipe_engr_at, can_reach_floor } from './engrave.js';
 import { an, xname } from './objnam.js';
 import { the } from './iactions.js';
 import { obj_extract_self, place_object } from './mkobj.js';
 import { a_monnam, y_monnam } from './do_name.js';
-import { set_ustuck } from './uhitm.js';
+import { set_ustuck, stumble_onto_mimic } from './uhitm.js';
 import { CONFLICT, HVY_ENCUMBER } from './const.js';
 import { gethungry } from './eat.js';
-import { AT_ENGL, AT_HUGS, AD_STCK } from './monsters.js';
+import { AT_ENGL, AT_HUGS, AD_STCK, AD_RUST, AD_CORR, M1_METALLIVORE } from './monsters.js';
 import { WT_SQUEEZABLE_INV, A_STR, LANDMINE, SPIKED_PIT, PIT, HOLE, TRAPDOOR,
          LEVEL_TELEP, TELEP_TRAP, ROLLING_BOULDER_TRAP } from './const.js';
 import { CORPSE } from './objects.js';
-import { is_flyer, is_floater } from './mondata.js';
+import { is_flyer, is_floater, dmgtype } from './mondata.js';
 import { float_vs_flight } from './polyself.js';
 import { pickup } from './pickup.js';
 import { shop_keeper, u_left_shop, u_entered_shop } from './shk.js';
@@ -79,7 +83,7 @@ import { dotrap } from './trap.js';
 import { immune_to_trap, into_vs_onto, u_locomotion, trapname,
          TRAPNUM } from './trap.js';
 import { TRAP_CLEARLY_IMMUNE } from './const.js';
-import { visible_region_at } from './region.js';
+import { visible_region_at, reg_damg, in_out_region } from './region.js';
 import { paranoid_query } from './cmd.js';
 import { FROMOUTSIDE, MAX_TYPE, NO_TRAP, FAILEDUNTRAP, TIMEOUT, WARNING,
          IS_SINK } from './const.js';
@@ -87,7 +91,7 @@ import { M1_CLING, PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN } from './
 import { midnight } from './calendar.js';
 import { Hello } from './role.js';
 import { search_special } from './sounds.js';
-import { wake_msg } from './mon.js';
+import { wake_msg, seemimic } from './mon.js';
 /* C ref: mondata.h is_clinger() */
 function is_clinger(ptr) { return (ptr.mflags1 & M1_CLING) !== 0; }
 import { l_nhcore_call } from './nhlua.js';
@@ -656,6 +660,81 @@ export function end_running(and_travel) {
         g.multi = 0;
 }
 
+// C ref: hack.c u_simple_floortyp()
+/* Return a simplified floor solid/liquid state based on hero's state */
+function u_simple_floortyp(x, y) {
+    const ptr = game.youmonst.data;
+    /* grounded(): !is_flyer && !is_floater && (!is_clinger || !has_ceiling) */
+    const grounded = !is_flyer(ptr) && !is_floater(ptr)
+                     && (!is_clinger(ptr) || !has_ceiling(game.u.uz));
+    const u_in_air = (Levitation() || Flying() || !grounded);
+
+    if (isok(x, y) && IS_WATERWALL(game.level.at(x, y).typ)) /* is_waterwall() */
+        return WATER; /* wall of water, fly/lev does not matter */
+    if (game.level.at(x, y).typ === LAVAWALL)
+        return LAVAWALL; /* wall of lava, fly/lev does not matter */
+    if (!u_in_air) {
+        if (is_pool(x, y))
+            return POOL;
+        if (is_lava(x, y))
+            return LAVAPOOL;
+    }
+    return ROOM;
+}
+
+// C ref: hack.c Known_wwalking, Known_lwalking
+/* XXX: if more sources of water walking than just boots are added,
+   cause_known(insight.c) should be externified and used for this */
+function Known_wwalking() {
+    const uarmf = game.uarmf;
+    return !!(uarmf && uarmf.otyp === WATER_WALKING_BOOTS
+              && objects[WATER_WALKING_BOOTS].oc_name_known
+              && !game.u.usteed);
+}
+function Known_lwalking() {
+    return Known_wwalking() && uhave(FIRE_RES)
+           && !!game.uarmf.oerodeproof && !!game.uarmf.rknown;
+}
+
+// C ref: hack.c swim_move_danger()
+/* Is it dangerous for hero to move to x,y due to water or lava? */
+async function swim_move_danger(x, y) {
+    const u = game.u;
+    const newtyp = u_simple_floortyp(x, y);
+    const liquid_wall = IS_WATERWALL(newtyp) || newtyp === LAVAWALL;
+
+    if (Underwater() && (is_pool(x, y) || IS_WATERWALL(newtyp)))
+        return false;
+
+    if ((newtyp !== u_simple_floortyp(u.ux, u.uy))
+        && !Stunned() && !Confusion() && game.level.at(x, y).seenv
+        && (is_pool(x, y) || is_lava(x, y) || liquid_wall)) {
+
+        /* FIXME: This can be exploited to identify ring of fire resistance
+         * if the player is wearing it unidentified and has identified
+         * fireproof boots of water walking and is walking over lava. However,
+         * this is such a marginal case that it may not be worth fixing. */
+        if ((is_pool(x, y) && !Known_wwalking())
+            /* is_lava(ux,uy): don't move onto/over lava with known
+               lava-walking because it isn't completely safe, but do
+               continue to move over lava if already doing so */
+            || (is_lava(x, y) && !Known_lwalking() && !is_lava(u.ux, u.uy))
+            || liquid_wall) {
+            if (game.context.nopick) {
+                /* moving with m-prefix */
+                game.context.tips = (game.context.tips || 0) | (1 << TIP_SWIM);
+                return false;
+            } else if (ParanoidSwim() || liquid_wall) {
+                await You(`avoid ${ing_suffix(u_locomotion("step"))} into the ${
+                    waterbody_name(x, y)}.`);
+                await handle_tip(TIP_SWIM);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 // C ref: hack.c handle_tip() -- maybe show a helpful gameplay tip?
 // returns True if tip gets shown
 export async function handle_tip(tip) {
@@ -671,7 +750,8 @@ export async function handle_tip(tip) {
             await pline("(Tip: use the #enhance command to advance them.)");
             break;
         case TIP_SWIM:
-            throw new Error('handle_tip(): TIP_SWIM not ported yet');
+            await pline(`(Tip: use '${visctrl(cmd_from_func("do_reqmenu"))}' prefix to step in if you really want to.)`);
+            break;
         case TIP_UNTRAP_MON:
             await pline("(Tip: perhaps #untrap would help?)");
             break;
@@ -1670,7 +1750,18 @@ export async function test_move(ux, uy, dx, dy, mode) {
                 await There("is an obstacle there.");
             return false;
         } else if (tmpr.typ === IRONBARS) {
-            throw new Error('test_move(): iron bars not ported yet');
+            const ydat = game.youmonst.data;
+            if (mode === DO_MOVE
+                && (dmgtype(ydat, AD_RUST)
+                    || dmgtype(ydat, AD_CORR)
+                    || (ydat.mflags1 & M1_METALLIVORE) !== 0)) /* metallivorous() */
+                /* && still_chewing(x, y): return FALSE */
+                throw new Error('test_move(): still_chewing() of iron bars not ported yet');
+            if (!(Passes_walls() || passes_bars(ydat))) {
+                if (mode === DO_MOVE && game.flags.mention_walls)
+                    await You("cannot pass through the bars.");
+                return false;
+            }
         } else if (tunnels(game.youmonst.data)
                    && !needspick(game.youmonst.data)) {
             /* Eat the rock. */
@@ -2301,6 +2392,7 @@ function paranoia_default() {
     return true;
 }
 function ParanoidTrap() { return paranoia_default(); }
+function ParanoidSwim() { return paranoia_default(); }
 function ParanoidConfirm() { return !paranoia_default(); }
 
 // C ref: hack.c avoid_trap_andor_region()
@@ -2311,6 +2403,7 @@ async function avoid_trap_andor_region(x, y) {
     const u = game.u;
     const ctx = game.context;
     let trap = null;
+    let newreg, oldreg;
     const Hallucination = uhave(HALLUC);
 
     /* treat entering a visible gas cloud region like entering a trap */
@@ -2318,8 +2411,25 @@ async function avoid_trap_andor_region(x, y) {
         /* skip if player used 'm' prefix or is moving recklessly */
         && (!ctx.nopick || ctx.run)
         /* check for region(s) */
-        && visible_region_at(x, y))
-        throw new Error('avoid_trap_andor_region(): entering a visible region (reg_damg) not ported yet');
+        && (newreg = visible_region_at(x, y)) != null
+        && ((oldreg = visible_region_at(u.ux, u.uy)) == null
+            /* if moving from one region into another, only ask for
+               confirmation if the one potentially being entered inflicts
+               damage (poison gas) and the one being exited doesn't (vapor) */
+            || (reg_damg(newreg) > 0 && reg_damg(oldreg) === 0))
+        /* check whether attempted move will be viable */
+        && await test_move(u.ux, u.uy, u.dx, u.dy, TEST_MOVE)
+        /* we don't override confirmation for poison resistance since the
+           region also hinders hero's vision even if/when no damage is done */
+    ) {
+        const qbuf = `${u_locomotion("step")} into that ${
+            (reg_damg(newreg) > 0) ? "poison gas" : "vapor"} cloud?`;
+        if (!await paranoid_query(ParanoidConfirm(), upstart(qbuf))) {
+            nomul(0);
+            ctx.move = 0;
+            return true;
+        }
+    }
 
     /* maybe ask player for confirmation before walking into known trap */
     if (ParanoidTrap() && !Stunned() && !Confusion()
@@ -2367,7 +2477,7 @@ async function domove_bump_mon(mtmp, glyph) {
         && canspotmon(mtmp) /* || glyph_is_invisible() || glyph_is_warning() */) {
         if (mtmp.m_ap_type && !uhave(PROT_FROM_SHAPE_CHANGERS)
             && !sensemon(mtmp))
-            throw new Error('domove_bump_mon(): stumble_onto_mimic() not ported yet');
+            await stumble_onto_mimic(mtmp);
         else if (mtmp.mpeaceful && !uhave(HALLUC))
             /* m_monnam(): "dog" or "Fido", no "invisible dog" or "it" */
             await pline(`Pardon me, ${m_monnam(mtmp)}.`);
@@ -2539,7 +2649,7 @@ async function domove_swap_with_pet(mtmp, x, y) {
     u.ux = u.ux0, u.uy = u.uy0;
     mtmp.mundetected = 0;
     if (mtmp.m_ap_type)
-        throw new Error('domove_swap_with_pet(): seemimic() not ported yet');
+        seemimic(mtmp);
     else if (!mtmp.mcanmove) /* (wasn't already displayed) */
         newsym(mtmp.mx, mtmp.my);
     u.ux = mtmp.mx, u.uy = mtmp.my; /* resume swapping positions */
@@ -2596,8 +2706,8 @@ async function domove_swap_with_pet(mtmp, x, y) {
 
         /* check for displacing it into pools and traps:
            minliquid(mtmp) ? Trap_Killed_Mon : mintrap(mtmp, NO_TRAP_FLAGS) */
-        if (is_pool(mtmp.mx, mtmp.my) || is_lava(mtmp.mx, mtmp.my))
-            throw new Error('domove_swap_with_pet(): minliquid() not ported yet');
+        if (await minliquid(mtmp))
+            throw new Error('domove_swap_with_pet(): Trap_Killed_Mon (pet drowned) not ported yet');
         if (t_at(mtmp.mx, mtmp.my))
             throw new Error('domove_swap_with_pet(): mintrap() not ported yet');
         /* Trap_Effect_Finished */
@@ -2731,17 +2841,21 @@ async function domove_core() {
             return;
         }
 
-        /* Is it dangerous to swim in water or lava? swim_move_danger() */
-        if ((is_pool(x, y) || is_lava(x, y)) && !Levitation() && !Flying())
-            throw new Error('domove_core(): swim_move_danger() not ported yet');
+        /* Is it dangerous to swim in water or lava? */
+        if (await swim_move_danger(x, y)) {
+            ctx.move = 0;
+            nomul(0);
+            return;
+        }
     } /* !displaceu */
 
     /* Move ball and chain.  */
     if (Punished())
         throw new Error('domove_core(): drag_ball() not ported yet');
 
-    /* Check regions entering/leaving: in_out_region() -- regions aren't
-       ported */
+    /* Check regions entering/leaving */
+    if (!(await in_out_region(x, y)))
+        return;
 
     mtmp = m_at(x, y);
     /* mtmp can be null at this point */
@@ -2750,7 +2864,7 @@ async function domove_core() {
     u.ux += u.dx;
     u.uy += u.dy;
 
-    /* m_postmove_effect(&youmonst): only for poison-trail forms */
+    await m_postmove_effect(game.youmonst);
 
     if (mtmp) {
         if (displaceu.val) {

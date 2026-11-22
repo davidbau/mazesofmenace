@@ -24,7 +24,7 @@ import { BOLT_LIM, MON_POLE_DIST, NEED_WEAPON, NEED_RANGED_WEAPON,
          W_NONDIGGABLE, POTHIT_OTHER_THROW, POTHIT_MONST_THROW, M_AP_NOTHING,
          M_AP_MONSTER, IRONBARS, isok, IS_OBSTRUCTED, IS_SINK,
          LOW_PM, ARM, EYE, FACE, HAND, FOOT, W_WEP, XKILL_NOMSG,
-         POISON_RES, NEUTRAL } from './const.js';
+         POISON_RES, NEUTRAL, G_GENOD } from './const.js';
 import * as O from './objects.js';
 import { objects, WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, POTION_CLASS,
          VENOM_CLASS, COIN_CLASS, ARMOR_CLASS, ROCK_CLASS, FOOD_CLASS,
@@ -64,7 +64,7 @@ import { exercise, ACURR, poisoned } from './attrib.js';
 import { losehp, Maybe_Half_Phys } from './trap.js';
 import { stop_occupation } from './allmain.js';
 import { nomul, calc_capacity } from './hack.js';
-import { make_blinded } from './potion.js';
+import { make_blinded, potionhit, make_stoned } from './potion.js';
 import { You_hear } from './sounds.js';
 import { monstseesu, monstunseesu, shade_miss, passive_obj } from './uhitm.js';
 import { mswings_verb } from './mhitu.js';
@@ -99,6 +99,12 @@ function verbose() { return game.flags.verbose ?? true; }
 
 /* C ref: monst.h DEADMONSTER() */
 function DEADMONSTER(mon) { return mon.mhp < 1; }
+/* C ref: mondata.c poly_when_stoned() -- golems other than stone golem
+   turn into stone golems */
+function poly_when_stoned(ptr) {
+    return ptr.mlet === M.S_GOLEM && ptr !== mons[M.PM_STONE_GOLEM]
+           && !(game.mvitals[M.PM_STONE_GOLEM].mvflags & G_GENOD);
+}
 /* C ref: hack.h mdistu() */
 function mdistu(mon) {
     const dx = mon.mx - game.u.ux, dy = mon.my - game.u.uy;
@@ -311,12 +317,6 @@ export async function thitu(
         }
         return 1;
     }
-}
-
-// C ref: potion.c potionhit() -- not ported yet
-async function potionhit(mon, obj, how) {
-    void mon; void obj; void how;
-    throw new Error('potionhit() not ported yet');
 }
 
 // C ref: dothrow.c should_mulch_missile()
@@ -960,8 +960,11 @@ export async function m_throw(
                 }
             }
             if (hitu && singleobj.otyp === O.EGG) {
-                if (!Stoned() && !Stone_resistance())
-                    throw new Error('m_throw(): make_stoned() from an egg not ported yet');
+                if (!Stoned() && !Stone_resistance()
+                    && !(poly_when_stoned(game.youmonst.data)
+                         && (() => { throw new Error('m_throw(): polymon(PM_STONE_GOLEM) not ported yet'); })())) {
+                    await make_stoned(5, null, KILLED_BY, "");
+                }
             }
             await stop_occupation();
             if (hitu) {

@@ -8,10 +8,15 @@
 // ported yet.
 
 import { game } from './gstate.js';
-import { pline, docrt, flush_screen } from './display.js';
+import { pline, pline_The, docrt, flush_screen } from './display.js';
+import { You_hear } from './sounds.js';
+import { sellobj } from './shk.js';
+import { olfaction } from './mondata.js';
+import { ACH_HELL } from './const.js';
 import {
     depth, dunlev, dunlevs_in_dungeon, ledger_no, on_level, assign_level,
     In_hell, builds_up, at_dgn_entrance, level_difficulty,
+    In_W_tower,
 } from './dungeon.js';
 import { In_endgame, Is_waterlevel, Is_airlevel, IS_ALTAR, ROOM, CORR } from './const.js';
 import * as O from './objects.js';
@@ -27,7 +32,10 @@ import { pickup } from './pickup.js';
 import { keepdogs, losedogs } from './dog.js';
 import { kill_genocided_monsters } from './mon.js';
 import { savelev } from './save.js';
-import { create_levelfile, level_info } from './files.js';
+import { create_levelfile, level_info, open_levelfile } from './files.js';
+import { getlev } from './restore.js';
+import { oinit } from './o_init.js';
+import { in_out_region } from './region.js';
 import { close_nhfile } from './sfbase.js';
 import { LFILE_EXISTS, VISITED, WRITING, FREEING } from './const.js';
 import { m_at } from './makemon.js';
@@ -412,15 +420,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     let up = (depth(newlevel) < depth(u.uz));
     const newdungeon = (u.uz.dnum !== newlevel.dnum);
     let leaving_tutorial = false;
-    /* familiar, new: a level is always new here (returning to a saved
-       level isn't ported) and never familiar (no bones files);
+    /* familiar: never set (no bones files);
        dist, do_fall_dmg: falling isn't ported */
+    let new_ = false;
     const prev_temperature = g.level.flags?.temperature || 0;
-    /* was_in_W_tower = In_W_tower(u.ux, u.uy, &u.uz): the Wizard's Tower
-       levels are only in Gehennom, which isn't ported yet */
-    if (In_hell(u.uz))
-        throw new Error('goto_level(): In_W_tower() not ported yet');
-    const was_in_W_tower = false;
+    const was_in_W_tower = In_W_tower(u.ux, u.uy, u.uz);
 
     if (dunlev(newlevel) > dunlevs_in_dungeon(newlevel))
         newlevel.dlevel = dunlevs_in_dungeon(newlevel);
@@ -552,13 +556,24 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             level_info(new_ledger).flags &= ~VISITED;
         }
         await mklev();
-        /* new = TRUE; familiar = bones_include_name(svp.plname) */
+        new_ = true; /* made the level */
+        /* familiar = bones_include_name(svp.plname): no bones files */
     } else {
         /* returning to previously visited level; reload it */
-        throw new Error('goto_level(): returning to a saved level not ported yet');
+        const whynot = { v: '' };
+        const lnhfp = open_levelfile(new_ledger, whynot);
+        if (!lnhfp) { /* tricked_fileremoved(nhfp, whynot) */
+            await pline(whynot.v);
+            throw new Error('goto_level(): tricked_fileremoved() not ported yet');
+        }
+        /* reseed_random(rn2); reseed_random(rn2_on_display_rng): no-ops
+           unless has_strong_rngseed, which a fixed-seed game doesn't have */
+        await getlev(lnhfp, g.hackpid, new_ledger);
+        close_nhfile(lnhfp);
+        oinit(); /* reassign level dependent obj probabilities */
     }
-    /* reglyph_darkroom(): only changes remembered dark corridor glyphs,
-       and a new level has none yet */
+    /* reglyph_darkroom(): JS remembers no S_darkroom glyphs, and lit
+       corridors out of sight are remembered dark by newsym() */
     /* set_uinwater(0) */
     u.uinwater = 0;
     /* do this prior to level-change pline messages */
@@ -678,11 +693,19 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     await deliver_splev_message();
 
     /* Check whether we just entered Gehennom. */
-    if (!In_hell(u.uz0) && In_hell(u.uz))
-        throw new Error('goto_level(): entering Gehennom not ported yet');
-    /* in case we've managed to bypass the Valley's stairway down:
-       if (Inhell && !Is_valley(&u.uz)) u.uevent.gehennom_entered = 1;
-       -- unreachable, In_hell() throws above */
+    if (!In_hell(u.uz0) && In_hell(u.uz)) {
+        if (on_level(u.uz, g.dungeon_topology.d_valley_level)) { /* Is_valley() */
+            await You("arrive at the Valley of the Dead...");
+            await pline_The("odor of burnt flesh and decay pervades the air.");
+            /* Soundeffect(se_groans_and_moans, 25) */
+            await You_hear("groans and moans everywhere.");
+        }
+
+        record_achievement(ACH_HELL); /* reached Gehennom */
+    }
+    /* in case we've managed to bypass the Valley's stairway down */
+    if (In_hell(u.uz) && !on_level(u.uz, g.dungeon_topology.d_valley_level))
+        u.uevent.gehennom_entered = 1;
 
     /* familiar is bones_include_name(plname): bones files aren't ported,
        so a new level is never familiar */
@@ -703,10 +726,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         if (newdungeon)
             record_achievement('ACH_SOKO');
     } else {
-        if (topo.d_rogue_level?.dlevel
-            && on_level(u.uz, topo.d_rogue_level)) { /* new && Is_rogue_level() */
+        if (new_ && topo.d_rogue_level?.dlevel
+            && on_level(u.uz, topo.d_rogue_level)) { /* Is_rogue_level() */
             throw new Error('goto_level(): the rogue level not ported yet');
-        } else if (topo.d_bigroom_level?.dlevel
+        } else if (new_ && topo.d_bigroom_level?.dlevel
                    && on_level(u.uz, topo.d_bigroom_level)) { /* Is_bigroom() */
             record_achievement('ACH_BGRM');
         }
@@ -729,11 +752,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         }
     }
 
-    temperature_change_msg(prev_temperature);
+    await temperature_change_msg(prev_temperature);
 
     /* this was originally done earlier; moved here to be logged after
        any achievement related to entering a dungeon branch */
-    {   /* if (new): always, since returning to a level isn't ported */
+    if (new_) {
         /* describe_level(dloc, 2); livelog_printf(...): no livelog */
         if (g.urole.mnum === PM_TOURIST) {
             more_experienced(level_difficulty(), 0);
@@ -754,10 +777,13 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         throw new Error('goto_level(): obj_delivery() not ported yet');
 
     /* assume this will always return TRUE when changing level */
-    /* (void) in_out_region(u.ux, u.uy): regions aren't ported yet */
-    if (g.regions && g.regions.length)
-        throw new Error('goto_level(): in_out_region() not ported yet');
-    /* if (!new) fix_shop_damage(): the level is always new */
+    /* (void) */ await in_out_region(u.ux, u.uy);
+    if (!new_) {
+        /* fix_shop_damage(): if this level has no shop damage, there's
+           nothing to do; shop repair isn't ported */
+        if (g.level.damagelist)
+            throw new Error('goto_level(): fix_shop_damage() not ported yet');
+    }
 
     /* fall damage? do_fall_dmg is set only when falling, which
        throws above */
@@ -777,10 +803,28 @@ export async function maybe_lvltport_feedback() {
     }
 }
 
+// C ref: do.c hellish_smoke_mesg()
+export async function hellish_smoke_mesg() {
+    const temperature = game.level.flags.temperature || 0;
+    if (temperature)
+        await pline(`It is ${temperature > 0 ? "hot" : "cold"} here.`);
+
+    if (In_hell(game.u.uz) && temperature > 0)
+        await You(`${olfaction(game.youmonst.data) ? "smell" : "sense"} smoke...`);
+}
+
 // C ref: do.c temperature_change_msg()
-function temperature_change_msg(prev_temperature) {
-    if (prev_temperature !== (game.level.flags?.temperature || 0))
-        throw new Error('temperature_change_msg(): hot/cold level messages not ported yet');
+/* give a message when the level temperature is different from previous */
+async function temperature_change_msg(prev_temperature) {
+    const temperature = game.level.flags.temperature || 0;
+    if (prev_temperature !== temperature) {
+        if (temperature)
+            await hellish_smoke_mesg();
+        else if (prev_temperature > 0)
+            await pline_The(`heat ${In_hell(game.u.uz0) ? "and smoke are" : "is"} gone.`);
+        else if (prev_temperature < 0)
+            await You("are out of the cold.");
+    }
 }
 
 // C ref: insight.c record_achievement() -- the achievement list is only
@@ -1113,7 +1157,7 @@ export async function dropz(obj, with_impact) {
         if (obj === game.uball)
             throw new Error('dropz(): drop_ball() not ported yet');
         else if (game.level.flags?.has_shop)
-            throw new Error('dropz(): sellobj() not ported yet');
+            await sellobj(obj, game.u.ux, game.u.uy);
         stackobj(obj);
         /* Blind && Levitation: map_object() */
         newsym(game.u.ux, game.u.uy); /* remap location under self */

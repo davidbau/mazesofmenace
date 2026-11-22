@@ -28,7 +28,7 @@ import { NO_COLOR, ATR_NONE } from './terminal.js';
 import { extcmdlist } from './func_tab.js';
 import { cmd_from_func, key2extcmddesc, key2txt } from './cmd.js';
 import { visctrl } from './hacklib.js';
-import { canspotmon, vobj_at, pline, Hallucination } from './display.js';
+import { canspotmon, vobj_at, pline, Hallucination, Blind } from './display.js';
 import { cansee } from './vision.js';
 import { m_at, closed_door, is_pool, is_lava } from './makemon.js';
 import { t_at } from './trap.js';
@@ -36,13 +36,23 @@ import { engr_at } from './engrave.js';
 import { x_monnam, ARTICLE_NONE } from './do_name.js';
 import { pmname } from './do_name.js';
 import { distant_name, doname } from './objnam.js';
-import { u_at } from './const.js';
+import { u_at, M_AP_OBJECT, MCORPSENM } from './const.js';
+import { objects, OBJ_NAME, CHEST, LARGE_BOX, STRANGE_OBJECT, COIN_CLASS,
+         SLIME_MOLD, LEASH, CORPSE, STATUE } from './objects.js';
+import { mksobj, mkobj } from './mkobj.js';
+import { sobj_at } from './makemon.js';
+import { observe_object } from './o_init.js';
+import { costly_spot } from './shk.js';
 import { STONE, SCORR, ROOM, CORR, SDOOR, HWALL, VWALL, TLCORNER, TRCORNER,
          BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
          DOOR, IRONBARS, TREE, POOL, MOAT, STAIRS, LADDER, FOUNTAIN, SINK,
          ALTAR, GRAVE, THRONE, ICE, LAVAPOOL, LAVAWALL, AIR, CLOUD, WATER,
          DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, LA_DOWN, D_BROKEN, D_ISOPEN,
-         D_TRAPPED, IS_WALL, MALE, FEMALE, HALLUC, INVIS, BLINDED } from './const.js';
+         D_TRAPPED, IS_WALL, MALE, FEMALE, HALLUC, INVIS, BLINDED,
+         isok, IS_WATERWALL, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT,
+         Is_medusa_level, Is_juiblex_level, Is_qstart, Is_waterlevel } from './const.js';
+import { hliquid } from './potion.js';
+import { PM_SAMURAI } from './monsters.js';
 
 /* C ref: defsym.h PCHAR()/PCHAR2() explanations, S_stone .. S_water */
 const S_stone = 0, S_ndoor = 12, S_vodoor = 13, S_hodoor = 14,
@@ -151,6 +161,66 @@ export function back_to_cmap(x, y) {
     }
 }
 
+// C ref: dbridge.c db_under_typ()
+function db_under_typ(mask) {
+    switch (mask & DB_UNDER) {
+    case DB_ICE: return ICE;
+    case DB_LAVA: return LAVAPOOL;
+    case DB_MOAT: return MOAT;
+    default: return STONE;
+    }
+}
+
+// C ref: pager.c waterbody_name()
+/* describe a pool location's contents; the Snprintf()s are into a
+   40-character buffer (pooltype[40]) */
+export function waterbody_name(x, y) {
+    let ltyp;
+    const hallucinate = Hallucination() && !game.program_state?.gameover;
+
+    if (!isok(x, y))
+        return "drink"; /* should never happen */
+    /* ltyp = SURFACE_AT(x, y) */
+    const loc = game.level.at(x, y);
+    ltyp = (loc.typ === DRAWBRIDGE_UP) ? db_under_typ(loc.drawbridgemask)
+                                        : loc.typ;
+
+    if (ltyp === LAVAPOOL) {
+        return `molten ${hliquid("lava")}`.slice(0, 39);
+    } else if (ltyp === ICE) {
+        if (!hallucinate)
+            return "ice";
+        return `frozen ${hliquid("water")}`.slice(0, 39);
+    } else if (ltyp === POOL) {
+        return `pool of ${hliquid("water")}`.slice(0, 39);
+    } else if (ltyp === MOAT) {
+        /* a bit of extra flavor over general moat */
+        if (hallucinate) {
+            return `deep ${hliquid("water")}`.slice(0, 39);
+        } else if (Is_medusa_level(game.u.uz)) {
+            /* somewhat iffy since ordinary stairs can take you beneath,
+               but previous generic "water" was rather anti-climactic */
+            return "shallow sea";
+        } else if (Is_juiblex_level(game.u.uz)) {
+            return "swamp";
+        } else if (game.urole.mnum === PM_SAMURAI && Is_qstart(game.u.uz)) {
+            /* samurai quest home level has two isolated moat spots;
+               they sound silly if farlook describes them as such */
+            return "pond";
+        } else {
+            return "moat";
+        }
+    } else if (IS_WATERWALL(ltyp)) {
+        if (Is_waterlevel(game.u.uz))
+            return "limitless water"; /* even if hallucinating */
+        return `wall of ${hliquid("water")}`.slice(0, 39);
+    } else if (ltyp === LAVAWALL) {
+        return `wall of ${hliquid("lava")}`.slice(0, 39);
+    }
+    /* default; should be unreachable */
+    return "water"; /* don't hallucinate this as some other liquid */
+}
+
 // C ref: pager.c self_lookat()
 export function self_lookat() {
     const u = game.u;
@@ -200,6 +270,109 @@ function look_at_object(x, y, otmp) {
     else if (is_lava(x, y))
         buf += " in molten lava"; /* [can this ever happen?] */
     return buf;
+}
+
+// C ref: display.h is_obj_mappear()
+function is_obj_mappear(mon, otyp) {
+    return mon.m_ap_type === M_AP_OBJECT && mon.mappearance === otyp;
+}
+
+// C ref: pager.c object_from_map()
+/* extracted from lookat(); also used by namefloorobj() */
+// glyph is a glyph_at()/lev->glyph glyph; returns { fakeobj, otmp } for
+// C's return value and *obj_p
+export function object_from_map(glyph, x, y) {
+    let fakeobj = false, mimic_obj = false;
+    let mtmp;
+    let otmp;
+    const glyphotyp = (glyph.kind === 'obj') ? glyph.otyp /* glyph_to_obj() */
+                      /* if not an object, probably a detected chest trap */
+                      : (glyph.kind === 'cmap' || glyph.kind === 'trap')
+                        /* assume trapped chest|door */
+                        ? (sobj_at(CHEST, x, y) ? CHEST : LARGE_BOX)
+                        : STRANGE_OBJECT;
+
+    /* TODO: check inside containers in case glyph came from detection */
+    if ((otmp = sobj_at(glyphotyp, x, y)) === null)
+        otmp = (game.level.buriedobjlist || []).find(o =>
+            o.ox === x && o.oy === y && o.otyp === glyphotyp) || null;
+
+    /* there might be a mimic here posing as an object */
+    mtmp = m_at(x, y);
+    if (mtmp && is_obj_mappear(mtmp, glyphotyp)) {
+        otmp = null;
+        mimic_obj = true;
+    } else
+        mtmp = null;
+
+    if (!otmp || otmp.otyp !== glyphotyp) {
+        /* this used to exclude STRANGE_OBJECT; now caller deals with it */
+        if (OBJ_NAME(objects[glyphotyp])) {
+            /* map shows a regular object, but one that's not actually here */
+            otmp = mksobj(glyphotyp, false, false);
+        } else {
+            /* map shows a non-item that holds an extra object type (shown
+               on map due to hallucination) for a name which might have been
+               shuffled into play but wasn't (or was shuffled out of play);
+               pick another item that is a regular one in same object class */
+            otmp = mkobj(objects[glyphotyp].oc_class, false);
+            /* mkobj() doesn't provide any no-init option; however, there
+               aren't any extra tool items (or statues) so we won't get here
+               for tools and don't need to check for and delete container
+               contents or extinguish lights on the temporary object */
+        }
+        /* even though we pass False for mksobj()'s 'init' arg, corpse-rot,
+           egg-hatch, and figurine-transform timers get initialized */
+        if (otmp.timer || otmp.timed) {
+            otmp.timer = null; /* obj_stop_timers(otmp) */
+            otmp.timed = 0;
+        }
+        fakeobj = true;
+        if (otmp.oclass === COIN_CLASS)
+            otmp.quan = 2; /* to force pluralization */
+        else if (otmp.otyp === SLIME_MOLD)
+            otmp.spe = game.context.current_fruit; /* give it a type */
+        if (mtmp && MCORPSENM(mtmp) !== -1) { /* has_mcorpsenm(): mimic as corpse/statue */
+            if (otmp.otyp === SLIME_MOLD)
+                /* override svc.context.current_fruit to avoid
+                     look, use 'O' to make new named fruit, look again
+                   giving different results when current_fruit changes */
+                otmp.spe = MCORPSENM(mtmp);
+            else
+                otmp.corpsenm = MCORPSENM(mtmp);
+        } else if (otmp.otyp === CORPSE && glyph.kind === 'obj'
+                   && glyph.otyp === CORPSE) { /* glyph_is_body(glyph) */
+            otmp.corpsenm = glyph.corpsenm; /* glyph_to_body_corpsenm() */
+        } else if (otmp.otyp === STATUE && glyph.kind === 'obj'
+                   && glyph.otyp === STATUE) { /* glyph_is_statue(glyph) */
+            otmp.corpsenm = glyph.corpsenm; /* glyph_to_statue_corpsenm() */
+        }
+        if (otmp.otyp === LEASH)
+            otmp.leashmon = 0;
+        /* extra fields needed for shop price with doname() formatting */
+        otmp.where = 'OBJ_FLOOR';
+        otmp.ox = x, otmp.oy = y;
+        otmp.no_charge = (otmp.otyp === STRANGE_OBJECT && costly_spot(x, y)) ? 1 : 0;
+    }
+    /* if located at adjacent spot, mark it as having been seen up close
+       (corpse type will be known even if dknown is 0, so we don't need a
+       touch check for cockatrice corpse--we're looking without touching) */
+    if (otmp && Math.abs(x - game.u.ux) <= 1 && Math.abs(y - game.u.uy) <= 1 /* next2u() */
+        && !Blind() && !Hallucination()
+        /* redundant: we only look for an object which matches current
+           glyph among floor and buried objects; when !Blind, any buried
+           object's glyph will have been replaced by whatever is present
+           on the surface as soon as we moved next to its spot */
+        && (fakeobj || otmp.where === 'OBJ_FLOOR') /* not buried */
+        /* terrain mode views what's already known, doesn't learn new stuff */
+        && !game.iflags.terrainmode) /* so don't set dknown when in terrain mode */
+        observe_object(otmp, Hallucination()); /* if a pile, clearly see the top item only */
+    if (fakeobj && mtmp && mimic_obj
+        && (otmp.dknown || mtmp.m_ap_fdknown /* M_AP_FLAG() & M_AP_F_DKNOWN */)) {
+        mtmp.m_ap_fdknown = 1; /* mtmp->m_ap_type |= M_AP_F_DKNOWN */
+        observe_object(otmp, Hallucination());
+    }
+    return { fakeobj, otmp }; /* when fakeobj, caller needs to dealloc otmp */
 }
 
 // C ref: pager.c look_at_monster()

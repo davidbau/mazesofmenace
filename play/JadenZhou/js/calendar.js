@@ -61,3 +61,43 @@ export function night() {
 export function midnight() {
     return (getlt().tm_hour === 0) ? 1 : 0;
 }
+
+// C ref: calendar.c getnow() -- the recorder's clock is frozen at the
+// game's datetime (NETHACK_FIXED_DATETIME); a time_t here counts seconds
+// of that local time (no time zone involved, like getlt())
+export function getnow() {
+    const dt = game.datetime;
+    if (dt && /^\d{14}$/.test(dt))
+        return Math.trunc(Date.UTC(+dt.slice(0, 4), +dt.slice(4, 6) - 1,
+                                   +dt.slice(6, 8), +dt.slice(8, 10),
+                                   +dt.slice(10, 12), +dt.slice(12, 14)) / 1000);
+    return Math.trunc(Date.now() / 1000);
+}
+
+/* localtime() of a time_t from getnow() */
+function localtime_of(date) {
+    const t = new Date(date * 1000);
+    return {
+        tm_year: t.getUTCFullYear() - 1900, tm_mon: t.getUTCMonth(),
+        tm_mday: t.getUTCDate(), tm_hour: t.getUTCHours(),
+        tm_min: t.getUTCMinutes(), tm_sec: t.getUTCSeconds(),
+    };
+}
+
+// C ref: calendar.c yyyymmdd()
+export function yyyymmdd(date) {
+    let datenum;
+    const lt = (date === 0) ? getlt() : localtime_of(date);
+
+    /* just in case somebody's localtime supplies (year % 100)
+       rather than the expected (year - 1900) */
+    if (lt.tm_year < 70)
+        datenum = lt.tm_year + 2000;
+    else
+        datenum = lt.tm_year + 1900;
+    /* yyyy --> yyyymm */
+    datenum = datenum * 100 + (lt.tm_mon + 1);
+    /* yyyymm --> yyyymmdd */
+    datenum = datenum * 100 + lt.tm_mday;
+    return datenum;
+}

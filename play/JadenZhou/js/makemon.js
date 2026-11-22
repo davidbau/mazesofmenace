@@ -10,7 +10,11 @@
 // Not ported yet: newcham (shapechangers),
 // set_mimic_sym, rndghostname, worm tail segments.
 
-import { christen_monst, rndghostname, Amonnam, y_monnam } from './do_name.js';
+import { christen_monst, rndghostname, Amonnam, y_monnam, mon_nam, pmname,
+         Mgender, YMonnam, pronoun_gender, PRONOUN_HALLU } from './do_name.js';
+import { genders } from './role.js';
+import { canspotmon } from './display.js';
+import { mondied } from './mon.js';
 import { in_town } from './hack.js';
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -57,16 +61,17 @@ import { engr_at } from './engrave.js';
 import { enexto_core, enexto_gpflags } from './teleport.js';
 import { newedog } from './dog.js';
 import { M_AP_NOTHING, M_AP_MONSTER, HALLUC, TELEPAT,
-         DETECT_MONSTERS } from './const.js';
+         DETECT_MONSTERS, PROT_FROM_SHAPE_CHANGERS } from './const.js';
 import { dist2 } from './hacklib.js';
 import { an, vtense } from './objnam.js';
-import { newsym, pline, canseemon, You_see } from './display.js';
+import { newsym, pline, canseemon, You_see, vobj_at } from './display.js';
 import { does_block, block_point, cansee, couldsee } from './vision.js';
 import { Resists_Elem } from './mondata.js';
-import { PIT, SPIKED_PIT, STONE_RES, PLNMSG_HIDE_UNDER } from './const.js';
+import { PIT, SPIKED_PIT, STONE_RES, PLNMSG_HIDE_UNDER, Is_juiblex_level,
+         SEE_INVIS } from './const.js';
 import { set_apparxy, dochugw } from './monmove.js';
 import { noteleport_level } from './teleport.js';
-import { newcham } from './mon.js';
+import { newcham_sync } from './mon.js';
 import { mpickobj } from './steal.js';
 import { add_to_minv } from './mkobj.js';
 import { m_dowear, which_armor, mon_adjust_speed_sync } from './worn.js';
@@ -126,8 +131,19 @@ function uncommon(mndx) {
 function align_shift(ptr) {
     let alshift;
 
-    /* C caches Is_special(&u.uz) per value of moves */
-    const lev = Is_special(game.u.uz);
+    /* C: static oldmoves = 0L (!= 1, the starting value of moves) and
+       static s_level *lev -- Is_special(&u.uz) is looked up again only
+       when moves has changed since the last call, so on a level change
+       within one move 'lev' is still the previous level's */
+    if (game.align_shift_oldmoves === undefined) {
+        game.align_shift_oldmoves = 0;
+        game.align_shift_lev = null;
+    }
+    if (game.align_shift_oldmoves !== game.moves) {
+        game.align_shift_lev = Is_special(game.u.uz);
+        game.align_shift_oldmoves = game.moves;
+    }
+    const lev = game.align_shift_lev;
     switch ((lev) ? lev.flags.align : game.dungeons[game.u.uz.dnum].flags.align) {
     default: /* just in case */
     case AM_NONE:
@@ -623,20 +639,31 @@ export function sobj_at(otyp, x, y) {
         if (o.otyp === otyp && o.ox === x && o.oy === y) return o;
     return null;
 }
-// C ref: dbridge.c is_pool(), is_lava()
+// C ref: dbridge.c is_pool()
 export function is_pool(x, y) {
     if (!isok(x, y)) return false;
     const typ = game.level.at(x, y).typ;
-    return typ === POOL || typ === MOAT || typ === WATER
-           || (typ === DRAWBRIDGE_UP
-               && ((game.level.at(x, y).drawbridgemask ?? 0) & 0x07) === 0x01);
+    /* The ltyp == MOAT is not redundant with is_moat, because the
+     * Juiblex level does not have moats, although it has MOATs. There
+     * is probably a better way to express this. */
+    return typ === POOL || typ === MOAT || typ === WATER || is_moat(x, y);
 }
+// C ref: dbridge.c is_lava()
 export function is_lava(x, y) {
     if (!isok(x, y)) return false;
     const typ = game.level.at(x, y).typ;
     return typ === LAVAPOOL || typ === LAVAWALL
            || (typ === DRAWBRIDGE_UP
-               && ((game.level.at(x, y).drawbridgemask ?? 0) & 0x07) === 0x02);
+               && ((game.level.at(x, y).drawbridgemask ?? 0) & DB_UNDER) === DB_LAVA);
+}
+// C ref: dbridge.c is_moat()
+function is_moat(x, y) {
+    if (!isok(x, y)) return false;
+    const typ = game.level.at(x, y).typ;
+    return !Is_juiblex_level(game.u.uz)
+           && (typ === MOAT
+               || (typ === DRAWBRIDGE_UP
+                   && ((game.level.at(x, y).drawbridgemask ?? 0) & DB_UNDER) === DB_MOAT));
 }
 // C ref: dbridge.c db_under_typ()
 function db_under_typ(mask) {
@@ -1228,10 +1255,15 @@ export function mkmonmoney(mtmp, amount) {
     }
 }
 
-// C ref: objclass.h ARM_BONUS()
+// C ref: hack.h ARM_BONUS()
 function ARM_BONUS(obj) {
     return objects[obj.otyp].a_ac + (obj.spe || 0)
-           - Math.min(obj.oeroded || 0, objects[obj.otyp].a_ac);
+           - Math.min(greatest_erosion(obj), objects[obj.otyp].a_ac);
+}
+
+// C ref: obj.h greatest_erosion()
+function greatest_erosion(otmp) {
+    return Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
 }
 
 // C ref: makemon.c m_initinv()
@@ -1858,7 +1890,7 @@ export function makemon(ptr, x, y, mmflags) {
         /* Vlad stays in his normal shape so he can carry the Candelabrum */
         if (mndx !== M.PM_VLAD_THE_IMPALER
             /* Let newcham() pick the shape. */
-            && newcham(mtmp, null, 0 /* NO_NC_FLAGS */))
+            && newcham_sync(mtmp, null, 0 /* NO_NC_FLAGS */))
             allow_minvent = false;
     } else if (mndx === M.PM_WIZARD_OF_YENDOR) {
         mtmp.iswiz = true;
@@ -2109,7 +2141,8 @@ export function set_mimic_sym(mtmp) {
     const levl = (x, y) => game.level.at(x, y);
     let assign = false;
 
-    if (!mtmp /* || Protection_from_shape_changers */)
+    const pfsc = game.u.uprops?.[PROT_FROM_SHAPE_CHANGERS];
+    if (!mtmp || !!(pfsc && (pfsc.intrinsic || pfsc.extrinsic))) /* Protection_from_shape_changers */
         return;
     mx = mtmp.mx;
     my = mtmp.my;
@@ -2123,7 +2156,7 @@ export function set_mimic_sym(mtmp) {
 
     if (OBJ_AT(mx, my)) {
         ap_type = M_AP_OBJECT;
-        appear = game.level.objects.find(o => o.ox === mx && o.oy === my).otyp;
+        appear = vobj_at(mx, my).otyp; /* svl.level.objects[mx][my]->otyp */
     } else if (IS_DOOR(typ) || IS_WALL(typ) || typ === SDOOR || typ === SCORR) {
         ap_type = M_AP_FURNITURE;
         /*
@@ -2221,6 +2254,7 @@ export function set_mimic_sym(mtmp) {
         }
     }
     mtmp.m_ap_type = ap_type;
+    mtmp.m_ap_fdknown = 0; /* M_AP_F_DKNOWN, kept apart from m_ap_type */
     mtmp.mappearance = appear;
     /* when appearing as an object based on a monster type, pick a shape */
     if (ap_type === M_AP_OBJECT
@@ -2444,9 +2478,9 @@ export function put_saddle_on_mon(saddle, mtmp) {
 // C ref: makemon.c grow_up()
 /* monster earned experience and will gain some hit points; it might also
    grow into a bigger monster (baby to adult, soldier to officer, etc) */
-export function grow_up(mtmp, victim) {
+export async function grow_up(mtmp, victim) {
     let max_increase, cur_increase, lev_limit, hp_threshold;
-    const ptr = mtmp.data;
+    let ptr = mtmp.data;
 
     /* monster died after killing enemy but before calling this function */
     /* currently possible if killing a gas spore */
@@ -2496,8 +2530,48 @@ export function grow_up(mtmp, victim) {
     else if (lev_limit > 49)
         lev_limit = (ptr.mlevel > 49 ? 50 : 49);
 
-    if (++mtmp.m_lev >= mons[newtype].mlevel && newtype !== oldtype)
-        throw new Error('grow_up(): growing into a new form not ported yet');
+    if (++mtmp.m_lev >= mons[newtype].mlevel && newtype !== oldtype) {
+        ptr = mons[newtype];
+        /* new form might force gender change */
+        const fem = is_male(ptr) ? 0 : is_female(ptr) ? 1
+                                                            : (mtmp.female ? 1 : 0);
+
+        if (game.mvitals[newtype].mvflags & G_GENOD) { /* allow G_EXTINCT */
+            if (canspotmon(mtmp))
+                await pline(`As ${mon_nam(mtmp)} grows up into ${
+                    an(pmname(ptr, Mgender(mtmp)))}, ${
+                    genders[pronoun_gender(mtmp, PRONOUN_HALLU)].he} ${ /* mhe() */
+                    nonliving(ptr) ? "expires" : "dies"}!`);
+            set_mon_data(mtmp, ptr); /* keep svm.mvitals[] accurate */
+            await mondied(mtmp);
+            return null;
+        } else if (canspotmon(mtmp)) {
+            /* 3.6.1:
+             * Temporary (?) hack to fix growing into opposite gender.
+             */
+            const buf = `${
+                /* deal with female gnome becoming a gnome lord */
+                (mtmp.female && !fem) ? "male "
+                    /* or a male gnome becoming a gnome lady
+                       (can't happen with 3.6.0 mons[], but perhaps
+                       slightly less sexist if prepared for it...) */
+                  : (fem && !mtmp.female) ? "female " : ""}${pmname(ptr, fem)}`;
+            /* pline_mon() */
+            await pline(`${YMonnam(mtmp)} ${
+                (fem !== (mtmp.female ? 1 : 0)) ? "changes into"
+                : (ptr.mflags1 & M.M1_HUMANOID) ? "becomes" /* humanoid() */
+                  : "grows up into"} ${an(buf)}.`);
+        }
+        set_mon_data(mtmp, ptr);
+        if (mtmp.cham === oldtype && (ptr.mflags2 & M.M2_SHAPESHIFTER))
+            mtmp.cham = newtype; /* vampire growing into vampire lord */
+        newsym(mtmp.mx, mtmp.my);    /* color may change */
+        lev_limit = mtmp.m_lev; /* never undo increment */
+
+        mtmp.female = fem; /* gender might be changing */
+        /* if 'mtmp' is leashed, persistent inventory window needs updating:
+           update_inventory() -- no persistent inventory window in tty */
+    }
 
     /* sanity checks */
     if (mtmp.m_lev > lev_limit) {
@@ -2768,7 +2842,11 @@ function is_vampshifter_mon(mon) {
            || mon.cham === M.PM_VLAD_THE_IMPALER;
 }
 // C ref: youprop.h See_invisible -- intrinsics aren't tracked yet
-function See_invisible() { return false; }
+/* C ref: youprop.h See_invisible */
+function See_invisible() {
+    const p = game.u?.uprops?.[SEE_INVIS];
+    return !!(p && (p.intrinsic || p.extrinsic));
+}
 
 // C ref: muse.c rnd_misc_item()
 export function rnd_misc_item(mtmp) {
